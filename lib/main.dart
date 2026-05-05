@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:html' as html;
 import 'dart:ui' show PointerDeviceKind;
+import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 
 // 🔥 FIREBASE
 import 'package:firebase_core/firebase_core.dart';
@@ -21,7 +24,15 @@ import 'firebase_options.dart';
 
 class _WhipSoundService {
   static final AudioPlayer _player = AudioPlayer();
+  static final AudioPlayer _backupPlayer = AudioPlayer();
   static DateTime? _lastPlayedAt;
+
+  static Future<void> _playOnce(AudioPlayer player) async {
+    await player.stop();
+    await player.setPlayerMode(PlayerMode.lowLatency);
+    await player.setReleaseMode(ReleaseMode.stop);
+    await player.play(AssetSource('sounds/whip.mp3'), volume: 1.0);
+  }
 
   static Future<void> playIncomingMessageWhip() async {
     try {
@@ -30,18 +41,74 @@ class _WhipSoundService {
       if (last != null && now.difference(last).inMilliseconds < 450) return;
       _lastPlayedAt = now;
 
-      await _player.stop();
-      await _player.setPlayerMode(PlayerMode.lowLatency);
-      await _player.setReleaseMode(ReleaseMode.stop);
-      await _player.play(AssetSource('sounds/whip.mp3'), volume: 1.0);
+      await _playOnce(_player);
+
+      // Refuerzo para navegador en segundo plano/minimizado:
+      // no fuerza una pestaña suspendida por el sistema, pero si Brave/Chrome
+      // mantiene vivo el listener de Firestore, intenta un segundo disparo corto
+      // para evitar que el primer play se pierda al cambiar de pestaña.
+      final lifecycle = WidgetsBinding.instance.lifecycleState;
+      if (lifecycle != AppLifecycleState.resumed) {
+        Future.delayed(const Duration(milliseconds: 180), () async {
+          try {
+            await _playOnce(_backupPlayer);
+          } catch (e) {
+            debugPrint('No pude reproducir refuerzo de látigo: $e');
+          }
+        });
+      }
     } catch (e) {
       debugPrint('No pude reproducir el sonido de látigo: $e');
     }
   }
 }
 
+
+void _installMaterialIconsWebFontFix() {
+  if (!kIsWeb) return;
+
+  try {
+    final head = html.document.head;
+    if (head == null) return;
+
+    const styleId = 'sayittome-material-icons-font-fix';
+    if (html.document.getElementById(styleId) != null) return;
+
+    final preload = html.LinkElement()
+      ..rel = 'preload'
+      ..href = 'assets/fonts/MaterialIcons-Regular.otf'
+      ..as = 'font'
+      ..type = 'font/otf'
+      ..crossOrigin = 'anonymous';
+    head.append(preload);
+
+    final style = html.StyleElement()
+      ..id = styleId
+      ..text = """
+@font-face {
+  font-family: 'MaterialIcons';
+  src: url('assets/fonts/MaterialIcons-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Material Icons';
+  src: url('assets/fonts/MaterialIcons-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+""";
+    head.append(style);
+  } catch (e) {
+    debugPrint('No pude instalar el fix web de Material Icons: $e');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _installMaterialIconsWebFontFix();
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -63,6 +130,7 @@ class SayItToMeApp extends StatelessWidget {
       title: 'SayItToMe',
       debugShowCheckedModeBanner: false,
       scrollBehavior: const _SayItToMeScrollBehavior(),
+      builder: (context, child) => _MaterialIconWarmup(child: child ?? const SizedBox.shrink()),
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF050505),
@@ -109,6 +177,109 @@ class _SayItToMeScrollBehavior extends MaterialScrollBehavior {
       };
 }
 
+
+
+class _MaterialIconWarmup extends StatelessWidget {
+  final Widget child;
+
+  const _MaterialIconWarmup({required this.child});
+
+  static const List<IconData> _icons = [
+    Icons.account_circle_rounded,
+    Icons.add_circle_outline_rounded,
+    Icons.add_circle_rounded,
+    Icons.add_rounded,
+    Icons.arrow_back_rounded,
+    Icons.auto_stories_outlined,
+    Icons.auto_stories_rounded,
+    Icons.block_rounded,
+    Icons.brightness_1_rounded,
+    Icons.brightness_7_rounded,
+    Icons.broken_image_rounded,
+    Icons.chat_bubble_rounded,
+    Icons.chevron_right_rounded,
+    Icons.close_rounded,
+    Icons.copy_rounded,
+    Icons.delete_forever_rounded,
+    Icons.delete_outline_rounded,
+    Icons.delete_rounded,
+    Icons.done_all_rounded,
+    Icons.drag_indicator_rounded,
+    Icons.event_busy_rounded,
+    Icons.favorite_border_rounded,
+    Icons.favorite_rounded,
+    Icons.filter_list_rounded,
+    Icons.flash_off_rounded,
+    Icons.flip_camera_android_rounded,
+    Icons.forward_to_inbox_rounded,
+    Icons.hourglass_top_rounded,
+    Icons.image_not_supported_rounded,
+    Icons.image_rounded,
+    Icons.ios_share_rounded,
+    Icons.link_rounded,
+    Icons.local_fire_department_rounded,
+    Icons.location_on_rounded,
+    Icons.lock_rounded,
+    Icons.login_rounded,
+    Icons.logout_rounded,
+    Icons.mark_email_unread_rounded,
+    Icons.more_vert_rounded,
+    Icons.movie_creation_rounded,
+    Icons.nightlight_round,
+    Icons.pause_rounded,
+    Icons.person_add_alt_1_rounded,
+    Icons.person_off_rounded,
+    Icons.person_pin_rounded,
+    Icons.person_remove_rounded,
+    Icons.person_rounded,
+    Icons.person_search_rounded,
+    Icons.photo_camera_back_rounded,
+    Icons.photo_camera_rounded,
+    Icons.photo_library_rounded,
+    Icons.photo_rounded,
+    Icons.play_arrow_rounded,
+    Icons.play_circle_fill_rounded,
+    Icons.report_rounded,
+    Icons.rocket_launch_rounded,
+    Icons.save_rounded,
+    Icons.search_rounded,
+    Icons.send,
+    Icons.shuffle_rounded,
+    Icons.support_agent_rounded,
+    Icons.timer_rounded,
+    Icons.trip_origin_rounded,
+    Icons.verified_rounded,
+    Icons.verified_user_rounded,
+    Icons.video_camera_back_rounded,
+    Icons.video_library_rounded,
+    Icons.videocam_rounded,
+    Icons.visibility_off_rounded,
+    Icons.visibility_rounded,
+    Icons.warning_amber_rounded,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        Positioned(
+          left: -10000,
+          top: -10000,
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: 0.001,
+              child: Wrap(
+                children: _icons.map((icon) => Icon(icon, size: 1)).toList(growable: false),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _PresenceHeartbeat extends StatefulWidget {
   final Widget child;
@@ -224,6 +395,7 @@ class _IncomingMessageWhipListenerState extends State<_IncomingMessageWhipListen
       await _sentAsAnonSubscription?.cancel();
       _knownReceivedUnreadByChat.clear();
       _knownSentUnreadByChat.clear();
+      _updateGlobalUnreadChatSignal();
       _receivedAsProfileReady = false;
       _sentAsProfileReady = false;
       _sentAsAnonReady = false;
@@ -250,6 +422,12 @@ class _IncomingMessageWhipListenerState extends State<_IncomingMessageWhipListen
     _listenSentAsAnon(visitorId);
   }
 
+  void _updateGlobalUnreadChatSignal() {
+    final totalReceived = _knownReceivedUnreadByChat.values.fold<int>(0, (sum, value) => sum + max(0, value));
+    final totalSent = _knownSentUnreadByChat.values.fold<int>(0, (sum, value) => sum + max(0, value));
+    _globalUnreadChatSignal.value = totalReceived + totalSent;
+  }
+
   void _listenReceivedAsProfile(String uid) {
     _receivedAsProfileSubscription = FirebaseFirestore.instance
         .collection("chats_anonimos")
@@ -269,6 +447,7 @@ class _IncomingMessageWhipListenerState extends State<_IncomingMessageWhipListen
       }
 
       _receivedAsProfileReady = true;
+      _updateGlobalUnreadChatSignal();
       if (shouldPlay) _WhipSoundService.playIncomingMessageWhip();
     }, onError: (e) {
       debugPrint("No pude escuchar chats recibidos para sonido: $e");
@@ -294,6 +473,7 @@ class _IncomingMessageWhipListenerState extends State<_IncomingMessageWhipListen
       }
 
       _sentAsProfileReady = true;
+      _updateGlobalUnreadChatSignal();
       if (shouldPlay) _WhipSoundService.playIncomingMessageWhip();
     }, onError: (e) {
       debugPrint("No pude escuchar chats enviados como perfil para sonido: $e");
@@ -322,6 +502,7 @@ class _IncomingMessageWhipListenerState extends State<_IncomingMessageWhipListen
       }
 
       _sentAsAnonReady = true;
+      _updateGlobalUnreadChatSignal();
       if (shouldPlay) _WhipSoundService.playIncomingMessageWhip();
     }, onError: (e) {
       debugPrint("No pude escuchar chats enviados como anónimo para sonido: $e");
@@ -437,6 +618,11 @@ Future<void> _signOutAndResetAnonIdentity() async {
 // Señal global para que el botón Shuffle de la barra inferior pueda
 // pedir una nueva tirada random sin reconstruir toda la navegación.
 final ValueNotifier<int> _shuffleRerollSignal = ValueNotifier<int>(0);
+
+// Señal global de misterio para el globito inferior de chats.
+// No muestra un número explícito: solo una marca rojo/naranja apagada cuando
+// existe algo nuevo pendiente de leer/atender.
+final ValueNotifier<int> _globalUnreadChatSignal = ValueNotifier<int>(0);
 
 class SayItToMeHomePage extends StatelessWidget {
   const SayItToMeHomePage({super.key});
@@ -1973,11 +2159,18 @@ class _ConnectedProfileVisualPageState extends State<_ConnectedProfileVisualPage
         padding: EdgeInsets.zero,
         physics: const ClampingScrollPhysics(),
         children: [
-          SizedBox(
-            height: heroHeight,
-            width: double.infinity,
-            child: Stack(
-              children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: heroHeight,
+                    width: double.infinity,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
                 Positioned.fill(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -2251,14 +2444,29 @@ class _ConnectedProfileVisualPageState extends State<_ConnectedProfileVisualPage
                       ),
                     ),
                   ),
-              ],
-            ),
-          ),
 
-          _ConnectedStatsRow(
-            profileUid: widget.profileUid,
-            isOwnProfile: widget.isOwnProfile,
-            onInbox: widget.onInbox,
+              ],
+                    ),
+                  ),
+
+                  _ConnectedStatsRow(
+                    profileUid: widget.profileUid,
+                    isOwnProfile: widget.isOwnProfile,
+                    onInbox: widget.onInbox,
+                  ),
+                ],
+              ),
+
+              if (widget.isOwnProfile)
+                Positioned(
+                  right: 28,
+                  top: heroHeight - 23,
+                  child: _VerifiedProfileCopyPill(
+                    profileUid: widget.profileUid,
+                    username: username,
+                  ),
+                ),
+            ],
           ),
 
           const Divider(height: 1, color: Color(0xFF202020)),
@@ -2688,6 +2896,107 @@ class _RoundOverlayIconButton extends StatelessWidget {
   }
 }
 
+
+String _verifiedProfileCopyLink({
+  required String profileUid,
+  required String username,
+}) {
+  final cleanUsername = _normalizeProfileSlug(username);
+  if (cleanUsername.isNotEmpty) {
+    return 'https://sayittome-app.web.app/@$cleanUsername';
+  }
+  final cleanUid = profileUid.trim();
+  return cleanUid.isEmpty ? 'https://sayittome-app.web.app' : 'https://sayittome-app.web.app/u/$cleanUid';
+}
+
+class _VerifiedProfileCopyPill extends StatefulWidget {
+  final String profileUid;
+  final String username;
+
+  const _VerifiedProfileCopyPill({
+    required this.profileUid,
+    required this.username,
+  });
+
+  @override
+  State<_VerifiedProfileCopyPill> createState() => _VerifiedProfileCopyPillState();
+}
+
+class _VerifiedProfileCopyPillState extends State<_VerifiedProfileCopyPill> {
+  bool copied = false;
+
+  Future<void> _copy() async {
+    final link = _verifiedProfileCopyLink(
+      profileUid: widget.profileUid,
+      username: widget.username,
+    );
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    setState(() => copied = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Link verificado copiado ✅')),
+    );
+    await Future.delayed(const Duration(milliseconds: 1400));
+    if (mounted) setState(() => copied = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _copy,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: 54,
+        padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111111).withOpacity(0.96),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withOpacity(0.82), width: 1.45),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.42),
+              blurRadius: 18,
+              offset: const Offset(0, 9),
+            ),
+            BoxShadow(
+              color: const Color(0xFF7B61FF).withOpacity(0.28),
+              blurRadius: 20,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF7B61FF).withOpacity(0.22),
+                border: Border.all(color: Colors.white.withOpacity(0.70), width: 1.15),
+              ),
+              child: const Icon(Icons.verified_rounded, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              copied ? 'copiado' : 'copiar link verificado',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12.6,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.12,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.copy_rounded, color: Colors.white.withOpacity(0.92), size: 17),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 int _globalSafeInt(dynamic value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
@@ -2904,7 +3213,9 @@ class _ConnectedStatsRow extends StatelessWidget {
 
                 return Container(
                   color: Colors.black,
-                  padding: const EdgeInsets.fromLTRB(28, 26, 28, 26),
+                  // En perfil propio dejamos aire superior para que el botón de link
+                  // verificado pueda flotar por encima del bloque negro sin tapar estadísticas.
+                  padding: EdgeInsets.fromLTRB(28, isOwnProfile ? 42 : 26, 28, 26),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -3363,6 +3674,200 @@ class _ConnectedStatButton extends StatelessWidget {
 }
 
 
+
+// ===================== ADMIN + HISTORIAS AGRUPADAS =====================
+// Admin real de SayItToMe. Mantener este email sincronizado con reglas/panel.
+const String _sayItToMeAdminEmail = "emilianomaturano@gmail.com";
+
+bool _isSayItToMeAdminEmail(String? email) {
+  return (email ?? "").trim().toLowerCase() == _sayItToMeAdminEmail;
+}
+
+bool _isCurrentUserSayItToMeAdmin() {
+  final user = FirebaseAuth.instance.currentUser;
+  return user != null && _isSayItToMeAdminEmail(user.email);
+}
+
+Timestamp? _timestampFromAny(dynamic value) {
+  if (value is Timestamp) return value;
+  if (value is DateTime) return Timestamp.fromDate(value);
+  return null;
+}
+
+String _fmtStoryBlockUntil(Timestamp until) {
+  final d = until.toDate();
+  final dd = d.day.toString().padLeft(2, '0');
+  final mm = d.month.toString().padLeft(2, '0');
+  final yyyy = d.year.toString();
+  final hh = d.hour.toString().padLeft(2, '0');
+  final min = d.minute.toString().padLeft(2, '0');
+  return "$dd/$mm/$yyyy $hh:$min";
+}
+
+Future<Timestamp?> _activeStoryBlockUntilForUid(String uid) async {
+  final cleanUid = uid.trim();
+  if (cleanUid.isEmpty) return null;
+
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection("bloqueos")
+        .doc(cleanUid)
+        .get()
+        .timeout(const Duration(seconds: 8));
+
+    if (!doc.exists) return null;
+
+    final data = doc.data() ?? {};
+    final tipo = (data["tipo"] ?? data["scope"] ?? "historias").toString().trim().toLowerCase();
+    final until = _timestampFromAny(data["hasta"] ?? data["expiresAt"] ?? data["until"]);
+    if (until == null) return null;
+
+    final appliesToStories = tipo.isEmpty ||
+        tipo == "historias" ||
+        tipo == "stories" ||
+        tipo == "todo" ||
+        tipo == "all";
+
+    if (!appliesToStories) return null;
+    if (!until.toDate().isAfter(DateTime.now())) return null;
+
+    return until;
+  } catch (e) {
+    debugPrint("No pude revisar bloqueo temporal de historias: $e");
+    return null;
+  }
+}
+
+Future<bool> _ensureCanUploadStory(BuildContext context, String uid) async {
+  final until = await _activeStoryBlockUntilForUid(uid);
+  if (until == null) return true;
+
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("No podés subir historias hasta ${_fmtStoryBlockUntil(until)}."),
+      ),
+    );
+  }
+  return false;
+}
+
+Future<void> _adminBlockStoriesForUid({
+  required BuildContext context,
+  required String uid,
+  required Duration duration,
+  required String motivo,
+}) async {
+  final cleanUid = uid.trim();
+  if (cleanUid.isEmpty) return;
+
+  if (!_isCurrentUserSayItToMeAdmin()) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Solo el administrador puede bloquear historias.")),
+    );
+    return;
+  }
+
+  final until = Timestamp.fromDate(DateTime.now().add(duration));
+
+  try {
+    await FirebaseFirestore.instance.collection("bloqueos").doc(cleanUid).set({
+      "uid": cleanUid,
+      "tipo": "historias",
+      "scope": "historias",
+      "motivo": motivo,
+      "hasta": until,
+      "expiresAt": until,
+      "adminEmail": FirebaseAuth.instance.currentUser?.email,
+      "createdAt": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true)).timeout(const Duration(seconds: 10));
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Historias bloqueadas hasta ${_fmtStoryBlockUntil(until)}.")),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("No pude bloquear historias: $e")),
+      );
+    }
+  }
+}
+
+List<Map<String, dynamic>> _storiesSortedNewestFirst(List<Map<String, dynamic>> stories) {
+  final list = stories.map((story) => Map<String, dynamic>.from(story)).toList();
+  list.sort((a, b) {
+    final at = a["createdAt"];
+    final bt = b["createdAt"];
+    final am = at is Timestamp ? at.millisecondsSinceEpoch : 0;
+    final bm = bt is Timestamp ? bt.millisecondsSinceEpoch : 0;
+    return bm.compareTo(am);
+  });
+  return list;
+}
+
+List<_GroupedStoriesEntry> _groupStoriesByProfile(List<Map<String, dynamic>> stories) {
+  final grouped = <String, List<Map<String, dynamic>>>{};
+
+  for (final raw in stories) {
+    final story = Map<String, dynamic>.from(raw);
+    final uid = (story["profileUid"] ?? story["ownerUid"] ?? story["uid"] ?? "").toString().trim();
+    final usernameKey = (story["username"] ?? "").toString().trim().toLowerCase();
+
+    // UID manda. El fallback por username evita duplicados en documentos viejos que no
+    // guardaron ownerUid/uid correctamente, sin romper la navegación del visor.
+    final key = uid.isNotEmpty ? "uid:$uid" : (usernameKey.isNotEmpty ? "username:$usernameKey" : "story:${story["id"] ?? UniqueKey().toString()}");
+    grouped.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(story);
+  }
+
+  final entries = grouped.entries.map((entry) {
+    final sorted = _storiesSortedNewestFirst(entry.value);
+    final latest = sorted.isEmpty ? const <String, dynamic>{} : sorted.first;
+    final uid = (latest["profileUid"] ?? latest["ownerUid"] ?? latest["uid"] ?? "").toString().trim();
+    return _GroupedStoriesEntry(
+      profileUid: uid,
+      stories: sorted,
+    );
+  }).where((entry) => entry.stories.isNotEmpty).toList();
+
+  entries.sort((a, b) => b.latestCreatedMillis.compareTo(a.latestCreatedMillis));
+  return entries;
+}
+
+class _GroupedStoriesEntry {
+  final String profileUid;
+  final List<Map<String, dynamic>> stories;
+
+  const _GroupedStoriesEntry({
+    required this.profileUid,
+    required this.stories,
+  });
+
+  Map<String, dynamic> get latest => stories.isEmpty ? const <String, dynamic>{} : stories.first;
+
+  int get latestCreatedMillis {
+    final createdAt = latest["createdAt"];
+    if (createdAt is Timestamp) return createdAt.millisecondsSinceEpoch;
+    return 0;
+  }
+
+  String get username {
+    final value = (latest["username"] ?? "usuario").toString().trim();
+    return value.isEmpty ? "usuario" : value;
+  }
+
+  String get avatarUrl => (latest["avatarUrl"] ?? "").toString().trim();
+
+  String get previewUrl => (latest["url"] ?? "").toString().trim();
+
+  String get previewType => (latest["type"] ?? "image").toString().trim();
+
+  int get count => stories.length;
+}
+
 Future<String?> _pickAndUploadStoryMedia({required bool isVideo}) async {
   try {
     final user = FirebaseAuth.instance.currentUser;
@@ -3443,6 +3948,9 @@ Future<void> _createStoryFromPicker(BuildContext context, {required bool isVideo
     );
     return;
   }
+
+  final canUpload = await _ensureCanUploadStory(context, user.uid);
+  if (!canUpload) return;
 
   final messenger = ScaffoldMessenger.of(context);
   messenger.showSnackBar(
@@ -3621,6 +4129,130 @@ void _showStoryUploadCameraSheet(BuildContext context) {
   );
 }
 
+
+class _InlineNetworkVideoPlayer extends StatefulWidget {
+  final String url;
+  final double aspectRatio;
+  final bool controls;
+  final bool autoplay;
+  final bool loop;
+  final bool muted;
+  final BoxFit fit;
+  final ValueChanged<Duration>? onDurationKnown;
+  final VoidCallback? onEnded;
+
+  const _InlineNetworkVideoPlayer({
+    required this.url,
+    this.aspectRatio = 16 / 9,
+    this.controls = true,
+    this.autoplay = false,
+    this.loop = false,
+    this.muted = false,
+    this.fit = BoxFit.contain,
+    this.onDurationKnown,
+    this.onEnded,
+  });
+
+  @override
+  State<_InlineNetworkVideoPlayer> createState() => _InlineNetworkVideoPlayerState();
+}
+
+class _InlineNetworkVideoPlayerState extends State<_InlineNetworkVideoPlayer> {
+  static int _serial = 0;
+  late final String _viewType;
+  late final html.VideoElement _video;
+  final List<StreamSubscription<dynamic>> _videoSubscriptions = <StreamSubscription<dynamic>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _viewType = 'sayittome-video-${DateTime.now().microsecondsSinceEpoch}-${_serial++}';
+    _video = html.VideoElement()
+      ..src = widget.url
+      ..controls = widget.controls
+      ..autoplay = widget.autoplay
+      ..loop = widget.loop
+      ..muted = widget.muted
+      ..preload = 'metadata';
+    _video.setAttribute('playsinline', 'true');
+    _video.setAttribute('webkit-playsinline', 'true');
+
+    _video.style
+      ..width = '100%'
+      ..height = '100%'
+      ..backgroundColor = 'black'
+      ..border = '0'
+      ..objectFit = widget.fit == BoxFit.cover ? 'cover' : 'contain';
+
+    _videoSubscriptions.add(_video.onLoadedMetadata.listen((_) => _emitDurationIfUsable()));
+    _videoSubscriptions.add(_video.onDurationChange.listen((_) => _emitDurationIfUsable()));
+    _videoSubscriptions.add(_video.onCanPlay.listen((_) => _emitDurationIfUsable()));
+    _videoSubscriptions.add(_video.onEnded.listen((_) => widget.onEnded?.call()));
+
+    // Flutter Web: se registra un <video> HTML real para que las historias
+    // y los videos de chat no queden como una tarjeta falsa con "reproductor pendiente".
+    ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) => _video);
+  }
+
+  void _emitDurationIfUsable() {
+    final rawSeconds = _video.duration;
+    if (rawSeconds.isNaN || rawSeconds.isInfinite || rawSeconds <= 0) return;
+    final duration = Duration(milliseconds: (rawSeconds * 1000).round());
+    widget.onDurationKnown?.call(duration);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineNetworkVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _video
+        ..pause()
+        ..src = widget.url
+        ..load();
+      _emitDurationIfUsable();
+      if (widget.autoplay) {
+        _video.play().catchError((_) {});
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final subscription in _videoSubscriptions) {
+      unawaited(subscription.cancel());
+    }
+    try {
+      _video.pause();
+      _video.removeAttribute('src');
+      _video.load();
+      _video.remove();
+    } catch (_) {}
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.url.trim().isEmpty) {
+      return Container(
+        color: Colors.black,
+        alignment: Alignment.center,
+        child: Text(
+          'Video no disponible',
+          style: TextStyle(color: Colors.white.withOpacity(0.62), fontWeight: FontWeight.w900),
+        ),
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: widget.aspectRatio,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: HtmlElementView(viewType: _viewType),
+      ),
+    );
+  }
+}
+
 class _StoryCameraBottomButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -3727,11 +4359,18 @@ class StoriesExplorePage extends StatelessWidget {
 
                 final items = snapshot.data!.docs.map((doc) {
                   final data = doc.data();
-                  final profileUid = (data["uid"] ?? data["ownerUid"] ?? doc.reference.parent.parent?.id ?? "").toString();
+                  // La fuente más confiable para agrupar historias es el owner real del path:
+                  // usuarios/{uid}/historias/{storyId}. Algunos documentos viejos pueden tener
+                  // uid/ownerUid inconsistentes; si usáramos esos campos primero, el mismo perfil
+                  // podría aparecer duplicado en el feed general.
+                  final ownerFromPath = (doc.reference.parent.parent?.id ?? "").toString().trim();
+                  final ownerFromData = (data["ownerUid"] ?? data["uid"] ?? data["profileUid"] ?? "").toString().trim();
+                  final profileUid = ownerFromPath.isNotEmpty ? ownerFromPath : ownerFromData;
                   return {
                     ...data,
                     "id": doc.id,
                     "profileUid": profileUid,
+                    "ownerUid": profileUid,
                   };
                 }).where(_isActive).toList();
 
@@ -3743,6 +4382,7 @@ class StoriesExplorePage extends StatelessWidget {
                 final publicStories = myUid.isEmpty
                     ? items
                     : items.where((story) => (story["profileUid"] ?? story["uid"] ?? "").toString() != myUid).toList();
+                final groupedPublicStories = _groupStoriesByProfile(publicStories);
 
                 return CustomScrollView(
                   slivers: [
@@ -3767,7 +4407,7 @@ class StoriesExplorePage extends StatelessWidget {
                             ),
                             const Spacer(),
                             Text(
-                              "${publicStories.length}",
+                              "${groupedPublicStories.length} perfiles",
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.46),
                                 fontSize: 13,
@@ -3778,7 +4418,7 @@ class StoriesExplorePage extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (publicStories.isEmpty)
+                    if (groupedPublicStories.isEmpty)
                       SliverFillRemaining(
                         hasScrollBody: false,
                         child: _CenterSoftText(
@@ -3795,10 +4435,10 @@ class StoriesExplorePage extends StatelessWidget {
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
-                            final story = publicStories[index];
-                            return _StoryGridTile(story: story);
+                            final group = groupedPublicStories[index];
+                            return _GroupedStoryGridTile(group: group);
                           },
-                          childCount: publicStories.length,
+                          childCount: groupedPublicStories.length,
                         ),
                       ),
                     const SliverToBoxAdapter(child: SizedBox(height: 18)),
@@ -3979,11 +4619,22 @@ class _MyStoryPreviewCard extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             type == "video"
-                ? Container(
-                    color: const Color(0xFF151515),
-                    child: const Center(
-                      child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 48),
-                    ),
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _InlineNetworkVideoPlayer(
+                        url: url,
+                        aspectRatio: 9 / 16,
+                        controls: false,
+                        autoplay: false,
+                        loop: false,
+                        muted: true,
+                        fit: BoxFit.cover,
+                      ),
+                      const Center(
+                        child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 48),
+                      ),
+                    ],
                   )
                 : Image.network(
                     url,
@@ -4085,6 +4736,130 @@ class _StoryUploadGridTile extends StatelessWidget {
   }
 }
 
+
+class _GroupedStoryGridTile extends StatelessWidget {
+  final _GroupedStoriesEntry group;
+
+  const _GroupedStoryGridTile({required this.group});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = group.previewUrl;
+    final type = group.previewType;
+    final profileUid = group.profileUid;
+    final username = group.username;
+    final avatarUrl = group.avatarUrl;
+    final count = group.count;
+
+    return GestureDetector(
+      onTap: () {
+        if (profileUid.trim().isEmpty || group.stories.isEmpty) return;
+        showDialog(
+          context: context,
+          barrierColor: Colors.black.withOpacity(0.94),
+          builder: (_) => _StoryViewerDialog(
+            profileUid: profileUid,
+            stories: group.stories,
+            initialIndex: 0,
+          ),
+        );
+      },
+      child: Container(
+        color: const Color(0xFF101010),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            type == "video"
+                ? Container(
+                    color: const Color(0xFF181818),
+                    child: const Center(
+                      child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 50),
+                    ),
+                  )
+                : Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: Icon(Icons.broken_image_rounded, color: Colors.white38, size: 42),
+                    ),
+                  ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.10), Colors.black.withOpacity(0.78)],
+                    stops: const [0.0, 0.58, 1.0],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.58),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white.withOpacity(0.26)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.auto_stories_rounded, color: Colors.white, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      count.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 10,
+              bottom: 36,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (profileUid.trim().isEmpty) return;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PublicProfilePage(profileUid: profileUid),
+                    ),
+                  );
+                },
+                child: _ProfileAvatar(url: avatarUrl, size: 42),
+              ),
+            ),
+            Positioned(
+              left: 10,
+              right: 8,
+              bottom: 12,
+              child: Text(
+                username,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StoryGridTile extends StatelessWidget {
   final Map<String, dynamic> story;
 
@@ -4118,9 +4893,20 @@ class _StoryGridTile extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             type == "video"
-                ? Container(
-                    color: const Color(0xFF181818),
-                    child: const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 50)),
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _InlineNetworkVideoPlayer(
+                        url: url,
+                        aspectRatio: 9 / 16,
+                        controls: false,
+                        autoplay: false,
+                        loop: false,
+                        muted: true,
+                        fit: BoxFit.cover,
+                      ),
+                      const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 50)),
+                    ],
                   )
                 : Image.network(
                     url,
@@ -4692,6 +5478,55 @@ class _StoryViewsPill extends StatelessWidget {
   }
 }
 
+
+class _AdminStoryModerationButton extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final VoidCallback onTap;
+  final bool danger;
+
+  const _AdminStoryModerationButton({
+    required this.icon,
+    required this.text,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? Colors.redAccent : const Color(0xFF8C84FF);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 52),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.13),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: color.withOpacity(0.42)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: danger ? Colors.redAccent : Colors.white,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StoryViewerDialog extends StatefulWidget {
   final String profileUid;
   final List<Map<String, dynamic>> stories;
@@ -4708,139 +5543,649 @@ class _StoryViewerDialog extends StatefulWidget {
 }
 
 class _StoryViewerDialogState extends State<_StoryViewerDialog> {
+  static const Duration _imageStoryDuration = Duration(seconds: 7);
+  static const Duration _fallbackVideoStoryDuration = Duration(seconds: 30);
+  static const Duration _maxVideoStoryDuration = Duration(minutes: 2);
+  static const int _progressTicks = 140;
+
   late final PageController _controller;
+  late final List<Map<String, dynamic>> _stories;
   late int page;
+  Timer? _storyTimer;
+  int _tick = 0;
+  bool _paused = false;
+  bool _animating = false;
+  bool _deleting = false;
+  bool _closingViewer = false;
+  final Map<int, Duration> _videoDurationsByIndex = <int, Duration>{};
+
+  bool get _canDeleteCurrentStory {
+    final user = FirebaseAuth.instance.currentUser;
+    final isOwner = user != null && user.uid == widget.profileUid;
+    final isAdmin = _isCurrentUserSayItToMeAdmin();
+    return (isOwner || isAdmin) && page >= 0 && page < _stories.length;
+  }
+
+  bool get _canAdminModerateCurrentStory {
+    return _isCurrentUserSayItToMeAdmin() && page >= 0 && page < _stories.length;
+  }
 
   @override
   void initState() {
     super.initState();
-    page = widget.initialIndex;
-    _controller = PageController(initialPage: widget.initialIndex);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _markCurrentStoryViewed());
+    _stories = widget.stories.map((story) => Map<String, dynamic>.from(story)).toList();
+    page = widget.initialIndex.clamp(0, _stories.isEmpty ? 0 : _stories.length - 1).toInt();
+    _controller = PageController(initialPage: page);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markCurrentStoryViewed();
+      _restartStoryTimer();
+    });
   }
 
   Future<void> _markCurrentStoryViewed() async {
-    if (page < 0 || page >= widget.stories.length) return;
-    final storyId = (widget.stories[page]["id"] ?? "").toString();
+    if (page < 0 || page >= _stories.length) return;
+    final storyId = (_stories[page]["id"] ?? "").toString();
     await _markStoryViewedOnce(profileUid: widget.profileUid, storyId: storyId);
   }
 
+  Duration _durationForStoryIndex(int index) {
+    if (index < 0 || index >= _stories.length) return _imageStoryDuration;
+    final type = (_stories[index]["type"] ?? "image").toString().trim().toLowerCase();
+    if (type != "video") return _imageStoryDuration;
+
+    final known = _videoDurationsByIndex[index];
+    if (known == null || known.inMilliseconds <= 0) return _fallbackVideoStoryDuration;
+    if (known > _maxVideoStoryDuration) return _maxVideoStoryDuration;
+    return known;
+  }
+
+  void _rememberVideoDuration(int index, Duration duration) {
+    if (!mounted || duration.inMilliseconds <= 0) return;
+    final normalized = duration > _maxVideoStoryDuration ? _maxVideoStoryDuration : duration;
+    final previous = _videoDurationsByIndex[index];
+    if (previous != null && (previous.inMilliseconds - normalized.inMilliseconds).abs() < 250) return;
+
+    _videoDurationsByIndex[index] = normalized;
+    if (index == page) {
+      _restartStoryTimer(preserveProgress: true);
+    }
+  }
+
+  void _restartStoryTimer({bool preserveProgress = false}) {
+    _storyTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _tick = preserveProgress ? _tick.clamp(0, _progressTicks).toInt() : 0;
+      _paused = false;
+    });
+
+    if (_stories.isEmpty) return;
+
+    final currentDuration = _durationForStoryIndex(page);
+    final tickMilliseconds = max(45, (currentDuration.inMilliseconds / _progressTicks).round());
+
+    _storyTimer = Timer.periodic(
+      Duration(milliseconds: tickMilliseconds),
+      (_) {
+        if (!mounted || _paused || _animating || _deleting) return;
+        setState(() {
+          _tick = (_tick + 1).clamp(0, _progressTicks).toInt();
+        });
+        if (_tick >= _progressTicks) {
+          _goNext(auto: true);
+        }
+      },
+    );
+  }
+
+  void _togglePause() {
+    if (_stories.isEmpty || _deleting) return;
+    setState(() => _paused = !_paused);
+  }
+
+  void _closeStoryViewerSafely() {
+    if (!mounted || _closingViewer) return;
+    _closingViewer = true;
+    _storyTimer?.cancel();
+
+    // Importante en Web: cuando una historia de video llega al final del contador,
+    // no usamos maybePop(). maybePop puede terminar delegando el cierre al stack
+    // principal si el diálogo ya no está como ruta activa, y eso en algunos casos
+    // hacía que la app volviera a la pantalla de login. Acá cerramos solamente
+    // el visor de historias si hay una ruta de diálogo arriba.
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    if (rootNavigator.canPop()) {
+      rootNavigator.pop();
+      return;
+    }
+
+    final localNavigator = Navigator.of(context);
+    if (localNavigator.canPop()) {
+      localNavigator.pop();
+    }
+  }
+
+  Future<void> _goNext({bool auto = false}) async {
+    if (!mounted || _animating || _stories.isEmpty || _deleting || _closingViewer) return;
+
+    if (page >= _stories.length - 1) {
+      _closeStoryViewerSafely();
+      return;
+    }
+
+    _animating = true;
+    final next = page + 1;
+    await _controller.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 185),
+      curve: Curves.easeOutCubic,
+    );
+    _animating = false;
+  }
+
+  Future<void> _goPrevious() async {
+    if (!mounted || _animating || _stories.isEmpty || _deleting || _closingViewer) return;
+
+    if (page <= 0) {
+      setState(() {
+        _tick = 0;
+        _paused = false;
+      });
+      return;
+    }
+
+    _animating = true;
+    final previous = page - 1;
+    await _controller.animateToPage(
+      previous,
+      duration: const Duration(milliseconds: 185),
+      curve: Curves.easeOutCubic,
+    );
+    _animating = false;
+  }
+
+  double _progressForSegment(int index) {
+    if (index < page) return 1;
+    if (index > page) return 0;
+    return (_tick / _progressTicks).clamp(0.0, 1.0);
+  }
+
+  Future<void> _deleteCurrentStory() async {
+    if (!_canDeleteCurrentStory || _deleting) return;
+
+    setState(() {
+      _paused = true;
+    });
+
+    final story = _stories[page];
+    final storyId = (story["id"] ?? "").toString().trim();
+    final url = (story["url"] ?? "").toString().trim();
+    if (storyId.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.72),
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF101010),
+          title: const Text(
+            "Borrar historia",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+          ),
+          content: Text(
+            "Esta historia se va a borrar ahora y dejará de verse en tu perfil.",
+            style: TextStyle(color: Colors.white.withOpacity(0.72), height: 1.35),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text("Cancelar"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                "Borrar",
+                style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      if (mounted) setState(() => _paused = false);
+      return;
+    }
+
+    setState(() => _deleting = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection("usuarios")
+          .doc(widget.profileUid)
+          .collection("historias")
+          .doc(storyId)
+          .delete()
+          .timeout(const Duration(seconds: 12));
+
+      if (url.startsWith('http')) {
+        unawaited(FirebaseStorage.instance.refFromURL(url).delete().catchError((e) {
+          debugPrint("No pude borrar archivo de Storage de la historia: $e");
+        }));
+      }
+
+      if (!mounted) return;
+
+      _stories.removeAt(page);
+      if (_stories.isEmpty) {
+        _closeStoryViewerSafely();
+        return;
+      }
+
+      final nextPage = page.clamp(0, _stories.length - 1).toInt();
+      page = nextPage;
+      _controller.jumpToPage(nextPage);
+      _deleting = false;
+      _restartStoryTimer();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Historia borrada.")),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        _paused = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("No pude borrar la historia: $e")),
+      );
+    }
+  }
+
+  Future<void> _adminBlockCurrentStoryOwner(Duration duration, String motivo) async {
+    if (!_canAdminModerateCurrentStory || _deleting) return;
+
+    setState(() => _paused = true);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.72),
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF101010),
+          title: const Text(
+            "Bloquear historias",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+          ),
+          content: Text(
+            "El usuario no va a poder subir historias durante este período. El bloqueo caduca automáticamente.",
+            style: TextStyle(color: Colors.white.withOpacity(0.72), height: 1.35),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text("Cancelar"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                "Bloquear",
+                style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _adminBlockStoriesForUid(
+        context: context,
+        uid: widget.profileUid,
+        duration: duration,
+        motivo: motivo,
+      );
+    }
+
+    if (mounted) setState(() => _paused = false);
+  }
+
+  void _showAdminStoryModerationSheet() {
+    if (!_canAdminModerateCurrentStory) return;
+
+    setState(() => _paused = true);
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF101010),
+      barrierColor: Colors.black.withOpacity(0.72),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 46,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.22),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  "Moderación admin",
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "Podés borrar esta historia o bloquear temporalmente la subida de historias de este usuario.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white.withOpacity(0.58), height: 1.35),
+                ),
+                const SizedBox(height: 18),
+                _AdminStoryModerationButton(
+                  icon: Icons.delete_forever_rounded,
+                  text: "Borrar esta historia",
+                  danger: true,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _deleteCurrentStory();
+                  },
+                ),
+                const SizedBox(height: 10),
+                _AdminStoryModerationButton(
+                  icon: Icons.timer_rounded,
+                  text: "Bloquear historias 24 hs",
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _adminBlockCurrentStoryOwner(const Duration(hours: 24), "bloqueo_admin_24h");
+                  },
+                ),
+                const SizedBox(height: 10),
+                _AdminStoryModerationButton(
+                  icon: Icons.event_busy_rounded,
+                  text: "Bloquear historias 7 días",
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _adminBlockCurrentStoryOwner(const Duration(days: 7), "bloqueo_admin_7d");
+                  },
+                ),
+                const SizedBox(height: 10),
+                _AdminStoryModerationButton(
+                  icon: Icons.block_rounded,
+                  text: "Bloquear historias 30 días",
+                  danger: true,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _adminBlockCurrentStoryOwner(const Duration(days: 30), "bloqueo_admin_30d");
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ).whenComplete(() {
+      if (mounted) setState(() => _paused = false);
+    });
+  }
+
+
   @override
   void dispose() {
+    _storyTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_stories.isEmpty) {
+      return Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            const Center(
+              child: Text(
+                "No hay historias activas.",
+                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w800),
+              ),
+            ),
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 14,
+              right: 16,
+              child: _RoundOverlayIconButton(
+                icon: Icons.close_rounded,
+                onTap: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final safePage = page.clamp(0, _stories.length - 1).toInt();
+
     return Dialog.fullscreen(
       backgroundColor: Colors.black,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _controller,
-            itemCount: widget.stories.length,
-            onPageChanged: (value) {
-              setState(() => page = value);
-              _markCurrentStoryViewed();
-            },
-            itemBuilder: (context, index) {
-              final story = widget.stories[index];
-              final url = (story["url"] ?? "").toString();
-              final type = (story["type"] ?? "image").toString();
-              if (type == "video") {
-                return Center(
-                  child: Container(
-                    width: 760,
-                    height: 420,
-                    margin: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF151515),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white.withOpacity(0.10)),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
+            children: [
+              PageView.builder(
+                controller: _controller,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _stories.length,
+                onPageChanged: (value) {
+                  setState(() {
+                    page = value;
+                    _tick = 0;
+                    _paused = false;
+                  });
+                  _markCurrentStoryViewed();
+                  _restartStoryTimer();
+                },
+                itemBuilder: (context, index) {
+                  final story = _stories[index];
+                  final url = (story["url"] ?? "").toString();
+                  final type = (story["type"] ?? "image").toString();
+                  if (type == "video") {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: min(constraints.maxWidth * 0.92, 820),
+                            maxHeight: constraints.maxHeight * 0.78,
+                          ),
+                          child: _InlineNetworkVideoPlayer(
+                            url: url,
+                            aspectRatio: 9 / 16,
+                            controls: true,
+                            autoplay: true,
+                            loop: false,
+                            muted: false,
+                            fit: BoxFit.contain,
+                            onDurationKnown: (duration) => _rememberVideoDuration(index, duration),
+                            onEnded: () {
+                              if (index == page && mounted && !_paused && !_deleting) {
+                                _goNext(auto: true);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return Center(
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      gaplessPlayback: true,
+                      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Text(
+                          "No pude abrir esta historia.",
+                          style: TextStyle(color: Colors.white.withOpacity(0.70)),
+                        ),
+                      ),
                     ),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.play_circle_fill_rounded, color: Color(0xFF6C63FF), size: 74),
-                        SizedBox(height: 16),
-                        Text("Video de historia guardado. Reproductor integrado pendiente."),
-                      ],
+                  );
+                },
+              ),
+
+              // Zonas táctiles reales. Van arriba del contenido, pero no pisan
+              // la franja inferior de vistas/likes ni los botones superiores.
+              Positioned(
+                left: 0,
+                right: 0,
+                top: MediaQuery.of(context).padding.top + 46,
+                bottom: MediaQuery.of(context).padding.bottom + 148,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: () => _goPrevious(),
+                        child: const SizedBox.expand(),
+                      ),
                     ),
-                  ),
-                );
-              }
-              return InteractiveViewer(
-                minScale: 1,
-                maxScale: 5,
-                child: Center(
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    gaplessPlayback: true,
-                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-                    errorBuilder: (_, __, ___) => Center(
-                      child: Text(
-                        "No pude abrir esta historia.",
-                        style: TextStyle(color: Colors.white.withOpacity(0.70)),
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: _togglePause,
+                        onLongPressStart: (_) {
+                          if (!_paused) setState(() => _paused = true);
+                        },
+                        onLongPressEnd: (_) {
+                          if (_paused) setState(() => _paused = false);
+                        },
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: () => _goNext(),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 14,
+                left: 18,
+                right: _canDeleteCurrentStory ? 124 : 70,
+                child: Row(
+                  children: List.generate(_stories.length, (index) {
+                    final progress = _progressForSegment(index);
+                    return Expanded(
+                      child: Container(
+                        height: 4,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.22),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 90),
+                            curve: Curves.linear,
+                            width: constraints.maxWidth * progress,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+
+              if (_paused)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 32,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.52),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white.withOpacity(0.18)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.pause_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            "Pausada",
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 14,
-            left: 18,
-            right: 70,
-            child: Row(
-              children: List.generate(widget.stories.length, (index) {
-                return Expanded(
-                  child: Container(
-                    height: 3,
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    decoration: BoxDecoration(
-                      color: index <= page ? Colors.white : Colors.white.withOpacity(0.24),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: MediaQuery.of(context).padding.bottom + 82,
+                child: Center(
+                  child: _StoryViewsPill(
+                    profileUid: widget.profileUid,
+                    storyId: (_stories[safePage]["id"] ?? "").toString(),
                   ),
-                );
-              }),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: MediaQuery.of(context).padding.bottom + 82,
-            child: Center(
-              child: _StoryViewsPill(
-                profileUid: widget.profileUid,
-                storyId: (widget.stories[page]["id"] ?? "").toString(),
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: MediaQuery.of(context).padding.bottom + 28,
-            child: Center(
-              child: _StoryLikeButton(
-                profileUid: widget.profileUid,
-                storyId: (widget.stories[page]["id"] ?? "").toString(),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: MediaQuery.of(context).padding.bottom + 28,
+                child: Center(
+                  child: _StoryLikeButton(
+                    profileUid: widget.profileUid,
+                    storyId: (_stories[safePage]["id"] ?? "").toString(),
+                  ),
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 14,
-            right: 16,
-            child: _RoundOverlayIconButton(
-              icon: Icons.close_rounded,
-              onTap: () => Navigator.pop(context),
-            ),
-          ),
-        ],
+              if (_canDeleteCurrentStory)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 14,
+                  right: 72,
+                  child: _RoundOverlayIconButton(
+                    icon: _deleting ? Icons.hourglass_top_rounded : Icons.delete_outline_rounded,
+                    onTap: _deleteCurrentStory,
+                  ),
+                ),
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 14,
+                right: 16,
+                child: _RoundOverlayIconButton(
+                  icon: Icons.close_rounded,
+                  onTap: _closeStoryViewerSafely,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -7398,6 +8743,14 @@ class _ShuffleUserTileState extends State<_ShuffleUserTile> {
   }
 
   @override
+  void didUpdateWidget(covariant _ShuffleUserTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.uid != widget.uid) {
+      _actorFuture = _storyViewActorId();
+    }
+  }
+
+  @override
   void dispose() {
     _minuteTimer?.cancel();
     super.dispose();
@@ -7622,6 +8975,7 @@ class _ShuffleUserTileState extends State<_ShuffleUserTile> {
             }
 
             return FutureBuilder<_ShuffleStoryState>(
+              key: ValueKey("shuffle_story_state_${widget.uid}_${activeStories.length}_$actorId"),
               future: _storyStateFor(activeStories, actorId),
               builder: (context, stateSnapshot) {
                 final storyState = stateSnapshot.data ??
@@ -8112,7 +9466,7 @@ class _ChatMediaSourceButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        minHeight: 58,
+        constraints: const BoxConstraints(minHeight: 58),
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.045),
@@ -8259,24 +9613,387 @@ class _ChatBombGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final bodySize = size * 0.72;
+    return SizedBox(
       width: size + 12,
       height: size + 12,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.black.withOpacity(0.16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.white.withOpacity(glow),
-            blurRadius: 14,
-            spreadRadius: 1,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: size + 8,
+            height: size + 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withOpacity(0.18),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF8C84FF).withOpacity(glow),
+                  blurRadius: 16,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 4,
+            right: 6,
+            child: Transform.rotate(
+              angle: -0.62,
+              child: Container(
+                width: size * 0.30,
+                height: size * 0.12,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD166),
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFFD166).withOpacity(0.45),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 7,
+            right: 9,
+            child: Icon(
+              Icons.close_rounded,
+              size: size * 0.18,
+              color: const Color(0xFFFFE08A),
+            ),
+          ),
+          Container(
+            width: bodySize,
+            height: bodySize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const RadialGradient(
+                center: Alignment(-0.35, -0.35),
+                radius: 0.92,
+                colors: [
+                  Color(0xFF4F4F5C),
+                  Color(0xFF20202A),
+                  Color(0xFF07070A),
+                ],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(0.16), width: 0.7),
+            ),
+          ),
+          Positioned(
+            left: (size + 12) * 0.43,
+            top: (size + 12) * 0.31,
+            child: Container(
+              width: size * 0.15,
+              height: size * 0.15,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.22),
+              ),
+            ),
           ),
         ],
       ),
-      child: Text(
-        '💣',
-        style: TextStyle(fontSize: size, height: 1),
+    );
+  }
+}
+
+
+String _chatNormalizeDeliveryStatus(dynamic value) {
+  final raw = (value ?? '').toString().trim().toLowerCase();
+  if (raw == 'visto' || raw == 'seen' || raw == 'read' || raw == 'leido' || raw == 'leído') return 'visto';
+  if (raw == 'entregado' || raw == 'delivered' || raw == 'received' || raw == 'recibido') return 'entregado';
+  if (raw == 'enviado' || raw == 'sent') return 'entregado';
+  return 'entregado';
+}
+
+String _chatMessageDeliveryStatus(Map<String, dynamic> msg) {
+  // Estado PRO por mensaje, no por conversación.
+  // Primero se miran los flags del receptor real de ESE mensaje.
+  // Esto evita el bug donde afuera del chat decía "visto" pero adentro seguía diciendo
+  // "entregado" porque la burbuja priorizaba un estado viejo o genérico.
+  final sender = (msg['sender'] ?? '').toString().trim();
+
+  if (sender == 'anonimo') {
+    if (msg['leidoPorReceptor'] == true ||
+        msg['vistoPorReceptor'] == true ||
+        msg['seenByReceptor'] == true ||
+        msg['readByReceptor'] == true) {
+      return 'visto';
+    }
+  }
+
+  if (sender == 'receptor') {
+    if (msg['leidoPorAnonimo'] == true ||
+        msg['vistoPorAnonimo'] == true ||
+        msg['seenByAnonimo'] == true ||
+        msg['readByAnonimo'] == true) {
+      return 'visto';
+    }
+  }
+
+  final explicit = msg['estado'] ?? msg['mensajeEstado'] ?? msg['status'] ?? msg['deliveryStatus'];
+  final explicitText = (explicit ?? '').toString().trim();
+  if (explicitText.isNotEmpty) {
+    final normalized = _chatNormalizeDeliveryStatus(explicitText);
+    if (normalized == 'visto') return 'visto';
+  }
+
+  return 'entregado';
+}
+
+String _chatDeliveryStatusFromChat(Map<String, dynamic> data) {
+  // Estado externo PRO: el badge de la lista NO debe cantar "visto" solo porque
+  // quedó un ultimoEstado viejo en el documento del chat. Primero manda el emisor
+  // real del último mensaje y los flags reales de lectura de ESE último mensaje.
+  final ultimoSender = (data['ultimoSender'] ?? data['lastSender'] ?? '').toString().trim();
+
+  if (ultimoSender == 'anonimo') {
+    if (data['ultimoMensajeLeidoPorReceptor'] == false ||
+        data['lastMessageSeenByReceptor'] == false) return 'entregado';
+    if (data['ultimoMensajeLeidoPorReceptor'] == true ||
+        data['lastMessageSeenByReceptor'] == true ||
+        data['vistoPorReceptor'] == true ||
+        data['seenByReceptor'] == true) return 'visto';
+    return 'entregado';
+  }
+
+  if (ultimoSender == 'receptor') {
+    if (data['ultimoMensajeLeidoPorAnonimo'] == false ||
+        data['lastMessageSeenByAnon'] == false ||
+        data['lastMessageSeenByAnonimo'] == false) return 'entregado';
+    if (data['ultimoMensajeLeidoPorAnonimo'] == true ||
+        data['lastMessageSeenByAnon'] == true ||
+        data['lastMessageSeenByAnonimo'] == true ||
+        data['vistoPorAnonimo'] == true ||
+        data['seenByAnonimo'] == true) return 'visto';
+    return 'entregado';
+  }
+
+  final explicit = data['ultimoEstado'] ??
+      data['ultimoMensajeEstado'] ??
+      data['lastMessageStatus'] ??
+      data['deliveryStatus'];
+  final explicitText = (explicit ?? '').toString().trim();
+  if (explicitText.isNotEmpty) {
+    return _chatNormalizeDeliveryStatus(explicitText);
+  }
+
+  return 'entregado';
+}
+
+class _ChatDeliveryStatusBadge extends StatelessWidget {
+  final String status;
+  final bool compact;
+
+  const _ChatDeliveryStatusBadge({
+    required this.status,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final seen = _chatNormalizeDeliveryStatus(status) == 'visto';
+    final color = seen ? const Color(0xFF8C84FF) : Colors.white.withOpacity(0.38);
+    final label = seen ? 'visto' : 'entregado';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.done_all_rounded,
+          color: color,
+          size: compact ? 15 : 14,
+        ),
+        SizedBox(width: compact ? 4 : 3),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: compact ? 11.5 : 10.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ChatMessageStatusLine extends StatelessWidget {
+  final String status;
+  final bool alignRight;
+
+  const _ChatMessageStatusLine({
+    required this.status,
+    required this.alignRight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Align(
+        alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+        child: _ChatDeliveryStatusBadge(status: status),
+      ),
+    );
+  }
+}
+
+
+String _normalizeProfileSlug(String value) {
+  return value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'^@+'), '')
+      .replaceAll(RegExp(r'[^a-z0-9_\-.]'), '');
+}
+
+bool _textContainsVerifiedProfileLink({
+  required String text,
+  required String uid,
+  required String username,
+}) {
+  final cleanText = text.trim().toLowerCase();
+  if (cleanText.isEmpty) return false;
+
+  final cleanUid = uid.trim();
+  final cleanUsername = _normalizeProfileSlug(username);
+  if (cleanUid.isEmpty && cleanUsername.isEmpty) return false;
+
+  final candidates = <String>{};
+  if (cleanUid.isNotEmpty) {
+    candidates.add('sayittome-app.web.app/u/$cleanUid');
+    candidates.add('sayittome-app.web.app/profile/$cleanUid');
+    candidates.add('sayittome-app.web.app/perfil/$cleanUid');
+    candidates.add('sayittome-app.web.app?uid=$cleanUid');
+  }
+  if (cleanUsername.isNotEmpty) {
+    candidates.add('sayittome-app.web.app/$cleanUsername');
+    candidates.add('sayittome-app.web.app/@$cleanUsername');
+    candidates.add('sayittome-app.web.app/u/$cleanUsername');
+    candidates.add('sayittome-app.web.app/profile/$cleanUsername');
+    candidates.add('sayittome-app.web.app/perfil/$cleanUsername');
+    candidates.add('connected2.me/$cleanUsername');
+    candidates.add('@$cleanUsername');
+  }
+
+  return candidates.any(cleanText.contains);
+}
+
+Future<Map<String, dynamic>> _verifiedProfileLinkPayloadForOutgoingText({
+  required String text,
+  required String? senderUid,
+}) async {
+  final uid = (senderUid ?? '').trim();
+  if (uid.isEmpty || text.trim().isEmpty) return const <String, dynamic>{};
+
+  try {
+    final userDoc = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(uid)
+        .get()
+        .timeout(const Duration(seconds: 8));
+    final data = userDoc.data() ?? const <String, dynamic>{};
+    final username = (data['username'] ?? data['usernameLower'] ?? data['nombre'] ?? '').toString();
+    final matched = _textContainsVerifiedProfileLink(text: text, uid: uid, username: username);
+    if (!matched) return const <String, dynamic>{};
+
+    return {
+      'verifiedProfileLink': true,
+      'verifiedProfileLinkUid': uid,
+      'verifiedProfileLinkUsername': username,
+      'verifiedProfileLinkAt': FieldValue.serverTimestamp(),
+    };
+  } catch (e) {
+    debugPrint('No pude validar enlace verificado del perfil: $e');
+    return const <String, dynamic>{};
+  }
+}
+
+String _verifiedProfileUidFromMessage(Map<String, dynamic> msg) {
+  return (msg['verifiedProfileLinkUid'] ??
+          msg['perfilVerificadoUid'] ??
+          msg['profileUid'] ??
+          msg['senderUid'] ??
+          '')
+      .toString()
+      .trim();
+}
+
+class _VerifiedProfileLinkBadge extends StatelessWidget {
+  final String profileUid;
+  final bool alignRight;
+
+  const _VerifiedProfileLinkBadge({
+    required this.profileUid,
+    required this.alignRight,
+  });
+
+  void _openProfile(BuildContext context) {
+    final uid = profileUid.trim();
+    if (uid.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfilePage(profileUid: uid),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = profileUid.trim().isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Align(
+        alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? () => _openProfile(context) : null,
+            borderRadius: BorderRadius.circular(999),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF7DCBFF).withOpacity(0.95),
+                    ),
+                    child: const Icon(Icons.verified_rounded, color: Color(0xFF151515), size: 14),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    enabled ? 'Incluye un enlace verificado' : 'Incluye un enlace verificado',
+                    style: TextStyle(
+                      color: const Color(0xFFB8DCFF).withOpacity(0.96),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                  if (enabled) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.open_in_new_rounded,
+                      color: const Color(0xFFB8DCFF).withOpacity(0.74),
+                      size: 13,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -8318,31 +10035,19 @@ class _ChatMessageBubble extends StatelessWidget {
               Positioned.fill(
                 child: Center(
                   child: mediaType == 'video'
-                      ? Container(
-                          width: 780,
-                          height: 440,
-                          margin: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF151515),
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(color: Colors.white.withOpacity(0.10)),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.play_circle_fill_rounded, color: Colors.white.withOpacity(0.88), size: 82),
-                              const SizedBox(height: 14),
-                              Text(
-                                isTemporal ? 'Video ver una vez abierto' : 'Video enviado',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Archivo guardado en el chat. Reproductor web integrado pendiente.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.white.withOpacity(0.52), height: 1.25),
-                              ),
-                            ],
+                      ? Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 860, maxHeight: 520),
+                            child: _InlineNetworkVideoPlayer(
+                              url: url,
+                              aspectRatio: 16 / 9,
+                              controls: true,
+                              autoplay: false,
+                              loop: false,
+                              muted: false,
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         )
                       : InteractiveViewer(
@@ -8429,20 +10134,68 @@ class _ChatMessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final type = (msg['type'] ?? 'text').toString();
     final isMedia = type == 'media' || (msg['mediaUrl'] ?? '').toString().trim().isNotEmpty;
+    final deliveryStatus = _chatMessageDeliveryStatus(msg);
 
     if (!isMedia) {
-      return Align(
-        alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: isMine ? const Color(0xFF6C63FF) : const Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            (msg['texto'] ?? '').toString(),
-            style: const TextStyle(color: Colors.white),
+      final bubbleText = (msg['texto'] ?? '').toString();
+      final maxBubbleWidth = min(MediaQuery.of(context).size.width * 0.66, 430.0);
+      final hasVerifiedProfileLink = msg['verifiedProfileLink'] == true;
+      final verifiedProfileUid = _verifiedProfileUidFromMessage(msg);
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Align(
+          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              Container(
+                constraints: BoxConstraints(
+                  maxWidth: maxBubbleWidth,
+                  minWidth: 0,
+                ),
+                decoration: BoxDecoration(
+                  color: isMine ? const Color(0xFF6C63FF) : const Color(0xFF202020),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(17),
+                    topRight: const Radius.circular(17),
+                    bottomLeft: Radius.circular(isMine ? 17 : 5),
+                    bottomRight: Radius.circular(isMine ? 5 : 17),
+                  ),
+                  border: Border.all(
+                    color: isMine ? const Color(0xFF8C84FF).withOpacity(0.42) : Colors.white.withOpacity(0.055),
+                    width: 0.8,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.20),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 10, 7),
+                  child: Text(
+                    bubbleText,
+                    softWrap: true,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14.5,
+                      height: 1.22,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              _ChatMessageStatusLine(status: deliveryStatus, alignRight: isMine),
+              if (hasVerifiedProfileLink)
+                _VerifiedProfileLinkBadge(
+                  profileUid: verifiedProfileUid,
+                  alignRight: isMine,
+                ),
+            ],
           ),
         ),
       );
@@ -8480,38 +10233,45 @@ class _ChatMessageBubble extends StatelessWidget {
                       ),
                     ],
             ),
-            child: Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                alreadyOpened
-                    ? Icon(Icons.lock_rounded, color: Colors.white.withOpacity(0.68), size: 22)
-                    : const _ChatBombGlyph(size: 22, glow: 0.08),
-                const SizedBox(width: 9),
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        alreadyOpened ? 'Ver una vez bloqueado' : 'Ver una vez',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14.2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    alreadyOpened
+                        ? Icon(Icons.lock_rounded, color: Colors.white.withOpacity(0.68), size: 22)
+                        : const _ChatBombGlyph(size: 22, glow: 0.08),
+                    const SizedBox(width: 9),
+                    Flexible(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            alreadyOpened ? 'Ver una vez bloqueado' : 'Ver una vez',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14.2),
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            secondary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Colors.white.withOpacity(0.62), fontWeight: FontWeight.w700, fontSize: 11.2),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 1),
-                      Text(
-                        secondary,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.white.withOpacity(0.62), fontWeight: FontWeight.w700, fontSize: 11.2),
-                      ),
+                    ),
+                    if (!alreadyOpened && label.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      _ChatMediaOriginBadge(label: label),
                     ],
-                  ),
+                  ],
                 ),
-                if (!alreadyOpened && label.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  _ChatMediaOriginBadge(label: label),
-                ],
+                _ChatMessageStatusLine(status: deliveryStatus, alignRight: isMine),
               ],
             ),
           ),
@@ -8581,11 +10341,31 @@ class _ChatMessageBubble extends StatelessWidget {
                         errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_rounded, color: Colors.white54, size: 42)),
                       )
                     else
-                      Container(
-                        color: const Color(0xFF151515),
-                        child: const Center(
-                          child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 58),
-                        ),
+                      Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _InlineNetworkVideoPlayer(
+                            url: url,
+                            aspectRatio: 16 / 9,
+                            controls: false,
+                            autoplay: false,
+                            loop: false,
+                            muted: true,
+                            fit: BoxFit.cover,
+                          ),
+                          Center(
+                            child: Container(
+                              width: 54,
+                              height: 54,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.black.withOpacity(0.42),
+                                border: Border.all(color: Colors.white.withOpacity(0.22)),
+                              ),
+                              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 36),
+                            ),
+                          ),
+                        ],
                       ),
                     if (!alreadyOpened && label.isNotEmpty)
                       Positioned(left: 9, bottom: 9, child: _ChatMediaOriginBadge(label: label)),
@@ -8612,6 +10392,10 @@ class _ChatMessageBubble extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 11),
+                child: _ChatMessageStatusLine(status: deliveryStatus, alignRight: isMine),
               ),
             ],
           ),
@@ -8761,11 +10545,11 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
       }
 
       if (mounted) setState(() {});
+      unawaited(marcarLeidoPorAnon());
 
       if (shouldPlayWhip) {
         _WhipSoundService.playIncomingMessageWhip();
       }
-
       _incomingSoundReady = true;
     });
   }
@@ -8773,10 +10557,37 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
   Future<void> marcarLeidoPorAnon() async {
     final id = chatId;
     if (id == null) return;
-    await FirebaseFirestore.instance
-        .collection("chats_anonimos")
-        .doc(id)
-        .set({"unreadForSender": 0}, SetOptions(merge: true));
+    final chatRef = FirebaseFirestore.instance.collection("chats_anonimos").doc(id);
+
+    try {
+      final messages = await chatRef.collection("mensajes").limit(250).get();
+      final batch = FirebaseFirestore.instance.batch();
+      var touched = 0;
+      for (final doc in messages.docs) {
+        final data = doc.data();
+        if ((data["sender"] ?? "").toString() != "receptor") continue;
+        if (data["leidoPorAnonimo"] == true && _chatNormalizeDeliveryStatus(data["estado"]) == "visto") continue;
+        batch.set(doc.reference, {
+          "estado": "visto",
+          "leidoPorAnonimo": true,
+          "vistoPorAnonimo": true,
+          "seenByAnonimo": true,
+          "readByAnonimo": true,
+          "vistoPorAnonimoAt": FieldValue.serverTimestamp(),
+          "seenByAnonimoAt": FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        touched++;
+      }
+      if (touched > 0) await batch.commit();
+    } catch (e) {
+      debugPrint("No pude marcar mensajes como vistos por anon: $e");
+    }
+
+    await chatRef.set({
+      "unreadForSender": 0,
+      "ultimoEstado": "visto",
+      "ultimoMensajeLeidoPorAnonimo": true,
+    }, SetOptions(merge: true));
   }
 
   Future<void> enviarMensaje() async {
@@ -8802,13 +10613,28 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
         .doc(chatId)
         .collection("mensajes");
 
+    final verifiedProfileLinkPayload = await _verifiedProfileLinkPayloadForOutgoingText(
+      text: texto,
+      senderUid: FirebaseAuth.instance.currentUser?.uid,
+    );
+
     await ref.add({
       "texto": texto,
       "sender": "anonimo",
       "receptorUid": widget.receptorUid,
       "chatId": chatId,
+      ...verifiedProfileLinkPayload,
       "createdAt": FieldValue.serverTimestamp(),
+      "estado": "entregado",
+      "entregadoAt": FieldValue.serverTimestamp(),
       "leidoPorReceptor": false,
+      "vistoPorReceptor": false,
+      "seenByReceptor": false,
+      "readByReceptor": false,
+      "leidoPorAnonimo": true,
+      "vistoPorAnonimo": true,
+      "seenByAnonimo": true,
+      "readByAnonimo": true,
     });
 
     await chatRef.set({
@@ -8819,6 +10645,10 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
       "receptorDeleted": false,
       "unreadCount": FieldValue.increment(1),
       "unreadForSender": 0,
+      "ultimoSender": "anonimo",
+      "ultimoEstado": "entregado",
+      "ultimoMensajeLeidoPorReceptor": false,
+      "ultimoMensajeLeidoPorAnonimo": true,
       "mensajesCount": FieldValue.increment(1),
       "hasMessages": true,
       "primerMensajeEnviado": true,
@@ -8874,7 +10704,16 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
       ...payload,
       "sender": "anonimo",
       "createdAt": FieldValue.serverTimestamp(),
+      "estado": "entregado",
+      "entregadoAt": FieldValue.serverTimestamp(),
       "leidoPorReceptor": false,
+      "vistoPorReceptor": false,
+      "seenByReceptor": false,
+      "readByReceptor": false,
+      "leidoPorAnonimo": true,
+      "vistoPorAnonimo": true,
+      "seenByAnonimo": true,
+      "readByAnonimo": true,
     });
 
     await chatRef.set({
@@ -8885,6 +10724,10 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
       "receptorDeleted": false,
       "unreadCount": FieldValue.increment(1),
       "unreadForSender": 0,
+      "ultimoSender": "anonimo",
+      "ultimoEstado": "entregado",
+      "ultimoMensajeLeidoPorReceptor": false,
+      "ultimoMensajeLeidoPorAnonimo": true,
       "mensajesCount": FieldValue.increment(1),
       "hasMessages": true,
       "primerMensajeEnviado": true,
@@ -9464,7 +11307,10 @@ class _InboxReceptorPageState extends State<InboxReceptorPage> {
                   backgroundColor: const Color(0xFF6C63FF),
                   child: Text(unread.toString(), style: const TextStyle(fontSize: 12)),
                 )
-              : null,
+              : _ChatDeliveryStatusBadge(
+                  status: _chatDeliveryStatusFromChat(data),
+                  compact: true,
+                ),
       onTap: selectionMode
           ? () => _toggleSelection(chat.id)
           : () {
@@ -9511,13 +11357,9 @@ class _InboxReceptorPageState extends State<InboxReceptorPage> {
                   backgroundColor: const Color(0xFF6C63FF),
                   child: Text(unreadForSender.toString(), style: const TextStyle(fontSize: 12)),
                 )
-              : Text(
-                  "anónimo",
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.38),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
+              : _ChatDeliveryStatusBadge(
+                  status: _chatDeliveryStatusFromChat(data),
+                  compact: true,
                 ),
       onTap: selectionMode
           ? () => _toggleSelection(chat.id)
@@ -9895,6 +11737,12 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
         return (data["sender"] ?? "").toString() == "anonimo";
       });
 
+      // Si el receptor tiene el chat abierto y llega un mensaje nuevo del anónimo,
+      // se marca visto en el documento del mensaje inmediatamente.
+      // Sin esto, la lista podía mostrar "visto" por el estado global del chat,
+      // pero la burbuja interna seguía mostrando "entregado".
+      unawaited(marcarLeido());
+
       if (shouldPlayWhip) {
         _WhipSoundService.playIncomingMessageWhip();
       }
@@ -9904,10 +11752,37 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
   }
 
   Future<void> marcarLeido() async {
-    await FirebaseFirestore.instance
-        .collection("chats_anonimos")
-        .doc(widget.chatId)
-        .update({"unreadCount": 0});
+    final chatRef = FirebaseFirestore.instance.collection("chats_anonimos").doc(widget.chatId);
+
+    try {
+      final messages = await chatRef.collection("mensajes").limit(250).get();
+      final batch = FirebaseFirestore.instance.batch();
+      var touched = 0;
+      for (final doc in messages.docs) {
+        final data = doc.data();
+        if ((data["sender"] ?? "").toString() != "anonimo") continue;
+        if (data["leidoPorReceptor"] == true && _chatNormalizeDeliveryStatus(data["estado"]) == "visto") continue;
+        batch.set(doc.reference, {
+          "estado": "visto",
+          "leidoPorReceptor": true,
+          "vistoPorReceptor": true,
+          "seenByReceptor": true,
+          "readByReceptor": true,
+          "vistoPorReceptorAt": FieldValue.serverTimestamp(),
+          "seenByReceptorAt": FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        touched++;
+      }
+      if (touched > 0) await batch.commit();
+    } catch (e) {
+      debugPrint("No pude marcar mensajes como vistos por receptor: $e");
+    }
+
+    await chatRef.set({
+      "unreadCount": 0,
+      "ultimoEstado": "visto",
+      "ultimoMensajeLeidoPorReceptor": true,
+    }, SetOptions(merge: true));
   }
 
   Future<void> enviarMensaje() async {
@@ -9919,10 +11794,26 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
         .doc(widget.chatId)
         .collection("mensajes");
 
+    final verifiedProfileLinkPayload = await _verifiedProfileLinkPayloadForOutgoingText(
+      text: texto,
+      senderUid: FirebaseAuth.instance.currentUser?.uid,
+    );
+
     await ref.add({
       "texto": texto,
       "sender": "receptor",
+      ...verifiedProfileLinkPayload,
       "createdAt": FieldValue.serverTimestamp(),
+      "estado": "entregado",
+      "entregadoAt": FieldValue.serverTimestamp(),
+      "leidoPorReceptor": true,
+      "vistoPorReceptor": true,
+      "seenByReceptor": true,
+      "readByReceptor": true,
+      "leidoPorAnonimo": false,
+      "vistoPorAnonimo": false,
+      "seenByAnonimo": false,
+      "readByAnonimo": false,
     });
 
     await FirebaseFirestore.instance
@@ -9935,6 +11826,10 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
       "receptorDeleted": false,
       "senderDeleted": false,
       "unreadForSender": FieldValue.increment(1),
+      "ultimoSender": "receptor",
+      "ultimoEstado": "entregado",
+      "ultimoMensajeLeidoPorReceptor": true,
+      "ultimoMensajeLeidoPorAnonimo": false,
       "mensajesCount": FieldValue.increment(1),
       "hasMessages": true,
     });
@@ -9949,6 +11844,16 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
       ...payload,
       "sender": "receptor",
       "createdAt": FieldValue.serverTimestamp(),
+      "estado": "entregado",
+      "entregadoAt": FieldValue.serverTimestamp(),
+      "leidoPorReceptor": true,
+      "vistoPorReceptor": true,
+      "seenByReceptor": true,
+      "readByReceptor": true,
+      "leidoPorAnonimo": false,
+      "vistoPorAnonimo": false,
+      "seenByAnonimo": false,
+      "readByAnonimo": false,
     });
 
     await chatRef.update({
@@ -9958,6 +11863,10 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
       "receptorDeleted": false,
       "senderDeleted": false,
       "unreadForSender": FieldValue.increment(1),
+      "ultimoSender": "receptor",
+      "ultimoEstado": "entregado",
+      "ultimoMensajeLeidoPorReceptor": true,
+      "ultimoMensajeLeidoPorAnonimo": false,
       "mensajesCount": FieldValue.increment(1),
       "hasMessages": true,
     });
@@ -10364,11 +12273,67 @@ class _BottomNavMock extends StatelessWidget {
             child: InkWell(
               onTap: () { _goTo(context, index); },
               child: Center(
-                child: Icon(
-                  icons[index],
-                  color: active ? const Color(0xFF6C63FF) : Colors.white.withOpacity(0.22),
-                  size: 31,
-                ),
+                child: index == 1
+                    ? ValueListenableBuilder<int>(
+                        valueListenable: _globalUnreadChatSignal,
+                        builder: (context, unread, _) {
+                          final showMysteryDot = unread > 0 && !active;
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.center,
+                            children: [
+                              Icon(
+                                icons[index],
+                                color: active ? const Color(0xFF6C63FF) : Colors.white.withOpacity(0.22),
+                                size: 31,
+                              ),
+                              if (showMysteryDot)
+                                Positioned(
+                                  right: -8,
+                                  top: -7,
+                                  child: Container(
+                                    width: 19,
+                                    height: 19,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color(0xFFFF4A2E),
+                                          Color(0xFFC55A1D),
+                                        ],
+                                      ),
+                                      border: Border.all(color: const Color(0xFF181818), width: 2),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFFFF4A2E).withOpacity(0.38),
+                                          blurRadius: 10,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Text(
+                                      "!",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      )
+                    : Icon(
+                        icons[index],
+                        color: active ? const Color(0xFF6C63FF) : Colors.white.withOpacity(0.22),
+                        size: 31,
+                      ),
               ),
             ),
           );
