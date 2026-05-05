@@ -1,0 +1,39 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "sayittome-app",
+          "appId": "1:676263895580:android:9d08b3beb6e4037d9f35d9",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "sayittome-app",
+          "configurations": {
+            "android": "1:676263895580:android:9d08b3beb6e4037d9f35d9",
+            "ios": "1:676263895580:ios:07310873e92c8b2c9f35d9",
+            "macos": "1:676263895580:ios:07310873e92c8b2c9f35d9",
+            "web": "1:676263895580:web:701877bb1c88a8b79f35d9",
+            "windows": "1:676263895580:web:6a3430c939ea22909f35d9"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

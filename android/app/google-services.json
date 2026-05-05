@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "676263895580",
+    "project_id": "sayittome-app",
+    "storage_bucket": "sayittome-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:676263895580:android:9d08b3beb6e4037d9f35d9",
+        "android_client_info": {
+          "package_name": "com.example.sayittome"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpVBTbjnYA1Fp8D5-KlxNIB6cvjRKwGGE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
