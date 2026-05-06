@@ -48,8 +48,6 @@ class _UiWebAdapter {
   dynamic get platformViewRegistry => dart_ui_web.platformViewRegistry;
 }
 
-// Compatibilidad por si alguna parte del main.dart llama directo:
-// web.getProperty(...), web.callMethod(...), web.promiseToFuture(...)
 T getProperty<T>(Object? object, Object name) {
   return js_util.getProperty<T>(object, name);
 }

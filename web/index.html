@@ -31,7 +31,44 @@
 
   <title>sayittome</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- 🔥 FLASH FIX WEB -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000000 !important;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+      background: #000000 !important;
+    }
+
+    flt-glass-pane,
+    flutter-view,
+    flutter-view > *,
+    canvas {
+      background: #000000 !important;
+    }
+
+    .flt-glass-pane {
+      background: #000000 !important;
+    }
+
+    .loading,
+    #loading,
+    .flutter-loader {
+      background: #000000 !important;
+    }
+  </style>
 </head>
+
 <body>
   <script src="flutter_bootstrap.js" async></script>
 </body>

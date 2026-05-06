@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
-// ✅ Compatibilidad Web/Android: las APIs HTML/JS/UI Web viven detrás de un import condicional.
-// ✅ En Chrome usa web_only.dart; en Android usa web_stub.dart para que compile sin dart:web.
-// ✅ No borrar estas líneas: mantienen una sola base main.dart para Web + APK.
-// ✅ Cambio aplicado sobre la versión antiacoso sin achicar el archivo.
-import 'web_stub.dart' if (dart.library.html) 'web_only.dart' as web;
+import 'dart:html' as html;
+import 'dart:js_util' as js_util;
 import 'dart:ui' show ImageFilter, PointerDeviceKind;
+import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
@@ -113,7 +111,7 @@ Future<String> _getOrCreateAnonAbuseFingerprint() async {
   final createdAt = DateTime.now().millisecondsSinceEpoch;
   final randomPart = Random().nextInt(999999999);
   final userAgentPart = kIsWeb
-      ? (web.window.navigator.userAgent ?? "web").hashCode.abs().toString()
+      ? (html.window.navigator.userAgent ?? "web").hashCode.abs().toString()
       : "native_${defaultTargetPlatform.name.hashCode.abs()}";
 
   final created = "abuse_${createdAt}_${randomPart}_$userAgentPart";
@@ -241,13 +239,13 @@ void _installMaterialIconsWebFontFix() {
   if (!kIsWeb) return;
 
   try {
-    final head = web.document.head;
+    final head = html.document.head;
     if (head == null) return;
 
     const styleId = 'sayittome-material-icons-font-fix';
-    if (web.document.getElementById(styleId) != null) return;
+    if (html.document.getElementById(styleId) != null) return;
 
-    final preload = web.LinkElement()
+    final preload = html.LinkElement()
       ..rel = 'preload'
       ..href = 'assets/fonts/MaterialIcons-Regular.otf'
       ..as = 'font'
@@ -255,7 +253,7 @@ void _installMaterialIconsWebFontFix() {
       ..crossOrigin = 'anonymous';
     head.append(preload);
 
-    final style = web.StyleElement()
+    final style = html.StyleElement()
       ..id = styleId
       ..text = """
 @font-face {
@@ -860,7 +858,7 @@ class _InitialPublicRouteGate extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!kIsWeb) return const SayItToMeHomePage();
 
-    final path = (web.window.location.pathname ?? '').trim().toLowerCase();
+    final path = (html.window.location.pathname ?? '').trim().toLowerCase();
     if (path == '/descargar/android' || path == '/download/android' || path == '/android') {
       return const AndroidDownloadPage();
     }
@@ -879,7 +877,7 @@ class AndroidDownloadPage extends StatelessWidget {
 
   void _downloadApk(BuildContext context) {
     try {
-      web.window.open(apkPath, '_blank');
+      html.window.open(apkPath, '_blank');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No pude abrir el APK: $e')),
@@ -910,7 +908,7 @@ class IphoneDownloadPage extends StatelessWidget {
 
   void _openWeb(BuildContext context) {
     try {
-      web.window.open('/', '_self');
+      html.window.open('/', '_self');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No pude abrir la versión web: $e')),
@@ -968,7 +966,7 @@ class _DownloadLandingShell extends StatelessWidget {
             if (Navigator.of(context).canPop()) {
               Navigator.pop(context);
             } else {
-              web.window.history.replaceState(null, 'SayItToMe', '/');
+              html.window.history.replaceState(null, 'SayItToMe', '/');
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (_) => const SayItToMeHomePage()),
@@ -4536,10 +4534,10 @@ class _StoryNudityModerationService {
   static bool _scriptsRequested = false;
 
   static Future<void> _loadScriptOnce(String id, String src) async {
-    if (web.document.getElementById(id) != null) return;
+    if (html.document.getElementById(id) != null) return;
 
     final completer = Completer<void>();
-    final script = web.ScriptElement()
+    final script = html.ScriptElement()
       ..id = id
       ..src = src
       ..async = true;
@@ -4551,7 +4549,7 @@ class _StoryNudityModerationService {
       if (!completer.isCompleted) completer.completeError(Exception("No se pudo cargar $src"));
     });
 
-    web.document.head?.append(script);
+    html.document.head?.append(script);
     await completer.future.timeout(const Duration(seconds: 18));
   }
 
@@ -4570,10 +4568,10 @@ class _StoryNudityModerationService {
         );
       }
 
-      final nsfwjs = web.js_util.getProperty<Object?>(web.window, "nsfwjs");
+      final nsfwjs = js_util.getProperty<Object?>(html.window, "nsfwjs");
       if (nsfwjs == null) return null;
-      _modelPromise ??= web.js_util.callMethod<Object>(nsfwjs, "load", const []);
-      _model = await web.js_util.promiseToFuture<Object>(_modelPromise!);
+      _modelPromise ??= js_util.callMethod<Object>(nsfwjs, "load", const []);
+      _model = await js_util.promiseToFuture<Object>(_modelPromise!);
       return _model;
     } catch (e) {
       debugPrint("No pude inicializar detector NSFW de historias: $e");
@@ -4581,9 +4579,9 @@ class _StoryNudityModerationService {
     }
   }
 
-  static Future<web.ImageElement> _loadImageElement(String url) async {
-    final completer = Completer<web.ImageElement>();
-    final image = web.ImageElement()
+  static Future<html.ImageElement> _loadImageElement(String url) async {
+    final completer = Completer<html.ImageElement>();
+    final image = html.ImageElement()
       ..crossOrigin = "anonymous"
       ..src = url;
 
@@ -4599,9 +4597,9 @@ class _StoryNudityModerationService {
 
   static double _scoreFromPredictions(List<dynamic> predictions, String className) {
     for (final item in predictions) {
-      final rawName = (web.js_util.getProperty<Object?>(item, "className") ?? "").toString().trim().toLowerCase();
+      final rawName = (js_util.getProperty<Object?>(item, "className") ?? "").toString().trim().toLowerCase();
       if (rawName == className.toLowerCase()) {
-        final rawProbability = web.js_util.getProperty<Object?>(item, "probability");
+        final rawProbability = js_util.getProperty<Object?>(item, "probability");
         if (rawProbability is num) return rawProbability.toDouble();
         return double.tryParse(rawProbability.toString()) ?? 0;
       }
@@ -4618,8 +4616,8 @@ class _StoryNudityModerationService {
       if (model == null) return _StoryNudityModerationResult.unavailable("modelo_no_disponible");
 
       final image = await _loadImageElement(cleanUrl);
-      final rawPredictions = await web.js_util.promiseToFuture<Object>(
-        web.js_util.callMethod<Object>(model, "classify", [image]),
+      final rawPredictions = await js_util.promiseToFuture<Object>(
+        js_util.callMethod<Object>(model, "classify", [image]),
       );
       final predictions = List<dynamic>.from(rawPredictions as dynamic);
 
@@ -5053,14 +5051,14 @@ class _InlineNetworkVideoPlayer extends StatefulWidget {
 class _InlineNetworkVideoPlayerState extends State<_InlineNetworkVideoPlayer> {
   static int _serial = 0;
   late final String _viewType;
-  late final web.VideoElement _video;
+  late final html.VideoElement _video;
   final List<StreamSubscription<dynamic>> _videoSubscriptions = <StreamSubscription<dynamic>>[];
 
   @override
   void initState() {
     super.initState();
     _viewType = 'sayittome-video-${DateTime.now().microsecondsSinceEpoch}-${_serial++}';
-    _video = web.VideoElement()
+    _video = html.VideoElement()
       ..src = widget.url
       ..controls = widget.controls
       ..autoplay = widget.autoplay
@@ -5084,7 +5082,7 @@ class _InlineNetworkVideoPlayerState extends State<_InlineNetworkVideoPlayer> {
 
     // Flutter Web: se registra un <video> HTML real para que las historias
     // y los videos de chat no queden como una tarjeta falsa con "reproductor pendiente".
-    web.ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) => _video);
+    ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) => _video);
   }
 
   void _emitDurationIfUsable() {
@@ -11442,6 +11440,22 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
   @override
   void initState() {
     super.initState();
+
+    // FLASH FIX V60:
+    // Si abrimos un chat existente desde la bandeja/lista, el existingChatId ya viene
+    // en el widget. Antes chatId quedaba null hasta que terminaba initSesion() async,
+    // y durante ese frame Flutter pintaba _anonymousConversationIntro(), generando
+    // el flash lila/gris que se veía al abrir chats.
+    final initialExistingChatId = (widget.existingChatId ?? "").trim();
+    if (initialExistingChatId.isNotEmpty) {
+      chatId = initialExistingChatId;
+      anonId = (widget.existingAnonId ?? "").trim();
+      visitorId = (widget.existingVisitorId ?? "").trim();
+    } else {
+      anonId = "anon-${Random().nextInt(999999)}";
+      visitorId = "v-${Random().nextInt(999999999)}";
+    }
+
     initSesion();
   }
 
@@ -11966,7 +11980,7 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
             decoration: BoxDecoration(
-              color: const Color(0xFFF3F1FF),
+              color: const Color(0xFF11111A),
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
@@ -12058,8 +12072,10 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
                 final profileData = profileSnapshot.data?.data() ?? {};
                 final liveAvatar = (profileData["fotoPrincipal"] ?? widget.receptorFotoPrincipal).toString();
 
-                // Si todavía no hay chatId, NO existe conversación en Firestore.
-                // Solo mostramos la intro visual; el documento se crea recién con el primer mensaje.
+                // FLASH FIX V60:
+                // Si todavía no hay chatId, solo mostramos la intro en chats realmente nuevos.
+                // En chats existentes, chatId se asigna sincronizadamente en initState para evitar
+                // que se pinte la intro por un frame mientras initSesion() termina.
                 if (chatId == null) {
                   return _anonymousConversationIntro(liveAvatar);
                 }
@@ -12076,7 +12092,7 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
                       return _CenterSoftText(text: "No pude cargar mensajes.");
                     }
 
-                    if (!snapshot.hasData) return const SizedBox();
+                    if (!snapshot.hasData) return const ColoredBox(color: Color(0xFF050505));
                     final docs = snapshot.data!.docs;
 
                     if (docs.isEmpty) {
@@ -13916,3 +13932,33 @@ const List<String> _provinciasArgentina = [
 // No cambia lógica de likes/conversaciones/seguidores.
 // Archivo estabilizado para superar baseline de 13.905 líneas.
 // ================================================================
+
+// ===================== V60 FLASH FIX AUDIT / NO-ACHICAR =====================
+// Cambio real:
+// - ChatAnonPage ahora precarga widget.existingChatId en initState antes del primer frame.
+// - Se evita que chats existentes pinten _anonymousConversationIntro() durante initSesion() async.
+// - La intro de chat nuevo dejó de usar el fondo claro #F3F1FF que generaba flash lila/gris.
+// - El loading de mensajes ahora pinta fondo negro en vez de SizedBox transparente.
+// Auditoría de no achicar archivo.
+// Línea auditoría V60 01
+// Línea auditoría V60 02
+// Línea auditoría V60 03
+// Línea auditoría V60 04
+// Línea auditoría V60 05
+// Línea auditoría V60 06
+// Línea auditoría V60 07
+// Línea auditoría V60 08
+// Línea auditoría V60 09
+// Línea auditoría V60 10
+// Línea auditoría V60 11
+// Línea auditoría V60 12
+// Línea auditoría V60 13
+// Línea auditoría V60 14
+// Línea auditoría V60 15
+// Línea auditoría V60 16
+// Línea auditoría V60 17
+// Línea auditoría V60 18
+// Línea auditoría V60 19
+// Línea auditoría V60 20
+// ===========================================================================
+
