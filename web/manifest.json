@@ -1,11 +1,11 @@
 {
-    "name": "sayittome",
-    "short_name": "sayittome",
+    "name": "SayItToMe",
+    "short_name": "SayItToMe",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#050505",
+    "theme_color": "#6C63FF",
+    "description": "Mensajes anónimos, perfiles e historias.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
