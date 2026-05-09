@@ -397,3 +397,44 @@ Future<Map<String, Object?>?> captureLiveChatMedia({required bool isVideo}) asyn
     return completer.future;
   }
 }
+
+
+Future<DateTime?> getAndroidApkLastModifiedUtc(String path) async {
+  final cleanPath = path.trim().isEmpty ? '/downloads/sayittome.apk' : path.trim();
+  final separator = cleanPath.contains('?') ? '&' : '?';
+  final url = '$cleanPath${separator}apkMeta=${DateTime.now().millisecondsSinceEpoch}';
+
+  try {
+    final request = await dart_html.HttpRequest.request(
+      url,
+      method: 'HEAD',
+      requestHeaders: const {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      },
+    ).timeout(const Duration(seconds: 8));
+
+    final rawLastModified =
+        request.getResponseHeader('last-modified') ??
+        request.getResponseHeader('Last-Modified');
+
+    if (rawLastModified == null || rawLastModified.trim().isEmpty) {
+      return null;
+    }
+
+    final dateCtor = dart_js_util.getProperty<Object>(dart_html.window, 'Date');
+    final jsDate = dart_js_util.callConstructor<Object>(dateCtor, [rawLastModified.trim()]);
+    final millisRaw = dart_js_util.callMethod<Object?>(jsDate, 'getTime', const []);
+
+    final millis = millisRaw is num ? millisRaw.toDouble() : double.tryParse('$millisRaw');
+    if (millis == null || millis.isNaN || millis.isInfinite || millis <= 0) {
+      return null;
+    }
+
+    return DateTime.fromMillisecondsSinceEpoch(millis.round(), isUtc: true);
+  } catch (e) {
+    // Si Hosting/CDN no devuelve Last-Modified por algún motivo, no rompemos la UI:
+    // simplemente no mostramos el cartel dinámico hasta que pueda leerse.
+    return null;
+  }
+}

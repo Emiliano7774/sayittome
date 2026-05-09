@@ -148,3 +148,8 @@ final platformViewRegistry = ui_web.platformViewRegistry;
 Future<Map<String, Object?>?> captureLiveChatMedia({required bool isVideo}) async {
   throw UnsupportedError('captureLiveChatMedia solo está disponible en Flutter Web.');
 }
+
+
+Future<DateTime?> getAndroidApkLastModifiedUtc(String path) async {
+  return null;
+}

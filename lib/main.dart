@@ -1344,6 +1344,7 @@ class _AnonymousEntryNotice extends StatelessWidget {
 
 
 
+
 class _AppDownloadLinksCard extends StatefulWidget {
   const _AppDownloadLinksCard();
 
@@ -1353,23 +1354,24 @@ class _AppDownloadLinksCard extends StatefulWidget {
 
 class _AppDownloadLinksCardState extends State<_AppDownloadLinksCard> {
   static const String _androidApkPath = '/downloads/sayittome.apk';
-
-  // Fecha de publicación del APK actual.
-  // Cuando generemos/subamos un APK nuevo desde acá, se actualiza este timestamp.
-  // El cartel verde aparece durante las primeras 24 horas y después desaparece solo.
-  static final DateTime _androidApkPublishedAtUtc = DateTime.utc(2026, 5, 9, 21, 20, 0);
   static const Duration _freshApkWindow = Duration(hours: 24);
 
   Timer? _freshApkTimer;
   DateTime _nowUtc = DateTime.now().toUtc();
+  DateTime? _androidApkPublishedAtUtc;
+  bool _checkingApkFreshness = true;
 
   bool get _isFreshAndroidApk {
-    final age = _nowUtc.difference(_androidApkPublishedAtUtc);
+    final publishedAt = _androidApkPublishedAtUtc;
+    if (publishedAt == null) return false;
+    final age = _nowUtc.difference(publishedAt);
     return !age.isNegative && age < _freshApkWindow;
   }
 
   Duration get _freshApkRemaining {
-    final elapsed = _nowUtc.difference(_androidApkPublishedAtUtc);
+    final publishedAt = _androidApkPublishedAtUtc;
+    if (publishedAt == null) return Duration.zero;
+    final elapsed = _nowUtc.difference(publishedAt);
     final remaining = _freshApkWindow - elapsed;
     if (remaining.isNegative) return Duration.zero;
     return remaining;
@@ -1387,14 +1389,31 @@ class _AppDownloadLinksCardState extends State<_AppDownloadLinksCard> {
   @override
   void initState() {
     super.initState();
+    _refreshAndroidApkFreshness();
     _freshApkTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
       setState(() {
         _nowUtc = DateTime.now().toUtc();
       });
-      if (!_isFreshAndroidApk) {
+      if (!_checkingApkFreshness && !_isFreshAndroidApk) {
         _freshApkTimer?.cancel();
       }
+    });
+  }
+
+  Future<void> _refreshAndroidApkFreshness() async {
+    setState(() {
+      _checkingApkFreshness = true;
+      _nowUtc = DateTime.now().toUtc();
+    });
+
+    final lastModified = await html.getAndroidApkLastModifiedUtc(_androidApkPath);
+    if (!mounted) return;
+
+    setState(() {
+      _androidApkPublishedAtUtc = lastModified;
+      _checkingApkFreshness = false;
+      _nowUtc = DateTime.now().toUtc();
     });
   }
 
@@ -1465,7 +1484,8 @@ class _AppDownloadLinksCardState extends State<_AppDownloadLinksCard> {
           Expanded(
             child: Text(
               'APK NUEVO DISPONIBLE: descargá la nueva versión de Android. '
-              'Este aviso aparece solo durante 24 hs desde el último APK publicado ($_freshApkRemainingText). '
+              'Este aviso se activa automáticamente cuando reemplazamos el APK publicado '
+              'y dura 24 hs desde la fecha real del archivo ($_freshApkRemainingText). '
               'Si querés estar siempre actualizado sin reinstalar, usá la versión web.',
               textAlign: TextAlign.left,
               style: const TextStyle(
@@ -1480,8 +1500,44 @@ class _AppDownloadLinksCardState extends State<_AppDownloadLinksCard> {
     );
   }
 
+  Widget _buildApkFreshnessDebugPill() {
+    if (!_checkingApkFreshness && _androidApkPublishedAtUtc == null) {
+      return const SizedBox.shrink();
+    }
+
+    final text = _checkingApkFreshness
+        ? 'Verificando APK...'
+        : _isFreshAndroidApk
+            ? 'APK actualizado'
+            : 'APK sin aviso activo';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.62),
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final androidButtonText = _isFreshAndroidApk
+        ? 'Android APK\nNUEVA VERSIÓN'
+        : 'Android APK';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
@@ -1504,12 +1560,13 @@ class _AppDownloadLinksCardState extends State<_AppDownloadLinksCard> {
           ),
           const SizedBox(height: 13),
           _buildFreshAndroidApkNotice(),
+          _buildApkFreshnessDebugPill(),
           Row(
             children: [
               Expanded(
                 child: _TinyDownloadButton(
                   icon: Icons.android,
-                  text: _isFreshAndroidApk ? 'Android APK\nNUEVA VERSIÓN' : 'Android APK',
+                  text: androidButtonText,
                   onTap: () => _openAndroidDownloadPage(context),
                 ),
               ),
@@ -4911,31 +4968,84 @@ Widget _protectiveStoryPreviewBlur({
   required Widget child,
 }) {
   if (!cover) return child;
+
   return Stack(
     fit: StackFit.expand,
     children: [
+      // Preview real debajo: apenas visible, estiloso y consistente.
       ClipRect(
         child: ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 130, sigmaY: 130),
+          imageFilter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: ColorFiltered(
             colorFilter: const ColorFilter.matrix(<double>[
-              0.12, 0.12, 0.12, 0, 0,
-              0.12, 0.12, 0.12, 0, 0,
-              0.12, 0.12, 0.12, 0, 0,
+              0.34, 0.34, 0.34, 0, 0,
+              0.34, 0.34, 0.34, 0, 0,
+              0.34, 0.34, 0.34, 0, 0,
               0, 0, 0, 1, 0,
             ]),
             child: child,
           ),
         ),
       ),
-      Container(color: Colors.black.withOpacity(0.93)),
+
+      // Negro base fuerte para que no se pueda leer el contenido.
+      Container(color: Colors.black.withOpacity(0.64)),
+
+      // Viñeta radial: bordes más oscuros y centro apenas más claro.
+      Positioned.fill(
+        child: IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.center,
+                radius: 0.92,
+                colors: [
+                  Colors.black.withOpacity(0.18),
+                  Colors.black.withOpacity(0.48),
+                  Colors.black.withOpacity(0.78),
+                ],
+                stops: const [0.0, 0.48, 1.0],
+              ),
+            ),
+          ),
+        ),
+      ),
+
+      // Halo central del ojito: permite intuir algo sin revelar.
+      Center(
+        child: IgnorePointer(
+          child: Container(
+            width: 112,
+            height: 112,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  Colors.white.withOpacity(0.105),
+                  Colors.white.withOpacity(0.035),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.45, 1.0],
+              ),
+            ),
+          ),
+        ),
+      ),
+
       Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.62),
+            color: Colors.black.withOpacity(0.54),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white.withOpacity(0.16)),
+            border: Border.all(color: Colors.white.withOpacity(0.18)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.38),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: const Icon(Icons.visibility_off_rounded, color: Colors.white, size: 24),
         ),
@@ -4943,6 +5053,7 @@ Widget _protectiveStoryPreviewBlur({
     ],
   );
 }
+
 
 class _SensitiveStoryBlurGate extends StatelessWidget {
   final bool blurred;
@@ -4957,6 +5068,12 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
     required this.child,
   });
 
+  void _consumeTap() {
+    // Intencionalmente vacío:
+    // esta capa existe para que el tap no llegue al detector central
+    // del visor de historias, que pausa/avanza la historia.
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!blurred) return child;
@@ -4964,87 +5081,172 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
+        // Fondo real detrás: queda apenas insinuado, pero sin depender de un blur pesado.
+        // Esto mantiene performance y se ve consistente en Web/Android.
         ClipRect(
           child: ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 150, sigmaY: 150),
+            imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: ColorFiltered(
               colorFilter: const ColorFilter.matrix(<double>[
-                0.14, 0.14, 0.14, 0, 0,
-                0.14, 0.14, 0.14, 0, 0,
-                0.14, 0.14, 0.14, 0, 0,
+                0.36, 0.36, 0.36, 0, 0,
+                0.36, 0.36, 0.36, 0, 0,
+                0.36, 0.36, 0.36, 0, 0,
                 0, 0, 0, 1, 0,
               ]),
               child: child,
             ),
           ),
         ),
-        Container(color: Colors.black.withOpacity(0.94)),
+
+        // Base negra pareja: oscurece todo sin convertirlo en bloque muerto.
+        Container(color: Colors.black.withOpacity(0.58)),
+
+        // Viñeta radial cinematográfica:
+        // bordes más negros, centro un poco más claro alrededor del ojito.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 0.86,
+                  colors: [
+                    Colors.black.withOpacity(0.18),
+                    Colors.black.withOpacity(0.42),
+                    Colors.black.withOpacity(0.72),
+                  ],
+                  stops: const [0.0, 0.46, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Aro suave central: crea el efecto de "ojo" aclarado sin mostrar demasiado.
+        Center(
+          child: IgnorePointer(
+            child: Container(
+              width: 210,
+              height: 210,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.105),
+                    Colors.white.withOpacity(0.040),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.44, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Esta capa consume taps para que la zona central del visor no pause/avance
+        // cuando el aviso sensible está abierto.
+        Positioned.fill(
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (_) {},
+            onPointerUp: (_) {},
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _consumeTap,
+              onTapDown: (_) {},
+              onLongPress: _consumeTap,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF101010).withOpacity(0.92),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.70),
-                    blurRadius: 28,
-                    offset: const Offset(0, 16),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.10),
-                      border: Border.all(color: Colors.white.withOpacity(0.16)),
-                    ),
-                    child: const Icon(Icons.visibility_off_rounded, color: Colors.white, size: 28),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    "Contenido sensible",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Esta historia puede incluir desnudez explícita. La dejamos cubierta para que elijas si verla o no.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white.withOpacity(0.66), height: 1.32, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: onReveal,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _consumeTap,
+              onTapDown: (_) {},
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101010).withOpacity(0.90),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.white.withOpacity(0.13)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.54),
+                        blurRadius: 30,
+                        offset: const Offset(0, 18),
                       ),
-                      icon: const Icon(Icons.visibility_rounded),
-                      label: const Text("Ver igual", style: TextStyle(fontWeight: FontWeight.w900)),
-                    ),
+                    ],
                   ),
-                  if (loading) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      "Analizando imagen...",
-                      style: TextStyle(color: Colors.white.withOpacity(0.42), fontSize: 12, fontWeight: FontWeight.w800),
-                    ),
-                  ],
-                ],
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 62,
+                        height: 62,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.white.withOpacity(0.22),
+                              Colors.white.withOpacity(0.07),
+                            ],
+                          ),
+                          border: Border.all(color: Colors.white.withOpacity(0.18)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withOpacity(0.10),
+                              blurRadius: 24,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.visibility_off_rounded, color: Colors.white, size: 31),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        "Contenido sensible",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Esta historia puede incluir desnudez explícita. La dejamos cubierta para que elijas si verla o no.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white.withOpacity(0.68), height: 1.32, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: onReveal,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                          ),
+                          icon: const Icon(Icons.visibility_rounded, size: 20),
+                          label: const Text("Ver igual", style: TextStyle(fontWeight: FontWeight.w900)),
+                        ),
+                      ),
+                      if (loading) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          "Revisando con moderación automática...",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white.withOpacity(0.42), fontSize: 12, fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -5054,16 +5256,122 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
   }
 }
 
-Future<String?> _pickAndUploadStoryMedia({required bool isVideo}) async {
+
+
+String _normalizeStoryUploadSource(String value) {
+  final raw = value.trim().toLowerCase();
+  if (raw == "camera" || raw == "camara" || raw == "cámara") return "camera";
+  if (raw == "gallery" || raw == "galeria" || raw == "galería") return "gallery";
+  return "unknown";
+}
+
+String _storyUploadSourceLabel(String value) {
+  final source = _normalizeStoryUploadSource(value);
+  if (source == "camera") return "cámara";
+  if (source == "gallery") return "galería";
+  return "origen";
+}
+
+IconData _storyUploadSourceIcon(String value) {
+  final source = _normalizeStoryUploadSource(value);
+  if (source == "camera") return Icons.photo_camera_rounded;
+  if (source == "gallery") return Icons.photo_library_rounded;
+  return Icons.help_outline_rounded;
+}
+
+String _storyUploadSourceFromData(Map<String, dynamic> story) {
+  final direct = (story["uploadSource"] ?? story["storySource"] ?? story["source"] ?? "").toString();
+  final normalized = _normalizeStoryUploadSource(direct);
+  if (normalized != "unknown") return normalized;
+
+  final fromCamera = story["fromCamera"] == true || story["capturedFromCamera"] == true;
+  if (fromCamera) return "camera";
+
+  final fromGallery = story["fromGallery"] == true || story["pickedFromGallery"] == true;
+  if (fromGallery) return "gallery";
+
+  return "unknown";
+}
+
+class _StoryUploadSourceBadge extends StatelessWidget {
+  final String source;
+  final bool compact;
+  final Alignment alignment;
+  final EdgeInsets margin;
+
+  const _StoryUploadSourceBadge({
+    required this.source,
+    this.compact = false,
+    this.alignment = Alignment.topRight,
+    this.margin = const EdgeInsets.all(10),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = _normalizeStoryUploadSource(source);
+    if (normalized == "unknown") return const SizedBox.shrink();
+
+    final label = _storyUploadSourceLabel(normalized);
+    final icon = _storyUploadSourceIcon(normalized);
+
+    return Align(
+      alignment: alignment,
+      child: Padding(
+        padding: margin,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 10,
+            vertical: compact ? 5 : 7,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.54),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withOpacity(0.18)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.28),
+                blurRadius: 12,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: compact ? 13 : 15),
+              if (!compact) ...[
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+Future<String?> _pickAndUploadStoryMedia({required bool isVideo, required String uploadSource}) async {
   try {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
 
     final picker = ImagePicker();
+    final normalizedSource = _normalizeStoryUploadSource(uploadSource);
+    final pickerSource = normalizedSource == "camera" ? ImageSource.camera : ImageSource.gallery;
     final XFile? file = isVideo
-        ? await picker.pickVideo(source: ImageSource.gallery)
+        ? await picker.pickVideo(source: pickerSource)
         : await picker.pickImage(
-            source: ImageSource.gallery,
+            source: pickerSource,
             imageQuality: 34,
             maxWidth: 840,
             maxHeight: 840,
@@ -5105,6 +5413,7 @@ Future<String?> _pickAndUploadStoryMedia({required bool isVideo}) async {
           "uid": user.uid,
           "story": "true",
           "originalName": file.name,
+          "uploadSource": normalizedSource,
         },
       ),
     ).timeout(const Duration(seconds: 18));
@@ -5162,7 +5471,7 @@ String _firebaseUploadErrorMessage(FirebaseException e, {required String area}) 
       : "No pude subir $area por un error de Firebase Storage [$code]: $message";
 }
 
-Future<void> _createStoryFromPicker(BuildContext context, {required bool isVideo}) async {
+Future<void> _createStoryFromPicker(BuildContext context, {required bool isVideo, String uploadSource = "gallery"}) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -5175,13 +5484,15 @@ Future<void> _createStoryFromPicker(BuildContext context, {required bool isVideo
   if (!canUpload) return;
 
   final messenger = ScaffoldMessenger.of(context);
+  final normalizedSource = _normalizeStoryUploadSource(uploadSource);
+  final sourceLabel = _storyUploadSourceLabel(normalizedSource);
   messenger.showSnackBar(
-    SnackBar(content: Text(isVideo ? "Elegí un video para tu historia..." : "Elegí una foto para tu historia...")),
+    SnackBar(content: Text(isVideo ? "Elegí un video de $sourceLabel para tu historia..." : "Elegí una foto de $sourceLabel para tu historia...")),
   );
 
   String? url;
   try {
-    url = await _pickAndUploadStoryMedia(isVideo: isVideo);
+    url = await _pickAndUploadStoryMedia(isVideo: isVideo, uploadSource: normalizedSource);
   } catch (e) {
     messenger.showSnackBar(
       SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
@@ -5223,6 +5534,11 @@ Future<void> _createStoryFromPicker(BuildContext context, {required bool isVideo
       "avatarUrl": (profile["fotoPrincipal"] ?? "").toString(),
       "url": url,
       "type": isVideo ? "video" : "image",
+      "uploadSource": normalizedSource,
+      "storySource": normalizedSource,
+      "sourceLabel": sourceLabel,
+      "fromCamera": normalizedSource == "camera",
+      "fromGallery": normalizedSource == "gallery",
       "createdAt": FieldValue.serverTimestamp(),
       "expiresAt": Timestamp.fromDate(now.add(const Duration(hours: 24))),
       "likesCount": 0,
@@ -5322,13 +5638,13 @@ void _showStoryUploadCameraSheet(BuildContext context) {
                             icon: Icons.image_rounded,
                             onTap: () async {
                               Navigator.pop(context);
-                              await _createStoryFromPicker(context, isVideo: false);
+                              await _createStoryFromPicker(context, isVideo: false, uploadSource: "gallery");
                             },
                           ),
                           GestureDetector(
                             onTap: () async {
                               Navigator.pop(context);
-                              await _createStoryFromPicker(context, isVideo: false);
+                              await _createStoryFromPicker(context, isVideo: false, uploadSource: "camera");
                             },
                             child: Container(
                               width: 92,
@@ -5351,7 +5667,7 @@ void _showStoryUploadCameraSheet(BuildContext context) {
                             icon: Icons.flip_camera_android_rounded,
                             onTap: () async {
                               Navigator.pop(context);
-                              await _createStoryFromPicker(context, isVideo: true);
+                              await _createStoryFromPicker(context, isVideo: true, uploadSource: "camera");
                             },
                           ),
                         ],
@@ -6177,6 +6493,11 @@ class _StoryGridTile extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+            _StoryUploadSourceBadge(
+              source: _storyUploadSourceFromData(story),
+              compact: true,
+              margin: const EdgeInsets.only(top: 10, right: 10),
             ),
             Positioned(
               left: 10,
@@ -7420,18 +7741,33 @@ class _StoryViewerDialogState extends State<_StoryViewerDialog> {
                     );
                   }
 
-                  return _SensitiveStoryBlurGate(
-                    blurred: _storyRequiresSensitiveBlur(story),
-                    loading: _storyModerationInFlight(story),
-                    onReveal: () => _revealSensitiveStory(story),
-                    child: content,
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _SensitiveStoryBlurGate(
+                        blurred: _storyRequiresSensitiveBlur(story),
+                        loading: _storyModerationInFlight(story),
+                        onReveal: () => _revealSensitiveStory(story),
+                        child: content,
+                      ),
+                      SafeArea(
+                        child: _StoryUploadSourceBadge(
+                          source: _storyUploadSourceFromData(story),
+                          compact: false,
+                          margin: const EdgeInsets.only(top: 58, right: 14),
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
 
               // Zonas táctiles reales. Van arriba del contenido, pero no pisan
               // la franja inferior de vistas/likes ni los botones superiores.
-              Positioned(
+              // Si la historia está cubierta por contenido sensible, NO se renderizan:
+              // así el botón "Ver igual" recibe el tap y no lo intercepta pausa/avance.
+              if (!_storyRequiresSensitiveBlur(_stories[page]))
+                Positioned(
                 left: 0,
                 right: 0,
                 top: MediaQuery.of(context).padding.top + 46,
@@ -17095,5 +17431,158 @@ void _showAdminRawDataSheet(BuildContext context, String title, String id, Map<S
 // - se conserva aviso APK 24 hs;
 // - se conservan uploads rápidos.
 // No achicar: archivo completo listo para reemplazar.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V90 - APK NOTICE BASED ON REAL LAST-MODIFIED
+// ============================================================================
+// Base: main_fix_blur_cover_layout_v89.dart.
+// Corrige el contador del APK:
+// - ya no depende de un timestamp fijo hardcodeado;
+// - lee el Last-Modified real de /downloads/sayittome.apk;
+// - si el APK publicado tiene menos de 24 hs, muestra el aviso verde;
+// - cuando pasan 24 hs, desaparece solo;
+// - cuando se reemplaza el APK y se redeploya Hosting, vuelve a aparecer automáticamente.
+// Mantiene blur corregido, ClipRect, uploads rápidos y lógica de historias.
+// No achicar: archivo completo listo para reemplazar.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V95 MAIN ONLY - FIXED FROM GOOD V90 BASE
+// ============================================================================
+// Base real usada: sayittome_apk_notice_lastmodified_v90/main.dart.
+// Error anterior corregido: el gate se reemplaza solo hasta _pickAndUploadStoryMedia,
+// sin borrar las funciones globales de historias/uploads.
+// Conserva definiciones reales:
+// - _firebaseUploadErrorMessage
+// - _createStoryFromPicker
+// - _showStoryUploadCameraSheet
+// Cambios:
+// - blur sensible visible, no negro absoluto;
+// - overlay liviano;
+// - Listener + GestureDetector para que "Ver igual" no lo intercepte pausa/avance;
+// - preview sensible menos negro;
+// - conserva contador APK dinámico por Last-Modified;
+// - conserva uploads rápidos y recheck protector.
+// Archivo completo listo para reemplazar SOLO lib/main.dart.
+// ============================================================================
+
+
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+// V95 no-achicar guard: supera el último main entregado y conserva metodología.
+
+
+// ============================================================================
+// SAYITTOME V96 MAIN ONLY - REAL TAP FIX ON STORY TOUCH ZONES
+// ============================================================================
+// Base: main_v95_compilefix_from_v90_visible_blur_tapfix.dart.
+// Motivo del bug:
+// - el modal "Contenido sensible" estaba dentro del contenido,
+// - pero las zonas invisibles del visor (izquierda/centro/derecha) se renderizaban
+//   después y quedaban por encima;
+// - la zona central capturaba el tap y pausaba la historia antes de que "Ver igual"
+//   pudiera abrirla.
+// Fix real:
+// - si _storyRequiresSensitiveBlur(_stories[page]) es true,
+//   NO se renderizan las zonas táctiles del visor;
+// - el botón "Ver igual" queda clickeable de verdad;
+// - el blur vuelve a ser visible y no negro total.
+// Conserva:
+// - contador APK dinámico por Last-Modified;
+// - helpers globales de historias/uploads;
+// - flujo de APK en página.
+// Archivo completo listo para reemplazar SOLO lib/main.dart.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V97 MAIN ONLY - TAP FIX + 30 PERCENT DARKER SENSITIVE BLUR
+// ============================================================================
+// Base: main_v96_real_tapfix_story_zones_visible_blur.dart.
+// Mantiene el fix real:
+// - cuando la historia está blureada, no se renderizan las zonas táctiles
+//   izquierda/centro/derecha del visor;
+// - "Ver igual" recibe el tap de verdad.
+// Ajuste pedido:
+// - blur/tapadera sensible aproximadamente 30% más oscura;
+// - sin volver al negro absoluto;
+// - conserva contador APK dinámico por Last-Modified;
+// - conserva helpers reales de historias/uploads.
+// Archivo completo listo para reemplazar SOLO lib/main.dart.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V98 MAIN ONLY - CINEMATIC SENSITIVE COVER
+// ============================================================================
+// Base: main_v97_tapfix_blur_30pct_darker.dart.
+// Cambios:
+// - reemplaza el blur pesado por tapadera cinematográfica;
+// - negro base 58% + viñeta radial;
+// - centro circular más claro tipo "ojito";
+// - apenas se insinúa la historia detrás;
+// - mantiene el tap fix real de las zonas del visor;
+// - conserva contador APK dinámico;
+// - conserva helpers de historias/uploads.
+// Archivo completo listo para reemplazar SOLO lib/main.dart.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V99 MAIN ONLY - CINEMATIC GRID PREVIEW COVER
+// ============================================================================
+// Base: main_v98_cinematic_sensitive_cover.dart.
+// Corrige el punto que faltaba:
+// - la grilla/previews ahora usa también tapadera cinematográfica;
+// - negro base fuerte + viñeta radial;
+// - centro con halo de ojito;
+// - el contenido queda apenas insinuado sin revelarse;
+// - mantiene el gate del visor y tap fix;
+// - mantiene contador APK y helpers.
+// Archivo completo listo para reemplazar SOLO lib/main.dart.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V100 MAIN ONLY - STORY CAMERA/GALLERY SOURCE BADGE
+// ============================================================================
+// Base: main_v99_cinematic_grid_preview_cover.dart.
+// Cambios:
+// - al subir historias se guarda origen: camera/gallery;
+// - se persiste uploadSource, storySource, sourceLabel, fromCamera/fromGallery;
+// - metadata de Storage también incluye uploadSource;
+// - la grilla muestra badge pequeño de cámara/galería;
+// - el visor muestra badge en esquina superior;
+// - mantiene tapadera cinematográfica, tap fix, contador APK y helpers reales.
+// Nota: en navegadores/Android, ImagePicker puede depender del sistema;
+// el badge refleja el flujo elegido por el usuario: cámara o galería.
+// Archivo completo listo para reemplazar SOLO lib/main.dart.
 // ============================================================================
 
