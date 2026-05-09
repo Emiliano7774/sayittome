@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 class _FakeWindow {
   final navigator = _FakeNavigator();
@@ -143,3 +144,7 @@ class _FakeUiWeb {
 
 // Compatibilidad cuando main.dart importa este archivo como ui_web.
 final platformViewRegistry = ui_web.platformViewRegistry;
+
+Future<Map<String, Object?>?> captureLiveChatMedia({required bool isVideo}) async {
+  throw UnsupportedError('captureLiveChatMedia solo está disponible en Flutter Web.');
+}

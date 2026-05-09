@@ -1,3 +1,11 @@
+// ===================== V77 WEB LIVE CAMERA REAL / NO-ACHICAR =====================
+// Cambio real:
+// - Web cámara ya no usa ImagePicker: usa getUserMedia real con preview.
+// - Foto desde cámara captura frame real del dispositivo, sin galería.
+// - Video desde cámara graba con MediaRecorder, sin galería.
+// - Galería queda separada como archivo existente; bombita sigue funcionando.
+// ====================================================================================
+
 // ===================== V70 ADMIN AVATAR ROBUST FIX / NO-ACHICAR =====================
 // Cambio real:
 // - Auditoría de conversaciones resuelve el receptor por docId y también por campo uid.
@@ -1335,10 +1343,66 @@ class _AnonymousEntryNotice extends StatelessWidget {
 }
 
 
-class _AppDownloadLinksCard extends StatelessWidget {
+
+class _AppDownloadLinksCard extends StatefulWidget {
   const _AppDownloadLinksCard();
 
+  @override
+  State<_AppDownloadLinksCard> createState() => _AppDownloadLinksCardState();
+}
+
+class _AppDownloadLinksCardState extends State<_AppDownloadLinksCard> {
   static const String _androidApkPath = '/downloads/sayittome.apk';
+
+  // Fecha de publicación del APK actual.
+  // Cuando generemos/subamos un APK nuevo desde acá, se actualiza este timestamp.
+  // El cartel verde aparece durante las primeras 24 horas y después desaparece solo.
+  static final DateTime _androidApkPublishedAtUtc = DateTime.utc(2026, 5, 9, 21, 20, 0);
+  static const Duration _freshApkWindow = Duration(hours: 24);
+
+  Timer? _freshApkTimer;
+  DateTime _nowUtc = DateTime.now().toUtc();
+
+  bool get _isFreshAndroidApk {
+    final age = _nowUtc.difference(_androidApkPublishedAtUtc);
+    return !age.isNegative && age < _freshApkWindow;
+  }
+
+  Duration get _freshApkRemaining {
+    final elapsed = _nowUtc.difference(_androidApkPublishedAtUtc);
+    final remaining = _freshApkWindow - elapsed;
+    if (remaining.isNegative) return Duration.zero;
+    return remaining;
+  }
+
+  String get _freshApkRemainingText {
+    final remaining = _freshApkRemaining;
+    final hours = remaining.inHours;
+    final minutes = remaining.inMinutes.remainder(60);
+    if (hours <= 0) return 'queda menos de 1 hora';
+    if (minutes == 0) return 'quedan $hours h';
+    return 'quedan $hours h $minutes min';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _freshApkTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _nowUtc = DateTime.now().toUtc();
+      });
+      if (!_isFreshAndroidApk) {
+        _freshApkTimer?.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _freshApkTimer?.cancel();
+    super.dispose();
+  }
 
   void _openAndroidDownloadPage(BuildContext context) {
     Navigator.push(
@@ -1351,6 +1415,68 @@ class _AppDownloadLinksCard extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const IphoneDownloadPage()),
+    );
+  }
+
+  Widget _buildFreshAndroidApkNotice() {
+    if (!_isFreshAndroidApk) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF39FF14),
+            Color(0xFF00E676),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF39FF14).withOpacity(0.62),
+            blurRadius: 30,
+            spreadRadius: 2,
+            offset: const Offset(0, 8),
+          ),
+        ],
+        border: Border.all(color: Colors.white.withOpacity(0.30)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 13,
+            height: 13,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.38),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Icon(Icons.new_releases_rounded, color: Colors.black, size: 23),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'APK NUEVO DISPONIBLE: descargá la nueva versión de Android. '
+              'Este aviso aparece solo durante 24 hs desde el último APK publicado ($_freshApkRemainingText). '
+              'Si querés estar siempre actualizado sin reinstalar, usá la versión web.',
+              textAlign: TextAlign.left,
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w900,
+                height: 1.24,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1377,12 +1503,13 @@ class _AppDownloadLinksCard extends StatelessWidget {
             style: TextStyle(color: Colors.white.withOpacity(0.56), height: 1.25, fontSize: 12.6, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 13),
+          _buildFreshAndroidApkNotice(),
           Row(
             children: [
               Expanded(
                 child: _TinyDownloadButton(
                   icon: Icons.android,
-                  text: 'Android APK',
+                  text: _isFreshAndroidApk ? 'Android APK\nNUEVA VERSIÓN' : 'Android APK',
                   onTap: () => _openAndroidDownloadPage(context),
                 ),
               ),
@@ -3642,7 +3769,7 @@ class _VerifiedProfileCopyPillState extends State<_VerifiedProfileCopyPill> {
           border: Border.all(color: Colors.white.withOpacity(0.82), width: 1.45),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.42),
+              color: Colors.black.withOpacity(0.70),
               blurRadius: 18,
               offset: const Offset(0, 9),
             ),
@@ -4595,6 +4722,7 @@ class _StoryNudityModerationResult {
       "moderationProvider": provider,
       "moderationCheckedAt": FieldValue.serverTimestamp(),
       "moderationAvailable": checked,
+      if (checked) "moderationRuleVersion": _StoryNudityModerationService.currentRuleVersion,
       "moderationExplicitNudity": explicitNudity,
       "moderationRequiresBlur": explicitNudity,
       "moderationNsfwScores": {
@@ -4609,6 +4737,8 @@ class _StoryNudityModerationResult {
 }
 
 class _StoryNudityModerationService {
+  static const int currentRuleVersion = 2;
+
   static Object? _modelPromise;
   static Object? _model;
   static bool _scriptsRequested = false;
@@ -4706,9 +4836,22 @@ class _StoryNudityModerationService {
       final sexy = _scoreFromPredictions(predictions, "Sexy");
       final neutral = _scoreFromPredictions(predictions, "Neutral");
 
-      // Regla estricta: una foto sin remera, panza, torso o bikini suele caer en "Sexy".
-      // Acá NO blureamos por Sexy. Solo blureamos desnudez explícita real.
-      final explicit = porn >= 0.72 || hentai >= 0.86 || (porn >= 0.62 && sexy >= 0.34 && neutral < 0.28);
+      // Regla endurecida:
+      // Ahora sí blureamos contenido sexual fuerte aunque NSFWJS
+      // lo marque más como "Sexy" que como "Porn".
+      //
+      // Objetivo:
+      // - desnudez explícita => blur
+      // - culos/tetas explícitos => blur
+      // - poses sexuales fuertes => blur
+      // - torso/panza/bikini normal => generalmente NO blur
+
+      final explicit =
+          porn >= 0.58 ||
+          hentai >= 0.72 ||
+          (sexy >= 0.82 && neutral < 0.22) ||
+          (porn >= 0.46 && sexy >= 0.52) ||
+          (porn >= 0.40 && neutral < 0.18);
 
       return _StoryNudityModerationResult(
         checked: true,
@@ -4724,6 +4867,81 @@ class _StoryNudityModerationService {
       return _StoryNudityModerationResult.unavailable(e.toString());
     }
   }
+}
+
+bool _storyTypeIsImageForSafety(Map<String, dynamic> story) {
+  final type = (story["type"] ?? "image").toString().trim().toLowerCase();
+  return type == "image" || type.isEmpty;
+}
+
+int _storyModerationRuleVersionForSafety(Map<String, dynamic> story) {
+  final raw = story["moderationRuleVersion"];
+  if (raw is num) return raw.toInt();
+  return int.tryParse((raw ?? "0").toString()) ?? 0;
+}
+
+bool _storyHasAnyModerationForSafety(Map<String, dynamic> story) {
+  return story.containsKey("moderationRequiresBlur") ||
+      story.containsKey("moderationExplicitNudity") ||
+      story.containsKey("moderationRuleVersion") ||
+      story.containsKey("moderationAvailable");
+}
+
+bool _storyNeedsProtectiveBlurForSafety(Map<String, dynamic> story) {
+  if (!_storyTypeIsImageForSafety(story)) return false;
+
+  if (story["moderationRequiresBlur"] == true || story["moderationExplicitNudity"] == true) {
+    return true;
+  }
+
+  final version = _storyModerationRuleVersionForSafety(story);
+  final available = story["moderationAvailable"] == true;
+
+  // Seguridad visual: una historia sin moderación confiable, o cacheada con reglas viejas,
+  // queda cubierta primero. Solo se destapa cuando NSFWJS la marcó segura con la versión actual.
+  if (!_storyHasAnyModerationForSafety(story)) return true;
+  if (!available) return true;
+  if (version < _StoryNudityModerationService.currentRuleVersion) return true;
+
+  return false;
+}
+
+Widget _protectiveStoryPreviewBlur({
+  required bool cover,
+  required Widget child,
+}) {
+  if (!cover) return child;
+  return Stack(
+    fit: StackFit.expand,
+    children: [
+      ClipRect(
+        child: ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 130, sigmaY: 130),
+          child: ColorFiltered(
+            colorFilter: const ColorFilter.matrix(<double>[
+              0.12, 0.12, 0.12, 0, 0,
+              0.12, 0.12, 0.12, 0, 0,
+              0.12, 0.12, 0.12, 0, 0,
+              0, 0, 0, 1, 0,
+            ]),
+            child: child,
+          ),
+        ),
+      ),
+      Container(color: Colors.black.withOpacity(0.93)),
+      Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.62),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withOpacity(0.16)),
+          ),
+          child: const Icon(Icons.visibility_off_rounded, color: Colors.white, size: 24),
+        ),
+      ),
+    ],
+  );
 }
 
 class _SensitiveStoryBlurGate extends StatelessWidget {
@@ -4746,11 +4964,21 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: child,
+        ClipRect(
+          child: ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 150, sigmaY: 150),
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.matrix(<double>[
+                0.14, 0.14, 0.14, 0, 0,
+                0.14, 0.14, 0.14, 0, 0,
+                0.14, 0.14, 0.14, 0, 0,
+                0, 0, 0, 1, 0,
+              ]),
+              child: child,
+            ),
+          ),
         ),
-        Container(color: Colors.black.withOpacity(0.54)),
+        Container(color: Colors.black.withOpacity(0.94)),
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -4762,7 +4990,7 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
                 border: Border.all(color: Colors.white.withOpacity(0.12)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.42),
+                    color: Colors.black.withOpacity(0.70),
                     blurRadius: 28,
                     offset: const Offset(0, 16),
                   ),
@@ -4836,8 +5064,9 @@ Future<String?> _pickAndUploadStoryMedia({required bool isVideo}) async {
         ? await picker.pickVideo(source: ImageSource.gallery)
         : await picker.pickImage(
             source: ImageSource.gallery,
-            imageQuality: 96,
-            maxWidth: 2400,
+            imageQuality: 34,
+            maxWidth: 840,
+            maxHeight: 840,
           );
 
     if (file == null) return null;
@@ -4878,9 +5107,9 @@ Future<String?> _pickAndUploadStoryMedia({required bool isVideo}) async {
           "originalName": file.name,
         },
       ),
-    ).timeout(const Duration(seconds: 70));
+    ).timeout(const Duration(seconds: 18));
 
-    return await ref.getDownloadURL().timeout(const Duration(seconds: 25));
+    return await ref.getDownloadURL().timeout(const Duration(seconds: 7));
   } on FirebaseException catch (e, st) {
     final detail = _firebaseUploadErrorMessage(e, area: "historia");
     debugPrint("No pude subir historia (Firebase): $detail\n$st");
@@ -5633,33 +5862,36 @@ class _MyStoryPreviewCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            type == "video"
-                ? Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _InlineNetworkVideoPlayer(
-                        url: url,
-                        aspectRatio: 9 / 16,
-                        controls: false,
-                        autoplay: false,
-                        loop: false,
-                        muted: true,
-                        fit: BoxFit.cover,
+            _protectiveStoryPreviewBlur(
+              cover: _storyNeedsProtectiveBlurForSafety(story),
+              child: type == "video"
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _InlineNetworkVideoPlayer(
+                          url: url,
+                          aspectRatio: 9 / 16,
+                          controls: false,
+                          autoplay: false,
+                          loop: false,
+                          muted: true,
+                          fit: BoxFit.cover,
+                        ),
+                        const Center(
+                          child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 48),
+                        ),
+                      ],
+                    )
+                  : Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(Icons.broken_image_rounded, color: Colors.white38, size: 38),
                       ),
-                      const Center(
-                        child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 48),
-                      ),
-                    ],
-                  )
-                : Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: Icon(Icons.broken_image_rounded, color: Colors.white38, size: 38),
                     ),
-                  ),
+            ),
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -5765,6 +5997,7 @@ class _GroupedStoryGridTile extends StatelessWidget {
     final username = group.username;
     final avatarUrl = group.avatarUrl;
     final count = group.count;
+    final previewStory = group.latest;
 
     return GestureDetector(
       onTap: () {
@@ -5784,22 +6017,25 @@ class _GroupedStoryGridTile extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            type == "video"
-                ? Container(
-                    color: const Color(0xFF181818),
-                    child: const Center(
-                      child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 50),
+            _protectiveStoryPreviewBlur(
+              cover: _storyNeedsProtectiveBlurForSafety(previewStory),
+              child: type == "video"
+                  ? Container(
+                      color: const Color(0xFF181818),
+                      child: const Center(
+                        child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 50),
+                      ),
+                    )
+                  : Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(Icons.broken_image_rounded, color: Colors.white38, size: 42),
+                      ),
                     ),
-                  )
-                : Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: Icon(Icons.broken_image_rounded, color: Colors.white38, size: 42),
-                    ),
-                  ),
+            ),
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -6966,12 +7202,39 @@ class _StoryViewerDialogState extends State<_StoryViewerDialog> {
     return key.isNotEmpty && _moderationInFlightStoryKeys.contains(key);
   }
 
+  int _storyModerationRuleVersion(Map<String, dynamic> story) {
+    final raw = story["moderationRuleVersion"];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse((raw ?? "0").toString()) ?? 0;
+  }
+
+  bool _storyRequiresModerationRecheck(Map<String, dynamic> story) {
+    final type = (story["type"] ?? "image").toString().trim().toLowerCase();
+    if (type != "image") return false;
+
+    final alreadyChecked =
+        story.containsKey("moderationRequiresBlur") || story.containsKey("moderationExplicitNudity");
+    if (!alreadyChecked) return true;
+
+    final cachedVersion = _storyModerationRuleVersion(story);
+    return cachedVersion < _StoryNudityModerationService.currentRuleVersion;
+  }
+
   bool _storyRequiresSensitiveBlur(Map<String, dynamic> story) {
     final key = _storySensitiveKey(story);
     if (key.isNotEmpty && _revealedSensitiveStoryKeys.contains(key)) return false;
 
     final requiresBlur = story["moderationRequiresBlur"] == true || story["moderationExplicitNudity"] == true;
-    return requiresBlur;
+    if (requiresBlur) return true;
+
+    // Regla de seguridad: mientras la historia está sin moderación nueva,
+    // con moderación fallida, o cacheada con reglas viejas, se muestra tapada.
+    // Se destapa sola únicamente cuando la versión actual la clasifica como segura.
+    if (_storyModerationInFlight(story)) return true;
+    if (_storyRequiresModerationRecheck(story)) return true;
+
+    return false;
   }
 
   void _revealSensitiveStory(Map<String, dynamic> story) {
@@ -6989,8 +7252,8 @@ class _StoryViewerDialogState extends State<_StoryViewerDialog> {
     final type = (story["type"] ?? "image").toString().trim().toLowerCase();
     if (type != "image") return;
 
-    final alreadyChecked = story.containsKey("moderationRequiresBlur") || story.containsKey("moderationExplicitNudity");
-    if (alreadyChecked) {
+    final shouldRecheckModeration = _storyRequiresModerationRecheck(story);
+    if (!shouldRecheckModeration) {
       if (_storyRequiresSensitiveBlur(story) && mounted && index == page) {
         setState(() => _paused = true);
       }
@@ -7002,7 +7265,12 @@ class _StoryViewerDialogState extends State<_StoryViewerDialog> {
     final key = _storySensitiveKey(story);
     if (url.isEmpty || key.isEmpty || _moderationInFlightStoryKeys.contains(key)) return;
 
-    setState(() => _moderationInFlightStoryKeys.add(key));
+    setState(() {
+      _moderationInFlightStoryKeys.add(key);
+      if (index == page && !_revealedSensitiveStoryKeys.contains(key)) {
+        _paused = true;
+      }
+    });
     final result = await _StoryNudityModerationService.classifyImageUrl(url);
     if (!mounted) return;
 
@@ -7012,6 +7280,7 @@ class _StoryViewerDialogState extends State<_StoryViewerDialog> {
       story.addAll({
         "moderationProvider": result.provider,
         "moderationAvailable": result.checked,
+        if (result.checked) "moderationRuleVersion": _StoryNudityModerationService.currentRuleVersion,
         "moderationExplicitNudity": result.explicitNudity,
         "moderationRequiresBlur": result.explicitNudity,
         "moderationNsfwScores": {
@@ -7024,6 +7293,8 @@ class _StoryViewerDialogState extends State<_StoryViewerDialog> {
       });
       if (index == page && result.explicitNudity && !_revealedSensitiveStoryKeys.contains(key)) {
         _paused = true;
+      } else if (index == page && result.checked && !result.explicitNudity) {
+        _paused = false;
       }
     });
 
@@ -7497,8 +7768,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ? await picker.pickVideo(source: ImageSource.gallery)
           : await picker.pickImage(
               source: ImageSource.gallery,
-              imageQuality: 92,
-              maxWidth: 1920,
+              imageQuality: 38,
+              maxWidth: 900,
+              maxHeight: 900,
             );
 
       if (file == null) return null;
@@ -7529,7 +7801,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       final uploadTask = ref.putData(bytes, metadata);
       await uploadTask.timeout(
-        const Duration(seconds: 60),
+        const Duration(seconds: 22),
         onTimeout: () {
           throw Exception(
             "La subida tardó demasiado. Revisá Storage/Rules o tu conexión y probá de nuevo.",
@@ -7538,7 +7810,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       );
 
       final downloadUrl = await ref.getDownloadURL().timeout(
-        const Duration(seconds: 25),
+        const Duration(seconds: 8),
         onTimeout: () {
           throw Exception(
             "La foto subió, pero no pude obtener la URL pública de descarga.",
@@ -10256,39 +10528,73 @@ Future<_PickedChatMedia?> _pickChatMedia({
   required bool isVideo,
   required ImageSource source,
 }) async {
-  // MODO ESTRICTO CÁMARA / GALERÍA:
-  // En Flutter Web, ImagePicker no puede certificar que ImageSource.camera sea
-  // una captura real hecha en el momento. En escritorio/navegador puede abrir
-  // un selector con acceso a galería/archivos, y eso NO puede marcarse como
-  // "de cámara". Por eso, si el origen pedido es cámara y estamos en web,
-  // se bloquea antes de abrir el picker. Así nunca se etiqueta como cámara
-  // algo que pudo venir de galería.
+  // v77: CÁMARA WEB REAL, NO PICKER.
+  // En Flutter Web, ImagePicker/ImageSource.camera puede abrir galería o selector mixto.
+  // Eso no sirve para la metodología "en vivo". Por eso, si es Web + cámara,
+  // se usa getUserMedia desde web_only.dart: preview real, capturar/grabar y devolver bytes.
+  // Galería sigue separada y explícita. Android/iOS nativo siguen usando ImageSource.camera.
   if (kIsWeb && source == ImageSource.camera) {
-    throw Exception(
-      'Modo cámara estricto: en web/PC no se puede certificar captura real. Usá galería o probá cámara desde app móvil nativa.',
+    final captured = await html.captureLiveChatMedia(isVideo: isVideo)
+        .timeout(isVideo ? const Duration(seconds: 75) : const Duration(seconds: 45));
+    if (captured == null) return null;
+
+    final bytes = captured['bytes'];
+    final name = (captured['name'] ?? '').toString().trim();
+    final mimeType = (captured['mimeType'] ?? '').toString().trim();
+    if (bytes is! Uint8List || bytes.isEmpty) {
+      throw Exception('La cámara no devolvió un archivo válido.');
+    }
+
+    final finalName = name.isNotEmpty
+        ? name
+        : (isVideo
+            ? 'camara_en_vivo_${DateTime.now().millisecondsSinceEpoch}.webm'
+            : 'camara_en_vivo_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+    final file = XFile.fromData(
+      bytes,
+      name: finalName,
+      mimeType: mimeType.isNotEmpty ? mimeType : (isVideo ? 'video/webm' : 'image/jpeg'),
+    );
+
+    return _PickedChatMedia(
+      file: file,
+      bytes: bytes,
+      isVideo: isVideo,
+      sourceLabel: isVideo ? 'video en vivo' : 'foto en vivo',
     );
   }
 
   final picker = ImagePicker();
   final XFile? file = isVideo
-      ? await picker.pickVideo(source: source)
-      : await picker.pickImage(
-          source: source,
-          imageQuality: 94,
-          maxWidth: 2400,
-        );
+      ? await picker
+          .pickVideo(
+            source: source,
+            maxDuration: source == ImageSource.camera ? const Duration(seconds: 30) : null,
+          )
+          .timeout(const Duration(minutes: 2))
+      : await picker
+          .pickImage(
+            source: source,
+            imageQuality: source == ImageSource.camera ? 34 : 38,
+            maxWidth: source == ImageSource.camera ? 820 : 900,
+            maxHeight: source == ImageSource.camera ? 820 : 900,
+          )
+          .timeout(const Duration(minutes: 2));
 
   if (file == null) return null;
-  final bytes = await file.readAsBytes();
+  final bytes = await file.readAsBytes().timeout(const Duration(seconds: 8));
   if (bytes.isEmpty) throw Exception('El archivo está vacío.');
 
-  final strictSourceLabel = source == ImageSource.camera ? 'de cámara' : 'de galería';
+  final sourceLabel = source == ImageSource.camera
+      ? (isVideo ? 'video en vivo' : 'foto en vivo')
+      : 'de galería';
 
   return _PickedChatMedia(
     file: file,
     bytes: bytes,
     isVideo: isVideo,
-    sourceLabel: strictSourceLabel,
+    sourceLabel: sourceLabel,
   );
 }
 
@@ -10320,9 +10626,9 @@ Future<String> _uploadChatMedia({
         'originalName': picked.file.name,
       },
     ),
-  ).timeout(const Duration(seconds: 90));
+  ).timeout(const Duration(seconds: 18));
 
-  return ref.getDownloadURL().timeout(const Duration(seconds: 25));
+  return ref.getDownloadURL().timeout(const Duration(seconds: 7));
 }
 
 Future<void> _openChatMediaPickerSheet({
@@ -10350,12 +10656,11 @@ Future<void> _openChatMediaPickerSheet({
       );
     } catch (e) {
       if (!context.mounted) return;
-      final strictCameraBlocked = source == ImageSource.camera && kIsWeb;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            strictCameraBlocked
-                ? 'Cámara estricta bloqueada en web: si el navegador puede abrir galería, no se marca como cámara.'
+            source == ImageSource.camera
+                ? 'No pude abrir la cámara. Revisá permisos del navegador/app o usá galería: $e'
                 : 'No pude elegir el archivo: $e',
           ),
         ),
@@ -10383,21 +10688,21 @@ Future<void> _openChatMediaPickerSheet({
               ),
               const SizedBox(height: 6),
               Text(
-                'Modo estricto: cámara solo si la plataforma garantiza captura real. En web/PC no se etiqueta como cámara si puede venir de galería.',
+                'Cámara en vivo real: en Web abre preview de cámara y captura/graba desde el dispositivo. Galería queda separada como archivo existente.',
                 style: TextStyle(color: Colors.white.withOpacity(0.58), height: 1.28),
               ),
               const SizedBox(height: 18),
               _ChatMediaSourceButton(
                 icon: Icons.photo_camera_rounded,
                 title: 'Foto desde cámara',
-                subtitle: kIsWeb ? 'bloqueado en web / PC' : 'captura real en el momento',
+                subtitle: kIsWeb ? 'preview real + capturar ahora' : 'captura real en el momento',
                 onTap: () => choose(isVideo: false, source: ImageSource.camera),
               ),
               const SizedBox(height: 9),
               _ChatMediaSourceButton(
                 icon: Icons.videocam_rounded,
                 title: 'Video desde cámara',
-                subtitle: kIsWeb ? 'bloqueado en web / PC' : 'grabación real en el momento',
+                subtitle: kIsWeb ? 'preview real + grabar ahora' : 'grabación real en el momento',
                 onTap: () => choose(isVideo: true, source: ImageSource.camera),
               ),
               const SizedBox(height: 9),
@@ -10449,7 +10754,7 @@ Future<void> _showChatMediaSendPreview({
         'type': 'media',
         'mediaType': picked.isVideo ? 'video' : 'image',
         'mediaUrl': url,
-        'mediaSource': picked.sourceLabel == 'de cámara' ? 'camera' : 'gallery',
+        'mediaSource': (picked.sourceLabel.contains('cámara') || picked.sourceLabel.contains('vivo')) ? 'camera' : 'gallery',
         'mediaSourceLabel': picked.sourceLabel,
         'temporal': temporal,
         'openedByAnonimo': false,
@@ -10738,14 +11043,14 @@ class _ChatMediaOriginBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.42),
+        color: Colors.black.withOpacity(0.70),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.white.withOpacity(0.20)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(label == 'de cámara' ? Icons.photo_camera_rounded : Icons.photo_library_rounded, color: Colors.white, size: 14),
+          Icon((label.contains('cámara') || label.contains('vivo')) ? Icons.photo_camera_rounded : Icons.photo_library_rounded, color: Colors.white, size: 14),
           const SizedBox(width: 5),
           Text(label, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w900)),
         ],
@@ -11511,7 +11816,7 @@ class _ChatMessageBubble extends StatelessWidget {
                               height: 54,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.black.withOpacity(0.42),
+                                color: Colors.black.withOpacity(0.70),
                                 border: Border.all(color: Colors.white.withOpacity(0.22)),
                               ),
                               child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 36),
@@ -16710,3 +17015,85 @@ void _showAdminRawDataSheet(BuildContext context, String title, String id, Map<S
 // Línea auditoría V71 89: explorador de conversaciones y filtros admin conservados.
 // Línea auditoría V71 90: explorador de conversaciones y filtros admin conservados.
 // ===================================================================
+
+
+// ============================================================================
+// SAYITTOME V85 - BLUR + UPLOAD SPEED + APK UPDATE NOTICE
+// ============================================================================
+// Base real usada: main_story_blur_protective_recheck_v82.dart.
+// Esta versión NO parte del archivo achicado v83/v84.
+// Mantiene el recheck automático protector de historias.
+// Mantiene la lógica de tapar primero y liberar después si la moderación confirma seguro.
+// Cambia únicamente:
+// - blur visual más fuerte para historias sensibles;
+// - compresión/resolución más agresiva para acelerar fotos;
+// - timeouts más cortos para evitar envíos clavados;
+// - aviso visible en descarga Android sobre actualizar APK o usar Web.
+// Metodología respetada:
+// - archivo completo listo para reemplazar;
+// - no achicar respecto del baseline v82;
+// - conservar lógica existente.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V86 - ULTRA BLUR + FASTER PHOTO UPLOADS + GREEN APK NOTICE
+// ============================================================================
+// Base real usada: main_blur_uploads_downloadnote_v85_not_shrunk.dart.
+// No se achica el archivo.
+// Cambios:
+// - blur visual todavía más fuerte;
+// - compresión más agresiva para fotos de historias/perfil/chat;
+// - timeouts más cortos para evitar estados clavados;
+// - aviso verde fosforescente de APK nuevo en la zona de descarga;
+// - recomendación de usar Web para estar siempre actualizado.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V87 - REAL IMPACT PATCH
+// ============================================================================
+// Base: main_ultra_blur_fast_uploads_apk_notice_v86.dart.
+// Cambios visibles reforzados:
+// - blur sensible extremo: sigma 96 + overlay negro más fuerte;
+// - thumbnails/previews sensibles más ocultos;
+// - uploads de fotos aún más comprimidos y rápidos;
+// - cartel verde fosforescente real insertado en el bloque de descarga Android;
+// - mensaje claro: APK requiere descargar nueva versión tras cada actualización o usar Web.
+// No achicar: se conserva y aumenta respecto de v86.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V88 - TRUE SAFE BLUR + 24H APK NOTICE
+// ============================================================================
+// Base: main_real_impact_blur_fast_apk_notice_v87.dart.
+// Cambios reales:
+// - blur sensible extremo con sigma 140 en visor;
+// - preview sensible con sigma 110;
+// - capa negra casi opaca;
+// - escala + filtro de grises para que no se reconozca la silueta;
+// - uploads de fotos aún más rápidos;
+// - cartel APK verde dinámico: aparece solo durante 24 hs desde el último APK publicado;
+// - luego desaparece automáticamente hasta que actualicemos el timestamp en un nuevo push APK.
+// No achicar: archivo completo, listo para reemplazar.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V89 - FIX BLUR COVER LAYOUT BUG
+// ============================================================================
+// Base: main_true_safe_blur_fast_uploads_apk24h_v88.dart.
+// Corrige la tapadera bugueada:
+// - se elimina el Transform.scale que rompía la grilla;
+// - se agrega ClipRect para que el blur no se salga de cada tarjeta;
+// - se mantiene blur fuerte con filtro gris + capa oscura;
+// - se conserva aviso APK 24 hs;
+// - se conservan uploads rápidos.
+// No achicar: archivo completo listo para reemplazar.
+// ============================================================================
+
