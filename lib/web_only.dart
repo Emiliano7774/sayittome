@@ -24,6 +24,8 @@ typedef ScriptElement = dart_html.ScriptElement;
 final js_util = _JsUtilAdapter();
 final ui_web = _UiWebAdapter();
 
+final platformViewRegistry = dart_ui_web.platformViewRegistry;
+
 class _JsUtilAdapter {
   T getProperty<T>(Object? object, Object name) {
     if (object == null) {
@@ -48,6 +50,7 @@ class _UiWebAdapter {
   dynamic get platformViewRegistry => dart_ui_web.platformViewRegistry;
 }
 
+// Compatibilidad cuando main.dart importa este archivo como js_util.
 T getProperty<T>(Object? object, Object name) {
   return js_util.getProperty<T>(object, name);
 }
