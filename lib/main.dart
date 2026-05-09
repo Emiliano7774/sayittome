@@ -4881,9 +4881,13 @@ Future<String?> _pickAndUploadStoryMedia({required bool isVideo}) async {
     ).timeout(const Duration(seconds: 70));
 
     return await ref.getDownloadURL().timeout(const Duration(seconds: 25));
-  } catch (e) {
-    debugPrint("No pude subir historia: $e");
-    return null;
+  } on FirebaseException catch (e, st) {
+    final detail = _firebaseUploadErrorMessage(e, area: "historia");
+    debugPrint("No pude subir historia (Firebase): $detail\n$st");
+    throw Exception(detail);
+  } catch (e, st) {
+    debugPrint("No pude subir historia: $e\n$st");
+    throw Exception("No pude subir la historia: $e");
   }
 }
 
@@ -4896,6 +4900,37 @@ String _storyContentTypeFromName(String name, {required bool isVideo}) {
   if (lower.endsWith('.webm')) return 'video/webm';
   if (lower.endsWith('.mp4')) return 'video/mp4';
   return isVideo ? 'video/mp4' : 'image/jpeg';
+}
+
+String _firebaseUploadErrorMessage(FirebaseException e, {required String area}) {
+  final code = e.code.trim().isEmpty ? "unknown" : e.code.trim();
+  final message = (e.message ?? "").trim();
+
+  if (code == "unauthorized" || code == "permission-denied") {
+    return "Firebase Storage rechazó la subida de $area [${code}]. Revisá Storage Rules para permitir write en usuarios/{uid}/... al usuario logueado.";
+  }
+  if (code == "canceled") {
+    return "La subida de $area fue cancelada antes de terminar.";
+  }
+  if (code == "retry-limit-exceeded") {
+    return "La subida de $area se cortó por conexión lenta/inestable o por timeout de Storage.";
+  }
+  if (code == "quota-exceeded") {
+    return "Firebase Storage rechazó la subida de $area porque se superó la cuota del bucket.";
+  }
+  if (code == "object-not-found") {
+    return "El archivo de $area se subió mal o la ruta no existe al pedir la URL de descarga.";
+  }
+  if (code == "bucket-not-found") {
+    return "No existe el bucket de Firebase Storage configurado para la app.";
+  }
+  if (code == "unauthenticated") {
+    return "No hay sesión válida para subir $area. Cerrá sesión, volvé a entrar y probá de nuevo.";
+  }
+
+  return message.isEmpty
+      ? "No pude subir $area por un error de Firebase Storage [$code]."
+      : "No pude subir $area por un error de Firebase Storage [$code]: $message";
 }
 
 Future<void> _createStoryFromPicker(BuildContext context, {required bool isVideo}) async {
@@ -4915,10 +4950,19 @@ Future<void> _createStoryFromPicker(BuildContext context, {required bool isVideo
     SnackBar(content: Text(isVideo ? "Elegí un video para tu historia..." : "Elegí una foto para tu historia...")),
   );
 
-  final url = await _pickAndUploadStoryMedia(isVideo: isVideo);
+  String? url;
+  try {
+    url = await _pickAndUploadStoryMedia(isVideo: isVideo);
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
+    );
+    return;
+  }
+
   if (url == null) {
     messenger.showSnackBar(
-      const SnackBar(content: Text("No se subió ninguna historia.")),
+      const SnackBar(content: Text("No se eligió ningún archivo para la historia.")),
     );
     return;
   }
@@ -7504,12 +7548,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       return downloadUrl;
     } on FirebaseException catch (e) {
-      final code = e.code;
-      final message = e.message ?? "Firebase Storage rechazó la subida.";
+      final detail = _firebaseUploadErrorMessage(e, area: isVideo ? "video de perfil" : "foto de perfil");
       if (mounted) {
         setState(() {
-          error = "Storage error [$code]: $message. Revisá las reglas de Firebase Storage.";
+          error = detail;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(detail)),
+        );
       }
       return null;
     } catch (e) {
@@ -7567,6 +7613,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final url = await pickAndUploadMedia(isVideo: false, folder: "foto_principal");
     if (url != null && mounted) {
       setState(() => fotoPrincipal = url);
+      await _persistPhotoOrderOnly(_orderedPhotoUrlsForEdit());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Foto de perfil subida y guardada ✅")),
+        );
+      }
     }
 
     if (mounted) {
@@ -7598,12 +7650,21 @@ class _EditProfilePageState extends State<EditProfilePage> {
           videos.add(url);
         } else {
           if (fotoPrincipal.trim().isEmpty) {
-        fotoPrincipal = url;
-      } else {
-        fotos.add(url);
-      }
+            fotoPrincipal = url;
+          } else {
+            fotos.add(url);
+          }
         }
       });
+
+      if (!isVideo) {
+        await _persistPhotoOrderOnly(_orderedPhotoUrlsForEdit());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Foto subida y guardada ✅")),
+          );
+        }
+      }
     }
 
     if (mounted) {
@@ -10371,9 +10432,14 @@ Future<void> _showChatMediaSendPreview({
 }) async {
   var sending = false;
 
-  Future<void> send(BuildContext dialogContext, {required bool temporal}) async {
+  Future<void> send(
+    BuildContext dialogContext, {
+    required bool temporal,
+    void Function(bool value)? onSendingChanged,
+  }) async {
     if (sending) return;
     sending = true;
+    onSendingChanged?.call(true);
     try {
       final url = await _uploadChatMedia(picked: picked, chatId: chatId, sender: sender);
       await onSendPayload({
@@ -10394,6 +10460,7 @@ Future<void> _showChatMediaSendPreview({
       if (dialogContext.mounted) Navigator.pop(dialogContext);
     } catch (e) {
       sending = false;
+      onSendingChanged?.call(false);
       if (!dialogContext.mounted) return;
       ScaffoldMessenger.of(dialogContext).showSnackBar(
         SnackBar(content: Text('No pude mandar el archivo: $e')),
@@ -10408,8 +10475,20 @@ Future<void> _showChatMediaSendPreview({
       return StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           Future<void> guardedSend({required bool temporal}) async {
-            setDialogState(() => sending = true);
-            await send(dialogContext, temporal: temporal);
+            // FIX celular foto bombita: antes este guard ponía sending=true
+            // antes de entrar a send(); entonces send() veía sending=true,
+            // hacía return inmediato y el diálogo quedaba clavado en “Enviando...”.
+            // Ahora send() es la única función que activa/desactiva el lock,
+            // y este callback solo refresca el StatefulBuilder.
+            await send(
+              dialogContext,
+              temporal: temporal,
+              onSendingChanged: (value) {
+                if (dialogContext.mounted) {
+                  setDialogState(() => sending = value);
+                }
+              },
+            );
           }
 
           return Dialog.fullscreen(
@@ -16133,34 +16212,225 @@ class _AdminMessageAuditCard extends StatelessWidget {
             const SizedBox(height: 6),
             SelectableText(mediaUrl, style: TextStyle(color: Colors.white.withOpacity(0.58), fontSize: 12, height: 1.25)),
             const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 260),
-                color: Colors.black,
-                child: mediaType.toLowerCase().contains("image") || mediaUrl.toLowerCase().contains(".jpg") || mediaUrl.toLowerCase().contains(".png") || mediaUrl.toLowerCase().contains("image")
-                    ? Image.network(mediaUrl, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const _CenterSoftText(text: "No pude previsualizar esta imagen."))
-                    : Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 30),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                "Video/archivo disponible por URL para revisión admin.",
-                                style: TextStyle(color: Colors.white.withOpacity(0.68), fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-              ),
+            _AdminMediaAuditPreview(
+              mediaUrl: mediaUrl,
+              mediaType: mediaType,
+              isTemporal: isTemporal,
             ),
           ],
           const SizedBox(height: 8),
           Text("messageId: ${_adminPanelShort(messageId, max: 12)}", style: TextStyle(color: Colors.white.withOpacity(0.34), fontSize: 11.5)),
         ],
+      ),
+    );
+  }
+}
+
+class _AdminMediaAuditPreview extends StatelessWidget {
+  final String mediaUrl;
+  final String mediaType;
+  final bool isTemporal;
+
+  const _AdminMediaAuditPreview({
+    required this.mediaUrl,
+    required this.mediaType,
+    required this.isTemporal,
+  });
+
+  bool get _looksImage {
+    final t = mediaType.toLowerCase();
+    final u = mediaUrl.toLowerCase();
+    return t.contains('image') || u.contains('.jpg') || u.contains('.jpeg') || u.contains('.png') || u.contains('.webp') || u.contains('image');
+  }
+
+  bool get _looksVideo {
+    final t = mediaType.toLowerCase();
+    final u = mediaUrl.toLowerCase();
+    return t.contains('video') || u.contains('.mp4') || u.contains('.mov') || u.contains('.webm') || u.contains('video');
+  }
+
+  void _openAdminFullScreen(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.96),
+      builder: (dialogContext) {
+        return Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Center(
+                    child: _looksVideo
+                        ? Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: _InlineNetworkVideoPlayer(
+                              url: mediaUrl,
+                              aspectRatio: 16 / 9,
+                              controls: true,
+                              autoplay: false,
+                              loop: false,
+                              muted: false,
+                              fit: BoxFit.contain,
+                            ),
+                          )
+                        : InteractiveViewer(
+                            minScale: 1,
+                            maxScale: 6,
+                            child: Image.network(
+                              mediaUrl,
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.high,
+                              gaplessPlayback: true,
+                              // Fix admin móvil/web: Firebase Storage puede fallar en CanvasKit por CORS.
+                              // En auditoría admin usamos elemento HTML preferido para poder ver TODO,
+                              // incluso temporales/ver-una-vez, sin marcar el mensaje como abierto.
+                              webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                              loadingBuilder: (context, child, progress) {
+                                if (progress == null) return child;
+                                return const Center(child: CircularProgressIndicator());
+                              },
+                              errorBuilder: (_, error, ___) => Padding(
+                                padding: const EdgeInsets.all(22),
+                                child: Text(
+                                  'No pude abrir esta imagen en modo admin. Error: $error',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.white.withOpacity(0.72), fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  right: 72,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.68),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    ),
+                    child: Text(
+                      isTemporal ? 'Auditoría admin: temporal visible sin marcarlo como abierto' : 'Auditoría admin: media visible',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12.5),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 10,
+                  right: 12,
+                  child: _RoundOverlayIconButton(
+                    icon: Icons.close_rounded,
+                    onTap: () => Navigator.pop(dialogContext),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _openAdminFullScreen(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 180, maxHeight: 300),
+          width: double.infinity,
+          color: Colors.black,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (_looksImage)
+                Positioned.fill(
+                  child: Image.network(
+                    mediaUrl,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
+                    // Fix central: evita que el panel admin web/móvil falle al renderizar
+                    // imágenes de Firebase Storage por restricciones CORS de CanvasKit.
+                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                    },
+                    errorBuilder: (_, error, ___) => Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Text(
+                        'No pude previsualizar esta imagen en admin. Tocá para abrir pantalla completa. Error: $error',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white.withOpacity(0.68), fontWeight: FontWeight.w800, height: 1.25),
+                      ),
+                    ),
+                  ),
+                )
+              else if (_looksVideo)
+                Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: _InlineNetworkVideoPlayer(
+                    url: mediaUrl,
+                    aspectRatio: 16 / 9,
+                    controls: true,
+                    autoplay: false,
+                    loop: false,
+                    muted: false,
+                    fit: BoxFit.contain,
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.insert_drive_file_rounded, color: Colors.white, size: 30),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Archivo disponible por URL para revisión admin. Tocá para abrir.',
+                          style: TextStyle(color: Colors.white.withOpacity(0.68), fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.58),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(isTemporal ? Icons.brightness_1_rounded : Icons.open_in_full_rounded, color: const Color(0xFFFFD98B), size: 14),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          isTemporal ? 'Admin puede auditar temporal · tocar para ampliar' : 'Tocar para ampliar',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
