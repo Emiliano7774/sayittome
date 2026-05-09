@@ -11792,6 +11792,132 @@ class _VerifiedProfileLinkBadge extends StatelessWidget {
   }
 }
 
+
+class _ChatAudioBubblePlayer extends StatefulWidget {
+  final String url;
+  final bool isMine;
+  final int durationMs;
+
+  const _ChatAudioBubblePlayer({
+    required this.url,
+    required this.isMine,
+    required this.durationMs,
+  });
+
+  @override
+  State<_ChatAudioBubblePlayer> createState() => _ChatAudioBubblePlayerState();
+}
+
+class _ChatAudioBubblePlayerState extends State<_ChatAudioBubblePlayer> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _playing = false;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<Duration>? _durationSub;
+  StreamSubscription<PlayerState>? _stateSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _duration = Duration(milliseconds: widget.durationMs);
+    _positionSub = _player.onPositionChanged.listen((value) {
+      if (mounted) setState(() => _position = value);
+    });
+    _durationSub = _player.onDurationChanged.listen((value) {
+      if (mounted) setState(() => _duration = value);
+    });
+    _stateSub = _player.onPlayerStateChanged.listen((state) {
+      if (mounted) setState(() => _playing = state == PlayerState.playing);
+    });
+  }
+
+  @override
+  void dispose() {
+    _positionSub?.cancel();
+    _durationSub?.cancel();
+    _stateSub?.cancel();
+    _player.dispose();
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  Future<void> _toggle() async {
+    if (_playing) {
+      await _player.pause();
+      return;
+    }
+    await _player.play(UrlSource(widget.url));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = _duration.inMilliseconds <= 0 ? Duration(milliseconds: widget.durationMs) : _duration;
+    final progress = total.inMilliseconds <= 0 ? 0.0 : (_position.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0);
+
+    return Container(
+      width: 230,
+      padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: widget.isMine ? const Color(0xFF6C63FF).withOpacity(0.18) : Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Row(
+        children: [
+          InkWell(
+            onTap: _toggle,
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.isMine ? const Color(0xFF6C63FF) : Colors.white.withOpacity(0.18),
+              ),
+              child: Icon(_playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 24),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 4,
+                  backgroundColor: Colors.white.withOpacity(0.14),
+                  valueColor: AlwaysStoppedAnimation<Color>(widget.isMine ? Colors.white : const Color(0xFF6C63FF)),
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Text(
+                      '${_fmt(_position)} / ${_fmt(total)}',
+                      style: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 11, fontWeight: FontWeight.w800),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'Ver texto',
+                      style: TextStyle(color: Colors.white.withOpacity(0.56), fontSize: 10.5, fontWeight: FontWeight.w900),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
 class _ChatMessageBubble extends StatelessWidget {
   final String chatId;
   final String messageId;
@@ -11926,7 +12052,8 @@ class _ChatMessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final type = (msg['type'] ?? 'text').toString();
-    final isMedia = type == 'media' || (msg['mediaUrl'] ?? '').toString().trim().isNotEmpty;
+    final isAudio = type == 'audio' || (msg['mediaType'] ?? '').toString() == 'audio';
+    final isMedia = isAudio || type == 'media' || (msg['mediaUrl'] ?? '').toString().trim().isNotEmpty;
     final deliveryStatus = _chatMessageDeliveryStatus(msg);
 
     if (!isMedia) {
@@ -11999,7 +12126,33 @@ class _ChatMessageBubble extends StatelessWidget {
     final mediaType = (msg['mediaType'] ?? 'image').toString();
     final url = (msg['mediaUrl'] ?? '').toString().trim();
     final label = (msg['mediaSourceLabel'] ?? '').toString().trim();
-    final title = mediaType == 'video' ? 'Video' : 'Foto';
+    final durationMs = _globalSafeInt(msg['audioDurationMs'] ?? msg['durationMs']);
+    final title = mediaType == 'audio' ? 'Audio' : (mediaType == 'video' ? 'Video' : 'Foto');
+
+    if (mediaType == 'audio') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Align(
+          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+          child: Column(
+            crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ChatAudioBubblePlayer(
+                url: url,
+                isMine: isMine,
+                durationMs: durationMs,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                deliveryStatus,
+                style: TextStyle(color: Colors.white.withOpacity(0.46), fontSize: 10.5, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     if (isTemporal) {
       final bubbleColor = isMine ? const Color(0xFF6C63FF) : const Color(0xFF1A1A1A);
@@ -12305,6 +12458,69 @@ class _TypingDotsBubbleState extends State<_TypingDotsBubble> with SingleTickerP
 }
 // ===================== FIN TYPING INDICATOR V65 =====================
 
+
+Future<Map<String, dynamic>?> _finishAndUploadLiveChatAudio({
+  required BuildContext context,
+  required String chatId,
+  required String sender,
+  required String receptorUid,
+}) async {
+  if (!kIsWeb) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Audios reales inline: en APK nativo falta sumar plugin Android/iOS. En Web ya funciona.")),
+    );
+    return null;
+  }
+
+  final result = await html.finishLiveChatAudioRecording();
+  if (result == null) return null;
+
+  final bytes = result['bytes'];
+  if (bytes is! Uint8List || bytes.isEmpty) return null;
+
+  final mimeType = (result['mimeType'] ?? 'audio/webm').toString();
+  final extension = (result['extension'] ?? 'webm').toString();
+  final durationMs = _globalSafeInt(result['durationMs']);
+
+  final safeSender = sender.trim().isEmpty ? 'anonimo' : sender.trim();
+  final path = "chats_anonimos/$chatId/audios/$safeSender/${DateTime.now().millisecondsSinceEpoch}_audio.$extension";
+
+  final ref = FirebaseStorage.instance.ref(path);
+  await ref.putData(
+    bytes,
+    SettableMetadata(
+      contentType: mimeType,
+      cacheControl: "public,max-age=31536000",
+      customMetadata: {
+        "chatId": chatId,
+        "sender": safeSender,
+        "type": "audio",
+        "durationMs": durationMs.toString(),
+      },
+    ),
+  ).timeout(const Duration(seconds: 45));
+
+  final url = await ref.getDownloadURL().timeout(const Duration(seconds: 12));
+
+  return {
+    "texto": "Audio",
+    "type": "audio",
+    "mediaType": "audio",
+    "mediaUrl": url,
+    "audioUrl": url,
+    "audioDurationMs": durationMs,
+    "durationMs": durationMs,
+    "mimeType": mimeType,
+    "receptorUid": receptorUid,
+    "chatId": chatId,
+    "temporal": false,
+    "transcriptionStatus": "pending",
+    "transcriptionText": "",
+  };
+}
+
+
+
 class ChatAnonPage extends StatefulWidget {
   final String receptorUid;
   final String receptorUsername;
@@ -12336,7 +12552,13 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _mensajesSubscription;
   bool _incomingSoundReady = false;
   bool _sendingText = false;
+  // Ultra-fast mode: el composer no bloquea escritura entre envíos.
   bool _temporarilyBlockedByAbuse = false;
+  bool _audioRecording = false;
+  bool _audioUploading = false;
+  DateTime? _audioStartedAt;
+  Timer? _audioTicker;
+  Duration _audioElapsed = Duration.zero;
   Timestamp? _temporarilyBlockedUntil;
   String _anonAbuseFingerprint = "";
 
@@ -12864,6 +13086,159 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
     );
   }
 
+  String _audioElapsedText() {
+    final m = _audioElapsed.inMinutes;
+    final s = _audioElapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  void _startAudioTicker() {
+    _audioTicker?.cancel();
+    _audioTicker = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (!mounted || _audioStartedAt == null) return;
+      setState(() => _audioElapsed = DateTime.now().difference(_audioStartedAt!));
+    });
+  }
+
+  Future<void> _recordAndSendAudio() async {
+    if (_audioRecording) {
+      await _finishAndSendAudio();
+      return;
+    }
+
+    final canContact = await _ensureAnonCanContactReceptor(showSnack: true);
+    if (!canContact) return;
+
+    await crearChatSiHaceFaltaParaPrimerMensaje();
+    final id = chatId;
+    if (id == null) return;
+
+    try {
+      await html.startLiveChatAudioRecording();
+      if (!mounted) return;
+      setState(() {
+        _audioRecording = true;
+        _audioUploading = false;
+        _audioStartedAt = DateTime.now();
+        _audioElapsed = Duration.zero;
+      });
+      _startAudioTicker();
+      _refocusComposerSoon();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("No pude iniciar el audio: $e")),
+      );
+    }
+  }
+
+  Future<void> _finishAndSendAudio() async {
+    if (!_audioRecording || _audioUploading) return;
+
+    final id = chatId;
+    if (id == null) {
+      await _cancelAudioRecording();
+      return;
+    }
+
+    setState(() => _audioUploading = true);
+    _audioTicker?.cancel();
+
+    try {
+      final payload = await _finishAndUploadLiveChatAudio(
+        context: context,
+        chatId: id,
+        sender: "anonimo",
+        receptorUid: widget.receptorUid,
+      );
+      if (payload != null) {
+        await _sendMediaPayload(payload);
+        _scrollChatToBottom(animated: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("No pude mandar el audio: $e")),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _audioRecording = false;
+          _audioUploading = false;
+          _audioStartedAt = null;
+          _audioElapsed = Duration.zero;
+        });
+        _refocusComposerSoon();
+      }
+    }
+  }
+
+  Future<void> _cancelAudioRecording() async {
+    _audioTicker?.cancel();
+    await html.cancelLiveChatAudioRecording();
+    if (!mounted) return;
+    setState(() {
+      _audioRecording = false;
+      _audioUploading = false;
+      _audioStartedAt = null;
+      _audioElapsed = Duration.zero;
+    });
+    _refocusComposerSoon();
+  }
+
+  Widget _inlineAudioRecorderPill() {
+    if (!_audioRecording) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161616),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withOpacity(0.10)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFF3B30),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _audioUploading ? "Enviando audio..." : "Grabando " + _audioElapsedText(),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12.5),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Podés seguir escribiendo mientras grabás",
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.white.withOpacity(0.46), fontWeight: FontWeight.w700, fontSize: 11.5),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: _audioUploading ? null : _cancelAudioRecording,
+              icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 19),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: _audioUploading ? null : _finishAndSendAudio,
+              icon: Icon(Icons.send_rounded, color: _audioUploading ? Colors.white24 : const Color(0xFF6C63FF), size: 20),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
   Future<void> setTyping(bool val) async {
     if (chatId == null) return;
     await FirebaseFirestore.instance
@@ -13123,6 +13498,7 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
               },
             ),
           ),
+          _inlineAudioRecorderPill(),
           if (_temporarilyBlockedByAbuse)
             Container(
               width: double.infinity,
@@ -13184,6 +13560,14 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
                       border: InputBorder.none,
                       counterText: "",
                     ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: "Mandar audio",
+                  onPressed: _temporarilyBlockedByAbuse ? null : _recordAndSendAudio,
+                  icon: Icon(
+                    Icons.mic_rounded,
+                    color: _temporarilyBlockedByAbuse ? Colors.white24 : Colors.white70,
                   ),
                 ),
                 IconButton(
@@ -13916,6 +14300,12 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _incomingSoundSubscription;
   bool _incomingSoundReady = false;
   bool _sendingText = false;
+  // Ultra-fast mode: el composer no bloquea escritura entre envíos.
+  bool _audioRecording = false;
+  bool _audioUploading = false;
+  DateTime? _audioStartedAt;
+  Timer? _audioTicker;
+  Duration _audioElapsed = Duration.zero;
 
   @override
   void initState() {
@@ -13952,6 +14342,7 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
 
   @override
   void dispose() {
+    _audioTicker?.cancel();
     _incomingSoundSubscription?.cancel();
     _chatScrollController.dispose();
     _messageFocusNode.dispose();
@@ -14161,6 +14552,149 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
       onSendPayload: _sendMediaPayload,
     );
   }
+
+  String _audioElapsedText() {
+    final m = _audioElapsed.inMinutes;
+    final s = _audioElapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  void _startAudioTicker() {
+    _audioTicker?.cancel();
+    _audioTicker = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (!mounted || _audioStartedAt == null) return;
+      setState(() => _audioElapsed = DateTime.now().difference(_audioStartedAt!));
+    });
+  }
+
+  Future<void> _recordAndSendAudio() async {
+    if (_audioRecording) {
+      await _finishAndSendAudio();
+      return;
+    }
+
+    final id = widget.chatId;
+    if (id.trim().isEmpty) return;
+
+    try {
+      await html.startLiveChatAudioRecording();
+      if (!mounted) return;
+      setState(() {
+        _audioRecording = true;
+        _audioUploading = false;
+        _audioStartedAt = DateTime.now();
+        _audioElapsed = Duration.zero;
+      });
+      _startAudioTicker();
+      _refocusComposerSoon();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("No pude iniciar el audio: $e")),
+      );
+    }
+  }
+
+  Future<void> _finishAndSendAudio() async {
+    if (!_audioRecording || _audioUploading) return;
+
+    setState(() => _audioUploading = true);
+    _audioTicker?.cancel();
+
+    try {
+      final payload = await _finishAndUploadLiveChatAudio(
+        context: context,
+        chatId: widget.chatId,
+        sender: "receptor",
+        receptorUid: FirebaseAuth.instance.currentUser?.uid ?? "",
+      );
+      if (payload != null) {
+        await _sendMediaPayload(payload);
+        _scrollChatToBottom(animated: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("No pude mandar el audio: $e")),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _audioRecording = false;
+          _audioUploading = false;
+          _audioStartedAt = null;
+          _audioElapsed = Duration.zero;
+        });
+        _refocusComposerSoon();
+      }
+    }
+  }
+
+  Future<void> _cancelAudioRecording() async {
+    _audioTicker?.cancel();
+    await html.cancelLiveChatAudioRecording();
+    if (!mounted) return;
+    setState(() {
+      _audioRecording = false;
+      _audioUploading = false;
+      _audioStartedAt = null;
+      _audioElapsed = Duration.zero;
+    });
+    _refocusComposerSoon();
+  }
+
+  Widget _inlineAudioRecorderPill() {
+    if (!_audioRecording) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161616),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withOpacity(0.10)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFF3B30),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _audioUploading ? "Enviando audio..." : "Grabando " + _audioElapsedText(),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12.5),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Podés seguir escribiendo mientras grabás",
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.white.withOpacity(0.46), fontWeight: FontWeight.w700, fontSize: 11.5),
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: _audioUploading ? null : _cancelAudioRecording,
+              icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 19),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: _audioUploading ? null : _finishAndSendAudio,
+              icon: Icon(Icons.send_rounded, color: _audioUploading ? Colors.white24 : const Color(0xFF6C63FF), size: 20),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   Future<void> setTyping(bool val) async {
     await FirebaseFirestore.instance
@@ -14373,6 +14907,7 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
               },
             ),
           ),
+          _inlineAudioRecorderPill(),
           Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
             decoration: const BoxDecoration(
@@ -14404,6 +14939,11 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
                       counterText: "",
                     ),
                   ),
+                ),
+                IconButton(
+                  tooltip: "Mandar audio",
+                  onPressed: _recordAndSendAudio,
+                  icon: const Icon(Icons.mic_rounded, color: Colors.white70),
                 ),
                 IconButton(
                   onPressed: enviarMensaje,
@@ -17584,5 +18124,64 @@ void _showAdminRawDataSheet(BuildContext context, String title, String id, Map<S
 // Nota: en navegadores/Android, ImagePicker puede depender del sistema;
 // el badge refleja el flujo elegido por el usuario: cámara o galería.
 // Archivo completo listo para reemplazar SOLO lib/main.dart.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V102 - WEB AUDIO MESSAGES + ULTRA FAST CHAT
+// ============================================================================
+// Base: main_v100_story_source_badge_camera_gallery.dart.
+// Cambios:
+// - audios reales en Web usando MediaRecorder;
+// - upload de audio a Firebase Storage;
+// - mensajes type/audio con mediaType/audio;
+// - reproductor inline con audioplayers;
+// - botón micrófono en ChatAnonPage y ChatReceptorPage;
+// - conserva envío de texto optimista ultra rápido;
+// - APK nativo compila, pero grabación nativa requiere plugin Android/iOS.
+// Archivo completo listo para reemplazar lib/main.dart.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V103 - FIX AUDIO BUILD ERRORS
+// ============================================================================
+// Base: sayittome_audio_web_ultrafast_v102.
+// Correcciones:
+// - elimina mediaType duplicado en _ChatMessageBubble;
+// - agrega helper real _recordAndUploadChatAudio top-level;
+// - corrige web_only.dart: sin CSS inset y sin MediaRecorder.onStop;
+// - mantiene audios Web, reproductor inline, mic en ambos chats y APK flow.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V104 - INLINE AUDIO RECORDER + NO MODAL + TRANSCRIPTION READY
+// ============================================================================
+// Base: main.dart recibido tras v103.
+// Cambios:
+// - elimina el modal bloqueante de audio;
+// - mic inicia grabación inline sin salir del chat;
+// - cápsula de grabación dentro del composer;
+// - se puede seguir escribiendo mientras graba;
+// - enviar/cancelar audio desde la cápsula;
+// - upload async al terminar;
+// - badge "Ver texto" preparado para transcripción;
+// - mantiene APK flow y features previas.
+// ============================================================================
+
+
+
+// ============================================================================
+// SAYITTOME V105 - FIX INLINE AUDIO ANON CHAT ID
+// ============================================================================
+// Base: sayittome_inline_audio_v104.
+// Corrección:
+// - _finishAndSendAudio() en ChatAnonPage ahora toma final id = chatId;
+// - evita usar una variable local id inexistente fuera del método de inicio;
+// - mantiene grabación inline, cápsula, escritura simultánea y APK flow.
 // ============================================================================
 

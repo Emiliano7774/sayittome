@@ -438,3 +438,121 @@ Future<DateTime?> getAndroidApkLastModifiedUtc(String path) async {
     return null;
   }
 }
+
+
+
+dart_html.MediaStream? _liveAudioStream;
+dart_html.MediaRecorder? _liveAudioRecorder;
+final List<dart_html.Blob> _liveAudioChunks = <dart_html.Blob>[];
+DateTime? _liveAudioStartedAt;
+
+Future<bool> startLiveChatAudioRecording() async {
+  final mediaDevices = dart_html.window.navigator.mediaDevices;
+  if (mediaDevices == null) {
+    throw StateError('Este navegador no expone micrófono. Probá Chrome/Samsung Internet/Safari actualizado y HTTPS.');
+  }
+
+  await cancelLiveChatAudioRecording();
+
+  _liveAudioStream = await mediaDevices.getUserMedia({'audio': true, 'video': false});
+  final mime = _bestAudioMimeType();
+  _liveAudioRecorder = dart_html.MediaRecorder(_liveAudioStream!, {'mimeType': mime});
+  _liveAudioChunks.clear();
+
+  _liveAudioRecorder!.addEventListener('dataavailable', (event) {
+    try {
+      final blob = dart_js_util.getProperty<Object?>(event, 'data');
+      if (blob is dart_html.Blob && blob.size > 0) {
+        _liveAudioChunks.add(blob);
+      }
+    } catch (_) {}
+  });
+
+  _liveAudioStartedAt = DateTime.now();
+  _liveAudioRecorder!.start(250);
+  return true;
+}
+
+Future<Map<String, Object?>?> finishLiveChatAudioRecording() async {
+  final recorder = _liveAudioRecorder;
+  final startedAt = _liveAudioStartedAt;
+  if (recorder == null || startedAt == null) return null;
+
+  try {
+    if (recorder.state != 'inactive') {
+      final done = Completer<void>();
+      void handleStop(dart_html.Event event) {
+        if (!done.isCompleted) done.complete();
+      }
+
+      recorder.addEventListener('stop', handleStop);
+      recorder.stop();
+      await done.future.timeout(const Duration(seconds: 8), onTimeout: () {});
+      recorder.removeEventListener('stop', handleStop);
+    }
+
+    final mime = _bestAudioMimeType();
+    final blob = dart_html.Blob(_liveAudioChunks, mime);
+    final bytes = await _blobToBytes(blob);
+    final elapsed = DateTime.now().difference(startedAt);
+
+    _stopLiveAudioOnly();
+
+    return {
+      'bytes': bytes,
+      'mimeType': mime,
+      'extension': _bestAudioExtension(mime),
+      'durationMs': elapsed.inMilliseconds,
+    };
+  } catch (e) {
+    _stopLiveAudioOnly();
+    rethrow;
+  }
+}
+
+Future<void> cancelLiveChatAudioRecording() async {
+  try {
+    if (_liveAudioRecorder != null && _liveAudioRecorder!.state != 'inactive') {
+      _liveAudioRecorder!.stop();
+    }
+  } catch (_) {}
+  _stopLiveAudioOnly();
+}
+
+void _stopLiveAudioOnly() {
+  if (_liveAudioStream != null) {
+    _stopStream(_liveAudioStream!);
+  }
+  _liveAudioStream = null;
+  _liveAudioRecorder = null;
+  _liveAudioStartedAt = null;
+  _liveAudioChunks.clear();
+}
+
+Future<Map<String, Object?>?> captureLiveChatAudio() async {
+  await startLiveChatAudioRecording();
+  // Compatibilidad: esta API vieja ya no muestra modal. Devolvemos null para evitar bloquear.
+  return null;
+}
+
+String _bestAudioMimeType() {
+  const candidates = <String>[
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4',
+  ];
+  for (final mime in candidates) {
+    try {
+      if (dart_html.MediaRecorder.isTypeSupported(mime)) return mime;
+    } catch (_) {}
+  }
+  return 'audio/webm';
+}
+
+String _bestAudioExtension(String mime) {
+  final clean = mime.toLowerCase();
+  if (clean.contains('mp4')) return 'm4a';
+  if (clean.contains('ogg')) return 'ogg';
+  return 'webm';
+}

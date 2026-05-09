@@ -153,3 +153,19 @@ Future<Map<String, Object?>?> captureLiveChatMedia({required bool isVideo}) asyn
 Future<DateTime?> getAndroidApkLastModifiedUtc(String path) async {
   return null;
 }
+
+
+Future<Map<String, Object?>?> captureLiveChatAudio() async {
+  throw UnsupportedError('La grabación de audio nativa requiere integrar plugin Android/iOS. En Web usa MediaRecorder.');
+}
+
+
+Future<bool> startLiveChatAudioRecording() async {
+  throw UnsupportedError('La grabación inline nativa requiere plugin Android/iOS. En Web usa MediaRecorder.');
+}
+
+Future<Map<String, Object?>?> finishLiveChatAudioRecording() async {
+  throw UnsupportedError('La grabación inline nativa requiere plugin Android/iOS. En Web usa MediaRecorder.');
+}
+
+Future<void> cancelLiveChatAudioRecording() async {}
