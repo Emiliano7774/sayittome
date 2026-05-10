@@ -1,3 +1,10 @@
+// ===================== V79 HISTORIAS TRUE BLUR ANDROID + AUDIO NATIVO + ADMIN AUDIO / NO-ACHICAR =====================
+// Cambio real:
+// - Audio inline ahora graba también en Android/iOS con record + path_provider.
+// - Auditoría admin reproduce audios guardados en audioUrl/mediaUrl.
+// - Historias suman fondo suave degradado/blur para evitar negro sólido en Android.
+// ===============================================================================================
+
 // ===================== V77 WEB LIVE CAMERA REAL / NO-ACHICAR =====================
 // Cambio real:
 // - Web cámara ya no usa ImagePicker: usa getUserMedia real con preview.
@@ -55,6 +62,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 
 // 🔥 LOCAL STORAGE (INVITADO)
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5058,12 +5067,16 @@ Widget _protectiveStoryPreviewBlur({
 class _SensitiveStoryBlurGate extends StatelessWidget {
   final bool blurred;
   final bool loading;
+  final String url;
+  final String type;
   final VoidCallback onReveal;
   final Widget child;
 
   const _SensitiveStoryBlurGate({
     required this.blurred,
     required this.loading,
+    required this.url,
+    required this.type,
     required this.onReveal,
     required this.child,
   });
@@ -5078,65 +5091,109 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!blurred) return child;
 
+    final cleanUrl = url.trim();
+    final normalizedType = type.trim().toLowerCase();
+    final canPaintImageBackdrop = cleanUrl.isNotEmpty && normalizedType != "video";
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Fondo real detrás: queda apenas insinuado, pero sin depender de un blur pesado.
-        // Esto mantiene performance y se ve consistente en Web/Android.
+        // TRUE BLUR ANDROID/WEB:
+        // En Android el blur aplicado sobre el child centrado podía terminar viéndose
+        // como una tapadera negra porque el contenido real estaba dentro de un Center
+        // con BoxFit.contain. Para que se vea igual que en Web, pintamos primero
+        // la misma foto en modo cover a pantalla completa y le aplicamos blur real.
+        if (canPaintImageBackdrop)
+          Positioned.fill(
+            child: ClipRect(
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+                child: Image.network(
+                  cleanUrl,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.low,
+                  gaplessPlayback: true,
+                  webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          )
+        else
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF050509),
+                    Color(0xFF111122),
+                    Color(0xFF050509),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // Segunda capa: también blurrea el contenido encuadrado real.
+        // Esto evita que Android muestre "foto clara" por encima del fondo borroso.
         ClipRect(
-          child: ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: ColorFiltered(
-              colorFilter: const ColorFilter.matrix(<double>[
-                0.36, 0.36, 0.36, 0, 0,
-                0.36, 0.36, 0.36, 0, 0,
-                0.36, 0.36, 0.36, 0, 0,
-                0, 0, 0, 1, 0,
-              ]),
-              child: child,
+          child: Opacity(
+            opacity: 0.72,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+              child: ColorFiltered(
+                colorFilter: const ColorFilter.matrix(<double>[
+                  0.58, 0.58, 0.58, 0, 0,
+                  0.58, 0.58, 0.58, 0, 0,
+                  0.58, 0.58, 0.58, 0, 0,
+                  0, 0, 0, 1, 0,
+                ]),
+                child: child,
+              ),
             ),
           ),
         ),
 
-        // Base negra pareja: oscurece todo sin convertirlo en bloque muerto.
-        Container(color: Colors.black.withOpacity(0.58)),
+        // Oscurecimiento liviano: suficiente para proteger, sin matar el blur.
+        Container(color: Colors.black.withOpacity(0.30)),
 
-        // Viñeta radial cinematográfica:
-        // bordes más negros, centro un poco más claro alrededor del ojito.
+        // Viñeta premium tipo Web: bordes más oscuros, centro visible/borroso.
         Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
                   center: Alignment.center,
-                  radius: 0.86,
+                  radius: 0.92,
                   colors: [
-                    Colors.black.withOpacity(0.18),
-                    Colors.black.withOpacity(0.42),
-                    Colors.black.withOpacity(0.72),
+                    Colors.black.withOpacity(0.03),
+                    Colors.black.withOpacity(0.22),
+                    Colors.black.withOpacity(0.54),
                   ],
-                  stops: const [0.0, 0.46, 1.0],
+                  stops: const [0.0, 0.52, 1.0],
                 ),
               ),
             ),
           ),
         ),
 
-        // Aro suave central: crea el efecto de "ojo" aclarado sin mostrar demasiado.
+        // Brillo central suave, para que no se transforme en bloque negro sólido.
         Center(
           child: IgnorePointer(
             child: Container(
-              width: 210,
-              height: 210,
+              width: 230,
+              height: 230,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    Colors.white.withOpacity(0.105),
-                    Colors.white.withOpacity(0.040),
+                    Colors.white.withOpacity(0.12),
+                    Colors.white.withOpacity(0.04),
                     Colors.transparent,
                   ],
-                  stops: const [0.0, 0.44, 1.0],
+                  stops: const [0.0, 0.46, 1.0],
                 ),
               ),
             ),
@@ -5172,12 +5229,12 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF101010).withOpacity(0.90),
+                    color: const Color(0xFF101010).withOpacity(0.82),
                     borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: Colors.white.withOpacity(0.13)),
+                    border: Border.all(color: Colors.white.withOpacity(0.16)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.54),
+                        color: Colors.black.withOpacity(0.44),
                         blurRadius: 30,
                         offset: const Offset(0, 18),
                       ),
@@ -5218,7 +5275,7 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
                       Text(
                         "Esta historia puede incluir desnudez explícita. La dejamos cubierta para que elijas si verla o no.",
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white.withOpacity(0.68), height: 1.32, fontWeight: FontWeight.w700),
+                        style: TextStyle(color: Colors.white.withOpacity(0.72), height: 1.32, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 18),
                       SizedBox(
@@ -5255,7 +5312,6 @@ class _SensitiveStoryBlurGate extends StatelessWidget {
     );
   }
 }
-
 
 
 String _normalizeStoryUploadSource(String value) {
@@ -7099,6 +7155,72 @@ class _AdminStoryModerationButton extends StatelessWidget {
   }
 }
 
+
+class _StoryViewerSoftBackdrop extends StatelessWidget {
+  final String url;
+  final String type;
+
+  const _StoryViewerSoftBackdrop({
+    required this.url,
+    required this.type,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cleanUrl = url.trim();
+    final normalizedType = type.trim().toLowerCase();
+
+    return Positioned.fill(
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF050509),
+              Color(0xFF111122),
+              Color(0xFF050509),
+            ],
+          ),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (cleanUrl.isNotEmpty && normalizedType != "video")
+              Opacity(
+                opacity: 0.34,
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                  child: Image.network(
+                    cleanUrl,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                    gaplessPlayback: true,
+                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.10),
+                    Colors.black.withOpacity(0.04),
+                    Colors.black.withOpacity(0.20),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StoryViewerDialog extends StatefulWidget {
   final String profileUid;
   final List<Map<String, dynamic>> stories;
@@ -7744,9 +7866,12 @@ class _StoryViewerDialogState extends State<_StoryViewerDialog> {
                   return Stack(
                     fit: StackFit.expand,
                     children: [
+                      _StoryViewerSoftBackdrop(url: url, type: type),
                       _SensitiveStoryBlurGate(
                         blurred: _storyRequiresSensitiveBlur(story),
                         loading: _storyModerationInFlight(story),
+                        url: url,
+                        type: type,
                         onReveal: () => _revealSensitiveStory(story),
                         child: content,
                       ),
@@ -12459,35 +12584,138 @@ class _TypingDotsBubbleState extends State<_TypingDotsBubble> with SingleTickerP
 // ===================== FIN TYPING INDICATOR V65 =====================
 
 
+AudioRecorder? _nativeLiveChatAudioRecorder;
+String? _nativeLiveChatAudioPath;
+DateTime? _nativeLiveChatAudioStartedAt;
+
+Future<void> _startLiveChatAudioRecordingUniversal() async {
+  if (kIsWeb) {
+    await html.startLiveChatAudioRecording();
+    return;
+  }
+
+  final recorder = AudioRecorder();
+  final hasPermission = await recorder.hasPermission();
+  if (!hasPermission) {
+    await recorder.dispose();
+    throw Exception("Sin permiso de micrófono. Revisá permisos de la app en Android.");
+  }
+
+  final dir = await getTemporaryDirectory();
+  final path = "${dir.path}/sayittome_audio_${DateTime.now().millisecondsSinceEpoch}.m4a";
+
+  await recorder.start(
+    const RecordConfig(
+      encoder: AudioEncoder.aacLc,
+      bitRate: 128000,
+      sampleRate: 44100,
+      numChannels: 1,
+    ),
+    path: path,
+  );
+
+  _nativeLiveChatAudioRecorder = recorder;
+  _nativeLiveChatAudioPath = path;
+  _nativeLiveChatAudioStartedAt = DateTime.now();
+}
+
+Future<void> _cancelLiveChatAudioRecordingUniversal() async {
+  if (kIsWeb) {
+    await html.cancelLiveChatAudioRecording();
+    return;
+  }
+
+  final recorder = _nativeLiveChatAudioRecorder;
+  _nativeLiveChatAudioRecorder = null;
+  _nativeLiveChatAudioPath = null;
+  _nativeLiveChatAudioStartedAt = null;
+
+  if (recorder == null) return;
+  try {
+    await recorder.cancel();
+  } catch (e) {
+    debugPrint("No pude cancelar audio nativo: $e");
+  }
+  try {
+    await recorder.dispose();
+  } catch (e) {
+    debugPrint("No pude liberar recorder nativo: $e");
+  }
+}
+
+
 Future<Map<String, dynamic>?> _finishAndUploadLiveChatAudio({
   required BuildContext context,
   required String chatId,
   required String sender,
   required String receptorUid,
 }) async {
-  if (!kIsWeb) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Audios reales inline: en APK nativo falta sumar plugin Android/iOS. En Web ya funciona.")),
-    );
-    return null;
+  Uint8List? bytes;
+  String mimeType = 'audio/mp4';
+  String extension = 'm4a';
+  int durationMs = 0;
+
+  if (kIsWeb) {
+    final result = await html.finishLiveChatAudioRecording();
+    if (result == null) return null;
+
+    final webBytes = result['bytes'];
+    if (webBytes is! Uint8List || webBytes.isEmpty) return null;
+
+    bytes = webBytes;
+    mimeType = (result['mimeType'] ?? 'audio/webm').toString();
+    extension = (result['extension'] ?? 'webm').toString();
+    durationMs = _globalSafeInt(result['durationMs']);
+  } else {
+    final recorder = _nativeLiveChatAudioRecorder;
+    final startedAt = _nativeLiveChatAudioStartedAt;
+    _nativeLiveChatAudioRecorder = null;
+    _nativeLiveChatAudioStartedAt = null;
+
+    if (recorder == null) {
+      throw Exception("No había una grabación nativa activa.");
+    }
+
+    String? recordedPath;
+    try {
+      recordedPath = await recorder.stop();
+    } finally {
+      try {
+        await recorder.dispose();
+      } catch (e) {
+        debugPrint("No pude liberar recorder nativo: $e");
+      }
+    }
+
+    recordedPath = (recordedPath ?? _nativeLiveChatAudioPath ?? '').trim();
+    _nativeLiveChatAudioPath = null;
+
+    if (recordedPath.isEmpty) {
+      throw Exception("No se generó el archivo de audio.");
+    }
+
+    final audioFile = XFile(recordedPath);
+    bytes = await audioFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception("El audio quedó vacío.");
+    }
+
+    durationMs = startedAt == null ? 0 : DateTime.now().difference(startedAt).inMilliseconds;
+    mimeType = 'audio/mp4';
+    extension = 'm4a';
   }
 
-  final result = await html.finishLiveChatAudioRecording();
-  if (result == null) return null;
-
-  final bytes = result['bytes'];
-  if (bytes is! Uint8List || bytes.isEmpty) return null;
-
-  final mimeType = (result['mimeType'] ?? 'audio/webm').toString();
-  final extension = (result['extension'] ?? 'webm').toString();
-  final durationMs = _globalSafeInt(result['durationMs']);
+  final uploadBytes = bytes;
+  if (uploadBytes == null || uploadBytes.isEmpty) {
+    throw Exception("El audio quedó vacío.");
+  }
 
   final safeSender = sender.trim().isEmpty ? 'anonimo' : sender.trim();
   final path = "chats_anonimos/$chatId/audios/$safeSender/${DateTime.now().millisecondsSinceEpoch}_audio.$extension";
 
   final ref = FirebaseStorage.instance.ref(path);
   await ref.putData(
-    bytes,
+    uploadBytes,
     SettableMetadata(
       contentType: mimeType,
       cacheControl: "public,max-age=31536000",
@@ -13114,7 +13342,7 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
     if (id == null) return;
 
     try {
-      await html.startLiveChatAudioRecording();
+      await _startLiveChatAudioRecordingUniversal();
       if (!mounted) return;
       setState(() {
         _audioRecording = true;
@@ -13176,7 +13404,7 @@ class _ChatAnonPageState extends State<ChatAnonPage> {
 
   Future<void> _cancelAudioRecording() async {
     _audioTicker?.cancel();
-    await html.cancelLiveChatAudioRecording();
+    await _cancelLiveChatAudioRecordingUniversal();
     if (!mounted) return;
     setState(() {
       _audioRecording = false;
@@ -14577,7 +14805,7 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
     if (id.trim().isEmpty) return;
 
     try {
-      await html.startLiveChatAudioRecording();
+      await _startLiveChatAudioRecordingUniversal();
       if (!mounted) return;
       setState(() {
         _audioRecording = true;
@@ -14633,7 +14861,7 @@ class _ChatReceptorPageState extends State<ChatReceptorPage> {
 
   Future<void> _cancelAudioRecording() async {
     _audioTicker?.cancel();
-    await html.cancelLiveChatAudioRecording();
+    await _cancelLiveChatAudioRecordingUniversal();
     if (!mounted) return;
     setState(() {
       _audioRecording = false;
@@ -17349,7 +17577,7 @@ class _AdminMessageAuditCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final sender = _adminPanelString(data, ["sender", "from"], fallback: "desconocido");
     final text = _adminPanelString(data, ["texto", "text", "mensaje"], fallback: "");
-    final mediaUrl = _adminPanelString(data, ["mediaUrl", "url", "imageUrl", "videoUrl", "downloadUrl"], fallback: "");
+    final mediaUrl = _adminPanelString(data, ["audioUrl", "mediaUrl", "url", "imageUrl", "videoUrl", "downloadUrl"], fallback: "");
     final mediaType = _adminPanelString(data, ["mediaType", "tipoMedia", "type"], fallback: mediaUrl.isEmpty ? "texto" : "media");
     final isTemporal = _adminPanelBool(data, ["isTemporal", "temporal", "verUnaVez", "viewOnce", "originalTemporal"]);
     final opened = _adminPanelBool(data, ["opened", "openedByReceiver", "vistoTemporal", "viewOnceOpened"]);
@@ -17418,6 +17646,12 @@ class _AdminMediaAuditPreview extends StatelessWidget {
     required this.isTemporal,
   });
 
+  bool get _looksAudio {
+    final t = mediaType.toLowerCase();
+    final u = mediaUrl.toLowerCase();
+    return t.contains('audio') || u.contains('.m4a') || u.contains('.mp3') || u.contains('.wav') || u.contains('.aac');
+  }
+
   bool get _looksImage {
     final t = mediaType.toLowerCase();
     final u = mediaUrl.toLowerCase();
@@ -17442,20 +17676,29 @@ class _AdminMediaAuditPreview extends StatelessWidget {
               children: [
                 Positioned.fill(
                   child: Center(
-                    child: _looksVideo
+                    child: _looksAudio
                         ? Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: _InlineNetworkVideoPlayer(
+                            padding: const EdgeInsets.all(22),
+                            child: _ChatAudioBubblePlayer(
                               url: mediaUrl,
-                              aspectRatio: 16 / 9,
-                              controls: true,
-                              autoplay: false,
-                              loop: false,
-                              muted: false,
-                              fit: BoxFit.contain,
+                              isMine: false,
+                              durationMs: 0,
                             ),
                           )
-                        : InteractiveViewer(
+                        : _looksVideo
+                            ? Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: _InlineNetworkVideoPlayer(
+                                  url: mediaUrl,
+                                  aspectRatio: 16 / 9,
+                                  controls: true,
+                                  autoplay: false,
+                                  loop: false,
+                                  muted: false,
+                                  fit: BoxFit.contain,
+                                ),
+                              )
+                            : InteractiveViewer(
                             minScale: 1,
                             maxScale: 6,
                             child: Image.network(
@@ -17529,7 +17772,18 @@ class _AdminMediaAuditPreview extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              if (_looksImage)
+              if (_looksAudio)
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Center(
+                    child: _ChatAudioBubblePlayer(
+                      url: mediaUrl,
+                      isMine: false,
+                      durationMs: 0,
+                    ),
+                  ),
+                )
+              else if (_looksImage)
                 Positioned.fill(
                   child: Image.network(
                     mediaUrl,
