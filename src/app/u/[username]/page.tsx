@@ -3,470 +3,268 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-CheckCircle2,
-Copy,
-Heart,
-Image as ImageIcon,
-MessageCircle,
-Play,
-Users,
-X,
-ChevronLeft,
-ChevronRight,
+  Heart,
+  MessageCircle,
+  Users,
+  Copy,
+  CheckCircle2,
+  X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
-import {
-collection,
-getDocs,
-limit,
-query,
-where,
-} from "firebase/firestore";
-
-import { db } from "@/lib/firebase";
-
-type MediaItem = {
-url: string;
-type: "image" | "video";
+type Profile = {
+  uid: string;
+  email: string;
+  username: string;
+  bio: string;
+  provincia: string;
+  mostrarProvincia: boolean;
+  fotoPrincipal: string;
+  fotos?: string[];
+  likes: number;
+  conversaciones: number;
+  seguidores: number;
+  createdAtLabel: string;
 };
-
-type ProfileData = {
-uid?: string;
-username?: string;
-nombre?: string;
-bio?: string;
-descripcion?: string;
-
-provincia?: string;
-mostrarProvincia?: boolean;
-
-mostrarLikes?: boolean;
-mostrarConversaciones?: boolean;
-mostrarSeguidores?: boolean;
-
-fotos?: string[];
-videos?: string[];
-
-fotoPrincipal?: string;
-
-likesCount?: number;
-conversacionesCount?: number;
-seguidoresCount?: number;
-
-createdAt?: any;
-};
-
-function formatCreatedAt(value: any) {
-const date = value?.toDate?.();
-
-if (!date) return "";
-
-return date.toLocaleDateString("es-AR", {
-day: "2-digit",
-month: "long",
-year: "numeric",
-});
-}
 
 export default function PublicProfilePage() {
-const params = useParams();
+  const params = useParams();
+  const usernameParam =
+    typeof params?.username === "string" ? params.username : "";
 
-const username =
-typeof params?.username === "string"
-? params.username
-: "";
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [currentUid, setCurrentUid] = useState("");
+  const [currentEmail, setCurrentEmail] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
 
-const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUid(user?.uid || "");
+      setCurrentEmail(user?.email || "");
+    });
 
-const [profile, setProfile] =
-useState<ProfileData | null>(null);
+    return () => unsub();
+  }, []);
 
-const [selectedIndex, setSelectedIndex] =
-useState<number | null>(null);
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
 
-const [copied, setCopied] =
-useState(false);
+        const res = await fetch(
+          `/api/profile/${encodeURIComponent(usernameParam)}?ts=${Date.now()}`,
+          { cache: "no-store" }
+        );
 
-useEffect(() => {
-async function load() {
-setLoading(true);
+        const json = await res.json();
 
-  const usernameLower =
-    decodeURIComponent(username).toLowerCase();
+        setProfile(json?.profile || null);
+      } catch {
+        setProfile(null);
+      } finally {
+        setLoading(false);
+      }
+    }
 
-  const q = query(
-    collection(db, "usuarios"),
-    where("usernameLower", "==", usernameLower),
-    limit(1)
-  );
+    if (usernameParam) load();
+  }, [usernameParam]);
 
-  const snap = await getDocs(q);
+  const isOwner = useMemo(() => {
+    if (!profile) return false;
+    return (
+      (!!currentUid && currentUid === profile.uid) ||
+      (!!currentEmail && currentEmail === profile.email)
+    );
+  }, [profile, currentUid, currentEmail]);
 
-  if (snap.empty) {
-    setProfile(null);
-    setLoading(false);
-    return;
+  const gallery = useMemo(() => {
+    if (!profile) return [];
+
+    const all = [
+      profile.fotoPrincipal,
+      ...(Array.isArray(profile.fotos) ? profile.fotos : []),
+    ].filter(Boolean);
+
+    return Array.from(new Set(all));
+  }, [profile]);
+
+  async function copyLink() {
+    const link = `${window.location.origin}/u/${encodeURIComponent(
+      profile?.username || usernameParam
+    )}`;
+
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
   }
 
-  const docSnap = snap.docs[0];
+  function openViewer() {
+    if (gallery.length === 0) return;
+    setViewerIndex(0);
+    setViewerOpen(true);
+  }
 
-  setProfile({
-    uid: docSnap.id,
-    ...(docSnap.data() as ProfileData),
-  });
+  function prevPhoto() {
+    setViewerIndex((v) => (v - 1 + gallery.length) % gallery.length);
+  }
 
-  setLoading(false);
-}
+  function nextPhoto() {
+    setViewerIndex((v) => (v + 1) % gallery.length);
+  }
 
-if (username) {
-  load();
-}
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center pb-28">
+        <p className="text-4xl font-black text-white/35">Cargando perfil...</p>
+      </main>
+    );
+  }
 
-}, [username]);
+  if (!profile) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center pb-28">
+        <p className="text-4xl font-black text-white/35">Perfil no encontrado</p>
+      </main>
+    );
+  }
 
-const media = useMemo<MediaItem[]>(() => {
-const fotos = Array.isArray(profile?.fotos)
-? profile!.fotos!.map((url) => ({
-url,
-type: "image" as const,
-}))
-: [];
-
-const videos = Array.isArray(profile?.videos)
-  ? profile!.videos!.map((url) => ({
-      url,
-      type: "video" as const,
-    }))
-  : [];
-
-const merged = [...fotos, ...videos];
-
-if (
-  merged.length === 0 &&
-  profile?.fotoPrincipal
-) {
-  merged.push({
-    url: profile.fotoPrincipal,
-    type: "image",
-  });
-}
-
-return merged;
-
-}, [profile]);
-
-const fotoPrincipal =
-profile?.fotoPrincipal ||
-media[0]?.url ||
-"";
-
-const selected =
-selectedIndex === null
-? null
-: media[selectedIndex] || null;
-
-const displayName =
-profile?.username ||
-profile?.nombre ||
-username;
-
-const bioText =
-profile?.bio ||
-profile?.descripcion ||
-"";
-
-const createdAtLabel =
-formatCreatedAt(profile?.createdAt);
-
-function openMainPhoto() {
-if (!media.length) return;
-
-const index = Math.max(
-  0,
-  media.findIndex(
-    (item) => item.url === fotoPrincipal
-  )
-);
-
-setSelectedIndex(index);
-
-}
-
-function previousMedia() {
-if (
-selectedIndex === null ||
-media.length <= 1
-)
-return;
-
-setSelectedIndex(
-  selectedIndex <= 0
-    ? media.length - 1
-    : selectedIndex - 1
-);
-
-}
-
-function nextMedia() {
-if (
-selectedIndex === null ||
-media.length <= 1
-)
-return;
-
-setSelectedIndex(
-  selectedIndex >= media.length - 1
-    ? 0
-    : selectedIndex + 1
-);
-
-}
-
-async function copyVerifiedLink() {
-await navigator.clipboard.writeText(
-window.location.href
-);
-
-setCopied(true);
-
-setTimeout(() => {
-  setCopied(false);
-}, 1800);
-
-}
-
-if (loading) {
-return ( <main className="min-h-screen bg-black text-white flex items-center justify-center"> <p className="text-3xl font-black">
-Cargando perfil... </p> </main>
-);
-}
-
-if (!profile) {
-return ( <main className="min-h-screen bg-black text-white flex items-center justify-center"> <p className="text-3xl font-black">
-Perfil no encontrado. </p> </main>
-);
-}
-
-return ( <main className="min-h-screen bg-black text-white pb-28"> <section className="relative min-h-[58vh] overflow-hidden">
-{fotoPrincipal ? ( <button
-         type="button"
-         onClick={openMainPhoto}
-         className="absolute inset-0 w-full h-full"
-       > <img
-           src={fotoPrincipal}
-           alt={displayName}
-           className="w-full h-full object-cover opacity-70"
-         /> </button>
-) : ( <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(139,92,246,.34),transparent_42%)]" />
-)}
-
-    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/75 to-black/35" />
-
-    <div className="relative z-10 max-w-[1500px] mx-auto px-6 sm:px-10 lg:px-16 pt-24 pb-12">
+  return (
+    <main className="min-h-screen bg-black text-white pb-32 relative overflow-hidden">
       <button
-        onClick={copyVerifiedLink}
-        className="inline-flex items-center gap-3 rounded-full bg-black/60 border border-violet-400/50 px-5 py-3 font-black shadow-[0_0_40px_rgba(139,92,246,.35)]"
+        type="button"
+        onClick={openViewer}
+        className="absolute inset-0 h-[88vh] w-full cursor-zoom-in z-[1]"
+        aria-label="Ver foto de perfil"
       >
-        <CheckCircle2
-          size={22}
-          className="text-violet-300"
-        />
-
-        {copied
-          ? "Link copiado"
-          : "Copiar link verificado"}
-
-        <Copy size={18} />
+        {profile.fotoPrincipal ? (
+          <img
+            src={profile.fotoPrincipal}
+            alt={profile.username}
+            className="w-full h-full object-cover opacity-38 blur-[1.5px]"
+          />
+        ) : (
+          <div className="w-full h-full bg-[radial-gradient(circle_at_35%_0%,rgba(139,92,246,.22),transparent_45%)]" />
+        )}
       </button>
 
-      <h1 className="mt-8 text-6xl sm:text-8xl font-black tracking-tight">
-        {displayName}
-      </h1>
+      <div className="absolute inset-0 h-[88vh] bg-gradient-to-b from-black/10 via-black/70 to-black pointer-events-none z-[2]" />
+      <div className="absolute inset-x-0 bottom-0 h-[42vh] bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-none z-[2]" />
 
-      {profile.mostrarProvincia !== false &&
-        profile.provincia && (
-          <p className="mt-5 text-2xl text-white/65 font-bold">
-            {profile.provincia}
-          </p>
-        )}
+      <button
+        type="button"
+        onClick={openViewer}
+        className="openViewerHitLayer absolute inset-0 h-[88vh] w-full z-[3] cursor-zoom-in"
+        aria-label="Ampliar foto de perfil"
+      />
 
-      <div className="mt-10 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
-        <div className="max-w-4xl">
-          <p className="text-2xl sm:text-3xl text-white/88 leading-snug">
-            {bioText}
-          </p>
-        </div>
-
-        {createdAtLabel && (
-          <div className="text-white/38 text-lg italic lg:text-right whitespace-nowrap">
-            Perfil creado el{" "}
-            {createdAtLabel}
-          </div>
-        )}
-      </div>
-    </div>
-  </section>
-
-  <section className="max-w-[1500px] mx-auto px-6 sm:px-10 lg:px-16 py-12">
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mb-14">
-      {profile.mostrarLikes !== false && (
-        <div className="rounded-[28px] bg-zinc-950 border border-white/10 p-6 text-center">
-          <div className="mx-auto w-20 h-20 rounded-full bg-pink-500 flex items-center justify-center">
-            <Heart size={34} fill="white" />
-          </div>
-
-          <p className="mt-4 text-4xl font-black">
-            {profile.likesCount || 0}
-          </p>
-
-          <p className="text-white/55 font-bold">
-            me gusta
-          </p>
-        </div>
-      )}
-
-      {profile.mostrarConversaciones !== false && (
-        <div className="rounded-[28px] bg-zinc-950 border border-white/10 p-6 text-center">
-          <div className="mx-auto w-20 h-20 rounded-full bg-green-500 flex items-center justify-center">
-            <MessageCircle size={34} />
-          </div>
-
-          <p className="mt-4 text-4xl font-black">
-            {profile.conversacionesCount || 0}
-          </p>
-
-          <p className="text-white/55 font-bold">
-            conv.
-          </p>
-        </div>
-      )}
-
-      {profile.mostrarSeguidores !== false && (
-        <div className="rounded-[28px] bg-zinc-950 border border-white/10 p-6 text-center">
-          <div className="mx-auto w-20 h-20 rounded-full bg-violet-500 flex items-center justify-center">
-            <Users size={34} />
-          </div>
-
-          <p className="mt-4 text-4xl font-black">
-            {profile.seguidoresCount || 0}
-          </p>
-
-          <p className="text-white/55 font-bold">
-            seguidores
-          </p>
-        </div>
-      )}
-    </div>
-
-    <div className="flex items-end justify-between mb-6">
-      <div>
-        <p className="text-white/40 text-sm font-black uppercase tracking-wide">
-          Galería
-        </p>
-
-        <h2 className="text-5xl font-black">
-          Fotos y videos
-        </h2>
-      </div>
-
-      <p className="text-white/40 font-bold">
-        {media.length} archivo
-        {media.length === 1 ? "" : "s"}
-      </p>
-    </div>
-
-    {media.length === 0 ? (
-      <div className="min-h-[260px] rounded-[34px] border border-dashed border-white/15 flex items-center justify-center text-white/35 text-2xl font-black">
-        Sin fotos todavía
-      </div>
-    ) : (
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-7 gap-4">
-        {media.map((item, index) => (
+      <section className="relative z-[5] px-8 md:px-24 min-h-[88vh] pointer-events-none">
+        {isOwner && (
           <button
-            key={`${item.url}-${index}`}
-            onClick={() =>
-              setSelectedIndex(index)
-            }
-            className="relative aspect-square rounded-[24px] overflow-hidden bg-zinc-950 border border-white/10"
+            type="button"
+            onClick={copyLink}
+            className="absolute top-10 left-8 md:left-24 pointer-events-auto rounded-full border border-violet-400/40 bg-black/45 px-7 py-4 flex items-center gap-3 font-black shadow-[0_0_35px_rgba(139,92,246,.25)]"
           >
-            {item.type === "image" ? (
-              <img
-                src={item.url}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <video
-                src={item.url}
-                className="w-full h-full object-cover"
-                muted
-              />
-            )}
+            <CheckCircle2 size={22} />
+            {copied ? "Link copiado" : "Copiar link verificado"}
+            <Copy size={20} />
+          </button>
+        )}
 
-            <div className="absolute top-3 left-3 rounded-full bg-black/65 px-3 py-2 flex items-center gap-2 text-sm font-black">
-              {item.type === "image" ? (
-                <ImageIcon size={16} />
-              ) : (
-                <Play
-                  size={16}
-                  fill="white"
-                />
-              )}
+        <div className="absolute left-8 md:left-24 top-[48%] -translate-y-1/2 max-w-[900px]">
+          <h1 className="text-[64px] md:text-[96px] leading-none font-black tracking-tight drop-shadow-2xl">
+            {profile.username}
+          </h1>
 
-              {index + 1}
+          {profile.mostrarProvincia && profile.provincia && (
+            <p className="mt-5 text-2xl md:text-3xl font-black text-white/55">
+              {profile.provincia}
+            </p>
+          )}
+
+          {profile.bio && (
+            <p className="mt-8 max-w-[760px] text-2xl md:text-4xl text-white font-medium">
+              {profile.bio}
+            </p>
+          )}
+        </div>
+
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-[18vh] pointer-events-auto w-full max-w-[1050px] px-8 grid grid-cols-3 gap-8">
+          <div className="flex flex-col items-center justify-center">
+            <div className="w-24 h-24 rounded-full bg-pink-500 flex items-center justify-center shadow-[0_0_35px_rgba(236,72,153,.28)]">
+              <Heart size={44} fill="white" />
             </div>
-          </button>
-        ))}
-      </div>
-    )}
-  </section>
+            <div className="mt-5 text-5xl font-black">{profile.likes || 0}</div>
+            <div className="text-white/50 font-black">me gusta</div>
+          </div>
 
-  {selected && (
-    <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-5">
-      <button
-        onClick={() =>
-          setSelectedIndex(null)
-        }
-        className="absolute top-6 right-6 w-14 h-14 rounded-full bg-white/10 flex items-center justify-center"
-      >
-        <X size={30} />
-      </button>
+          <div className="flex flex-col items-center justify-center">
+            <div className="w-24 h-24 rounded-full bg-green-500 flex items-center justify-center shadow-[0_0_35px_rgba(34,197,94,.28)]">
+              <MessageCircle size={44} fill="white" />
+            </div>
+            <div className="mt-5 text-5xl font-black">{profile.conversaciones || 0}</div>
+            <div className="text-white/50 font-black">conv.</div>
+          </div>
 
-      {media.length > 1 && (
-        <>
+          <div className="flex flex-col items-center justify-center">
+            <div className="w-24 h-24 rounded-full bg-violet-500 flex items-center justify-center shadow-[0_0_35px_rgba(139,92,246,.28)]">
+              <Users size={44} />
+            </div>
+            <div className="mt-5 text-5xl font-black">{profile.seguidores || 0}</div>
+            <div className="text-white/50 font-black">seguidores</div>
+          </div>
+        </div>
+
+        {profile.createdAtLabel && (
+          <p className="absolute right-8 md:right-24 bottom-[8vh] italic text-white/45 text-lg md:text-xl">
+            Perfil creado el {profile.createdAtLabel}
+          </p>
+        )}
+      </section>
+
+      {viewerOpen && gallery.length > 0 && (
+        <div className="fixed inset-0 z-[999] bg-black/95 flex items-center justify-center">
           <button
-            onClick={previousMedia}
-            className="absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-white/10 flex items-center justify-center"
+            type="button"
+            onClick={() => setViewerOpen(false)}
+            className="absolute top-6 right-6 w-14 h-14 rounded-full bg-white/10 flex items-center justify-center"
           >
-            <ChevronLeft size={34} />
+            <X size={30} />
           </button>
 
-          <button
-            onClick={nextMedia}
-            className="absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-white/10 flex items-center justify-center"
-          >
-            <ChevronRight size={34} />
-          </button>
-        </>
-      )}
+          {gallery.length > 1 && (
+            <button
+              type="button"
+              onClick={prevPhoto}
+              className="absolute left-6 w-16 h-16 rounded-full bg-white/10 flex items-center justify-center"
+            >
+              <ChevronLeft size={38} />
+            </button>
+          )}
 
-      {selected.type === "image" ? (
-        <img
-          src={selected.url}
-          className="max-w-full max-h-full object-contain rounded-[24px]"
-        />
-      ) : (
-        <video
-          src={selected.url}
-          className="max-w-full max-h-full object-contain rounded-[24px]"
-          controls
-          autoPlay
-        />
-      )}
-    </div>
-  )}
-</main>
+          <img
+            src={gallery[viewerIndex]}
+            alt={profile.username}
+            className="max-w-[92vw] max-h-[88vh] object-contain rounded-3xl"
+          />
 
-);
+          {gallery.length > 1 && (
+            <button
+              type="button"
+              onClick={nextPhoto}
+              className="absolute right-6 w-16 h-16 rounded-full bg-white/10 flex items-center justify-center"
+            >
+              <ChevronRight size={38} />
+            </button>
+          )}
+        </div>
+      )}
+    </main>
+  );
 }
 

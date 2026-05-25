@@ -1,12 +1,11 @@
-import SayItToMeVisualPolish from "@/components/SayItToMeVisualPolish";
+﻿import type { Metadata } from "next";
 import "./globals.css";
 
+import SayItToMeVisualPolish from "@/components/SayItToMeVisualPolish";
 import Providers from "@/components/providers/Providers";
-
 import BottomNav from "@/components/navigation/BottomNav";
 
-
-export const metadata = {
+export const metadata: Metadata = {
   title: "SayItToMe",
   description: "SayItToMe",
 };
