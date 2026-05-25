@@ -1,0 +1,709 @@
+﻿"use client";
+
+
+import { Heart, MessageCircle, Users, BookOpen } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
+
+import {
+  getDownloadURL,
+  ref,
+  uploadBytes,
+} from "firebase/storage";
+
+import {
+  db,
+  storage,
+} from "@/lib/firebase";
+
+import { useAuth } from "@/contexts/AuthContext";
+
+type EditProfileData = {
+  username?: string;
+
+  bio?: string;
+
+  provincia?: string;
+
+  fotoPrincipal?: string;
+
+  fotos?: string[];
+
+  showLikes?: boolean;
+
+  showConversations?: boolean;
+
+  showFollowers?: boolean;
+
+  showStories?: boolean;
+};
+
+export default function EditProfilePage() {
+  const {
+    firebaseUser,
+    profile,
+    loading,
+  } = useAuth();
+
+  const inputRef =
+    useRef<HTMLInputElement | null>(
+      null
+    );
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
+
+  const [
+    uploading,
+    setUploading,
+  ] = useState(false);
+
+  const [data, setData] =
+    useState<EditProfileData>({
+      username: "",
+      bio: "",
+      provincia: "",
+      fotoPrincipal: "",
+      fotos: [],
+      showLikes: true,
+      showConversations: true,
+      showFollowers: true,
+      showStories: true,
+    });
+
+  useEffect(() => {
+    if (!profile) return;
+
+    setData({
+      username:
+        profile.username || "",
+
+      bio:
+        profile.bio || "",
+
+      provincia:
+        profile.provincia || "",
+
+      fotoPrincipal:
+        profile.fotoPrincipal ||
+        "",
+
+      fotos: [],
+
+      showLikes: true,
+
+      showConversations: true,
+
+      showFollowers: true,
+
+      showStories: true,
+    });
+
+    loadFirestoreData();
+  }, [profile]);
+
+  const loadFirestoreData =
+    async () => {
+      if (!firebaseUser)
+        return;
+
+      try {
+        const snap =
+          await getDoc(
+            doc(
+              db,
+              "usuarios",
+              firebaseUser.uid
+            )
+          );
+
+        if (!snap.exists())
+          return;
+
+        const firestoreData =
+          snap.data();
+
+        setData({
+          username:
+            firestoreData.username ||
+            "",
+
+          bio:
+            firestoreData.bio ||
+            "",
+
+          provincia:
+            firestoreData.provincia ||
+            "",
+
+          fotoPrincipal:
+            firestoreData.fotoPrincipal ||
+            "",
+
+          fotos:
+            firestoreData.fotos ||
+            [],
+
+          showLikes:
+            firestoreData.showLikes ??
+            true,
+
+          showConversations:
+            firestoreData.showConversations ??
+            true,
+
+          showFollowers:
+            firestoreData.showFollowers ??
+            true,
+
+          showStories:
+            firestoreData.showStories ??
+            true,
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+  const uploadPhotos =
+    async (
+      files: FileList
+    ) => {
+      if (!firebaseUser)
+        return;
+
+      setUploading(true);
+
+      try {
+        const uploaded: string[] =
+          [];
+
+        for (const file of Array.from(
+          files
+        )) {
+          const storageRef =
+            ref(
+              storage,
+              `usuarios/${firebaseUser.uid}/fotos/${Date.now()}-${file.name}`
+            );
+
+          await uploadBytes(
+            storageRef,
+            file
+          );
+
+          const url =
+            await getDownloadURL(
+              storageRef
+            );
+
+          uploaded.push(url);
+        }
+
+        const merged = [
+          ...(data.fotos ||
+            []),
+          ...uploaded,
+        ];
+
+        const principal =
+          data.fotoPrincipal ||
+          uploaded[0] ||
+          "";
+
+        setData((prev) => ({
+          ...prev,
+          fotos: merged,
+          fotoPrincipal:
+            principal,
+        }));
+      } catch (e) {
+        console.error(e);
+
+        alert(
+          "Error subiendo fotos"
+        );
+      }
+
+      setUploading(false);
+    };
+
+  const saveProfile =
+    async () => {
+      if (!firebaseUser)
+        return;
+
+      setSaving(true);
+
+      try {
+        const payload = {
+          username:
+            data.username || "",
+
+          usernameLower:
+            (
+              data.username ||
+              ""
+            ).toLowerCase(),
+
+          bio:
+            data.bio || "",
+
+          provincia:
+            data.provincia ||
+            "",
+
+          fotoPrincipal:
+            data.fotoPrincipal ||
+            "",
+
+          fotos:
+            data.fotos || [],
+
+          showLikes:
+            data.showLikes ??
+            true,
+
+          showConversations:
+            data.showConversations ??
+            true,
+
+          showFollowers:
+            data.showFollowers ??
+            true,
+
+          showStories:
+            data.showStories ??
+            true,
+        };
+
+        await setDoc(
+          doc(
+            db,
+            "usuarios",
+            firebaseUser.uid
+          ),
+          payload,
+          {
+            merge: true,
+          }
+        );
+
+        alert(
+          "Perfil guardado correctamente"
+        );
+      } catch (e) {
+        console.error(e);
+
+        alert(
+          "Error guardando perfil"
+        );
+      }
+
+      setSaving(false);
+    };
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        Cargando...
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-black text-white overflow-x-hidden pb-40">
+      <section className="relative h-[54vh] min-h-[560px] w-full overflow-hidden">
+        {data.fotoPrincipal ? (
+          <img
+            src={
+              data.fotoPrincipal
+            }
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-black" />
+        )}
+
+        <div className="absolute inset-0 bg-black/45" />
+
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/30 to-black" />
+
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(120,0,255,0.18),transparent_55%)]" />
+
+        <div className="relative z-20 flex items-start justify-between p-8">
+          <button
+            onClick={() =>
+              history.back()
+            }
+            className="w-24 h-24 rounded-full border-2 border-white flex items-center justify-center text-6xl bg-black/20 backdrop-blur-2xl"
+          >
+            ×
+          </button>
+
+          <button
+            onClick={
+              saveProfile
+            }
+            disabled={saving}
+            className="h-24 px-10 rounded-full border-2 border-violet-400 bg-violet-500/20 backdrop-blur-2xl flex items-center justify-center text-3xl font-black shadow-[0_0_50px_rgba(139,92,246,0.5)]"
+          >
+            {saving
+              ? "Guardando..."
+              : "Guardar"}
+          </button>
+        </div>
+
+        <div className="absolute bottom-14 left-8 z-20">
+          <div className="flex items-center gap-6">
+            <div className="relative">
+              <button
+                onClick={() =>
+                  inputRef.current?.click()
+                }
+                className="w-44 h-44 rounded-full overflow-hidden border-4 border-violet-400 shadow-[0_0_70px_rgba(139,92,246,0.55)]"
+              >
+                {data.fotoPrincipal ? (
+                  <img
+                    src={
+                      data.fotoPrincipal
+                    }
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-zinc-900 flex items-center justify-center text-7xl">
+                    👤
+                  </div>
+                )}
+              </button>
+
+              <button
+                onClick={() =>
+                  inputRef.current?.click()
+                }
+                className="absolute -bottom-2 -right-2 w-16 h-16 rounded-full bg-violet-500 shadow-[0_0_30px_rgba(139,92,246,0.8)] flex items-center justify-center text-3xl"
+              >
+                +
+              </button>
+
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(
+                  e
+                ) => {
+                  if (
+                    e.target
+                      .files
+                  ) {
+                    uploadPhotos(
+                      e.target
+                        .files
+                    );
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <input
+                value={
+                  data.username
+                }
+                onChange={(
+                  e
+                ) =>
+                  setData(
+                    (
+                      prev
+                    ) => ({
+                      ...prev,
+                      username:
+                        e
+                          .target
+                          .value,
+                    })
+                  )
+                }
+                placeholder="username"
+                className="bg-transparent outline-none text-[5rem] leading-none font-black tracking-[-0.06em]"
+              />
+
+              <div className="text-3xl text-zinc-300 mt-3">
+                Última vez
+                hace 8 días
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative z-30 -mt-4 px-4 md:px-10">
+        <div className="grid grid-cols-2 md:grid-cols-4">
+          {[
+            {
+              key:
+                "showLikes",
+              label:
+                "me gusta",
+              emoji:
+                "♥",
+              color:
+                "#ff00aa",
+              glow:
+                "rgba(255,0,170,0.75)",
+            },
+
+            {
+              key:
+                "showConversations",
+              label:
+                "conv.",
+              emoji:
+                "💬",
+              color:
+                "#2ddf72",
+              glow:
+                "rgba(45,223,114,0.75)",
+            },
+
+            {
+              key:
+                "showFollowers",
+              label:
+                "seguidores",
+              emoji:
+                "👤",
+              color:
+                "#9648ff",
+              glow:
+                "rgba(150,72,255,0.75)",
+            },
+
+            {
+              key:
+                "showStories",
+              label:
+                "historias",
+              emoji:
+                "📖",
+              color:
+                "#33bfff",
+              glow:
+                "rgba(51,191,255,0.75)",
+            },
+          ].map(
+            (
+              item
+            ) => (
+              <button
+                key={
+                  item.key
+                }
+                onClick={() =>
+                  setData(
+                    (
+                      prev
+                    ) => ({
+                      ...prev,
+                      [
+                        item.key
+                      ]:
+                        !prev[
+                          item.key as keyof EditProfileData
+                        ],
+                    })
+                  )
+                }
+                className={`flex flex-col items-center transition ${
+                  data[
+                    item.key as keyof EditProfileData
+                  ]
+                    ? "opacity-100"
+                    : "opacity-25"
+                }`}
+              >
+                <div
+                  style={{
+                    background:
+                      item.color,
+
+                    boxShadow: `0 0 70px ${item.glow}`,
+                  }}
+                  className="w-44 h-44 rounded-full flex items-center justify-center text-7xl"
+                >
+                  {
+                    item.emoji
+                  }
+                </div>
+
+                <div className="mt-4 text-6xl font-black">
+                  0
+                </div>
+
+                <div className="text-zinc-300 text-3xl mt-1 text-center">
+                  {
+                    item.label
+                  }
+                </div>
+              </button>
+            )
+          )}
+        </div>
+      </section>
+
+      <section className="px-8 md:px-10 mt-20">
+        <div className="border-t border-zinc-900 pt-10">
+          <div className="text-5xl font-black mb-8">
+            Biografía
+          </div>
+
+          <textarea
+            value={
+              data.bio
+            }
+            onChange={(
+              e
+            ) =>
+              setData(
+                (
+                  prev
+                ) => ({
+                  ...prev,
+                  bio:
+                    e.target
+                      .value,
+                })
+              )
+            }
+            placeholder="Escribí algo..."
+            rows={5}
+            className="w-full bg-transparent outline-none resize-none text-3xl text-zinc-300 leading-relaxed"
+          />
+        </div>
+
+        <div className="border-t border-zinc-900 pt-10 mt-12">
+          <div className="text-5xl font-black mb-8">
+            Provincia
+          </div>
+
+          <select
+            value={
+              data.provincia
+            }
+            onChange={(
+              e
+            ) =>
+              setData(
+                (
+                  prev
+                ) => ({
+                  ...prev,
+                  provincia:
+                    e.target
+                      .value,
+                })
+              )
+            }
+            className="w-full h-24 rounded-[2rem] bg-zinc-950 border border-zinc-800 px-8 text-3xl outline-none"
+          >
+            <option value="">
+              Seleccionar
+            </option>
+
+            <option>
+              Córdoba
+            </option>
+
+            <option>
+              Buenos Aires
+            </option>
+
+            <option>
+              Santa Fe
+            </option>
+
+            <option>
+              Mendoza
+            </option>
+
+            <option>
+              Tucumán
+            </option>
+          </select>
+        </div>
+
+        {(data.fotos || [])
+          .length >
+          0 ? (
+          <div className="mt-16">
+            <div className="text-5xl font-black mb-8">
+              Fotos
+            </div>
+
+            <div className="flex gap-6 overflow-x-auto pb-4">
+              {(
+                data.fotos ||
+                []
+              ).map(
+                (
+                  foto,
+                  i
+                ) => (
+                  <button
+                    key={
+                      i
+                    }
+                    onClick={() =>
+                      setData(
+                        (
+                          prev
+                        ) => ({
+                          ...prev,
+                          fotoPrincipal:
+                            foto,
+                        })
+                      )
+                    }
+                    className={`relative flex-shrink-0 w-56 h-56 rounded-[2rem] overflow-hidden border-4 ${
+                      data.fotoPrincipal ===
+                      foto
+                        ? "border-violet-400"
+                        : "border-transparent"
+                    }`}
+                  >
+                    <img
+                      src={
+                        foto
+                      }
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        ) : null}
+      </section>
+    </main>
+  );
+}
+

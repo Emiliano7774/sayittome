@@ -1,0 +1,164 @@
+﻿"use client";
+
+
+import { Heart, MessageCircle, Users, BookOpen } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+
+export default function SettingsPage() {
+  const {
+    profile,
+    loading,
+  } = useAuth();
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-2xl text-zinc-500">
+          Cargando perfil...
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-black text-white overflow-x-hidden pb-44">
+      <section className="relative h-[78vh] min-h-[760px] w-full overflow-hidden bg-black">
+        {profile?.fotoPrincipal ? (
+          <img
+            src={
+              profile.fotoPrincipal
+            }
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-900 via-black to-black" />
+        )}
+
+        <div className="absolute inset-0 bg-black/35" />
+
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black" />
+
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(120,0,255,0.16),transparent_45%)]" />
+
+        <div className="relative z-20 flex items-start justify-between px-8 pt-8">
+          <button className="w-24 h-24 rounded-full border-2 border-white/90 flex items-center justify-center text-6xl bg-black/20 backdrop-blur-2xl">
+            ×
+          </button>
+
+          <div className="flex items-center gap-4">
+            <a
+              href="/settings/edit"
+              className="h-24 px-10 rounded-full border-2 border-white/90 flex items-center gap-4 text-3xl font-bold bg-black/20 backdrop-blur-2xl"
+            >
+              ✎
+              Editar
+            </a>
+
+            <button className="w-24 h-24 rounded-full border-2 border-white/90 flex items-center justify-center text-5xl bg-black/20 backdrop-blur-2xl">
+              •••
+            </button>
+          </div>
+        </div>
+
+        <div className="absolute bottom-20 left-10 z-20 max-w-[70%]">
+          <h1 className="text-[5.5rem] leading-none font-black tracking-[-0.06em] drop-shadow-[0_0_30px_rgba(0,0,0,0.85)]">
+            {profile?.username
+              ? profile.username
+              : "Sin username"}
+          </h1>
+
+          <div className="text-4xl font-bold text-zinc-200 mt-3">
+            Última vez hace 8 días
+          </div>
+        </div>
+      </section>
+
+      <section className="relative z-30 -mt-10 px-6 md:px-12">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-y-16">
+          <div className="flex flex-col items-center">
+            <div className="w-44 h-44 rounded-full bg-[#ff00aa] shadow-[0_0_70px_rgba(255,0,170,0.75)] flex items-center justify-center text-7xl">
+              ♥
+            </div>
+
+            <div className="mt-5 text-6xl font-black">
+              0
+            </div>
+
+            <div className="text-zinc-300 text-3xl mt-1">
+              me gusta
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <div className="w-44 h-44 rounded-full bg-[#2ddf72] shadow-[0_0_70px_rgba(45,223,114,0.75)] flex items-center justify-center text-7xl">
+              💬
+            </div>
+
+            <div className="mt-5 text-6xl font-black">
+              0
+            </div>
+
+            <div className="text-zinc-300 text-3xl mt-1">
+              conv.
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <div className="w-44 h-44 rounded-full bg-[#9648ff] shadow-[0_0_70px_rgba(150,72,255,0.75)] flex items-center justify-center text-7xl">
+              👤
+            </div>
+
+            <div className="mt-5 text-6xl font-black">
+              0
+            </div>
+
+            <div className="text-zinc-300 text-3xl mt-1">
+              seguidores
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <div className="w-44 h-44 rounded-full bg-[#33bfff] shadow-[0_0_70px_rgba(51,191,255,0.75)] flex items-center justify-center text-7xl">
+              📖
+            </div>
+
+            <div className="mt-5 text-6xl font-black">
+              0
+            </div>
+
+            <div className="text-zinc-300 text-3xl mt-1">
+              historias
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-10 mt-24">
+        <div className="border-t border-zinc-900 pt-10">
+          <div className="text-5xl font-black mb-8">
+            Biografía
+          </div>
+
+          <div className="text-3xl text-zinc-300 leading-relaxed">
+            {profile?.bio
+              ? profile.bio
+              : "Sin bio todavía."}
+          </div>
+        </div>
+
+        {profile?.provincia ? (
+          <div className="mt-12">
+            <div className="inline-flex items-center px-8 py-4 rounded-full bg-zinc-900 border border-zinc-800 text-2xl text-zinc-300">
+              📍
+              <span className="ml-3">
+                {profile.provincia}
+              </span>
+            </div>
+          </div>
+        ) : null}
+      </section>
+    </main>
+  );
+}
+
