@@ -63,7 +63,7 @@ export default function ShuffleClient() {
 
         setAll(profiles);
         setTotalLive(Number(json.totalLive || profiles.length || 0));
-        setVisible(shuffle(profiles).slice(0, 35));
+        setVisible(shuffle(profiles as Profile[]).slice(0, 35));
       } catch {
         setAll([]);
         setVisible([]);
@@ -179,3 +179,4 @@ export default function ShuffleClient() {
     </main>
   );
 }
+
