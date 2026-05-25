@@ -182,24 +182,24 @@ export default function PublicProfilePage() {
           </h1>
 
           {profile.mostrarProvincia && profile.provincia && (
-            <p className="mt-5 text-2xl md:text-3xl font-black text-white/55">
+            <p className="mt-12 sm:mt-10 md:mt-12 sm:mt-10 md:mt-6 text-2xl md:text-3xl font-black text-white/55">
               {profile.provincia}
             </p>
           )}
 
           {profile.bio && (
-            <p className="mt-8 max-w-[760px] text-xl md:text-4xl text-white font-medium leading-tight line-clamp-2 md:line-clamp-none overflow-hidden text-ellipsis pr-2">
+            <p className="mt-8 max-w-[760px] text-2xl md:text-4xl text-white font-medium">
               {profile.bio}
             </p>
           )}
         </div>
 
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-[5vh] pointer-events-auto w-full max-w-[1050px] px-8 grid grid-cols-3 gap-8">
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-[18vh] pointer-events-auto w-full max-w-[1050px] px-8 grid grid-cols-3 gap-8">
           <div className="flex flex-col items-center justify-center">
             <div className="w-24 h-24 rounded-full bg-pink-500 flex items-center justify-center shadow-[0_0_35px_rgba(236,72,153,.28)]">
               <Heart size={44} fill="white" />
             </div>
-            <div className="mt-5 text-5xl font-black">{profile.likes || 0}</div>
+            <div className="mt-12 sm:mt-10 md:mt-12 sm:mt-10 md:mt-6 text-5xl font-black">{profile.likes || 0}</div>
             <div className="text-white/50 font-black">me gusta</div>
           </div>
 
@@ -207,7 +207,7 @@ export default function PublicProfilePage() {
             <div className="w-24 h-24 rounded-full bg-green-500 flex items-center justify-center shadow-[0_0_35px_rgba(34,197,94,.28)]">
               <MessageCircle size={44} fill="white" />
             </div>
-            <div className="mt-5 text-5xl font-black">{profile.conversaciones || 0}</div>
+            <div className="mt-12 sm:mt-10 md:mt-12 sm:mt-10 md:mt-6 text-5xl font-black">{profile.conversaciones || 0}</div>
             <div className="text-white/50 font-black">conv.</div>
           </div>
 
@@ -215,13 +215,13 @@ export default function PublicProfilePage() {
             <div className="w-24 h-24 rounded-full bg-violet-500 flex items-center justify-center shadow-[0_0_35px_rgba(139,92,246,.28)]">
               <Users size={44} />
             </div>
-            <div className="mt-5 text-5xl font-black">{profile.seguidores || 0}</div>
+            <div className="mt-12 sm:mt-10 md:mt-12 sm:mt-10 md:mt-6 text-5xl font-black">{profile.seguidores || 0}</div>
             <div className="text-white/50 font-black">seguidores</div>
           </div>
         </div>
 
         {profile.createdAtLabel && (
-          <p className="absolute right-8 md:right-24 bottom-[1.5vh] italic text-white/45 text-lg md:text-xl">
+          <p className="absolute right-8 md:right-24 bottom-[8vh] italic text-white/45 text-lg md:text-xl">
             Perfil creado el {profile.createdAtLabel}
           </p>
         )}
@@ -267,6 +267,5 @@ export default function PublicProfilePage() {
     </main>
   );
 }
-
 
 
