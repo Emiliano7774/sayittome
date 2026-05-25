@@ -1,0 +1,459 @@
+﻿"use client";
+
+
+import { Heart, MessageCircle, Users, BookOpen } from "lucide-react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import AudioWave from "@/components/chat/media/AudioWave";
+
+import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
+
+import { uploadMedia } from "@/lib/media/upload";
+
+import {
+  startRecorder,
+} from "@/lib/media/recorder";
+
+import {
+  canOpenViewOnce,
+  markOpened,
+} from "@/lib/media/viewOnce";
+import { getAnonSessionId } from "@/lib/chat/anonSession";
+
+type Message = {
+  id: string;
+  text: string;
+  mine: boolean;
+  reply?: string;
+  type?: "text" | "audio" | "image";
+  mediaUrl?: string;
+  source?: "camera" | "gallery" | "audio";
+  viewOnce?: boolean;
+};
+
+export default function UserChatPage() {
+  const params = useParams<{ username: string }>();
+
+  const username = String(params.username || "usuario");
+
+  useEffect(() => {
+    const imgs =
+      document.querySelectorAll("img");
+
+    imgs.forEach((img) => {
+      if (img instanceof HTMLImageElement) {
+        img.loading = "eager";
+        img.decoding = "async";
+      }
+    });
+  }, []);
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [text, setText] = useState("");
+  const [replyingTo, setReplyingTo] =
+    useState<Message | null>(null);
+
+  const [fullscreenUrl, setFullscreenUrl] =
+    useState("");
+
+  const [recording, setRecording] =
+    useState(false);
+
+  const [audioPreview, setAudioPreview] =
+    useState("");
+
+  const [imagePreview, setImagePreview] =
+    useState("");
+
+  const [pendingBlob, setPendingBlob] =
+    useState<Blob | null>(null);
+
+  const [uploadProgress, setUploadProgress] =
+    useState<number | null>(null);
+
+  const [viewOnce, setViewOnce] =
+    useState(false);
+
+  const recorderRef =
+    useRef<any>(null);
+
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const anonSession = getAnonSessionId();
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function sendMedia(
+    type: "audio" | "image",
+    source?: "camera" | "gallery",
+  ) {
+    if (!pendingBlob) return;
+
+    const url =
+      await uploadMedia(
+        `chat_media/${Date.now()}`,
+        pendingBlob,
+
+        (pct) =>
+          setUploadProgress(
+            pct,
+          ),
+      );
+
+    setMessages((old) => [
+      ...old,
+      {
+        id: crypto.randomUUID(),
+
+        text: "",
+
+        mine: true,
+
+        type,
+
+        mediaUrl: url,
+
+        source,
+
+        viewOnce,
+      },
+    ]);
+
+    setPendingBlob(null);
+
+    setAudioPreview("");
+    setImagePreview("");
+
+    setUploadProgress(null);
+
+    setViewOnce(false);
+  }
+
+  function sendMessage() {
+    if (!text.trim()) return;
+
+    setMessages((old) => [
+      ...old,
+      {
+        id: crypto.randomUUID(),
+        text,
+        mine: true,
+        reply: replyingTo?.text,
+      },
+    ]);
+
+    setText("");
+    setReplyingTo(null);
+
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 10);
+  }
+
+  return (
+    <main className="min-h-screen overflow-hidden bg-black text-white">
+
+      {fullscreenUrl ? (
+        <FullscreenMedia
+          url={fullscreenUrl}
+          onClose={() =>
+            setFullscreenUrl("")
+          }
+        />
+      ) : null}
+
+      <section className="flex min-h-screen flex-col bg-black">
+
+        <header className="flex items-center gap-4 bg-black px-5 py-5">
+
+          <Link href="/shuffle" className="text-5xl">
+            â€¹
+          </Link>
+
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#161616]">
+            ðŸ‘¤
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-bold">
+              {username}
+            </h1>
+
+            <p className="text-2xl text-lime-400">
+              en lÃ­nea
+            </p>
+          </div>
+        </header>
+
+        <div className="flex min-h-[52vh] flex-col items-center justify-center px-6">
+
+          <button
+            onClick={() => {
+              window.location.href = `/u/${username}`;
+            }}
+            className="flex flex-col items-center"
+          >
+            <div className="flex h-56 w-56 items-center justify-center rounded-full bg-[#141414]">
+              ðŸ‘¤
+            </div>
+
+            <h2 className="mt-8 text-7xl font-black tracking-[-0.08em]">
+              {username}
+            </h2>
+          </button>
+
+          <div className="mt-12 rounded-[32px] bg-[#ececec] px-8 py-6 text-left text-black shadow-2xl">
+            <div className="flex items-center justify-between gap-8">
+
+              <div>
+                <p className="text-3xl font-bold text-violet-600">
+                  Â¡Mantenemos tu anonimato!
+                </p>
+
+                <p className="mt-2 text-2xl text-zinc-600">
+                  No sabrÃ¡n quiÃ©n eres.
+                </p>
+
+                <p className="mt-4 text-xl text-zinc-400">
+                  Sos: {anonSession}
+                </p>
+              </div>
+
+              <div className="text-6xl text-violet-300">
+                â—Œ
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 px-5 pb-40">
+          <div className="mx-auto max-w-5xl">
+
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={[
+                  "mb-5 flex",
+                  message.mine
+                    ? "justify-end"
+                    : "justify-start",
+                ].join(" ")}
+              >
+                <div
+                  onDoubleClick={() => setReplyingTo(message)}
+                  className={[
+                    "max-w-[75%] rounded-[32px] px-6 py-4",
+                    message.mine
+                      ? "bg-violet-500/80 backdrop-blur-xl text-white"
+                      : "bg-[#0c0c0d] text-white",
+                  ].join(" ")}
+                >
+                  {message.reply && (
+                    <div className="mb-3 rounded-2xl bg-black/30 px-4 py-3 text-2xl text-zinc-300">
+                      {message.reply}
+                    </div>
+                  )}
+
+                  {message.type === "audio" ? (
+                    <div className="flex items-center gap-4">
+
+                      <button
+                        onClick={() => {
+                          const a =
+                            new Audio(message.mediaUrl || "");
+
+                          a.play();
+                        }}
+                        className="flex h-12 w-12 items-center justify-center rounded-full bg-black/20 text-2xl"
+                      >
+                        â–¶
+                      </button>
+
+                      <AudioWave
+                        url={message.mediaUrl || ""}
+                      />
+                    </div>
+                  ) : message.type === "image" ? (
+
+                    <button
+                      onClick={() => {
+                        if (
+                          message.viewOnce
+                        ) {
+                          if (
+                            !canOpenViewOnce(
+                              message.id,
+                            )
+                          ) {
+                            return;
+                          }
+
+                          markOpened(
+                            message.id,
+                          );
+                        }
+
+                        setFullscreenUrl(message.mediaUrl || "");
+                      }}
+                    >
+                      <img
+                        src={message.mediaUrl || ""}
+                        className="max-h-[420px] rounded-[26px]"
+                      />
+                    </button>
+
+                  ) : (
+                    <p className="text-3xl leading-relaxed">
+                      {message.text}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+
+          </div>
+        </div>
+
+        <div className="sticky bottom-[92px] bg-black px-5 pb-6 pt-4">
+
+          {replyingTo && (
+            <div className="mx-auto mb-4 max-w-5xl rounded-3xl bg-[#090909] px-5 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-2xl font-bold text-violet-400">
+                    Respondiendo
+                  </p>
+
+                  <p className="mt-1 text-2xl text-zinc-400">
+                    {replyingTo.text}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setReplyingTo(null)}
+                  className="text-4xl text-zinc-500"
+                >
+                  Ã—
+                </button>
+              </div>
+            </div>
+          )}
+
+          {audioPreview || imagePreview ? (
+            <div className="mx-auto mb-5 max-w-5xl rounded-[32px] bg-[#070707] p-5">
+
+              {audioPreview ? (
+                <audio
+                  controls
+                  src={audioPreview}
+                  className="w-full"
+                />
+              ) : null}
+
+              {imagePreview ? (
+                <img
+                  src={imagePreview}
+                  className="max-h-[320px] rounded-[26px]"
+                />
+              ) : null}
+
+              {uploadProgress !== null ? (
+                <div className="mt-4 h-3 overflow-hidden rounded-full bg-black/30">
+                  <div
+                    className="h-full bg-violet-500/80 backdrop-blur-xl"
+                    style={{
+                      width: `${uploadProgress}%`,
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              <div className="mt-5 flex gap-4">
+
+                <button
+                  onClick={() =>
+                    sendMedia(
+                      audioPreview
+                        ? "audio"
+                        : "image",
+                    )
+                  }
+                  className="rounded-full bg-violet-500/80 backdrop-blur-xl px-6 py-4 text-2xl font-bold"
+                >
+                  Enviar
+                </button>
+
+                <button
+                  onClick={() => {
+                    setAudioPreview("");
+                    setImagePreview("");
+                    setPendingBlob(null);
+                  }}
+                  className="rounded-full bg-[#222] px-6 py-4 text-2xl"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mx-auto flex max-w-5xl items-center gap-4">
+
+            <button className="flex h-14 w-14 items-center justify-center rounded-full bg-[#101010] text-3xl text-orange-400">
+              ðŸ’£
+            </button>
+
+            <button className="flex h-14 w-14 items-center justify-center rounded-full bg-[#101010] text-3xl">
+              ðŸ“·
+            </button>
+
+            <button className="flex h-14 w-14 items-center justify-center rounded-full bg-[#101010] text-3xl">
+              ðŸ–¼
+            </button>
+
+            <div className="flex h-16 flex-1 items-center rounded-full bg-[#090909] px-5">
+
+              <input
+                ref={inputRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                placeholder="EscribÃ­ un mensaje..."
+                className="w-full bg-transparent text-3xl outline-none"
+              />
+            </div>
+
+            <button className="text-4xl text-zinc-400">
+              ðŸŽ™
+            </button>
+
+            <button
+              onClick={sendMessage}
+              className="rounded-full bg-violet-500/80 backdrop-blur-xl px-8 py-5 text-3xl font-semibold"
+            >
+              Enviar
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+
+
+
+

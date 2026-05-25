@@ -50,154 +50,65 @@ export default function UserChatPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewOnce, setViewOnce] = useState(false);
   const [anonSession, setAnonSession] = useState("anon_server");
-  const [recording, setRecording] = useState(false);
-  const [cameraMode, setCameraMode] = useState<"photo" | "video" | null>(null);
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const cameraVideoElementRef = useRef<HTMLVideoElement>(null);
-  const liveVideoRecorderRef = useRef<MediaRecorder | null>(null);
-  const liveVideoChunksRef = useRef<Blob[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const cameraPhotoRef = useRef<HTMLInputElement>(null);
   const cameraVideoRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     setAnonSession(getAnonSessionId());
     inputRef.current?.focus();
     document.body.classList.add("sayittome-chat-open");
-    return () => {
-      document.body.classList.remove("sayittome-chat-open");
-    };
+    return () => document.body.classList.remove("sayittome-chat-open");
   }, []);
 
-  async function openRealCamera(mode: "photo" | "video") {
+  async function startAudioRecording() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-        },
-        audio: mode === "video",
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      setCameraMode(mode);
-      setCameraStream(stream);
+      audioChunksRef.current = [];
 
-      setTimeout(() => {
-        if (cameraVideoElementRef.current) {
-          cameraVideoElementRef.current.srcObject = stream;
-          cameraVideoElementRef.current.play().catch(() => {});
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
         }
-      }, 50);
-    } catch {
-      alert("No se pudo abrir la camara real. Revisa permisos del navegador.");
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const url = URL.createObjectURL(blob);
+
+        setPendingBlob(blob);
+        setPendingType("audio");
+        setPendingSource("audio");
+        setAudioPreview(url);
+        setRecording(false);
+
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      recorder.start();
+      setRecording(true);
+    } catch (error) {
+      alert("No se pudo activar el microfono. Revisá los permisos del navegador.");
+      setRecording(false);
     }
   }
 
-  function closeRealCamera() {
-    cameraStream?.getTracks().forEach((track) => track.stop());
-    setCameraStream(null);
-    setCameraMode(null);
-  }
-
-  async function captureRealPhoto() {
-    const video = cameraVideoElementRef.current;
-
-    if (!video) return;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-
-    const ctx = canvas.getContext("2d");
-
-    if (!ctx) return;
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-
-      const url = URL.createObjectURL(blob);
-
-      setPendingBlob(blob);
-      setPendingType("image");
-      setPendingSource("camera");
-      setImagePreview(url);
-      setVideoPreview("");
-
-      closeRealCamera();
-    }, "image/jpeg", 0.92);
-  }
-
-  function startRealVideoRecording() {
-    if (!cameraStream) return;
-
-    liveVideoChunksRef.current = [];
-
-    const recorder = new MediaRecorder(cameraStream);
-    liveVideoRecorderRef.current = recorder;
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        liveVideoChunksRef.current.push(event.data);
-      }
-    };
-
-    recorder.onstop = () => {
-      const blob = new Blob(liveVideoChunksRef.current, {
-        type: "video/webm",
-      });
-
-      const url = URL.createObjectURL(blob);
-
-      setPendingBlob(blob);
-      setPendingType("video");
-      setPendingSource("camera");
-      setVideoPreview(url);
-      setImagePreview("");
-
-      closeRealCamera();
-    };
-
-    recorder.start();
-    setRecording(true);
-  }
-
-  function stopRealVideoRecording() {
-    const recorder = liveVideoRecorderRef.current;
+  function stopAudioRecording() {
+    const recorder = mediaRecorderRef.current;
 
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
     }
-
-    setRecording(false);
-  }
-
-  function clearPreview() {
-    setAudioPreview("");
-    setImagePreview("");
-    setVideoPreview("");
-    setPendingBlob(null);
-    setPendingType(null);
-    setPendingSource(undefined);
-    setUploadProgress(null);
-    setViewOnce(false);
-  }
-
-  function handleFile(file: File | null, source: "camera" | "gallery") {
-    if (!file) return;
-
-    const isVideo = file.type.startsWith("video/");
-    const url = URL.createObjectURL(file);
-
-    setPendingBlob(file);
-    setPendingType(isVideo ? "video" : "image");
-    setPendingSource(source);
-    setImagePreview(isVideo ? "" : url);
-    setVideoPreview(isVideo ? url : "");
   }
 
   async function startAudioRecording() {
@@ -230,8 +141,8 @@ export default function UserChatPage() {
 
       recorder.start();
       setRecording(true);
-    } catch {
-      alert("No se pudo activar el microfono. Revisa los permisos del navegador.");
+    } catch (error) {
+      alert("No se pudo activar el microfono. Revisá los permisos del navegador.");
       setRecording(false);
     }
   }
@@ -242,6 +153,31 @@ export default function UserChatPage() {
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
     }
+  }
+
+  function clearPreview() {
+    setAudioPreview("");
+    setImagePreview("");
+    setVideoPreview("");
+    setPendingBlob(null);
+    setPendingType(null);
+    setPendingSource(undefined);
+    setUploadProgress(null);
+    setViewOnce(false);
+  }
+
+  function handleFile(file: File | null, source: "camera" | "gallery") {
+    if (!file) return;
+
+    const isVideo = file.type.startsWith("video/");
+    const url = URL.createObjectURL(file);
+
+    setPendingBlob(file);
+    setPendingType(isVideo ? "video" : "image");
+    setPendingSource(source);
+
+    setImagePreview(isVideo ? "" : url);
+    setVideoPreview(isVideo ? url : "");
   }
 
   async function sendMedia() {
@@ -381,20 +317,7 @@ export default function UserChatPage() {
                     </div>
                   )}
 
-                  {message.viewOnce && (message.type === "image" || message.type === "video") ? (
-                    <button
-                      onClick={() => {
-                        if (!canOpenViewOnce(message.id)) return;
-                        markOpened(message.id);
-                        setFullscreenUrl(message.mediaUrl || "");
-                      }}
-                      className="flex min-h-[160px] min-w-[240px] flex-col items-center justify-center rounded-[24px] border border-orange-400/30 bg-orange-500/10 px-6 py-8 text-orange-300"
-                    >
-                      <Bomb size={42} />
-                      <p className="mt-3 text-xl font-black">Bomba</p>
-                      <p className="mt-1 text-sm text-orange-200/70">Ver una sola vez</p>
-                    </button>
-                  ) : message.type === "audio" ? (
+                  {message.type === "audio" ? (
                     <div className="flex items-center gap-4">
                       <button
                         onClick={() => {
@@ -446,54 +369,6 @@ export default function UserChatPage() {
           </div>
         </div>
 
-        {cameraMode ? (
-          <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 px-5">
-            <video
-              ref={cameraVideoElementRef}
-              autoPlay
-              playsInline
-              muted
-              className="max-h-[70vh] w-full max-w-3xl rounded-[28px] bg-black object-cover"
-            />
-
-            <div className="mt-5 flex items-center gap-3">
-              {cameraMode === "photo" ? (
-                <button
-                  type="button"
-                  onClick={captureRealPhoto}
-                  className="rounded-2xl bg-violet-500 px-6 py-4 text-lg font-black"
-                >
-                  Tomar foto
-                </button>
-              ) : recording ? (
-                <button
-                  type="button"
-                  onClick={stopRealVideoRecording}
-                  className="rounded-2xl bg-red-500 px-6 py-4 text-lg font-black"
-                >
-                  Detener video
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={startRealVideoRecording}
-                  className="rounded-2xl bg-violet-500 px-6 py-4 text-lg font-black"
-                >
-                  Grabar video
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={closeRealCamera}
-                className="rounded-2xl bg-white/10 px-6 py-4 text-lg font-black"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <div className="sticky bottom-0 border-t border-white/5 bg-black/95 px-4 pb-4 pt-3 backdrop-blur-xl">
           {replyingTo && (
             <div className="mx-auto mb-3 max-w-5xl rounded-3xl bg-[#090909] px-5 py-4">
@@ -515,27 +390,11 @@ export default function UserChatPage() {
               {audioPreview ? <audio controls src={audioPreview} className="w-full" /> : null}
 
               {imagePreview ? (
-                viewOnce ? (
-                  <div className="flex min-h-[180px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
-                    <Bomb size={44} />
-                    <p className="mt-3 text-xl font-black">Bomba activada</p>
-                    <p className="mt-1 text-sm text-orange-200/70">La imagen no se vera hasta abrirse una vez</p>
-                  </div>
-                ) : (
-                  <img src={imagePreview} className="max-h-[280px] rounded-[22px]" />
-                )
+                <img src={imagePreview} className="max-h-[280px] rounded-[22px]" />
               ) : null}
 
               {videoPreview ? (
-                viewOnce ? (
-                  <div className="flex min-h-[180px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
-                    <Bomb size={44} />
-                    <p className="mt-3 text-xl font-black">Bomba activada</p>
-                    <p className="mt-1 text-sm text-orange-200/70">El video no se vera hasta abrirse una vez</p>
-                  </div>
-                ) : (
-                  <video src={videoPreview} controls className="max-h-[280px] rounded-[22px]" />
-                )
+                <video src={videoPreview} controls className="max-h-[280px] rounded-[22px]" />
               ) : null}
 
               <button
@@ -583,7 +442,13 @@ export default function UserChatPage() {
 
           {recording ? (
             <div className="mx-auto mb-3 max-w-5xl rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-300">
-              Grabando audio... solta para terminar
+              Grabando audio... soltá para terminar
+            </div>
+          ) : null}
+
+          {recording ? (
+            <div className="mx-auto mb-3 max-w-5xl rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-300">
+              Grabando audio... soltá para terminar
             </div>
           ) : null}
 
@@ -616,7 +481,7 @@ export default function UserChatPage() {
 
             <button
               type="button"
-              onClick={() => openRealCamera("photo")}
+              onClick={() => cameraPhotoRef.current?.click()}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80"
               title="Foto camara"
             >
@@ -625,7 +490,7 @@ export default function UserChatPage() {
 
             <button
               type="button"
-              onClick={() => openRealCamera("video")}
+              onClick={() => cameraVideoRef.current?.click()}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80"
               title="Video camara"
             >
@@ -668,7 +533,7 @@ export default function UserChatPage() {
                   ? "border-red-400/50 bg-red-500/20 text-red-300"
                   : "border-white/10 bg-white/[0.06] text-white/70",
               ].join(" ")}
-              title="Mantener para audio"
+              title="Mantener apretado para grabar audio"
             >
               <Mic size={19} />
             </button>
@@ -686,4 +551,5 @@ export default function UserChatPage() {
     </main>
   );
 }
+
 

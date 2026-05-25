@@ -1,0 +1,46 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #000;
+  color: white;
+  font-family: Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* SayItToMe: ocultar barra global cuando se entra a un chat */
+body:has(#sayittome-chat-route-marker) nav.fixed.bottom-0,
+body:has(#sayittome-chat-route-marker) .fixed.bottom-0.left-0.right-0,
+body:has(#sayittome-chat-route-marker) .fixed.inset-x-0.bottom-0 {
+  display: none !important;
+}
+
+
+/* SayItToMe: ocultar barra global en rutas de chat */
+body:has(input[placeholder*="mensaje"]) nav.fixed.bottom-0,
+body:has(textarea[placeholder*="mensaje"]) nav.fixed.bottom-0,
+body:has(input[placeholder*="mensaje"]) .fixed.inset-x-0.bottom-0,
+body:has(textarea[placeholder*="mensaje"]) .fixed.inset-x-0.bottom-0 {
+  display: none !important;
+}
+
+
+/* SAYITTOME_CHAT_OPEN_HIDE_GLOBAL_NAV */
+body.sayittome-chat-open nav.fixed.bottom-0,
+body.sayittome-chat-open .fixed.bottom-0.left-0.right-0,
+body.sayittome-chat-open .fixed.inset-x-0.bottom-0 {
+  display: none !important;
+}
+
+body.sayittome-chat-open {
+  overflow-x: hidden;
+}
+
