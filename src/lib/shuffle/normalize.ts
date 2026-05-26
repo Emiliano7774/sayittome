@@ -18,6 +18,10 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         username: String(item?.username || "usuario"),
         bio: String(item?.bio || "Sin descripcion."),
         photo: String(item?.photo || item?.fotoPrincipal || item?.photoURL || ""),
+        coverPhoto: String(
+          item?.coverPhoto || item?.fotoPortada || item?.portada || item?.heroPhoto || "",
+        ),
+        coverVideo: String(item?.coverVideo || item?.videoPortada || ""),
         lastActive,
         presenceAt,
         online,

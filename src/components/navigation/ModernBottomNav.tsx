@@ -22,7 +22,7 @@ export default function ModernBottomNav() {
   return (
     <nav
       className="modern-bottom-nav fixed inset-x-0 bottom-0 z-[9999] px-4 pb-[max(10px,env(safe-area-inset-bottom))] pt-2"
-      aria-label="Navegación principal"
+      aria-label="Navegacion principal"
     >
       <div className="mx-auto flex h-[68px] max-w-lg items-center justify-around rounded-[28px] border border-white/10 bg-[#0d0d0d]/78 shadow-[0_8px_40px_rgba(0,0,0,.55),0_0_50px_rgba(104,76,255,0.2)] backdrop-blur-2xl supports-[backdrop-filter]:bg-[#0d0d0d]/65">
         {ITEMS.map((item) => {

@@ -12,6 +12,8 @@ type ApiProfile = {
   username: string;
   bio: string;
   photo: string;
+  coverPhoto?: string;
+  coverVideo?: string;
   lastActive?: string;
   presenceAt?: string;
   online?: boolean;
@@ -166,6 +168,18 @@ function docToProfile(doc: any): ApiProfile {
       fieldString(fields, "fotoPrincipal") ||
       fieldString(fields, "photoURL") ||
       fotos[0] ||
+      "",
+
+    coverPhoto:
+      fieldString(fields, "fotoPortada") ||
+      fieldString(fields, "coverPhoto") ||
+      fieldString(fields, "portada") ||
+      fieldString(fields, "heroPhoto") ||
+      "",
+
+    coverVideo:
+      fieldString(fields, "videoPortada") ||
+      fieldString(fields, "coverVideo") ||
       "",
 
     lastActive,

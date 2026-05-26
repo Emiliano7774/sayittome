@@ -50,8 +50,13 @@ export default function ModernEditProfilePage() {
   const [intereses, setIntereses] = useState("");
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [principalIndex, setPrincipalIndex] = useState(0);
+  const [fotoPortada, setFotoPortada] = useState("");
+  const [videoPortada, setVideoPortada] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadText, setUploadText] = useState("");
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const coverVideoInputRef = useRef<HTMLInputElement | null>(null);
 
   const fotoPrincipal = useMemo(() => {
     const firstImage = media.find((m) => m.type === "image");
@@ -84,9 +89,30 @@ export default function ModernEditProfilePage() {
 
       setMedia(loaded.slice(0, 100));
       setPrincipalIndex(0);
+      setFotoPortada(String(data.fotoPortada || data.coverPhoto || data.portada || ""));
+      setVideoPortada(String(data.videoPortada || data.coverVideo || ""));
       setLoading(false);
     });
   }, []);
+
+  async function uploadSingleFile(
+    file: File,
+    folder: "avatar" | "cover" | "cover-video",
+  ): Promise<string> {
+    if (!user) return "";
+
+    const ext = file.name.split(".").pop() || "file";
+    const path = `usuarios/${user.uid}/perfil/${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const storageRef = ref(storage, path);
+
+    return new Promise<string>((resolve, reject) => {
+      const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
+      task.on("state_changed", undefined, reject, async () => {
+        const url = await getDownloadURL(task.snapshot.ref);
+        resolve(url);
+      });
+    });
+  }
 
   async function uploadFiles(files: FileList | null) {
     if (!user || !files?.length) return;
@@ -170,6 +196,11 @@ export default function ModernEditProfilePage() {
         fotos,
         videos,
         fotoPrincipal,
+        fotoPortada: fotoPortada || null,
+        coverPhoto: fotoPortada || null,
+        portada: fotoPortada || null,
+        videoPortada: videoPortada || null,
+        coverVideo: videoPortada || null,
         perfilCompleto: Boolean(username.trim() && fotoPrincipal),
         updatedAt: serverTimestamp(),
       },
@@ -217,13 +248,86 @@ export default function ModernEditProfilePage() {
               )}
             </div>
 
-            <button
-              onClick={() => inputRef.current?.click()}
-              className="mt-6 w-64 h-16 rounded-full bg-violet-500 font-black text-xl flex items-center justify-center gap-3"
-            >
-              <ImagePlus /> Subir fotos/videos
-            </button>
+            <div className="mt-6 flex flex-col gap-3 w-64">
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                className="h-14 rounded-full bg-violet-500 font-black flex items-center justify-center gap-2"
+              >
+                <Camera size={18} /> Foto de perfil
+              </button>
+              <button
+                type="button"
+                onClick={() => coverInputRef.current?.click()}
+                className="h-14 rounded-full border border-violet-400 font-black flex items-center justify-center gap-2"
+              >
+                <ImagePlus size={18} /> Foto de portada
+              </button>
+              <button
+                type="button"
+                onClick={() => coverVideoInputRef.current?.click()}
+                className="h-14 rounded-full border border-white/20 font-black flex items-center justify-center gap-2"
+              >
+                <Film size={18} /> Video de portada
+              </button>
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="h-14 rounded-full border border-white/15 font-black flex items-center justify-center gap-2"
+              >
+                <ImagePlus size={18} /> Galería fotos/videos
+              </button>
+            </div>
 
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploading(true);
+                const url = await uploadSingleFile(file, "avatar");
+                if (url) {
+                  const imageItem = { url, type: "image" as const };
+                  setMedia((prev) => [imageItem, ...prev].slice(0, 100));
+                  setPrincipalIndex(0);
+                }
+                setUploading(false);
+                e.target.value = "";
+              }}
+            />
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploading(true);
+                const url = await uploadSingleFile(file, "cover");
+                if (url) setFotoPortada(url);
+                setUploading(false);
+                e.target.value = "";
+              }}
+            />
+            <input
+              ref={coverVideoInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploading(true);
+                const url = await uploadSingleFile(file, "cover-video");
+                if (url) setVideoPortada(url);
+                setUploading(false);
+                e.target.value = "";
+              }}
+            />
             <input
               ref={inputRef}
               type="file"
@@ -232,6 +336,13 @@ export default function ModernEditProfilePage() {
               className="hidden"
               onChange={(e) => uploadFiles(e.target.files)}
             />
+
+            {fotoPortada ? (
+              <p className="mt-3 text-sm font-bold text-violet-300">Portada cargada</p>
+            ) : null}
+            {videoPortada ? (
+              <p className="text-sm font-bold text-violet-300">Video de portada cargado</p>
+            ) : null}
 
             <p className="mt-4 text-white/55 text-lg">
               {media.length}/100 archivos. Fotos y videos permitidos.

@@ -34,6 +34,8 @@ type Profile = {
   provincia: string;
   mostrarProvincia: boolean;
   fotoPrincipal: string;
+  fotoPortada?: string;
+  videoPortada?: string;
   fotos?: string[];
   likes: number;
   conversaciones: number;
@@ -207,6 +209,8 @@ export default function PublicProfilePage() {
           provincia: profile.provincia,
           mostrarProvincia: profile.mostrarProvincia,
           fotoPrincipal: profile.fotoPrincipal,
+          fotoPortada: profile.fotoPortada,
+          videoPortada: profile.videoPortada,
           fotos: profile.fotos,
           likes: profile.likes,
           conversaciones: profile.conversaciones,

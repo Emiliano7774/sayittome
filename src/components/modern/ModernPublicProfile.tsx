@@ -19,6 +19,8 @@ export type ModernProfileData = {
   provincia?: string;
   mostrarProvincia?: boolean;
   fotoPrincipal: string;
+  fotoPortada?: string;
+  videoPortada?: string;
   fotos?: string[];
   likes: number;
   conversaciones: number;
@@ -83,10 +85,25 @@ export default function ModernPublicProfile({
         <section className="relative overflow-hidden rounded-[32px] border border-violet-500/10 bg-[#0a0a0a] shadow-[0_0_90px_rgba(104,76,255,0.18)]">
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-violet-600/20 to-transparent" />
           <div className="relative h-[360px] overflow-hidden md:h-[400px]">
-            {profile.fotoPrincipal ? (
+            {profile.videoPortada ? (
+              <>
+                <video
+                  src={profile.videoPortada}
+                  className={[
+                    "h-full w-full object-cover",
+                    blurPhoto ? "blur-2xl scale-110" : "",
+                  ].join(" ")}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                />
+                {blurPhoto ? <SensitiveBlurOverlay label="Portada moderada" /> : null}
+              </>
+            ) : profile.fotoPortada || profile.fotoPrincipal ? (
               <>
                 <img
-                  src={profile.fotoPrincipal}
+                  src={profile.fotoPortada || profile.fotoPrincipal}
                   alt={profile.username}
                   className={[
                     "h-full w-full object-cover",

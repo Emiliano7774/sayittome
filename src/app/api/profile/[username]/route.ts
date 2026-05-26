@@ -110,6 +110,13 @@ export async function GET(
       fields?.ubicacionVisible?.booleanValue !== false &&
       fields?.geoVisible?.booleanValue !== false,
     fotoPrincipal: str(fields, "fotoPrincipal") || str(fields, "photoURL") || fotos[0] || "",
+    fotoPortada:
+      str(fields, "fotoPortada") ||
+      str(fields, "coverPhoto") ||
+      str(fields, "portada") ||
+      str(fields, "heroPhoto") ||
+      "",
+    videoPortada: str(fields, "videoPortada") || str(fields, "coverVideo") || "",
     fotos: fotos,
     likes: int(fields, "likes") || int(fields, "likesCount"),
     conversaciones: int(fields, "conversacionesCount"),

@@ -3,6 +3,8 @@ export type ShuffleProfile = {
   username: string;
   bio: string;
   photo: string;
+  coverPhoto?: string;
+  coverVideo?: string;
   lastActive?: string;
   presenceAt?: string;
   online?: boolean;

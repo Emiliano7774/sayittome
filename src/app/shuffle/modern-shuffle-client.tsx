@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Search, Shuffle } from "lucide-react";
+import { useSyncExternalStore } from "react";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import ModernShuffleGrid from "@/components/modern/ModernShuffleGrid";
@@ -17,7 +18,6 @@ import {
   getStoriesIndexVersion,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
-import { useSyncExternalStore } from "react";
 
 export default function ModernShuffleClient() {
   const pool = useShufflePool();
@@ -30,10 +30,7 @@ export default function ModernShuffleClient() {
   const withStories = getCachedStoryGroups().length;
 
   return (
-    <main
-      data-scroll-root
-      className="min-h-screen bg-black pb-32 text-white"
-    >
+    <main data-scroll-root className="min-h-screen bg-black pb-32 text-white">
       <div className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-8">
         <ModernPageHeader
           title="Shuffle"
@@ -91,7 +88,7 @@ export default function ModernShuffleClient() {
           <div className="flex h-[50vh] flex-col items-center justify-center text-center">
             <p className="text-2xl font-black text-white/35">No hay perfiles para mostrar.</p>
             {pool.errorText ? (
-              <p className="mt-3 text-white/40 font-bold">{pool.errorText}</p>
+              <p className="mt-3 font-bold text-white/40">{pool.errorText}</p>
             ) : null}
           </div>
         ) : (
