@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   ArrowUp,
@@ -21,6 +21,10 @@ import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import { uploadMedia } from "@/lib/media/upload";
 import { canOpenViewOnce, markOpened } from "@/lib/media/viewOnce";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
+import { addDoc, collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+
 
 type Message = {
   id: string;
@@ -50,6 +54,9 @@ export default function UserChatPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewOnce, setViewOnce] = useState(false);
   const [anonSession, setAnonSession] = useState("anon_server");
+  const [authReady, setAuthReady] = useState(false);
+  const [currentUid, setCurrentUid] = useState("");
+  const [targetUid, setTargetUid] = useState("");
   const [recording, setRecording] = useState(false);
   const [cameraMode, setCameraMode] = useState<"photo" | "video" | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -68,10 +75,40 @@ export default function UserChatPage() {
     setAnonSession(getAnonSessionId());
     inputRef.current?.focus();
     document.body.classList.add("sayittome-chat-open");
+
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUid(user?.uid || "");
+      setAuthReady(true);
+    });
+
     return () => {
+      unsub();
       document.body.classList.remove("sayittome-chat-open");
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTargetProfile() {
+      try {
+        const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
+          cache: "no-store",
+        });
+        const json = await res.json();
+        if (cancelled) return;
+        setTargetUid(String(json?.profile?.uid || ""));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    loadTargetProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
 
   async function openRealCamera(mode: "photo" | "video") {
     try {
@@ -269,21 +306,99 @@ export default function UserChatPage() {
     clearPreview();
   }
 
-  function sendMessage() {
+  function safeChatPart(value: string) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/gi, "_")
+      .slice(0, 80) || "usuario";
+  }
+
+  async function sendMessage() {
     if (!text.trim()) return;
+    if (!authReady) return;
 
-    setMessages((old) => [
-      ...old,
-      {
-        id: crypto.randomUUID(),
-        text,
-        mine: true,
-        reply: replyingTo?.text,
-      },
-    ]);
+    const messageText = text.trim();
+    const senderId = currentUid || anonSession;
+    const targetKey = targetUid || safeChatPart(username);
+    const chatId = currentUid
+      ? `${currentUid}__anon_to__${safeChatPart(targetKey)}`
+      : `${anonSession}__anon_to__${safeChatPart(targetKey)}`;
 
+    const localMessage = {
+      id: crypto.randomUUID(),
+      text: messageText,
+      mine: true,
+      reply: replyingTo?.text,
+    };
+
+    setMessages((old) => [...old, localMessage]);
     setText("");
     setReplyingTo(null);
+
+    try {
+      const participantes = Array.from(
+        new Set([
+          senderId,
+          ...(currentUid ? [currentUid] : []),
+          ...(targetUid ? [targetUid] : []),
+        ].filter(Boolean))
+      );
+
+      await setDoc(
+        doc(db, "chats", chatId),
+        {
+          id: chatId,
+          targetUsername: username,
+          receptorUsername: username,
+          receptorUid: targetUid || null,
+          targetUid: targetUid || null,
+          initiatorUid: currentUid || null,
+          anonOwnerUid: currentUid || null,
+          anonSessionId: currentUid ? null : anonSession,
+          participantes,
+          anon: true,
+          lastMessage: messageText,
+          lastMessageSender: senderId,
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          readBy: {
+            [senderId]: true,
+          },
+          typing: {
+            [senderId]: false,
+          },
+        },
+        { merge: true },
+      );
+
+      await addDoc(collection(db, "chats", chatId, "mensajes"), {
+        texto: messageText,
+        text: messageText,
+        createdAt: serverTimestamp(),
+        fromUid: senderId,
+        ownerId: senderId,
+        mine: true,
+        readBy: {
+          [senderId]: true,
+        },
+      });
+
+      await setDoc(
+        doc(db, "chats", chatId),
+        {
+          lastMessage: messageText,
+          lastMessageSender: senderId,
+          updatedAt: serverTimestamp(),
+          [`readBy.${senderId}`]: true,
+          [`typing.${senderId}`]: false,
+        },
+        { merge: true },
+      );
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo guardar el chat. Revisá permisos de Firestore.");
+    }
 
     setTimeout(() => inputRef.current?.focus(), 10);
   }

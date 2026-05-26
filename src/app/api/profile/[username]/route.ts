@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
 const PROJECT_ID = "sayittome-app";
@@ -105,6 +105,7 @@ export async function GET(
     conversaciones: int(fields, "conversacionesCount"),
     seguidores: int(fields, "seguidoresCount") || int(fields, "followersCount"),
     createdAtLabel: formatDate(ts(fields, "createdAt")),
+    lastActive: ts(fields, "lastActive") || ts(fields, "updatedAt") || ts(fields, "createdAt"),
   };
 
   return NextResponse.json({ ok: true, profile });
