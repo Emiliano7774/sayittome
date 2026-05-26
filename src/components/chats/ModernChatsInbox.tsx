@@ -5,6 +5,7 @@ import { MessageSquare } from "lucide-react";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import { chatHref, chatTitle, type InboxChat } from "@/hooks/useChatsInbox";
+import { useT } from "@/contexts/LocaleContext";
 
 type Props = {
   sortedChats: InboxChat[];
@@ -17,29 +18,28 @@ export default function ModernChatsInbox({
   uid,
   isAnonymousSession,
 }: Props) {
+  const t = useT();
+
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
       <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6">
-        <ModernPageHeader
-          title="Chats"
-          subtitle="Mensajes en tiempo real con la misma lógica de siempre."
-        />
+        <ModernPageHeader title={t("chats_title")} subtitle={t("chats_subtitle")} />
 
         {isAnonymousSession ? (
           <div className="mb-5 rounded-2xl border border-violet-500/15 bg-violet-500/5 p-4 text-sm font-bold text-white/55">
-            Chats de esta sesión anónima — se guardan en este navegador.
+            {t("chats_anon_banner")}
           </div>
         ) : null}
 
         {sortedChats.length === 0 ? (
           <div className="flex min-h-[50vh] flex-col items-center justify-center text-center text-white/35">
             <MessageSquare size={48} className="text-violet-300/40" />
-            <p className="mt-4 text-2xl font-black">Todavía no tenés chats.</p>
+            <p className="mt-4 text-2xl font-black">{t("chats_empty")}</p>
             <Link
               href="/shuffle"
               className="mt-6 rounded-full bg-violet-600 px-6 py-3 text-sm font-black"
             >
-              Ir al Shuffle
+              {t("home_go_shuffle")}
             </Link>
           </div>
         ) : (
@@ -60,19 +60,17 @@ export default function ModernChatsInbox({
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-lg font-black">@{title.replace(/^@/, "")}</p>
-                    <p className="mt-1 truncate text-sm font-bold text-white/45">
-                      {chat.lastMessage || "Sin mensajes"}
+                    <p className="truncate text-lg font-black">{title}</p>
+                    <p className="truncate text-sm font-bold text-white/35">
+                      {chat.lastMessage || t("chats_no_messages")}
                     </p>
                   </div>
 
                   {unread > 0 ? (
-                    <span className="rounded-full bg-violet-600 px-3 py-1 text-xs font-black shadow-[0_0_16px_rgba(124,58,237,.45)]">
+                    <span className="rounded-full bg-violet-600 px-2.5 py-1 text-xs font-black">
                       {unread}
                     </span>
-                  ) : (
-                    <span className="text-white/20 transition group-hover:text-violet-300">›</span>
-                  )}
+                  ) : null}
                 </Link>
               );
             })}

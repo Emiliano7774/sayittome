@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import StoryRing from "@/components/stories/StoryRing";
+import { useT } from "@/contexts/LocaleContext";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 import type { StoryUserGroup } from "@/lib/stories/types";
 
@@ -13,6 +14,8 @@ type Props = {
 };
 
 export default function StoriesTray({ groups, showAdd = true }: Props) {
+  const t = useT();
+
   return (
     <div className="flex gap-5 overflow-x-auto pb-2 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {showAdd ? (
@@ -24,7 +27,7 @@ export default function StoriesTray({ groups, showAdd = true }: Props) {
             <Plus size={32} className="text-white/80" />
           </div>
           <span className="max-w-[72px] truncate text-sm font-bold text-white/55">
-            Tu historia
+            {t("stories_your_story")}
           </span>
         </Link>
       ) : null}

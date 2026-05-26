@@ -8,13 +8,15 @@ import {
   sendEmailVerification,
 } from "firebase/auth";
 
-import UxModeSwitcher from "@/components/UxModeSwitcher";
+import HeaderControls from "@/components/HeaderControls";
 import { auth } from "@/lib/firebase";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
-import { mapRegisterError } from "@/lib/auth/registerErrors";
+import { mapRegisterErrorCode } from "@/lib/auth/registerErrors";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernRegisterPage() {
   const router = useRouter();
+  const t = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -28,22 +30,22 @@ export default function ModernRegisterPage() {
     const trimmedEmail = email.trim().toLowerCase();
 
     if (!trimmedEmail) {
-      setError("Escribí tu email.");
+      setError(t("error_register_email_required"));
       return;
     }
 
     if (!password) {
-      setError("Escribí una contraseña.");
+      setError(t("error_register_password_required"));
       return;
     }
 
     if (password.length < 6) {
-      setError("La contraseña debe tener al menos 6 caracteres.");
+      setError(t("error_register_weak_password"));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Las contraseñas no coinciden.");
+      setError(t("error_register_password_mismatch"));
       return;
     }
 
@@ -62,7 +64,7 @@ export default function ModernRegisterPage() {
       router.replace("/register/verify-email");
     } catch (err: unknown) {
       const code = String((err as { code?: string })?.code || "");
-      setError(mapRegisterError(code));
+      setError(t(mapRegisterErrorCode(code)));
     } finally {
       setLoading(false);
     }
@@ -76,10 +78,10 @@ export default function ModernRegisterPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.45em] text-fuchsia-300">
               SAYITTOME
             </p>
-            <h1 className="mt-3 text-3xl font-semibold">Crear perfil</h1>
+            <h1 className="mt-3 text-3xl font-semibold">{t("auth_register_title")}</h1>
           </div>
 
-          <UxModeSwitcher />
+          <HeaderControls />
         </header>
 
         <div className="flex flex-1 items-center justify-center py-16">
@@ -89,10 +91,7 @@ export default function ModernRegisterPage() {
           >
             <div className="absolute -inset-8 -z-10 rounded-[3rem] bg-fuchsia-500/15 blur-3xl" />
 
-            <p className="text-sm leading-7 text-zinc-400">
-              Registrate con email y contraseña. Te enviaremos un mail para verificar tu cuenta
-              antes de configurar tu perfil.
-            </p>
+            <p className="text-sm leading-7 text-zinc-400">{t("auth_register_subtitle")}</p>
 
             <div className="mt-8 space-y-4">
               <input
@@ -100,7 +99,7 @@ export default function ModernRegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 type="email"
                 autoComplete="email"
-                placeholder="Email"
+                placeholder={t("auth_email")}
                 className="w-full rounded-2xl bg-white px-4 py-4 text-black outline-none"
               />
 
@@ -109,7 +108,7 @@ export default function ModernRegisterPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 type="password"
                 autoComplete="new-password"
-                placeholder="Contraseña"
+                placeholder={t("auth_password")}
                 className="w-full rounded-2xl border border-white/10 bg-black px-4 py-4 text-white outline-none"
               />
 
@@ -118,7 +117,7 @@ export default function ModernRegisterPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 type="password"
                 autoComplete="new-password"
-                placeholder="Confirmar contraseña"
+                placeholder={t("auth_confirm_password")}
                 className="w-full rounded-2xl border border-white/10 bg-black px-4 py-4 text-white outline-none"
               />
             </div>
@@ -130,13 +129,13 @@ export default function ModernRegisterPage() {
               disabled={loading}
               className="mt-8 w-full rounded-full bg-white py-4 text-sm font-normal text-black disabled:opacity-50"
             >
-              {loading ? "Creando cuenta..." : "Crear cuenta y verificar email"}
+              {loading ? t("auth_registering") : t("auth_register_submit")}
             </button>
 
             <p className="mt-6 text-center text-sm text-zinc-400">
-              ¿Ya tenés cuenta?{" "}
+              {t("auth_has_account")}{" "}
               <Link href="/login" className="text-fuchsia-300">
-                Iniciar sesión
+                {t("auth_login_link")}
               </Link>
             </p>
 
@@ -145,7 +144,7 @@ export default function ModernRegisterPage() {
               onClick={() => router.push("/")}
               className="mt-4 w-full text-sm text-zinc-500"
             >
-              Volver al inicio
+              {t("common_back_home")}
             </button>
           </form>
         </div>

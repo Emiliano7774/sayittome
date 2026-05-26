@@ -10,11 +10,13 @@ import {
 
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
-import { mapLoginError } from "@/lib/auth/registerErrors";
+import { mapLoginErrorCode } from "@/lib/auth/registerErrors";
 import { auth } from "@/lib/firebase";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function LoginPage() {
   const router = useRouter();
+  const t = useT();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +60,7 @@ export default function LoginPage() {
       router.replace(next);
     } catch (err: unknown) {
       const code = String((err as { code?: string })?.code || "");
-      setError(mapLoginError(code));
+      setError(t(mapLoginErrorCode(code)));
     } finally {
       setLoading(false);
     }
@@ -67,7 +69,7 @@ export default function LoginPage() {
   if (checking) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p className="text-2xl font-black">Detectando sesión...</p>
+        <p className="text-2xl font-black">{t("auth_detecting_session")}</p>
       </main>
     );
   }
@@ -78,18 +80,16 @@ export default function LoginPage() {
         onSubmit={handleLogin}
         className="w-full max-w-md rounded-[32px] border border-white/10 bg-zinc-950/80 p-8 shadow-[0_0_80px_rgba(139,92,246,.18)]"
       >
-        <h1 className="text-3xl font-black mb-3">Iniciar sesión</h1>
+        <h1 className="text-3xl font-black mb-3">{t("auth_login_title")}</h1>
 
-        <p className="text-white/55 mb-8">
-          Entrá con tu cuenta de SayItToMe.
-        </p>
+        <p className="text-white/55 mb-8">{t("auth_login_subtitle")}</p>
 
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           type="email"
           autoComplete="email"
-          placeholder="Email"
+          placeholder={t("auth_email")}
           className="w-full h-14 rounded-2xl bg-white text-black px-4 mb-4 outline-none"
         />
 
@@ -98,27 +98,23 @@ export default function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           type="password"
           autoComplete="current-password"
-          placeholder="Contraseña"
+          placeholder={t("auth_password")}
           className="w-full h-14 rounded-2xl bg-black border border-white/10 text-white px-4 mb-4 outline-none"
         />
 
-        {error && (
-          <p className="text-red-400 font-semibold mb-4">
-            {error}
-          </p>
-        )}
+        {error && <p className="text-red-400 font-semibold mb-4">{error}</p>}
 
         <button
           disabled={loading}
           className="w-full h-14 rounded-full bg-violet-500 font-black text-white disabled:opacity-50"
         >
-          {loading ? "Entrando..." : "Entrar"}
+          {loading ? t("auth_entering") : t("auth_enter")}
         </button>
 
         <p className="mt-6 text-center text-sm text-white/55">
-          ¿No tenés cuenta?{" "}
+          {t("auth_no_account")}{" "}
           <Link href="/register" className="text-violet-300">
-            Crear perfil
+            {t("auth_register_link")}
           </Link>
         </p>
 
@@ -127,7 +123,7 @@ export default function LoginPage() {
           onClick={() => router.push("/")}
           className="w-full mt-6 text-violet-300"
         >
-          Volver
+          {t("common_back_home")}
         </button>
       </form>
     </main>

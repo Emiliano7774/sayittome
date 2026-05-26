@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthProvider } from "@/contexts/AuthContext";
+import { LocaleProvider } from "@/contexts/LocaleContext";
 import { UxModeProvider } from "@/contexts/UxModeContext";
 import AnonymousPresenceBootstrap from "@/components/AnonymousPresenceBootstrap";
 import AnonSessionLifecycle from "@/components/AnonSessionLifecycle";
@@ -14,15 +15,17 @@ export default function Providers({
   children: React.ReactNode;
 }) {
   return (
-    <AuthProvider>
-      <UxModeProvider>
-        <PresenceBootstrap />
-        <AnonymousPresenceBootstrap />
-        <AnonSessionLifecycle />
-        <MonetagScripts />
-        <StoriesBootstrap />
-        {children}
-      </UxModeProvider>
-    </AuthProvider>
+    <LocaleProvider>
+      <AuthProvider>
+        <UxModeProvider>
+          <PresenceBootstrap />
+          <AnonymousPresenceBootstrap />
+          <AnonSessionLifecycle />
+          <MonetagScripts />
+          <StoriesBootstrap />
+          {children}
+        </UxModeProvider>
+      </AuthProvider>
+    </LocaleProvider>
   );
 }

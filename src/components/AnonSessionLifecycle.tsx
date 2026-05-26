@@ -8,6 +8,7 @@ import {
   consumeAnonSessionReset,
   markAnonSessionForReset,
 } from "@/lib/chat/anonSession";
+import { clearAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
 
 /**
  * Visiting home marks the anonymous session as stale.
@@ -19,6 +20,7 @@ export default function AnonSessionLifecycle() {
   useEffect(() => {
     if (pathname === "/") {
       markAnonSessionForReset();
+      clearAnonLegalAcceptance();
       return;
     }
 

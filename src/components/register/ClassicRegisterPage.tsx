@@ -8,13 +8,15 @@ import {
   sendEmailVerification,
 } from "firebase/auth";
 
-import UxModeSwitcher from "@/components/UxModeSwitcher";
+import HeaderControls from "@/components/HeaderControls";
 import { auth } from "@/lib/firebase";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
-import { mapRegisterError } from "@/lib/auth/registerErrors";
+import { mapRegisterErrorCode } from "@/lib/auth/registerErrors";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function ClassicRegisterPage() {
   const router = useRouter();
+  const t = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -28,22 +30,22 @@ export default function ClassicRegisterPage() {
     const trimmedEmail = email.trim().toLowerCase();
 
     if (!trimmedEmail) {
-      setError("Escribí tu email.");
+      setError(t("error_register_email_required"));
       return;
     }
 
     if (!password) {
-      setError("Escribí una contraseña.");
+      setError(t("error_register_password_required"));
       return;
     }
 
     if (password.length < 6) {
-      setError("La contraseña debe tener al menos 6 caracteres.");
+      setError(t("error_register_weak_password"));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Las contraseñas no coinciden.");
+      setError(t("error_register_password_mismatch"));
       return;
     }
 
@@ -62,7 +64,7 @@ export default function ClassicRegisterPage() {
       router.replace("/register/verify-email");
     } catch (err: unknown) {
       const code = String((err as { code?: string })?.code || "");
-      setError(mapRegisterError(code));
+      setError(t(mapRegisterErrorCode(code)));
     } finally {
       setLoading(false);
     }
@@ -77,17 +79,15 @@ export default function ClassicRegisterPage() {
             <p className="text-base font-medium tracking-[-0.02em] text-zinc-100">SayItToMe</p>
           </div>
 
-          <UxModeSwitcher />
+          <HeaderControls />
         </header>
 
         <form
           onSubmit={handleSubmit}
           className="overflow-hidden rounded-[2.7rem] border border-violet-400/10 bg-[#030303] p-8 shadow-[0_0_80px_rgba(104,76,255,0.24)]"
         >
-          <h1 className="text-3xl font-medium tracking-[-0.05em]">Crear perfil</h1>
-          <p className="mt-3 text-sm leading-6 text-zinc-400">
-            Registrate con email y contraseña. Te enviaremos un mail para verificar tu cuenta.
-          </p>
+          <h1 className="text-3xl font-medium tracking-[-0.05em]">{t("auth_register_title")}</h1>
+          <p className="mt-3 text-sm leading-6 text-zinc-400">{t("auth_register_subtitle")}</p>
 
           <div className="mt-8 space-y-4">
             <input
@@ -95,7 +95,7 @@ export default function ClassicRegisterPage() {
               onChange={(e) => setEmail(e.target.value)}
               type="email"
               autoComplete="email"
-              placeholder="Email"
+              placeholder={t("auth_email")}
               className="w-full h-16 rounded-full border border-white/15 bg-black px-5 text-white outline-none placeholder:text-zinc-500"
             />
 
@@ -104,7 +104,7 @@ export default function ClassicRegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               type="password"
               autoComplete="new-password"
-              placeholder="Contraseña"
+              placeholder={t("auth_password")}
               className="w-full h-16 rounded-full border border-white/15 bg-black px-5 text-white outline-none placeholder:text-zinc-500"
             />
 
@@ -113,7 +113,7 @@ export default function ClassicRegisterPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               type="password"
               autoComplete="new-password"
-              placeholder="Confirmar contraseña"
+              placeholder={t("auth_confirm_password")}
               className="w-full h-16 rounded-full border border-white/15 bg-black px-5 text-white outline-none placeholder:text-zinc-500"
             />
           </div>
@@ -125,14 +125,14 @@ export default function ClassicRegisterPage() {
             disabled={loading}
             className="mt-8 flex h-20 w-full items-center justify-center rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] text-[15px] font-medium tracking-[-0.02em] shadow-[0_0_45px_rgba(105,82,255,0.48)] disabled:opacity-50"
           >
-            {loading ? "Creando cuenta..." : "Crear cuenta y verificar email"}
+            {loading ? t("auth_registering") : t("auth_register_submit")}
           </button>
         </form>
 
         <p className="mt-8 text-center text-sm text-zinc-400">
-          ¿Ya tenés cuenta?{" "}
+          {t("auth_has_account")}{" "}
           <Link href="/login" className="text-violet-300">
-            Iniciar sesión
+            {t("auth_login_link")}
           </Link>
         </p>
 
@@ -141,7 +141,7 @@ export default function ClassicRegisterPage() {
           onClick={() => router.push("/")}
           className="mt-4 text-center text-sm text-zinc-500"
         >
-          Volver al inicio
+          {t("common_back_home")}
         </button>
       </section>
     </main>

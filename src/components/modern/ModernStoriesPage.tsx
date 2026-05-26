@@ -5,21 +5,27 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
-import StoriesTray from "@/components/stories/StoriesTray";
+import StoriesHub from "@/components/stories/StoriesHub";
 import { auth } from "@/lib/firebase";
 import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
 import type { StoryUserGroup } from "@/lib/stories/types";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernStoriesPage() {
+  const t = useT();
   const [groups, setGroups] = useState<StoryUserGroup[]>([]);
+  const [viewerUid, setViewerUid] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     const unsub = onAuthStateChanged(auth, async (user) => {
+      const uid = user?.uid || "";
+      setViewerUid(uid);
+
       try {
-        const data = await fetchActiveStoriesGrouped(user?.uid || "");
+        const data = await fetchActiveStoriesGrouped(uid);
         if (!cancelled) setGroups(data);
       } catch (e) {
         console.error(e);
@@ -36,37 +42,24 @@ export default function ModernStoriesPage() {
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
-      <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-6">
-        <ModernPageHeader
-          title="Historias"
-          subtitle="Burbujas premium, 24h reales, mismo visor fullscreen."
-          actions={
+      <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
+        <ModernPageHeader title={t("stories_title")} subtitle={t("stories_subtitle")} />
+
+        {loading ? (
+          <p className="text-center text-lg font-black text-white/35">{t("stories_loading")}</p>
+        ) : groups.length === 0 ? (
+          <div className="flex min-h-[45vh] flex-col items-center justify-center text-center">
+            <p className="text-2xl font-black text-white/35">{t("stories_empty")}</p>
             <Link
               href="/stories/new"
-              className="rounded-full bg-violet-600 px-5 py-2.5 text-sm font-black shadow-[0_0_28px_rgba(124,58,237,.35)]"
+              className="mt-6 rounded-full bg-violet-600 px-6 py-3 text-sm font-black"
             >
-              + Crear
+              {t("stories_create")}
             </Link>
-          }
-        />
-
-        <section className="rounded-[28px] border border-violet-500/12 bg-[#080808] p-5 shadow-[inset_0_0_50px_rgba(104,76,255,0.05)]">
-          {loading ? (
-            <p className="text-center text-lg font-black text-white/35">Cargando historias...</p>
-          ) : groups.length === 0 ? (
-            <div className="flex min-h-[45vh] flex-col items-center justify-center text-center">
-              <p className="text-2xl font-black text-white/35">No hay historias activas.</p>
-              <Link
-                href="/stories/new"
-                className="mt-6 rounded-full bg-white px-8 py-3.5 text-sm font-black text-black"
-              >
-                Publicar la primera
-              </Link>
-            </div>
-          ) : (
-            <StoriesTray groups={groups} />
-          )}
-        </section>
+          </div>
+        ) : (
+          <StoriesHub groups={groups} viewerUid={viewerUid} variant="modern" />
+        )}
       </div>
     </main>
   );

@@ -18,8 +18,10 @@ import {
   getStoriesIndexVersion,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernShuffleClient() {
+  const t = useT();
   const pool = useShufflePool();
 
   useSyncExternalStore(subscribeAllShuffleSlots, getShuffleSlotsVersion, getShuffleSlotsVersion);
@@ -33,31 +35,31 @@ export default function ModernShuffleClient() {
     <main data-scroll-root className="min-h-screen bg-black pb-32 text-white">
       <div className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-8">
         <ModernPageHeader
-          title="Shuffle"
-          subtitle="Perfiles activos, historias recientes y gente conectada en tiempo real."
+          title={t("shuffle_title")}
+          subtitle={t("shuffle_subtitle")}
           actions={
             <>
               <Link
                 href="/stories/new"
                 className="rounded-full bg-violet-600 px-5 py-2.5 text-sm font-black shadow-[0_0_30px_rgba(124,58,237,.35)]"
               >
-                + Historia
+                {t("shuffle_new_story")}
               </Link>
               <Link
                 href="/chats"
                 className="rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-black"
               >
-                Chats
+                {t("chats_title")}
               </Link>
             </>
           }
         />
 
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatPill label="Perfiles" value={pool.totalLive} tone="neutral" />
-          <StatPill label="Online" value={onlineVisible} tone="green" />
-          <StatPill label="Con historias" value={withStories} tone="violet" />
-          <StatPill label="Visibles" value={visible.length} tone="neutral" />
+          <StatPill label={t("shuffle_profiles")} value={pool.totalLive} tone="neutral" />
+          <StatPill label={t("shuffle_online")} value={onlineVisible} tone="green" />
+          <StatPill label={t("shuffle_stories")} value={withStories} tone="violet" />
+          <StatPill label={t("shuffle_visible")} value={visible.length} tone="neutral" />
         </div>
 
         <ModernStoriesBar />
@@ -67,14 +69,14 @@ export default function ModernShuffleClient() {
           <input
             value={pool.search}
             onChange={(e) => pool.handleSearchChange(e.target.value)}
-            placeholder="Buscar perfiles..."
+            placeholder={t("shuffle_search")}
             className="w-full bg-transparent text-base font-bold outline-none placeholder:text-white/30"
           />
           <button
             type="button"
             onClick={pool.handleShuffleClick}
             className="shrink-0 rounded-full bg-violet-600 p-2.5 active:scale-95"
-            aria-label="Shuffle"
+            aria-label={t("shuffle_title")}
           >
             <Shuffle size={20} />
           </button>
@@ -82,7 +84,7 @@ export default function ModernShuffleClient() {
 
         {pool.loading && visible.length === 0 ? (
           <div className="flex h-[50vh] items-center justify-center">
-            <p className="text-2xl font-black text-white/35">Cargando perfiles...</p>
+            <p className="text-2xl font-black text-white/35">{t("common_loading")}</p>
           </div>
         ) : !pool.listReady && visible.length === 0 ? (
           <div className="flex h-[50vh] flex-col items-center justify-center text-center">

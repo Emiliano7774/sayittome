@@ -27,8 +27,9 @@ import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { registerSessionChat } from "@/lib/chat/sessionChats";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
+import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
-import { formatLastSeen } from "@/lib/presence";
+import { useT } from "@/contexts/LocaleContext";
 import {
   addDoc,
   collection,
@@ -62,6 +63,8 @@ export default function ProfileAnonChat({
   username: string;
 }) {
 
+  const t = useT();
+  const formatLastSeen = useFormatLastSeen();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -223,7 +226,7 @@ export default function ProfileAnonChat({
         }
       }, 50);
     } catch {
-      alert("No se pudo abrir la camara real. Revisa permisos del navegador.");
+      alert(t("chat_camera_fail"));
     }
   }
 
@@ -362,7 +365,7 @@ export default function ProfileAnonChat({
       recorder.start();
       setRecording(true);
     } catch {
-      alert("No se pudo activar el microfono. Revisa los permisos del navegador.");
+      alert(t("chat_mic_fail"));
       setRecording(false);
     }
   }
@@ -404,7 +407,7 @@ export default function ProfileAnonChat({
     if (!text.trim()) return;
     if (!authReady || !chatId) return;
     if (blockedByAbuse) {
-      alert("No podés escribir en este chat: bloqueo antiacoso activo.");
+      alert(t("chat_abuse_write_block"));
       return;
     }
 
@@ -417,7 +420,7 @@ export default function ProfileAnonChat({
       });
       if (block) {
         setBlockedByAbuse(true);
-        alert("No podés escribir en este chat: bloqueo antiacoso activo.");
+        alert(t("chat_abuse_write_block"));
         return;
       }
     }
@@ -515,18 +518,18 @@ export default function ProfileAnonChat({
       });
     } catch (e) {
       console.error(e);
-      alert("No se pudo guardar el chat. Revisá permisos de Firestore.");
+      alert(t("chat_save_fail"));
     }
 
     setTimeout(() => inputRef.current?.focus(), 10);
   }
 
   function sourceLabel(message: Message) {
-    if (message.source === "camera" && message.type === "image") return "enviado desde camara";
-    if (message.source === "camera" && message.type === "video") return "grabado en vivo";
-    if (message.source === "gallery" && message.type === "image") return "enviado desde galeria";
-    if (message.source === "gallery" && message.type === "video") return "video de galeria";
-    if (message.source === "audio") return "audio";
+    if (message.source === "camera" && message.type === "image") return t("chat_media_camera_photo");
+    if (message.source === "camera" && message.type === "video") return t("chat_media_camera_video");
+    if (message.source === "gallery" && message.type === "image") return t("chat_media_gallery_photo");
+    if (message.source === "gallery" && message.type === "video") return t("chat_media_gallery_video");
+    if (message.source === "audio") return t("chat_media_audio");
     return "";
   }
 
@@ -555,7 +558,7 @@ export default function ProfileAnonChat({
             <h1 className="text-2xl font-bold">{username}</h1>
             <p className="text-lg text-lime-400">{presenceLabel}</p>
             {blockedByAbuse ? (
-              <p className="text-sm font-black text-red-300">Bloqueo antiacoso activo</p>
+              <p className="text-sm font-black text-red-300">{t("chat_abuse_block_active")}</p>
             ) : null}
           </div>
 
@@ -588,15 +591,15 @@ export default function ProfileAnonChat({
 
           <div className="mt-8 rounded-[28px] bg-[#ececec] px-6 py-5 text-left text-black shadow-2xl">
             <p className="text-2xl font-bold text-violet-600">
-              Mantenemos tu anonimato
+              {t("chat_anon_keep")}
             </p>
 
             <p className="mt-1 text-xl text-zinc-600">
-              No sabran quien eres.
+              {t("chat_anon_identity_hidden")}
             </p>
 
             <p className="mt-3 text-base text-zinc-400">
-              Sos: {anonSession}
+              {t("chat_anon_you_are", { session: anonSession })}
             </p>
           </div>
         </div>
@@ -636,7 +639,7 @@ export default function ProfileAnonChat({
                       className="flex min-h-[160px] min-w-[240px] flex-col items-center justify-center rounded-[24px] border border-orange-400/30 bg-orange-500/10 px-6 py-8 text-orange-300"
                     >
                       <Bomb size={42} />
-                      <p className="mt-3 text-xl font-black">Bomba</p>
+                      <p className="mt-3 text-xl font-black">{t("chat_bomb")}</p>
                       <p className="mt-1 text-sm text-orange-200/70">Ver una sola vez</p>
                     </button>
                   ) : message.type === "audio" ? (

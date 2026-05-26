@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { Heart, X } from "lucide-react";
 import {
   doc,
   increment,
+  onSnapshot,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -14,28 +15,64 @@ import {
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import { auth, db } from "@/lib/firebase";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
+import {
+  buildProfileLikeId,
+  getLikerId,
+  toggleProfileLike,
+} from "@/lib/likes/profileLike";
 import type { StoryItem } from "@/lib/stories/types";
+import { useT } from "@/contexts/LocaleContext";
 
 type Props = {
   stories: StoryItem[];
   ownerUsername?: string;
+  ownerUid?: string;
 };
 
 const DEFAULT_IMAGE_MS = 5500;
 
-export default function StoryViewer({ stories, ownerUsername }: Props) {
+export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props) {
   const router = useRouter();
+  const t = useT();
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [blurLocked, setBlurLocked] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [liked, setLiked] = useState(false);
+  const [profileLikes, setProfileLikes] = useState(0);
+  const [likeBusy, setLikeBusy] = useState(false);
   const timerRef = useRef<number | null>(null);
   const startedRef = useRef(false);
   const viewedRef = useRef<Set<string>>(new Set());
 
   const current = stories[index];
+  const resolvedOwnerUid = ownerUid || current?.ownerUid || "";
   const needsBlur = current ? storyRequiresBlur(current) : false;
   const isPaused = paused || (needsBlur && blurLocked);
+
+  useEffect(() => {
+    if (!resolvedOwnerUid) return;
+
+    const likerId = getLikerId();
+    const unsubLike = onSnapshot(
+      doc(db, "perfil_likes", buildProfileLikeId(likerId, resolvedOwnerUid)),
+      (snap) => setLiked(snap.exists()),
+      () => setLiked(false),
+    );
+
+    const unsubProfile = onSnapshot(doc(db, "usuarios", resolvedOwnerUid), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      setProfileLikes(
+        Number(data.likesPerfilCount ?? data.likesCount ?? data.likes ?? 0),
+      );
+    });
+
+    return () => {
+      unsubLike();
+      unsubProfile();
+    };
+  }, [resolvedOwnerUid]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -49,12 +86,15 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
     viewedRef.current.add(story.id);
 
     const uid = auth.currentUser?.uid;
+    const likerId = getLikerId();
     const payload: Record<string, unknown> = {
       viewCount: increment(1),
     };
 
     if (uid) {
       payload[`viewedBy.${uid}`] = true;
+    } else if (likerId) {
+      payload[`viewedByAnon.${likerId}`] = true;
     }
 
     try {
@@ -74,14 +114,14 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
     }
 
     setIndex((i) => i + 1);
-  }, [index, router, stories.length]);
+  }, [current, index, router, stories]);
 
   const goPrev = useCallback(() => {
     setProgress(0);
     const prevIndex = Math.max(0, index - 1);
     setBlurLocked(storyRequiresBlur(stories[prevIndex]));
     setIndex(prevIndex);
-  }, []);
+  }, [index, stories]);
 
   useEffect(() => {
     if (!current || isPaused) {
@@ -119,23 +159,36 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
     if (current) setBlurLocked(storyRequiresBlur(current));
   }, [current?.id]);
 
-  const toggleLike = async () => {
-    if (!current) return;
+  async function handleLike() {
+    if (!current || !resolvedOwnerUid || likeBusy) return;
 
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    const likerId = getLikerId();
+    if (!likerId || likerId === resolvedOwnerUid) return;
 
-    const liked = !!current.likedBy?.[uid];
+    setLikeBusy(true);
 
     try {
-      await updateDoc(doc(db, "historias", current.id), {
-        likeCount: increment(liked ? -1 : 1),
-        [`likedBy.${uid}`]: !liked,
-      });
+      const nextLiked = await toggleProfileLike(resolvedOwnerUid);
+      setLiked(nextLiked);
+
+      if (nextLiked) {
+        await updateDoc(doc(db, "historias", current.id), {
+          likeCount: increment(1),
+          [`likedBy.${likerId}`]: true,
+          storyLikeAt: serverTimestamp(),
+        });
+      } else if (liked) {
+        await updateDoc(doc(db, "historias", current.id), {
+          likeCount: increment(-1),
+          [`likedBy.${likerId}`]: false,
+        });
+      }
     } catch (e) {
       console.error(e);
+    } finally {
+      setLikeBusy(false);
     }
-  };
+  }
 
   if (!current) {
     return null;
@@ -153,11 +206,7 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
               className="h-full bg-white transition-[width] duration-75 ease-linear"
               style={{
                 width:
-                  i < index
-                    ? "100%"
-                    : i === index
-                      ? `${progress * 100}%`
-                      : "0%",
+                  i < index ? "100%" : i === index ? `${progress * 100}%` : "0%",
               }}
             />
           </div>
@@ -168,13 +217,13 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
         type="button"
         onClick={() => router.back()}
         className="absolute right-4 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50"
-        aria-label="Cerrar"
+        aria-label={t("common_cancel")}
       >
         <X size={26} />
       </button>
 
       <p className="absolute left-4 top-6 z-50 text-lg font-black">
-        {ownerUsername || current.ownerUsername || "Historia"}
+        @{ownerUsername || current.ownerUsername || t("stories_title")}
       </p>
 
       <button
@@ -215,9 +264,11 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
               const el = e.currentTarget;
               if (!startedRef.current && el.duration) {
                 startedRef.current = true;
-                setDoc(doc(db, "historias", current.id), {
-                  durationMs: Math.round(el.duration * 1000),
-                }, { merge: true }).catch(() => {});
+                setDoc(
+                  doc(db, "historias", current.id),
+                  { durationMs: Math.round(el.duration * 1000) },
+                  { merge: true },
+                ).catch(() => {});
               }
             }}
           />
@@ -243,13 +294,21 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
       <div className="absolute bottom-8 left-0 right-0 z-50 flex items-center justify-center gap-6 px-6">
         <button
           type="button"
-          onClick={toggleLike}
-          className="rounded-full bg-white/10 px-6 py-3 text-sm font-black"
+          onClick={handleLike}
+          disabled={likeBusy || getLikerId() === resolvedOwnerUid}
+          className={[
+            "flex items-center gap-2 rounded-full px-6 py-3 text-sm font-black transition",
+            liked
+              ? "bg-pink-500 text-white shadow-[0_0_30px_rgba(236,72,153,.35)]"
+              : "bg-white/10 text-white",
+            likeBusy ? "opacity-60" : "",
+          ].join(" ")}
         >
-          Me gusta · {current.likeCount || 0}
+          <Heart size={18} fill={liked ? "currentColor" : "none"} />
+          {liked ? t("stories_liked") : t("settings_likes")} · {profileLikes}
         </button>
         <span className="text-sm font-bold text-white/50">
-          {current.viewCount || 0} vistas
+          {current.viewCount || 0} {t("stories_views")}
         </span>
       </div>
     </main>

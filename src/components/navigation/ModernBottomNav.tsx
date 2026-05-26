@@ -4,8 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
+import { useT } from "@/contexts/LocaleContext";
+
 const items = [
-  { href: "/", icon: Circle },
+  { href: "/stories", icon: Circle },
   { href: "/chats", icon: MessageSquare },
   { href: "/shuffle", icon: Shuffle },
   { href: "/stories", icon: Rocket },
@@ -14,6 +16,7 @@ const items = [
 
 export default function ModernBottomNav() {
   const pathname = usePathname();
+  const t = useT();
 
   function dispatchShuffle() {
     window.dispatchEvent(new CustomEvent("sayittome:shuffle"));
@@ -35,7 +38,7 @@ export default function ModernBottomNav() {
                 type="button"
                 onClick={dispatchShuffle}
                 className="flex h-full flex-1 items-center justify-center"
-                aria-label="Cambiar perfiles"
+                aria-label={t("nav_shuffle_refresh")}
               >
                 <Icon size={38} strokeWidth={2.4} className="text-[#7b5cff]" />
               </button>

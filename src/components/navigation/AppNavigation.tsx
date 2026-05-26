@@ -12,7 +12,7 @@ export default function AppNavigation() {
   const { uxMode } = useUxMode();
   const pathname = usePathname();
 
-  if (HIDE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  if (pathname === "/" || HIDE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return null;
   }
 

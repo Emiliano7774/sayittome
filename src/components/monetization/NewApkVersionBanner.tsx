@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-
+import ApkDownloadButton from "@/components/monetization/ApkDownloadButton";
 import { useApkReleaseNotice } from "@/hooks/useApkReleaseNotice";
+import { useT } from "@/contexts/LocaleContext";
 
 type Props = {
   variant?: "classic" | "modern";
@@ -13,6 +13,7 @@ export default function NewApkVersionBanner({
   variant = "classic",
   className = "",
 }: Props) {
+  const t = useT();
   const { show, release } = useApkReleaseNotice();
 
   if (!show || !release) return null;
@@ -42,23 +43,21 @@ export default function NewApkVersionBanner({
                 : "text-xs font-black uppercase tracking-[0.35em] text-violet-300"
             }
           >
-            NUEVA VERSIÓN DISPONIBLE
+            {t("apk_new_version")}
           </p>
           <p className="mt-1 text-sm text-zinc-300">
-            SayItToMe Android v{release.versionName} — actualizá la APK oficial.
+            {t("apk_new_version_body", { version: release.versionName })}
           </p>
         </div>
 
-        <Link
-          href={release.apkUrl}
+        <ApkDownloadButton
+          label={t("apk_download")}
           className={
             isModern
-              ? "rounded-full bg-white px-5 py-2.5 text-sm font-normal text-black"
-              : "rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_30px_rgba(105,82,255,0.35)]"
+              ? "rounded-full bg-white px-5 py-2.5 text-sm font-normal text-black disabled:opacity-60"
+              : "rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_30px_rgba(105,82,255,0.35)] disabled:opacity-60"
           }
-        >
-          Descargar APK
-        </Link>
+        />
       </div>
     </div>
   );

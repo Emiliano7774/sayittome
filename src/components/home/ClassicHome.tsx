@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 
-import UxModeSwitcher from "@/components/UxModeSwitcher";
+import HeaderControls from "@/components/HeaderControls";
+import EnterShuffleButton from "@/components/legal/EnterShuffleButton";
 import ApkDownloadSection from "@/components/monetization/ApkDownloadSection";
+import { useT } from "@/contexts/LocaleContext";
 
 function LoginIcon() {
   return (
@@ -63,8 +65,9 @@ function ClassicProfileGlyph() {
   );
 }
 
-/** Restaurado desde commit 87dbc8a (page.tsx classic). */
 export default function ClassicHome() {
+  const t = useT();
+
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6 font-[Arial,Helvetica,sans-serif] tracking-[-0.015em]">
@@ -74,7 +77,7 @@ export default function ClassicHome() {
             <p className="text-base font-medium tracking-[-0.02em] text-zinc-100">SayItToMe</p>
           </div>
 
-          <UxModeSwitcher />
+          <HeaderControls />
         </header>
 
         <div className="overflow-hidden rounded-[2.7rem] border border-violet-400/10 bg-[#030303] shadow-[0_0_80px_rgba(104,76,255,0.24)]">
@@ -91,7 +94,7 @@ export default function ClassicHome() {
             className="flex h-20 items-center justify-center gap-4 rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] text-[15px] font-medium tracking-[-0.02em] shadow-[0_0_45px_rgba(105,82,255,0.48)]"
           >
             <LoginIcon />
-            Iniciar sesión
+            {t("home_classic_login")}
           </Link>
 
           <Link
@@ -99,16 +102,13 @@ export default function ClassicHome() {
             className="flex h-20 items-center justify-center gap-4 rounded-full border border-white/80 bg-black text-[15px] font-medium tracking-[-0.02em] text-zinc-100"
           >
             <UserPlusIcon />
-            Crear perfil
+            {t("home_classic_register")}
           </Link>
 
-          <Link
-            href="/shuffle"
-            className="flex h-20 items-center justify-center gap-4 rounded-full border border-white/80 bg-black text-[15px] font-medium tracking-[-0.02em] text-zinc-100"
-          >
+          <EnterShuffleButton className="flex h-20 w-full items-center justify-center gap-4 rounded-full border border-white/80 bg-black text-[15px] font-medium tracking-[-0.02em] text-zinc-100">
             <ShuffleIcon />
-            Entrar anónimo
-          </Link>
+            {t("home_classic_anon")}
+          </EnterShuffleButton>
         </div>
 
         <div className="mt-8 rounded-[2rem] border border-white/10 bg-[#111] p-6 shadow-[0_0_35px_rgba(255,255,255,0.025)]">
@@ -118,17 +118,15 @@ export default function ClassicHome() {
             </div>
 
             <div>
-              <h2 className="text-2xl font-medium tracking-[-0.05em]">¿No querés registrarte?</h2>
+              <h2 className="text-2xl font-medium tracking-[-0.05em]">{t("home_classic_anon_title")}</h2>
               <p className="mt-2 text-sm font-normal leading-6 tracking-[-0.025em] text-zinc-400">
-                Tocá Entrar anónimo para escribirle a quien quieras sin crear perfil. Cada nuevo
-                ingreso anónimo crea otra identidad.
+                {t("home_classic_anon_body")}
               </p>
             </div>
           </div>
 
           <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm font-normal leading-5 tracking-[-0.025em] text-zinc-400">
-            Recordá: si refrescás, salís de anónimo o volvés a entrar, se descarta el anon anterior
-            y se abre una identidad nueva.
+            {t("home_classic_anon_note")}
           </div>
         </div>
 

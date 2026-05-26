@@ -8,42 +8,48 @@ import { doc, getDoc } from "firebase/firestore";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
-import UxModeSwitcher from "@/components/UxModeSwitcher";
+import ProfileEntryGate from "@/components/profile/ProfileEntryGate";
+import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import { useUxMode } from "@/contexts/UxModeContext";
+import { useT } from "@/contexts/LocaleContext";
+import { useLocaleDateFormatter } from "@/hooks/useLocaleFormatters";
 
 type MediaItem = {
   url: string;
   type: "image" | "video";
 };
 
-function formatDate(value: any) {
-  const date = value?.toDate?.();
-  if (!date) return "";
-
-  return date.toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-}
-
 export default function SettingsPage() {
   const router = useRouter();
   const { uxMode } = useUxMode();
+  const t = useT();
+  const formatDate = useLocaleDateFormatter();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [showAnonGate, setShowAnonGate] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        router.replace("/login");
+        setShowAnonGate(true);
+        setLoading(false);
         return;
       }
 
-      const next = await resolvePostAuthPath(user.uid, user.emailVerified);
+      if (!user.emailVerified) {
+        router.replace("/register/verify-email");
+        return;
+      }
+
+      const next = await resolvePostAuthPath(user.uid, true);
+      if (next === "/register/setup") {
+        router.replace("/register/setup");
+        return;
+      }
+
       if (next !== "/settings") {
         router.replace(next);
         return;
@@ -57,8 +63,8 @@ export default function SettingsPage() {
     return () => unsub();
   }, [router]);
 
-  const username = profile?.username || profile?.nombre || "Sin username";
-  const bio = profile?.bio || profile?.descripcion || "Escribí algo...";
+  const username = profile?.username || profile?.nombre || t("settings_no_username");
+  const bio = profile?.bio || profile?.descripcion || t("settings_bio_empty");
   const createdAtLabel = formatDate(profile?.createdAt);
 
   const media = useMemo<MediaItem[]>(() => {
@@ -105,9 +111,13 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p className="text-3xl font-black">Cargando perfil...</p>
+        <p className="text-3xl font-black">{t("settings_loading")}</p>
       </main>
     );
+  }
+
+  if (showAnonGate) {
+    return <ProfileEntryGate />;
   }
 
   if (uxMode === "modern" && profile) {
@@ -154,20 +164,20 @@ export default function SettingsPage() {
 
         <div className="relative z-10 max-w-[1500px] mx-auto">
           <div className="flex flex-wrap justify-end items-center gap-3">
-            <UxModeSwitcher />
+            <HeaderControls />
             {isAdminEmail(auth.currentUser?.email) ? (
               <button
                 onClick={() => router.push("/admin")}
                 className="rounded-full border border-violet-400/40 bg-violet-500/15 text-violet-100 px-8 py-4 font-black"
               >
-                Panel admin
+                {t("settings_admin_panel")}
               </button>
             ) : null}
             <button
               onClick={() => router.push("/settings/edit")}
               className="rounded-full bg-white text-black px-9 py-4 font-black shadow-[0_0_30px_rgba(255,255,255,.18)]"
             >
-              Editar perfil
+              {t("profile_edit")}
             </button>
           </div>
 
@@ -181,7 +191,7 @@ export default function SettingsPage() {
                   <Heart size={58} fill="white" />
                 </div>
                 <p className="mt-5 text-5xl font-black">{profile?.likesCount || 0}</p>
-                <p className="text-white/70 text-2xl">me gusta</p>
+                <p className="text-white/70 text-2xl">{t("settings_likes")}</p>
               </div>
             )}
 
@@ -191,7 +201,7 @@ export default function SettingsPage() {
                   <MessageCircle size={58} fill="white" />
                 </div>
                 <p className="mt-5 text-5xl font-black">{profile?.conversacionesCount || 0}</p>
-                <p className="text-white/70 text-2xl">conv.</p>
+                <p className="text-white/70 text-2xl">{t("settings_conversations")}</p>
               </div>
             )}
 
@@ -201,7 +211,7 @@ export default function SettingsPage() {
                   <Users size={58} />
                 </div>
                 <p className="mt-5 text-5xl font-black">{profile?.seguidoresCount || 0}</p>
-                <p className="text-white/70 text-2xl">seguidores</p>
+                <p className="text-white/70 text-2xl">{t("settings_followers")}</p>
               </div>
             )}
 
@@ -210,7 +220,7 @@ export default function SettingsPage() {
                 <BookOpen size={58} />
               </div>
               <p className="mt-5 text-5xl font-black">{profile?.historiasCount || 0}</p>
-              <p className="text-white/70 text-2xl">historias</p>
+              <p className="text-white/70 text-2xl">{t("settings_stories_stat")}</p>
             </div>
         <div className="mt-32 flex flex-col lg:flex-row lg:justify-between gap-10 items-end">
           <div className="max-w-4xl">
@@ -231,7 +241,7 @@ export default function SettingsPage() {
 
       {createdAtLabel && (
         <div className="fixed bottom-28 right-10 z-20 text-white/25 italic text-lg text-right pointer-events-none">
-          Perfil creado el {createdAtLabel}
+          {t("settings_profile_created", { date: createdAtLabel })}
         </div>
       )}
 

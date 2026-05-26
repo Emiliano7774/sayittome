@@ -28,7 +28,7 @@ export function syncAppVersion({ releasedAt = new Date().toISOString() } = {}) {
     versionCode,
     versionName,
     releasedAt,
-    apkUrl: "/downloads/sayittome.apk",
+    apkUrl: "/api/download/apk",
   };
 
   const outPath = path.join(webRoot, "public", "app-version.json");

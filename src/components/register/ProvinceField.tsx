@@ -1,6 +1,7 @@
 "use client";
 
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
+import { useT } from "@/contexts/LocaleContext";
 
 type ProvinceFieldProps = {
   provincia: string;
@@ -17,6 +18,7 @@ export default function ProvinceField({
   onMostrarProvinciaChange,
   variant = "classic",
 }: ProvinceFieldProps) {
+  const t = useT();
   const isModern = variant === "modern";
 
   return (
@@ -29,7 +31,7 @@ export default function ProvinceField({
               : "text-white/55 text-sm font-black uppercase tracking-wide mb-4"
           }
         >
-          Provincia
+          {t("province_label")}
         </p>
 
         <select
@@ -41,7 +43,7 @@ export default function ProvinceField({
               : "w-full bg-black border-b border-white/70 py-3 text-2xl outline-none text-white"
           }
         >
-          <option value="">Seleccionar provincia</option>
+          <option value="">{t("province_select")}</option>
           {ARGENTINA_PROVINCIAS.map((p) => (
             <option key={p} value={p}>
               {p}
@@ -58,9 +60,7 @@ export default function ProvinceField({
         }
       >
         <p className={isModern ? "text-sm leading-6 text-zinc-400" : "text-white/35"}>
-          Tu provincia siempre se usa para conectarte con gente de provincias cercanas,
-          aunque elijas no mostrarla en el perfil. Podés cambiarla cuando quieras desde
-          Editar perfil.
+          {t("province_hint")}
         </p>
 
         <div
@@ -71,7 +71,7 @@ export default function ProvinceField({
           }
         >
           <p className={isModern ? "text-sm text-zinc-500" : "text-white/35"}>
-            Mostrar en el perfil
+            {t("province_show")}
           </p>
 
           <button
@@ -91,7 +91,7 @@ export default function ProvinceField({
                   }`
             }
           >
-            {mostrarProvincia ? "Visible" : "Oculta"}
+            {mostrarProvincia ? t("province_visible") : t("province_hidden")}
           </button>
         </div>
       </div>

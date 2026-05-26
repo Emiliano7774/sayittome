@@ -7,6 +7,7 @@ import {
   DEFAULT_ABUSE_BLOCK_MINUTES,
 } from "@/lib/abuse/anonAbuseBlocks";
 import { buildVisitorBlockKey, getVisitorId } from "@/lib/abuse/fingerprint";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function AbuseProtectionMenu({
   receptorUid,
@@ -23,6 +24,7 @@ export default function AbuseProtectionMenu({
   blockedBy: string;
   onBlocked?: () => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -71,10 +73,10 @@ export default function AbuseProtectionMenu({
 
       onBlocked?.();
       setOpen(false);
-      alert("Usuario bloqueado. No podrá volver a escribirte por ahora.");
+      alert(t("abuse_block_success"));
     } catch (e) {
       console.error(e);
-      alert("No se pudo aplicar el bloqueo antiacoso.");
+      alert(t("abuse_block_fail"));
     } finally {
       setBusy(false);
     }
@@ -88,10 +90,10 @@ export default function AbuseProtectionMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white/80 flex items-center gap-2"
-        aria-label="Protección antiacoso"
+        aria-label={t("abuse_menu_label")}
       >
         <ShieldAlert size={16} />
-        Antiacoso
+        {t("abuse_menu_short")}
       </button>
 
       {open ? (
@@ -102,7 +104,7 @@ export default function AbuseProtectionMenu({
             onClick={() => reportAbuse("denuncia_acoso", DEFAULT_ABUSE_BLOCK_MINUTES)}
             className="w-full text-left rounded-xl px-4 py-3 font-black hover:bg-white/5 disabled:opacity-50"
           >
-            Denunciar acoso
+            {t("abuse_report")}
           </button>
           <button
             type="button"
@@ -110,7 +112,7 @@ export default function AbuseProtectionMenu({
             onClick={() => reportAbuse("bloqueo_30m", 30)}
             className="w-full text-left rounded-xl px-4 py-3 font-black hover:bg-white/5 disabled:opacity-50"
           >
-            Bloquear 30 min
+            {t("abuse_block_30m")}
           </button>
           <button
             type="button"
@@ -118,7 +120,7 @@ export default function AbuseProtectionMenu({
             onClick={() => reportAbuse("bloqueo_anon", 24 * 60)}
             className="w-full text-left rounded-xl px-4 py-3 font-black hover:bg-white/5 disabled:opacity-50"
           >
-            Bloquear usuario anónimo
+            {t("abuse_block_anon")}
           </button>
         </div>
       ) : null}

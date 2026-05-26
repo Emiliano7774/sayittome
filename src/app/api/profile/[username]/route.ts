@@ -118,7 +118,10 @@ export async function GET(
       "",
     videoPortada: str(fields, "videoPortada") || str(fields, "coverVideo") || "",
     fotos: fotos,
-    likes: int(fields, "likes") || int(fields, "likesCount"),
+    likes:
+      int(fields, "likesPerfilCount") ||
+      int(fields, "likesCount") ||
+      int(fields, "likes"),
     conversaciones: int(fields, "conversacionesCount"),
     seguidores: int(fields, "seguidoresCount") || int(fields, "followersCount"),
     createdAtLabel: formatDate(ts(fields, "createdAt")),

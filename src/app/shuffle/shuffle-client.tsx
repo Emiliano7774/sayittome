@@ -4,9 +4,11 @@ import { Search, SlidersHorizontal, User } from "lucide-react";
 
 import ShuffleSlots from "@/components/shuffle/ShuffleSlots";
 import { useShufflePool } from "@/hooks/useShufflePool";
+import { useT } from "@/contexts/LocaleContext";
 
 /** Classic UX — lista congelada visualmente. */
 export default function ShuffleClient() {
+  const t = useT();
   const pool = useShufflePool();
 
   return (
@@ -19,7 +21,7 @@ export default function ShuffleClient() {
             <input
               value={pool.search}
               onChange={(e) => pool.handleSearchChange(e.target.value)}
-              placeholder="Buscar por nombre o descripcion..."
+              placeholder={t("shuffle_classic_search")}
               className="w-full bg-transparent outline-none text-3xl font-black text-white placeholder:text-white/25"
             />
           </div>
@@ -29,31 +31,31 @@ export default function ShuffleClient() {
               type="button"
               onClick={pool.handleShuffleClick}
               className="w-20 h-20 rounded-full border border-white/10 flex items-center justify-center active:scale-95 transition"
-              aria-label="Cambiar perfiles"
+              aria-label={t("nav_shuffle_refresh")}
             >
               <SlidersHorizontal size={34} />
             </button>
 
-            <h1 className="text-5xl font-black">Filtro</h1>
+            <h1 className="text-5xl font-black">{t("shuffle_filter")}</h1>
           </div>
 
           <div className="mt-7 flex items-center justify-between text-white/45 font-black text-2xl">
-            <span>Cambiar resultado</span>
+            <span>{t("shuffle_change_result")}</span>
 
             <span className="flex items-center gap-3">
               <User size={24} />
-              {pool.totalLive} personas
+              {t("shuffle_people_count", { count: String(pool.totalLive) })}
             </span>
           </div>
         </div>
 
         {pool.loading && pool.listReady === false ? (
           <div className="h-[50vh] flex items-center justify-center">
-            <p className="text-4xl font-black text-white/35">Cargando perfiles...</p>
+            <p className="text-4xl font-black text-white/35">{t("common_loading")}</p>
           </div>
         ) : !pool.listReady ? (
           <div className="h-[50vh] flex flex-col items-center justify-center px-8 text-center">
-            <p className="text-4xl font-black text-white/35">No hay perfiles para mostrar.</p>
+            <p className="text-4xl font-black text-white/35">{t("shuffle_no_profiles")}</p>
             {pool.errorText ? (
               <p className="mt-4 max-w-3xl text-white/35 font-bold">{pool.errorText}</p>
             ) : null}

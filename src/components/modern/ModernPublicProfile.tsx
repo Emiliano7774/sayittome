@@ -7,13 +7,14 @@ import { ArrowLeft, BadgeCheck, Heart, MessageCircle, Users } from "lucide-react
 
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
-import UxModeSwitcher from "@/components/UxModeSwitcher";
+import HeaderControls from "@/components/HeaderControls";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
-import { formatLastSeen } from "@/lib/presence";
+import { useT } from "@/contexts/LocaleContext";
 
 export type ModernProfileData = {
   uid: string;
@@ -57,6 +58,8 @@ export default function ModernPublicProfile({
   showShuffleBack = true,
 }: Props) {
   const router = useRouter();
+  const t = useT();
+  const formatLastSeen = useFormatLastSeen();
   const story = useStoryStatus(profile.uid, profile.username);
   const blurPhoto = profilePhotoRequiresBlur(profile);
   const lastSeen = formatLastSeen(profile.presenceAt || profile.lastActive, profile.online);
@@ -100,10 +103,10 @@ export default function ModernPublicProfile({
                 href="/admin"
                 className="rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-2 text-xs font-semibold text-fuchsia-100"
               >
-                Panel admin
+                {t("settings_admin_panel")}
               </Link>
             ) : null}
-            <UxModeSwitcher />
+            <HeaderControls />
           </div>
         </header>
 
@@ -124,7 +127,7 @@ export default function ModernPublicProfile({
                     loop
                     playsInline
                   />
-                  {blurPhoto ? <SensitiveBlurOverlay label="Portada moderada" /> : null}
+                  {blurPhoto ? <SensitiveBlurOverlay label={t("profile_cover_moderated")} /> : null}
                 </>
               ) : coverImage ? (
                 <>
@@ -136,7 +139,7 @@ export default function ModernPublicProfile({
                       blurPhoto ? "blur-2xl scale-110" : "",
                     ].join(" ")}
                   />
-                  {blurPhoto ? <SensitiveBlurOverlay label="Foto moderada" /> : null}
+                  {blurPhoto ? <SensitiveBlurOverlay label={t("profile_photo_moderated")} /> : null}
                 </>
               ) : (
                 <div className="h-full w-full bg-gradient-to-br from-fuchsia-600 via-purple-950 to-black" />
@@ -145,7 +148,7 @@ export default function ModernPublicProfile({
               {profile.showOnline || profile.online ? (
                 <span className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-green-400/30 bg-black/55 px-3 py-1 text-xs font-black text-green-300 backdrop-blur-sm">
                   <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,.9)]" />
-                  En línea
+                  {t("profile_online")}
                 </span>
               ) : null}
             </div>
@@ -183,12 +186,12 @@ export default function ModernPublicProfile({
               {verifiedVisit ? (
                 <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-100">
                   <BadgeCheck size={16} />
-                  Perfil abierto desde link oficial
+                  {t("profile_verified_link")}
                 </p>
               ) : null}
 
               <p className="mt-3 text-sm leading-6 text-zinc-400">
-                {profile.bio || "Perfil SayItToMe en la nueva web React."}
+                {profile.bio || t("profile_default_bio")}
               </p>
 
               {profile.mostrarProvincia && profile.provincia ? (
@@ -196,16 +199,16 @@ export default function ModernPublicProfile({
               ) : null}
 
               <div className="mt-5 grid grid-cols-3 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">
-                <StatItem icon={<Heart size={18} />} value={profile.likes || 0} label="Likes" />
+                <StatItem icon={<Heart size={18} />} value={profile.likes || 0} label={t("profile_likes")} />
                 <StatItem
                   icon={<MessageCircle size={18} />}
                   value={profile.conversaciones || 0}
-                  label="Chats"
+                  label={t("chats_title")}
                 />
                 <StatItem
                   icon={<Users size={18} />}
                   value={profile.seguidores || 0}
-                  label="Seguidores"
+                  label={t("settings_followers")}
                 />
               </div>
 
@@ -215,14 +218,14 @@ export default function ModernPublicProfile({
                   prefetch={false}
                   className="flex-1 rounded-full bg-white px-6 py-3.5 text-center text-sm font-normal text-black"
                 >
-                  Abrir chat
+                  {t("profile_open_chat")}
                 </Link>
                 {story.hasActive && story.storyPath ? (
                   <Link
                     href={story.storyPath}
                     className="flex-1 rounded-full bg-fuchsia-500/30 px-6 py-3.5 text-center text-sm font-normal"
                   >
-                    Ver historias ({historiasCount})
+                    {t("profile_view_stories", { count: String(historiasCount) })}
                   </Link>
                 ) : null}
                 {isOwner && onEdit ? (
@@ -231,7 +234,7 @@ export default function ModernPublicProfile({
                     onClick={onEdit}
                     className="rounded-full bg-white/10 px-5 py-3.5 text-sm font-normal"
                   >
-                    Editar
+                    {t("profile_edit_short")}
                   </button>
                 ) : null}
               </div>
@@ -253,7 +256,7 @@ export default function ModernPublicProfile({
 
         {profile.createdAtLabel ? (
           <p className="mt-4 text-center text-sm italic text-white/35">
-            Perfil creado el {profile.createdAtLabel}
+            {t("settings_profile_created", { date: profile.createdAtLabel })}
           </p>
         ) : null}
       </div>

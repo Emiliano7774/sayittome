@@ -67,5 +67,5 @@ export default function StoryUserPage() {
     );
   }
 
-  return <StoryViewer stories={stories} ownerUsername={ownerUsername} />;
+  return <StoryViewer stories={stories} ownerUsername={ownerUsername} ownerUid={stories[0]?.ownerUid} />;
 }

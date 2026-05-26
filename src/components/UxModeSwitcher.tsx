@@ -1,9 +1,11 @@
 "use client";
 
 import { useUxMode } from "@/contexts/UxModeContext";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function UxModeSwitcher() {
   const { uxMode, setUxMode } = useUxMode();
+  const t = useT();
 
   const isClassic = uxMode === "classic";
 
@@ -12,27 +14,27 @@ export default function UxModeSwitcher() {
       <button
         type="button"
         onClick={() => setUxMode("classic")}
-        aria-label="Modo Clásico UX"
+        aria-label={t("ux_classic")}
         className={
           isClassic
             ? "rounded-full bg-white px-4 py-2 text-black transition"
             : "rounded-full px-4 py-2 text-zinc-500 transition hover:text-white"
         }
       >
-        Clásico
+        {t("ux_classic")}
       </button>
 
       <button
         type="button"
         onClick={() => setUxMode("modern")}
-        aria-label="Modo Nuevo UX"
+        aria-label={t("ux_modern")}
         className={
           !isClassic
             ? "rounded-full bg-white px-4 py-2 text-black transition"
             : "rounded-full px-4 py-2 text-zinc-500 transition hover:text-white"
         }
       >
-        Nuevo
+        {t("ux_modern")}
       </button>
     </div>
   );

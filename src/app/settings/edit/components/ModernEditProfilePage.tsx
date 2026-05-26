@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 
 import { auth, db, storage } from "@/lib/firebase";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
+import { useT } from "@/contexts/LocaleContext";
 
 type MediaItem = {
   url: string;
@@ -18,6 +19,7 @@ type MediaItem = {
 
 export default function ModernEditProfilePage() {
   const router = useRouter();
+  const t = useT();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
@@ -111,7 +113,7 @@ export default function ModernEditProfilePage() {
 
     for (let i = 0; i < batch.length; i++) {
       const file = batch[i];
-      setUploadText(`Subiendo ${i + 1}/${batch.length}...`);
+      setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
 
       const ext = file.name.split(".").pop() || "file";
       const kind = file.type.startsWith("video/") ? "video" : "image";
@@ -195,11 +197,11 @@ export default function ModernEditProfilePage() {
   }
 
   if (loading) {
-    return <main className="min-h-screen bg-black text-white p-8 text-3xl font-black">Cargando...</main>;
+    return <main className="min-h-screen bg-black text-white p-8 text-3xl font-black">{t("common_loading")}</main>;
   }
 
   if (!user) {
-    return <main className="min-h-screen bg-black text-white p-8 text-3xl font-black">No estÃ¡s logueado.</main>;
+    return <main className="min-h-screen bg-black text-white p-8 text-3xl font-black">{t("edit_not_logged")}</main>;
   }
 
   return (
@@ -217,7 +219,7 @@ export default function ModernEditProfilePage() {
             disabled={saving}
             className="px-9 h-16 rounded-full border border-violet-400 text-white font-black text-2xl shadow-[0_0_35px_rgba(139,92,246,.35)] disabled:opacity-50"
           >
-            {saving ? "Guardando..." : "Guardar"}
+            {saving ? t("setup_saving") : t("edit_save")}
           </button>
         </div>
 
@@ -237,28 +239,28 @@ export default function ModernEditProfilePage() {
                 onClick={() => avatarInputRef.current?.click()}
                 className="h-14 rounded-full bg-violet-500 font-black flex items-center justify-center gap-2"
               >
-                <Camera size={18} /> Foto de perfil
+                <Camera size={18} /> {t("edit_profile_photo")}
               </button>
               <button
                 type="button"
                 onClick={() => coverInputRef.current?.click()}
                 className="h-14 rounded-full border border-violet-400 font-black flex items-center justify-center gap-2"
               >
-                <ImagePlus size={18} /> Foto de portada
+                <ImagePlus size={18} /> {t("edit_cover_photo")}
               </button>
               <button
                 type="button"
                 onClick={() => coverVideoInputRef.current?.click()}
                 className="h-14 rounded-full border border-white/20 font-black flex items-center justify-center gap-2"
               >
-                <Film size={18} /> Video de portada
+                <Film size={18} /> {t("edit_cover_video")}
               </button>
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
                 className="h-14 rounded-full border border-white/15 font-black flex items-center justify-center gap-2"
               >
-                <ImagePlus size={18} /> Galería fotos/videos
+                <ImagePlus size={18} /> {t("edit_gallery")}
               </button>
             </div>
 
@@ -321,14 +323,14 @@ export default function ModernEditProfilePage() {
             />
 
             {fotoPortada ? (
-              <p className="mt-3 text-sm font-bold text-violet-300">Portada cargada</p>
+              <p className="mt-3 text-sm font-bold text-violet-300">{t("edit_cover_loaded")}</p>
             ) : null}
             {videoPortada ? (
-              <p className="text-sm font-bold text-violet-300">Video de portada cargado</p>
+              <p className="text-sm font-bold text-violet-300">{t("edit_cover_video_loaded")}</p>
             ) : null}
 
             <p className="mt-4 text-white/55 text-lg">
-              {media.length}/100 archivos. Fotos y videos permitidos.
+              {t("edit_files_count", { count: String(media.length) })}
             </p>
 
             {uploading && <p className="mt-3 text-violet-300 font-bold">{uploadText}</p>}
@@ -336,39 +338,39 @@ export default function ModernEditProfilePage() {
 
           <div className="space-y-8">
             <label className="block">
-              <span className="text-4xl font-black">Username</span>
+              <span className="text-4xl font-black">{t("setup_username")}</span>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Tu username"
+                placeholder={t("setup_username_placeholder")}
                 className="mt-4 w-full rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-3xl font-black outline-none focus:border-violet-400"
               />
             </label>
 
             <label className="block">
-              <span className="text-4xl font-black">Biografía</span>
+              <span className="text-4xl font-black">{t("edit_bio_label")}</span>
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="EscribÃ­ algo..."
+                placeholder={t("edit_bio_placeholder")}
                 className="mt-4 w-full min-h-44 rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-2xl outline-none focus:border-violet-400 resize-none"
               />
             </label>
 
             <label className="block">
-              <span className="text-4xl font-black">Provincia</span>
+              <span className="text-4xl font-black">{t("province_label")}</span>
               <select
                 value={provincia}
                 onChange={(e) => setProvincia(e.target.value)}
                 className="mt-4 w-full rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-2xl outline-none focus:border-violet-400"
               >
-                <option value="">Seleccionar</option>
+                <option value="">{t("edit_select")}</option>
                 {ARGENTINA_PROVINCIAS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
 
               <div className="mt-4 flex items-center justify-between gap-4 rounded-[28px] border border-white/10 bg-zinc-950 px-7 py-5">
                 <p className="text-lg text-zinc-400">
-                  Se usa siempre para conectarte con gente cercana. Podés ocultarla en el perfil.
+                  {t("edit_province_hint_short")}
                 </p>
                 <button
                   type="button"
@@ -377,17 +379,17 @@ export default function ModernEditProfilePage() {
                     mostrarProvincia ? "bg-violet-500 text-white" : "bg-white/10 text-white/45"
                   }`}
                 >
-                  {mostrarProvincia ? "Visible" : "Oculta"}
+                  {mostrarProvincia ? t("province_visible") : t("province_hidden")}
                 </button>
               </div>
             </label>
 
             <label className="block">
-              <span className="text-4xl font-black">Intereses</span>
+              <span className="text-4xl font-black">{t("edit_interests")}</span>
               <input
                 value={intereses}
                 onChange={(e) => setIntereses(e.target.value)}
-                placeholder="música, gym, series..."
+                placeholder={t("edit_interests_placeholder")}
                 className="mt-4 w-full rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-2xl outline-none focus:border-violet-400"
               />
             </label>
@@ -395,7 +397,7 @@ export default function ModernEditProfilePage() {
         </div>
 
         <div className="mt-14">
-          <h2 className="text-5xl font-black mb-6">Mosaico de fotos y videos</h2>
+          <h2 className="text-5xl font-black mb-6">{t("edit_mosaic_title")}</h2>
 
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-5">
             {media.map((item, index) => (

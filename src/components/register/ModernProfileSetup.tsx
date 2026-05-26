@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
+import HeaderControls from "@/components/HeaderControls";
 import ProvinceField from "@/components/register/ProvinceField";
-import UxModeSwitcher from "@/components/UxModeSwitcher";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
 import {
@@ -14,9 +14,11 @@ import {
   isValidUsername,
   normalizeUsername,
 } from "@/lib/profile/username";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernProfileSetup() {
   const router = useRouter();
+  const t = useT();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,18 +71,18 @@ export default function ModernProfileSetup() {
     const cleanUsername = normalizeUsername(username);
 
     if (!isValidUsername(cleanUsername)) {
-      setError("El usuario debe tener entre 3 y 24 caracteres (letras, números, . _ -).");
+      setError(t("setup_username_invalid"));
       return;
     }
 
     if (!provincia) {
-      setError("Seleccioná tu provincia.");
+      setError(t("setup_province_required"));
       return;
     }
 
     const available = await isUsernameAvailable(cleanUsername, user.uid);
     if (!available) {
-      setError("Ese nombre de usuario ya está en uso.");
+      setError(t("setup_username_taken"));
       return;
     }
 
@@ -109,7 +111,7 @@ export default function ModernProfileSetup() {
 
       router.replace("/settings/edit");
     } catch {
-      setError("No pudimos guardar tu perfil. Probá de nuevo.");
+      setError(t("setup_save_fail"));
     } finally {
       setSaving(false);
     }
@@ -118,7 +120,7 @@ export default function ModernProfileSetup() {
   if (loading) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p className="text-2xl font-black">Cargando...</p>
+        <p className="text-2xl font-black">{t("common_loading")}</p>
       </main>
     );
   }
@@ -131,10 +133,10 @@ export default function ModernProfileSetup() {
             <p className="text-xs font-semibold uppercase tracking-[0.45em] text-fuchsia-300">
               SAYITTOME
             </p>
-            <h1 className="mt-3 text-3xl font-semibold">Configurar perfil</h1>
+            <h1 className="mt-3 text-3xl font-semibold">{t("setup_title")}</h1>
           </div>
 
-          <UxModeSwitcher />
+          <HeaderControls />
         </header>
 
         <div className="flex flex-1 items-center justify-center py-16">
@@ -144,28 +146,25 @@ export default function ModernProfileSetup() {
           >
             <div className="absolute -inset-8 -z-10 rounded-[3rem] bg-fuchsia-500/15 blur-3xl" />
 
-            <p className="text-sm leading-7 text-zinc-400">
-              Elegí tu usuario y provincia. Después podés agregar fotos y más detalles en
-              Editar perfil.
-            </p>
+            <p className="text-sm leading-7 text-zinc-400">{t("setup_subtitle")}</p>
 
             <div className="mt-8 space-y-5">
               <label className="block">
-                <p className="mb-2 text-sm font-semibold text-zinc-400">Usuario</p>
+                <p className="mb-2 text-sm font-semibold text-zinc-400">{t("setup_username")}</p>
                 <input
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="@usuario"
+                  placeholder={t("setup_username_placeholder")}
                   className="w-full rounded-2xl border border-white/10 bg-black px-4 py-4 text-white outline-none"
                 />
               </label>
 
               <label className="block">
-                <p className="mb-2 text-sm font-semibold text-zinc-400">Bio</p>
+                <p className="mb-2 text-sm font-semibold text-zinc-400">{t("setup_bio")}</p>
                 <textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  placeholder="Contá algo sobre vos (opcional)"
+                  placeholder={t("setup_bio_placeholder")}
                   rows={3}
                   className="w-full resize-none rounded-2xl border border-white/10 bg-black px-4 py-4 text-white outline-none"
                 />
@@ -187,7 +186,7 @@ export default function ModernProfileSetup() {
               disabled={saving}
               className="mt-8 w-full rounded-full bg-white py-4 text-sm font-normal text-black disabled:opacity-50"
             >
-              {saving ? "Guardando..." : "Continuar"}
+              {saving ? t("setup_saving") : t("common_continue")}
             </button>
           </form>
         </div>

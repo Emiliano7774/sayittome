@@ -9,14 +9,15 @@ import {
   type User,
 } from "firebase/auth";
 
+import HeaderControls from "@/components/HeaderControls";
 import { logoutAndResetAnon } from "@/lib/auth/logout";
-
-import UxModeSwitcher from "@/components/UxModeSwitcher";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth } from "@/lib/firebase";
+import { useT } from "@/contexts/LocaleContext";
 
 export default function VerifyEmailPage() {
   const router = useRouter();
+  const t = useT();
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -56,14 +57,14 @@ export default function VerifyEmailPage() {
       const refreshed = auth.currentUser;
 
       if (!refreshed?.emailVerified) {
-        setError("Todavía no verificamos tu email. Revisá la bandeja de entrada y el spam.");
+        setError(t("auth_verify_not_yet"));
         return;
       }
 
       const next = await resolvePostAuthPath(refreshed.uid, true);
       router.replace(next);
     } catch {
-      setError("No pudimos comprobar la verificación. Probá de nuevo.");
+      setError(t("auth_verify_check_fail"));
     } finally {
       setLoading(false);
     }
@@ -81,9 +82,9 @@ export default function VerifyEmailPage() {
         url: `${window.location.origin}/register/verify-email`,
         handleCodeInApp: false,
       });
-      setMessage("Te reenviamos el email de verificación.");
+      setMessage(t("auth_verify_resent"));
     } catch {
-      setError("No pudimos reenviar el email. Esperá unos minutos.");
+      setError(t("auth_verify_resend_fail"));
     } finally {
       setResending(false);
     }
@@ -97,7 +98,7 @@ export default function VerifyEmailPage() {
   if (checking) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p className="text-2xl font-black">Verificando sesión...</p>
+        <p className="text-2xl font-black">{t("auth_verify_checking_session")}</p>
       </main>
     );
   }
@@ -106,16 +107,14 @@ export default function VerifyEmailPage() {
     <main className="min-h-screen bg-black text-white">
       <section className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6">
         <header className="mb-9 flex items-center justify-between">
-          <p className="text-base font-medium text-zinc-100">Verificar email</p>
-          <UxModeSwitcher />
+          <p className="text-base font-medium text-zinc-100">{t("auth_verify_title")}</p>
+          <HeaderControls />
         </header>
 
         <div className="rounded-[2.7rem] border border-violet-400/10 bg-[#030303] p-8 shadow-[0_0_80px_rgba(104,76,255,0.24)]">
-          <h1 className="text-3xl font-medium tracking-[-0.05em]">Revisá tu mail</h1>
+          <h1 className="text-3xl font-medium tracking-[-0.05em]">{t("auth_verify_title")}</h1>
           <p className="mt-4 text-sm leading-6 text-zinc-400">
-            Enviamos un enlace de verificación a{" "}
-            <span className="text-white">{user?.email}</span>. Tocá el botón del mail y
-            después volvé acá para continuar.
+            {t("auth_verify_body", { email: user?.email || "" })}
           </p>
 
           {message && <p className="mt-4 text-sm font-semibold text-emerald-400">{message}</p>}
@@ -127,7 +126,7 @@ export default function VerifyEmailPage() {
             disabled={loading}
             className="mt-8 flex h-20 w-full items-center justify-center rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] text-[15px] font-medium disabled:opacity-50"
           >
-            {loading ? "Comprobando..." : "Ya verifiqué mi email"}
+            {loading ? t("auth_verify_checking") : t("auth_verify_check")}
           </button>
 
           <button
@@ -136,7 +135,7 @@ export default function VerifyEmailPage() {
             disabled={resending}
             className="mt-4 flex h-16 w-full items-center justify-center rounded-full border border-white/15 text-sm disabled:opacity-50"
           >
-            {resending ? "Reenviando..." : "Reenviar email"}
+            {resending ? t("auth_verify_resending") : t("auth_verify_resend")}
           </button>
 
           <button
@@ -144,14 +143,14 @@ export default function VerifyEmailPage() {
             onClick={handleSignOut}
             className="mt-6 w-full text-sm text-zinc-500"
           >
-            Usar otro email
+            {t("auth_verify_other_email")}
           </button>
         </div>
 
         <p className="mt-8 text-center text-sm text-zinc-400">
-          ¿Ya tenés cuenta verificada?{" "}
+          {t("auth_has_account")}{" "}
           <Link href="/login" className="text-violet-300">
-            Iniciar sesión
+            {t("auth_login_link")}
           </Link>
         </p>
       </section>
