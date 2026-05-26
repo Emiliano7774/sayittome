@@ -1,26 +1,23 @@
-﻿export function getAnonSessionId() {
+﻿import { clearSessionChats } from "@/lib/chat/sessionChats";
+
+const ANON_KEY = "sayittome_anon_session";
+const ANON_RESET_FLAG = "sayittome_anon_reset_pending";
+
+export function getAnonSessionId() {
   if (typeof window === "undefined") {
     return "anon_server";
   }
 
-  const key = "sayittome_anon_session";
-
-  let current =
-    sessionStorage.getItem(key);
+  let current = sessionStorage.getItem(ANON_KEY);
 
   if (!current) {
     current =
       "anon_" +
-      Math.random()
-        .toString(36)
-        .slice(2) +
+      Math.random().toString(36).slice(2) +
       "_" +
       Date.now().toString(36);
 
-    sessionStorage.setItem(
-      key,
-      current,
-    );
+    sessionStorage.setItem(ANON_KEY, current);
   }
 
   return current;
@@ -31,7 +28,43 @@ export function resetAnonSession() {
     return;
   }
 
-  sessionStorage.removeItem(
-    "sayittome_anon_session",
-  );
+  sessionStorage.removeItem(ANON_KEY);
+}
+
+/** Next shuffle entry should start with a brand-new anonymous identity. */
+export function markAnonSessionForReset() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  sessionStorage.setItem(ANON_RESET_FLAG, "1");
+}
+
+export function consumeAnonSessionReset() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  if (sessionStorage.getItem(ANON_RESET_FLAG) !== "1") {
+    return false;
+  }
+
+  sessionStorage.removeItem(ANON_RESET_FLAG);
+  return true;
+}
+
+/** Discards the current anonymous identity and session chats. */
+export function beginFreshAnonSession() {
+  resetAnonSession();
+  clearSessionChats();
+  return getAnonSessionId();
+}
+
+/** Apply a pending reset (after visiting home) before using shuffle/anonymous features. */
+export function ensureFreshAnonSessionIfPending() {
+  if (consumeAnonSessionReset()) {
+    return beginFreshAnonSession();
+  }
+
+  return getAnonSessionId();
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import UxModeSwitcher from "@/components/UxModeSwitcher";
+import ApkDownloadSection from "@/components/monetization/ApkDownloadSection";
 
 function LoginIcon() {
   return (
@@ -131,27 +132,7 @@ export default function ClassicHome() {
           </div>
         </div>
 
-        <div className="mt-8 rounded-[2rem] border border-white/10 bg-[#111] p-6 shadow-[0_0_35px_rgba(255,255,255,0.025)]">
-          <h2 className="text-2xl font-medium tracking-[-0.05em]">Descargá la app</h2>
-          <p className="mt-3 text-sm font-normal leading-6 tracking-[-0.025em] text-zinc-400">
-            Mientras Play Store/App Store terminan su proceso, podés dejar accesos directos desde
-            acá.
-          </p>
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <a
-              href="/downloads/sayittome.apk"
-              className="flex h-16 items-center justify-center rounded-full border border-white/10 bg-white/10 text-sm font-normal tracking-[-0.03em]"
-            >
-              Android APK
-            </a>
-            <button
-              type="button"
-              className="flex h-16 items-center justify-center rounded-full border border-white/10 bg-white/10 text-sm font-normal tracking-[-0.03em]"
-            >
-              iPhone
-            </button>
-          </div>
-        </div>
+        <ApkDownloadSection variant="classic" />
       </section>
     </main>
   );

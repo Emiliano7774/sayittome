@@ -45,7 +45,8 @@ export default function ClassicChatsInbox({
             <Link
               key={chat.id}
               href={chatHref(chat)}
-              className="flex items-center justify-between rounded-[28px] bg-[#111111] px-5 py-5 active:scale-[0.99]"
+              prefetch={false}
+              className="relative z-10 flex items-center justify-between rounded-[28px] bg-[#111111] px-5 py-5 active:scale-[0.99]"
             >
               <div className="min-w-0">
                 <p className="truncate text-3xl font-bold">{title}</p>

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Circle, MessageSquare, Shuffle, Rocket, User } from "lucide-react";
+import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
 export default function BottomNav() {
   const pathname = usePathname();
 
   const items = [
-    { href: "/stories", icon: Circle },
+    { href: "/", icon: Circle },
     { href: "/chats", icon: MessageSquare },
     { href: "/shuffle", icon: Shuffle },
     { href: "/stories", icon: Rocket },

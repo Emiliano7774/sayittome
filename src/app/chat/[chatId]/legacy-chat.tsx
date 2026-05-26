@@ -19,7 +19,10 @@ import {
 
 import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 
+import { onAuthStateChanged } from "firebase/auth";
+
 import { auth, db, storage } from "@/lib/firebase";
+import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import {
   bindWhipSoundUnlock,
   playIncomingWhipSound,
@@ -53,6 +56,14 @@ type ChatData = {
   participants?: string[];
   lastMessage?: string;
   lastMessageSender?: string;
+  targetUsername?: string;
+  receptorUsername?: string;
+  receptorUid?: string;
+  targetUid?: string;
+  initiatorUid?: string;
+  anonOwnerUid?: string;
+  anon?: boolean;
+  senderIsAnonymous?: boolean;
 };
 
 function createClientMessageId(uid: string) {
@@ -90,6 +101,7 @@ export default function LegacyChatPage() {
   const [replyingTo, setReplyingTo] = useState<MessageData | null>(null);
   const [viewer, setViewer] = useState<MessageData | null>(null);
   const [recording, setRecording] = useState(false);
+  const [currentUid, setCurrentUid] = useState("");
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -103,9 +115,31 @@ export default function LegacyChatPage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
 
-  const currentUid = auth.currentUser?.uid || "";
+  function notifyModerationActivity(
+    overrides: Partial<ChatData> & { lastMessage?: string; lastMessageSender?: string },
+  ) {
+    scheduleModerationActivityTouch({
+      id: chatId,
+      targetUsername: overrides.targetUsername ?? chat?.targetUsername,
+      receptorUsername: overrides.receptorUsername ?? chat?.receptorUsername,
+      receptorUid: overrides.receptorUid ?? chat?.receptorUid,
+      targetUid: overrides.targetUid ?? chat?.targetUid,
+      initiatorUid: overrides.initiatorUid ?? chat?.initiatorUid ?? currentUid,
+      anonOwnerUid: overrides.anonOwnerUid ?? chat?.anonOwnerUid ?? currentUid,
+      lastMessage: overrides.lastMessage ?? chat?.lastMessage,
+      lastMessageSender: overrides.lastMessageSender ?? chat?.lastMessageSender,
+      anon: overrides.anon ?? chat?.anon,
+      senderIsAnonymous: overrides.senderIsAnonymous ?? chat?.senderIsAnonymous,
+    });
+  }
 
-  useEffect(() => bindWhipSoundUnlock(), []);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUid(user?.uid || "");
+    });
+
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     if (!chatId) return;
@@ -384,6 +418,13 @@ export default function LegacyChatPage() {
         ["readBy." + user.uid]: true,
       });
 
+      notifyModerationActivity({
+        lastMessage: mediaLabel(mediaType),
+        lastMessageSender: user.uid,
+        initiatorUid: user.uid,
+        anonOwnerUid: user.uid,
+      });
+
       URL.revokeObjectURL(localPreviewUrl);
     } catch (e) {
       console.error(e);
@@ -445,6 +486,13 @@ export default function LegacyChatPage() {
         updatedAt: serverTimestamp(),
         ["typing." + user.uid]: false,
         ["readBy." + user.uid]: true,
+      });
+
+      notifyModerationActivity({
+        lastMessage: clean,
+        lastMessageSender: user.uid,
+        initiatorUid: user.uid,
+        anonOwnerUid: user.uid,
       });
     } catch (e) {
       console.error(e);

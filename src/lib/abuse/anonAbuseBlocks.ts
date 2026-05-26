@@ -11,7 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
-import { buildAbuseFingerprint } from "@/lib/abuse/fingerprint";
+import { buildAbuseFingerprint, buildVisitorBlockKey } from "@/lib/abuse/fingerprint";
 
 export const DEFAULT_ABUSE_BLOCK_MINUTES = 30;
 
@@ -21,6 +21,7 @@ export type AbuseBlockRecord = {
   blockedFingerprint: string;
   blockedAnonId?: string;
   blockedVisitorId?: string;
+  blockedClientIp?: string;
   motivo?: string;
   createdAt?: unknown;
   expiresAt?: unknown;
@@ -43,6 +44,11 @@ export function isAbuseBlockActive(block: AbuseBlockRecord, now = Date.now()) {
   return expiresAt > now;
 }
 
+function blockDocId(receptorUid: string, blockedVisitorId: string) {
+  const safeVisitor = blockedVisitorId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
+  return `${receptorUid}__vis__${safeVisitor}`;
+}
+
 export async function createAnonAbuseBlock(input: {
   receptorUid: string;
   blockedAnonId: string;
@@ -51,23 +57,28 @@ export async function createAnonAbuseBlock(input: {
   motivo: string;
   blockedBy: string;
   durationMinutes?: number;
+  blockedClientIp?: string;
 }) {
   const durationMinutes = input.durationMinutes ?? DEFAULT_ABUSE_BLOCK_MINUTES;
-  const blockedFingerprint = buildAbuseFingerprint(
+  const blockedVisitorId = input.blockedVisitorId;
+  const blockedFingerprint = buildVisitorBlockKey(blockedVisitorId);
+  const legacyFingerprint = buildAbuseFingerprint(
     input.blockedAnonId,
-    input.blockedVisitorId,
+    blockedVisitorId,
   );
 
   const expiresAt = Timestamp.fromMillis(Date.now() + durationMinutes * 60 * 1000);
-  const id = `${input.receptorUid}_${blockedFingerprint.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120)}`;
+  const id = blockDocId(input.receptorUid, blockedVisitorId);
 
   await setDoc(
     doc(db, "anon_abuse_blocks", id),
     {
       receptorUid: input.receptorUid,
       blockedFingerprint,
+      legacyFingerprint,
       blockedAnonId: input.blockedAnonId,
-      blockedVisitorId: input.blockedVisitorId,
+      blockedVisitorId,
+      blockedClientIp: input.blockedClientIp || null,
       motivo: input.motivo,
       createdAt: serverTimestamp(),
       expiresAt,
@@ -80,33 +91,67 @@ export async function createAnonAbuseBlock(input: {
   return { id, blockedFingerprint, expiresAt };
 }
 
+async function findActiveInQuery(
+  rows: Array<{ id: string; data: () => Record<string, unknown> }>,
+  now: number,
+) {
+  for (const row of rows) {
+    const data = {
+      id: row.id,
+      ...(row.data() as Omit<AbuseBlockRecord, "id">),
+    } as AbuseBlockRecord;
+
+    if (isAbuseBlockActive(data, now)) {
+      return data;
+    }
+  }
+
+  return null;
+}
+
 export async function findActiveAbuseBlock(input: {
   receptorUid: string;
   blockedAnonId: string;
   blockedVisitorId: string;
+  blockedClientIp?: string;
 }) {
+  const now = Date.now();
+
+  const byVisitor = query(
+    collection(db, "anon_abuse_blocks"),
+    where("receptorUid", "==", input.receptorUid),
+    where("blockedVisitorId", "==", input.blockedVisitorId),
+  );
+
+  const visitorSnap = await getDocs(byVisitor);
+  const visitorHit = await findActiveInQuery(visitorSnap.docs, now);
+  if (visitorHit) return visitorHit;
+
+  if (input.blockedClientIp) {
+    const byIp = query(
+      collection(db, "anon_abuse_blocks"),
+      where("receptorUid", "==", input.receptorUid),
+      where("blockedClientIp", "==", input.blockedClientIp),
+    );
+
+    const ipSnap = await getDocs(byIp);
+    const ipHit = await findActiveInQuery(ipSnap.docs, now);
+    if (ipHit) return ipHit;
+  }
+
   const fingerprint = buildAbuseFingerprint(
     input.blockedAnonId,
     input.blockedVisitorId,
   );
 
-  const q = query(
+  const byFingerprint = query(
     collection(db, "anon_abuse_blocks"),
     where("receptorUid", "==", input.receptorUid),
     where("blockedFingerprint", "==", fingerprint),
   );
 
-  const snap = await getDocs(q);
-  const now = Date.now();
-
-  for (const row of snap.docs) {
-    const data = { id: row.id, ...(row.data() as Omit<AbuseBlockRecord, "id">) };
-    if (isAbuseBlockActive(data, now)) {
-      return data as AbuseBlockRecord;
-    }
-  }
-
-  return null;
+  const fingerprintSnap = await getDocs(byFingerprint);
+  return findActiveInQuery(fingerprintSnap.docs, now);
 }
 
 export async function listAbuseBlocksForReceptor(receptorUid: string, limit = 100) {
@@ -137,4 +182,13 @@ export async function extendAbuseBlock(blockId: string, extraMinutes: number) {
     },
     { merge: true },
   );
+}
+
+export function getRequestClientIp(req: Request) {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim() || "";
+  }
+
+  return req.headers.get("x-real-ip")?.trim() || "";
 }

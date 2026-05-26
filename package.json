@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync:apk-version": "node scripts/sync-app-version.mjs",
+    "copy:apk": "node scripts/copy-apk.mjs"
   },
   "dependencies": {
     "firebase": "^12.13.0",

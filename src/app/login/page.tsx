@@ -1,42 +1,36 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getApps, initializeApp } from "firebase/app";
 import {
-  getAuth,
   onAuthStateChanged,
   signInWithEmailAndPassword,
 } from "firebase/auth";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk",
-  authDomain: "sayittome-app.firebaseapp.com",
-  projectId: "sayittome-app",
-  storageBucket: "sayittome-app.firebasestorage.app",
-  messagingSenderId: "676263895580",
-  appId: "1:676263895580:web:2c7ffa7827c2a4799f35d9",
-};
-
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-const auth = getAuth(app);
+import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
+import { beginFreshAnonSession } from "@/lib/chat/anonSession";
+import { mapLoginError } from "@/lib/auth/registerErrors";
+import { auth } from "@/lib/firebase";
 
 export default function LoginPage() {
   const router = useRouter();
 
-  const [email, setEmail] = useState("emilianomaturano@gmail.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setChecking(false);
-
-      if (user) {
-        router.replace("/settings");
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setChecking(false);
+        return;
       }
+
+      const next = await resolvePostAuthPath(user.uid, user.emailVerified);
+      router.replace(next);
     });
 
     return () => unsub();
@@ -49,29 +43,22 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(
+      const cred = await signInWithEmailAndPassword(
         auth,
         email.trim().toLowerCase(),
-        password
+        password,
       );
 
-      router.replace("/settings");
-    } catch (err: any) {
-      console.error("LOGIN_ERROR", err);
+      beginFreshAnonSession();
 
-      const code = String(err?.code || "");
-
-      if (code.includes("invalid-credential")) {
-        setError("Email o contraseña incorrectos.");
-      } else if (code.includes("user-not-found")) {
-        setError("No existe una cuenta con ese email.");
-      } else if (code.includes("wrong-password")) {
-        setError("Contraseña incorrecta.");
-      } else if (code.includes("too-many-requests")) {
-        setError("Demasiados intentos. Esperá unos minutos.");
-      } else {
-        setError(`No se pudo iniciar sesión: ${code || "error desconocido"}`);
-      }
+      const next = await resolvePostAuthPath(
+        cred.user.uid,
+        cred.user.emailVerified,
+      );
+      router.replace(next);
+    } catch (err: unknown) {
+      const code = String((err as { code?: string })?.code || "");
+      setError(mapLoginError(code));
     } finally {
       setLoading(false);
     }
@@ -127,6 +114,13 @@ export default function LoginPage() {
         >
           {loading ? "Entrando..." : "Entrar"}
         </button>
+
+        <p className="mt-6 text-center text-sm text-white/55">
+          ¿No tenés cuenta?{" "}
+          <Link href="/register" className="text-violet-300">
+            Crear perfil
+          </Link>
+        </p>
 
         <button
           type="button"

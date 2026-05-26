@@ -24,6 +24,12 @@ export function parseProfileAnonChatId(chatId: string) {
   return { senderId, targetKey };
 }
 
+/** Username slug stored in anon chat ids (lowercase, safe chars). */
+export function usernameHintFromAnonChatId(chatId: string) {
+  if (!isProfileAnonChatId(chatId)) return "";
+  return parseProfileAnonChatId(chatId).targetKey;
+}
+
 /** Legacy ids that may exist before migration. */
 export function buildLegacyProfileChatIds(
   senderId: string,

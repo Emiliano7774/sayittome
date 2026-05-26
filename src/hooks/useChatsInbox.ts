@@ -11,10 +11,12 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { auth, db } from "@/lib/firebase";
-import { inboxDedupeKey, isProfileAnonChatId } from "@/lib/chat/anonChatId";
 import {
   buildLegacyProfileChatIds,
   buildProfileAnonChatId,
+  inboxDedupeKey,
+  isProfileAnonChatId,
+  usernameHintFromAnonChatId,
 } from "@/lib/chat/anonChatId";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
@@ -31,13 +33,24 @@ export type InboxChat = {
   canonicalChatId?: string;
 };
 
+export function resolveChatUsername(chat: InboxChat) {
+  const id = chat.canonicalChatId || chat.id;
+  return (
+    chat.targetUsername ||
+    chat.receptorUsername ||
+    chat.otherUsername ||
+    usernameHintFromAnonChatId(id) ||
+    ""
+  );
+}
+
 export function chatTitle(chat: InboxChat) {
-  return chat.targetUsername || chat.receptorUsername || chat.otherUsername || "Chat anónimo";
+  return resolveChatUsername(chat) || "Chat anónimo";
 }
 
 export function chatHref(chat: InboxChat) {
-  const username = chat.targetUsername || chat.receptorUsername;
   const id = chat.canonicalChatId || chat.id;
+  const username = resolveChatUsername(chat);
 
   if (username) {
     return `/chat/${encodeURIComponent(id)}?u=${encodeURIComponent(username)}`;

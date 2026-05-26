@@ -1,3 +1,5 @@
+import { assertProfileOwner } from "@/lib/profile/owner";
+
 export const VERIFIED_QUERY_PARAM = "verified";
 export const VERIFIED_QUERY_VALUE = "1";
 
@@ -21,6 +23,11 @@ export function isVerifiedProfileLink(search?: string | URLSearchParams | null) 
 }
 
 export async function copyVerifiedProfileLink(username: string) {
+  const allowed = await assertProfileOwner(username);
+  if (!allowed) {
+    return { ok: false as const, link: "", denied: true as const };
+  }
+
   const link = getVerifiedProfileLink(username);
 
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {

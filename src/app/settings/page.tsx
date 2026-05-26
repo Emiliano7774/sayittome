@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import { BookOpen, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
+import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import UxModeSwitcher from "@/components/UxModeSwitcher";
+import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
+import { useUxMode } from "@/contexts/UxModeContext";
 
 type MediaItem = {
   url: string;
@@ -27,6 +30,7 @@ function formatDate(value: any) {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { uxMode } = useUxMode();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
@@ -36,6 +40,12 @@ export default function SettingsPage() {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         router.replace("/login");
+        return;
+      }
+
+      const next = await resolvePostAuthPath(user.uid, user.emailVerified);
+      if (next !== "/settings") {
+        router.replace(next);
         return;
       }
 
@@ -97,6 +107,37 @@ export default function SettingsPage() {
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <p className="text-3xl font-black">Cargando perfil...</p>
       </main>
+    );
+  }
+
+  if (uxMode === "modern" && profile) {
+    const username = String(profile.username || profile.nombre || "usuario");
+    const createdAtLabel = formatDate(profile.createdAt);
+
+    return (
+      <ModernPublicProfile
+        profile={{
+          uid: profile.uid,
+          email: auth.currentUser?.email || profile.email,
+          username,
+          bio: String(profile.bio || profile.descripcion || ""),
+          provincia: profile.provincia,
+          mostrarProvincia: profile.mostrarProvincia !== false,
+          fotoPrincipal: String(profile.fotoPrincipal || portada || ""),
+          fotoPortada: profile.fotoPortada,
+          videoPortada: profile.videoPortada,
+          fotos: profile.fotos,
+          likes: Number(profile.likesCount || profile.likes || 0),
+          conversaciones: Number(profile.conversacionesCount || profile.conversaciones || 0),
+          seguidores: Number(profile.seguidoresCount || profile.seguidores || 0),
+          historias: Number(profile.historiasCount || profile.historias || 0),
+          createdAtLabel,
+        }}
+        isOwner
+        verifiedVisit={false}
+        showShuffleBack={false}
+        onEdit={() => router.push("/settings/edit")}
+      />
     );
   }
 

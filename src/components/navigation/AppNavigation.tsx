@@ -6,7 +6,7 @@ import { useUxMode } from "@/contexts/UxModeContext";
 import BottomNav from "@/components/navigation/BottomNav";
 import ModernBottomNav from "@/components/navigation/ModernBottomNav";
 
-const HIDE_PREFIXES = ["/admin", "/login"];
+const HIDE_PREFIXES = ["/admin", "/login", "/register"];
 
 export default function AppNavigation() {
   const { uxMode } = useUxMode();

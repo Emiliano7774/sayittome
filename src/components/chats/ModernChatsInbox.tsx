@@ -52,7 +52,8 @@ export default function ModernChatsInbox({
                 <Link
                   key={chat.id}
                   href={chatHref(chat)}
-                  className="group flex items-center gap-4 rounded-2xl border border-white/8 bg-[#0c0c0c]/90 p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition hover:border-violet-500/25 hover:bg-[#121212] active:scale-[0.99]"
+                  prefetch={false}
+                  className="group relative z-10 flex items-center gap-4 rounded-2xl border border-white/8 bg-[#0c0c0c]/90 p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition hover:border-violet-500/25 hover:bg-[#121212] active:scale-[0.99]"
                 >
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600/40 to-fuchsia-600/20 text-lg font-black text-violet-100">
                     {title.slice(0, 1).toUpperCase()}

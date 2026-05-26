@@ -1,40 +1,20 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getApps, initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, User } from "firebase/auth";
-import { doc, getDoc, getFirestore, setDoc, serverTimestamp } from "firebase/firestore";
-import { getDownloadURL, getStorage, ref, uploadBytesResumable } from "firebase/storage";
+import { onAuthStateChanged, type User } from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { ArrowLeft, Camera, Film, GripVertical, ImagePlus, Save, Star, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+
+import { auth, db, storage } from "@/lib/firebase";
+import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
 
 type MediaItem = {
   url: string;
   type: "image" | "video";
   path?: string;
 };
-
-const firebaseConfig = {
-  apiKey: "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk",
-  authDomain: "sayittome-app.firebaseapp.com",
-  projectId: "sayittome-app",
-  storageBucket: "sayittome-app.firebasestorage.app",
-  messagingSenderId: "676263895580",
-  appId: "1:676263895580:web:2c7ffa7827c2a4799f35d9",
-};
-
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-const provincias = [
-  "Buenos Aires", "CABA", "Catamarca", "Chaco", "Chubut", "CÃ³rdoba",
-  "Corrientes", "Entre RÃ­os", "Formosa", "Jujuy", "La Pampa", "La Rioja",
-  "Mendoza", "Misiones", "NeuquÃ©n", "RÃ­o Negro", "Salta", "San Juan",
-  "San Luis", "Santa Cruz", "Santa Fe", "Santiago del Estero",
-  "Tierra del Fuego", "TucumÃ¡n"
-];
 
 export default function ModernEditProfilePage() {
   const router = useRouter();
@@ -47,6 +27,7 @@ export default function ModernEditProfilePage() {
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [provincia, setProvincia] = useState("");
+  const [mostrarProvincia, setMostrarProvincia] = useState(false);
   const [intereses, setIntereses] = useState("");
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [principalIndex, setPrincipalIndex] = useState(0);
@@ -77,6 +58,7 @@ export default function ModernEditProfilePage() {
       setUsername(String(data.username || data.nombre || ""));
       setBio(String(data.bio || data.descripcion || ""));
       setProvincia(String(data.provincia || ""));
+      setMostrarProvincia(data.mostrarProvincia === true);
       setIntereses(Array.isArray(data.intereses) ? data.intereses.join(", ") : String(data.intereses || ""));
 
       const fotos = Array.isArray(data.fotos) ? data.fotos.map((url: string) => ({ url, type: "image" as const })) : [];
@@ -192,6 +174,7 @@ export default function ModernEditProfilePage() {
         bio: bio.trim(),
         descripcion: bio.trim(),
         provincia,
+        mostrarProvincia,
         intereses: interesesArray,
         fotos,
         videos,
@@ -380,8 +363,23 @@ export default function ModernEditProfilePage() {
                 className="mt-4 w-full rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-2xl outline-none focus:border-violet-400"
               >
                 <option value="">Seleccionar</option>
-                {provincias.map((p) => <option key={p} value={p}>{p}</option>)}
+                {ARGENTINA_PROVINCIAS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
+
+              <div className="mt-4 flex items-center justify-between gap-4 rounded-[28px] border border-white/10 bg-zinc-950 px-7 py-5">
+                <p className="text-lg text-zinc-400">
+                  Se usa siempre para conectarte con gente cercana. Podés ocultarla en el perfil.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setMostrarProvincia((prev) => !prev)}
+                  className={`shrink-0 rounded-full px-5 py-3 font-black ${
+                    mostrarProvincia ? "bg-violet-500 text-white" : "bg-white/10 text-white/45"
+                  }`}
+                >
+                  {mostrarProvincia ? "Visible" : "Oculta"}
+                </button>
+              </div>
             </label>
 
             <label className="block">

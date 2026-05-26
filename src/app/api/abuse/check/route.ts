@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getRequestClientIp } from "@/lib/abuse/anonAbuseBlocks";
 import { runCollectionQuery } from "@/lib/firestore/rest";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function GET(req: Request) {
     const fingerprint = String(searchParams.get("fingerprint") || "");
     const blockedAnonId = String(searchParams.get("blockedAnonId") || "");
     const blockedVisitorId = String(searchParams.get("blockedVisitorId") || "");
+    const clientIp = getRequestClientIp(req);
 
     if (!receptorUid) {
       return NextResponse.json({ ok: false, error: "missing receptorUid" }, { status: 400 });
@@ -31,11 +33,16 @@ export async function GET(req: Request) {
       if (String(block.receptorUid) !== receptorUid) return false;
       if (!isBlockActive(block, now)) return false;
 
-      if (fingerprint && String(block.blockedFingerprint) === fingerprint) return true;
-      if (blockedAnonId && String(block.blockedAnonId) === blockedAnonId) return true;
       if (blockedVisitorId && String(block.blockedVisitorId) === blockedVisitorId) {
         return true;
       }
+
+      if (clientIp && String(block.blockedClientIp) === clientIp) {
+        return true;
+      }
+
+      if (fingerprint && String(block.blockedFingerprint) === fingerprint) return true;
+      if (blockedAnonId && String(block.blockedAnonId) === blockedAnonId) return true;
 
       return false;
     });

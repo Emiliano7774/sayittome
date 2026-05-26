@@ -5,9 +5,8 @@ import { useState } from "react";
 
 import {
   DEFAULT_ABUSE_BLOCK_MINUTES,
-  createAnonAbuseBlock,
 } from "@/lib/abuse/anonAbuseBlocks";
-import { buildAbuseFingerprint, getVisitorId } from "@/lib/abuse/fingerprint";
+import { buildVisitorBlockKey, getVisitorId } from "@/lib/abuse/fingerprint";
 
 export default function AbuseProtectionMenu({
   receptorUid,
@@ -34,17 +33,26 @@ export default function AbuseProtectionMenu({
 
     try {
       const visitorId = getVisitorId();
-      const fingerprint = buildAbuseFingerprint(blockedAnonId, visitorId);
+      const fingerprint = buildVisitorBlockKey(visitorId);
 
-      await createAnonAbuseBlock({
-        receptorUid,
-        blockedAnonId,
-        blockedVisitorId: visitorId,
-        chatId,
-        motivo,
-        blockedBy,
-        durationMinutes,
+      const blockRes = await fetch("/api/abuse/block", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receptorUid,
+          blockedAnonId,
+          blockedVisitorId: visitorId,
+          chatId,
+          motivo,
+          blockedBy,
+          durationMinutes,
+        }),
       });
+
+      const blockJson = await blockRes.json();
+      if (!blockRes.ok || !blockJson?.ok) {
+        throw new Error(String(blockJson?.error || "block_failed"));
+      }
 
       await fetch("/api/abuse/report", {
         method: "POST",

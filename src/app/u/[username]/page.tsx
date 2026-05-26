@@ -18,6 +18,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
+import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { formatLastSeen } from "@/lib/presence";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
@@ -63,7 +64,6 @@ export default function PublicProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUid, setCurrentUid] = useState("");
-  const [currentEmail, setCurrentEmail] = useState("");
   const [copied, setCopied] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
@@ -71,7 +71,6 @@ export default function PublicProfilePage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUid(user?.uid || "");
-      setCurrentEmail(user?.email || "");
     });
 
     return () => unsub();
@@ -99,14 +98,8 @@ export default function PublicProfilePage() {
     if (usernameParam) load();
   }, [usernameParam]);
 
-  const isOwner = useMemo(() => {
-    if (!profile) return false;
-
-    return (
-      (!!currentUid && currentUid === profile.uid) ||
-      (!!currentEmail && currentEmail === profile.email)
-    );
-  }, [profile, currentUid, currentEmail]);
+  const owner = useProfileOwner(profile?.uid, profile?.username || usernameParam);
+  const isOwner = owner.ready && owner.isOwner;
 
   const gallery = useMemo(() => {
     if (!profile) return [];
@@ -312,7 +305,11 @@ export default function PublicProfilePage() {
         </div>
 
         {isOwner ? (
-          <VerifiedLinkBubble username={profile.username} isOwner={isOwner} />
+          <VerifiedLinkBubble
+            username={profile.username}
+            profileUid={profile.uid}
+            variant="classic"
+          />
         ) : null}
 
         <div className="absolute left-8 md:left-24 top-[31%] md:top-[31%] -translate-y-1/2 max-w-[900px] z-[12]">

@@ -1,142 +1,53 @@
 "use client";
 
-import Link from "next/link";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
-import { db } from "@/lib/firebase";
+import AdminShell from "@/components/admin/AdminShell";
+import ClassicModerationFeed from "@/components/admin/classic/ClassicModerationFeed";
+import ModernAdminChatsPanel from "@/components/admin/ModernAdminChatsPanel";
+import { useUxMode } from "@/contexts/UxModeContext";
 
-type ChatRow = {
-  id: string;
-  targetUsername?: string;
-  receptorUsername?: string;
-  lastMessage?: string;
-  anon?: boolean;
-  suspicious?: boolean;
-};
-
-type MessageRow = {
-  id: string;
-  text?: string;
-  texto?: string;
-  type?: string;
-};
+type PanelMode = "classic" | "modern";
 
 export default function AdminChatsPage() {
-  const admin = useAdminApi();
-  const [chats, setChats] = useState<ChatRow[]>([]);
-  const [selected, setSelected] = useState("");
-  const [messages, setMessages] = useState<MessageRow[]>([]);
-
-  useEffect(() => {
-    const q = query(collection(db, "chats"), orderBy("updatedAt", "desc"), limit(80));
-    const unsub = onSnapshot(q, (snap) => {
-      setChats(snap.docs.map((row) => ({ id: row.id, ...(row.data() as Omit<ChatRow, "id">) })));
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-
-    const q = query(
-      collection(db, "chats", selected, "mensajes"),
-      orderBy("createdAt", "desc"),
-      limit(40),
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(
-        snap.docs.map((row) => ({ id: row.id, ...(row.data() as Omit<MessageRow, "id">) })),
-      );
-    });
-
-    return () => unsub();
-  }, [selected]);
+  const { uxMode } = useUxMode();
+  const [panelMode, setPanelMode] = useState<PanelMode>(
+    uxMode === "classic" ? "classic" : "modern",
+  );
 
   return (
-    <AdminShell title="Chats admin">
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="space-y-3">
-          {chats.map((chat) => (
-            <button
-              key={chat.id}
-              type="button"
-              onClick={() => setSelected(chat.id)}
-              className={[
-                "w-full text-left rounded-2xl border p-4",
-                selected === chat.id ? "border-violet-400/40 bg-violet-500/10" : "border-white/10",
-              ].join(" ")}
-            >
-              <p className="font-black">
-                {chat.targetUsername || chat.receptorUsername || chat.id}
-              </p>
-              <p className="text-white/50 font-bold text-sm mt-1 line-clamp-1">
-                {chat.lastMessage || "sin mensajes"}
-              </p>
-              <p className="text-white/35 text-xs font-bold mt-2">
-                {chat.anon ? "anon" : "normal"}
-                {chat.suspicious ? " · sospechoso" : ""}
-              </p>
-            </button>
-          ))}
-        </div>
-
-        <div>
-          {selected ? (
-            <div className="rounded-3xl border border-white/10 p-4">
-              <div className="flex flex-wrap gap-2 mb-4">
-                <button
-                  type="button"
-                  onClick={() => admin.postAction({ action: "mark_chat_suspicious", chatId: selected })}
-                  className="rounded-xl bg-amber-500/20 px-4 py-2 font-black text-sm"
-                >
-                  Marcar sospechoso
-                </button>
-                <button
-                  type="button"
-                  onClick={() => admin.postAction({ action: "delete_chat", chatId: selected })}
-                  className="rounded-xl bg-red-500/20 px-4 py-2 font-black text-sm"
-                >
-                  Borrar hilo
-                </button>
-                <Link
-                  href={`/chat/${encodeURIComponent(selected)}`}
-                  className="rounded-xl border border-white/15 px-4 py-2 font-black text-sm"
-                >
-                  Abrir chat
-                </Link>
-              </div>
-
-              <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-                {messages.map((msg) => (
-                  <div key={msg.id} className="rounded-xl bg-white/5 p-3">
-                    <p className="font-bold text-white/80">
-                      {msg.text || msg.texto || `[${msg.type || "text"}]`}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        admin.postAction({
-                          action: "delete_message",
-                          chatId: selected,
-                          messageId: msg.id,
-                        })
-                      }
-                      className="mt-2 text-xs font-black text-red-300"
-                    >
-                      Borrar mensaje
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="text-white/40 font-black">Seleccioná un chat para auditar mensajes.</p>
-          )}
-        </div>
+    <AdminShell title="Revisar conversaciones">
+      <div className="mb-6 flex flex-wrap items-center gap-3 border-b border-white/10 pb-4">
+        <button
+          type="button"
+          onClick={() => setPanelMode("classic")}
+          className={[
+            "border px-4 py-2 text-sm font-bold transition",
+            panelMode === "classic"
+              ? "border-amber-400/40 bg-amber-500/15 text-amber-100"
+              : "border-white/10 bg-[#111] text-white/45",
+          ].join(" ")}
+        >
+          Feed vivo Classic
+        </button>
+        <button
+          type="button"
+          onClick={() => setPanelMode("modern")}
+          className={[
+            "border px-4 py-2 text-sm font-bold transition",
+            panelMode === "modern"
+              ? "border-violet-400/40 bg-violet-500/15 text-violet-100"
+              : "border-white/10 bg-[#111] text-white/45",
+          ].join(" ")}
+        >
+          Vista estable Modern
+        </button>
+        <p className="text-sm font-bold text-white/35">
+          Classic = tiempo real por actividad · Modern = lista estable
+        </p>
       </div>
+
+      {panelMode === "classic" ? <ClassicModerationFeed /> : <ModernAdminChatsPanel />}
     </AdminShell>
   );
 }

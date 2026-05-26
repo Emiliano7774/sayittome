@@ -1,10 +1,8 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
+import { useEffect, useState } from "react";
 
-import { auth } from "@/lib/firebase";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 
 export default function UserChatRedirectPage() {
@@ -12,15 +10,11 @@ export default function UserChatRedirectPage() {
   const router = useRouter();
   const username = String(params.username || "usuario");
   const [errorText, setErrorText] = useState("");
-  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
     let cancelled = false;
 
-    const unsub = onAuthStateChanged(auth, async () => {
+    (async () => {
       try {
         const resolved = await resolveProfileChat(username);
         if (cancelled) return;
@@ -35,11 +29,10 @@ export default function UserChatRedirectPage() {
           setErrorText("No se pudo abrir el chat.");
         }
       }
-    });
+    })();
 
     return () => {
       cancelled = true;
-      unsub();
     };
   }, [username, router]);
 

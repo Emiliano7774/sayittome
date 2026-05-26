@@ -2,15 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 import { ArrowLeft, BadgeCheck, Heart, MessageCircle, Users } from "lucide-react";
 
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
-import ModernUxBadge from "@/components/modern/ModernUxBadge";
-import PublicUxSwitcher from "@/components/ux/PublicUxSwitcher";
+import UxModeSwitcher from "@/components/UxModeSwitcher";
+import { isAdminEmail } from "@/lib/admin/isAdmin";
+import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { formatLastSeen } from "@/lib/presence";
+
 export type ModernProfileData = {
   uid: string;
   email?: string;
@@ -41,6 +45,8 @@ type Props = {
   isOwner: boolean;
   verifiedVisit: boolean;
   onEdit?: () => void;
+  /** When false, hides the shuffle back link (e.g. own /settings view). */
+  showShuffleBack?: boolean;
 };
 
 export default function ModernPublicProfile({
@@ -48,6 +54,7 @@ export default function ModernPublicProfile({
   isOwner,
   verifiedVisit,
   onEdit,
+  showShuffleBack = true,
 }: Props) {
   const router = useRouter();
   const story = useStoryStatus(profile.uid, profile.username);
@@ -56,6 +63,13 @@ export default function ModernPublicProfile({
   const historiasCount = story.hasActive
     ? story.storyCount
     : Number(profile.historias || profile.stories || 0);
+
+  const coverImage = profile.fotoPortada || profile.fotoPrincipal;
+  const profileChatHref = useMemo(() => {
+    const chatId = buildProfileAnonChatId(getChatAnonSenderId(), profile.username);
+    const query = new URLSearchParams({ u: profile.username });
+    return `/chat/${encodeURIComponent(chatId)}?${query.toString()}`;
+  }, [profile.username]);
 
   function openPrimary() {
     if (story.hasActive && story.storyPath) {
@@ -69,73 +83,84 @@ export default function ModernPublicProfile({
     <main className="min-h-screen bg-black pb-32 text-white">
       <div className="mx-auto w-full max-w-3xl px-4 py-5 md:px-6">
         <header className="mb-5 flex items-center justify-between">
-          <Link
-            href="/shuffle"
-            className="inline-flex items-center gap-2 text-sm font-black text-white/55 hover:text-white"
-          >
-            <ArrowLeft size={18} />
-            Shuffle
-          </Link>
-          <div className="flex items-center gap-2">
-            <PublicUxSwitcher />
-            <ModernUxBadge />
+          {showShuffleBack ? (
+            <Link
+              href="/shuffle"
+              className="inline-flex items-center gap-2 text-sm font-black text-white/55 hover:text-white"
+            >
+              <ArrowLeft size={18} />
+              Shuffle
+            </Link>
+          ) : (
+            <div />
+          )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {isOwner && isAdminEmail(profile.email) ? (
+              <Link
+                href="/admin"
+                className="rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-2 text-xs font-semibold text-fuchsia-100"
+              >
+                Panel admin
+              </Link>
+            ) : null}
+            <UxModeSwitcher />
           </div>
         </header>
 
-        <section className="relative overflow-hidden rounded-[32px] border border-violet-500/10 bg-[#0a0a0a] shadow-[0_0_90px_rgba(104,76,255,0.18)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-violet-600/20 to-transparent" />
-          <div className="relative h-[360px] overflow-hidden md:h-[400px]">
-            {profile.videoPortada ? (
-              <>
-                <video
-                  src={profile.videoPortada}
-                  className={[
-                    "h-full w-full object-cover",
-                    blurPhoto ? "blur-2xl scale-110" : "",
-                  ].join(" ")}
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                />
-                {blurPhoto ? <SensitiveBlurOverlay label="Portada moderada" /> : null}
-              </>
-            ) : profile.fotoPortada || profile.fotoPrincipal ? (
-              <>
-                <img
-                  src={profile.fotoPortada || profile.fotoPrincipal}
-                  alt={profile.username}
-                  className={[
-                    "h-full w-full object-cover",
-                    blurPhoto ? "blur-2xl scale-110" : "",
-                  ].join(" ")}
-                />
-                {blurPhoto ? <SensitiveBlurOverlay label="Foto moderada" /> : null}
-              </>
-            ) : (
-              <div className="h-full w-full bg-gradient-to-b from-violet-700/40 via-[#12081f] to-black" />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent" />
+        <div className="relative mx-auto w-full">
+          <div className="absolute -inset-8 rounded-[3rem] bg-fuchsia-500/20 blur-3xl" />
+          <section className="relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40">
+            <div className="relative h-80 overflow-hidden">
+              {profile.videoPortada ? (
+                <>
+                  <video
+                    src={profile.videoPortada}
+                    className={[
+                      "h-full w-full object-cover",
+                      blurPhoto ? "blur-2xl scale-110" : "",
+                    ].join(" ")}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                  />
+                  {blurPhoto ? <SensitiveBlurOverlay label="Portada moderada" /> : null}
+                </>
+              ) : coverImage ? (
+                <>
+                  <img
+                    src={coverImage}
+                    alt={profile.username}
+                    className={[
+                      "h-full w-full object-cover",
+                      blurPhoto ? "blur-2xl scale-110" : "",
+                    ].join(" ")}
+                  />
+                  {blurPhoto ? <SensitiveBlurOverlay label="Foto moderada" /> : null}
+                </>
+              ) : (
+                <div className="h-full w-full bg-gradient-to-br from-fuchsia-600 via-purple-950 to-black" />
+              )}
 
-            {profile.showOnline || profile.online ? (
-              <span className="absolute right-4 top-4 rounded-full border border-green-400/30 bg-black/55 px-3 py-1 text-xs font-black text-green-300">
-                En línea
-              </span>
-            ) : null}
-          </div>
+              {profile.showOnline || profile.online ? (
+                <span className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-green-400/30 bg-black/55 px-3 py-1 text-xs font-black text-green-300 backdrop-blur-sm">
+                  <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,.9)]" />
+                  En línea
+                </span>
+              ) : null}
+            </div>
 
-          <div className="relative px-5 pb-5 pt-0">
-            <div className="-mt-14 mb-4 flex items-end gap-4">
+            <div className="-mt-16 px-6 pb-8">
               <button
                 type="button"
                 onClick={openPrimary}
                 className={[
-                  "h-28 w-28 overflow-hidden rounded-full border-4 bg-[#151515] shadow-2xl",
+                  "h-28 w-28 overflow-hidden rounded-full border-4 border-black bg-gradient-to-br from-white to-zinc-500",
                   story.hasUnseen
-                    ? "border-violet-400"
+                    ? "ring-2 ring-fuchsia-400"
                     : story.hasActive
-                      ? "border-zinc-600"
-                      : "border-white/15",
+                      ? "ring-2 ring-zinc-600"
+                      : "",
                 ].join(" ")}
               >
                 {profile.fotoPrincipal ? (
@@ -147,81 +172,84 @@ export default function ModernPublicProfile({
                 ) : null}
               </button>
 
-              <div className="min-w-0 flex-1 pb-1">
-                <p className="text-[10px] font-black tracking-[0.22em] text-violet-300/85">
-                  SAYITTOME
+              <h1 className="mt-5 truncate text-3xl font-semibold">
+                @{profile.username}
+              </h1>
+
+              {lastSeen ? (
+                <p className="mt-1 text-sm font-normal text-zinc-500">{lastSeen}</p>
+              ) : null}
+
+              {verifiedVisit ? (
+                <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-100">
+                  <BadgeCheck size={16} />
+                  Perfil abierto desde link oficial
                 </p>
-                <h1 className="truncate text-3xl font-black">@{profile.username}</h1>
-                {lastSeen ? (
-                  <p className="text-sm font-bold text-white/45">{lastSeen}</p>
+              ) : null}
+
+              <p className="mt-3 text-sm leading-6 text-zinc-400">
+                {profile.bio || "Perfil SayItToMe en la nueva web React."}
+              </p>
+
+              {profile.mostrarProvincia && profile.provincia ? (
+                <p className="mt-2 text-sm font-normal text-zinc-500">{profile.provincia}</p>
+              ) : null}
+
+              <div className="mt-5 grid grid-cols-3 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">
+                <StatItem icon={<Heart size={18} />} value={profile.likes || 0} label="Likes" />
+                <StatItem
+                  icon={<MessageCircle size={18} />}
+                  value={profile.conversaciones || 0}
+                  label="Chats"
+                />
+                <StatItem
+                  icon={<Users size={18} />}
+                  value={profile.seguidores || 0}
+                  label="Seguidores"
+                />
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link
+                  href={profileChatHref}
+                  prefetch={false}
+                  className="flex-1 rounded-full bg-white px-6 py-3.5 text-center text-sm font-normal text-black"
+                >
+                  Abrir chat
+                </Link>
+                {story.hasActive && story.storyPath ? (
+                  <Link
+                    href={story.storyPath}
+                    className="flex-1 rounded-full bg-fuchsia-500/30 px-6 py-3.5 text-center text-sm font-normal"
+                  >
+                    Ver historias ({historiasCount})
+                  </Link>
+                ) : null}
+                {isOwner && onEdit ? (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="rounded-full bg-white/10 px-5 py-3.5 text-sm font-normal"
+                  >
+                    Editar
+                  </button>
                 ) : null}
               </div>
             </div>
 
-            {verifiedVisit ? (
-              <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-300/30 bg-violet-500/10 px-4 py-2 text-sm font-black text-violet-100">
-                <BadgeCheck size={16} />
-                Perfil abierto desde link oficial
-              </p>
-            ) : null}
-
-            <p className="text-base font-medium text-white/70">
-              {profile.bio || "Perfil SayItToMe en la nueva web React."}
-            </p>
-
-            {profile.mostrarProvincia && profile.provincia ? (
-              <p className="mt-2 text-sm font-bold text-white/40">{profile.provincia}</p>
-            ) : null}
-
-            <div className="mt-5 grid grid-cols-3 gap-2 rounded-2xl border border-violet-500/15 bg-gradient-to-b from-violet-950/30 to-black/50 p-4 shadow-[inset_0_0_40px_rgba(104,76,255,0.06)]">
-              <StatItem icon={<Heart size={18} />} value={profile.likes || 0} label="Likes" />
-              <StatItem
-                icon={<MessageCircle size={18} />}
-                value={profile.conversaciones || 0}
-                label="Chats"
-              />
-              <StatItem
-                icon={<Users size={18} />}
-                value={profile.seguidores || 0}
-                label="Seguidores"
-              />
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Link
-                href={`/u/${encodeURIComponent(profile.username)}/chat`}
-                className="flex-1 rounded-full bg-white px-6 py-3.5 text-center text-sm font-black text-black"
-              >
-                Abrir chat
-              </Link>
-              {story.hasActive && story.storyPath ? (
-                <Link
-                  href={story.storyPath}
-                  className="flex-1 rounded-full border border-violet-400/30 bg-violet-600/20 px-6 py-3.5 text-center text-sm font-black text-violet-100"
-                >
-                  Ver historias ({historiasCount})
-                </Link>
-              ) : null}
-              {isOwner && onEdit ? (
-                <button
-                  type="button"
-                  onClick={onEdit}
-                  className="rounded-full border border-white/15 px-5 py-3.5 text-sm font-black"
-                >
-                  Editar
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          {isOwner ? (
-            <div className="pointer-events-none absolute right-4 top-[42%] z-20">
-              <div className="pointer-events-auto">
-                <VerifiedLinkBubble username={profile.username} isOwner={isOwner} />
+            {isOwner ? (
+              <div className="pointer-events-none absolute right-4 top-8 z-20">
+                <div className="pointer-events-auto">
+                  <VerifiedLinkBubble
+                    username={profile.username}
+                    profileUid={profile.uid}
+                    variant="modern"
+                  />
+                </div>
               </div>
-            </div>
-          ) : null}
-        </section>
+            ) : null}
+          </section>
+        </div>
 
         {profile.createdAtLabel ? (
           <p className="mt-4 text-center text-sm italic text-white/35">

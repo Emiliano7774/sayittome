@@ -13,6 +13,12 @@ export function getVisitorId() {
   return current;
 }
 
+/** Stable device key — survives anonymous session rotation. */
+export function buildVisitorBlockKey(visitorId?: string) {
+  const visitor = visitorId || getVisitorId();
+  return `visitor::${visitor}`;
+}
+
 export function buildAbuseFingerprint(anonSessionId: string, visitorId?: string) {
   const visitor = visitorId || getVisitorId();
   return `${anonSessionId}::${visitor}`;

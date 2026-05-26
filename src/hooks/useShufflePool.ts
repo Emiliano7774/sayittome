@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
+import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
 import {
   pickRandomWindowIndices,
@@ -236,7 +238,11 @@ export function useShufflePool() {
       } else if (action === "profile") {
         router.push(`/u/${encodeURIComponent(username)}`);
       } else if (action === "chat") {
-        router.push(`/u/${encodeURIComponent(username)}/chat`);
+        const senderId = getChatAnonSenderId();
+        const chatId = buildProfileAnonChatId(senderId, username);
+        router.push(
+          `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}`,
+        );
       }
     },
     [router],

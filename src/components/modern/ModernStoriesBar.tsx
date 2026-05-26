@@ -9,7 +9,12 @@ import { auth } from "@/lib/firebase";
 import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
 import type { StoryUserGroup } from "@/lib/stories/types";
 
-export default function ModernStoriesBar() {
+type Props = {
+  /** Fila simple como en captura Shuffle (sin caja HISTORIAS). */
+  compact?: boolean;
+};
+
+export default function ModernStoriesBar({ compact = false }: Props) {
   const [groups, setGroups] = useState<StoryUserGroup[]>([]);
 
   useEffect(() => {
@@ -25,14 +30,20 @@ export default function ModernStoriesBar() {
     return () => unsub();
   }, []);
 
+  if (compact) {
+    return (
+      <section className="mb-1">
+        <StoriesTray groups={groups} showAdd={false} />
+      </section>
+    );
+  }
+
   const withStories = groups.length;
 
   return (
     <section className="rounded-[24px] border border-violet-500/10 bg-[#080808]/90 p-4 shadow-[inset_0_0_40px_rgba(104,76,255,0.06)]">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-sm font-black tracking-[0.18em] text-violet-200/80">
-          HISTORIAS
-        </p>
+        <p className="text-sm font-black tracking-[0.18em] text-violet-200/80">HISTORIAS</p>
         <span className="rounded-full bg-violet-500/15 px-3 py-1 text-xs font-black text-violet-200">
           {withStories} activas
         </span>

@@ -3,13 +3,13 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
 
 import ProfileAnonChat from "@/components/chat/ProfileAnonChat";
-import { isProfileAnonChatId } from "@/lib/chat/anonChatId";
 import {
   buildLegacyProfileChatIds,
   buildProfileAnonChatId,
+  isProfileAnonChatId,
+  usernameHintFromAnonChatId,
 } from "@/lib/chat/anonChatId";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
 import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
@@ -36,13 +36,6 @@ function ProfileAnonChatRoute() {
 
     async function prepare() {
       try {
-        const unsub = await new Promise<void>((resolve) => {
-          const off = onAuthStateChanged(auth, () => {
-            off();
-            resolve();
-          });
-        });
-
         if (cancelled) return;
 
         const firebaseUid = auth.currentUser?.uid || "";
@@ -63,20 +56,25 @@ function ProfileAnonChatRoute() {
         }
 
         if (!resolvedUsername) {
+          resolvedUsername = usernameHintFromAnonChatId(rawChatId);
+        }
+
+        if (!resolvedUsername) {
           setErrorText("Chat no encontrado.");
           setReady(true);
           return;
         }
 
         const profile = await fetchProfileByUsername(resolvedUsername);
+        const canonicalUsername = String(profile?.username || resolvedUsername);
         const targetUid = String(profile?.uid || "");
-        const canonicalId = buildProfileAnonChatId(senderId, resolvedUsername);
+        const canonicalId = buildProfileAnonChatId(senderId, canonicalUsername);
         const legacyIds = [
-          ...buildLegacyProfileChatIds(senderId, resolvedUsername, targetUid),
+          ...buildLegacyProfileChatIds(senderId, canonicalUsername, targetUid),
           ...(firebaseUid
             ? buildLegacyProfileChatIds(
                 firebaseUid,
-                resolvedUsername,
+                canonicalUsername,
                 targetUid,
               )
             : []),
@@ -89,8 +87,8 @@ function ProfileAnonChatRoute() {
         await migrateToCanonicalChat(canonicalId, legacyIds, {
           id: canonicalId,
           canonicalChatId: canonicalId,
-          targetUsername: resolvedUsername,
-          receptorUsername: resolvedUsername,
+          targetUsername: canonicalUsername,
+          receptorUsername: canonicalUsername,
           receptorUid: targetUid || null,
           targetUid: targetUid || null,
           schemaVersion: 2,
@@ -100,12 +98,12 @@ function ProfileAnonChatRoute() {
 
         if (cancelled) return;
 
-        setUsername(resolvedUsername);
+        setUsername(canonicalUsername);
         setChatId(canonicalId);
         setReady(true);
 
-        if (rawChatId !== canonicalId) {
-          const query = new URLSearchParams({ u: resolvedUsername });
+        if (rawChatId !== canonicalId || usernameFromQuery !== canonicalUsername) {
+          const query = new URLSearchParams({ u: canonicalUsername });
           window.history.replaceState(
             null,
             "",

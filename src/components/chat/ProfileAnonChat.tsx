@@ -26,6 +26,7 @@ import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { registerSessionChat } from "@/lib/chat/sessionChats";
+import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
 import { formatLastSeen } from "@/lib/presence";
 import {
@@ -497,6 +498,21 @@ export default function ProfileAnonChat({
         },
         { merge: true },
       );
+
+      scheduleModerationActivityTouch({
+        id: chatId,
+        targetUsername: username,
+        receptorUsername: username,
+        receptorUid: targetUid || undefined,
+        targetUid: targetUid || undefined,
+        initiatorUid: currentUid || undefined,
+        anonOwnerUid: currentUid || undefined,
+        anonSessionId: senderId,
+        lastMessage: messageText,
+        lastMessageSender: senderId,
+        anon: true,
+        senderIsAnonymous: true,
+      });
     } catch (e) {
       console.error(e);
       alert("No se pudo guardar el chat. Revisá permisos de Firestore.");

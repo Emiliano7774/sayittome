@@ -20,33 +20,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { auth, db, storage } from "@/lib/firebase";
-
-const provincias = [
-  "Buenos Aires",
-  "CABA",
-  "Catamarca",
-  "Chaco",
-  "Chubut",
-  "CÃ³rdoba",
-  "Corrientes",
-  "Entre RÃ­os",
-  "Formosa",
-  "Jujuy",
-  "La Pampa",
-  "La Rioja",
-  "Mendoza",
-  "Misiones",
-  "NeuquÃ©n",
-  "RÃ­o Negro",
-  "Salta",
-  "San Juan",
-  "San Luis",
-  "Santa Cruz",
-  "Santa Fe",
-  "Santiago del Estero",
-  "Tierra del Fuego",
-  "TucumÃ¡n",
-];
+import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
 
 type BadgeKey = "superMessages" | "likes" | "conversations" | "followers";
 
@@ -135,7 +109,6 @@ export default function ClassicEditProfilePage() {
       setUsername(String(data.username || data.nombre || ""));
       setBio(String(data.bio || data.descripcion || ""));
       setProvincia(String(data.provincia || ""));
-      setMostrarProvincia(data.mostrarProvincia !== false);
       setMostrarProvincia(data.mostrarProvincia !== false);
 
       const createdAtValue = data.createdAt?.toDate ? data.createdAt.toDate() : null;
@@ -532,7 +505,7 @@ export default function ClassicEditProfilePage() {
                   className="w-full bg-black border-b border-white/70 py-3 text-2xl outline-none text-white"
                 >
                   <option value="">Seleccionar provincia</option>
-                  {provincias.map((p) => (
+                  {ARGENTINA_PROVINCIAS.map((p) => (
                     <option key={p} value={p}>
                       {p}
                     </option>
