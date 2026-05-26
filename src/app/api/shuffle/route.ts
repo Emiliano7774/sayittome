@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { isLiveByConnection } from "@/lib/presence";
+
 export const dynamic = "force-dynamic";
 
 const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
@@ -11,6 +13,9 @@ type ApiProfile = {
   bio: string;
   photo: string;
   lastActive?: string;
+  presenceAt?: string;
+  online?: boolean;
+  showOnline?: boolean;
   banned?: boolean;
 };
 
@@ -21,6 +26,7 @@ let cachedAnonymousAt = 0;
 
 const PROFILE_CACHE_MS = 10000;
 const ANON_CACHE_MS = 6000;
+const ANON_ACTIVE_MS = 2 * 60 * 1000;
 
 function fieldString(fields: any, key: string) {
   return fields?.[key]?.stringValue || "";
@@ -53,6 +59,41 @@ function shuffleArray<T>(arr: T[]) {
   }
 
   return copy;
+}
+
+/** Solo para badge verde — nunca filtra la lista de shuffle. */
+function isProfileOnlineForBadge(profile: ApiProfile, now = Date.now()) {
+  if (profile.online === false) return false;
+
+  return isLiveByConnection(profile.presenceAt, undefined, now);
+}
+
+function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
+  return {
+    ...profile,
+    showOnline: isProfileOnlineForBadge(profile, now),
+  };
+}
+
+function isAnonymousDocActive(doc: any, now = Date.now()) {
+  const fields = doc?.fields || {};
+  const expiresAt = fieldTimestamp(fields, "expiresAt");
+  const lastSeenAt =
+    fieldTimestamp(fields, "lastSeenAt") || fieldTimestamp(fields, "updatedAt");
+
+  if (expiresAt) {
+    const expiresDate = new Date(expiresAt);
+    if (!Number.isNaN(expiresDate.getTime())) {
+      return expiresDate.getTime() > now;
+    }
+  }
+
+  if (!lastSeenAt) return false;
+
+  const seenDate = new Date(lastSeenAt);
+  if (Number.isNaN(seenDate.getTime())) return false;
+
+  return now - seenDate.getTime() <= ANON_ACTIVE_MS;
 }
 
 async function runCollectionQuery(collectionId: string, limit = 500) {
@@ -90,7 +131,17 @@ function docToProfile(doc: any): ApiProfile {
   const fields = doc.fields || {};
   const fotos = fieldArrayStrings(fields, "fotos");
 
-  return {
+  const presenceAt =
+    fieldTimestamp(fields, "lastActiveAt") ||
+    fieldTimestamp(fields, "lastSeenAt") ||
+    fieldTimestamp(fields, "lastActive");
+
+  const lastActive =
+    presenceAt ||
+    fieldTimestamp(fields, "updatedAt") ||
+    fieldTimestamp(fields, "createdAt");
+
+  const profile: ApiProfile = {
     uid:
       fieldString(fields, "uid") ||
       String(doc.name || "").split("/").pop() ||
@@ -113,16 +164,16 @@ function docToProfile(doc: any): ApiProfile {
       fotos[0] ||
       "",
 
-    lastActive:
-      fieldTimestamp(fields, "lastActive") ||
-      fieldTimestamp(fields, "updatedAt") ||
-      fieldTimestamp(fields, "createdAt"),
-
+    lastActive,
+    presenceAt: presenceAt || undefined,
+    online: fieldBool(fields, "online"),
     banned:
       fieldBool(fields, "banned") ||
       fieldBool(fields, "suspendido") ||
       fieldString(fields, "estado") === "bloqueado",
   };
+
+  return withPresenceBadge(profile);
 }
 
 async function getProfilesCached() {
@@ -153,7 +204,9 @@ async function getAnonymousOnlineCached() {
 
   try {
     const docs = await runCollectionQuery("anonimos_activos", 250);
-    cachedAnonymousOnline = docs.length;
+    cachedAnonymousOnline = docs.filter((doc: any) =>
+      isAnonymousDocActive(doc, now),
+    ).length;
     cachedAnonymousAt = now;
     return cachedAnonymousOnline;
   } catch {
@@ -171,18 +224,18 @@ export async function GET(req: Request) {
     const shouldShuffle = searchParams.get("shuffle") === "1";
     const countOnly = searchParams.get("countOnly") === "1";
 
-    const [allProfiles, anonymousOnline] = await Promise.all([
-      getProfilesCached(),
-      getAnonymousOnlineCached(),
-    ]);
+    const allProfiles = await getProfilesCached();
+    const anonymousOnline = await getAnonymousOnlineCached();
+    const profilesCreated = allProfiles.length;
+    const totalLive = profilesCreated + anonymousOnline;
 
     if (countOnly) {
       return NextResponse.json({
         ok: true,
         profiles: [],
-        profilesCreated: allProfiles.length,
+        profilesCreated,
         anonymousOnline,
-        totalLive: allProfiles.length + anonymousOnline,
+        totalLive,
         returned: 0,
         ts: Date.now(),
       });
@@ -200,30 +253,33 @@ export async function GET(req: Request) {
     }
 
     const ordered = shouldShuffle && !q ? shuffleArray(filtered) : filtered;
-    const selected = ordered.slice(0, limit);
+    const selected = ordered.slice(0, limit).map((profile) => withPresenceBadge(profile));
 
     return NextResponse.json({
       ok: true,
       profiles: selected,
-      profilesCreated: allProfiles.length,
+      profilesCreated,
       anonymousOnline,
-      totalLive: allProfiles.length + anonymousOnline,
+      totalLive,
       returned: selected.length,
       ts: Date.now(),
     });
   } catch (e: any) {
+    const profilesCreated = cachedProfiles.length;
+    const totalLive = profilesCreated + cachedAnonymousOnline;
+
     return NextResponse.json(
       {
         ok: false,
         error: e?.message || "unknown",
         profiles: cachedProfiles.slice(0, 35),
-        profilesCreated: cachedProfiles.length,
+        profilesCreated,
         anonymousOnline: cachedAnonymousOnline,
-        totalLive: cachedProfiles.length + cachedAnonymousOnline,
+        totalLive,
         returned: Math.min(35, cachedProfiles.length),
         ts: Date.now(),
       },
-      { status: 200 }
+      { status: 200 },
     );
   }
 }

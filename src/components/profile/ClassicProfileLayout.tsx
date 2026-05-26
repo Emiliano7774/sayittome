@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+
+import { formatLastSeen } from "@/lib/presence";
 import {
   Heart,
   MessageSquare,
@@ -18,6 +20,8 @@ export type ClassicProfileData = {
   photo: string;
   photos?: string[];
   registeredAt?: string;
+  lastActive?: string;
+  online?: boolean;
   conversations?: number;
   likes?: number;
   followers?: number;
@@ -68,6 +72,7 @@ export default function ClassicProfileLayout({
   ownProfile?: boolean;
 }) {
   const photo = profile.photo || "";
+  const lastSeenLabel = formatLastSeen(profile.lastActive, profile.online);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-black text-white">
@@ -123,7 +128,7 @@ export default function ClassicProfileLayout({
             </h1>
 
             <div className="mt-4 text-[clamp(24px,3vw,34px)] font-black leading-none text-white/95 drop-shadow-xl">
-              Ultima vez hace 8 dias
+              {lastSeenLabel}
             </div>
           </div>
         </div>

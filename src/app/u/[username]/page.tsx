@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { formatLastSeen } from "@/lib/presence";
 
 type Profile = {
   uid: string;
@@ -32,6 +33,9 @@ type Profile = {
   historias?: number;
   stories?: number;
   createdAtLabel: string;
+  lastActive?: string;
+  presenceAt?: string;
+  online?: boolean;
 };
 
 export default function PublicProfilePage() {
@@ -103,6 +107,9 @@ export default function PublicProfilePage() {
   }, [profile]);
 
   const historiasCount = Number(profile?.historias || profile?.stories || 0);
+  const lastSeenLabel = profile
+    ? formatLastSeen(profile.presenceAt || profile.lastActive, profile.online)
+    : "";
 
   async function copyLink() {
     const link = `${window.location.origin}/u/${encodeURIComponent(
@@ -224,6 +231,12 @@ export default function PublicProfilePage() {
               {profile.provincia}
             </p>
           )}
+
+          {lastSeenLabel ? (
+            <p className="mt-4 text-xl md:text-2xl font-black text-white/55">
+              {lastSeenLabel}
+            </p>
+          ) : null}
         </div>
 
         <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-auto">

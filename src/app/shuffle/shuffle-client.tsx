@@ -1,152 +1,159 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, SlidersHorizontal, UserRound, User } from "lucide-react";
+import { Search, SlidersHorizontal, User } from "lucide-react";
 
-type Profile = {
-  uid: string;
-  username: string;
-  bio: string;
-  photo: string;
-  lastActive?: string;
-};
+import ShuffleSlots from "@/components/shuffle/ShuffleSlots";
+import { isRecentlyActive } from "@/lib/presence";
+import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
+import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import {
+  pickRandomWindowIndices,
+  SHUFFLE_WINDOW_SIZE,
+} from "@/lib/shuffle/pickWindow";
+import {
+  attachShuffleProfilerWindow,
+  shuffleCount,
+  shuffleDump,
+  shuffleMark,
+  shuffleMeasure,
+} from "@/lib/shuffle/shuffleProfiler";
+import { setShuffleSlots } from "@/lib/shuffle/shuffleSlotsStore";
+import type { ShuffleProfile } from "@/lib/shuffle/types";
+import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 
-function isOnline(p: Profile) {
-  if (!p.lastActive) return false;
-  const d = new Date(p.lastActive);
-  if (Number.isNaN(d.getTime())) return false;
-  return Date.now() - d.getTime() <= 15 * 60 * 1000;
-}
-
-function normalizeProfiles(raw: unknown): Profile[] {
+function normalizeProfiles(raw: unknown): ShuffleProfile[] {
   if (!Array.isArray(raw)) return [];
 
   return raw
-    .map((item: any, index: number) => ({
-      uid: String(item?.uid || item?.id || item?.username || `profile-${index}`),
-      username: String(item?.username || "usuario"),
-      bio: String(item?.bio || "Sin descripcion."),
-      photo: String(item?.photo || item?.fotoPrincipal || item?.photoURL || ""),
-      lastActive: item?.lastActive ? String(item.lastActive) : undefined,
-    }))
+    .map((item: any, index: number) => {
+      const presenceAt = item?.presenceAt ? String(item.presenceAt) : undefined;
+      const lastActive = item?.lastActive ? String(item.lastActive) : undefined;
+      const online = item?.online === true;
+      const adminBlurProfilePhoto = item?.adminBlurProfilePhoto === true;
+      const adminBlurFotosPerfil = item?.adminBlurFotosPerfil === true;
+
+      return {
+        uid: String(item?.uid || item?.id || item?.username || `profile-${index}`),
+        username: String(item?.username || "usuario"),
+        bio: String(item?.bio || "Sin descripcion."),
+        photo: String(item?.photo || item?.fotoPrincipal || item?.photoURL || ""),
+        lastActive,
+        presenceAt,
+        online,
+        adminBlurProfilePhoto,
+        adminBlurFotosPerfil,
+        showOnline:
+          typeof item?.showOnline === "boolean"
+            ? item.showOnline
+            : isRecentlyActive(presenceAt, online),
+        blurPhoto: profilePhotoRequiresBlur({
+          adminBlurProfilePhoto,
+          adminBlurFotosPerfil,
+        }),
+      };
+    })
     .filter((p) => p.username && p.username !== "undefined");
 }
 
-function shuffleCopy<T>(items: T[]) {
-  const next = [...items];
-  for (let i = next.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [next[i], next[j]] = [next[j], next[i]];
-  }
-  return next;
-}
-
-function hardScrollTop() {
-  try {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
-  } catch {
-    window.scrollTo(0, 0);
-  }
-
-  document.documentElement.scrollTop = 0;
-  document.body.scrollTop = 0;
-
-  const candidates = Array.from(
-    document.querySelectorAll<HTMLElement>(
-      "main, section, [data-scroll-root], #__next, body, html"
-    )
-  );
-
-  for (const el of candidates) {
-    try {
-      el.scrollTop = 0;
-    } catch {}
-  }
-}
-
-function cachePayload(profiles: Profile[], totalLive: number) {
-  try {
-    sessionStorage.setItem(
-      "sayittome_shuffle_cache",
-      JSON.stringify({ profiles, totalLive, savedAt: Date.now() })
-    );
-  } catch {}
-}
-
 export default function ShuffleClient() {
-  const router = useRouter();
+  shuffleCount("parentRenders");
 
-  const [visibleProfiles, setVisibleProfiles] = useState<Profile[]>([]);
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [totalLive, setTotalLive] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [changing, setChanging] = useState(false);
   const [errorText, setErrorText] = useState("");
+  const [listReady, setListReady] = useState(false);
 
   const mountedRef = useRef(false);
-  const poolRef = useRef<Profile[]>([]);
-  const visibleRef = useRef<Profile[]>([]);
+  const poolRef = useRef<ShuffleProfile[]>([]);
+  const activePoolRef = useRef<ShuffleProfile[]>([]);
+  const totalLiveRef = useRef(0);
   const requestSeqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const searchTimerRef = useRef<number | null>(null);
-  const shuffleFrameLockedRef = useRef(false);
-  const remoteRefreshLockedRef = useRef(false);
-  const lastRemoteRefreshAtRef = useRef(0);
-  const lastCountRefreshAtRef = useRef(0);
+  const loadLockedRef = useRef(false);
+  const scratchIndicesRef = useRef<number[]>([]);
+  const windowIndicesRef = useRef(new Int32Array(SHUFFLE_WINDOW_SIZE));
+  const windowCountRef = useRef(0);
+  const shuffleClickCountRef = useRef(0);
 
-  const filteredLocalPool = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return poolRef.current;
-    return poolRef.current.filter((p) => {
-      return (
-        String(p.username || "").toLowerCase().includes(q) ||
-        String(p.bio || "").toLowerCase().includes(q)
-      );
-    });
-  }, [search, visibleProfiles]);
+  const applyWindowFromPool = useCallback((pool: ShuffleProfile[]) => {
+    shuffleMark("shuffle-apply-window-start");
 
-  function paintProfiles(next: Profile[], total = totalLive) {
-    const limited = next.slice(0, 35);
-    visibleRef.current = limited;
-    setVisibleProfiles(limited);
-    if (Number.isFinite(total)) setTotalLive(total);
-    cachePayload(poolRef.current.length ? poolRef.current : limited, total);
-  }
+    const len = pool.length;
+    if (len === 0) return;
 
-  async function refreshLiveCount() {
-    const now = Date.now();
-    if (now - lastCountRefreshAtRef.current < 25000) return;
-    lastCountRefreshAtRef.current = now;
+    windowCountRef.current = pickRandomWindowIndices(
+      len,
+      scratchIndicesRef.current,
+      windowIndicesRef.current,
+    );
 
-    try {
-      const res = await fetch(`/api/shuffle?countOnly=1&ts=${Date.now()}`, {
-        cache: "no-store",
-      });
-      const json = await res.json();
-      const realTotal = Number(json?.totalLive ?? json?.total ?? json?.count ?? 0);
-      if (mountedRef.current && Number.isFinite(realTotal)) setTotalLive(realTotal);
-    } catch {}
-  }
+    setShuffleSlots(
+      refreshPoolPresence(pool),
+      windowIndicesRef.current,
+      windowCountRef.current,
+    );
+    setListReady(true);
+
+    shuffleMark("shuffle-apply-window-end");
+    shuffleMeasure(
+      "shuffle-apply-window",
+      "shuffle-apply-window-start",
+      "shuffle-apply-window-end",
+    );
+  }, []);
+
+  const applyPool = useCallback(
+    (profiles: ShuffleProfile[], total: number) => {
+      if (profiles.length === 0) return;
+
+      poolRef.current = profiles;
+      activePoolRef.current = profiles;
+
+      if (total > 0) totalLiveRef.current = total;
+
+      setTotalLive(total > 0 ? total : profiles.length);
+      setLoading(false);
+      setErrorText("");
+      warmShuffleImages(profiles);
+      applyWindowFromPool(profiles);
+    },
+    [applyWindowFromPool],
+  );
+
+  const filterActivePool = useCallback(
+    (needle: string) => {
+      const q = needle.trim().toLowerCase();
+      if (!q) {
+        activePoolRef.current = poolRef.current;
+      } else {
+        activePoolRef.current = poolRef.current.filter((p) => {
+          return (
+            String(p.username || "").toLowerCase().includes(q) ||
+            String(p.bio || "").toLowerCase().includes(q)
+          );
+        });
+      }
+
+      applyWindowFromPool(activePoolRef.current);
+    },
+    [applyWindowFromPool],
+  );
 
   async function loadProfiles({
     q = "",
     force = false,
-    shuffle = false,
   }: {
     q?: string;
     force?: boolean;
-    shuffle?: boolean;
   }) {
-    const now = Date.now();
-    if (!force && !q && now - lastRemoteRefreshAtRef.current < 30000) {
-      refreshLiveCount();
-      return;
-    }
-    if (remoteRefreshLockedRef.current) return;
+    if (loadLockedRef.current && !force) return;
 
-    remoteRefreshLockedRef.current = true;
-    lastRemoteRefreshAtRef.current = now;
+    loadLockedRef.current = true;
 
     const requestSeq = requestSeqRef.current + 1;
     requestSeqRef.current = requestSeq;
@@ -155,17 +162,17 @@ export default function ShuffleClient() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    const timeout = window.setTimeout(() => controller.abort(), 12000);
 
-    if (mountedRef.current) {
+    if (mountedRef.current && poolRef.current.length === 0) {
+      setLoading(true);
       setErrorText("");
-      setLoading(poolRef.current.length === 0);
     }
 
     try {
       const params = new URLSearchParams({
-        limit: "300",
-        shuffle: shuffle && !q ? "1" : "0",
+        limit: "500",
+        shuffle: "0",
         q,
         ts: String(Date.now()),
       });
@@ -179,127 +186,118 @@ export default function ShuffleClient() {
       if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
 
       const nextProfiles = normalizeProfiles(json?.profiles);
-      const realTotal = Number(
-        json?.totalLive ?? json?.total ?? json?.count ?? json?.totalProfiles ?? nextProfiles.length
+      const profilesCreated = Number(json?.profilesCreated ?? 0);
+      const total = Number(
+        json?.totalLive ?? json?.profilesCreated ?? nextProfiles.length,
       );
 
       if (nextProfiles.length > 0) {
-        poolRef.current = shuffle ? shuffleCopy(nextProfiles) : nextProfiles;
-        paintProfiles(poolRef.current, realTotal);
+        applyPool(nextProfiles, total || profilesCreated || nextProfiles.length);
+        if (q) filterActivePool(q);
       } else if (poolRef.current.length > 0) {
-        paintProfiles(poolRef.current, realTotal || totalLive);
+        if (q) filterActivePool(q);
+        else applyPool(poolRef.current, totalLiveRef.current);
       } else {
-        setVisibleProfiles([]);
+        setLoading(false);
       }
 
-      if (json?.ok === false && json?.error) setErrorText(String(json.error));
+      if (json?.ok === false && json?.error) {
+        setErrorText(String(json.error));
+      }
     } catch (error) {
       if ((error as Error)?.name !== "AbortError") {
         console.error(error);
-        if (mountedRef.current) setErrorText((error as Error)?.message || "Error cargando perfiles");
+        if (mountedRef.current && poolRef.current.length === 0) {
+          setErrorText((error as Error)?.message || "Error cargando perfiles");
+          setLoading(false);
+        }
       }
     } finally {
       window.clearTimeout(timeout);
-      remoteRefreshLockedRef.current = false;
-      if (mountedRef.current && requestSeq === requestSeqRef.current) setLoading(false);
-    }
-  }
-
-  function doLocalShuffle() {
-    const source = search.trim() ? filteredLocalPool : poolRef.current;
-    if (source.length === 0) return;
-
-    const currentFirst = visibleRef.current[0]?.uid || visibleRef.current[0]?.username || "";
-    let shuffled = shuffleCopy(source);
-
-    if (shuffled.length > 1) {
-      let guard = 0;
-      while ((shuffled[0]?.uid || shuffled[0]?.username) === currentFirst && guard < 5) {
-        shuffled = shuffleCopy(source);
-        guard += 1;
+      loadLockedRef.current = false;
+      if (mountedRef.current && requestSeq === requestSeqRef.current) {
+        setLoading(false);
       }
     }
-
-    if (!search.trim()) poolRef.current = shuffled;
-    paintProfiles(shuffled, totalLive);
   }
 
-  function handleShuffleClick(event?: React.MouseEvent | Event) {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
+  const handleListClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = (event.target as HTMLElement).closest<HTMLElement>(
+        "[data-action][data-username]",
+      );
+      if (!target) return;
 
-    if (shuffleFrameLockedRef.current) return;
-    shuffleFrameLockedRef.current = true;
+      const action = target.getAttribute("data-action");
+      const username = target.getAttribute("data-username");
+      if (!username) return;
 
-    requestAnimationFrame(() => {
-      shuffleFrameLockedRef.current = false;
-    });
+      shuffleMark("shuffle-router-start");
+      if (action === "profile") {
+        router.push(`/u/${encodeURIComponent(username)}`);
+      } else if (action === "chat") {
+        router.push(`/u/${encodeURIComponent(username)}/chat`);
+      }
+      shuffleMark("shuffle-router-end");
+      shuffleMeasure("shuffle-router", "shuffle-router-start", "shuffle-router-end");
+    },
+    [router],
+  );
 
-    if (searchTimerRef.current) {
-      window.clearTimeout(searchTimerRef.current);
-      searchTimerRef.current = null;
-    }
+  const handleShuffleClick = useCallback(
+    (event?: React.MouseEvent | Event) => {
+      shuffleMark("shuffle-click-start");
+      shuffleCount("shuffleClicks");
 
-    setSearch("");
-    hardScrollTop();
-    setChanging(true);
-    doLocalShuffle();
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
 
-    window.setTimeout(() => {
-      if (mountedRef.current) setChanging(false);
-    }, 120);
+      const pool = activePoolRef.current;
+      if (pool.length > 0) {
+        const len = pool.length;
+        windowCountRef.current = pickRandomWindowIndices(
+          len,
+          scratchIndicesRef.current,
+          windowIndicesRef.current,
+        );
+        setShuffleSlots(
+          refreshPoolPresence(pool),
+          windowIndicesRef.current,
+          windowCountRef.current,
+        );
+      }
 
-    const now = Date.now();
-    if (now - lastRemoteRefreshAtRef.current > 45000) {
-      loadProfiles({ q: "", shuffle: true, force: false });
-    }
-  }
+      shuffleClickCountRef.current += 1;
+      if (shuffleClickCountRef.current % 40 === 0) {
+        shuffleDump("shuffle-spam");
+      }
+
+      shuffleMark("shuffle-click-end");
+      shuffleMeasure("shuffle-click", "shuffle-click-start", "shuffle-click-end");
+    },
+    [],
+  );
 
   function handleSearchChange(value: string) {
     setSearch(value);
+    filterActivePool(value);
 
     if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
 
-    const q = value.trim().toLowerCase();
-    if (!q) {
-      paintProfiles(poolRef.current, totalLive);
-      return;
-    }
-
-    const local = poolRef.current.filter((p) => {
-      return (
-        String(p.username || "").toLowerCase().includes(q) ||
-        String(p.bio || "").toLowerCase().includes(q)
-      );
-    });
-
-    if (local.length > 0) paintProfiles(local, totalLive);
+    const q = value.trim();
+    if (!q) return;
 
     searchTimerRef.current = window.setTimeout(() => {
-      loadProfiles({ q, shuffle: false, force: true });
+      loadProfiles({ q, force: true });
     }, 550);
   }
 
   useEffect(() => {
     mountedRef.current = true;
+    attachShuffleProfilerWindow();
     document.body.classList.remove("sayittome-chat-open");
 
-    try {
-      const cached = sessionStorage.getItem("sayittome_shuffle_cache");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        const cachedProfiles = normalizeProfiles(parsed?.profiles);
-        if (cachedProfiles.length > 0) {
-          poolRef.current = cachedProfiles;
-          paintProfiles(cachedProfiles, Number(parsed?.totalLive || cachedProfiles.length));
-          setLoading(false);
-        }
-      }
-    } catch {}
-
-    loadProfiles({ q: "", shuffle: true, force: true });
-
-    const liveCounterTimer = window.setInterval(() => refreshLiveCount(), 25000);
+    loadProfiles({ q: "", force: true });
 
     function onShuffleEvent(event: Event) {
       handleShuffleClick(event);
@@ -307,17 +305,31 @@ export default function ShuffleClient() {
 
     window.addEventListener("sayittome:shuffle", onShuffleEvent);
 
+    const presenceTimer = window.setInterval(() => {
+      if (poolRef.current.length === 0) return;
+
+      poolRef.current = refreshPoolPresence(poolRef.current);
+      activePoolRef.current = refreshPoolPresence(activePoolRef.current);
+
+      if (windowCountRef.current > 0 && activePoolRef.current.length > 0) {
+        setShuffleSlots(
+          activePoolRef.current,
+          windowIndicesRef.current,
+          windowCountRef.current,
+        );
+      }
+    }, 45_000);
+
     return () => {
       mountedRef.current = false;
+      window.clearInterval(presenceTimer);
       window.removeEventListener("sayittome:shuffle", onShuffleEvent);
-      window.clearInterval(liveCounterTimer);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
       abortRef.current?.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleShuffleClick]);
 
-  const profiles = visibleProfiles;
+  const hasPool = poolRef.current.length > 0 || activePoolRef.current.length > 0;
 
   return (
     <main data-scroll-root className="min-h-screen bg-black text-white pb-32">
@@ -348,7 +360,7 @@ export default function ShuffleClient() {
           </div>
 
           <div className="mt-7 flex items-center justify-between text-white/45 font-black text-2xl">
-            <span>{changing ? "Cambiando resultado..." : "Cambiar resultado"}</span>
+            <span>Cambiar resultado</span>
 
             <span className="flex items-center gap-3">
               <User size={24} />
@@ -357,63 +369,20 @@ export default function ShuffleClient() {
           </div>
         </div>
 
-        {loading && profiles.length === 0 ? (
+        {loading && !hasPool ? (
           <div className="h-[50vh] flex items-center justify-center">
             <p className="text-4xl font-black text-white/35">Cargando perfiles...</p>
           </div>
-        ) : profiles.length === 0 ? (
+        ) : !listReady && !hasPool ? (
           <div className="h-[50vh] flex flex-col items-center justify-center px-8 text-center">
             <p className="text-4xl font-black text-white/35">No hay perfiles para mostrar.</p>
-            {errorText ? <p className="mt-4 max-w-3xl text-white/35 font-bold">{errorText}</p> : null}
+            {errorText ? (
+              <p className="mt-4 max-w-3xl text-white/35 font-bold">{errorText}</p>
+            ) : null}
           </div>
         ) : (
-          <div>
-            {profiles.map((p) => {
-              const username = p.username || "usuario";
-              const bio = p.bio || "Sin descripcion.";
-              const online = isOnline(p);
-
-              return (
-                <div key={p.uid || username} className="w-full border-b border-white/10">
-                  <div className="w-full py-7 flex items-center gap-7">
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/u/${encodeURIComponent(username)}`)}
-                      className="relative shrink-0 active:scale-95 transition"
-                      aria-label={`Abrir perfil de ${username}`}
-                    >
-                      <div className="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden bg-[#242424] flex items-center justify-center">
-                        {p.photo ? (
-                          <img
-                            src={p.photo}
-                            alt={username}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <UserRound size={64} className="text-white/75" />
-                        )}
-                      </div>
-
-                      {online ? (
-                        <div className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-green-500 border-[3px] border-black" />
-                      ) : null}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/u/${encodeURIComponent(username)}/chat`)}
-                      className="min-w-0 flex-1 text-left active:scale-[0.99] transition"
-                      aria-label={`Abrir chat con ${username}`}
-                    >
-                      <h2 className="text-3xl md:text-4xl font-black truncate">{username}</h2>
-                      <p className="mt-2 text-xl md:text-2xl text-white/50 font-bold line-clamp-2">{bio}</p>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+          <div onClick={handleListClick}>
+            <ShuffleSlots />
           </div>
         )}
       </section>

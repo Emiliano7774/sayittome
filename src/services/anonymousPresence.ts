@@ -59,9 +59,8 @@ export function startAnonymousPresenceSystem() {
   startHeartbeat();
 
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-      writeAnonymousPresence(true);
-    }
+    if (document.hidden) return;
+    writeAnonymousPresence(true);
   });
 
   window.addEventListener("focus", () => {

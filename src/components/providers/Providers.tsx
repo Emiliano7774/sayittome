@@ -2,6 +2,8 @@
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { UxModeProvider } from "@/contexts/UxModeContext";
+import AnonymousPresenceBootstrap from "@/components/AnonymousPresenceBootstrap";
+import PresenceBootstrap from "@/components/PresenceBootstrap";
 
 export default function Providers({
   children,
@@ -11,6 +13,8 @@ export default function Providers({
   return (
     <AuthProvider>
       <UxModeProvider>
+        <PresenceBootstrap />
+        <AnonymousPresenceBootstrap />
         {children}
       </UxModeProvider>
     </AuthProvider>

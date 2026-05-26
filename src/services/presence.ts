@@ -25,6 +25,7 @@ async function writePresence(uid: string, online: boolean, force = false) {
       online,
       lastSeenAt: serverTimestamp(),
       lastActiveAt: serverTimestamp(),
+      lastActive: serverTimestamp(),
       presenceUpdatedAt: serverTimestamp(),
     });
   } catch (e) {

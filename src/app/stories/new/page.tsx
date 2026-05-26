@@ -138,6 +138,8 @@ export default function NewStoryPage() {
 
       await addDoc(collection(db, "historias"), {
         ownerUid: user.uid,
+        ownerUsername: user.displayName || user.email?.split("@")[0] || "usuario",
+        ownerPhoto: user.photoURL || "",
         texto: texto.trim(),
         mediaUrl,
         mediaType,

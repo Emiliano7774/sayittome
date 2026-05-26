@@ -50,8 +50,9 @@ export default function AdminPage() {
   const [reports, setReports] = useState<ReportData[]>([]);
   const [updatingId, setUpdatingId] = useState("");
 
-  const currentEmail = auth.currentUser?.email?.toLowerCase() || "";
-  const isAdmin = currentEmail === "emilianomaturano@gmail.com";
+  const currentEmail = auth.currentUser?.email || "";
+  const isAdmin =
+    currentEmail.trim().toLowerCase() === "emilianomaturano@gmail.com";
 
   useEffect(() => {
     if (!isAdmin) return;

@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 
+import { shuffleCount } from "@/lib/shuffle/shuffleProfiler";
+
 const ICONS: Record<string, string> = {
   "❤️": `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2s-7.2-4.4-9.4-9A5.4 5.4 0 0 1 12 5.7a5.4 5.4 0 0 1 9.4 5.5c-2.2 4.6-9.4 9-9.4 9Z"/></svg>`,
   "🤍": `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2s-7.2-4.4-9.4-9A5.4 5.4 0 0 1 12 5.7a5.4 5.4 0 0 1 9.4 5.5c-2.2 4.6-9.4 9-9.4 9Z"/></svg>`,
@@ -10,13 +12,23 @@ const ICONS: Record<string, string> = {
   "📖": `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.2 5.1c0-.8.6-1.4 1.4-1.4H10c1.1 0 2 .4 2.7 1.1.7-.7 1.6-1.1 2.7-1.1h4.4c.8 0 1.4.6 1.4 1.4v13.1c0 .8-.6 1.4-1.4 1.4h-4.4c-.8 0-1.6.3-2.1.9l-.6.6-.6-.6a3 3 0 0 0-2.1-.9H5.6c-.8 0-1.4-.6-1.4-1.4V5.1Zm8.5 2v11.1c.8-.5 1.7-.8 2.7-.8H19V5.9h-3.6c-1.5 0-2.7.5-2.7 1.2Zm-2.7-1.2H6.4v11.5H10c1 0 1.9.3 2.7.8V7.1c0-.7-1.2-1.2-2.7-1.2Z"/></svg>`,
 };
 
+function isNoPolishZone(node: Node | null) {
+  return (
+    node instanceof Element &&
+    Boolean(node.closest("[data-stm-no-polish]"))
+  );
+}
+
 function polishTextNodes(root: ParentNode) {
+  if (isNoPolishZone(root as Node)) return;
+
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
 
   while (walker.nextNode()) {
     const node = walker.currentNode as Text;
     if (node.parentElement?.closest("[data-stm-polished='true']")) continue;
+    if (isNoPolishZone(node)) continue;
     if (/[❤️🤍💬👤📖]/u.test(node.nodeValue || "")) nodes.push(node);
   }
 
@@ -84,17 +96,52 @@ export default function SayItToMeVisualPolish() {
       document.head.appendChild(style);
     }
 
-    const run = () => polishTextNodes(document.body);
-    run();
+    polishTextNodes(document.body);
 
-    const observer = new MutationObserver(() => run());
+    let rafId: number | null = null;
+    const pendingRoots = new Set<ParentNode>();
+
+    const flush = () => {
+      rafId = null;
+      shuffleCount("polishRuns");
+      pendingRoots.forEach((root) => polishTextNodes(root));
+      pendingRoots.clear();
+    };
+
+    const schedule = (root: ParentNode) => {
+      if (isNoPolishZone(root as Node)) return;
+      pendingRoots.add(root);
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(flush);
+    };
+
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "childList") {
+          record.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              schedule(node as ParentNode);
+            } else if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+              schedule(node.parentElement);
+            }
+          });
+        } else if (record.type === "characterData") {
+          const target = record.target;
+          if (target?.parentElement) schedule(target.parentElement);
+        }
+      }
+    });
+
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       characterData: true,
     });
 
-    return () => observer.disconnect();
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
   }, []);
 
   return null;

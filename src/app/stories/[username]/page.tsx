@@ -1,49 +1,67 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
-export default function StoryPage() {
+import StoryViewer from "@/components/stories/StoryViewer";
+import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
+import type { StoryItem } from "@/lib/stories/types";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+
+export default function StoryUserPage() {
   const params = useParams<{ username: string }>();
+  const param = String(params.username || "");
 
-  const username = String(params.username || "usuario");
+  const [stories, setStories] = useState<StoryItem[]>([]);
+  const [ownerUsername, setOwnerUsername] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-black text-white">
+  useEffect(() => {
+    let cancelled = false;
 
-      <div className="relative h-screen w-full bg-black">
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      try {
+        const groups = await fetchActiveStoriesGrouped(user?.uid || "");
+        const group =
+          groups.find((g) => g.ownerUid === param) ||
+          groups.find(
+            (g) =>
+              g.ownerUsername.toLowerCase() === param.toLowerCase(),
+          );
 
-        <div className="absolute left-0 right-0 top-0 z-40 flex items-center justify-between px-6 py-6">
-          <Link href="/shuffle" className="text-5xl">
-            ×
-          </Link>
+        if (!cancelled && group) {
+          setStories(group.stories);
+          setOwnerUsername(group.ownerUsername);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    });
 
-          <button
-            onClick={() => {
-              window.location.href = `/u/${username}`;
-            }}
-            className="flex items-center gap-3"
-          >
-            <div className="h-14 w-14 rounded-full bg-zinc-700" />
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [param]);
 
-            <span className="text-3xl font-semibold">
-              {username}
-            </span>
-          </button>
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black text-white">
+        <p className="text-2xl font-black text-white/40">Abriendo historia...</p>
+      </main>
+    );
+  }
 
-          <div className="w-10" />
-        </div>
+  if (stories.length === 0) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black text-white">
+        <p className="text-2xl font-black text-white/40">Historia no disponible.</p>
+      </main>
+    );
+  }
 
-        <div className="flex h-full items-center justify-center">
-          <div className="text-center">
-            <div className="mb-8 text-8xl">🟣</div>
-
-            <p className="text-5xl font-bold">
-              Historia de {username}
-            </p>
-          </div>
-        </div>
-      </div>
-    </main>
-  );
+  return <StoryViewer stories={stories} ownerUsername={ownerUsername} />;
 }

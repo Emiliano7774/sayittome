@@ -8,7 +8,7 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   const items = [
-    { href: "/", icon: Circle },
+    { href: "/stories", icon: Circle },
     { href: "/chats", icon: MessageSquare },
     { href: "/shuffle", icon: Shuffle },
     { href: "/stories", icon: Rocket },
