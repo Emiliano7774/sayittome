@@ -200,7 +200,7 @@ export default function ModernPublicProfile({
           {isOwner ? (
             <div className="pointer-events-none absolute right-4 top-[42%] z-20">
               <div className="pointer-events-auto">
-                <VerifiedLinkBubble username={profile.username} />
+                <VerifiedLinkBubble username={profile.username} isOwner={isOwner} />
               </div>
             </div>
           ) : null}

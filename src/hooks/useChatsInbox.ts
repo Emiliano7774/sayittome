@@ -17,6 +17,7 @@ import {
   buildProfileAnonChatId,
 } from "@/lib/chat/anonChatId";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getSessionChatIds } from "@/lib/chat/sessionChats";
 
 export type InboxChat = {
@@ -81,33 +82,47 @@ export function useChatsInbox() {
       return;
     }
 
-    const q = query(
+    setChats([]);
+
+    const byParticipantes = query(
       collection(db, "chats"),
       where("participantes", "array-contains", uid),
     );
 
-    return onSnapshot(
-      q,
-      (snap) => {
-        setChats(
-          snap.docs.map((d) => ({
+    const byOwner = query(
+      collection(db, "chats"),
+      where("anonOwnerUid", "==", uid),
+    );
+
+    const merge = (snap: { docs: { id: string; data: () => unknown }[] }) => {
+      setChats((prev) => {
+        const map = new Map<string, InboxChat>();
+        for (const item of prev) map.set(item.id, item);
+        for (const d of snap.docs) {
+          map.set(d.id, {
             id: d.id,
             ...(d.data() as Omit<InboxChat, "id">),
-          })) as InboxChat[],
-        );
-      },
-      (error) => {
-        console.error(error);
-        setChats([]);
-      },
-    );
+          });
+        }
+        return [...map.values()];
+      });
+    };
+
+    const unsubA = onSnapshot(byParticipantes, merge, (error) => {
+      console.error(error);
+    });
+    const unsubB = onSnapshot(byOwner, merge, (error) => {
+      console.error(error);
+    });
+
+    return () => {
+      unsubA();
+      unsubB();
+    };
   }, [uid, loading]);
 
   useEffect(() => {
-    if (loading || uid) {
-      setSessionChats([]);
-      return;
-    }
+    if (loading) return;
 
     const ids = getSessionChatIds();
     if (ids.length === 0) {
@@ -130,25 +145,31 @@ export function useChatsInbox() {
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [uid, loading]);
+  }, [loading]);
 
   useEffect(() => {
-    if (!uid || loading) return;
+    if (loading) return;
 
     let cancelled = false;
 
     async function migrateInbox() {
-      for (const chat of chats) {
+      const anonSenderId = getChatAnonSenderId();
+      const all = [...chats, ...sessionChats];
+
+      for (const chat of all) {
         if (cancelled) return;
 
         const username = chat.targetUsername || chat.receptorUsername;
         if (!username || !isProfileAnonChatId(chat.id)) continue;
 
-        const canonicalId = buildProfileAnonChatId(uid, username);
+        const canonicalId = buildProfileAnonChatId(anonSenderId, username);
         if (chat.id === canonicalId) continue;
 
-        const legacyIds = buildLegacyProfileChatIds(uid, username);
-        legacyIds.push(chat.id);
+        const legacyIds = [
+          ...buildLegacyProfileChatIds(anonSenderId, username),
+          ...(uid ? buildLegacyProfileChatIds(uid, username) : []),
+          chat.id,
+        ];
 
         try {
           await migrateToCanonicalChat(canonicalId, legacyIds, {
@@ -163,17 +184,16 @@ export function useChatsInbox() {
       }
     }
 
-    if (chats.length > 0) migrateInbox();
+    if (chats.length > 0 || sessionChats.length > 0) migrateInbox();
 
     return () => {
       cancelled = true;
     };
-  }, [chats, uid, loading]);
+  }, [chats, sessionChats, uid, loading]);
 
   const sortedChats = useMemo(() => {
-    if (uid) return dedupeChats(chats);
-    return dedupeChats(sessionChats);
-  }, [chats, sessionChats, uid]);
+    return dedupeChats([...chats, ...sessionChats]);
+  }, [chats, sessionChats]);
 
   return {
     uid,

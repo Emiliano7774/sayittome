@@ -23,6 +23,7 @@ import AbuseProtectionMenu from "@/components/chat/AbuseProtectionMenu";
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { registerSessionChat } from "@/lib/chat/sessionChats";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
@@ -113,7 +114,7 @@ export default function ProfileAnonChat({
   useEffect(() => {
     if (!targetUid || !authReady) return;
 
-    const senderId = currentUid || anonSession;
+    const senderId = getChatAnonSenderId();
     const visitorId = getVisitorId();
 
     findActiveAbuseBlock({
@@ -123,7 +124,7 @@ export default function ProfileAnonChat({
     })
       .then((block) => setBlockedByAbuse(Boolean(block)))
       .catch(() => setBlockedByAbuse(false));
-  }, [targetUid, authReady, currentUid, anonSession]);
+  }, [targetUid, authReady, anonSession]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -171,7 +172,7 @@ export default function ProfileAnonChat({
       orderBy("createdAt", "asc"),
     );
 
-    const senderId = currentUid || anonSession;
+    const senderId = getChatAnonSenderId();
 
     return onSnapshot(
       q,
@@ -198,9 +199,9 @@ export default function ProfileAnonChat({
         console.error(error);
       },
     );
-  }, [chatId, authReady, currentUid, anonSession]);
+  }, [chatId, authReady, anonSession]);
 
-  useIncomingMessageWhip(messages, currentUid || anonSession);
+  useIncomingMessageWhip(messages, getChatAnonSenderId());
 
   async function openRealCamera(mode: "photo" | "video") {
     try {
@@ -406,8 +407,8 @@ export default function ProfileAnonChat({
       return;
     }
 
-    const senderId = currentUid || anonSession;
-    if (targetUid && !currentUid) {
+    const senderId = getChatAnonSenderId();
+    if (targetUid) {
       const block = await findActiveAbuseBlock({
         receptorUid: targetUid,
         blockedAnonId: senderId,
@@ -438,7 +439,7 @@ export default function ProfileAnonChat({
           senderId,
           ...(currentUid ? [currentUid] : []),
           ...(targetUid ? [targetUid] : []),
-        ].filter(Boolean))
+        ].filter(Boolean)),
       );
 
       await setDoc(
@@ -451,9 +452,10 @@ export default function ProfileAnonChat({
           targetUid: targetUid || null,
           initiatorUid: currentUid || null,
           anonOwnerUid: currentUid || null,
-          anonSessionId: currentUid ? null : anonSession,
+          anonSessionId: senderId,
           participantes,
           anon: true,
+          senderIsAnonymous: true,
           canonicalChatId: chatId,
           schemaVersion: 2,
           lastMessage: messageText,
@@ -470,9 +472,7 @@ export default function ProfileAnonChat({
         { merge: true },
       );
 
-      if (!currentUid) {
-        registerSessionChat(chatId);
-      }
+      registerSessionChat(chatId);
 
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: messageText,

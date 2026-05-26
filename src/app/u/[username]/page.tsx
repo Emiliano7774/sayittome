@@ -307,7 +307,9 @@ export default function PublicProfilePage() {
           )}
         </div>
 
-        {isOwner ? <VerifiedLinkBubble username={profile.username} /> : null}
+        {isOwner ? (
+          <VerifiedLinkBubble username={profile.username} isOwner={isOwner} />
+        ) : null}
 
         <div className="absolute left-8 md:left-24 top-[31%] md:top-[31%] -translate-y-1/2 max-w-[900px] z-[12]">
           <h1 className="text-[64px] md:text-[96px] leading-none font-black tracking-tight drop-shadow-2xl">

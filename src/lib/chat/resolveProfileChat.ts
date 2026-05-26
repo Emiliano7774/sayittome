@@ -1,5 +1,5 @@
 import { auth } from "@/lib/firebase";
-import { getAnonSessionId } from "@/lib/chat/anonSession";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
   buildLegacyProfileChatIds,
   buildProfileAnonChatId,
@@ -27,11 +27,16 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
   const profile = await fetchProfileByUsername(username);
   const targetUid = String(profile?.uid || "");
   const firebaseUid = auth.currentUser?.uid || "";
-  const senderId = firebaseUid || getAnonSessionId();
+  const senderId = getChatAnonSenderId();
   const isLoggedIn = Boolean(firebaseUid);
 
   const chatId = buildProfileAnonChatId(senderId, username);
-  const legacyIds = buildLegacyProfileChatIds(senderId, username, targetUid);
+  const legacyIds = [
+    ...buildLegacyProfileChatIds(senderId, username, targetUid),
+    ...(firebaseUid
+      ? buildLegacyProfileChatIds(firebaseUid, username, targetUid)
+      : []),
+  ];
 
   const participantes = Array.from(
     new Set(
@@ -48,15 +53,13 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
     targetUid: targetUid || null,
     initiatorUid: firebaseUid || null,
     anonOwnerUid: firebaseUid || null,
-    anonSessionId: isLoggedIn ? null : senderId,
+    anonSessionId: senderId,
     participantes,
     anon: true,
     schemaVersion: 2,
   });
 
-  if (!isLoggedIn) {
-    registerSessionChat(chatId);
-  }
+  registerSessionChat(chatId);
 
   return {
     chatId,

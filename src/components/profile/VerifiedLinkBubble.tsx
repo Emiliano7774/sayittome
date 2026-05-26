@@ -1,18 +1,51 @@
 "use client";
 
 import { useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
 import { BadgeCheck, Copy } from "lucide-react";
 
+import { auth, db } from "@/lib/firebase";
 import {
   copyVerifiedProfileLink,
   getVerifiedProfileLink,
 } from "@/lib/profile/verifiedLink";
 
-export default function VerifiedLinkBubble({ username }: { username: string }) {
+type Props = {
+  username: string;
+  /** Must be true — bubble only renders for profile owner. */
+  isOwner: boolean;
+};
+
+export default function VerifiedLinkBubble({ username, isOwner }: Props) {
   const [toast, setToast] = useState("");
   const [modalLink, setModalLink] = useState("");
 
+  if (!isOwner) return null;
+
+  async function ensureOwner(): Promise<boolean> {
+    const user = auth.currentUser;
+    if (!user?.uid) return false;
+
+    try {
+      const snap = await getDoc(doc(db, "usuarios", user.uid));
+      if (!snap.exists()) return false;
+      const data = snap.data() as { username?: string; usernameLower?: string };
+      const mine = String(data.username || data.usernameLower || "")
+        .trim()
+        .toLowerCase();
+      return mine === username.trim().toLowerCase();
+    } catch {
+      return false;
+    }
+  }
+
   async function handleCopy() {
+    const allowed = await ensureOwner();
+    if (!allowed) {
+      alert("Solo el dueño del perfil puede copiar su link verificado.");
+      return;
+    }
+
     const result = await copyVerifiedProfileLink(username);
 
     if (result.ok) {

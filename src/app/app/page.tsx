@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { resetAnonSession } from "@/lib/chat/anonSession";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
@@ -53,6 +54,7 @@ export default function AppPage() {
   }, []);
 
   async function logout() {
+    resetAnonSession();
     await signOut(auth);
     window.location.href = "/";
   }
