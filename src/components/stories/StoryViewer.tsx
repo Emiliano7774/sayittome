@@ -205,7 +205,7 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
             key={current.id}
             src={current.mediaUrl}
             className={[
-              "max-h-full max-w-full object-contain",
+              "max-h-full max-w-full object-contain animate-[fadeIn_.28s_ease-out]",
               needsBlur && blurLocked ? "blur-2xl scale-105" : "",
             ].join(" ")}
             autoPlay
@@ -227,7 +227,7 @@ export default function StoryViewer({ stories, ownerUsername }: Props) {
             src={current.mediaUrl}
             alt=""
             className={[
-              "max-h-full max-w-full object-contain",
+              "max-h-full max-w-full object-contain animate-[fadeIn_.28s_ease-out]",
               needsBlur && blurLocked ? "blur-2xl scale-105" : "",
             ].join(" ")}
           />

@@ -3,6 +3,9 @@ export type ModerationBlurSource = {
   adminForceBlur?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;
+  adminBlurStories?: boolean;
+  adminBlurGallery?: boolean;
+  adminBlurReason?: string;
   adminDeleted?: boolean;
 };
 

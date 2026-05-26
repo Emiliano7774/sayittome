@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import StoryRing from "@/components/stories/StoryRing";
+import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 import type { StoryUserGroup } from "@/lib/stories/types";
 
 type Props = {
@@ -33,6 +34,8 @@ export default function StoriesTray({ groups, showAdd = true }: Props) {
           key={group.ownerUid}
           href={`/stories/${encodeURIComponent(group.ownerUid)}`}
           className="flex shrink-0 flex-col items-center gap-2"
+          onMouseEnter={() => prefetchOwnerStories(group.ownerUid, group.ownerUsername)}
+          onFocus={() => prefetchOwnerStories(group.ownerUid, group.ownerUsername)}
         >
           <StoryRing active={group.hasUnseen}>
             <div className="h-[66px] w-[66px] overflow-hidden rounded-full bg-[#242424]">

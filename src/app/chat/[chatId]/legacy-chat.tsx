@@ -20,6 +20,10 @@ import {
 import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 
 import { auth, db, storage } from "@/lib/firebase";
+import {
+  bindWhipSoundUnlock,
+  playIncomingWhipSound,
+} from "@/lib/chat/whipSound";
 
 type MessageStatus = "sending" | "sent" | "error";
 type MediaType = "image" | "video" | "audio";
@@ -92,10 +96,8 @@ export default function LegacyChatPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const whipAudioRef = useRef<HTMLAudioElement | null>(null);
   const firstMessagesLoadRef = useRef(true);
   const lastIncomingMessageIdRef = useRef<string | null>(null);
-  const lastWhipPlayedAtRef = useRef(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -103,26 +105,7 @@ export default function LegacyChatPage() {
 
   const currentUid = auth.currentUser?.uid || "";
 
-  useEffect(() => {
-    whipAudioRef.current = new Audio("/sounds/whip.mp3");
-    whipAudioRef.current.volume = 0.75;
-  }, []);
-
-  const playWhipSound = () => {
-    const now = Date.now();
-    if (now - lastWhipPlayedAtRef.current < 1200) return;
-    lastWhipPlayedAtRef.current = now;
-
-    const audio = whipAudioRef.current;
-    if (!audio) return;
-
-    try {
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  useEffect(() => bindWhipSoundUnlock(), []);
 
   useEffect(() => {
     if (!chatId) return;
@@ -175,7 +158,7 @@ export default function LegacyChatPage() {
           lastIncomingMessageIdRef.current !== lastRealMessageId
         ) {
           lastIncomingMessageIdRef.current = lastRealMessageId;
-          playWhipSound();
+          playIncomingWhipSound();
         }
       } else if (firstMessagesLoadRef.current) {
         firstMessagesLoadRef.current = false;

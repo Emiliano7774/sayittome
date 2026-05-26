@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 
 import StoryViewer from "@/components/stories/StoryViewer";
 import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
+import { preloadStoryGroup } from "@/lib/stories/preload";
+import { refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import type { StoryItem } from "@/lib/stories/types";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -33,6 +35,8 @@ export default function StoryUserPage() {
         if (!cancelled && group) {
           setStories(group.stories);
           setOwnerUsername(group.ownerUsername);
+          preloadStoryGroup(group, 3);
+          refreshStoriesIndex(user?.uid || "", true).catch(() => {});
         }
       } catch (e) {
         console.error(e);

@@ -1,8 +1,8 @@
 "use client";
 
 import { memo, useSyncExternalStore } from "react";
-import { UserRound } from "lucide-react";
 
+import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import {
   getShuffleSlotProfile,
   subscribeShuffleSlot,
@@ -34,35 +34,15 @@ function ShuffleSlotRow({ slot }: { slot: number }) {
   return (
     <div className="w-full border-b border-white/10 contain-[layout_paint_style]">
       <div className="w-full py-7 flex items-center gap-7">
-        <button
-          type="button"
-          data-action="profile"
-          data-username={username}
-          className="relative shrink-0 active:scale-95 transition"
-          aria-label={`Abrir perfil de ${username}`}
-        >
-          <div className="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden bg-[#242424] flex items-center justify-center">
-            {profile.photo ? (
-              <img
-                src={profile.photo}
-                alt={username}
-                loading="lazy"
-                decoding="async"
-                fetchPriority="low"
-                className={[
-                  "h-full w-full object-cover",
-                  profile.blurPhoto ? "blur-2xl scale-110" : "",
-                ].join(" ")}
-              />
-            ) : (
-              <UserRound size={64} className="text-white/75" />
-            )}
-          </div>
-
-          {profile.showOnline ? (
-            <div className="absolute bottom-1 right-1 h-6 w-6 rounded-full border-[3px] border-black bg-green-500" />
-          ) : null}
-        </button>
+        <StoryAvatarButton
+          ownerUid={profile.uid}
+          username={username}
+          photo={profile.photo}
+          size="lg"
+          mode="delegate"
+          blurPhoto={profile.blurPhoto}
+          showOnline={profile.showOnline}
+        />
 
         <button
           type="button"

@@ -16,7 +16,15 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
+import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
+import { useUxMode } from "@/contexts/UxModeContext";
 import { formatLastSeen } from "@/lib/presence";
+import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
+import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
+import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 
 type Profile = {
   uid: string;
@@ -36,11 +44,16 @@ type Profile = {
   lastActive?: string;
   presenceAt?: string;
   online?: boolean;
+  showOnline?: boolean;
+  adminBlurProfilePhoto?: boolean;
+  adminBlurFotosPerfil?: boolean;
 };
 
 export default function PublicProfilePage() {
+  const { uxMode } = useUxMode();
   const params = useParams();
   const router = useRouter();
+  const [verifiedVisit, setVerifiedVisit] = useState(false);
 
   const usernameParam =
     typeof params?.username === "string" ? params.username : "";
@@ -107,6 +120,19 @@ export default function PublicProfilePage() {
   }, [profile]);
 
   const historiasCount = Number(profile?.historias || profile?.stories || 0);
+  const blurPhoto = profile ? profilePhotoRequiresBlur(profile) : false;
+  const storyStatus = useStoryStatus(profile?.uid, profile?.username || usernameParam);
+
+  useEffect(() => {
+    setVerifiedVisit(isVerifiedProfileLink(window.location.search));
+  }, [usernameParam]);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    refreshStoriesIndex(currentUid, false).catch(() => {});
+    prefetchOwnerStories(profile.uid, profile.username);
+  }, [profile?.uid, profile?.username, currentUid]);
+
   const lastSeenLabel = profile
     ? formatLastSeen(profile.presenceAt || profile.lastActive, profile.online)
     : "";
@@ -170,16 +196,54 @@ export default function PublicProfilePage() {
     );
   }
 
+  if (uxMode === "modern") {
+    return (
+      <ModernPublicProfile
+        profile={{
+          uid: profile.uid,
+          email: profile.email,
+          username: profile.username,
+          bio: profile.bio,
+          provincia: profile.provincia,
+          mostrarProvincia: profile.mostrarProvincia,
+          fotoPrincipal: profile.fotoPrincipal,
+          fotos: profile.fotos,
+          likes: profile.likes,
+          conversaciones: profile.conversaciones,
+          seguidores: profile.seguidores,
+          historias: profile.historias,
+          stories: profile.stories,
+          createdAtLabel: profile.createdAtLabel,
+          lastActive: profile.lastActive,
+          presenceAt: profile.presenceAt,
+          online: profile.online,
+          showOnline: profile.showOnline,
+          adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
+          adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
+        }}
+        isOwner={isOwner}
+        verifiedVisit={verifiedVisit}
+        onEdit={isOwner ? () => router.push("/settings/edit") : undefined}
+      />
+    );
+  }
+
   return (
     <main className="min-h-screen bg-black text-white pb-32 relative overflow-hidden">
       <div className="absolute inset-0 h-[88vh] w-full z-[1]">
         {profile.fotoPrincipal ? (
-          <img
-            src={profile.fotoPrincipal}
-            alt={profile.username}
-            className="w-full h-full object-cover opacity-55"
-            draggable={false}
-          />
+          <div className="relative w-full h-full">
+            <img
+              src={profile.fotoPrincipal}
+              alt={profile.username}
+              className={[
+                "w-full h-full object-cover opacity-55",
+                blurPhoto ? "blur-2xl scale-110" : "",
+              ].join(" ")}
+              draggable={false}
+            />
+            {blurPhoto ? <SensitiveBlurOverlay label="Foto moderada" /> : null}
+          </div>
         ) : (
           <div className="w-full h-full bg-[radial-gradient(circle_at_35%_0%,rgba(139,92,246,.22),transparent_45%)]" />
         )}
@@ -188,12 +252,34 @@ export default function PublicProfilePage() {
       <div className="absolute inset-0 h-[88vh] bg-gradient-to-b from-black/10 via-black/62 to-black pointer-events-none z-[2]" />
       <div className="absolute inset-x-0 bottom-0 h-[44vh] bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-none z-[2]" />
 
+      {storyStatus.hasActive ? (
+        <div
+          className={[
+            "absolute inset-0 h-[88vh] w-full z-[4] pointer-events-none",
+            storyStatus.hasUnseen
+              ? "shadow-[inset_0_0_0_4px_rgba(167,139,250,.55)]"
+              : "shadow-[inset_0_0_0_4px_rgba(82,82,91,.65)]",
+          ].join(" ")}
+          aria-hidden
+        />
+      ) : null}
+
       <button
         type="button"
-        onClick={() => openViewer(0)}
-        disabled={gallery.length === 0}
-        className="absolute inset-0 h-[88vh] w-full z-[3] cursor-zoom-in disabled:cursor-default"
-        aria-label="Ver fotos del perfil"
+        onClick={() => {
+          if (storyStatus.hasActive && storyStatus.storyPath) {
+            router.push(storyStatus.storyPath);
+            return;
+          }
+          openViewer(0);
+        }}
+        disabled={!storyStatus.hasActive && gallery.length === 0}
+        className="absolute inset-0 h-[88vh] w-full z-[3] cursor-pointer disabled:cursor-default"
+        aria-label={
+          storyStatus.hasActive
+            ? `Ver historias de ${profile.username}`
+            : "Ver fotos del perfil"
+        }
       />
 
       <section className="relative z-[5] px-8 md:px-24 min-h-[88vh] pointer-events-none">
@@ -221,10 +307,19 @@ export default function PublicProfilePage() {
           )}
         </div>
 
+        {isOwner ? <VerifiedLinkBubble username={profile.username} /> : null}
+
         <div className="absolute left-8 md:left-24 top-[31%] md:top-[31%] -translate-y-1/2 max-w-[900px] z-[12]">
           <h1 className="text-[64px] md:text-[96px] leading-none font-black tracking-tight drop-shadow-2xl">
             {profile.username}
           </h1>
+
+          {verifiedVisit ? (
+            <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-violet-500/15 px-5 py-2 text-sm md:text-base font-black text-violet-100">
+              <CheckCircle2 size={18} />
+              Perfil abierto desde link oficial
+            </p>
+          ) : null}
 
           {profile.mostrarProvincia && profile.provincia && (
             <p className="mt-5 text-2xl md:text-3xl font-black text-white/55">
@@ -243,7 +338,23 @@ export default function PublicProfilePage() {
           <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={44} fill="white" />} />
           <StatBubble color="bg-green-500" value={profile.conversaciones || 0} label="conv." icon={<MessageCircle size={44} fill="white" />} />
           <StatBubble color="bg-violet-500" value={profile.seguidores || 0} label="seguidores" icon={<Users size={44} />} />
-          <StatBubble color="bg-sky-400" value={historiasCount} label="historias" icon={<BookOpen size={44} />} />
+          <StatBubble
+            color="bg-sky-400"
+            value={storyStatus.hasActive ? storyStatus.storyCount : historiasCount}
+            label="historias"
+            icon={<BookOpen size={44} />}
+            onClick={
+              storyStatus.hasActive && storyStatus.storyPath
+                ? () => router.push(storyStatus.storyPath!)
+                : undefined
+            }
+            ring={
+              storyStatus.hasActive
+                ? storyStatus.hasUnseen
+                : undefined
+            }
+            ringSeen={storyStatus.hasActive && !storyStatus.hasUnseen}
+          />
         </div>
 
         {profile.bio && (
@@ -337,19 +448,42 @@ function StatBubble({
   value,
   label,
   icon,
+  onClick,
+  ring,
+  ringSeen,
 }: {
   color: string;
   value: number;
   label: string;
   icon: ReactNode;
+  onClick?: () => void;
+  ring?: boolean;
+  ringSeen?: boolean;
 }) {
+  const bubble = (
+    <div
+      className={[
+        `${color} w-20 h-20 md:w-28 md:h-28 rounded-full flex items-center justify-center shadow-[0_0_35px_rgba(255,255,255,.12)]`,
+        ring
+          ? "ring-4 ring-violet-400/70"
+          : ringSeen
+            ? "ring-4 ring-zinc-600/80"
+            : "",
+      ].join(" ")}
+    >
+      {icon}
+    </div>
+  );
+
   return (
     <div className="flex flex-col items-center justify-center">
-      <div
-        className={`${color} w-20 h-20 md:w-28 md:h-28 rounded-full flex items-center justify-center shadow-[0_0_35px_rgba(255,255,255,.12)]`}
-      >
-        {icon}
-      </div>
+      {onClick ? (
+        <button type="button" onClick={onClick} className="active:scale-95 transition">
+          {bubble}
+        </button>
+      ) : (
+        bubble
+      )}
       <div className="mt-4 text-4xl md:text-5xl font-black">{value}</div>
       <div className="text-white/65 font-medium md:text-xl">{label}</div>
     </div>

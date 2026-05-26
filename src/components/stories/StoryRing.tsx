@@ -12,7 +12,7 @@ export default function StoryRing({ active, children }: Props) {
       className={[
         "rounded-full p-[3px] transition",
         active
-          ? "bg-gradient-to-br from-violet-400 via-fuchsia-500 to-violet-700"
+          ? "bg-gradient-to-br from-violet-400 via-fuchsia-500 to-violet-700 shadow-[0_0_18px_rgba(139,92,246,.45)]"
           : "bg-zinc-600",
       ].join(" ")}
     >

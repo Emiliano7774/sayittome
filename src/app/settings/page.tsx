@@ -6,6 +6,8 @@ import { BookOpen, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } f
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { isAdminEmail } from "@/lib/admin/isAdmin";
+import UxModeSwitcher from "@/components/UxModeSwitcher";
 
 type MediaItem = {
   url: string;
@@ -110,7 +112,16 @@ export default function SettingsPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
 
         <div className="relative z-10 max-w-[1500px] mx-auto">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end items-center gap-3">
+            <UxModeSwitcher />
+            {isAdminEmail(auth.currentUser?.email) ? (
+              <button
+                onClick={() => router.push("/admin")}
+                className="rounded-full border border-violet-400/40 bg-violet-500/15 text-violet-100 px-8 py-4 font-black"
+              >
+                Panel admin
+              </button>
+            ) : null}
             <button
               onClick={() => router.push("/settings/edit")}
               className="rounded-full bg-white text-black px-9 py-4 font-black shadow-[0_0_30px_rgba(255,255,255,.18)]"

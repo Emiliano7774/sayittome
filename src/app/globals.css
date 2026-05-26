@@ -20,6 +20,7 @@ body {
 
 /* SAYITTOME_CHAT_OPEN_HIDE_GLOBAL_NAV */
 body.sayittome-chat-open nav.fixed.bottom-0,
+body.sayittome-chat-open .modern-bottom-nav,
 body.sayittome-chat-open .fixed.bottom-0.left-0.right-0,
 body.sayittome-chat-open .fixed.inset-x-0.bottom-0 {
   display: none !important;
@@ -27,5 +28,93 @@ body.sayittome-chat-open .fixed.inset-x-0.bottom-0 {
 
 body.sayittome-chat-open {
   overflow-x: hidden;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Modern chat skin — misma lógica, otra piel */
+[data-ux="modern"] #sayittome-chat-page-root {
+  background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(124, 58, 237, 0.12), #000 55%);
+}
+
+[data-ux="modern"] #sayittome-chat-page-root > section {
+  background: transparent;
+}
+
+[data-ux="modern"] #sayittome-chat-page-root header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(20px);
+}
+
+[data-ux="modern"] #sayittome-chat-page-root header h1 {
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+[data-ux="modern"] #sayittome-chat-page-root header p.text-lime-400 {
+  color: rgb(167, 139, 250);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+[data-ux="modern"] #sayittome-chat-page-root .flex.min-h-\[42vh\] h2 {
+  font-size: 2.25rem;
+  letter-spacing: -0.04em;
+}
+
+[data-ux="modern"] #sayittome-chat-page-root .rounded-\[28px\].bg-\[\#ececec\] {
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  background: linear-gradient(145deg, rgba(20, 10, 35, 0.95), rgba(8, 8, 8, 0.98));
+  color: white;
+  box-shadow: 0 0 40px rgba(104, 76, 255, 0.15);
+}
+
+[data-ux="modern"] #sayittome-chat-page-root .rounded-\[28px\].bg-\[\#ececec\] p.text-violet-600 {
+  color: rgb(196, 181, 253);
+}
+
+[data-ux="modern"] #sayittome-chat-page-root .rounded-\[28px\].bg-\[\#ececec\] p.text-zinc-600 {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+[data-ux="modern"] #sayittome-chat-page-root .flex-1.px-5 .max-w-\[75\%\] {
+  animation: slideUp 0.28s ease-out;
+}
+
+[data-ux="modern"] #sayittome-chat-page-root .max-w-\[75\%\].rounded-\[30px\].bg-violet-500\/80 {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.92), rgba(91, 33, 182, 0.88));
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  box-shadow: 0 4px 24px rgba(124, 58, 237, 0.25);
+}
+
+[data-ux="modern"] #sayittome-chat-page-root .max-w-\[75\%\].rounded-\[30px\].bg-\[\#0c0c0d\] {
+  background: rgba(18, 18, 22, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+[data-ux="modern"] #sayittome-chat-page-root .sticky.bottom-0 {
+  border-top-color: rgba(124, 58, 237, 0.12);
+  background: rgba(0, 0, 0, 0.88);
 }
 

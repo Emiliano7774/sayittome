@@ -3,7 +3,7 @@ import "./globals.css";
 
 import SayItToMeVisualPolish from "@/components/SayItToMeVisualPolish";
 import Providers from "@/components/providers/Providers";
-import BottomNav from "@/components/navigation/BottomNav";
+import AppNavigation from "@/components/navigation/AppNavigation";
 
 export const metadata: Metadata = {
   title: "SayItToMe",
@@ -21,7 +21,7 @@ export default function RootLayout({
         <SayItToMeVisualPolish />
         <Providers>
           {children}
-          <BottomNav />
+          <AppNavigation />
         </Providers>
       </body>
     </html>

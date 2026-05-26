@@ -122,6 +122,11 @@ export async function GET(
       ts(fields, "createdAt"),
     online,
     showOnline: isRecentlyActive(presenceAt, online),
+    adminBlurProfilePhoto: fields?.adminBlurProfilePhoto?.booleanValue === true,
+    adminBlurFotosPerfil: fields?.adminBlurFotosPerfil?.booleanValue === true,
+    adminBlurStories: fields?.adminBlurStories?.booleanValue === true,
+    adminBlurGallery: fields?.adminBlurGallery?.booleanValue === true,
+    adminBlurReason: str(fields, "adminBlurReason"),
   };
 
   return NextResponse.json({ ok: true, profile });

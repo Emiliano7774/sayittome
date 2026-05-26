@@ -27,7 +27,7 @@ export default function PublicUxSwitcher() {
         active:scale-95
       "
     >
-      {uxMode === "classic" ? "CLASSIC" : "MODERN"}
+      {uxMode === "classic" ? "CLÁSICO" : "NUEVO"}
     </button>
   );
 }

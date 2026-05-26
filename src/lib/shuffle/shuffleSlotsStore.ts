@@ -9,7 +9,14 @@ const listeners: Array<Set<() => void>> = Array.from(
 );
 
 let rafId: number | null = null;
+let slotsVersion = 0;
 const dirtySlots = new Set<number>();
+const globalListeners = new Set<() => void>();
+
+function notifyGlobal() {
+  slotsVersion += 1;
+  globalListeners.forEach((listener) => listener());
+}
 
 function flushDirtySlots() {
   rafId = null;
@@ -21,6 +28,7 @@ function flushDirtySlots() {
   });
 
   dirtySlots.clear();
+  notifyGlobal();
   shuffleMeasure(
     "shuffle-slots-flush",
     "shuffle-slots-flush-start",
@@ -68,4 +76,24 @@ export function subscribeShuffleSlot(slot: number, listener: () => void) {
 
 export function getShuffleSlotCount() {
   return SHUFFLE_WINDOW_SIZE;
+}
+
+export function getShuffleSlotsVersion() {
+  return slotsVersion;
+}
+
+export function subscribeAllShuffleSlots(listener: () => void) {
+  globalListeners.add(listener);
+  return () => globalListeners.delete(listener);
+}
+
+export function getVisibleShuffleProfiles() {
+  const visible: ShuffleProfile[] = [];
+
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = slots[slot];
+    if (profile) visible.push(profile);
+  }
+
+  return visible;
 }

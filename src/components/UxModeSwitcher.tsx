@@ -12,6 +12,7 @@ export default function UxModeSwitcher() {
       <button
         type="button"
         onClick={() => setUxMode("modern")}
+        aria-label="Modo New UX"
         className={
           !isClassic
             ? "rounded-full bg-white px-4 py-2 text-black transition"

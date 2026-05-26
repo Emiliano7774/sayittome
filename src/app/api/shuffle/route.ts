@@ -16,6 +16,10 @@ type ApiProfile = {
   presenceAt?: string;
   online?: boolean;
   showOnline?: boolean;
+  adminBlurProfilePhoto?: boolean;
+  adminBlurFotosPerfil?: boolean;
+  adminBlurStories?: boolean;
+  adminBlurGallery?: boolean;
   banned?: boolean;
 };
 
@@ -167,6 +171,10 @@ function docToProfile(doc: any): ApiProfile {
     lastActive,
     presenceAt: presenceAt || undefined,
     online: fieldBool(fields, "online"),
+    adminBlurProfilePhoto: fieldBool(fields, "adminBlurProfilePhoto"),
+    adminBlurFotosPerfil: fieldBool(fields, "adminBlurFotosPerfil"),
+    adminBlurStories: fieldBool(fields, "adminBlurStories"),
+    adminBlurGallery: fieldBool(fields, "adminBlurGallery"),
     banned:
       fieldBool(fields, "banned") ||
       fieldBool(fields, "suspendido") ||

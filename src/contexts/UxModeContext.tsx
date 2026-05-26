@@ -25,7 +25,7 @@ export function UxModeProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [uxMode, setUxModeState] = useState<UxMode>("modern");
+  const [uxMode, setUxModeState] = useState<UxMode>("classic");
 
   useEffect(() => {
     try {
@@ -35,7 +35,7 @@ export function UxModeProvider({
         setUxModeState(saved);
       }
     } catch {
-      setUxModeState("modern");
+      setUxModeState("classic");
     }
   }, []);
 

@@ -19,8 +19,13 @@ import AudioWave from "@/components/chat/media/AudioWave";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import { uploadMedia } from "@/lib/media/upload";
 import { canOpenViewOnce, markOpened } from "@/lib/media/viewOnce";
+import AbuseProtectionMenu from "@/components/chat/AbuseProtectionMenu";
+import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
+import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
+import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { registerSessionChat } from "@/lib/chat/sessionChats";
+import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
 import { formatLastSeen } from "@/lib/presence";
 import {
   addDoc,
@@ -73,6 +78,8 @@ export default function ProfileAnonChat({
   const [targetUid, setTargetUid] = useState("");
   const [targetLastActive, setTargetLastActive] = useState("");
   const [targetOnline, setTargetOnline] = useState(false);
+  const [blockedByAbuse, setBlockedByAbuse] = useState(false);
+  const [chatAnonSessionId, setChatAnonSessionId] = useState("");
   const [recording, setRecording] = useState(false);
   const [cameraMode, setCameraMode] = useState<"photo" | "video" | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -102,6 +109,32 @@ export default function ProfileAnonChat({
       document.body.classList.remove("sayittome-chat-open");
     };
   }, []);
+
+  useEffect(() => {
+    if (!targetUid || !authReady) return;
+
+    const senderId = currentUid || anonSession;
+    const visitorId = getVisitorId();
+
+    findActiveAbuseBlock({
+      receptorUid: targetUid,
+      blockedAnonId: senderId,
+      blockedVisitorId: visitorId,
+    })
+      .then((block) => setBlockedByAbuse(Boolean(block)))
+      .catch(() => setBlockedByAbuse(false));
+  }, [targetUid, authReady, currentUid, anonSession]);
+
+  useEffect(() => {
+    if (!chatId) return;
+
+    const unsub = onSnapshot(doc(db, "chats", chatId), (snap) => {
+      const data = snap.data() as { anonSessionId?: string } | undefined;
+      setChatAnonSessionId(String(data?.anonSessionId || ""));
+    });
+
+    return () => unsub();
+  }, [chatId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,6 +199,8 @@ export default function ProfileAnonChat({
       },
     );
   }, [chatId, authReady, currentUid, anonSession]);
+
+  useIncomingMessageWhip(messages, currentUid || anonSession);
 
   async function openRealCamera(mode: "photo" | "video") {
     try {
@@ -366,10 +401,26 @@ export default function ProfileAnonChat({
   async function sendMessage() {
     if (!text.trim()) return;
     if (!authReady || !chatId) return;
+    if (blockedByAbuse) {
+      alert("No podés escribir en este chat: bloqueo antiacoso activo.");
+      return;
+    }
+
+    const senderId = currentUid || anonSession;
+    if (targetUid && !currentUid) {
+      const block = await findActiveAbuseBlock({
+        receptorUid: targetUid,
+        blockedAnonId: senderId,
+        blockedVisitorId: getVisitorId(),
+      });
+      if (block) {
+        setBlockedByAbuse(true);
+        alert("No podés escribir en este chat: bloqueo antiacoso activo.");
+        return;
+      }
+    }
 
     const messageText = text.trim();
-    const senderId = currentUid || anonSession;
-
     const localMessage = {
       id: crypto.randomUUID(),
       text: messageText,
@@ -475,37 +526,49 @@ export default function ProfileAnonChat({
             ‹
           </Link>
 
-          <button
-            type="button"
-            onClick={() => {
-              window.location.href = `/u/${username}`;
-            }}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-[#161616]"
-          >
-            <UserRound size={26} />
-          </button>
+          <StoryAvatarButton
+            ownerUid={targetUid}
+            username={username}
+            size="sm"
+            mode="navigate"
+            iconSize={26}
+            className="!shrink-0"
+          />
 
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-bold">{username}</h1>
             <p className="text-lg text-lime-400">{presenceLabel}</p>
+            {blockedByAbuse ? (
+              <p className="text-sm font-black text-red-300">Bloqueo antiacoso activo</p>
+            ) : null}
           </div>
+
+          {currentUid && currentUid === targetUid ? (
+            <AbuseProtectionMenu
+              receptorUid={targetUid}
+              targetUsername={username}
+              chatId={chatId}
+              blockedAnonId={chatAnonSessionId || anonSession}
+              blockedBy={currentUid}
+            />
+          ) : null}
         </header>
 
         <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
-          <button
-            onClick={() => {
-              window.location.href = `/u/${username}`;
-            }}
-            className="flex flex-col items-center"
-          >
-            <div className="flex h-44 w-44 items-center justify-center rounded-full bg-[#141414]">
-              <UserRound size={72} />
-            </div>
+          <div className="flex flex-col items-center">
+            <StoryAvatarButton
+              ownerUid={targetUid}
+              username={username}
+              size="lg"
+              mode="navigate"
+              iconSize={72}
+              className="!scale-100"
+            />
 
             <h2 className="mt-6 text-5xl font-black tracking-[-0.08em]">
               {username}
             </h2>
-          </button>
+          </div>
 
           <div className="mt-8 rounded-[28px] bg-[#ececec] px-6 py-5 text-left text-black shadow-2xl">
             <p className="text-2xl font-bold text-violet-600">
