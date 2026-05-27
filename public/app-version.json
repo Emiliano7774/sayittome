@@ -1,6 +1,8 @@
 {
-  "versionCode": 4,
-  "versionName": "1.0.2",
-  "releasedAt": "2026-05-20T12:00:00.000Z",
+  "versionCode": 22,
+  "versionName": "1.0.3",
+  "releasedAt": "2026-05-27T21:49:08.047Z",
+  "apkUpdatedAt": "2026-05-27T21:49:08.047Z",
+  "apkSizeBytes": 7245832,
   "apkUrl": "/api/download/apk"
 }

@@ -30,6 +30,8 @@ const es = {
 
   ux_classic: "Clásico",
   ux_modern: "Nuevo",
+  ux_classic_short: "Clás.",
+  ux_modern_short: "Nuevo",
 
   home_tagline: "Anónimo. Rápido. Real.",
   home_modern_badge: "Nueva SayItToMe web ultrarrápida en React/Next.js",
@@ -122,6 +124,8 @@ const es = {
   setup_saving: "Guardando...",
 
   province_label: "Provincia",
+  country_label: "País",
+  country_select: "Seleccionar país",
   province_select: "Seleccionar provincia",
   province_hint:
     "Tu provincia siempre se usa para conectarte con gente de provincias cercanas, aunque elijas no mostrarla en el perfil. Podés cambiarla cuando quieras desde Editar perfil.",
@@ -135,6 +139,18 @@ const es = {
   chats_empty: "Todavía no tenés chats.",
   chats_no_messages: "Sin mensajes",
   chats_anonymous: "Chat anónimo",
+  chats_inbox_minutes: "{minutes}m",
+  chats_inbox_seen: "visto {time}",
+  chats_inbox_sent: "enviado {time}",
+  chats_select: "Seleccionar chats",
+  chats_select_all: "Seleccionar todos",
+  chats_deselect_all: "Deseleccionar",
+  chats_selected_count: "{count} seleccionados",
+  chats_delete_selected: "Borrar seleccionados",
+  chats_delete: "Borrar",
+  chats_delete_confirm_title: "Borrar chats seleccionados",
+  chats_delete_confirm_body:
+    "Se van a borrar completamente los chats seleccionados, incluyendo todos sus mensajes.",
 
   shuffle_title: "Shuffle",
   shuffle_subtitle: "Perfiles activos, historias recientes y gente conectada en tiempo real.",
@@ -147,6 +163,7 @@ const es = {
 
   apk_new_version: "NUEVA VERSIÓN DISPONIBLE",
   apk_new_version_body: "SayItToMe Android v{version} — actualizá la APK oficial.",
+  apk_new_version_countdown: "Desaparece en {time}",
   apk_download: "Descargar APK",
   apk_section_modern_title: "Descargá la app Android",
   apk_section_modern_body:
@@ -157,11 +174,55 @@ const es = {
   apk_section_classic_body:
     "Mientras Play Store/App Store terminan su proceso, podés dejar accesos directos desde acá.",
   apk_unavailable: "La APK no está disponible todavía.",
+  apk_unavailable_server:
+    "La APK todavía no está publicada. Volvé a intentar en unos minutos.",
   apk_download_fail: "No se pudo descargar la APK. Probá de nuevo en unos minutos.",
+  apk_welcome_tag: "Nuevo en SayItToMe",
+  apk_welcome_body:
+    "Descargá la app Android oficial para shuffle, chats anónimos y stories con la experiencia completa en el celular.",
+  apk_welcome_dismiss: "Cerrar aviso",
 
   shuffle_no_profiles: "No hay perfiles para mostrar.",
   shuffle_classic_search: "Buscar por nombre o descripcion...",
   shuffle_filter: "Filtro",
+  shuffle_filters_title: "Filtros",
+  shuffle_filters_subtitle: "Encontrá perfiles con lógica real",
+  shuffle_filters_empty_hint: "Sin filtros activos. Tocá aplicar para ver todo.",
+  shuffle_filters_show: "Mostrar",
+  shuffle_filters_age_min: "Edad mín.",
+  shuffle_filters_age_max: "Edad máx.",
+  shuffle_filters_province: "Provincia",
+  shuffle_filters_country: "País",
+  shuffle_filters_all_countries: "Todos los países",
+  shuffle_filters_all_provinces: "Todas las provincias",
+  shuffle_filters_city: "Ciudad",
+  shuffle_filters_city_hint: "Ej: Córdoba Capital",
+  shuffle_filters_solo_online: "Solo online / activos",
+  shuffle_filters_solo_online_desc: "Solo perfiles en línea ahora (activos en los últimos 15 min).",
+  shuffle_filters_solo_photo: "Solo con foto",
+  shuffle_filters_solo_photo_desc: "Oculta perfiles sin foto principal o galería.",
+  shuffle_filters_solo_stories: "Solo con historias",
+  shuffle_filters_solo_stories_desc:
+    "Funciona para perfiles que tengan contador de historias activo guardado.",
+  shuffle_filters_interests: "Intereses",
+  shuffle_filters_clear: "Limpiar",
+  shuffle_filters_apply: "Aplicar",
+  shuffle_gender_all: "Todos",
+  shuffle_gender_male: "Hombres",
+  shuffle_gender_female: "Mujeres",
+  shuffle_gender_other: "Otros",
+  shuffle_filters_summary_online: "online",
+  shuffle_filters_summary_photo: "con foto",
+  shuffle_filters_summary_stories: "con historias",
+  shuffle_filters_summary_age_range: "{min}-{max} años",
+  shuffle_filters_summary_age_min: "+{min} años",
+  shuffle_filters_summary_age_max: "hasta {max} años",
+  shuffle_following_title: "Siguiendo",
+  shuffle_following_login:
+    "Iniciá sesión con tu perfil para seguir personas y verlas acá.",
+  shuffle_following_empty: "Seguí perfiles para mantenerte al día.",
+  shuffle_following_login_btn: "Iniciar sesión",
+  shuffle_following_register_btn: "Crear perfil",
   shuffle_change_result: "Cambiar resultado",
   shuffle_people_count: "{count} personas",
   nav_shuffle_refresh: "Cambiar perfiles",
@@ -176,6 +237,9 @@ const es = {
   settings_likes: "me gusta",
   settings_conversations: "conv.",
   settings_followers: "seguidores",
+  follow_button: "Seguir",
+  follow_following: "Siguiendo",
+  follow_login_required: "Iniciar sesión para seguir",
   settings_stories_stat: "historias",
   settings_profile_created: "Perfil creado el {date}",
   settings_admin_panel: "Panel admin",
@@ -219,7 +283,15 @@ const es = {
   chat_anon_keep: "Mantenemos tu anonimato",
   chat_anon_identity_hidden: "No sabrán quién sos.",
   chat_anon_you_are: "Sos: {session}",
+  chat_anon_classic_tag: "Modo anónimo",
+  chat_anon_classic_invisible: "Estás invisible",
+  chat_anon_classic_body:
+    "Hablás sin mostrar tu identidad. La otra persona no sabe quién sos; este chat vive solo en esta sesión.",
   chat_bomb: "Bomba",
+  chat_status_sending: "Enviando...",
+  chat_status_delivered: "Entregado",
+  chat_status_seen: "Visto",
+  chat_status_error: "Error al enviar",
   abuse_menu_short: "Antiacoso",
   abuse_report: "Denunciar acoso",
   abuse_block_30m: "Bloquear 30 min",
@@ -258,6 +330,27 @@ const es = {
   stories_liked: "Te gusta",
   stories_views: "vistas",
   stories_your_story: "Tu historia",
+  stories_anonymous_uploader: "Anónimo",
+  stories_anonymous_caption: "Subió una historia anónima",
+  stories_delete: "Eliminar",
+  stories_delete_confirm: "¿Eliminar esta historia?",
+  stories_delete_fail: "No se pudo eliminar la historia.",
+  story_new_profile_username_required:
+    "Tenés que tener un username de perfil configurado antes de publicar historias.",
+
+  story_new_title: "Nueva historia",
+  story_new_expires: "Se publicará por 24 horas.",
+  story_new_placeholder: "Escribí algo para tu historia...",
+  story_new_pick_media: "Elegir foto o video",
+  story_new_pick_hint: "Imagen o video desde tu dispositivo",
+  story_new_uploading: "Subiendo historia",
+  story_new_publish: "Publicar historia",
+  story_new_uploading_btn: "Subiendo...",
+  story_new_preview_alt: "Vista previa de la historia",
+  story_new_alert_empty: "Escribí algo o elegí una imagen o video.",
+  story_new_alert_type: "Solo podés subir imágenes o videos.",
+  story_new_alert_size: "El archivo es demasiado pesado.",
+  story_new_alert_fail: "No se pudo subir la historia.",
 
   admin_verifying: "Verificando admin...",
   admin_denied: "Acceso denegado",
@@ -320,6 +413,8 @@ const en: Record<keyof typeof es, string> = {
 
   ux_classic: "Classic",
   ux_modern: "New",
+  ux_classic_short: "Classic",
+  ux_modern_short: "New",
 
   home_tagline: "Anonymous. Fast. Real.",
   home_modern_badge: "New ultra-fast SayItToMe web in React/Next.js",
@@ -412,6 +507,8 @@ const en: Record<keyof typeof es, string> = {
   setup_saving: "Saving...",
 
   province_label: "Province",
+  country_label: "Country",
+  country_select: "Select country",
   province_select: "Select province",
   province_hint:
     "Your province is always used to connect you with people from nearby regions, even if you choose not to show it on your profile. You can change it anytime in Edit profile.",
@@ -425,6 +522,18 @@ const en: Record<keyof typeof es, string> = {
   chats_empty: "You don't have chats yet.",
   chats_no_messages: "No messages",
   chats_anonymous: "Anonymous chat",
+  chats_inbox_minutes: "{minutes}m",
+  chats_inbox_seen: "seen {time}",
+  chats_inbox_sent: "sent {time}",
+  chats_select: "Select chats",
+  chats_select_all: "Select all",
+  chats_deselect_all: "Deselect all",
+  chats_selected_count: "{count} selected",
+  chats_delete_selected: "Delete selected",
+  chats_delete: "Delete",
+  chats_delete_confirm_title: "Delete selected chats",
+  chats_delete_confirm_body:
+    "Selected chats will be permanently deleted, including all their messages.",
 
   shuffle_title: "Shuffle",
   shuffle_subtitle: "Active profiles, recent stories and people connected in real time.",
@@ -437,6 +546,7 @@ const en: Record<keyof typeof es, string> = {
 
   apk_new_version: "NEW VERSION AVAILABLE",
   apk_new_version_body: "SayItToMe Android v{version} — update the official APK.",
+  apk_new_version_countdown: "Disappears in {time}",
   apk_download: "Download APK",
   apk_section_modern_title: "Download the Android app",
   apk_section_modern_body:
@@ -447,11 +557,54 @@ const en: Record<keyof typeof es, string> = {
   apk_section_classic_body:
     "While Play Store/App Store finish their process, you can use direct links from here.",
   apk_unavailable: "The APK is not available yet.",
+  apk_unavailable_server:
+    "The APK is not published yet. Please try again in a few minutes.",
   apk_download_fail: "Could not download the APK. Try again in a few minutes.",
+  apk_welcome_tag: "New to SayItToMe",
+  apk_welcome_body:
+    "Download the official Android app for shuffle, anonymous chats, and stories with the full mobile experience.",
+  apk_welcome_dismiss: "Dismiss notice",
 
   shuffle_no_profiles: "No profiles to show.",
   shuffle_classic_search: "Search by name or description...",
   shuffle_filter: "Filter",
+  shuffle_filters_title: "Filters",
+  shuffle_filters_subtitle: "Find profiles with real logic",
+  shuffle_filters_empty_hint: "No active filters. Tap apply to see everyone.",
+  shuffle_filters_show: "Show",
+  shuffle_filters_age_min: "Min age",
+  shuffle_filters_age_max: "Max age",
+  shuffle_filters_province: "Province",
+  shuffle_filters_country: "Country",
+  shuffle_filters_all_countries: "All countries",
+  shuffle_filters_all_provinces: "All provinces",
+  shuffle_filters_city: "City",
+  shuffle_filters_city_hint: "E.g. Cordoba City",
+  shuffle_filters_solo_online: "Online / active only",
+  shuffle_filters_solo_online_desc: "Only profiles online now (active in the last 15 minutes).",
+  shuffle_filters_solo_photo: "With photo only",
+  shuffle_filters_solo_photo_desc: "Hide profiles without a main photo or gallery.",
+  shuffle_filters_solo_stories: "With stories only",
+  shuffle_filters_solo_stories_desc: "Works for profiles with an active saved story count.",
+  shuffle_filters_interests: "Interests",
+  shuffle_filters_clear: "Clear",
+  shuffle_filters_apply: "Apply",
+  shuffle_gender_all: "All",
+  shuffle_gender_male: "Men",
+  shuffle_gender_female: "Women",
+  shuffle_gender_other: "Other",
+  shuffle_filters_summary_online: "online",
+  shuffle_filters_summary_photo: "with photo",
+  shuffle_filters_summary_stories: "with stories",
+  shuffle_filters_summary_age_range: "{min}-{max} years",
+  shuffle_filters_summary_age_min: "+{min} years",
+  shuffle_filters_summary_age_max: "up to {max} years",
+  shuffle_following_title: "Following",
+  shuffle_following_login:
+    "Sign in with your profile to follow people and see them here.",
+  shuffle_following_empty: "Follow profiles to stay updated here.",
+  shuffle_following_login_btn: "Sign in",
+  shuffle_following_register_btn: "Create profile",
   shuffle_change_result: "Change result",
   shuffle_people_count: "{count} people",
   nav_shuffle_refresh: "Refresh profiles",
@@ -466,6 +619,9 @@ const en: Record<keyof typeof es, string> = {
   settings_likes: "likes",
   settings_conversations: "chats",
   settings_followers: "followers",
+  follow_button: "Follow",
+  follow_following: "Following",
+  follow_login_required: "Sign in to follow",
   settings_stories_stat: "stories",
   settings_profile_created: "Profile created on {date}",
   settings_admin_panel: "Admin panel",
@@ -509,7 +665,15 @@ const en: Record<keyof typeof es, string> = {
   chat_anon_keep: "We keep you anonymous",
   chat_anon_identity_hidden: "They will not know who you are.",
   chat_anon_you_are: "You are: {session}",
+  chat_anon_classic_tag: "Anonymous mode",
+  chat_anon_classic_invisible: "You are invisible",
+  chat_anon_classic_body:
+    "You are messaging without revealing your identity. The other person does not know who you are; this chat lives only in this session.",
   chat_bomb: "Bomb",
+  chat_status_sending: "Sending...",
+  chat_status_delivered: "Delivered",
+  chat_status_seen: "Seen",
+  chat_status_error: "Failed to send",
   abuse_menu_short: "Anti-harassment",
   abuse_report: "Report harassment",
   abuse_block_30m: "Block 30 min",
@@ -548,6 +712,27 @@ const en: Record<keyof typeof es, string> = {
   stories_liked: "Liked",
   stories_views: "views",
   stories_your_story: "Your story",
+  stories_anonymous_uploader: "Anonymous",
+  stories_anonymous_caption: "Posted an anonymous story",
+  stories_delete: "Delete",
+  stories_delete_confirm: "Delete this story?",
+  stories_delete_fail: "Could not delete the story.",
+  story_new_profile_username_required:
+    "You need a configured profile username before publishing stories.",
+
+  story_new_title: "New story",
+  story_new_expires: "It will be published for 24 hours.",
+  story_new_placeholder: "Write something for your story...",
+  story_new_pick_media: "Choose photo or video",
+  story_new_pick_hint: "Image or video from your device",
+  story_new_uploading: "Uploading story",
+  story_new_publish: "Publish story",
+  story_new_uploading_btn: "Uploading...",
+  story_new_preview_alt: "Story preview",
+  story_new_alert_empty: "Write something or choose an image or video.",
+  story_new_alert_type: "You can only upload images or videos.",
+  story_new_alert_size: "The file is too large.",
+  story_new_alert_fail: "Could not upload the story.",
 
   admin_verifying: "Verifying admin...",
   admin_denied: "Access denied",
@@ -602,6 +787,8 @@ const it: Record<keyof typeof es, string> = {
 
   ux_classic: "Classico",
   ux_modern: "Nuovo",
+  ux_classic_short: "Class.",
+  ux_modern_short: "Nuovo",
 
   home_tagline: "Anonimo. Veloce. Reale.",
   home_modern_badge: "Nuova SayItToMe web ultrarapida in React/Next.js",
@@ -694,6 +881,8 @@ const it: Record<keyof typeof es, string> = {
   setup_saving: "Salvataggio...",
 
   province_label: "Provincia",
+  country_label: "País",
+  country_select: "Seleccionar país",
   province_select: "Seleziona provincia",
   province_hint:
     "La tua provincia viene sempre usata per connetterti con persone delle zone vicine, anche se scegli di non mostrarla nel profilo. Puoi cambiarla in qualsiasi momento in Modifica profilo.",
@@ -719,6 +908,7 @@ const it: Record<keyof typeof es, string> = {
 
   apk_new_version: "NUOVA VERSIONE DISPONIBILE",
   apk_new_version_body: "SayItToMe Android v{version} — aggiorna l'APK ufficiale.",
+  apk_new_version_countdown: "Scompare tra {time}",
   apk_download: "Scarica APK",
   apk_section_modern_title: "Scarica l'app Android",
   apk_section_modern_body:
@@ -729,7 +919,13 @@ const it: Record<keyof typeof es, string> = {
   apk_section_classic_body:
     "Mentre Play Store/App Store completano il processo, puoi usare i link diretti da qui.",
   apk_unavailable: "L'APK non è ancora disponibile.",
+  apk_unavailable_server:
+    "L'APK non è ancora pubblicata. Riprova tra qualche minuto.",
   apk_download_fail: "Impossibile scaricare l'APK. Riprova tra qualche minuto.",
+  apk_welcome_tag: "Nuovo su SayItToMe",
+  apk_welcome_body:
+    "Scarica l'app Android ufficiale per shuffle, chat anonime e stories con l'esperienza completa sul telefono.",
+  apk_welcome_dismiss: "Chiudi avviso",
 
   settings_loading: "Caricamento profilo...",
   profile_open_chat: "Apri chat",
@@ -767,6 +963,8 @@ const de: Record<keyof typeof es, string> = {
 
   ux_classic: "Klassisch",
   ux_modern: "Neu",
+  ux_classic_short: "Kl.",
+  ux_modern_short: "Neu",
 
   home_tagline: "Anonym. Schnell. Echt.",
   home_modern_badge: "Neue ultraschnelle SayItToMe-Web in React/Next.js",
@@ -884,6 +1082,7 @@ const de: Record<keyof typeof es, string> = {
 
   apk_new_version: "NEUE VERSION VERFÜGBAR",
   apk_new_version_body: "SayItToMe Android v{version} — aktualisiere die offizielle APK.",
+  apk_new_version_countdown: "Verschwindet in {time}",
   apk_download: "APK herunterladen",
   apk_section_modern_title: "Android-App herunterladen",
   apk_section_modern_body:
@@ -894,7 +1093,13 @@ const de: Record<keyof typeof es, string> = {
   apk_section_classic_body:
     "Während Play Store/App Store ihren Prozess abschließen, kannst du direkte Links von hier nutzen.",
   apk_unavailable: "Die APK ist noch nicht verfügbar.",
+  apk_unavailable_server:
+    "Die APK ist noch nicht veröffentlicht. Bitte versuche es in ein paar Minuten erneut.",
   apk_download_fail: "APK konnte nicht heruntergeladen werden. Versuche es später erneut.",
+  apk_welcome_tag: "Neu bei SayItToMe",
+  apk_welcome_body:
+    "Lade die offizielle Android-App herunter für Shuffle, anonyme Chats und Stories mit dem vollen Mobile-Erlebnis.",
+  apk_welcome_dismiss: "Hinweis schließen",
 
   settings_loading: "Profil wird geladen...",
   profile_open_chat: "Chat öffnen",

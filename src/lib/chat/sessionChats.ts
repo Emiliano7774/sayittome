@@ -15,6 +15,20 @@ export function getSessionChatIds(): string[] {
   }
 }
 
+export function unregisterSessionChat(chatId: string) {
+  if (typeof window === "undefined" || !chatId) return;
+
+  const current = getSessionChatIds().filter((id) => id !== chatId);
+
+  try {
+    if (current.length === 0) {
+      sessionStorage.removeItem(SESSION_CHATS_KEY);
+    } else {
+      sessionStorage.setItem(SESSION_CHATS_KEY, JSON.stringify(current));
+    }
+  } catch {}
+}
+
 export function registerSessionChat(chatId: string) {
   if (typeof window === "undefined" || !chatId) return;
 

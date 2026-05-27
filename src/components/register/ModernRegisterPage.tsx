@@ -73,7 +73,7 @@ export default function ModernRegisterPage() {
   return (
     <main className="min-h-screen overflow-hidden bg-black text-white">
       <section className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8">
-        <header className="flex items-center justify-between">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.45em] text-fuchsia-300">
               SAYITTOME

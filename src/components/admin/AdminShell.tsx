@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { auth } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
+import { usePhoneShell } from "@/hooks/usePhoneShell";
 import { useT } from "@/contexts/LocaleContext";
 import type { MessageKey } from "@/lib/i18n/getMessage";
 
@@ -34,6 +35,7 @@ export default function AdminShell({
   const pathname = usePathname();
   const router = useRouter();
   const t = useT();
+  const phoneShell = usePhoneShell();
   const [ready, setReady] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [email, setEmail] = useState("");
@@ -73,12 +75,27 @@ export default function AdminShell({
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex">
-      <aside className="w-[280px] shrink-0 border-r border-white/10 bg-[#050505] p-6 hidden lg:flex lg:flex-col">
-        <p className="text-2xl font-black tracking-tight">SayItToMe</p>
-        <p className="text-sm font-bold text-violet-300/80 mt-1">{t("admin_panel")}</p>
+    <div className="min-h-screen bg-black text-white flex flex-col lg:flex-row">
+      <aside className="w-full shrink-0 border-b border-white/10 bg-[#050505] p-4 lg:w-[280px] lg:border-b-0 lg:border-r lg:p-6 lg:flex lg:flex-col">
+        <div className="flex items-center justify-between gap-3 lg:block">
+          <div>
+            <p className="text-xl font-black tracking-tight lg:text-2xl">SayItToMe</p>
+            <p className="text-xs font-bold text-violet-300/80 mt-1 lg:text-sm">{t("admin_panel")}</p>
+          </div>
+          <Link
+            href="/shuffle"
+            className="rounded-full border border-white/15 px-4 py-2 text-xs font-black text-white/70 hover:text-white lg:hidden"
+          >
+            {t("admin_back_app")}
+          </Link>
+        </div>
 
-        <nav className="mt-8 space-y-1 flex-1 overflow-y-auto">
+        <nav
+          className={[
+            "mt-4 flex gap-2 overflow-x-auto pb-1 lg:mt-8 lg:block lg:space-y-1 lg:flex-1 lg:overflow-y-auto lg:pb-0",
+            phoneShell ? "snap-x snap-mandatory" : "",
+          ].join(" ")}
+        >
           {NAV.map((item) => {
             const active =
               item.href === "/admin"
@@ -90,10 +107,11 @@ export default function AdminShell({
                 key={item.href}
                 href={item.href}
                 className={[
-                  "block rounded-xl px-4 py-3 font-black transition",
+                  "shrink-0 rounded-xl px-4 py-3 font-black transition lg:block",
+                  phoneShell ? "text-sm snap-start" : "",
                   active
                     ? "bg-violet-500/20 text-violet-100 border border-violet-400/30"
-                    : "text-white/55 hover:bg-white/5 hover:text-white",
+                    : "text-white/55 hover:bg-white/5 hover:text-white border border-transparent",
                 ].join(" ")}
               >
                 {t(item.key)}
@@ -102,21 +120,21 @@ export default function AdminShell({
           })}
         </nav>
 
-        <p className="text-xs text-white/35 font-bold truncate">{email}</p>
+        <p className="hidden text-xs text-white/35 font-bold truncate lg:block">{email}</p>
       </aside>
 
       <div className="flex-1 min-w-0">
-        <header className="sticky top-0 z-20 border-b border-white/10 bg-black/90 backdrop-blur-xl px-6 py-5 flex items-center justify-between">
-          <h1 className="text-3xl md:text-4xl font-black">{title}</h1>
+        <header className="sticky top-0 z-20 border-b border-white/10 bg-black/90 backdrop-blur-xl px-4 py-4 md:px-6 md:py-5 flex items-center justify-between gap-3">
+          <h1 className="text-2xl md:text-3xl lg:text-4xl font-black">{title}</h1>
           <Link
             href="/shuffle"
-            className="rounded-full border border-white/15 px-5 py-2 text-sm font-black text-white/70 hover:text-white"
+            className="hidden rounded-full border border-white/15 px-5 py-2 text-sm font-black text-white/70 hover:text-white lg:inline-flex"
           >
             {t("admin_back_app")}
           </Link>
         </header>
 
-        <div className="p-6 md:p-8">{children}</div>
+        <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-6 lg:p-8">{children}</div>
       </div>
     </div>
   );

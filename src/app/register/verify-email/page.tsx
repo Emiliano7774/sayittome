@@ -106,7 +106,7 @@ export default function VerifyEmailPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6">
-        <header className="mb-9 flex items-center justify-between">
+        <header className="mb-9 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-base font-medium text-zinc-100">{t("auth_verify_title")}</p>
           <HeaderControls />
         </header>

@@ -4,8 +4,8 @@ import {
   buildLegacyProfileChatIds,
   buildProfileAnonChatId,
 } from "@/lib/chat/anonChatId";
-import { migrateToCanonicalChat } from "@/lib/chat/migrate";
-import { registerSessionChat } from "@/lib/chat/sessionChats";
+import { maybeMigrateExistingProfileChat } from "@/lib/chat/migrate";
+import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
 
 export type ResolvedProfileChat = {
   chatId: string;
@@ -44,7 +44,9 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
     ),
   );
 
-  await migrateToCanonicalChat(chatId, legacyIds, {
+  const targetPhoto = resolveProfilePhoto(profile);
+
+  await maybeMigrateExistingProfileChat(chatId, legacyIds, {
     id: chatId,
     canonicalChatId: chatId,
     targetUsername: username,
@@ -57,9 +59,8 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
     participantes,
     anon: true,
     schemaVersion: 2,
+    targetPhoto: targetPhoto || null,
   });
-
-  registerSessionChat(chatId);
 
   return {
     chatId,

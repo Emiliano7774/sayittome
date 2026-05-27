@@ -6,9 +6,11 @@ import { usePathname } from "next/navigation";
 import {
   beginFreshAnonSession,
   consumeAnonSessionReset,
+  getAnonSessionId,
   markAnonSessionForReset,
 } from "@/lib/chat/anonSession";
 import { clearAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
+import { deleteAnonymousStoriesForSession } from "@/lib/stories/anonStories";
 
 /**
  * Visiting home marks the anonymous session as stale.
@@ -19,6 +21,7 @@ export default function AnonSessionLifecycle() {
 
   useEffect(() => {
     if (pathname === "/") {
+      void deleteAnonymousStoriesForSession(getAnonSessionId());
       markAnonSessionForReset();
       clearAnonLegalAcceptance();
       return;

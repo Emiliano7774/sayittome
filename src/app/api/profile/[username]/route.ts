@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { isRecentlyActive } from "@/lib/presence";
+import { parseFirestoreDoc } from "@/lib/firestore/rest";
+import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 
 const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
 const PROJECT_ID = "sayittome-app";
@@ -85,6 +87,11 @@ export async function GET(
     return NextResponse.json({ ok: false, profile: null });
   }
 
+  const rawProfile = parseFirestoreDoc(found.document);
+  if (!isPublicProfile(rawProfile)) {
+    return NextResponse.json({ ok: false, profile: null, reason: "invalid_profile" });
+  }
+
   const fields = found.document.fields || {};
   const fotos =
     fields?.fotos?.arrayValue?.values
@@ -99,6 +106,9 @@ export async function GET(
 
   const online = fields?.online?.booleanValue === true;
 
+  const fotoPrincipal =
+    str(fields, "fotoPrincipal") || str(fields, "photoURL") || fotos[0] || "";
+
   const profile = {
     uid: str(fields, "uid") || String(found.document.name || "").split("/").pop() || "",
     email: str(fields, "email"),
@@ -109,7 +119,9 @@ export async function GET(
       fields?.mostrarProvincia?.booleanValue !== false &&
       fields?.ubicacionVisible?.booleanValue !== false &&
       fields?.geoVisible?.booleanValue !== false,
-    fotoPrincipal: str(fields, "fotoPrincipal") || str(fields, "photoURL") || fotos[0] || "",
+    fotoPrincipal,
+    photo: fotoPrincipal,
+    photoURL: fotoPrincipal,
     fotoPortada:
       str(fields, "fotoPortada") ||
       str(fields, "coverPhoto") ||

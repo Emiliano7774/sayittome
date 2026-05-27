@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
+import AdminRegistrationsPanel from "@/components/admin/AdminRegistrationsPanel";
 import { db } from "@/lib/firebase";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
 
@@ -39,6 +40,7 @@ export default function AdminModerationPage() {
 
   return (
     <AdminShell title="Moderación historias">
+      <AdminRegistrationsPanel adminEmail={admin.email} />
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {stories.map((story) => {
           const media = story.mediaUrl || story.imageUrl || "";

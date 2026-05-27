@@ -4,7 +4,11 @@ import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { shouldLoadWebAds } from "@/lib/monetization/adSurfaces";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
+import {
+  shouldLoadMonetagInPagePush,
+  shouldLoadMonetagVignette,
+} from "@/lib/monetization/adSurfaces";
 import {
   MONETAG_IN_PAGE_PUSH,
   MONETAG_VIGNETTE_BANNER,
@@ -23,6 +27,16 @@ declare global {
 export default function MonetagScripts() {
   const pathname = usePathname();
   const [chatOpen, setChatOpen] = useState(false);
+  const [nativeVignetteReady, setNativeVignetteReady] = useState(
+    () => typeof window !== "undefined" && !isNativeAppShell(),
+  );
+
+  useEffect(() => {
+    if (!isNativeAppShell()) return;
+
+    const timer = window.setTimeout(() => setNativeVignetteReady(true), 20_000);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -40,7 +54,22 @@ export default function MonetagScripts() {
     return () => observer.disconnect();
   }, []);
 
-  const enabled = shouldLoadWebAds(pathname) && !chatOpen;
+  const enabled = shouldLoadMonetagInPagePush(pathname) && !chatOpen;
+  const vignetteEnabled =
+    shouldLoadMonetagVignette(pathname) && !chatOpen && nativeVignetteReady;
+
+  useEffect(() => {
+    if (!vignetteEnabled) {
+      document.body.classList.remove("sayittome-vignette-active");
+      return;
+    }
+
+    document.body.classList.add("sayittome-vignette-active");
+
+    return () => {
+      document.body.classList.remove("sayittome-vignette-active");
+    };
+  }, [vignetteEnabled]);
 
   if (!enabled) {
     return null;
@@ -66,17 +95,19 @@ export default function MonetagScripts() {
           window.sayittomeMonetagLoaded.inPagePush = true;
         }}
       />
-      <Script
-        id="monetag-vignette-banner"
-        src={MONETAG_VIGNETTE_BANNER.src}
-        strategy="lazyOnload"
-        data-cfasync="false"
-        data-zone={MONETAG_VIGNETTE_BANNER.zoneId}
-        onLoad={() => {
-          window.sayittomeMonetagLoaded = window.sayittomeMonetagLoaded || {};
-          window.sayittomeMonetagLoaded.vignette = true;
-        }}
-      />
+      {vignetteEnabled ? (
+        <Script
+          id="monetag-vignette-banner"
+          src={MONETAG_VIGNETTE_BANNER.src}
+          strategy="lazyOnload"
+          data-cfasync="false"
+          data-zone={MONETAG_VIGNETTE_BANNER.zoneId}
+          onLoad={() => {
+            window.sayittomeMonetagLoaded = window.sayittomeMonetagLoaded || {};
+            window.sayittomeMonetagLoaded.vignette = true;
+          }}
+        />
+      ) : null}
     </>
   );
 }

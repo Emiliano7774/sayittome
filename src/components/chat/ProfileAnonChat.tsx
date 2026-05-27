@@ -20,13 +20,20 @@ import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import { uploadMedia } from "@/lib/media/upload";
 import { canOpenViewOnce, markOpened } from "@/lib/media/viewOnce";
 import AbuseProtectionMenu from "@/components/chat/AbuseProtectionMenu";
+import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
+import ClassicAnonPresenceBubble from "@/components/chat/ClassicAnonPresenceBubble";
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
+import { useUxMode } from "@/contexts/UxModeContext";
 import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
-import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
-import { registerSessionChat } from "@/lib/chat/sessionChats";
+import { buildLegacyProfileChatIds } from "@/lib/chat/anonChatId";
+import { deleteEmptyChatIfIdle, migrateToCanonicalChat } from "@/lib/chat/migrate";
+import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
+import { registerSessionChat, unregisterSessionChat } from "@/lib/chat/sessionChats";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
+import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
 import { useT } from "@/contexts/LocaleContext";
@@ -39,6 +46,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
@@ -53,6 +61,7 @@ type Message = {
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
   viewOnce?: boolean;
+  readBy?: Record<string, boolean>;
 };
 
 export default function ProfileAnonChat({
@@ -64,6 +73,7 @@ export default function ProfileAnonChat({
 }) {
 
   const t = useT();
+  const { uxMode } = useUxMode();
   const formatLastSeen = useFormatLastSeen();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -81,6 +91,8 @@ export default function ProfileAnonChat({
   const [authReady, setAuthReady] = useState(false);
   const [currentUid, setCurrentUid] = useState("");
   const [targetUid, setTargetUid] = useState("");
+  const [targetPhoto, setTargetPhoto] = useState("");
+  const [targetBlurPhoto, setTargetBlurPhoto] = useState(false);
   const [targetLastActive, setTargetLastActive] = useState("");
   const [targetOnline, setTargetOnline] = useState(false);
   const [blockedByAbuse, setBlockedByAbuse] = useState(false);
@@ -91,6 +103,7 @@ export default function ProfileAnonChat({
   const cameraVideoElementRef = useRef<HTMLVideoElement>(null);
   const liveVideoRecorderRef = useRef<MediaRecorder | null>(null);
   const liveVideoChunksRef = useRef<Blob[]>([]);
+  const messagePersistedRef = useRef(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraPhotoRef = useRef<HTMLInputElement>(null);
@@ -116,9 +129,21 @@ export default function ProfileAnonChat({
   }, []);
 
   useEffect(() => {
+    messagePersistedRef.current = false;
+
+    return () => {
+      if (messagePersistedRef.current) return;
+
+      void deleteEmptyChatIfIdle(chatId).finally(() => {
+        unregisterSessionChat(chatId);
+      });
+    };
+  }, [chatId]);
+
+  useEffect(() => {
     if (!targetUid || !authReady) return;
 
-    const senderId = getChatAnonSenderId();
+    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
     const visitorId = getVisitorId();
 
     findActiveAbuseBlock({
@@ -128,7 +153,7 @@ export default function ProfileAnonChat({
     })
       .then((block) => setBlockedByAbuse(Boolean(block)))
       .catch(() => setBlockedByAbuse(false));
-  }, [targetUid, authReady, anonSession]);
+  }, [targetUid, authReady, anonSession, chatId, chatAnonSessionId]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -151,9 +176,23 @@ export default function ProfileAnonChat({
         });
         const json = await res.json();
         if (cancelled) return;
-        setTargetUid(String(json?.profile?.uid || ""));
-        setTargetLastActive(String(json?.profile?.lastActive || ""));
-        setTargetOnline(json?.profile?.online === true);
+
+        const profile = json?.profile;
+        const photo = resolveProfilePhoto(profile);
+        const uid = String(profile?.uid || "");
+
+        setTargetUid(uid);
+        setTargetPhoto(photo);
+        setTargetBlurPhoto(profile?.adminBlurProfilePhoto === true);
+        setTargetLastActive(String(profile?.lastActive || ""));
+        setTargetOnline(profile?.online === true);
+
+        if (photo && chatId) {
+          void updateDoc(doc(db, "chats", chatId), {
+            targetPhoto: photo,
+            ...(uid ? { targetUid: uid, receptorUid: uid } : {}),
+          }).catch(() => undefined);
+        }
       } catch (e) {
         console.error(e);
       }
@@ -164,9 +203,27 @@ export default function ProfileAnonChat({
     return () => {
       cancelled = true;
     };
-  }, [username]);
+  }, [username, chatId]);
 
   const presenceLabel = formatLastSeen(targetLastActive, targetOnline);
+  const isClassic = uxMode === "classic";
+  const isOwnerViewing = Boolean(currentUid && targetUid && currentUid === targetUid);
+  const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+  const classicChatEngaged =
+    isClassic &&
+    (isOwnerViewing
+      ? messages.some((message) => message.mine)
+      : messages.some((message) => message.mine) || messages.length > 0);
+  const showClassicIntro = isClassic && !classicChatEngaged;
+  const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
+  const avatarProps = {
+    ownerUid: targetUid,
+    username,
+    photo: targetPhoto,
+    mode: "navigate" as const,
+    preferProfile: true,
+    blurPhoto: targetBlurPhoto,
+  };
 
   useEffect(() => {
     if (!chatId || !authReady) return;
@@ -176,7 +233,9 @@ export default function ProfileAnonChat({
       orderBy("createdAt", "asc"),
     );
 
-    const senderId = getChatAnonSenderId();
+    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+    const viewerId =
+      currentUid && targetUid && currentUid === targetUid ? currentUid : senderId;
 
     return onSnapshot(
       q,
@@ -186,26 +245,64 @@ export default function ProfileAnonChat({
             texto?: string;
             text?: string;
             fromUid?: string;
+            ownerId?: string;
+            senderUid?: string;
+            mine?: boolean;
             reply?: string;
+            readBy?: Record<string, boolean>;
+            type?: Message["type"];
+            mediaUrl?: string;
+            source?: Message["source"];
+            viewOnce?: boolean;
           };
+
+          const from = String(
+            data.fromUid || data.ownerId || data.senderUid || "",
+          );
+          const mine = isOwnerViewing
+            ? from === currentUid
+            : from === senderId || data.mine === true;
 
           return {
             id: docSnap.id,
             text: String(data.texto || data.text || ""),
-            mine: String(data.fromUid || "") === senderId,
+            mine,
             reply: data.reply,
+            type: data.type,
+            mediaUrl: data.mediaUrl,
+            source: data.source,
+            viewOnce: data.viewOnce,
+            readBy: data.readBy || {},
           };
         });
 
         setMessages(loaded);
+
+        if (!viewerId) return;
+
+        snapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data() as { fromUid?: string; readBy?: Record<string, boolean> };
+          if (String(data.fromUid || "") === viewerId) return;
+          if (data.readBy?.[viewerId]) return;
+
+          updateDoc(doc(db, "chats", chatId, "mensajes", docSnap.id), {
+            [`readBy.${viewerId}`]: true,
+          }).catch(() => {});
+        });
+
+        if (snapshot.docs.length === 0) return;
+
+        updateDoc(doc(db, "chats", chatId), {
+          [`readBy.${viewerId}`]: true,
+        }).catch(() => {});
       },
       (error) => {
         console.error(error);
       },
     );
-  }, [chatId, authReady, anonSession]);
+  }, [chatId, authReady, anonSession, currentUid, targetUid, chatAnonSessionId, isOwnerViewing]);
 
-  useIncomingMessageWhip(messages, getChatAnonSenderId());
+  useIncomingMessageWhip(messages, anonSenderId);
 
   async function openRealCamera(mode: "photo" | "video") {
     try {
@@ -411,7 +508,7 @@ export default function ProfileAnonChat({
       return;
     }
 
-    const senderId = getChatAnonSenderId();
+    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
     if (targetUid) {
       const block = await findActiveAbuseBlock({
         receptorUid: targetUid,
@@ -446,37 +543,44 @@ export default function ProfileAnonChat({
         ].filter(Boolean)),
       );
 
-      await setDoc(
-        doc(db, "chats", chatId),
-        {
-          id: chatId,
-          targetUsername: username,
-          receptorUsername: username,
-          receptorUid: targetUid || null,
-          targetUid: targetUid || null,
-          initiatorUid: currentUid || null,
-          anonOwnerUid: currentUid || null,
-          anonSessionId: senderId,
-          participantes,
-          anon: true,
-          senderIsAnonymous: true,
-          canonicalChatId: chatId,
-          schemaVersion: 2,
-          lastMessage: messageText,
-          lastMessageSender: senderId,
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-          readBy: {
-            [senderId]: true,
-          },
-          typing: {
-            [senderId]: false,
-          },
+      const legacyIds = [
+        ...buildLegacyProfileChatIds(senderId, username, targetUid),
+        ...(currentUid
+          ? buildLegacyProfileChatIds(currentUid, username, targetUid)
+          : []),
+      ];
+
+      const chatMeta = {
+        id: chatId,
+        targetUsername: username,
+        receptorUsername: username,
+        receptorUid: targetUid || null,
+        targetUid: targetUid || null,
+        initiatorUid: currentUid || null,
+        anonOwnerUid: currentUid || null,
+        anonSessionId: senderId,
+        participantes,
+        anon: true,
+        senderIsAnonymous: true,
+        canonicalChatId: chatId,
+        schemaVersion: 2,
+        targetPhoto: targetPhoto || null,
+        lastMessage: messageText,
+        lastMessageSender: senderId,
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        readBy: {
+          [senderId]: true,
         },
-        { merge: true },
-      );
+        typing: {
+          [senderId]: false,
+        },
+      };
+
+      await migrateToCanonicalChat(chatId, legacyIds, chatMeta);
 
       registerSessionChat(chatId);
+      messagePersistedRef.current = true;
 
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: messageText,
@@ -541,22 +645,22 @@ export default function ProfileAnonChat({
 
       <section className="flex min-h-screen flex-col bg-black">
         <header className="flex items-center gap-4 bg-black px-5 py-4">
-          <Link href="/shuffle" className="text-5xl leading-none text-white/80">
+          <Link href="/chats" className="text-4xl leading-none text-white/70">
             ‹
           </Link>
 
           <StoryAvatarButton
-            ownerUid={targetUid}
-            username={username}
+            {...avatarProps}
             size="sm"
-            mode="navigate"
             iconSize={26}
             className="!shrink-0"
           />
 
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold">{username}</h1>
-            <p className="text-lg text-lime-400">{presenceLabel}</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-xl font-bold tracking-[-0.03em]">{username}</h1>
+            {!isClassic ? (
+              <p className="text-lg text-lime-400">{presenceLabel}</p>
+            ) : null}
             {blockedByAbuse ? (
               <p className="text-sm font-black text-red-300">{t("chat_abuse_block_active")}</p>
             ) : null}
@@ -573,51 +677,81 @@ export default function ProfileAnonChat({
           ) : null}
         </header>
 
-        <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
-          <div className="flex flex-col items-center">
+        {showClassicIntro ? (
+          <div className="flex flex-col items-center justify-center px-6 pb-2 pt-[min(12vh,5rem)]">
             <StoryAvatarButton
-              ownerUid={targetUid}
-              username={username}
-              size="lg"
-              mode="navigate"
-              iconSize={72}
+              {...avatarProps}
+              size="xl"
+              iconSize={88}
               className="!scale-100"
             />
-
-            <h2 className="mt-6 text-5xl font-black tracking-[-0.08em]">
-              {username}
-            </h2>
+            <ClassicAnonPresenceBubble session={anonSenderId || anonSession} />
           </div>
+        ) : isClassic ? (
+          <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
+            {t("chat_anon_you_are", { session: anonSenderId || anonSession })}
+          </p>
+        ) : (
+          <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
+            <div className="flex flex-col items-center">
+              <StoryAvatarButton
+                {...avatarProps}
+                size="lg"
+                iconSize={72}
+                className="!scale-100"
+              />
 
-          <div className="mt-8 rounded-[28px] bg-[#ececec] px-6 py-5 text-left text-black shadow-2xl">
-            <p className="text-2xl font-bold text-violet-600">
-              {t("chat_anon_keep")}
-            </p>
+              <h2 className="mt-6 text-5xl font-black tracking-[-0.08em]">
+                {username}
+              </h2>
+            </div>
 
-            <p className="mt-1 text-xl text-zinc-600">
-              {t("chat_anon_identity_hidden")}
-            </p>
+            <div className="mt-8 rounded-[28px] bg-[#ececec] px-6 py-5 text-left text-black shadow-2xl">
+              <p className="text-2xl font-bold text-violet-600">
+                {t("chat_anon_keep")}
+              </p>
 
-            <p className="mt-3 text-base text-zinc-400">
-              {t("chat_anon_you_are", { session: anonSession })}
-            </p>
+              <p className="mt-1 text-xl text-zinc-600">
+                {t("chat_anon_identity_hidden")}
+              </p>
+
+              <p className="mt-3 text-base text-zinc-400">
+                {t("chat_anon_you_are", { session: anonSession })}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="flex-1 px-5 pb-36">
-          <div className="mx-auto max-w-5xl">
-            {messages.map((message) => (
+        <div
+          className={[
+            "min-h-0 flex-1 pb-36",
+            isClassic ? "overflow-y-auto px-3 sm:px-4" : "px-5",
+            classicChatEngaged ? "pt-3" : "",
+          ].join(" ")}
+        >
+          <div className={chatWidthClass}>
+            {messages.map((message) => {
+              const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+              const receiptStatus = resolveMessageReceiptStatus({
+                mine: message.mine,
+                readBy: message.readBy,
+                senderId,
+              });
+
+              return (
               <div
                 key={message.id}
                 className={[
-                  "mb-5 flex",
-                  message.mine ? "justify-end" : "justify-start",
+                  "mb-4 flex w-full flex-col",
+                  message.mine ? "items-end pr-0.5" : "items-start pl-0.5",
                 ].join(" ")}
               >
                 <div
                   onDoubleClick={() => setReplyingTo(message)}
                   className={[
-                    "max-w-[75%] rounded-[30px] px-5 py-4",
+                    isClassic
+                      ? "max-w-[min(82vw,22rem)] rounded-[22px] px-4 py-3"
+                      : "max-w-[75%] rounded-[30px] px-5 py-4",
                     message.mine
                       ? "bg-violet-500/80 text-white"
                       : "bg-[#0c0c0d] text-white",
@@ -679,7 +813,9 @@ export default function ProfileAnonChat({
                       className="max-h-[420px] rounded-[24px]"
                     />
                   ) : (
-                    <p className="text-2xl leading-relaxed">{message.text}</p>
+                    <p className={isClassic ? "text-base leading-relaxed" : "text-2xl leading-relaxed"}>
+                      {message.text}
+                    </p>
                   )}
 
                   {sourceLabel(message) ? (
@@ -689,8 +825,11 @@ export default function ProfileAnonChat({
                     </p>
                   ) : null}
                 </div>
+
+                {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
 
@@ -744,7 +883,7 @@ export default function ProfileAnonChat({
 
         <div className="sticky bottom-0 border-t border-white/5 bg-black/95 px-4 pb-4 pt-3 backdrop-blur-xl">
           {replyingTo && (
-            <div className="mx-auto mb-3 max-w-5xl rounded-3xl bg-[#090909] px-5 py-4">
+            <div className={`${chatWidthClass} mb-3 rounded-3xl bg-[#090909] px-5 py-4`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-lg font-bold text-violet-400">Respondiendo</p>
@@ -759,7 +898,7 @@ export default function ProfileAnonChat({
           )}
 
           {audioPreview || imagePreview || videoPreview ? (
-            <div className="mx-auto mb-4 max-w-5xl rounded-[28px] bg-[#070707] p-4">
+            <div className={`${chatWidthClass} mb-4 rounded-[28px] bg-[#070707] p-4`}>
               {audioPreview ? <audio controls src={audioPreview} className="w-full" /> : null}
 
               {imagePreview ? (
@@ -830,12 +969,12 @@ export default function ProfileAnonChat({
           ) : null}
 
           {recording ? (
-            <div className="mx-auto mb-3 max-w-5xl rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-300">
+            <div className={`${chatWidthClass} mb-3 rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-300`}>
               Grabando audio... solta para terminar
             </div>
           ) : null}
 
-          <div className="mx-auto flex max-w-5xl items-center gap-2">
+          <div className={`${chatWidthClass} flex items-center gap-2`}>
             <input
               ref={cameraPhotoRef}
               type="file"

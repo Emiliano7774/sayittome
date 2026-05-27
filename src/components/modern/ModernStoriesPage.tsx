@@ -7,6 +7,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import StoriesHub from "@/components/stories/StoriesHub";
 import { auth } from "@/lib/firebase";
+import { resolveStoryViewerId } from "@/lib/stories/anonStories";
 import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
 import type { StoryUserGroup } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
@@ -21,7 +22,7 @@ export default function ModernStoriesPage() {
     let cancelled = false;
 
     const unsub = onAuthStateChanged(auth, async (user) => {
-      const uid = user?.uid || "";
+      const uid = resolveStoryViewerId(user);
       setViewerUid(uid);
 
       try {

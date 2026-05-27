@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useUxMode } from "@/contexts/UxModeContext";
 import ShuffleLegalGate from "@/components/legal/ShuffleLegalGate";

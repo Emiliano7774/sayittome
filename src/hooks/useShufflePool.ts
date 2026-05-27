@@ -1,11 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSyncExternalStore } from "react";
 
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import {
+  defaultShuffleFilters,
+  loadStoredShuffleFilters,
+  profileMatchesShuffleFilters,
+  profileMatchesShuffleSearch,
+  saveStoredShuffleFilters,
+  shuffleFiltersActiveCount,
+  type ShuffleFilters,
+} from "@/lib/shuffle/filters";
+import { appendShuffleFiltersToSearchParams } from "@/lib/shuffle/serverFilters";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
 import {
   pickRandomWindowIndices,
@@ -21,17 +32,31 @@ import {
 import { setShuffleSlots } from "@/lib/shuffle/shuffleSlotsStore";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
-import { refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
+import {
+  getCachedStoryGroups,
+  getStoriesIndexVersion,
+  refreshStoriesIndex,
+  subscribeStoriesIndex,
+} from "@/lib/stories/storiesIndexStore";
 
 export function useShufflePool() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [totalLive, setTotalLive] = useState(0);
+  const [profilesCreated, setProfilesCreated] = useState(0);
+  const [anonymousOnline, setAnonymousOnline] = useState(0);
+  const [livePeopleCount, setLivePeopleCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState("");
   const [listReady, setListReady] = useState(false);
+  const [filters, setFiltersState] = useState<ShuffleFilters>(() => loadStoredShuffleFilters());
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filteredCount, setFilteredCount] = useState(0);
+  const [filteredOnlineCount, setFilteredOnlineCount] = useState(0);
 
-  const mountedRef = useRef(false);
+  const filtersRef = useRef<ShuffleFilters>(loadStoredShuffleFilters());
+  const searchRef = useRef("");
+  const storyOwnerUidsRef = useRef<Set<string>>(new Set());
   const poolRef = useRef<ShuffleProfile[]>([]);
   const activePoolRef = useRef<ShuffleProfile[]>([]);
   const totalLiveRef = useRef(0);
@@ -43,10 +68,30 @@ export function useShufflePool() {
   const windowIndicesRef = useRef(new Int32Array(SHUFFLE_WINDOW_SIZE));
   const windowCountRef = useRef(0);
   const shuffleClickCountRef = useRef(0);
+  const mountedRef = useRef(false);
+
+  useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
+
+  useEffect(() => {
+    storyOwnerUidsRef.current = new Set(getCachedStoryGroups().map((group) => group.ownerUid));
+  });
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
+  useEffect(() => {
+    searchRef.current = search;
+  }, [search]);
 
   const applyWindowFromPool = useCallback((pool: ShuffleProfile[]) => {
     const len = pool.length;
-    if (len === 0) return;
+    if (len === 0) {
+      windowCountRef.current = 0;
+      setShuffleSlots([], windowIndicesRef.current, 0);
+      setListReady(false);
+      return;
+    }
 
     windowCountRef.current = pickRandomWindowIndices(
       len,
@@ -67,7 +112,6 @@ export function useShufflePool() {
       if (profiles.length === 0) return;
 
       poolRef.current = profiles;
-      activePoolRef.current = profiles;
 
       if (total > 0) totalLiveRef.current = total;
 
@@ -75,32 +119,40 @@ export function useShufflePool() {
       setLoading(false);
       setErrorText("");
       warmShuffleImages(profiles);
-      applyWindowFromPool(profiles);
     },
-    [applyWindowFromPool],
+    [],
   );
 
   const filterActivePool = useCallback(
-    (needle: string) => {
-      const q = needle.trim().toLowerCase();
-      if (!q) {
-        activePoolRef.current = poolRef.current;
-      } else {
-        activePoolRef.current = poolRef.current.filter((p) => {
-          return (
-            String(p.username || "").toLowerCase().includes(q) ||
-            String(p.bio || "").toLowerCase().includes(q)
-          );
-        });
-      }
+    (needle: string, nextFilters = filtersRef.current) => {
+      const q = needle.trim();
+      const storyOwnerUids = storyOwnerUidsRef.current;
 
-      applyWindowFromPool(activePoolRef.current);
+      const filtered = refreshPoolPresence(
+        poolRef.current.filter((profile) => {
+          if (!profileMatchesShuffleSearch(profile, q)) return false;
+          return profileMatchesShuffleFilters(profile, nextFilters, { storyOwnerUids });
+        }),
+      );
+
+      activePoolRef.current = filtered;
+      setFilteredCount(filtered.length);
+      setFilteredOnlineCount(filtered.filter((profile) => profile.showOnline).length);
+      applyWindowFromPool(filtered);
     },
     [applyWindowFromPool],
   );
 
   const loadProfiles = useCallback(
-    async ({ q = "", force = false }: { q?: string; force?: boolean }) => {
+    async ({
+      q = "",
+      force = false,
+      nextFilters = filtersRef.current,
+    }: {
+      q?: string;
+      force?: boolean;
+      nextFilters?: ShuffleFilters;
+    } = {}) => {
       if (loadLockedRef.current && !force) return;
 
       loadLockedRef.current = true;
@@ -126,6 +178,7 @@ export function useShufflePool() {
           q,
           ts: String(Date.now()),
         });
+        appendShuffleFiltersToSearchParams(params, nextFilters);
 
         const res = await fetch(`/api/shuffle?${params.toString()}`, {
           cache: "no-store",
@@ -137,17 +190,26 @@ export function useShufflePool() {
 
         const nextProfiles = normalizeShuffleProfiles(json?.profiles);
         const profilesCreated = Number(json?.profilesCreated ?? 0);
-        const total = Number(
-          json?.totalLive ?? json?.profilesCreated ?? nextProfiles.length,
-        );
+        const anonymousOnline = Number(json?.anonymousOnline ?? 0);
+        const total =
+          json?.totalLive != null
+            ? Number(json.totalLive)
+            : profilesCreated + anonymousOnline || nextProfiles.length;
+
+        setProfilesCreated(profilesCreated);
+        setAnonymousOnline(anonymousOnline);
+        setLivePeopleCount(total > 0 ? total : profilesCreated + anonymousOnline);
 
         if (nextProfiles.length > 0) {
           applyPool(nextProfiles, total || profilesCreated || nextProfiles.length);
-          if (q) filterActivePool(q);
+          filterActivePool(q, nextFilters);
         } else if (poolRef.current.length > 0) {
-          if (q) filterActivePool(q);
-          else applyPool(poolRef.current, totalLiveRef.current);
+          filterActivePool(q, nextFilters);
         } else {
+          activePoolRef.current = [];
+          setFilteredCount(0);
+          setFilteredOnlineCount(0);
+          applyWindowFromPool([]);
           setLoading(false);
         }
 
@@ -207,7 +269,7 @@ export function useShufflePool() {
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearch(value);
-      filterActivePool(value);
+      filterActivePool(value, filtersRef.current);
 
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
 
@@ -220,6 +282,32 @@ export function useShufflePool() {
     },
     [filterActivePool, loadProfiles],
   );
+
+  const openFilters = useCallback(() => {
+    setFiltersOpen(true);
+  }, []);
+
+  const closeFilters = useCallback(() => {
+    setFiltersOpen(false);
+  }, []);
+
+  const applyFilters = useCallback(
+    (nextFilters: ShuffleFilters) => {
+      filtersRef.current = nextFilters;
+      setFiltersState(nextFilters);
+      saveStoredShuffleFilters(nextFilters);
+      void loadProfiles({ q: search.trim(), force: true, nextFilters });
+    },
+    [loadProfiles, search],
+  );
+
+  const clearFilters = useCallback(() => {
+    const cleared = defaultShuffleFilters();
+    filtersRef.current = cleared;
+    setFiltersState(cleared);
+    saveStoredShuffleFilters(cleared);
+    void loadProfiles({ q: search.trim(), force: true, nextFilters: cleared });
+  }, [loadProfiles, search]);
 
   const handleListClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -256,7 +344,15 @@ export function useShufflePool() {
     loadProfiles({ q: "", force: true });
 
     const scheduleStoriesIndex = () => {
-      const run = () => refreshStoriesIndex("", false).catch(() => {});
+      const run = () =>
+        refreshStoriesIndex("", false)
+          .then(() => {
+            storyOwnerUidsRef.current = new Set(
+              getCachedStoryGroups().map((group) => group.ownerUid),
+            );
+            filterActivePool(search, filtersRef.current);
+          })
+          .catch(() => {});
       if (typeof requestIdleCallback === "function") {
         requestIdleCallback(run, { timeout: 3000 });
       } else {
@@ -275,15 +371,7 @@ export function useShufflePool() {
       if (poolRef.current.length === 0) return;
 
       poolRef.current = refreshPoolPresence(poolRef.current);
-      activePoolRef.current = refreshPoolPresence(activePoolRef.current);
-
-      if (windowCountRef.current > 0 && activePoolRef.current.length > 0) {
-        setShuffleSlots(
-          activePoolRef.current,
-          windowIndicesRef.current,
-          windowCountRef.current,
-        );
-      }
+      filterActivePool(searchRef.current, filtersRef.current);
     }, 45_000);
 
     return () => {
@@ -293,20 +381,78 @@ export function useShufflePool() {
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
       abortRef.current?.abort();
     };
-  }, [handleShuffleClick, loadProfiles]);
+  }, [filterActivePool, handleShuffleClick, loadProfiles]);
 
-  const onlineCount = activePoolRef.current.filter((p) => p.showOnline).length;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function pollLivePeopleCount() {
+      try {
+        const res = await fetch(`/api/shuffle?countOnly=1&ts=${Date.now()}`, {
+          cache: "no-store",
+        });
+        const json = await res.json();
+        if (cancelled || !mountedRef.current) return;
+
+        const created = Number(json?.profilesCreated ?? 0);
+        const anon = Number(json?.anonymousOnline ?? 0);
+        const total = Number(json?.totalLive ?? created + anon);
+
+        setProfilesCreated(created);
+        setAnonymousOnline(anon);
+        setLivePeopleCount(total);
+        if (total > 0) {
+          setTotalLive(total);
+          totalLiveRef.current = total;
+        }
+      } catch {
+        // Keep the last known count when a poll fails.
+      }
+    }
+
+    void pollLivePeopleCount();
+    const liveCountTimer = window.setInterval(pollLivePeopleCount, 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(liveCountTimer);
+    };
+  }, []);
+
+  const filtersActiveCount = useMemo(
+    () => shuffleFiltersActiveCount(filters),
+    [filters],
+  );
+
+  const hasActiveDiscovery = useMemo(
+    () => shuffleFiltersActiveCount(filters) > 0 || search.trim().length > 0,
+    [filters, search],
+  );
+
+  const visibleCount = filteredCount;
 
   return {
     search,
     totalLive,
+    profilesCreated,
+    anonymousOnline,
+    livePeopleCount,
     loading,
     errorText,
     listReady,
-    onlineCount,
+    filteredOnlineCount,
     poolSize: poolRef.current.length,
+    visibleCount,
+    hasActiveDiscovery,
+    filters,
+    filtersOpen,
+    filtersActiveCount,
     handleSearchChange,
     handleShuffleClick,
     handleListClick,
+    openFilters,
+    closeFilters,
+    applyFilters,
+    clearFilters,
   };
 }

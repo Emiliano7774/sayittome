@@ -107,6 +107,90 @@ export async function runCollectionQuery(
     .map(parseFirestoreDoc);
 }
 
+type FirestoreRunQueryRow = {
+  document?: {
+    name?: string;
+    fields?: Record<string, unknown>;
+  };
+};
+
+function buildOrderCursorValue(doc: Record<string, unknown>, orderField: string) {
+  const raw = doc[orderField];
+  if (typeof raw === "boolean") return { booleanValue: raw };
+  if (typeof raw === "number") {
+    return Number.isInteger(raw)
+      ? { integerValue: String(raw) }
+      : { doubleValue: raw };
+  }
+  return { stringValue: String(raw ?? "") };
+}
+
+export async function runCollectionQueryAll(
+  collectionId: string,
+  orderField?: string,
+  direction: "ASCENDING" | "DESCENDING" = "DESCENDING",
+  pageSize = 500,
+  maxPages = 20,
+) {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIRESTORE_API_KEY}`;
+  const all: Record<string, unknown>[] = [];
+  let cursorDoc: Record<string, unknown> | null = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const structuredQuery: Record<string, unknown> = {
+      from: [{ collectionId }],
+      limit: pageSize,
+    };
+
+    if (orderField) {
+      structuredQuery.orderBy = [{ field: { fieldPath: orderField }, direction }];
+    }
+
+    if (cursorDoc && orderField) {
+      structuredQuery.startAt = {
+        values: [
+          buildOrderCursorValue(cursorDoc, orderField),
+          {
+            referenceValue: `projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collectionId}/${encodeURIComponent(String(cursorDoc.id || ""))}`,
+          },
+        ],
+        before: false,
+      };
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ structuredQuery }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Firestore runQueryAll ${collectionId} ${res.status}`);
+    }
+
+    const json = (await res.json()) as FirestoreRunQueryRow[];
+    if (!Array.isArray(json)) break;
+
+    const docs = json
+      .map((row) => row.document)
+      .filter(Boolean)
+      .map(parseFirestoreDoc);
+
+    if (docs.length === 0) break;
+
+    const startIndex = cursorDoc ? 1 : 0;
+    for (let i = startIndex; i < docs.length; i += 1) {
+      all.push(docs[i]);
+    }
+
+    if (docs.length < pageSize) break;
+    cursorDoc = docs[docs.length - 1];
+  }
+
+  return all;
+}
+
 export async function patchFirestoreDoc(
   collection: string,
   id: string,

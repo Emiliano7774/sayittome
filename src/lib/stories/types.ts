@@ -5,6 +5,8 @@ export type StoryItem = {
   ownerUid: string;
   ownerUsername?: string;
   ownerPhoto?: string;
+  isAnonymousStory?: boolean;
+  anonSessionId?: string;
   texto?: string;
   mediaUrl?: string;
   mediaType: StoryMediaType;
@@ -24,6 +26,7 @@ export type StoryUserGroup = {
   ownerUid: string;
   ownerUsername: string;
   ownerPhoto: string;
+  isAnonymousStory?: boolean;
   stories: StoryItem[];
   hasUnseen: boolean;
 };

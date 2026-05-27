@@ -9,6 +9,7 @@ import { preloadStoryGroup } from "@/lib/stories/preload";
 import { refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import type { StoryItem } from "@/lib/stories/types";
 import { auth } from "@/lib/firebase";
+import { resolveStoryViewerId } from "@/lib/stories/anonStories";
 import { onAuthStateChanged } from "firebase/auth";
 
 export default function StoryUserPage() {
@@ -24,7 +25,7 @@ export default function StoryUserPage() {
 
     const unsub = onAuthStateChanged(auth, async (user) => {
       try {
-        const groups = await fetchActiveStoriesGrouped(user?.uid || "");
+        const groups = await fetchActiveStoriesGrouped(resolveStoryViewerId(user));
         const group =
           groups.find((g) => g.ownerUid === param) ||
           groups.find(
@@ -36,7 +37,7 @@ export default function StoryUserPage() {
           setStories(group.stories);
           setOwnerUsername(group.ownerUsername);
           preloadStoryGroup(group, 3);
-          refreshStoriesIndex(user?.uid || "", true).catch(() => {});
+          refreshStoriesIndex(resolveStoryViewerId(user), true).catch(() => {});
         }
       } catch (e) {
         console.error(e);

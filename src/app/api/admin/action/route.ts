@@ -8,6 +8,7 @@ import {
   patchFirestoreDoc,
   runCollectionQuery,
 } from "@/lib/firestore/rest";
+import { deleteOrphanProfile } from "@/lib/profile/cleanupOrphans";
 
 export const dynamic = "force-dynamic";
 
@@ -165,6 +166,14 @@ export async function POST(req: Request) {
         chatId: chatId || "",
         blockedBy: adminEmail,
       });
+    } else if (action === "delete_orphan_user" && uid) {
+      await deleteOrphanProfile(uid, adminEmail);
+    } else if (action === "cleanup_orphan_profiles") {
+      const { cleanupOrphanProfiles } = await import("@/lib/profile/cleanupOrphans");
+      const result = await cleanupOrphanProfiles(adminEmail, {
+        dryRun: body?.dryRun === true,
+      });
+      return NextResponse.json({ ok: true, ...result });
     } else {
       return NextResponse.json({ ok: false, error: "unknown action" }, { status: 400 });
     }

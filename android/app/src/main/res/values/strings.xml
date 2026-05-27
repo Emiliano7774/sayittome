@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SayItToMe</string>
+    <string name="title_activity_main">SayItToMe</string>
+    <string name="package_name">com.sayittome.app</string>
+    <string name="custom_url_scheme">com.sayittome.app</string>
+    <string name="admob_app_id">ca-app-pub-2444753148883536~7536175431</string>
+</resources>

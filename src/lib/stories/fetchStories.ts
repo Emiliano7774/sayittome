@@ -1,6 +1,7 @@
 import { collection, getDocs } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { fetchProfileStoryIdentity } from "@/lib/stories/storyAuthor";
 
 import type { StoryItem, StoryUserGroup } from "./types";
 
@@ -35,6 +36,8 @@ export async function fetchActiveStoriesGrouped(viewerUid = "") {
       ownerUid,
       ownerUsername: String(data.ownerUsername || ""),
       ownerPhoto: String(data.ownerPhoto || ""),
+      isAnonymousStory: data.isAnonymousStory === true || ownerUid.startsWith("anon_"),
+      anonSessionId: String(data.anonSessionId || ""),
       texto: String(data.texto || ""),
       mediaUrl: String(data.mediaUrl || ""),
       mediaType: (data.mediaType as StoryItem["mediaType"]) || "text",
@@ -70,6 +73,7 @@ export async function fetchActiveStoriesGrouped(viewerUid = "") {
       ownerUid,
       ownerUsername: stories[0]?.ownerUsername || ownerUid.slice(0, 8),
       ownerPhoto: stories[0]?.ownerPhoto || "",
+      isAnonymousStory: stories[0]?.isAnonymousStory === true,
       stories,
       hasUnseen,
     });
@@ -80,6 +84,38 @@ export async function fetchActiveStoriesGrouped(viewerUid = "") {
     const bMax = b.stories[b.stories.length - 1]?.createdAtMs || 0;
     return bMax - aMax;
   });
+
+  const registeredOwnerUids = [
+    ...new Set(
+      groups.filter((group) => !group.isAnonymousStory).map((group) => group.ownerUid),
+    ),
+  ];
+
+  if (registeredOwnerUids.length > 0) {
+    const profiles = await Promise.all(
+      registeredOwnerUids.map(async (ownerUid) => {
+        const profile = await fetchProfileStoryIdentity(ownerUid);
+        return [ownerUid, profile] as const;
+      }),
+    );
+
+    const profileByUid = new Map(profiles);
+
+    for (const group of groups) {
+      if (group.isAnonymousStory) continue;
+
+      const profile = profileByUid.get(group.ownerUid);
+      if (!profile?.username) continue;
+
+      group.ownerUsername = profile.username;
+      if (profile.photo) group.ownerPhoto = profile.photo;
+
+      for (const story of group.stories) {
+        story.ownerUsername = profile.username;
+        if (profile.photo) story.ownerPhoto = profile.photo;
+      }
+    }
+  }
 
   return groups;
 }

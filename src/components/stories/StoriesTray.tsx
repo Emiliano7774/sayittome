@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import StoryRing from "@/components/stories/StoryRing";
 import { useT } from "@/contexts/LocaleContext";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
+import { storyDisplayName } from "@/lib/stories/storyDisplay";
 import type { StoryUserGroup } from "@/lib/stories/types";
 
 type Props = {
@@ -52,13 +53,13 @@ export default function StoriesTray({ groups, showAdd = true }: Props) {
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-lg font-black text-white/50">
-                  {group.ownerUsername.slice(0, 1).toUpperCase()}
+                  {storyDisplayName(group, t).slice(0, 1).toUpperCase()}
                 </div>
               )}
             </div>
           </StoryRing>
           <span className="max-w-[72px] truncate text-sm font-bold text-white/70">
-            {group.ownerUsername}
+            {storyDisplayName(group, t)}
           </span>
         </Link>
       ))}

@@ -16,9 +16,11 @@ import {
   buildProfileAnonChatId,
   inboxDedupeKey,
   isProfileAnonChatId,
+  parseProfileAnonChatId,
   usernameHintFromAnonChatId,
 } from "@/lib/chat/anonChatId";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
+import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getSessionChatIds } from "@/lib/chat/sessionChats";
 
@@ -27,7 +29,10 @@ export type InboxChat = {
   targetUsername?: string;
   receptorUsername?: string;
   otherUsername?: string;
+  targetPhoto?: string;
   lastMessage?: string;
+  lastMessageSender?: string;
+  readBy?: Record<string, boolean>;
   updatedAt?: { toMillis?: () => number };
   unreadCounts?: Record<string, number>;
   canonicalChatId?: string;
@@ -171,25 +176,44 @@ export function useChatsInbox() {
 
       for (const chat of all) {
         if (cancelled) return;
+        if (!isVisibleInboxChat(chat)) continue;
 
         const username = chat.targetUsername || chat.receptorUsername;
         if (!username || !isProfileAnonChatId(chat.id)) continue;
 
-        const canonicalId = buildProfileAnonChatId(anonSenderId, username);
-        if (chat.id === canonicalId) continue;
+        const chatAnonSender = parseProfileAnonChatId(chat.id).senderId;
+        const targetId =
+          chatAnonSender.startsWith("anon_")
+            ? chat.id
+            : buildProfileAnonChatId(anonSenderId, username);
 
-        const legacyIds = [
-          ...buildLegacyProfileChatIds(anonSenderId, username),
-          ...(uid ? buildLegacyProfileChatIds(uid, username) : []),
-          chat.id,
-        ];
+        if (
+          chatAnonSender.startsWith("anon_") &&
+          chatAnonSender !== anonSenderId &&
+          chat.id !== buildProfileAnonChatId(anonSenderId, username)
+        ) {
+          continue;
+        }
+
+        const legacyIds = Array.from(
+          new Set([
+            ...buildLegacyProfileChatIds(anonSenderId, username),
+            ...(uid ? buildLegacyProfileChatIds(uid, username) : []),
+            chat.id,
+          ]),
+        ).filter((id) => id && id !== targetId);
+
+        if (legacyIds.length === 0 && chat.id === targetId) continue;
 
         try {
-          await migrateToCanonicalChat(canonicalId, legacyIds, {
-            id: canonicalId,
-            canonicalChatId: canonicalId,
+          await migrateToCanonicalChat(targetId, legacyIds, {
+            id: targetId,
+            canonicalChatId: targetId,
             targetUsername: username,
             receptorUsername: username,
+            anonSessionId: chatAnonSender.startsWith("anon_")
+              ? chatAnonSender
+              : anonSenderId,
           });
         } catch (e) {
           console.error("inbox migrate", chat.id, e);
@@ -205,7 +229,7 @@ export function useChatsInbox() {
   }, [chats, sessionChats, uid, loading]);
 
   const sortedChats = useMemo(() => {
-    return dedupeChats([...chats, ...sessionChats]);
+    return dedupeChats([...chats, ...sessionChats]).filter(isVisibleInboxChat);
   }, [chats, sessionChats]);
 
   return {

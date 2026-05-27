@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -22,6 +22,8 @@ import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth, db, storage } from "@/lib/firebase";
+import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
+import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import {
   bindWhipSoundUnlock,
@@ -622,10 +624,10 @@ if (uxMode === "classic") {
     return (
       <main className="flex min-h-screen flex-col bg-[#050505] text-white">
         <header className="sticky top-0 z-40 border-b border-white/10 bg-black/90 backdrop-blur">
-          <div className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-4">
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-4">
             <Link
               href="/chats"
-              className="rounded-full border border-white/10 bg-[#111111] px-4 py-2 text-xs font-black"
+              className="shrink-0 rounded-full border border-white/10 bg-[#111111] px-4 py-2 text-xs font-black"
             >
               Volver
             </Link>
@@ -640,7 +642,7 @@ if (uxMode === "classic") {
               </h1>
             </div>
 
-            <UxModeSwitcher />
+            <UxModeSwitcher className="ml-auto shrink-0" />
           </div>
         </header>
 
@@ -648,15 +650,19 @@ if (uxMode === "classic") {
           <div className="space-y-3">
             {visibleMessages.map((message: any) => {
               const isMine = message.fromUid === currentUid;
+              const receiptStatus = resolveMessageReceiptStatus({
+                mine: isMine,
+                readBy: message.readBy,
+                senderId: currentUid,
+              });
 
               return (
                 <div
                   key={message.id}
-                  className={
-                    isMine
-                      ? "flex justify-end"
-                      : "flex justify-start"
-                  }
+                  className={[
+                    "flex flex-col",
+                    isMine ? "items-end" : "items-start",
+                  ].join(" ")}
                 >
                   <div
                     className={
@@ -667,6 +673,8 @@ if (uxMode === "classic") {
                   >
                     {message.texto || "Mensaje"}
                   </div>
+
+                  {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
                 </div>
               );
             })}
@@ -710,10 +718,15 @@ if (uxMode === "classic") {
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {visibleMessages.map((msg) => {
             const mine = msg.fromUid === currentUid;
-            const readCount = Object.keys(msg.readBy || {}).length;
-            const viewed = readCount >= 2;
             const isSending = msg.status === "sending";
             const hasError = msg.status === "error";
+            const receiptStatus = resolveMessageReceiptStatus({
+              mine,
+              readBy: msg.readBy,
+              senderId: currentUid,
+              isSending,
+              hasError,
+            });
 
             const isReplyingSelected =
               replyingTo &&
@@ -830,19 +843,7 @@ if (uxMode === "classic") {
                   )}
                 </button>
 
-                {mine && (
-                  <p className="mt-1 text-right text-[11px] font-bold text-zinc-500">
-                    {hasError
-                      ? "Error al enviar"
-                      : isSending
-                        ? hasMedia
-                          ? "Subiendo..."
-                          : "Enviando..."
-                        : viewed
-                          ? "Visto"
-                          : "Entregado"}
-                  </p>
-                )}
+                {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
 
                 {!mine && (
                   <p className="mt-1 text-left text-[10px] font-bold text-zinc-700">

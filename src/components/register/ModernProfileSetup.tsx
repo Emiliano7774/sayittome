@@ -6,7 +6,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
 import HeaderControls from "@/components/HeaderControls";
-import ProvinceField from "@/components/register/ProvinceField";
+import CountryProvinceField from "@/components/register/CountryProvinceField";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
 import {
@@ -24,6 +24,7 @@ export default function ModernProfileSetup() {
   const [saving, setSaving] = useState(false);
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
+  const [pais, setPais] = useState("AR");
   const [provincia, setProvincia] = useState("");
   const [mostrarProvincia, setMostrarProvincia] = useState(false);
   const [error, setError] = useState("");
@@ -51,6 +52,7 @@ export default function ModernProfileSetup() {
         const data = snap.data();
         setUsername(String(data.username || data.nombre || ""));
         setBio(String(data.bio || data.descripcion || ""));
+        setPais(String(data.pais || "AR").toUpperCase());
         setProvincia(String(data.provincia || ""));
         setMostrarProvincia(data.mostrarProvincia === true);
       }
@@ -75,7 +77,7 @@ export default function ModernProfileSetup() {
       return;
     }
 
-    if (!provincia) {
+    if (!pais || !provincia) {
       setError(t("setup_province_required"));
       return;
     }
@@ -100,6 +102,7 @@ export default function ModernProfileSetup() {
           bio: bio.trim(),
           descripcion: bio.trim(),
           provincia,
+          pais,
           mostrarProvincia,
           profileSetupComplete: true,
           perfilCompleto: false,
@@ -128,7 +131,7 @@ export default function ModernProfileSetup() {
   return (
     <main className="min-h-screen overflow-hidden bg-black text-white">
       <section className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8">
-        <header className="flex items-center justify-between">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.45em] text-fuchsia-300">
               SAYITTOME
@@ -170,9 +173,11 @@ export default function ModernProfileSetup() {
                 />
               </label>
 
-              <ProvinceField
+              <CountryProvinceField
+                pais={pais}
                 provincia={provincia}
                 mostrarProvincia={mostrarProvincia}
+                onPaisChange={setPais}
                 onProvinciaChange={setProvincia}
                 onMostrarProvinciaChange={setMostrarProvincia}
                 variant="modern"

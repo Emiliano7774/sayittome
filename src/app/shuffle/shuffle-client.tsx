@@ -1,8 +1,14 @@
 "use client";
 
 import { Search, SlidersHorizontal, User } from "lucide-react";
+import { useEffect } from "react";
 
+import ClassicFollowingStrip from "@/components/shuffle/ClassicFollowingStrip";
+import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
+import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
+import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ShuffleSlots from "@/components/shuffle/ShuffleSlots";
+import { useFollowingProfiles } from "@/hooks/useFollowingProfiles";
 import { useShufflePool } from "@/hooks/useShufflePool";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -10,52 +16,96 @@ import { useT } from "@/contexts/LocaleContext";
 export default function ShuffleClient() {
   const t = useT();
   const pool = useShufflePool();
+  const following = useFollowingProfiles();
+
+  useEffect(() => {
+    document.body.classList.add("sayittome-shuffle-route");
+    return () => {
+      document.body.classList.remove("sayittome-shuffle-route");
+    };
+  }, []);
 
   return (
-    <main data-scroll-root className="min-h-screen bg-black text-white pb-32">
-      <section className="w-full px-6 md:px-10">
-        <div className="pt-8 pb-7 border-b border-white/10">
-          <div className="h-20 rounded-[18px] bg-[#222] flex items-center px-7 gap-5">
-            <Search size={44} className="text-white/40 shrink-0" />
+    <main
+      data-scroll-root
+      className="sayittome-shuffle-scroll-classic min-h-screen bg-black text-white"
+    >
+      <ShuffleAdsBootstrap />
+      <section className="w-full px-4 md:px-8">
+        <ClassicUxModeBar className="pt-[max(0.75rem,env(safe-area-inset-top))] pb-2" />
+
+        <div className="border-b border-white/10 pb-5 pt-2">
+          <div className="flex h-12 items-center gap-3 rounded-2xl bg-[#141414] px-4">
+            <Search size={20} className="shrink-0 text-white/35" />
 
             <input
               value={pool.search}
               onChange={(e) => pool.handleSearchChange(e.target.value)}
               placeholder={t("shuffle_classic_search")}
-              className="w-full bg-transparent outline-none text-3xl font-black text-white placeholder:text-white/25"
+              className="w-full bg-transparent text-base font-bold text-white outline-none placeholder:text-white/25"
             />
           </div>
 
-          <div className="mt-8 flex items-center gap-7">
+          <ClassicFollowingStrip
+            profiles={following.profiles}
+            loading={following.loading}
+            hasSession={following.hasSession}
+          />
+
+          <div className="mt-5 flex items-center gap-4">
             <button
               type="button"
-              onClick={pool.handleShuffleClick}
-              className="w-20 h-20 rounded-full border border-white/10 flex items-center justify-center active:scale-95 transition"
-              aria-label={t("nav_shuffle_refresh")}
+              onClick={pool.openFilters}
+              className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/10 transition active:scale-95"
+              aria-label={t("shuffle_filters_title")}
             >
-              <SlidersHorizontal size={34} />
+              <SlidersHorizontal size={20} />
+              {pool.filtersActiveCount > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#8C84FF]" />
+              ) : null}
             </button>
 
-            <h1 className="text-5xl font-black">{t("shuffle_filter")}</h1>
+            <button
+              type="button"
+              onClick={pool.openFilters}
+              className="min-w-0 flex-1 text-left"
+            >
+              <h1 className="text-2xl font-black tracking-[-0.04em]">{t("shuffle_filters_title")}</h1>
+            </button>
           </div>
 
-          <div className="mt-7 flex items-center justify-between text-white/45 font-black text-2xl">
+          <button
+            type="button"
+            onClick={pool.handleShuffleClick}
+            className="mt-4 flex w-full items-center justify-between text-sm font-bold text-white/38 transition active:text-white/55"
+          >
             <span>{t("shuffle_change_result")}</span>
 
-            <span className="flex items-center gap-3">
-              <User size={24} />
-              {t("shuffle_people_count", { count: String(pool.totalLive) })}
+            <span className="flex items-center gap-2">
+              <User size={18} />
+              {t("shuffle_people_count", {
+                count: String(pool.livePeopleCount),
+              })}
             </span>
-          </div>
+          </button>
         </div>
 
+        <ShuffleFiltersSheet
+          open={pool.filtersOpen}
+          applied={pool.filters}
+          variant="classic"
+          onClose={pool.closeFilters}
+          onApply={pool.applyFilters}
+          onClear={pool.clearFilters}
+        />
+
         {pool.loading && pool.listReady === false ? (
-          <div className="h-[50vh] flex items-center justify-center">
-            <p className="text-4xl font-black text-white/35">{t("common_loading")}</p>
+          <div className="flex h-[42vh] items-center justify-center">
+            <p className="text-lg font-black text-white/35">{t("common_loading")}</p>
           </div>
         ) : !pool.listReady ? (
-          <div className="h-[50vh] flex flex-col items-center justify-center px-8 text-center">
-            <p className="text-4xl font-black text-white/35">{t("shuffle_no_profiles")}</p>
+          <div className="flex h-[42vh] flex-col items-center justify-center px-6 text-center">
+            <p className="text-lg font-black text-white/35">{t("shuffle_no_profiles")}</p>
             {pool.errorText ? (
               <p className="mt-4 max-w-3xl text-white/35 font-bold">{pool.errorText}</p>
             ) : null}

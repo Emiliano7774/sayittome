@@ -62,6 +62,13 @@ export function setShuffleSlots(
     dirtySlots.add(slot);
   }
 
+  for (let slot = n; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    if (slots[slot] !== null) {
+      slots[slot] = null;
+      dirtySlots.add(slot);
+    }
+  }
+
   scheduleFlush();
 }
 

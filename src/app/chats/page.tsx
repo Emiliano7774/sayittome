@@ -4,10 +4,12 @@ import { useUxMode } from "@/contexts/UxModeContext";
 import ClassicChatsInbox from "@/components/chats/ClassicChatsInbox";
 import ModernChatsInbox from "@/components/chats/ModernChatsInbox";
 import { useChatsInbox } from "@/hooks/useChatsInbox";
+import { useChatsSelection } from "@/hooks/useChatsSelection";
 
 export default function ChatsPage() {
   const { uxMode } = useUxMode();
   const inbox = useChatsInbox();
+  const selection = useChatsSelection(inbox.sortedChats);
 
   if (uxMode === "modern") {
     return (
@@ -15,6 +17,7 @@ export default function ChatsPage() {
         sortedChats={inbox.sortedChats}
         uid={inbox.uid}
         isAnonymousSession={inbox.isAnonymousSession}
+        selection={selection}
       />
     );
   }
@@ -24,6 +27,7 @@ export default function ChatsPage() {
       sortedChats={inbox.sortedChats}
       uid={inbox.uid}
       isAnonymousSession={inbox.isAnonymousSession}
+      selection={selection}
     />
   );
 }

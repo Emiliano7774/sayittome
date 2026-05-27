@@ -19,6 +19,7 @@ import {
   markModerationUserSeen,
 } from "@/lib/moderation/markSeen";
 import { useUserModerationChats } from "@/hooks/useClassicModerationFeed";
+import { usePhoneShell } from "@/hooks/usePhoneShell";
 import type { ModerationChatRow } from "@/lib/moderation/types";
 
 type MessageRow = {
@@ -32,11 +33,13 @@ export default function ClassicModerationUserPage() {
   const params = useParams<{ username: string }>();
   const router = useRouter();
   const admin = useAdminApi();
+  const phoneShell = usePhoneShell();
   const username = decodeURIComponent(String(params.username || ""));
 
   const { chats, loading } = useUserModerationChats(username);
   const [selectedChatId, setSelectedChatId] = useState("");
   const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [mobilePane, setMobilePane] = useState<"list" | "messages">("list");
 
   const sections = useMemo(
     () => groupChatsByTemporal(chats, username),
@@ -87,7 +90,11 @@ export default function ClassicModerationUserPage() {
   function openChat(chat: ModerationChatRow) {
     setSelectedChatId(chat.id);
     void markModerationChatSeen(chat.id);
+    if (phoneShell) setMobilePane("messages");
   }
+
+  const showList = !phoneShell || mobilePane === "list";
+  const showMessages = !phoneShell || mobilePane === "messages";
 
   return (
     <AdminShell title={`Revisar · ${username}`}>
@@ -108,10 +115,11 @@ export default function ClassicModerationUserPage() {
       </div>
 
       {loading ? (
-        <p className="text-2xl font-bold text-white/35">Cargando historial...</p>
+        <p className="text-lg font-bold text-white/35 md:text-2xl">Cargando historial...</p>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-6">
+        <div className="grid gap-4 md:gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          {showList ? (
+          <div className="space-y-4 md:space-y-6">
             {sections.map((section) => (
               <section key={section.id} className="border border-white/10 bg-[#0d0d0d]">
                 <div className="border-b border-white/10 px-4 py-3">
@@ -165,8 +173,20 @@ export default function ClassicModerationUserPage() {
               </section>
             ))}
           </div>
+          ) : null}
 
-          <div className="border border-white/10 bg-[#111] p-4">
+          {showMessages ? (
+          <div className="border border-white/10 bg-[#111] p-3 md:p-4">
+            {phoneShell ? (
+              <button
+                type="button"
+                onClick={() => setMobilePane("list")}
+                className="mb-3 border border-white/15 bg-[#0d0d0d] px-3 py-2 text-xs font-bold"
+              >
+                ← Volver a conversaciones
+              </button>
+            ) : null}
+
             {selectedChatId ? (
               <>
                 <div className="mb-4 flex flex-wrap gap-2 border-b border-white/10 pb-4">
@@ -196,7 +216,7 @@ export default function ClassicModerationUserPage() {
                   </Link>
                 </div>
 
-                <div className="max-h-[70vh] space-y-2 overflow-y-auto">
+                <div className="max-h-[58vh] space-y-2 overflow-y-auto md:max-h-[70vh]">
                   {messages.map((msg) => (
                     <div key={msg.id} className="border border-white/8 bg-[#0d0d0d] p-3">
                       <p className="font-bold text-white/80">
@@ -223,6 +243,7 @@ export default function ClassicModerationUserPage() {
               <p className="font-bold text-white/40">Seleccioná una conversación.</p>
             )}
           </div>
+          ) : null}
         </div>
       )}
     </AdminShell>

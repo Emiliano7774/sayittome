@@ -1,4 +1,5 @@
-﻿import { clearSessionChats } from "@/lib/chat/sessionChats";
+import { clearSessionChats } from "@/lib/chat/sessionChats";
+import { deleteAnonymousStoriesForSession } from "@/lib/stories/anonStories";
 
 const ANON_KEY = "sayittome_anon_session";
 const ANON_RESET_FLAG = "sayittome_anon_reset_pending";
@@ -55,8 +56,16 @@ export function consumeAnonSessionReset() {
 
 /** Discards the current anonymous identity and session chats. */
 export function beginFreshAnonSession() {
+  const oldSession =
+    typeof window !== "undefined" ? sessionStorage.getItem(ANON_KEY) : null;
+
   resetAnonSession();
   clearSessionChats();
+
+  if (oldSession) {
+    void deleteAnonymousStoriesForSession(oldSession);
+  }
+
   return getAnonSessionId();
 }
 

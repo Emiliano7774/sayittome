@@ -14,7 +14,7 @@ export default function ProfileEntryGate() {
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
       <div className="mx-auto w-full max-w-lg px-5 py-8">
-        <header className="mb-8 flex items-center justify-between">
+        <header className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p
               className={

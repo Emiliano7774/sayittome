@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, X } from "lucide-react";
+import { Heart, Trash2, X } from "lucide-react";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   doc,
   increment,
@@ -20,6 +21,9 @@ import {
   getLikerId,
   toggleProfileLike,
 } from "@/lib/likes/profileLike";
+import { deleteStoryById } from "@/lib/stories/deleteStory";
+import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories";
+import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import type { StoryItem } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -35,23 +39,43 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const router = useRouter();
   const t = useT();
   const [index, setIndex] = useState(0);
+  const [localStories, setLocalStories] = useState(stories);
   const [paused, setPaused] = useState(false);
   const [blurLocked, setBlurLocked] = useState(false);
   const [progress, setProgress] = useState(0);
   const [liked, setLiked] = useState(false);
   const [profileLikes, setProfileLikes] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
+  const [viewerUid, setViewerUid] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const timerRef = useRef<number | null>(null);
   const startedRef = useRef(false);
   const viewedRef = useRef<Set<string>>(new Set());
 
-  const current = stories[index];
+  useEffect(() => {
+    setLocalStories(stories);
+    setIndex(0);
+  }, [stories]);
+
+  const current = localStories[index];
   const resolvedOwnerUid = ownerUid || current?.ownerUid || "";
+  const anonymousStory = current ? isAnonymousStory(current) : false;
+  const displayName = current
+    ? storyDisplayName(current, t)
+    : storyDisplayName({ ownerUsername, ownerUid: resolvedOwnerUid }, t);
   const needsBlur = current ? storyRequiresBlur(current) : false;
   const isPaused = paused || (needsBlur && blurLocked);
+  const canDelete = current ? canManageStory(current, viewerUid) : false;
 
   useEffect(() => {
-    if (!resolvedOwnerUid) return;
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setViewerUid(resolveStoryViewerId(user));
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!resolvedOwnerUid || anonymousStory) return;
 
     const likerId = getLikerId();
     const unsubLike = onSnapshot(
@@ -72,7 +96,7 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
       unsubLike();
       unsubProfile();
     };
-  }, [resolvedOwnerUid]);
+  }, [resolvedOwnerUid, anonymousStory]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -106,22 +130,22 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
 
   const goNext = useCallback(() => {
     setProgress(0);
-    setBlurLocked(storyRequiresBlur(stories[Math.min(index + 1, stories.length - 1)] || current));
+    setBlurLocked(storyRequiresBlur(localStories[Math.min(index + 1, localStories.length - 1)] || current));
 
-    if (index >= stories.length - 1) {
+    if (index >= localStories.length - 1) {
       router.back();
       return;
     }
 
     setIndex((i) => i + 1);
-  }, [current, index, router, stories]);
+  }, [current, index, localStories, router]);
 
   const goPrev = useCallback(() => {
     setProgress(0);
     const prevIndex = Math.max(0, index - 1);
-    setBlurLocked(storyRequiresBlur(stories[prevIndex]));
+    setBlurLocked(storyRequiresBlur(localStories[prevIndex]));
     setIndex(prevIndex);
-  }, [index, stories]);
+  }, [index, localStories]);
 
   useEffect(() => {
     if (!current || isPaused) {
@@ -190,6 +214,35 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     }
   }
 
+  async function handleDeleteStory() {
+    if (!current || !canDelete || deleting) return;
+
+    const confirmed = window.confirm(t("stories_delete_confirm"));
+    if (!confirmed) return;
+
+    setDeleting(true);
+    clearTimer();
+
+    try {
+      await deleteStoryById(current.id);
+
+      const nextStories = localStories.filter((story) => story.id !== current.id);
+      if (nextStories.length === 0) {
+        router.push("/stories");
+        return;
+      }
+
+      setLocalStories(nextStories);
+      setIndex((value) => Math.min(value, nextStories.length - 1));
+      setProgress(0);
+    } catch (error) {
+      console.error(error);
+      window.alert(t("stories_delete_fail"));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (!current) {
     return null;
   }
@@ -197,7 +250,7 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   return (
     <main className="fixed inset-0 z-[99999] bg-black text-white">
       <div className="absolute left-0 right-0 top-0 z-40 flex gap-1 px-3 pb-2 pt-4">
-        {stories.map((story, i) => (
+        {localStories.map((story, i) => (
           <div
             key={story.id}
             className="h-1 flex-1 overflow-hidden rounded-full bg-white/25"
@@ -222,9 +275,24 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         <X size={26} />
       </button>
 
-      <p className="absolute left-4 top-6 z-50 text-lg font-black">
-        @{ownerUsername || current.ownerUsername || t("stories_title")}
-      </p>
+      {canDelete ? (
+        <button
+          type="button"
+          onClick={handleDeleteStory}
+          disabled={deleting}
+          className="absolute right-20 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-red-300 disabled:opacity-50"
+          aria-label={t("stories_delete")}
+        >
+          <Trash2 size={22} />
+        </button>
+      ) : null}
+
+      <div className="absolute left-4 top-6 z-50">
+        <p className="text-lg font-black">{displayName}</p>
+        {anonymousStory ? (
+          <p className="text-xs font-bold text-white/55">{t("stories_anonymous_caption")}</p>
+        ) : null}
+      </div>
 
       <button
         type="button"
@@ -292,21 +360,23 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
       </div>
 
       <div className="absolute bottom-8 left-0 right-0 z-50 flex items-center justify-center gap-6 px-6">
-        <button
-          type="button"
-          onClick={handleLike}
-          disabled={likeBusy || getLikerId() === resolvedOwnerUid}
-          className={[
-            "flex items-center gap-2 rounded-full px-6 py-3 text-sm font-black transition",
-            liked
-              ? "bg-pink-500 text-white shadow-[0_0_30px_rgba(236,72,153,.35)]"
-              : "bg-white/10 text-white",
-            likeBusy ? "opacity-60" : "",
-          ].join(" ")}
-        >
-          <Heart size={18} fill={liked ? "currentColor" : "none"} />
-          {liked ? t("stories_liked") : t("settings_likes")} · {profileLikes}
-        </button>
+        {!anonymousStory ? (
+          <button
+            type="button"
+            onClick={handleLike}
+            disabled={likeBusy || getLikerId() === resolvedOwnerUid}
+            className={[
+              "flex items-center gap-2 rounded-full px-6 py-3 text-sm font-black transition",
+              liked
+                ? "bg-pink-500 text-white shadow-[0_0_30px_rgba(236,72,153,.35)]"
+                : "bg-white/10 text-white",
+              likeBusy ? "opacity-60" : "",
+            ].join(" ")}
+          >
+            <Heart size={18} fill={liked ? "currentColor" : "none"} />
+            {liked ? t("stories_liked") : t("settings_likes")} · {profileLikes}
+          </button>
+        ) : null}
         <span className="text-sm font-bold text-white/50">
           {current.viewCount || 0} {t("stories_views")}
         </span>

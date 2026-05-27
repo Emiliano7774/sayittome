@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import LanguagePromptModal from "@/components/i18n/LanguagePromptModal";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { getMessage, localeLabelKey, type MessageKey } from "@/lib/i18n/getMessage";
 import {
   APP_LOCALES,
@@ -64,7 +65,14 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
 
         setSuggestedLocale(data.suggestedLocale);
 
-        const promptDone = localStorage.getItem(LOCALE_PROMPT_KEY) === "1";
+        const nativeShell = isNativeAppShell();
+        const promptDone =
+          nativeShell || localStorage.getItem(LOCALE_PROMPT_KEY) === "1";
+
+        if (nativeShell) {
+          localStorage.setItem(LOCALE_PROMPT_KEY, "1");
+        }
+
         if (!promptDone) {
           setShowPrompt(true);
           return;

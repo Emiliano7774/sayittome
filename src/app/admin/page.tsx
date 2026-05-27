@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
+import AdminRegistrationsPanel from "@/components/admin/AdminRegistrationsPanel";
 import { auth } from "@/lib/firebase";
 
 type DashboardStats = {
@@ -60,6 +61,7 @@ export default function AdminDashboardPage() {
 
   return (
     <AdminShell title="Dashboard">
+      <AdminRegistrationsPanel adminEmail={admin.email} />
       {loading ? (
         <p className="text-white/40 font-black text-2xl">Cargando métricas...</p>
       ) : (

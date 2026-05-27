@@ -6,7 +6,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
 import HeaderControls from "@/components/HeaderControls";
-import ProvinceField from "@/components/register/ProvinceField";
+import CountryProvinceField from "@/components/register/CountryProvinceField";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
 import {
@@ -24,6 +24,7 @@ export default function ClassicProfileSetup() {
   const [saving, setSaving] = useState(false);
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
+  const [pais, setPais] = useState("AR");
   const [provincia, setProvincia] = useState("");
   const [mostrarProvincia, setMostrarProvincia] = useState(false);
   const [error, setError] = useState("");
@@ -51,6 +52,7 @@ export default function ClassicProfileSetup() {
         const data = snap.data();
         setUsername(String(data.username || data.nombre || ""));
         setBio(String(data.bio || data.descripcion || ""));
+        setPais(String(data.pais || "AR").toUpperCase());
         setProvincia(String(data.provincia || ""));
         setMostrarProvincia(data.mostrarProvincia === true);
       }
@@ -75,7 +77,7 @@ export default function ClassicProfileSetup() {
       return;
     }
 
-    if (!provincia) {
+    if (!pais || !provincia) {
       setError(t("setup_province_required"));
       return;
     }
@@ -100,6 +102,7 @@ export default function ClassicProfileSetup() {
           bio: bio.trim(),
           descripcion: bio.trim(),
           provincia,
+          pais,
           mostrarProvincia,
           profileSetupComplete: true,
           perfilCompleto: false,
@@ -128,7 +131,7 @@ export default function ClassicProfileSetup() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6 font-[Arial,Helvetica,sans-serif] tracking-[-0.015em]">
-        <header className="mb-9 flex items-center justify-between">
+        <header className="mb-9 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-300 via-violet-500 to-[#4f35ff]" />
             <p className="text-base font-medium tracking-[-0.02em] text-zinc-100">{t("setup_title")}</p>
@@ -170,9 +173,11 @@ export default function ClassicProfileSetup() {
               />
             </label>
 
-            <ProvinceField
+            <CountryProvinceField
+              pais={pais}
               provincia={provincia}
               mostrarProvincia={mostrarProvincia}
+              onPaisChange={setPais}
               onProvinciaChange={setProvincia}
               onMostrarProvinciaChange={setMostrarProvincia}
               variant="classic"

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 import { useUxMode } from "@/contexts/UxModeContext";
@@ -12,7 +13,20 @@ export default function AppNavigation() {
   const { uxMode } = useUxMode();
   const pathname = usePathname();
 
-  if (pathname === "/" || HIDE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  const navHidden =
+    pathname === "/" ||
+    HIDE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
+    (uxMode === "modern" && pathname === "/shuffle");
+
+  useEffect(() => {
+    document.body.classList.toggle("sayittome-has-bottom-nav", !navHidden);
+
+    return () => {
+      document.body.classList.remove("sayittome-has-bottom-nav");
+    };
+  }, [navHidden]);
+
+  if (navHidden) {
     return null;
   }
 

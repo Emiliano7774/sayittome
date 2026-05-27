@@ -5,16 +5,17 @@ import { useParams, useSearchParams } from "next/navigation";
 
 import ProfileAnonChat from "@/components/chat/ProfileAnonChat";
 import { ChatErrorScreen, ChatLoadingScreen } from "@/components/chat/ChatScreens";
+import { maybeMigrateExistingProfileChat, chatHasActivity } from "@/lib/chat/migrate";
+import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
+import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
   buildLegacyProfileChatIds,
   buildProfileAnonChatId,
   isProfileAnonChatId,
+  parseProfileAnonChatId,
   usernameHintFromAnonChatId,
 } from "@/lib/chat/anonChatId";
-import { migrateToCanonicalChat } from "@/lib/chat/migrate";
-import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
-import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { registerSessionChat } from "@/lib/chat/sessionChats";
 import { useT } from "@/contexts/LocaleContext";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -70,9 +71,18 @@ function ProfileAnonChatRoute() {
         const profile = await fetchProfileByUsername(resolvedUsername);
         const canonicalUsername = String(profile?.username || resolvedUsername);
         const targetUid = String(profile?.uid || "");
-        const canonicalId = buildProfileAnonChatId(senderId, canonicalUsername);
+        let canonicalId = buildProfileAnonChatId(senderId, canonicalUsername);
+
+        if (isProfileAnonChatId(rawChatId) && (await chatHasActivity(rawChatId))) {
+          canonicalId = rawChatId;
+        }
+
+        const effectiveSender = isProfileAnonChatId(canonicalId)
+          ? parseProfileAnonChatId(canonicalId).senderId
+          : senderId;
+
         const legacyIds = [
-          ...buildLegacyProfileChatIds(senderId, canonicalUsername, targetUid),
+          ...buildLegacyProfileChatIds(effectiveSender, canonicalUsername, targetUid),
           ...(firebaseUid
             ? buildLegacyProfileChatIds(
                 firebaseUid,
@@ -80,23 +90,28 @@ function ProfileAnonChatRoute() {
                 targetUid,
               )
             : []),
+          ...(effectiveSender !== senderId
+            ? buildLegacyProfileChatIds(senderId, canonicalUsername, targetUid)
+            : []),
         ];
 
         if (rawChatId !== canonicalId) {
           legacyIds.push(rawChatId);
         }
 
-        await migrateToCanonicalChat(canonicalId, legacyIds, {
+        await maybeMigrateExistingProfileChat(canonicalId, legacyIds, {
           id: canonicalId,
           canonicalChatId: canonicalId,
           targetUsername: canonicalUsername,
           receptorUsername: canonicalUsername,
           receptorUid: targetUid || null,
           targetUid: targetUid || null,
+          anonSessionId: effectiveSender.startsWith("anon_")
+            ? effectiveSender
+            : senderId,
           schemaVersion: 2,
+          targetPhoto: resolveProfilePhoto(profile) || null,
         });
-
-        registerSessionChat(canonicalId);
 
         if (cancelled) return;
 

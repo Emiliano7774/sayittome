@@ -10,6 +10,17 @@ export type ShuffleProfile = {
   online?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;
+  provincia?: string;
+  ciudad?: string;
+  pais?: string;
+  sexo?: string;
+  edad?: number;
+  intereses?: string[];
+  etiquetas?: string[];
+  fotos?: string[];
+  searchKeywords?: string[];
+  historiasActivasCount?: number;
+  hasActiveStories?: boolean;
   /** Precomputado al cargar el pool — no recalcular en cada render de fila. */
   showOnline: boolean;
   blurPhoto: boolean;

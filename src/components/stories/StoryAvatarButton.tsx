@@ -8,12 +8,13 @@ import StoryRing from "@/components/stories/StoryRing";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 
-type Size = "sm" | "md" | "lg" | "hero";
+type Size = "sm" | "md" | "lg" | "xl" | "hero";
 
 const SIZE_CLASS: Record<Size, string> = {
   sm: "w-12 h-12",
   md: "w-16 h-16",
   lg: "w-28 h-28 md:w-32 md:h-32",
+  xl: "w-40 h-40 md:w-44 md:h-44",
   hero: "w-full h-full",
 };
 
@@ -28,6 +29,8 @@ type Props = {
   showOnline?: boolean;
   className?: string;
   iconSize?: number;
+  /** En chat/perfil: abrir perfil aunque haya historias activas. */
+  preferProfile?: boolean;
   onOpenProfile?: () => void;
   children?: ReactNode;
 };
@@ -42,6 +45,7 @@ function StoryAvatarButton({
   showOnline = false,
   className = "",
   iconSize = 64,
+  preferProfile = false,
   onOpenProfile,
   children,
 }: Props) {
@@ -55,7 +59,7 @@ function StoryAvatarButton({
   }, [ownerUid, username, status.hasActive, status.storyCount]);
 
   function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
-    if (status.hasActive && status.storyPath) {
+    if (status.hasActive && status.storyPath && !preferProfile) {
       event.preventDefault();
       event.stopPropagation();
       router.push(status.storyPath);

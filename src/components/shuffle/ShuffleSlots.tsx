@@ -2,18 +2,21 @@
 
 import { memo } from "react";
 
-import { getShuffleSlotCount } from "@/lib/shuffle/shuffleSlotsStore";
-import ShuffleSlotRow from "./ShuffleSlotRow";
-
-const SLOT_COUNT = getShuffleSlotCount();
+import ClassicShuffleProfileRow from "@/components/shuffle/ClassicShuffleProfileRow";
+import ShuffleFeedWithNativeAds from "@/components/shuffle/ShuffleFeedWithNativeAds";
 
 function ShuffleSlots() {
   return (
-    <div data-shuffle-list data-stm-no-polish>
-      {Array.from({ length: SLOT_COUNT }, (_, slot) => (
-        <ShuffleSlotRow key={slot} slot={slot} />
-      ))}
-    </div>
+    <ShuffleFeedWithNativeAds
+      mode="classic"
+      variant="list"
+      renderProfile={(profile, index) => (
+        <ClassicShuffleProfileRow
+          key={`${profile.uid}-${profile.username}-${index}`}
+          profile={profile}
+        />
+      )}
+    />
   );
 }
 

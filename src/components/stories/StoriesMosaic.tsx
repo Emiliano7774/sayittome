@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Film } from "lucide-react";
 
+import { useT } from "@/contexts/LocaleContext";
+import { storyDisplayName } from "@/lib/stories/storyDisplay";
 import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
 
 type Props = {
@@ -10,8 +12,17 @@ type Props = {
   title?: string;
 };
 
-function StoryTile({ story, username }: { story: StoryItem; username: string }) {
+function StoryTile({
+  story,
+  group,
+  t,
+}: {
+  story: StoryItem;
+  group: StoryUserGroup;
+  t: ReturnType<typeof useT>;
+}) {
   const href = `/stories/${encodeURIComponent(story.ownerUid)}`;
+  const username = storyDisplayName(group, t);
 
   return (
     <Link
@@ -46,17 +57,22 @@ function StoryTile({ story, username }: { story: StoryItem; username: string }) 
       )}
 
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/70 to-transparent p-3 pt-10">
-        <p className="truncate text-sm font-black text-white">@{username}</p>
+        <p className="truncate text-sm font-black text-white">{username}</p>
+        {group.isAnonymousStory ? (
+          <p className="truncate text-xs text-white/55">{t("stories_anonymous_caption")}</p>
+        ) : null}
       </div>
     </Link>
   );
 }
 
 export default function StoriesMosaic({ groups, title }: Props) {
+  const t = useT();
+
   const tiles = groups.flatMap((group) =>
     group.stories.map((story) => ({
       story,
-      username: group.ownerUsername,
+      group,
     })),
   );
 
@@ -73,8 +89,8 @@ export default function StoriesMosaic({ groups, title }: Props) {
       ) : null}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {tiles.map(({ story, username }) => (
-          <StoryTile key={story.id} story={story} username={username} />
+        {tiles.map(({ story, group }) => (
+          <StoryTile key={story.id} story={story} group={group} t={t} />
         ))}
       </div>
     </section>

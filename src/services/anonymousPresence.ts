@@ -7,8 +7,8 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let inFlight = false;
 let lastWriteAt = 0;
 
-const HEARTBEAT_MS = 30000;
-const MIN_WRITE_GAP_MS = 12000;
+const HEARTBEAT_MS = 15000;
+const MIN_WRITE_GAP_MS = 8000;
 
 async function writeAnonymousPresence(force = false) {
   if (typeof window === "undefined") return;
@@ -34,6 +34,24 @@ async function writeAnonymousPresence(force = false) {
   } catch {
   } finally {
     inFlight = false;
+  }
+}
+
+async function removeAnonymousPresence() {
+  if (typeof window === "undefined") return;
+
+  try {
+    const anonId = getAnonSessionId();
+
+    await fetch("/api/anonymous-presence", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anonId }),
+      cache: "no-store",
+      keepalive: true,
+    });
+  } catch {
+    // Ignore when the tab is already closing.
   }
 }
 
@@ -69,5 +87,9 @@ export function startAnonymousPresenceSystem() {
 
   window.addEventListener("pageshow", () => {
     writeAnonymousPresence(true);
+  });
+
+  window.addEventListener("pagehide", () => {
+    void removeAnonymousPresence();
   });
 }

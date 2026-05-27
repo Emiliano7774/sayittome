@@ -10,6 +10,80 @@ body {
   color: white;
   font-family: Arial, Helvetica, sans-serif;
   overflow-x: hidden;
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
+  text-size-adjust: 100%;
+}
+
+html.sayittome-native-shell,
+body.sayittome-native-shell {
+  overscroll-behavior-y: auto;
+  touch-action: manipulation;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-overflow-scrolling: touch;
+}
+
+body.sayittome-native-shell main,
+body.sayittome-native-shell .sayittome-page-shell {
+  max-width: 100vw;
+}
+
+body.sayittome-native-shell.sayittome-admob-banner-visible nav.fixed.bottom-0,
+body.sayittome-native-shell.sayittome-admob-banner-visible .fixed.inset-x-0.bottom-0 {
+  bottom: 60px;
+}
+
+:root {
+  --sayittome-nav-height: 74px;
+  --sayittome-admob-banner-height: 0px;
+  --sayittome-vignette-height: 0px;
+  --sayittome-bottom-ui: env(safe-area-inset-bottom, 0px);
+}
+
+body.sayittome-has-bottom-nav {
+  --sayittome-bottom-ui: calc(
+    var(--sayittome-nav-height) + var(--sayittome-admob-banner-height) +
+      var(--sayittome-vignette-height) + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+body.sayittome-native-shell.sayittome-admob-banner-visible {
+  --sayittome-admob-banner-height: 60px;
+}
+
+body.sayittome-vignette-active {
+  --sayittome-vignette-height: 72px;
+}
+
+body.sayittome-shuffle-route {
+  --sayittome-admob-banner-height: 0px;
+}
+
+body.sayittome-shuffle-route.sayittome-admob-banner-visible {
+  --sayittome-admob-banner-height: 0px;
+}
+
+body.sayittome-shuffle-route.sayittome-has-bottom-nav {
+  --sayittome-bottom-ui: calc(
+    var(--sayittome-nav-height) + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+body.sayittome-shuffle-route:not(.sayittome-has-bottom-nav) {
+  --sayittome-bottom-ui: env(safe-area-inset-bottom, 0px);
+}
+
+.sayittome-shuffle-toolbar {
+  bottom: var(--sayittome-bottom-ui);
+}
+
+main[data-scroll-root].sayittome-shuffle-scroll {
+  padding-bottom: calc(var(--sayittome-bottom-ui) + 5.75rem);
+}
+
+main[data-scroll-root].sayittome-shuffle-scroll-classic {
+  padding-bottom: calc(var(--sayittome-bottom-ui) + 1.5rem);
 }
 
 * {
@@ -27,4 +101,12 @@ body.sayittome-chat-open .fixed.inset-x-0.bottom-0 {
 
 body.sayittome-chat-open {
   overflow-x: hidden;
+}
+
+body.sayittome-filters-open nav.fixed.bottom-0,
+body.sayittome-filters-open .fixed.bottom-0.left-0.right-0 {
+  transform: translateY(110%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
 }

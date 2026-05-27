@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { isLiveByConnection } from "@/lib/presence";
+import { parseFirestoreDoc } from "@/lib/firestore/rest";
+import { isPublicProfile } from "@/lib/profile/isPublicProfile";
+import { resolveProfileCountryCode } from "@/lib/geo/countries";
+import {
+  parseShuffleFiltersFromSearchParams,
+  profileMatchesShuffleServerFilters,
+} from "@/lib/shuffle/serverFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +25,17 @@ type ApiProfile = {
   presenceAt?: string;
   online?: boolean;
   showOnline?: boolean;
+  provincia?: string;
+  ciudad?: string;
+  pais?: string;
+  sexo?: string;
+  edad?: number;
+  intereses?: string[];
+  etiquetas?: string[];
+  fotos?: string[];
+  searchKeywords?: string[];
+  historiasActivasCount?: number;
+  hasActiveStories?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;
   adminBlurStories?: boolean;
@@ -31,8 +49,8 @@ let cachedAnonymousOnline = 0;
 let cachedAnonymousAt = 0;
 
 const PROFILE_CACHE_MS = 10000;
-const ANON_CACHE_MS = 6000;
-const ANON_ACTIVE_MS = 2 * 60 * 1000;
+const ANON_CACHE_MS = 1000;
+const ANON_ACTIVE_MS = 45 * 1000;
 
 function fieldString(fields: any, key: string) {
   return fields?.[key]?.stringValue || "";
@@ -133,9 +151,16 @@ async function runCollectionQuery(collectionId: string, limit = 500) {
     .filter(Boolean);
 }
 
+function fieldInt(fields: any, key: string) {
+  return Number(fields?.[key]?.integerValue || fields?.[key]?.doubleValue || 0);
+}
+
 function docToProfile(doc: any): ApiProfile {
   const fields = doc.fields || {};
   const fotos = fieldArrayStrings(fields, "fotos");
+  const intereses = fieldArrayStrings(fields, "intereses");
+  const etiquetas = fieldArrayStrings(fields, "etiquetas");
+  const searchKeywords = fieldArrayStrings(fields, "searchKeywords");
 
   const presenceAt =
     fieldTimestamp(fields, "lastActiveAt") ||
@@ -146,6 +171,12 @@ function docToProfile(doc: any): ApiProfile {
     presenceAt ||
     fieldTimestamp(fields, "updatedAt") ||
     fieldTimestamp(fields, "createdAt");
+
+  const historiasActivasCount =
+    fieldInt(fields, "historiasActivasCount") ||
+    fieldInt(fields, "activeStoriesCount") ||
+    fieldInt(fields, "storiesCount") ||
+    fieldInt(fields, "historias");
 
   const profile: ApiProfile = {
     uid:
@@ -185,6 +216,22 @@ function docToProfile(doc: any): ApiProfile {
     lastActive,
     presenceAt: presenceAt || undefined,
     online: fieldBool(fields, "online"),
+    provincia: fieldString(fields, "provincia") || fieldString(fields, "region"),
+    ciudad: fieldString(fields, "ciudad"),
+    pais:
+      fieldString(fields, "pais") ||
+      fieldString(fields, "country") ||
+      fieldString(fields, "countryCode"),
+    sexo: fieldString(fields, "sexo"),
+    edad: fieldInt(fields, "edad"),
+    intereses,
+    etiquetas,
+    fotos,
+    searchKeywords,
+    historiasActivasCount,
+    hasActiveStories:
+      fieldBool(fields, "hasActiveStories") ||
+      fieldBool(fields, "tieneHistoriasActivas"),
     adminBlurProfilePhoto: fieldBool(fields, "adminBlurProfilePhoto"),
     adminBlurFotosPerfil: fieldBool(fields, "adminBlurFotosPerfil"),
     adminBlurStories: fieldBool(fields, "adminBlurStories"),
@@ -198,6 +245,11 @@ function docToProfile(doc: any): ApiProfile {
   return withPresenceBadge(profile);
 }
 
+function withResolvedCountry(profile: ApiProfile): ApiProfile {
+  const resolved = resolveProfileCountryCode(profile);
+  return resolved ? { ...profile, pais: resolved } : profile;
+}
+
 async function getProfilesCached() {
   const now = Date.now();
 
@@ -208,8 +260,10 @@ async function getProfilesCached() {
   const docs = await runCollectionQuery("usuarios", 500);
 
   const profiles = docs
-    .map(docToProfile)
-    .filter((p: ApiProfile) => !p.banned && !!p.username);
+    .map((doc: any) => ({ doc, raw: parseFirestoreDoc(doc) }))
+    .filter(({ raw }) => isPublicProfile(raw))
+    .map(({ doc }) => withResolvedCountry(docToProfile(doc)))
+    .filter((p: ApiProfile) => !p.banned && !!p.username && p.username.toLowerCase() !== "usuario");
 
   cachedProfiles = profiles;
   cachedProfilesAt = now;
@@ -217,10 +271,10 @@ async function getProfilesCached() {
   return profiles;
 }
 
-async function getAnonymousOnlineCached() {
+async function getAnonymousOnlineCached(forceFresh = false) {
   const now = Date.now();
 
-  if (now - cachedAnonymousAt < ANON_CACHE_MS) {
+  if (!forceFresh && now - cachedAnonymousAt < ANON_CACHE_MS) {
     return cachedAnonymousOnline;
   }
 
@@ -245,11 +299,16 @@ export async function GET(req: Request) {
     const limit = Number(searchParams.get("limit") || 35) || 35;
     const shouldShuffle = searchParams.get("shuffle") === "1";
     const countOnly = searchParams.get("countOnly") === "1";
+    const filters = parseShuffleFiltersFromSearchParams(searchParams);
 
     const allProfiles = await getProfilesCached();
-    const anonymousOnline = await getAnonymousOnlineCached();
+    const anonymousOnline = await getAnonymousOnlineCached(countOnly);
     const profilesCreated = allProfiles.length;
     const totalLive = profilesCreated + anonymousOnline;
+
+    const filteredByDiscovery = allProfiles.filter((profile) =>
+      profileMatchesShuffleServerFilters(profile, filters),
+    );
 
     if (countOnly) {
       return NextResponse.json({
@@ -258,15 +317,16 @@ export async function GET(req: Request) {
         profilesCreated,
         anonymousOnline,
         totalLive,
+        filteredCount: filteredByDiscovery.length,
         returned: 0,
         ts: Date.now(),
       });
     }
 
-    let filtered = allProfiles;
+    let filtered = filteredByDiscovery;
 
     if (q) {
-      filtered = allProfiles.filter((p) => {
+      filtered = filtered.filter((p) => {
         return (
           String(p.username || "").toLowerCase().includes(q) ||
           String(p.bio || "").toLowerCase().includes(q)
@@ -283,6 +343,7 @@ export async function GET(req: Request) {
       profilesCreated,
       anonymousOnline,
       totalLive,
+      filteredCount: filteredByDiscovery.length,
       returned: selected.length,
       ts: Date.now(),
     });

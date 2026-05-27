@@ -12,6 +12,16 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
       const online = item?.online === true;
       const adminBlurProfilePhoto = item?.adminBlurProfilePhoto === true;
       const adminBlurFotosPerfil = item?.adminBlurFotosPerfil === true;
+      const intereses = Array.isArray(item?.intereses)
+        ? item.intereses.map(String)
+        : [];
+      const etiquetas = Array.isArray(item?.etiquetas)
+        ? item.etiquetas.map(String)
+        : [];
+      const fotos = Array.isArray(item?.fotos) ? item.fotos.map(String) : [];
+      const searchKeywords = Array.isArray(item?.searchKeywords)
+        ? item.searchKeywords.map(String)
+        : [];
 
       return {
         uid: String(item?.uid || item?.id || item?.username || `profile-${index}`),
@@ -27,6 +37,24 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         online,
         adminBlurProfilePhoto,
         adminBlurFotosPerfil,
+        provincia: String(item?.provincia || ""),
+        ciudad: String(item?.ciudad || ""),
+        pais: String(item?.pais || ""),
+        sexo: String(item?.sexo || ""),
+        edad: Number(item?.edad || 0) || 0,
+        intereses,
+        etiquetas,
+        fotos,
+        searchKeywords,
+        historiasActivasCount: Number(
+          item?.historiasActivasCount ??
+            item?.activeStoriesCount ??
+            item?.storiesCount ??
+            item?.historias ??
+            0,
+        ),
+        hasActiveStories:
+          item?.hasActiveStories === true || item?.tieneHistoriasActivas === true,
         showOnline:
           typeof item?.showOnline === "boolean"
             ? item.showOnline

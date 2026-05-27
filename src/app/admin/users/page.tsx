@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
+import AdminRegistrationsPanel from "@/components/admin/AdminRegistrationsPanel";
 import { auth } from "@/lib/firebase";
 
 type AdminUserRow = {
@@ -25,6 +26,8 @@ export default function AdminUsersPage() {
   const admin = useAdminApi();
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [busyUid, setBusyUid] = useState("");
+  const [orphanCount, setOrphanCount] = useState(0);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
 
   async function load() {
     const email = auth.currentUser?.email || admin.email;
@@ -34,6 +37,13 @@ export default function AdminUsersPage() {
     });
     const json = await res.json();
     if (json?.ok) setUsers(json.users || []);
+
+    const orphanRes = await fetch("/api/admin/orphan-profiles", {
+      cache: "no-store",
+      headers: { "x-admin-email": email },
+    });
+    const orphanJson = await orphanRes.json();
+    if (orphanJson?.ok) setOrphanCount(Number(orphanJson.count || 0));
   }
 
   useEffect(() => {
@@ -47,8 +57,41 @@ export default function AdminUsersPage() {
     setBusyUid("");
   }
 
+  async function cleanupOrphans() {
+    if (!window.confirm(`¿Eliminar ${orphanCount} perfiles huérfanos/falsos?`)) return;
+
+    setCleanupBusy(true);
+    try {
+      await admin.postAction({ action: "cleanup_orphan_profiles" });
+      await load();
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
+
   return (
     <AdminShell title="Usuarios">
+      <AdminRegistrationsPanel adminEmail={admin.email} defaultOpen />
+      {orphanCount > 0 ? (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-4">
+          <div>
+            <p className="text-sm font-black text-amber-200">
+              {orphanCount} perfiles incompletos o falsos detectados
+            </p>
+            <p className="mt-1 text-xs font-bold text-white/45">
+              Aparecen en shuffle pero no tienen perfil público válido. Conviene eliminarlos.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={cleanupBusy}
+            onClick={cleanupOrphans}
+            className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-black disabled:opacity-50"
+          >
+            {cleanupBusy ? "Limpiando..." : "Eliminar huérfanos"}
+          </button>
+        </div>
+      ) : null}
       <div className="overflow-x-auto rounded-3xl border border-white/10">
         <table className="min-w-[1200px] w-full text-left">
           <thead className="bg-white/5 text-white/50 text-sm font-black">

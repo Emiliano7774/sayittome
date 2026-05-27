@@ -16,7 +16,9 @@ import {
   uploadBytesResumable,
 } from "firebase/storage";
 
+import { useT } from "@/contexts/LocaleContext";
 import { auth, db, storage } from "@/lib/firebase";
+import { resolveStoryAuthor } from "@/lib/stories/anonStories";
 
 type PreviewData = {
   url: string;
@@ -25,6 +27,7 @@ type PreviewData = {
 
 export default function NewStoryPage() {
   const router = useRouter();
+  const t = useT();
 
   const [texto, setTexto] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -51,19 +54,13 @@ export default function NewStoryPage() {
   }, [preview?.url]);
 
   const publishStory = async () => {
-    const user = auth.currentUser;
-
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
     if (!texto.trim() && !file) {
-      alert("EscribÃ­ algo o elegÃ­ una imagen/video.");
+      window.alert(t("story_new_alert_empty"));
       return;
     }
 
     try {
+      const author = await resolveStoryAuthor(auth.currentUser);
       setUploading(true);
       setUploadProgress(0);
 
@@ -77,7 +74,7 @@ export default function NewStoryPage() {
         const isVideo = file.type.startsWith("video/");
 
         if (!isImage && !isVideo) {
-          alert("Solo podÃ©s subir imÃ¡genes o videos.");
+          window.alert(t("story_new_alert_type"));
           setUploading(false);
           return;
         }
@@ -85,21 +82,17 @@ export default function NewStoryPage() {
         const maxSize = isVideo ? 120 * 1024 * 1024 : 20 * 1024 * 1024;
 
         if (file.size > maxSize) {
-          alert(isVideo ? "El video es demasiado pesado." : "La imagen es demasiado pesada.");
+          window.alert(t("story_new_alert_size"));
           setUploading(false);
           return;
         }
 
         const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+        const storageFolder = author.isAnonymousStory
+          ? `historias/anon/${author.anonSessionId}`
+          : `historias/${author.ownerUid}`;
 
-        const path =
-          "historias/" +
-          user.uid +
-          "/" +
-          Date.now() +
-          "-" +
-          safeName;
-
+        const path = `${storageFolder}/${Date.now()}-${safeName}`;
         const storageRef = ref(storage, path);
 
         const uploadTask = uploadBytesResumable(storageRef, file, {
@@ -111,7 +104,7 @@ export default function NewStoryPage() {
             "state_changed",
             (snapshot) => {
               const progress = Math.round(
-                (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+                (snapshot.bytesTransferred / snapshot.totalBytes) * 100,
               );
 
               setUploadProgress(progress);
@@ -121,10 +114,10 @@ export default function NewStoryPage() {
               try {
                 const url = await getDownloadURL(uploadTask.snapshot.ref);
                 resolve(url);
-              } catch (e) {
-                reject(e);
+              } catch (error) {
+                reject(error);
               }
-            }
+            },
           );
         });
 
@@ -137,9 +130,11 @@ export default function NewStoryPage() {
       const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
       await addDoc(collection(db, "historias"), {
-        ownerUid: user.uid,
-        ownerUsername: user.displayName || user.email?.split("@")[0] || "usuario",
-        ownerPhoto: user.photoURL || "",
+        ownerUid: author.ownerUid,
+        ownerUsername: author.ownerUsername,
+        ownerPhoto: author.ownerPhoto,
+        isAnonymousStory: author.isAnonymousStory,
+        anonSessionId: author.anonSessionId,
         texto: texto.trim(),
         mediaUrl,
         mediaType,
@@ -154,10 +149,14 @@ export default function NewStoryPage() {
         active: true,
       });
 
-      router.push("/shuffle");
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo subir la historia.");
+      router.push("/stories");
+    } catch (error) {
+      console.error(error);
+      if ((error as Error)?.message === "profile_username_missing") {
+        window.alert(t("story_new_profile_username_required"));
+      } else {
+        window.alert(t("story_new_alert_fail"));
+      }
     }
 
     setUploading(false);
@@ -170,7 +169,7 @@ export default function NewStoryPage() {
           onClick={() => router.back()}
           className="mb-6 text-sm font-bold text-fuchsia-300"
         >
-          â† Volver
+          ← {t("common_back")}
         </button>
 
         <div className="rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-2xl shadow-fuchsia-950/30">
@@ -178,18 +177,16 @@ export default function NewStoryPage() {
             SAYITTOME
           </p>
 
-          <h1 className="mt-3 text-4xl font-black">Nueva historia</h1>
+          <h1 className="mt-3 text-4xl font-black">{t("story_new_title")}</h1>
 
-          <p className="mt-3 text-sm text-zinc-500">
-            Se publicarÃ¡ por 24 horas.
-          </p>
+          <p className="mt-3 text-sm text-zinc-500">{t("story_new_expires")}</p>
 
           {preview && (
             <div className="mt-6 overflow-hidden rounded-[2rem] border border-white/10 bg-black">
               {preview.type === "image" ? (
                 <img
                   src={preview.url}
-                  alt="Preview historia"
+                  alt={t("story_new_preview_alt")}
                   className="max-h-[520px] w-full object-cover"
                 />
               ) : (
@@ -205,18 +202,16 @@ export default function NewStoryPage() {
           <textarea
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
-            placeholder="EscribÃ­ algo para tu historia..."
+            placeholder={t("story_new_placeholder")}
             className="mt-6 h-40 w-full resize-none rounded-3xl border border-white/10 bg-black p-5 text-sm outline-none focus:border-fuchsia-500"
           />
 
           <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-white/15 bg-black p-8 text-center transition hover:border-fuchsia-500">
             <span className="text-sm font-black">
-              {file ? file.name : "Elegir foto o video"}
+              {file ? file.name : t("story_new_pick_media")}
             </span>
 
-            <span className="mt-2 text-xs text-zinc-500">
-              Imagen o video desde tu dispositivo
-            </span>
+            <span className="mt-2 text-xs text-zinc-500">{t("story_new_pick_hint")}</span>
 
             <input
               type="file"
@@ -234,14 +229,14 @@ export default function NewStoryPage() {
           {uploading && (
             <div className="mt-5 rounded-3xl border border-white/10 bg-black p-4">
               <div className="mb-2 flex items-center justify-between text-xs font-black text-zinc-400">
-                <span>Subiendo historia</span>
+                <span>{t("story_new_uploading")}</span>
                 <span>{uploadProgress}%</span>
               </div>
 
               <div className="h-2 overflow-hidden rounded-full bg-white/10">
                 <div
                   className="h-full bg-fuchsia-500 transition-all"
-                  style={{ width: uploadProgress + "%" }}
+                  style={{ width: `${uploadProgress}%` }}
                 />
               </div>
             </div>
@@ -252,7 +247,7 @@ export default function NewStoryPage() {
             disabled={uploading}
             className="mt-6 w-full rounded-full bg-white px-6 py-4 text-sm font-black text-black transition hover:scale-[1.01] disabled:opacity-50"
           >
-            {uploading ? "Subiendo..." : "Publicar historia"}
+            {uploading ? t("story_new_uploading_btn") : t("story_new_publish")}
           </button>
         </div>
       </section>

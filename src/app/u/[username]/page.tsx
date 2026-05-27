@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -17,13 +17,15 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
+import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
-import { formatLastSeen } from "@/lib/presence";
+import { formatLastSeen, isRecentlyActive } from "@/lib/presence";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
+import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 
@@ -128,9 +130,12 @@ export default function PublicProfilePage() {
     prefetchOwnerStories(profile.uid, profile.username);
   }, [profile?.uid, profile?.username, currentUid]);
 
-  const lastSeenLabel = profile
-    ? formatLastSeen(profile.presenceAt || profile.lastActive, profile.online)
-    : "";
+  const heartbeat = profile?.presenceAt || profile?.lastActive;
+  const isOnline = profile
+    ? isRecentlyActive(heartbeat, profile.online)
+    : false;
+  const lastSeenLabel =
+    profile && !isOnline ? formatLastSeen(heartbeat, false) : "";
 
   async function copyLink() {
     const link = `${window.location.origin}/u/${encodeURIComponent(
@@ -280,7 +285,12 @@ export default function PublicProfilePage() {
       />
 
       <section className="relative z-[5] px-8 md:px-24 min-h-[88vh] pointer-events-none">
-        <div className="absolute top-10 right-8 md:right-24 z-[30] pointer-events-auto flex gap-3">
+        <div className="absolute top-[max(1rem,env(safe-area-inset-top))] inset-x-4 z-[30] pointer-events-auto flex flex-col items-end gap-3 md:inset-x-auto md:right-8 md:left-auto md:top-10">
+          <ClassicUxModeBar className="max-w-full" />
+
+          <div className="flex flex-wrap items-center justify-end gap-3">
+          {!isOwner ? <FollowButton targetUid={profile.uid} variant="profileClassic" /> : null}
+
           {isOwner && (
             <button
               type="button"
@@ -302,6 +312,7 @@ export default function PublicProfilePage() {
               <Copy size={20} />
             </button>
           )}
+          </div>
         </div>
 
         {isOwner ? (

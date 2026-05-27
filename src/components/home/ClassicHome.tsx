@@ -71,7 +71,7 @@ export default function ClassicHome() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6 font-[Arial,Helvetica,sans-serif] tracking-[-0.015em]">
-        <header className="mb-9 flex items-center justify-between">
+        <header className="mb-9 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-300 via-violet-500 to-[#4f35ff]" />
             <p className="text-base font-medium tracking-[-0.02em] text-zinc-100">SayItToMe</p>

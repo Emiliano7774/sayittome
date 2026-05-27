@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { ArrowLeft, BadgeCheck, Heart, MessageCircle, Users } from "lucide-react";
 
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
+import FollowButton from "@/components/FollowButton";
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import HeaderControls from "@/components/HeaderControls";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
@@ -13,6 +14,7 @@ import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
+import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -62,7 +64,9 @@ export default function ModernPublicProfile({
   const formatLastSeen = useFormatLastSeen();
   const story = useStoryStatus(profile.uid, profile.username);
   const blurPhoto = profilePhotoRequiresBlur(profile);
-  const lastSeen = formatLastSeen(profile.presenceAt || profile.lastActive, profile.online);
+  const heartbeat = profile.presenceAt || profile.lastActive;
+  const isOnline = isPresenceOnline(heartbeat, profile.online);
+  const lastSeen = isOnline ? "" : formatLastSeen(heartbeat, false);
   const historiasCount = story.hasActive
     ? story.storyCount
     : Number(profile.historias || profile.stories || 0);
@@ -145,7 +149,7 @@ export default function ModernPublicProfile({
                 <div className="h-full w-full bg-gradient-to-br from-fuchsia-600 via-purple-950 to-black" />
               )}
 
-              {profile.showOnline || profile.online ? (
+              {isOnline ? (
                 <span className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-green-400/30 bg-black/55 px-3 py-1 text-xs font-black text-green-300 backdrop-blur-sm">
                   <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,.9)]" />
                   {t("profile_online")}
@@ -220,6 +224,7 @@ export default function ModernPublicProfile({
                 >
                   {t("profile_open_chat")}
                 </Link>
+                {!isOwner ? <FollowButton targetUid={profile.uid} /> : null}
                 {story.hasActive && story.storyPath ? (
                   <Link
                     href={story.storyPath}

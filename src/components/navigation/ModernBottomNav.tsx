@@ -40,7 +40,13 @@ export default function ModernBottomNav() {
                 className="flex h-full flex-1 items-center justify-center"
                 aria-label={t("nav_shuffle_refresh")}
               >
-                <Icon size={38} strokeWidth={2.4} className="text-[#7b5cff]" />
+                <span className="flex h-10 w-10 items-center justify-center">
+                  <Icon
+                    size={34}
+                    strokeWidth={2.35}
+                    className="block shrink-0 translate-x-px -translate-y-px text-[#7b5cff]"
+                  />
+                </span>
               </button>
             );
           }

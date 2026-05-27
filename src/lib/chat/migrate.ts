@@ -4,6 +4,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
+  query,
   setDoc,
   type DocumentData,
   type Timestamp,
@@ -18,6 +20,72 @@ function pickNewer(
   const aMs = a?.updatedAt?.toMillis?.() ?? 0;
   const bMs = b?.updatedAt?.toMillis?.() ?? 0;
   return bMs >= aMs ? b : a;
+}
+
+export async function chatHasActivity(chatId: string) {
+  const snap = await getDoc(doc(db, "chats", chatId));
+  if (!snap.exists()) return false;
+  if (String(snap.data()?.lastMessage || "").trim()) return true;
+
+  const msgs = await getDocs(
+    query(collection(db, "chats", chatId, "mensajes"), limit(1)),
+  );
+  return !msgs.empty;
+}
+
+export async function deleteEmptyChatIfIdle(chatId: string) {
+  if (!chatId) return;
+  if (await chatHasActivity(chatId)) return;
+
+  try {
+    await deleteDoc(doc(db, "chats", chatId));
+  } catch (e) {
+    console.error("delete empty chat", chatId, e);
+  }
+}
+
+/** Migrate legacy ids only when a real conversation already exists. Never creates empty chats. */
+export async function maybeMigrateExistingProfileChat(
+  canonicalId: string,
+  legacyIds: string[],
+  meta: DocumentData,
+) {
+  const candidates = Array.from(
+    new Set([canonicalId, ...legacyIds.filter((id) => id && id !== canonicalId)]),
+  );
+
+  const activeIds: string[] = [];
+  const emptyIds: string[] = [];
+
+  for (const id of candidates) {
+    const snap = await getDoc(doc(db, "chats", id));
+    if (!snap.exists()) continue;
+
+    if (await chatHasActivity(id)) {
+      activeIds.push(id);
+    } else {
+      emptyIds.push(id);
+    }
+  }
+
+  for (const id of emptyIds) {
+    try {
+      await deleteDoc(doc(db, "chats", id));
+    } catch (e) {
+      console.error("delete empty chat shell", id, e);
+    }
+  }
+
+  if (activeIds.length === 0) return canonicalId;
+
+  const migrateLegacy = Array.from(
+    new Set([
+      ...legacyIds.filter((id) => id && id !== canonicalId),
+      ...activeIds.filter((id) => id !== canonicalId),
+    ]),
+  );
+
+  return migrateToCanonicalChat(canonicalId, migrateLegacy, meta);
 }
 
 export async function migrateToCanonicalChat(

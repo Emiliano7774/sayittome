@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { onAuthStateChanged } from "firebase/auth";
@@ -16,18 +17,21 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
+import { useT } from "@/contexts/LocaleContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 
 type Props = {
   targetUid: string;
+  variant?: "default" | "profileClassic";
 };
 
 function buildFollowId(myUid: string, targetUid: string) {
   return myUid + "_" + targetUid;
 }
 
-export default function FollowButton({ targetUid }: Props) {
+export default function FollowButton({ targetUid, variant = "default" }: Props) {
   const { uxMode } = useUxMode();
+  const t = useT();
 
   const [myUid, setMyUid] = useState("");
   const [authReady, setAuthReady] = useState(false);
@@ -37,7 +41,6 @@ export default function FollowButton({ targetUid }: Props) {
   const [loading, setLoading] = useState(false);
 
   const isSelf = Boolean(myUid && targetUid && myUid === targetUid);
-  const canRender = authReady && Boolean(myUid) && Boolean(targetUid) && !isSelf;
 
   const followId = useMemo(() => {
     if (!myUid || !targetUid) return "";
@@ -181,9 +184,49 @@ export default function FollowButton({ targetUid }: Props) {
     }
   }
 
-  if (!canRender) return null;
+  if (!authReady || !targetUid || isSelf) return null;
+
+  if (!myUid) {
+    if (variant === "profileClassic") {
+      return (
+        <Link
+          href="/login"
+          className="h-[clamp(48px,5.5vw,60px)] rounded-full border-[3px] border-white bg-violet-600 px-6 text-[clamp(14px,1.6vw,18px)] font-black text-white shadow-[0_0_24px_rgba(139,92,246,.28)]"
+        >
+          {t("follow_login_required")}
+        </Link>
+      );
+    }
+
+    return (
+      <Link
+        href="/login"
+        className="rounded-full border border-white/10 bg-[#111111] px-5 py-3 text-sm font-black text-white/80"
+      >
+        {t("follow_login_required")}
+      </Link>
+    );
+  }
 
   const disabled = loading || checkingFollow;
+  const label = disabled ? "..." : following ? t("follow_following") : t("follow_button");
+
+  if (variant === "profileClassic") {
+    return (
+      <button
+        type="button"
+        onClick={toggleFollow}
+        disabled={disabled}
+        className={
+          following
+            ? "h-[clamp(52px,6vw,68px)] rounded-full border-[3px] border-white/70 bg-black/25 px-7 text-[clamp(16px,1.8vw,22px)] font-black text-white backdrop-blur-md disabled:cursor-not-allowed disabled:opacity-50"
+            : "h-[clamp(52px,6vw,68px)] rounded-full border-[3px] border-white bg-violet-600 px-7 text-[clamp(16px,1.8vw,22px)] font-black text-white shadow-[0_0_24px_rgba(139,92,246,.28)] disabled:cursor-not-allowed disabled:opacity-50"
+        }
+      >
+        {label}
+      </button>
+    );
+  }
 
   if (uxMode === "classic") {
     return (
@@ -197,7 +240,7 @@ export default function FollowButton({ targetUid }: Props) {
             : "rounded-full bg-violet-600 px-5 py-3 text-sm font-black text-white shadow-[0_0_24px_rgba(139,92,246,0.32)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
         }
       >
-        {disabled ? "..." : following ? "Siguiendo" : "Seguir"}
+        {label}
       </button>
     );
   }
@@ -213,7 +256,7 @@ export default function FollowButton({ targetUid }: Props) {
           : "rounded-full bg-white px-5 py-3 text-sm font-black text-black transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
       }
     >
-      {disabled ? "..." : following ? "Siguiendo" : "Seguir"}
+      {label}
     </button>
   );
 }

@@ -33,28 +33,27 @@ function ShuffleSlotRow({ slot }: { slot: number }) {
 
   return (
     <div className="w-full border-b border-white/10 contain-[layout_paint_style]">
-      <div className="w-full py-7 flex items-center gap-7">
+      <div className="flex w-full items-center gap-4 py-4">
         <StoryAvatarButton
           ownerUid={profile.uid}
           username={username}
           photo={profile.photo}
-          size="lg"
+          size="md"
           mode="delegate"
           blurPhoto={profile.blurPhoto}
           showOnline={profile.showOnline}
+          iconSize={28}
         />
 
         <button
           type="button"
           data-action="chat"
           data-username={username}
-          className="min-w-0 flex-1 text-left active:scale-[0.99] transition"
+          className="min-w-0 flex-1 text-left transition active:scale-[0.99]"
           aria-label={`Abrir chat con ${username}`}
         >
-          <h2 className="truncate text-3xl font-black md:text-4xl">{username}</h2>
-          <p className="mt-2 line-clamp-2 text-xl font-bold text-white/50 md:text-2xl">
-            {bio}
-          </p>
+          <h2 className="truncate text-xl font-black">{username}</h2>
+          <p className="mt-1 line-clamp-2 text-sm font-bold text-white/45">{bio}</p>
         </button>
       </div>
     </div>

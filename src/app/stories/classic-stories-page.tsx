@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import StoriesHub from "@/components/stories/StoriesHub";
+import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { auth } from "@/lib/firebase";
+import { resolveStoryViewerId } from "@/lib/stories/anonStories";
 import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
 import type { StoryUserGroup } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
@@ -20,7 +22,7 @@ export default function ClassicStoriesPage() {
     let cancelled = false;
 
     const unsub = onAuthStateChanged(auth, async (user) => {
-      const uid = user?.uid || "";
+      const uid = resolveStoryViewerId(user);
       setViewerUid(uid);
 
       try {
@@ -41,6 +43,8 @@ export default function ClassicStoriesPage() {
 
   return (
     <main className="min-h-screen bg-black px-5 py-8 pb-32 text-white">
+      <ClassicUxModeBar className="mb-4" />
+
       <div className="mb-8 flex items-center justify-between">
         <h1 className="text-6xl font-black tracking-[-0.08em]">{t("stories_title")}</h1>
       </div>

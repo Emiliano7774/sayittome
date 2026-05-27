@@ -2,6 +2,7 @@
 
 import ApkDownloadButton from "@/components/monetization/ApkDownloadButton";
 import { useApkReleaseNotice } from "@/hooks/useApkReleaseNotice";
+import { formatApkReleaseRemaining } from "@/lib/app/release";
 import { useT } from "@/contexts/LocaleContext";
 
 type Props = {
@@ -14,7 +15,7 @@ export default function NewApkVersionBanner({
   className = "",
 }: Props) {
   const t = useT();
-  const { show, release } = useApkReleaseNotice();
+  const { show, release, remainingMs } = useApkReleaseNotice();
 
   if (!show || !release) return null;
 
@@ -47,6 +48,11 @@ export default function NewApkVersionBanner({
           </p>
           <p className="mt-1 text-sm text-zinc-300">
             {t("apk_new_version_body", { version: release.versionName })}
+          </p>
+          <p className="mt-2 font-mono text-xs tracking-wide text-violet-200/75">
+            {t("apk_new_version_countdown", {
+              time: formatApkReleaseRemaining(remainingMs),
+            })}
           </p>
         </div>
 

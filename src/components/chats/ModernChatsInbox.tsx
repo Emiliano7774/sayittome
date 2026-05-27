@@ -3,27 +3,71 @@
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 
+import ChatsSelectionToolbar, {
+  ChatSelectionCheckbox,
+} from "@/components/chats/ChatsSelectionToolbar";
+import ChatPeerAvatar from "@/components/chat/ChatPeerAvatar";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import { chatHref, chatTitle, type InboxChat } from "@/hooks/useChatsInbox";
+import { inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
+import type { useChatsSelection } from "@/hooks/useChatsSelection";
 import { useT } from "@/contexts/LocaleContext";
 
 type Props = {
   sortedChats: InboxChat[];
   uid: string;
   isAnonymousSession: boolean;
+  selection: ReturnType<typeof useChatsSelection>;
 };
 
 export default function ModernChatsInbox({
   sortedChats,
   uid,
   isAnonymousSession,
+  selection,
 }: Props) {
   const t = useT();
+  const photos = useInboxProfilePhotos(sortedChats);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
       <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6">
-        <ModernPageHeader title={t("chats_title")} subtitle={t("chats_subtitle")} />
+        {selection.selectionMode ? (
+          <ChatsSelectionToolbar
+            variant="modern"
+            selectionMode={selection.selectionMode}
+            selectedCount={selection.selectedCount}
+            allSelected={selection.allSelected}
+            hasChats={sortedChats.length > 0}
+            deleting={selection.deleting}
+            confirmOpen={selection.confirmOpen}
+            onEnterSelection={selection.enterSelectionMode}
+            onExitSelection={selection.exitSelectionMode}
+            onToggleSelectAll={selection.toggleSelectAll}
+            onRequestDelete={selection.requestDeleteSelected}
+            onConfirmDelete={() => {
+              selection.confirmDeleteSelected().catch(() => {
+                window.alert(t("chat_save_fail"));
+              });
+            }}
+            onCancelConfirm={() => selection.setConfirmOpen(false)}
+          />
+        ) : (
+          <ModernPageHeader
+            title={t("chats_title")}
+            subtitle={t("chats_subtitle")}
+            actions={
+              <button
+                type="button"
+                onClick={selection.enterSelectionMode}
+                disabled={sortedChats.length === 0}
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-violet-300 disabled:opacity-35"
+              >
+                {t("chats_select")}
+              </button>
+            }
+          />
+        )}
 
         {isAnonymousSession ? (
           <div className="mb-5 rounded-2xl border border-violet-500/15 bg-violet-500/5 p-4 text-sm font-bold text-white/55">
@@ -47,17 +91,21 @@ export default function ModernChatsInbox({
             {sortedChats.map((chat) => {
               const unread = uid ? chat.unreadCounts?.[uid] || 0 : 0;
               const title = chatTitle(chat);
+              const selected = selection.selectedIds.has(chat.id);
+              const photo = inboxChatPhoto(chat, photos);
+              const cardClass =
+                "group relative z-10 flex items-center gap-4 rounded-2xl border p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition active:scale-[0.99] " +
+                (selected
+                  ? "border-violet-500/40 bg-violet-500/10"
+                  : "border-white/8 bg-[#0c0c0c]/90 hover:border-violet-500/25 hover:bg-[#121212]");
 
-              return (
-                <Link
-                  key={chat.id}
-                  href={chatHref(chat)}
-                  prefetch={false}
-                  className="group relative z-10 flex items-center gap-4 rounded-2xl border border-white/8 bg-[#0c0c0c]/90 p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition hover:border-violet-500/25 hover:bg-[#121212] active:scale-[0.99]"
-                >
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600/40 to-fuchsia-600/20 text-lg font-black text-violet-100">
-                    {title.slice(0, 1).toUpperCase()}
-                  </div>
+              const inner = (
+                <>
+                  {selection.selectionMode ? (
+                    <ChatSelectionCheckbox checked={selected} variant="modern" />
+                  ) : null}
+
+                  <ChatPeerAvatar photo={photo} username={title} size="lg" />
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-lg font-black">{title}</p>
@@ -66,11 +114,30 @@ export default function ModernChatsInbox({
                     </p>
                   </div>
 
-                  {unread > 0 ? (
+                  {unread > 0 && !selection.selectionMode ? (
                     <span className="rounded-full bg-violet-600 px-2.5 py-1 text-xs font-black">
                       {unread}
                     </span>
                   ) : null}
+                </>
+              );
+
+              if (selection.selectionMode) {
+                return (
+                  <button
+                    key={chat.id}
+                    type="button"
+                    onClick={() => selection.toggleChat(chat.id)}
+                    className={`${cardClass} w-full text-left`}
+                  >
+                    {inner}
+                  </button>
+                );
+              }
+
+              return (
+                <Link key={chat.id} href={chatHref(chat)} prefetch={false} className={cardClass}>
+                  {inner}
                 </Link>
               );
             })}

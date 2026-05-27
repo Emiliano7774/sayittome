@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Search, Shuffle } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { Search, Shuffle, SlidersHorizontal } from "lucide-react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import ModernShuffleGrid from "@/components/modern/ModernShuffleGrid";
 import ModernStoriesBar from "@/components/modern/ModernStoriesBar";
+import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
+import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
+import ShuffleToolbarButton from "@/components/shuffle/ShuffleToolbarButton";
 import { useShufflePool } from "@/hooks/useShufflePool";
 import {
   getShuffleSlotsVersion,
@@ -24,15 +27,23 @@ export default function ModernShuffleClient() {
   const t = useT();
   const pool = useShufflePool();
 
+  useEffect(() => {
+    document.body.classList.add("sayittome-shuffle-route");
+    return () => {
+      document.body.classList.remove("sayittome-shuffle-route");
+    };
+  }, []);
+
   useSyncExternalStore(subscribeAllShuffleSlots, getShuffleSlotsVersion, getShuffleSlotsVersion);
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
 
   const visible = getVisibleShuffleProfiles();
-  const onlineVisible = visible.filter((p) => p.showOnline).length;
   const withStories = getCachedStoryGroups().length;
+  const profileCount = pool.hasActiveDiscovery ? pool.visibleCount : pool.livePeopleCount;
 
   return (
-    <main data-scroll-root className="min-h-screen bg-black pb-32 text-white">
+    <main data-scroll-root className="sayittome-shuffle-scroll min-h-screen bg-black text-white">
+      <ShuffleAdsBootstrap />
       <div className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-8">
         <ModernPageHeader
           title={t("shuffle_title")}
@@ -56,31 +67,22 @@ export default function ModernShuffleClient() {
         />
 
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatPill label={t("shuffle_profiles")} value={pool.totalLive} tone="neutral" />
-          <StatPill label={t("shuffle_online")} value={onlineVisible} tone="green" />
+          <StatPill label={t("shuffle_profiles")} value={profileCount} tone="neutral" />
+          <StatPill label={t("shuffle_online")} value={pool.filteredOnlineCount} tone="green" />
           <StatPill label={t("shuffle_stories")} value={withStories} tone="violet" />
           <StatPill label={t("shuffle_visible")} value={visible.length} tone="neutral" />
         </div>
 
         <ModernStoriesBar />
 
-        <div className="mt-5 flex items-center gap-3 rounded-full border border-white/10 bg-[#111] px-5 py-3">
-          <Search size={22} className="shrink-0 text-white/35" />
-          <input
-            value={pool.search}
-            onChange={(e) => pool.handleSearchChange(e.target.value)}
-            placeholder={t("shuffle_search")}
-            className="w-full bg-transparent text-base font-bold outline-none placeholder:text-white/30"
-          />
-          <button
-            type="button"
-            onClick={pool.handleShuffleClick}
-            className="shrink-0 rounded-full bg-violet-600 p-2.5 active:scale-95"
-            aria-label={t("shuffle_title")}
-          >
-            <Shuffle size={20} />
-          </button>
-        </div>
+        <ShuffleFiltersSheet
+          open={pool.filtersOpen}
+          applied={pool.filters}
+          variant="modern"
+          onClose={pool.closeFilters}
+          onApply={pool.applyFilters}
+          onClear={pool.clearFilters}
+        />
 
         {pool.loading && visible.length === 0 ? (
           <div className="flex h-[50vh] items-center justify-center">
@@ -98,6 +100,35 @@ export default function ModernShuffleClient() {
             <ModernShuffleGrid />
           </div>
         )}
+      </div>
+
+      <div className="sayittome-shuffle-toolbar fixed inset-x-0 z-40 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-[1400px] items-center gap-3 rounded-full border border-white/10 bg-[#111] px-4 py-2.5">
+          <Search size={20} className="shrink-0 text-white/35" />
+          <input
+            value={pool.search}
+            onChange={(e) => pool.handleSearchChange(e.target.value)}
+            placeholder={t("shuffle_search")}
+            className="min-w-0 flex-1 bg-transparent text-base font-bold outline-none placeholder:text-white/30"
+          />
+          <ShuffleToolbarButton
+            onClick={pool.openFilters}
+            ariaLabel={t("shuffle_filters_title")}
+            icon={SlidersHorizontal}
+            badge={
+              pool.filtersActiveCount > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-violet-500" />
+              ) : null
+            }
+          />
+          <ShuffleToolbarButton
+            onClick={pool.handleShuffleClick}
+            ariaLabel={t("shuffle_title")}
+            icon={Shuffle}
+            tone="primary"
+            iconClassName="translate-x-px -translate-y-px"
+          />
+        </div>
       </div>
     </main>
   );
