@@ -213,6 +213,16 @@ const es = {
   anon_match_chat_compact: "Reducir chat",
   anon_match_chat_close: "Cerrar chat",
   anon_match_chat_report: "Denunciar chat",
+  anon_match_chat_report_confirm_title: "¿Denunciar este chat?",
+  anon_match_chat_report_confirm_body:
+    "El chat se cerrará de inmediato para vos y para la otra persona. Esta acción no se puede deshacer.",
+  anon_match_chat_report_confirm_action: "Sí, denunciar",
+  anon_match_chat_report_confirm_cancel: "Cancelar",
+  anon_match_chat_close_confirm_title: "¿Cerrar el chat?",
+  anon_match_chat_close_confirm_body:
+    "La conversación terminará para ambos. Vas a tener que conectar de nuevo si querés hablar con otro anónimo.",
+  anon_match_chat_close_confirm_action: "Sí, cerrar",
+  anon_match_chat_close_confirm_cancel: "Seguir chateando",
   anon_match_chat_restore: "Volver al chat",
   anon_match_chat_dismiss: "Entendido",
   anon_match_chat_peer_closed: "La otra persona decidió cerrar el chat.",
@@ -640,6 +650,16 @@ const en: Record<keyof typeof es, string> = {
   anon_match_chat_compact: "Shrink chat",
   anon_match_chat_close: "Close chat",
   anon_match_chat_report: "Report chat",
+  anon_match_chat_report_confirm_title: "Report this chat?",
+  anon_match_chat_report_confirm_body:
+    "The chat will close immediately for you and the other person. This action cannot be undone.",
+  anon_match_chat_report_confirm_action: "Yes, report",
+  anon_match_chat_report_confirm_cancel: "Cancel",
+  anon_match_chat_close_confirm_title: "Close the chat?",
+  anon_match_chat_close_confirm_body:
+    "The conversation will end for both of you. You will need to connect again if you want to talk to another anonymous user.",
+  anon_match_chat_close_confirm_action: "Yes, close",
+  anon_match_chat_close_confirm_cancel: "Keep chatting",
   anon_match_chat_restore: "Back to chat",
   anon_match_chat_dismiss: "Got it",
   anon_match_chat_peer_closed: "The other person closed the chat.",
