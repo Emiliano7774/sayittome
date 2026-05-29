@@ -3,6 +3,7 @@
 import { Search, SlidersHorizontal, User } from "lucide-react";
 import { useEffect } from "react";
 
+import ClassicAnonConnectCard from "@/components/anonMatch/ClassicAnonConnectCard";
 import ClassicFollowingStrip from "@/components/shuffle/ClassicFollowingStrip";
 import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
@@ -88,6 +89,8 @@ export default function ShuffleClient() {
               })}
             </span>
           </button>
+
+          <ClassicAnonConnectCard />
         </div>
 
         <ShuffleFiltersSheet
@@ -105,7 +108,20 @@ export default function ShuffleClient() {
           </div>
         ) : !pool.listReady ? (
           <div className="flex h-[42vh] flex-col items-center justify-center px-6 text-center">
-            <p className="text-lg font-black text-white/35">{t("shuffle_no_profiles")}</p>
+            <p className="text-lg font-black text-white/35">
+              {pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery
+                ? t("shuffle_no_profiles_filters")
+                : t("shuffle_no_profiles")}
+            </p>
+            {pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery ? (
+              <button
+                type="button"
+                onClick={pool.clearFilters}
+                className="mt-5 rounded-full border border-[#8C84FF]/30 bg-[#8C84FF]/10 px-5 py-2.5 text-sm font-black text-[#8C84FF]"
+              >
+                {t("shuffle_filters_clear")}
+              </button>
+            ) : null}
             {pool.errorText ? (
               <p className="mt-4 max-w-3xl text-white/35 font-bold">{pool.errorText}</p>
             ) : null}

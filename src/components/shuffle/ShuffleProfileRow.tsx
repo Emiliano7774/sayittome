@@ -86,6 +86,7 @@ function propsEqual(prev: Props, next: Props) {
     a.bio === b.bio &&
     a.photo === b.photo &&
     a.online === b.online &&
+    a.showOnline === b.showOnline &&
     a.presenceAt === b.presenceAt &&
     a.lastActive === b.lastActive &&
     a.adminBlurProfilePhoto === b.adminBlurProfilePhoto &&

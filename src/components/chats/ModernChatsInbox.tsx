@@ -10,11 +10,14 @@ import ChatPeerAvatar from "@/components/chat/ChatPeerAvatar";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import { formatClassicInboxTime } from "@/lib/chat/inboxTime";
 import { chatHref, type InboxChat } from "@/hooks/useChatsInbox";
-import { chatPeerTitle, shouldHidePeerProfilePhoto, shouldShowAnonPeerInbox } from "@/lib/chat/inboxPeerTitle";
-import { chatUnreadCount, resolveInboxViewerId } from "@/lib/chat/inboxUnread";
+import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
+import { chatPeerTitle, resolveChatViewerId, shouldHidePeerProfilePhoto, shouldShowAnonPeerInbox } from "@/lib/chat/inboxPeerTitle";
+import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
+import { getLocalChatReadVersion, subscribeLocalChatRead } from "@/lib/chat/localChatRead";
 import { inboxChatBlur, inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
 import type { useChatsSelection } from "@/hooks/useChatsSelection";
 import { useT } from "@/contexts/LocaleContext";
+import { useSyncExternalStore } from "react";
 
 type Props = {
   sortedChats: InboxChat[];
@@ -31,7 +34,7 @@ export default function ModernChatsInbox({
 }: Props) {
   const t = useT();
   const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
-  const viewerId = resolveInboxViewerId(uid);
+  useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
@@ -93,7 +96,8 @@ export default function ModernChatsInbox({
         ) : (
           <div className="space-y-3">
             {sortedChats.map((chat) => {
-              const unread = chatUnreadCount(chat, viewerId);
+              const chatViewerId = resolveChatViewerId(chat, uid);
+              const unread = chatUnreadCountForViewer(chat, uid);
               const title = chatPeerTitle(chat, uid);
               const selected = selection.selectedIds.has(chat.id);
               const photo = shouldHidePeerProfilePhoto(chat, uid)
@@ -101,10 +105,10 @@ export default function ModernChatsInbox({
                 : inboxChatPhoto(chat, photos);
               const isAnonPeer = shouldShowAnonPeerInbox(chat, uid);
               const blurPhoto = inboxChatBlur(chat, blurPhotos);
-              const timeLabel = formatClassicInboxTime(chat, viewerId, t);
-              const mine = chat.lastMessageSender === viewerId;
+              const timeLabel = formatClassicInboxTime(chat, chatViewerId, t);
+              const mine = isOwnChatSender(String(chat.lastMessageSender || ""), chatViewerId, uid);
               const readByOther = Object.entries(chat.readBy || {}).some(
-                ([key, value]) => key !== viewerId && value === true,
+                ([key, value]) => key !== chatViewerId && value === true,
               );
               const cardClass =
                 "group relative z-10 flex items-center gap-4 rounded-2xl border p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition active:scale-[0.99] " +

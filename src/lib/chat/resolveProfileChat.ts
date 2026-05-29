@@ -70,7 +70,7 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
     receptorUid: targetUid || null,
     targetUid: targetUid || null,
     initiatorUid: firebaseUid || null,
-    anonOwnerUid: firebaseUid || null,
+    anonOwnerUid: targetUid || null,
     anonSessionId: effectiveSender,
     participantes,
     anon: true,

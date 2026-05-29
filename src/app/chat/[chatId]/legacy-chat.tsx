@@ -25,8 +25,9 @@ import { auth, db, storage } from "@/lib/firebase";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
-import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
+import { markChatAsRead } from "@/lib/chat/unread";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
+import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 
 type MessageStatus = "sending" | "sent" | "error";
 type MediaType = "image" | "video" | "audio";
@@ -226,8 +227,8 @@ export default function LegacyChatPage() {
         });
 
         try {
+          await markChatAsRead(chatId, user.uid);
           await updateDoc(doc(db, "chats", chatId), {
-            ["readBy." + user.uid]: true,
             ["typing." + user.uid]: false,
           });
         } catch (e) {

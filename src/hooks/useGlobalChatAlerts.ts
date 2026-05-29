@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +8,10 @@ import { useChatsInbox } from "@/hooks/useChatsInbox";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { chatPeerTitle } from "@/lib/chat/inboxPeerTitle";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import {
+  getLocalChatReadVersion,
+  subscribeLocalChatRead,
+} from "@/lib/chat/localChatRead";
 import {
   resolveInboxViewerId,
   totalUnreadCount,
@@ -20,7 +24,14 @@ export function useGlobalChatAlerts() {
   const { sortedChats, uid, loading } = useChatsInbox();
   const viewerId = resolveInboxViewerId(uid);
   const firebaseUid = firebaseUser?.uid || uid || "";
-  const totalUnread = totalUnreadCount(sortedChats, viewerId);
+  useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
+  const activeChatId = (() => {
+    const match = pathname.match(/\/chat\/([^/?#]+)/);
+    return match ? decodeURIComponent(match[1]) : "";
+  })();
+  const totalUnread = totalUnreadCount(sortedChats, firebaseUid, {
+    excludeChatId: activeChatId,
+  });
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);
 

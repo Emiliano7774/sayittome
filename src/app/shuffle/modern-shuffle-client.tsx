@@ -7,6 +7,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import ModernShuffleGrid from "@/components/modern/ModernShuffleGrid";
 import ModernStoriesBar from "@/components/modern/ModernStoriesBar";
+import ModernAnonConnectCard from "@/components/anonMatch/ModernAnonConnectCard";
 import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ShuffleToolbarButton from "@/components/shuffle/ShuffleToolbarButton";
@@ -39,7 +40,9 @@ export default function ModernShuffleClient() {
 
   const visible = getVisibleShuffleProfiles();
   const withStories = getCachedStoryGroups().length;
-  const profileCount = pool.hasActiveDiscovery ? pool.visibleCount : pool.livePeopleCount;
+  const profileCount = pool.profilesCreated || pool.livePeopleCount;
+  const filtersBlockResults =
+    pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery;
 
   return (
     <main data-scroll-root className="sayittome-shuffle-scroll min-h-screen bg-black text-white">
@@ -75,6 +78,8 @@ export default function ModernShuffleClient() {
 
         <ModernStoriesBar />
 
+        <ModernAnonConnectCard />
+
         <ShuffleFiltersSheet
           open={pool.filtersOpen}
           applied={pool.filters}
@@ -90,7 +95,18 @@ export default function ModernShuffleClient() {
           </div>
         ) : !pool.listReady && visible.length === 0 ? (
           <div className="flex h-[50vh] flex-col items-center justify-center text-center">
-            <p className="text-2xl font-black text-white/35">No hay perfiles para mostrar.</p>
+            <p className="text-2xl font-black text-white/35">
+              {filtersBlockResults ? t("shuffle_no_profiles_filters") : t("shuffle_no_profiles")}
+            </p>
+            {filtersBlockResults ? (
+              <button
+                type="button"
+                onClick={pool.clearFilters}
+                className="mt-5 rounded-full border border-violet-500/30 bg-violet-500/10 px-5 py-2.5 text-sm font-black text-violet-200"
+              >
+                {t("shuffle_filters_clear")}
+              </button>
+            ) : null}
             {pool.errorText ? (
               <p className="mt-3 font-bold text-white/40">{pool.errorText}</p>
             ) : null}

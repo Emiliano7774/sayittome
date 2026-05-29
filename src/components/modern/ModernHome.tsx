@@ -5,6 +5,7 @@ import Link from "next/link";
 import HeaderControls from "@/components/HeaderControls";
 import EnterShuffleButton from "@/components/legal/EnterShuffleButton";
 import ApkDownloadSection from "@/components/monetization/ApkDownloadSection";
+import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernHome() {
@@ -67,6 +68,7 @@ export default function ModernHome() {
         </div>
 
         <ApkDownloadSection variant="modern" />
+        <PublicLegalFooter className="mt-10" />
       </section>
     </main>
   );

@@ -23,12 +23,19 @@ export function isLiveByConnection(
 
 export function isRecentlyActive(
   lastActive?: string | null,
-  online?: boolean,
+  _online?: boolean,
   windowMs = ONLINE_WINDOW_MS,
 ) {
-  if (online === false) return false;
-
   return isLiveByConnection(lastActive, windowMs);
+}
+
+export function isActiveWithinWindow(
+  presenceAt?: string | null,
+  lastActive?: string | null,
+  windowMs = ONLINE_WINDOW_MS,
+  now = Date.now(),
+) {
+  return isLiveByConnection(presenceAt || lastActive, windowMs, now);
 }
 
 export function formatLastSeen(

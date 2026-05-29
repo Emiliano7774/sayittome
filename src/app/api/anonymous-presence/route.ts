@@ -30,6 +30,8 @@ async function patchAnonymousPresence(id: string) {
   url.searchParams.append("updateMask.fieldPaths", "lastSeenAt");
   url.searchParams.append("updateMask.fieldPaths", "updatedAt");
   url.searchParams.append("updateMask.fieldPaths", "expiresAt");
+  url.searchParams.append("updateMask.fieldPaths", "disponibleParaChat");
+  url.searchParams.append("updateMask.fieldPaths", "enChat");
 
   const res = await fetch(url.toString(), {
     method: "PATCH",
@@ -40,6 +42,8 @@ async function patchAnonymousPresence(id: string) {
         lastSeenAt: { timestampValue: now.toISOString() },
         updatedAt: { timestampValue: now.toISOString() },
         expiresAt: { timestampValue: expiresAt.toISOString() },
+        disponibleParaChat: { booleanValue: true },
+        enChat: { booleanValue: false },
       },
     }),
     cache: "no-store",

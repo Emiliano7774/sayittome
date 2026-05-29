@@ -11,6 +11,7 @@ import {
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
 import { mapLoginErrorCode } from "@/lib/auth/registerErrors";
+import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { auth } from "@/lib/firebase";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -125,6 +126,8 @@ export default function LoginPage() {
         >
           {t("common_back_home")}
         </button>
+
+        <PublicLegalFooter className="mt-8 border-t-0 pt-0" />
       </form>
     </main>
   );

@@ -16,7 +16,6 @@ import {
   shuffleFiltersActiveCount,
   type ShuffleFilters,
 } from "@/lib/shuffle/filters";
-import { appendShuffleFiltersToSearchParams } from "@/lib/shuffle/serverFilters";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
 import {
   pickRandomWindowIndices,
@@ -147,11 +146,9 @@ export function useShufflePool() {
     async ({
       q = "",
       force = false,
-      nextFilters = filtersRef.current,
     }: {
       q?: string;
       force?: boolean;
-      nextFilters?: ShuffleFilters;
     } = {}) => {
       if (loadLockedRef.current && !force) return;
 
@@ -175,10 +172,9 @@ export function useShufflePool() {
         const params = new URLSearchParams({
           limit: "500",
           shuffle: "0",
-          q,
           ts: String(Date.now()),
         });
-        appendShuffleFiltersToSearchParams(params, nextFilters);
+        if (q) params.set("q", q);
 
         const res = await fetch(`/api/shuffle?${params.toString()}`, {
           cache: "no-store",
@@ -202,9 +198,9 @@ export function useShufflePool() {
 
         if (nextProfiles.length > 0) {
           applyPool(nextProfiles, total || profilesCreated || nextProfiles.length);
-          filterActivePool(q, nextFilters);
+          filterActivePool(q, filtersRef.current);
         } else if (poolRef.current.length > 0) {
-          filterActivePool(q, nextFilters);
+          filterActivePool(q, filtersRef.current);
         } else {
           activePoolRef.current = [];
           setFilteredCount(0);
@@ -296,9 +292,9 @@ export function useShufflePool() {
       filtersRef.current = nextFilters;
       setFiltersState(nextFilters);
       saveStoredShuffleFilters(nextFilters);
-      void loadProfiles({ q: search.trim(), force: true, nextFilters });
+      filterActivePool(search.trim(), nextFilters);
     },
-    [loadProfiles, search],
+    [filterActivePool, search],
   );
 
   const clearFilters = useCallback(() => {
@@ -306,8 +302,8 @@ export function useShufflePool() {
     filtersRef.current = cleared;
     setFiltersState(cleared);
     saveStoredShuffleFilters(cleared);
-    void loadProfiles({ q: search.trim(), force: true, nextFilters: cleared });
-  }, [loadProfiles, search]);
+    filterActivePool(search.trim(), cleared);
+  }, [filterActivePool, search]);
 
   const handleListClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {

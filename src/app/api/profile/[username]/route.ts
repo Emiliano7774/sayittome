@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { isRecentlyActive } from "@/lib/presence";
+import { isActiveWithinWindow, isRecentlyActive } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 
@@ -143,7 +143,7 @@ export async function GET(
       ts(fields, "updatedAt") ||
       ts(fields, "createdAt"),
     online,
-    showOnline: isRecentlyActive(presenceAt, online),
+    showOnline: isActiveWithinWindow(presenceAt, presenceAt || ts(fields, "updatedAt") || ts(fields, "createdAt")),
     adminBlurProfilePhoto: fields?.adminBlurProfilePhoto?.booleanValue === true,
     adminBlurFotosPerfil: fields?.adminBlurFotosPerfil?.booleanValue === true,
     adminBlurStories: fields?.adminBlurStories?.booleanValue === true,

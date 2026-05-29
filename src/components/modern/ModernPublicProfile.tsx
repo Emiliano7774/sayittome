@@ -2,18 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
-import { ArrowLeft, BadgeCheck, Heart, MessageCircle, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowLeft, BadgeCheck, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import FollowButton from "@/components/FollowButton";
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import HeaderControls from "@/components/HeaderControls";
-import { isAdminEmail } from "@/lib/admin/isAdmin";
-import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
-import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
+import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { useT } from "@/contexts/LocaleContext";
@@ -70,23 +68,29 @@ export default function ModernPublicProfile({
   const historiasCount = story.hasActive
     ? story.storyCount
     : Number(profile.historias || profile.stories || 0);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
 
   const coverImage = profile.fotoPortada || profile.fotoPrincipal;
-  const profileChatHref = useMemo(() => {
-    if (isOwner) {
-      return `/u/${encodeURIComponent(profile.username)}/chat`;
-    }
-    const chatId = buildProfileAnonChatId(getChatAnonSenderId(), profile.username);
-    const query = new URLSearchParams({ u: profile.username });
-    return `/chat/${encodeURIComponent(chatId)}?${query.toString()}`;
-  }, [profile.username, isOwner]);
+  const gallery = useMemo(() => {
+    const photos = Array.isArray(profile.fotos) ? profile.fotos.filter(Boolean) : [];
+    const merged = [profile.fotoPrincipal, ...photos].filter(Boolean);
+    return Array.from(new Set(merged));
+  }, [profile.fotoPrincipal, profile.fotos]);
+  const profileChatHref = `/u/${encodeURIComponent(profile.username)}/chat`;
+
+  function openViewer(index = 0) {
+    if (gallery.length === 0) return;
+    setViewerIndex(index);
+    setViewerOpen(true);
+  }
 
   function openPrimary() {
     if (story.hasActive && story.storyPath) {
       router.push(story.storyPath);
       return;
     }
-    router.push(`/u/${encodeURIComponent(profile.username)}`);
+    openViewer(0);
   }
 
   return (
@@ -121,6 +125,13 @@ export default function ModernPublicProfile({
           <div className="absolute -inset-8 rounded-[3rem] bg-fuchsia-500/20 blur-3xl" />
           <section className="relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40">
             <div className="relative h-80 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => openViewer(0)}
+                disabled={gallery.length === 0}
+                className="absolute inset-0 z-[2] disabled:cursor-default"
+                aria-label="Ver fotos del perfil"
+              />
               {profile.videoPortada ? (
                 <SensitiveMediaShell
                   url={profile.videoPortada}
@@ -276,11 +287,60 @@ export default function ModernPublicProfile({
         </div>
 
         {profile.createdAtLabel ? (
-          <p className="mt-4 text-center text-sm italic text-white/35">
+          <p className="fixed bottom-[calc(var(--sayittome-bottom-ui,0px)+1rem)] right-6 md:right-10 z-[25] text-right text-sm italic text-white/35 pointer-events-none">
             {t("settings_profile_created", { date: profile.createdAtLabel })}
           </p>
         ) : null}
       </div>
+
+      {viewerOpen && gallery.length > 0 ? (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95">
+          <button
+            type="button"
+            onClick={() => setViewerOpen(false)}
+            className="absolute right-6 top-6 z-[10] flex h-14 w-14 items-center justify-center rounded-full bg-white/10"
+            aria-label="Cerrar"
+          >
+            <X size={30} />
+          </button>
+
+          {gallery.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => setViewerIndex((v) => (v - 1 + gallery.length) % gallery.length)}
+              className="absolute left-6 z-[10] flex h-16 w-16 items-center justify-center rounded-full bg-white/10"
+              aria-label="Foto anterior"
+            >
+              <ChevronLeft size={38} />
+            </button>
+          ) : null}
+
+          <SensitiveMediaShell
+            url={gallery[viewerIndex]}
+            staticRequiresBlur={blurPhoto}
+            profile={profile}
+            className="max-h-[88vh] max-w-[92vw]"
+            overlayLabel={t("profile_photo_moderated")}
+          >
+            <img
+              src={gallery[viewerIndex]}
+              alt={profile.username}
+              className="max-h-[88vh] max-w-[92vw] rounded-3xl object-contain"
+            />
+          </SensitiveMediaShell>
+
+          {gallery.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => setViewerIndex((v) => (v + 1) % gallery.length)}
+              className="absolute right-6 z-[10] flex h-16 w-16 items-center justify-center rounded-full bg-white/10"
+              aria-label="Foto siguiente"
+            >
+              <ChevronRight size={38} />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </main>
   );
 }

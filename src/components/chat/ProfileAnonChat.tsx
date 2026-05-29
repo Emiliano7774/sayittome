@@ -36,7 +36,7 @@ import {
   profileReplyAuthorId,
   resolveProfileAnonMessageMine,
 } from "@/lib/chat/profileAnonMessageAuthor";
-import { clearUnread } from "@/lib/chat/unread";
+import { markChatAsRead } from "@/lib/chat/unread";
 import {
   formatAnonSessionLabel,
 } from "@/lib/chat/inboxPeerTitle";
@@ -279,6 +279,18 @@ export default function ProfileAnonChat({
   useEffect(() => {
     if (!chatId || !authReady) return;
 
+    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+    const messageViewerId =
+      currentUid && targetUid && currentUid === targetUid ? currentUid : senderId;
+
+    if (!messageViewerId) return;
+
+    void markChatAsRead(chatId, messageViewerId).catch(() => undefined);
+  }, [chatId, authReady, currentUid, targetUid, chatAnonSessionId]);
+
+  useEffect(() => {
+    if (!chatId || !authReady) return;
+
     const q = query(
       collection(db, "chats", chatId, "mensajes"),
       orderBy("createdAt", "asc"),
@@ -384,11 +396,25 @@ export default function ProfileAnonChat({
 
         if (snapshot.docs.length === 0) return;
 
-        updateDoc(doc(db, "chats", chatId), {
-          [`readBy.${messageViewerId}`]: true,
-        }).catch(() => undefined);
+        const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+        const lastData = lastDoc.data() as {
+          texto?: string;
+          text?: string;
+          fromUid?: string;
+          ownerId?: string;
+          senderUid?: string;
+        };
 
-        void clearUnread(chatId, messageViewerId).catch(() => undefined);
+        void markChatAsRead(chatId, messageViewerId, {
+          id: chatId,
+          canonicalChatId: chatId,
+          targetUsername: username,
+          receptorUsername: username,
+          lastMessage: String(lastData.text || lastData.texto || ""),
+          lastMessageSender: String(
+            lastData.fromUid || lastData.ownerId || lastData.senderUid || "",
+          ),
+        });
       },
       (error) => {
         console.error(error);

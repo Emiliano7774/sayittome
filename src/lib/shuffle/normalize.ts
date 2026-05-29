@@ -1,4 +1,4 @@
-import { isRecentlyActive } from "@/lib/presence";
+import { isActiveWithinWindow } from "@/lib/presence";
 import { galleryRequiresBlur } from "@/lib/moderation/blur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -60,7 +60,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         showOnline:
           typeof item?.showOnline === "boolean"
             ? item.showOnline
-            : isRecentlyActive(presenceAt, online),
+            : isActiveWithinWindow(presenceAt, lastActive),
         blurPhoto: galleryRequiresBlur({
           adminBlurProfilePhoto,
           adminBlurFotosPerfil,

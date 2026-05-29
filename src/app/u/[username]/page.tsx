@@ -20,7 +20,7 @@ import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
-import { formatLastSeen, isRecentlyActive } from "@/lib/presence";
+import { formatLastSeen, isActiveWithinWindow } from "@/lib/presence";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
@@ -130,7 +130,7 @@ export default function PublicProfilePage() {
 
   const heartbeat = profile?.presenceAt || profile?.lastActive;
   const isOnline = profile
-    ? isRecentlyActive(heartbeat, profile.online)
+    ? isActiveWithinWindow(profile.presenceAt, profile.lastActive)
     : false;
   const lastSeenLabel =
     profile && !isOnline ? formatLastSeen(heartbeat, false) : "";
@@ -258,20 +258,10 @@ export default function PublicProfilePage() {
 
       <button
         type="button"
-        onClick={() => {
-          if (storyStatus.hasActive && storyStatus.storyPath) {
-            router.push(storyStatus.storyPath);
-            return;
-          }
-          openViewer(0);
-        }}
-        disabled={!storyStatus.hasActive && gallery.length === 0}
-        className="absolute inset-0 h-[88vh] w-full z-[3] cursor-pointer disabled:cursor-default"
-        aria-label={
-          storyStatus.hasActive
-            ? `Ver historias de ${profile.username}`
-            : "Ver fotos del perfil"
-        }
+        onClick={() => openViewer(0)}
+        disabled={gallery.length === 0}
+        className="absolute inset-0 h-[88vh] w-full z-[3] cursor-pointer pointer-events-auto disabled:cursor-default"
+        aria-label="Ver fotos del perfil"
       />
 
       <section className="relative z-[5] px-8 md:px-24 min-h-[88vh] pointer-events-none">
@@ -326,9 +316,15 @@ export default function PublicProfilePage() {
           ) : null}
         </div>
 
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-auto">
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-none">
           <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={44} fill="white" />} />
-          <StatBubble color="bg-green-500" value={profile.conversaciones || 0} label="conv." icon={<MessageCircle size={44} fill="white" />} />
+          <StatBubble
+            color="bg-green-500"
+            value={profile.conversaciones || 0}
+            label="conv."
+            icon={<MessageCircle size={44} fill="white" />}
+            onClick={() => router.push(`/u/${encodeURIComponent(profile.username)}/chat`)}
+          />
           <StatBubble color="bg-violet-500" value={profile.seguidores || 0} label="seguidores" icon={<Users size={44} />} />
           <StatBubble
             color="bg-sky-400"
@@ -354,13 +350,13 @@ export default function PublicProfilePage() {
             {profile.bio}
           </p>
         )}
-
-        {profile.createdAtLabel && (
-          <p className="absolute right-8 md:right-24 bottom-[5vh] z-[21] italic text-white/45 text-lg md:text-xl">
-            Perfil creado el {profile.createdAtLabel}
-          </p>
-        )}
       </section>
+
+      {profile.createdAtLabel && (
+        <p className="fixed bottom-[calc(var(--sayittome-bottom-ui,0px)+1rem)] right-6 md:right-10 z-[25] italic text-white/45 text-sm md:text-lg pointer-events-none text-right">
+          Perfil creado el {profile.createdAtLabel}
+        </p>
+      )}
 
       {gallery.length > 1 && (
         <section className="relative z-[6] px-8 md:px-24 -mt-2 mb-8">
@@ -486,7 +482,7 @@ function StatBubble({
   );
 
   return (
-    <div className="flex flex-col items-center justify-center">
+    <div className="pointer-events-auto flex flex-col items-center justify-center">
       {onClick ? (
         <button type="button" onClick={onClick} className="active:scale-95 transition">
           {bubble}

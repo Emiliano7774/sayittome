@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthProvider } from "@/contexts/AuthContext";
+import { AnonMatchProvider } from "@/contexts/AnonMatchContext";
 import { ChatAlertsProvider } from "@/contexts/ChatAlertsContext";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { UxModeProvider } from "@/contexts/UxModeContext";
@@ -13,6 +14,7 @@ import MonetagScripts from "@/components/monetization/MonetagScripts";
 import PresenceBootstrap from "@/components/PresenceBootstrap";
 import StoriesBootstrap from "@/components/stories/StoriesBootstrap";
 import SensitiveConsentBootstrap from "@/components/moderation/SensitiveConsentBootstrap";
+import AnonMatchBootstrap from "@/components/anonMatch/AnonMatchBootstrap";
 
 export default function Providers({
   children,
@@ -22,6 +24,7 @@ export default function Providers({
   return (
     <LocaleProvider>
       <AuthProvider>
+        <AnonMatchProvider>
         <UxModeProvider>
           <ChatAlertsProvider>
           <PresenceBootstrap />
@@ -33,9 +36,11 @@ export default function Providers({
           <MonetagScripts />
           <StoriesBootstrap />
           <SensitiveConsentBootstrap />
+          <AnonMatchBootstrap />
           {children}
           </ChatAlertsProvider>
         </UxModeProvider>
+        </AnonMatchProvider>
       </AuthProvider>
     </LocaleProvider>
   );

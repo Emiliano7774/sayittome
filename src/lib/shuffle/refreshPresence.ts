@@ -1,12 +1,10 @@
-import { isRecentlyActive } from "@/lib/presence";
+import { isActiveWithinWindow } from "@/lib/presence";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export function refreshProfilePresence(profile: ShuffleProfile): ShuffleProfile {
-  const heartbeat = profile.presenceAt || profile.lastActive;
-
   return {
     ...profile,
-    showOnline: isRecentlyActive(heartbeat, profile.online),
+    showOnline: isActiveWithinWindow(profile.presenceAt, profile.lastActive),
   };
 }
 
