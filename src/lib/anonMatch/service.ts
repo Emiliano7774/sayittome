@@ -4,7 +4,7 @@ import {
   patchFirestoreDoc,
   runCollectionQuery,
 } from "@/lib/firestore/rest";
-import { buildAnonDirectChatId, buildAnonMatchRequestId } from "@/lib/anonMatch/chatId";
+import { buildAnonDirectChatId, buildAnonMatchRequestId, buildAnonToAnonDirectChatId } from "@/lib/anonMatch/chatId";
 import {
   ANON_MATCH_ACTIVE_MS,
   ANON_MATCH_REQUEST_MS,
@@ -110,15 +110,27 @@ export async function countAvailableAnons(excludeAnonIds: string[] = []) {
 }
 
 export async function createAnonMatchRequest(input: {
-  solicitanteUid: string;
+  solicitanteUid?: string;
+  solicitanteAnonId?: string;
   excludeAnonIds?: string[];
   pais?: string;
   provincia?: string;
   idioma?: string;
 }) {
+  const solicitanteUid = String(input.solicitanteUid || "").trim();
+  const solicitanteAnonId = String(input.solicitanteAnonId || "").trim();
+  const solicitanteKey = solicitanteUid || solicitanteAnonId;
+
+  if (!solicitanteKey) {
+    return { ok: false as const, reason: "missing_solicitant" as const };
+  }
+
   const now = Date.now();
+  const exclude = new Set(input.excludeAnonIds || []);
+  if (solicitanteAnonId) exclude.add(solicitanteAnonId);
+
   const picked = await pickAvailableAnon({
-    excludeAnonIds: input.excludeAnonIds,
+    excludeAnonIds: Array.from(exclude),
     pais: input.pais,
     idioma: input.idioma,
     now,
@@ -129,15 +141,18 @@ export async function createAnonMatchRequest(input: {
   }
 
   const anonId = String(picked.anonId || picked.id || "");
-  const solicitudId = buildAnonMatchRequestId(input.solicitanteUid, anonId);
+  const solicitudId = buildAnonMatchRequestId(solicitanteKey, anonId);
   const createdAt = new Date(now).toISOString();
   const expiresAt = new Date(now + ANON_MATCH_REQUEST_MS).toISOString();
+  const tipoSolicitud = solicitanteUid ? "perfil_a_anonimo" : "anon_a_anonimo";
 
   await createFirestoreDoc(
     "solicitudes_chat_anonimo",
     {
       solicitudId,
-      solicitanteUid: input.solicitanteUid,
+      solicitanteUid,
+      solicitanteAnonId,
+      tipoSolicitud,
       anonId,
       estado: "pendiente",
       createdAt,
@@ -203,6 +218,8 @@ export async function respondAnonMatchRequest(input: {
 
   const now = new Date().toISOString();
   const solicitanteUid = String(row.solicitanteUid || "");
+  const solicitanteAnonId = String(row.solicitanteAnonId || "");
+  const isAnonToAnon = !solicitanteUid && Boolean(solicitanteAnonId);
 
   if (!input.accept) {
     await patchFirestoreDoc("solicitudes_chat_anonimo", input.solicitudId, {
@@ -212,14 +229,17 @@ export async function respondAnonMatchRequest(input: {
     return { ok: true as const, estado: "rechazado" as const };
   }
 
-  const chatId = buildAnonDirectChatId(solicitanteUid, input.anonId);
+  const chatId = isAnonToAnon
+    ? buildAnonToAnonDirectChatId(solicitanteAnonId, input.anonId)
+    : buildAnonDirectChatId(solicitanteUid, input.anonId);
 
   await createFirestoreDoc(
     "chats_anonimos",
     {
       chatId,
-      tipo: "perfil_con_anonimo",
+      tipo: isAnonToAnon ? "anon_con_anonimo" : "perfil_con_anonimo",
       solicitanteUid,
+      solicitanteAnonId,
       anonId: input.anonId,
       estado: "activo",
       createdAt: now,
@@ -242,6 +262,15 @@ export async function respondAnonMatchRequest(input: {
     updatedAt: now,
   });
 
+  if (isAnonToAnon && solicitanteAnonId) {
+    await patchFirestoreDoc("anonimos_activos", solicitanteAnonId, {
+      enChat: true,
+      disponibleParaChat: false,
+      chatActualId: chatId,
+      updatedAt: now,
+    });
+  }
+
   return { ok: true as const, estado: "aceptado" as const, chatId };
 }
 
@@ -262,8 +291,19 @@ export async function closeAnonDirectChat(input: {
   if (res.ok) {
     const chat = parseFirestoreDoc(await res.json()) as Record<string, unknown>;
     const anonId = String(chat.anonId || "");
+    const solicitanteAnonId = String(chat.solicitanteAnonId || "");
+
     if (anonId) {
       await patchFirestoreDoc("anonimos_activos", anonId, {
+        enChat: false,
+        disponibleParaChat: true,
+        chatActualId: "",
+        updatedAt: now,
+      });
+    }
+
+    if (solicitanteAnonId) {
+      await patchFirestoreDoc("anonimos_activos", solicitanteAnonId, {
         enChat: false,
         disponibleParaChat: true,
         chatActualId: "",

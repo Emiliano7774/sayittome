@@ -187,11 +187,15 @@ const es = {
   shuffle_no_profiles: "No hay perfiles para mostrar.",
   shuffle_no_profiles_filters: "Ningún perfil coincide con tus filtros.",
   anon_match_card_title: "¿Querés hablar con alguien ahora?",
+  anon_match_card_title_anon: "¿Querés hablar con otro anónimo?",
   anon_match_cta: "Conectar",
   anon_match_searching: "Buscando...",
   anon_match_disclaimer_title: "Solo visitantes anónimos",
   anon_match_disclaimer_body:
     "Esta opción conecta únicamente con personas que entraron de forma totalmente anónima en este momento. No incluye perfiles ni cuentas registradas.",
+  anon_match_disclaimer_title_anon: "Solo otros visitantes anónimos",
+  anon_match_disclaimer_body_anon:
+    "Esta opción conecta únicamente con otras personas en modo anónimo en este momento. No incluye perfiles ni cuentas registradas.",
   anon_match_disclaimer_confirm: "Entendido, buscar",
   anon_match_disclaimer_cancel: "Cancelar",
   anon_match_incognito_title: "Modo incógnito",
@@ -624,11 +628,15 @@ const en: Record<keyof typeof es, string> = {
   shuffle_no_profiles: "No profiles to show.",
   shuffle_no_profiles_filters: "No profiles match your filters.",
   anon_match_card_title: "Want to talk to someone now?",
+  anon_match_card_title_anon: "Want to talk to another anonymous user?",
   anon_match_cta: "Connect",
   anon_match_searching: "Searching...",
   anon_match_disclaimer_title: "Anonymous visitors only",
   anon_match_disclaimer_body:
     "This option only connects you with people who entered fully anonymously right now. It does not include profiles or registered accounts.",
+  anon_match_disclaimer_title_anon: "Other anonymous visitors only",
+  anon_match_disclaimer_body_anon:
+    "This option only connects you with other people in anonymous mode right now. It does not include profiles or registered accounts.",
   anon_match_disclaimer_confirm: "Got it, search",
   anon_match_disclaimer_cancel: "Cancel",
   anon_match_incognito_title: "Incognito mode",

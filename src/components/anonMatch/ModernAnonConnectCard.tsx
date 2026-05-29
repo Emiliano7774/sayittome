@@ -35,6 +35,18 @@ export default function ModernAnonConnectCard() {
   if (!isProfileUser && !isIncognitoVisitor) return null;
 
   const searching = match.searchSessionActive;
+  const cardTitle = isIncognitoVisitor
+    ? t("anon_match_card_title_anon")
+    : t("anon_match_card_title");
+  const disclaimerTitle = isIncognitoVisitor
+    ? t("anon_match_disclaimer_title_anon")
+    : t("anon_match_disclaimer_title");
+  const disclaimerBody = isIncognitoVisitor
+    ? t("anon_match_disclaimer_body_anon")
+    : t("anon_match_disclaimer_body");
+  const sectionLabel = isIncognitoVisitor
+    ? t("anon_match_incognito_section")
+    : t("anon_match_connect_section");
 
   function handleConfirmSearch() {
     setDisclaimerOpen(false);
@@ -44,42 +56,17 @@ export default function ModernAnonConnectCard() {
   const shellClass =
     "mb-5 rounded-[24px] border border-violet-500/10 bg-[#080808]/90 p-4 shadow-[inset_0_0_40px_rgba(104,76,255,0.06)]";
 
-  if (isIncognitoVisitor) {
-    return (
-      <section className={shellClass}>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-black tracking-[0.18em] text-violet-200/80">
-            {t("anon_match_incognito_section")}
-          </p>
-          <span className="inline-flex items-center gap-2 rounded-full border border-green-500/25 bg-green-500/10 px-3 py-1 text-xs font-black text-green-300">
-            <span className="h-2 w-2 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.85)]" />
-            {t("anon_match_incognito_active")}
-          </span>
-        </div>
-
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-500/15 bg-violet-500/10">
-            <Globe2 size={20} className="text-violet-300" strokeWidth={1.6} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-base font-black tracking-tight text-white">{t("anon_match_incognito_title")}</p>
-            <p className="mt-1 text-sm font-bold leading-snug text-white/45">
-              {t("anon_match_incognito_body")}
-            </p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
   return (
     <>
       <section className={shellClass}>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-black tracking-[0.18em] text-violet-200/80">
-            {t("anon_match_connect_section")}
-          </p>
-          {searching ? (
+          <p className="text-sm font-black tracking-[0.18em] text-violet-200/80">{sectionLabel}</p>
+          {isIncognitoVisitor ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-green-500/25 bg-green-500/10 px-3 py-1 text-xs font-black text-green-300">
+              <span className="h-2 w-2 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.85)]" />
+              {t("anon_match_incognito_active")}
+            </span>
+          ) : searching ? (
             <span className="rounded-full bg-violet-500/15 px-3 py-1 text-xs font-black text-violet-200">
               {t("anon_match_searching")}
             </span>
@@ -91,7 +78,19 @@ export default function ModernAnonConnectCard() {
             <Globe2 size={20} className="text-violet-300" strokeWidth={1.6} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-base font-black tracking-tight text-white">{t("anon_match_card_title")}</p>
+            {isIncognitoVisitor ? (
+              <>
+                <p className="text-base font-black tracking-tight text-white">
+                  {t("anon_match_incognito_title")}
+                </p>
+                <p className="mt-1 text-sm font-bold leading-snug text-white/45">
+                  {t("anon_match_incognito_body")}
+                </p>
+                <p className="mt-3 text-base font-black tracking-tight text-white">{cardTitle}</p>
+              </>
+            ) : (
+              <p className="text-base font-black tracking-tight text-white">{cardTitle}</p>
+            )}
             {!searching ? (
               <button
                 type="button"
@@ -100,6 +99,8 @@ export default function ModernAnonConnectCard() {
               >
                 {t("anon_match_cta")}
               </button>
+            ) : isIncognitoVisitor ? (
+              <p className="mt-3 text-sm font-bold text-white/45">{t("anon_match_searching")}</p>
             ) : null}
           </div>
         </div>
@@ -114,17 +115,15 @@ export default function ModernAnonConnectCard() {
             aria-labelledby="anon-match-disclaimer-title-modern"
           >
             <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-300/80">
-              {t("anon_match_connect_section")}
+              {sectionLabel}
             </p>
             <p
               id="anon-match-disclaimer-title-modern"
               className="mt-3 text-xl font-black tracking-tight text-white"
             >
-              {t("anon_match_disclaimer_title")}
+              {disclaimerTitle}
             </p>
-            <p className="mt-3 text-sm font-bold leading-snug text-white/45">
-              {t("anon_match_disclaimer_body")}
-            </p>
+            <p className="mt-3 text-sm font-bold leading-snug text-white/45">{disclaimerBody}</p>
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button
                 type="button"

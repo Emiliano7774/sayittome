@@ -16,20 +16,27 @@ import {
   doc,
   getDoc,
   getDocs,
+  limitToLast,
   onSnapshot,
+  orderBy,
   query,
   where,
 } from "firebase/firestore";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
-import { playIncomingWhipSound } from "@/lib/chat/whipSound";
+import {
+  bindWhipSoundUnlock,
+  notifyIncomingChatMessage,
+  playIncomingWhipSound,
+} from "@/lib/chat/whipSound";
 import {
   clearAnonDirectChatSession,
   loadAnonDirectChatSession,
   saveAnonDirectChatSession,
   type AnonDirectChatView,
 } from "@/lib/anonMatch/directChatSession";
+import { ANON_MATCH_REQUEST_MS } from "@/lib/anonMatch/types";
 import { db } from "@/lib/firebase";
 import type { AnonMatchRequestState } from "@/lib/anonMatch/types";
 
@@ -105,7 +112,6 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   const phaseRef = useRef(phase);
   const solicitudRef = useRef(solicitudId);
-  const excludeRef = useRef<string[]>([]);
   const searchSessionActiveRef = useRef(false);
   const attemptConnectRef = useRef<(() => Promise<void>) | null>(null);
   const retryTimerRef = useRef<number | null>(null);
@@ -137,6 +143,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       persistOpenChat(openChatRef.current, view, "accepted");
     }
   }, []);
+
+  useEffect(() => bindWhipSoundUnlock(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,14 +225,30 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         }
 
         if (anonId && anonId !== "anon_server") {
-          const q = query(
+          const receiverQuery = query(
             collection(db, "chats_anonimos"),
             where("anonId", "==", anonId),
             where("estado", "==", "activo"),
           );
-          const snap = await getDocs(q);
-          if (cancelled || snap.empty) return;
-          const row = snap.docs[0];
+          const receiverSnap = await getDocs(receiverQuery);
+          if (cancelled || !receiverSnap.empty) {
+            if (!receiverSnap.empty) {
+              const row = receiverSnap.docs[0];
+              setOpenChat({ chatId: row.id, role: "anonimo" });
+              setChatViewState("minimized");
+              setPhase("accepted");
+            }
+            return;
+          }
+
+          const initiatorQuery = query(
+            collection(db, "chats_anonimos"),
+            where("solicitanteAnonId", "==", anonId),
+            where("estado", "==", "activo"),
+          );
+          const initiatorSnap = await getDocs(initiatorQuery);
+          if (cancelled || initiatorSnap.empty) return;
+          const row = initiatorSnap.docs[0];
           setOpenChat({ chatId: row.id, role: "anonimo" });
           setChatViewState("minimized");
           setPhase("accepted");
@@ -274,7 +298,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   }, [clearRetryTimer]);
 
   const attemptConnect = useCallback(async () => {
-    if (!firebaseUser?.uid || !searchSessionActiveRef.current) return;
+    const uid = firebaseUser?.uid || "";
+    const anonSessionId = getAnonSessionId();
+    const canConnectAsAnon =
+      !uid && Boolean(anonSessionId) && anonSessionId !== "anon_server";
+
+    if (!uid && !canConnectAsAnon) return;
+    if (!searchSessionActiveRef.current) return;
     if (connectInFlightRef.current) return;
     if (phaseRef.current === "waiting" && solicitudRef.current) return;
 
@@ -286,10 +316,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       const res = await fetch("/api/anon-match/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          solicitanteUid: firebaseUser.uid,
-          excludeAnonIds: excludeRef.current,
-        }),
+        body: JSON.stringify(
+          uid ? { solicitanteUid: uid } : { solicitanteAnonId: anonSessionId },
+        ),
       });
       const json = await res.json();
 
@@ -316,12 +345,16 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   }, [attemptConnect]);
 
   const startSearchSession = useCallback(async () => {
-    if (!firebaseUser?.uid) return;
+    const uid = firebaseUser?.uid || "";
+    const anonSessionId = getAnonSessionId();
+    const canConnectAsAnon =
+      !uid && Boolean(anonSessionId) && anonSessionId !== "anon_server";
+
+    if (!uid && !canConnectAsAnon) return;
     if (searchSessionActiveRef.current) return;
 
     searchSessionActiveRef.current = true;
     setSearchSessionActive(true);
-    excludeRef.current = [];
     await attemptConnect();
   }, [attemptConnect, firebaseUser?.uid]);
 
@@ -330,10 +363,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
     const ref = doc(db, "solicitudes_chat_anonimo", solicitudId);
 
-    const handleFailure = (anonId?: string) => {
-      if (anonId) {
-        excludeRef.current = Array.from(new Set([...excludeRef.current, anonId]));
-      }
+    const handleFailure = () => {
       if (!searchSessionActiveRef.current) {
         setPhase("idle");
         setSolicitudId("");
@@ -352,12 +382,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       const anonId = String(data.anonId || "");
 
       if (estado === "aceptado" && chatId) {
-        openDirectChat(chatId, "perfil");
+        openDirectChat(chatId, firebaseUser?.uid ? "perfil" : "anonimo");
         return;
       }
 
       if (estado === "rechazado" || estado === "expirado" || estado === "cancelado") {
-        handleFailure(estado === "rechazado" ? anonId : undefined);
+        handleFailure();
       }
     });
 
@@ -373,20 +403,24 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         });
         const json = await res.json();
         if (json?.estado === "expirado" || json?.estado === "rechazado") {
-          handleFailure(String(json?.anonId || ""));
+          handleFailure();
+        } else {
+          handleFailure();
         }
       } catch {
         handleFailure();
       }
-    }, 31_000);
+    }, ANON_MATCH_REQUEST_MS + 500);
 
     return () => {
       unsub();
       window.clearTimeout(expiryTimer);
     };
-  }, [openDirectChat, phase, scheduleRetry, solicitudId]);
+  }, [firebaseUser?.uid, openDirectChat, phase, scheduleRetry, solicitudId]);
 
   useEffect(() => {
+    if (!hydrated) return;
+
     const anonId = getAnonSessionId();
     if (!anonId || anonId === "anon_server") return;
 
@@ -403,7 +437,14 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           expiresAt: String(item.data().expiresAt || ""),
           estado: String(item.data().estado || ""),
         }))
-        .filter((row) => row.estado === "pendiente")
+        .filter((row) => {
+          if (row.estado !== "pendiente") return false;
+          const expiresAt = new Date(row.expiresAt);
+          if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()) {
+            return false;
+          }
+          return true;
+        })
         .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
 
       const next = pending[0] || null;
@@ -412,6 +453,10 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       if (next && !alertedRequestIds.has(next.solicitudId)) {
         alertedRequestIds.add(next.solicitudId);
         playIncomingWhipSound();
+        notifyIncomingChatMessage({
+          title: "Solicitud de chat",
+          body: "Alguien quiere iniciar un chat anónimo con vos.",
+        });
       }
 
       if (!next) {
@@ -424,7 +469,54 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsub();
-  }, []);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!openChat?.chatId || openChat.closedReason) return;
+
+    const senderId =
+      openChat.role === "perfil"
+        ? firebaseUser?.uid || ""
+        : getAnonSessionId();
+
+    if (!senderId) return;
+
+    let bootstrapped = false;
+    let lastMessageId: string | null = null;
+
+    const q = query(
+      collection(db, "chats_anonimos", openChat.chatId, "mensajes"),
+      orderBy("createdAt", "asc"),
+      limitToLast(1),
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      const docSnap = snap.docs[snap.docs.length - 1];
+      if (!docSnap) return;
+
+      const from = String(docSnap.data().senderId || "");
+      const isIncoming = from !== senderId;
+      const messageId = docSnap.id;
+      const body = String(docSnap.data().texto || docSnap.data().text || "").trim();
+
+      if (!bootstrapped) {
+        bootstrapped = true;
+        lastMessageId = messageId;
+        return;
+      }
+
+      if (isIncoming && messageId !== lastMessageId) {
+        lastMessageId = messageId;
+        playIncomingWhipSound();
+        notifyIncomingChatMessage({
+          title: "Chat anónimo",
+          body,
+        });
+      }
+    });
+
+    return () => unsub();
+  }, [firebaseUser?.uid, openChat?.chatId, openChat?.closedReason, openChat?.role]);
 
   useEffect(() => {
     if (!openChat?.chatId) return;
@@ -485,7 +577,6 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     searchSessionActiveRef.current = false;
     skipServerDiscoveryRef.current = true;
     setSearchSessionActive(false);
-    excludeRef.current = [];
     setOpenChat(null);
     setChatViewState("compact");
     setSolicitudId("");

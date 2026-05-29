@@ -28,8 +28,10 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const solicitanteUid = String(body?.solicitanteUid || "").trim();
-    if (!solicitanteUid) {
-      return NextResponse.json({ ok: false, error: "missing_uid" }, { status: 400 });
+    const solicitanteAnonId = String(body?.solicitanteAnonId || "").trim();
+
+    if (!solicitanteUid && !solicitanteAnonId) {
+      return NextResponse.json({ ok: false, error: "missing_solicitant" }, { status: 400 });
     }
 
     const excludeRaw = String(body?.excludeAnonIds || body?.exclude || "").trim();
@@ -40,7 +42,8 @@ export async function POST(req: Request) {
         : [];
 
     const result = await createAnonMatchRequest({
-      solicitanteUid,
+      solicitanteUid: solicitanteUid || undefined,
+      solicitanteAnonId: solicitanteAnonId || undefined,
       excludeAnonIds,
       pais: String(body?.pais || "").trim(),
       provincia: String(body?.provincia || "").trim(),

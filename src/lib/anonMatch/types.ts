@@ -10,6 +10,8 @@ export type AnonDirectChatState = "activo" | "cerrado" | "denunciado";
 export type AnonMatchRequest = {
   solicitudId: string;
   solicitanteUid: string;
+  solicitanteAnonId?: string;
+  tipoSolicitud?: "perfil_a_anonimo" | "anon_a_anonimo";
   anonId: string;
   estado: AnonMatchRequestState;
   createdAt: string;
@@ -23,8 +25,9 @@ export type AnonMatchRequest = {
 
 export type AnonDirectChat = {
   chatId: string;
-  tipo: "perfil_con_anonimo";
+  tipo: "perfil_con_anonimo" | "anon_con_anonimo";
   solicitanteUid: string;
+  solicitanteAnonId?: string;
   anonId: string;
   estado: AnonDirectChatState;
   createdAt: string;
@@ -36,5 +39,5 @@ export type AnonDirectChat = {
   denunciadoAt?: string;
 };
 
-export const ANON_MATCH_REQUEST_MS = 30_000;
+export const ANON_MATCH_REQUEST_MS = 10_000;
 export const ANON_MATCH_ACTIVE_MS = 15 * 60 * 1000;
