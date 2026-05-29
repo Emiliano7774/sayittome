@@ -6,12 +6,14 @@ import { usePathname } from "next/navigation";
 import { useUxMode } from "@/contexts/UxModeContext";
 import BottomNav from "@/components/navigation/BottomNav";
 import ModernBottomNav from "@/components/navigation/ModernBottomNav";
+import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 
 const HIDE_PREFIXES = ["/admin", "/login", "/register"];
 
 export default function AppNavigation() {
   const { uxMode } = useUxMode();
   const pathname = usePathname();
+  const { totalUnread } = useChatAlerts();
 
   const navHidden =
     pathname === "/" ||
@@ -31,8 +33,8 @@ export default function AppNavigation() {
   }
 
   if (uxMode === "modern") {
-    return <ModernBottomNav />;
+    return <ModernBottomNav unreadCount={totalUnread} />;
   }
 
-  return <BottomNav />;
+  return <BottomNav unreadCount={totalUnread} />;
 }

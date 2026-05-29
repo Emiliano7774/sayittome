@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { QuerySnapshot } from "firebase/firestore";
 import {
   collection,
   doc,
@@ -14,21 +15,26 @@ import { auth, db } from "@/lib/firebase";
 import {
   buildLegacyProfileChatIds,
   buildProfileAnonChatId,
-  inboxDedupeKey,
   isProfileAnonChatId,
   parseProfileAnonChatId,
   usernameHintFromAnonChatId,
 } from "@/lib/chat/anonChatId";
+import { inboxPeerDedupeKey } from "@/lib/chat/inboxPeerTitle";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
 import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { getSessionChatIds } from "@/lib/chat/sessionChats";
+import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 
 export type InboxChat = {
   id: string;
   targetUsername?: string;
   receptorUsername?: string;
   otherUsername?: string;
+  targetUid?: string;
+  receptorUid?: string;
+  anonOwnerUid?: string;
+  anonSessionId?: string;
+  participantes?: string[];
   targetPhoto?: string;
   lastMessage?: string;
   lastMessageSender?: string;
@@ -49,6 +55,7 @@ export function resolveChatUsername(chat: InboxChat) {
   );
 }
 
+/** @deprecated Use chatPeerTitle(chat, viewerUid) for inbox rows. */
 export function chatTitle(chat: InboxChat) {
   return resolveChatUsername(chat) || "Chat anónimo";
 }
@@ -64,11 +71,11 @@ export function chatHref(chat: InboxChat) {
   return `/chat/${encodeURIComponent(id)}`;
 }
 
-function dedupeChats(chats: InboxChat[]) {
+function dedupeChats(chats: InboxChat[], viewerUid = "") {
   const map = new Map<string, InboxChat>();
 
   for (const chat of chats) {
-    const key = inboxDedupeKey(chat);
+    const key = inboxPeerDedupeKey(chat, viewerUid || undefined);
     const existing = map.get(key);
     const chatMs = chat.updatedAt?.toMillis?.() ?? 0;
     const existingMs = existing?.updatedAt?.toMillis?.() ?? 0;
@@ -89,8 +96,31 @@ export function useChatsInbox() {
   const { firebaseUser, loading } = useAuth();
   const [chats, setChats] = useState<InboxChat[]>([]);
   const [sessionChats, setSessionChats] = useState<InboxChat[]>([]);
+  const [sessionChatIds, setSessionChatIds] = useState<string[]>([]);
 
   const uid = firebaseUser?.uid || auth.currentUser?.uid || "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncSessionChatIds = () => {
+      setSessionChatIds(getSessionChatIds());
+    };
+
+    syncSessionChatIds();
+    window.addEventListener(SESSION_CHATS_CHANGED_EVENT, syncSessionChatIds);
+
+    return () => {
+      window.removeEventListener(SESSION_CHATS_CHANGED_EVENT, syncSessionChatIds);
+    };
+  }, []);
+
+  const queryMapsRef = useRef<Record<string, Map<string, InboxChat>>>({
+    participantes: new Map(),
+    anonOwner: new Map(),
+    receptor: new Map(),
+    target: new Map(),
+  });
 
   useEffect(() => {
     if (loading) return;
@@ -101,6 +131,34 @@ export function useChatsInbox() {
     }
 
     setChats([]);
+    queryMapsRef.current = {
+      participantes: new Map(),
+      anonOwner: new Map(),
+      receptor: new Map(),
+      target: new Map(),
+    };
+
+    const rebuild = () => {
+      const merged = new Map<string, InboxChat>();
+      for (const map of Object.values(queryMapsRef.current)) {
+        for (const [id, chat] of map) {
+          merged.set(id, chat);
+        }
+      }
+      setChats([...merged.values()]);
+    };
+
+    const mergeQuery = (key: string) => (snap: QuerySnapshot) => {
+      const map = new Map<string, InboxChat>();
+      for (const docSnap of snap.docs) {
+        map.set(docSnap.id, {
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<InboxChat, "id">),
+        });
+      }
+      queryMapsRef.current[key] = map;
+      rebuild();
+    };
 
     const byParticipantes = query(
       collection(db, "chats"),
@@ -112,45 +170,51 @@ export function useChatsInbox() {
       where("anonOwnerUid", "==", uid),
     );
 
-    const merge = (snap: { docs: { id: string; data: () => unknown }[] }) => {
-      setChats((prev) => {
-        const map = new Map<string, InboxChat>();
-        for (const item of prev) map.set(item.id, item);
-        for (const d of snap.docs) {
-          map.set(d.id, {
-            id: d.id,
-            ...(d.data() as Omit<InboxChat, "id">),
-          });
-        }
-        return [...map.values()];
-      });
-    };
+    const byReceptor = query(
+      collection(db, "chats"),
+      where("receptorUid", "==", uid),
+    );
 
-    const unsubA = onSnapshot(byParticipantes, merge, (error) => {
+    const byTarget = query(
+      collection(db, "chats"),
+      where("targetUid", "==", uid),
+    );
+
+    const unsubA = onSnapshot(byParticipantes, mergeQuery("participantes"), (error) => {
       console.error(error);
     });
-    const unsubB = onSnapshot(byOwner, merge, (error) => {
+    const unsubB = onSnapshot(byOwner, mergeQuery("anonOwner"), (error) => {
+      console.error(error);
+    });
+    const unsubC = onSnapshot(byReceptor, mergeQuery("receptor"), (error) => {
+      console.error(error);
+    });
+    const unsubD = onSnapshot(byTarget, mergeQuery("target"), (error) => {
       console.error(error);
     });
 
     return () => {
       unsubA();
       unsubB();
+      unsubC();
+      unsubD();
     };
   }, [uid, loading]);
 
   useEffect(() => {
     if (loading) return;
 
-    const ids = getSessionChatIds();
-    if (ids.length === 0) {
+    if (sessionChatIds.length === 0) {
       setSessionChats([]);
       return;
     }
 
-    const unsubs = ids.map((chatId) =>
+    const unsubs = sessionChatIds.map((chatId) =>
       onSnapshot(doc(db, "chats", chatId), (snap) => {
-        if (!snap.exists()) return;
+        if (!snap.exists()) {
+          setSessionChats((prev) => prev.filter((c) => c.id !== chatId));
+          return;
+        }
 
         const data = snap.data() as Omit<InboxChat, "id">;
         setSessionChats((prev) => {
@@ -163,7 +227,7 @@ export function useChatsInbox() {
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [loading]);
+  }, [loading, sessionChatIds]);
 
   useEffect(() => {
     if (loading) return;
@@ -221,7 +285,16 @@ export function useChatsInbox() {
       }
     }
 
-    if (chats.length > 0 || sessionChats.length > 0) migrateInbox();
+    if (chats.length > 0 || sessionChats.length > 0) {
+      const migrateTimer = window.setTimeout(() => {
+        if (!cancelled) void migrateInbox();
+      }, 300);
+
+      return () => {
+        cancelled = true;
+        window.clearTimeout(migrateTimer);
+      };
+    }
 
     return () => {
       cancelled = true;
@@ -229,8 +302,8 @@ export function useChatsInbox() {
   }, [chats, sessionChats, uid, loading]);
 
   const sortedChats = useMemo(() => {
-    return dedupeChats([...chats, ...sessionChats]).filter(isVisibleInboxChat);
-  }, [chats, sessionChats]);
+    return dedupeChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);
+  }, [chats, sessionChats, uid]);
 
   return {
     uid,

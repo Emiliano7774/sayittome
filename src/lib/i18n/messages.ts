@@ -140,6 +140,8 @@ const es = {
   chats_no_messages: "Sin mensajes",
   chats_anonymous: "Chat anónimo",
   chats_inbox_minutes: "{minutes}m",
+  chats_inbox_hours: "{hours}h",
+  chats_inbox_days: "{days}d",
   chats_inbox_seen: "visto {time}",
   chats_inbox_sent: "enviado {time}",
   chats_select: "Seleccionar chats",
@@ -254,6 +256,15 @@ const es = {
   profile_edit_short: "Editar",
   profile_cover_moderated: "Portada moderada",
   profile_photo_moderated: "Foto moderada",
+  sensitive_modal_kicker: "Contenido sensible",
+  sensitive_modal_title: "Este contenido puede ser sensible",
+  sensitive_modal_body:
+    "Decinos si querés verlo. No eliminamos el contenido: solo lo ocultamos por defecto para proteger la experiencia pública.",
+  sensitive_modal_session_note:
+    "Si aceptás, podrás verlo solo durante esta sesión. Al cerrar sesión o recargar la página, el blur volverá automáticamente.",
+  sensitive_modal_confirm: "Sí, ver contenido",
+  sensitive_modal_cancel: "Mejor no",
+  sensitive_overlay_cta: "Tocá para ver",
 
   presence_online: "en línea",
   presence_no_recent: "sin actividad reciente",
@@ -523,6 +534,8 @@ const en: Record<keyof typeof es, string> = {
   chats_no_messages: "No messages",
   chats_anonymous: "Anonymous chat",
   chats_inbox_minutes: "{minutes}m",
+  chats_inbox_hours: "{hours}h",
+  chats_inbox_days: "{days}d",
   chats_inbox_seen: "seen {time}",
   chats_inbox_sent: "sent {time}",
   chats_select: "Select chats",
@@ -636,6 +649,15 @@ const en: Record<keyof typeof es, string> = {
   profile_edit_short: "Edit",
   profile_cover_moderated: "Cover moderated",
   profile_photo_moderated: "Photo moderated",
+  sensitive_modal_kicker: "Sensitive content",
+  sensitive_modal_title: "This content may be sensitive",
+  sensitive_modal_body:
+    "Tell us if you want to view it. We do not remove the content — we hide it by default to protect the public experience.",
+  sensitive_modal_session_note:
+    "If you accept, you can view it only during this session. After sign-out or reload, blur returns automatically.",
+  sensitive_modal_confirm: "Yes, view content",
+  sensitive_modal_cancel: "Not now",
+  sensitive_overlay_cta: "Tap to view",
 
   presence_online: "online",
   presence_no_recent: "no recent activity",

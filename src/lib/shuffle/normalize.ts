@@ -1,5 +1,5 @@
 import { isRecentlyActive } from "@/lib/presence";
-import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import { galleryRequiresBlur } from "@/lib/moderation/blur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
@@ -12,6 +12,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
       const online = item?.online === true;
       const adminBlurProfilePhoto = item?.adminBlurProfilePhoto === true;
       const adminBlurFotosPerfil = item?.adminBlurFotosPerfil === true;
+      const adminBlurGallery = item?.adminBlurGallery === true;
       const intereses = Array.isArray(item?.intereses)
         ? item.intereses.map(String)
         : [];
@@ -37,6 +38,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         online,
         adminBlurProfilePhoto,
         adminBlurFotosPerfil,
+        adminBlurGallery,
         provincia: String(item?.provincia || ""),
         ciudad: String(item?.ciudad || ""),
         pais: String(item?.pais || ""),
@@ -59,9 +61,10 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
           typeof item?.showOnline === "boolean"
             ? item.showOnline
             : isRecentlyActive(presenceAt, online),
-        blurPhoto: profilePhotoRequiresBlur({
+        blurPhoto: galleryRequiresBlur({
           adminBlurProfilePhoto,
           adminBlurFotosPerfil,
+          adminBlurGallery,
         }),
       };
     })

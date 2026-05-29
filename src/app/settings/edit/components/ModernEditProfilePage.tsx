@@ -8,6 +8,8 @@ import { ArrowLeft, Camera, Film, GripVertical, ImagePlus, Save, Star, Trash2 } 
 import { useRouter } from "next/navigation";
 
 import { auth, db, storage } from "@/lib/firebase";
+import { persistProfileMediaScan } from "@/lib/moderation/persistMediaScan";
+import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -93,6 +95,7 @@ export default function ModernEditProfilePage() {
       const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
       task.on("state_changed", undefined, reject, async () => {
         const url = await getDownloadURL(task.snapshot.ref);
+        void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
         resolve(url);
       });
     });
@@ -124,6 +127,7 @@ export default function ModernEditProfilePage() {
         const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
         task.on("state_changed", undefined, reject, async () => {
           const url = await getDownloadURL(task.snapshot.ref);
+          void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
           uploaded.push({ url, type: kind, path });
           resolve();
         });

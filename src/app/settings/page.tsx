@@ -11,6 +11,7 @@ import { isAdminEmail } from "@/lib/admin/isAdmin";
 import ProfileEntryGate from "@/components/profile/ProfileEntryGate";
 import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
+import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
 import { useLocaleDateFormatter } from "@/hooks/useLocaleFormatters";
@@ -179,6 +180,13 @@ export default function SettingsPage() {
             >
               {t("profile_edit")}
             </button>
+            {profile?.username || profile?.nombre ? (
+              <VerifiedLinkBubble
+                username={String(profile.username || profile.nombre)}
+                profileUid={profile.uid}
+                variant="inline"
+              />
+            ) : null}
           </div>
 
           <div className="mt-24">

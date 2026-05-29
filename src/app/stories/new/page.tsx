@@ -19,6 +19,7 @@ import {
 import { useT } from "@/contexts/LocaleContext";
 import { auth, db, storage } from "@/lib/firebase";
 import { resolveStoryAuthor } from "@/lib/stories/anonStories";
+import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
 
 type PreviewData = {
   url: string;
@@ -128,6 +129,10 @@ export default function NewStoryPage() {
 
       const now = new Date();
       const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const scanFields =
+        file != null
+          ? firestoreScanFields(await scanUploadFile(file))
+          : {};
 
       await addDoc(collection(db, "historias"), {
         ownerUid: author.ownerUid,
@@ -147,6 +152,7 @@ export default function NewStoryPage() {
         likedBy: {},
         viewedBy: {},
         active: true,
+        ...scanFields,
       });
 
       router.push("/stories");

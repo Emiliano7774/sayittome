@@ -3,7 +3,9 @@ import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
   buildLegacyProfileChatIds,
   buildProfileAnonChatId,
+  parseProfileAnonChatId,
 } from "@/lib/chat/anonChatId";
+import { findOwnerIncomingChat } from "@/lib/chat/findOwnerIncomingChat";
 import { maybeMigrateExistingProfileChat } from "@/lib/chat/migrate";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
 
@@ -30,17 +32,31 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
   const senderId = getChatAnonSenderId();
   const isLoggedIn = Boolean(firebaseUid);
 
-  const chatId = buildProfileAnonChatId(senderId, username);
+  let chatId = buildProfileAnonChatId(senderId, username);
+
+  if (firebaseUid && targetUid && firebaseUid === targetUid) {
+    const incoming = await findOwnerIncomingChat(firebaseUid, username);
+    if (incoming?.id) {
+      chatId = incoming.id;
+    }
+  }
+
+  const effectiveSender = parseProfileAnonChatId(chatId).senderId.startsWith("anon_")
+    ? parseProfileAnonChatId(chatId).senderId
+    : senderId;
   const legacyIds = [
-    ...buildLegacyProfileChatIds(senderId, username, targetUid),
+    ...buildLegacyProfileChatIds(effectiveSender, username, targetUid),
     ...(firebaseUid
       ? buildLegacyProfileChatIds(firebaseUid, username, targetUid)
+      : []),
+    ...(effectiveSender !== senderId
+      ? buildLegacyProfileChatIds(senderId, username, targetUid)
       : []),
   ];
 
   const participantes = Array.from(
     new Set(
-      [senderId, firebaseUid, targetUid].filter(Boolean) as string[],
+      [effectiveSender, senderId, firebaseUid, targetUid].filter(Boolean) as string[],
     ),
   );
 
@@ -55,7 +71,7 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
     targetUid: targetUid || null,
     initiatorUid: firebaseUid || null,
     anonOwnerUid: firebaseUid || null,
-    anonSessionId: senderId,
+    anonSessionId: effectiveSender,
     participantes,
     anon: true,
     schemaVersion: 2,
@@ -64,7 +80,7 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
 
   return {
     chatId,
-    senderId,
+    senderId: effectiveSender,
     username,
     targetUid,
     isLoggedIn,

@@ -2,17 +2,18 @@
 
 import { useEffect, useRef } from "react";
 
-import { bindWhipSoundUnlock, playIncomingWhipSound } from "@/lib/chat/whipSound";
+import { bindWhipSoundUnlock, notifyIncomingChatMessage, playIncomingWhipSound } from "@/lib/chat/whipSound";
 
 type IncomingMessage = {
   id: string;
   mine?: boolean;
   fromUid?: string;
+  text?: string;
 };
 
 export function useIncomingMessageWhip(
   messages: IncomingMessage[],
-  currentSenderId: string,
+  currentViewerId: string,
   enabled = true,
 ) {
   const firstLoadRef = useRef(true);
@@ -29,7 +30,8 @@ export function useIncomingMessageWhip(
     const last = messages[messages.length - 1];
     const isIncoming =
       last.mine !== true &&
-      (!last.fromUid || String(last.fromUid) !== currentSenderId);
+      Boolean(currentViewerId) &&
+      (!last.fromUid || String(last.fromUid) !== currentViewerId);
 
     if (firstLoadRef.current) {
       firstLoadRef.current = false;
@@ -40,6 +42,10 @@ export function useIncomingMessageWhip(
     if (isIncoming && lastIncomingIdRef.current !== last.id) {
       lastIncomingIdRef.current = last.id;
       playIncomingWhipSound();
+      notifyIncomingChatMessage({
+        title: "Nuevo mensaje",
+        body: String(last.text || "").trim(),
+      });
     }
-  }, [messages, currentSenderId, enabled]);
+  }, [messages, currentViewerId, enabled]);
 }

@@ -3,9 +3,27 @@ import type { InboxChat } from "@/hooks/useChatsInbox";
 
 type Translator = (key: MessageKey, values?: Record<string, string>) => string;
 
-function minutesAgo(ms: number) {
-  if (!ms) return 0;
-  return Math.max(1, Math.floor((Date.now() - ms) / 60_000));
+export function formatRelativeInboxTime(ms: number, t: Translator) {
+  if (!ms) return "";
+
+  const diffMinutes = Math.floor((Date.now() - ms) / 60_000);
+
+  if (diffMinutes < 1) {
+    return t("chats_inbox_minutes", { minutes: "1" });
+  }
+
+  if (diffMinutes < 60) {
+    return t("chats_inbox_minutes", { minutes: String(diffMinutes) });
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+
+  if (diffHours < 24) {
+    return t("chats_inbox_hours", { hours: String(diffHours) });
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  return t("chats_inbox_days", { days: String(diffDays) });
 }
 
 export function formatClassicInboxTime(
@@ -16,9 +34,7 @@ export function formatClassicInboxTime(
   const ms = chat.updatedAt?.toMillis?.() ?? 0;
   if (!ms) return "";
 
-  const minutes = String(minutesAgo(ms));
-  const time = t("chats_inbox_minutes", { minutes });
-
+  const time = formatRelativeInboxTime(ms, t);
   const sender = chat.lastMessageSender || "";
   const readBy = chat.readBy || {};
 

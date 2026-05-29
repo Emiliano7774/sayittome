@@ -47,6 +47,7 @@ export async function fetchActiveStoriesGrouped(viewerUid = "") {
       viewCount: Number(data.viewCount || 0),
       durationMs: Number(data.durationMs || 0) || undefined,
       moderationRequiresBlur: data.moderationRequiresBlur === true,
+      autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
       adminForceBlur: data.adminForceBlur === true,
       adminDeleted: data.adminDeleted === true,
       likedBy: (data.likedBy as Record<string, boolean>) || {},

@@ -3,7 +3,7 @@
 import { memo } from "react";
 import Link from "next/link";
 
-import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
+import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -20,21 +20,24 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
       <div className="relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40">
         <div className="relative h-44 sm:h-48">
           {profile.photo ? (
-            <>
+            <SensitiveMediaShell
+              url={profile.photo}
+              staticRequiresBlur={profile.blurPhoto}
+              profile={{
+                adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
+                adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
+              }}
+              className="absolute inset-0 h-full w-full"
+              overlayLabel="Contenido moderado"
+            >
               <img
                 src={profile.photo}
                 alt={profile.username}
                 loading="lazy"
                 decoding="async"
-                className={[
-                  "absolute inset-0 h-full w-full object-cover",
-                  profile.blurPhoto ? "blur-2xl scale-110" : "",
-                ].join(" ")}
+                className="absolute inset-0 h-full w-full object-cover"
               />
-              {profile.blurPhoto ? (
-                <SensitiveBlurOverlay label="Contenido moderado" />
-              ) : null}
-            </>
+            </SensitiveMediaShell>
           ) : (
             <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-600 via-purple-950 to-black" />
           )}
@@ -60,7 +63,18 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
               ].join(" ")}
             >
               {profile.photo ? (
-                <img src={profile.photo} alt="" className="h-full w-full object-cover" />
+                <SensitiveMediaShell
+                  url={profile.photo}
+                  staticRequiresBlur={profile.blurPhoto}
+                  profile={{
+                    adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
+                    adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
+                  }}
+                  className="h-full w-full"
+                  overlayLabel="Contenido moderado"
+                >
+                  <img src={profile.photo} alt="" className="h-full w-full object-cover" />
+                </SensitiveMediaShell>
               ) : null}
             </div>
           </div>

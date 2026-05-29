@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { UserRound } from "lucide-react";
 
+import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export type { ShuffleProfile };
@@ -30,16 +31,24 @@ function ShuffleProfileRow({ profile, slot }: Props) {
         >
           <div className="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden bg-[#242424] flex items-center justify-center">
             {profile.photo ? (
-              <img
-                src={profile.photo}
-                alt={username}
-                loading="lazy"
-                decoding="async"
-                className={[
-                  "w-full h-full object-cover",
-                  blurPhoto ? "blur-2xl scale-110" : "",
-                ].join(" ")}
-              />
+              <SensitiveMediaShell
+                url={profile.photo}
+                staticRequiresBlur={blurPhoto}
+                profile={{
+                  adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
+                  adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
+                }}
+                className="h-full w-full"
+                overlayLabel="Contenido moderado"
+              >
+                <img
+                  src={profile.photo}
+                  alt={username}
+                  loading="lazy"
+                  decoding="async"
+                  className="w-full h-full object-cover"
+                />
+              </SensitiveMediaShell>
             ) : (
               <UserRound size={64} className="text-white/75" />
             )}

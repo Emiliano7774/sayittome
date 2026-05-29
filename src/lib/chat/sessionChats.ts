@@ -1,4 +1,10 @@
 const SESSION_CHATS_KEY = "sayittome_session_chats";
+export const SESSION_CHATS_CHANGED_EVENT = "sayittome-session-chats-changed";
+
+function notifySessionChatsChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(SESSION_CHATS_CHANGED_EVENT));
+}
 
 export function getSessionChatIds(): string[] {
   if (typeof window === "undefined") return [];
@@ -27,6 +33,8 @@ export function unregisterSessionChat(chatId: string) {
       sessionStorage.setItem(SESSION_CHATS_KEY, JSON.stringify(current));
     }
   } catch {}
+
+  notifySessionChatsChanged();
 }
 
 export function registerSessionChat(chatId: string) {
@@ -41,9 +49,12 @@ export function registerSessionChat(chatId: string) {
       JSON.stringify([chatId, ...current].slice(0, 40)),
     );
   } catch {}
+
+  notifySessionChatsChanged();
 }
 
 export function clearSessionChats() {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem(SESSION_CHATS_KEY);
+  notifySessionChatsChanged();
 }

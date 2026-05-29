@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ChatAlertsProvider } from "@/contexts/ChatAlertsContext";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { UxModeProvider } from "@/contexts/UxModeContext";
 import AnonymousPresenceBootstrap from "@/components/AnonymousPresenceBootstrap";
@@ -11,6 +12,7 @@ import NativeAdsRouteCleanup from "@/components/monetization/NativeAdsRouteClean
 import MonetagScripts from "@/components/monetization/MonetagScripts";
 import PresenceBootstrap from "@/components/PresenceBootstrap";
 import StoriesBootstrap from "@/components/stories/StoriesBootstrap";
+import SensitiveConsentBootstrap from "@/components/moderation/SensitiveConsentBootstrap";
 
 export default function Providers({
   children,
@@ -21,6 +23,7 @@ export default function Providers({
     <LocaleProvider>
       <AuthProvider>
         <UxModeProvider>
+          <ChatAlertsProvider>
           <PresenceBootstrap />
           <AnonymousPresenceBootstrap />
           <AnonSessionLifecycle />
@@ -29,7 +32,9 @@ export default function Providers({
           <NativeAdsRouteCleanup />
           <MonetagScripts />
           <StoriesBootstrap />
+          <SensitiveConsentBootstrap />
           {children}
+          </ChatAlertsProvider>
         </UxModeProvider>
       </AuthProvider>
     </LocaleProvider>

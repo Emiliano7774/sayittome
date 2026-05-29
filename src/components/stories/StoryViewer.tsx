@@ -355,7 +355,10 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         )}
 
         {needsBlur && blurLocked ? (
-          <SensitiveBlurOverlay onReveal={() => setBlurLocked(false)} />
+          <SensitiveBlurOverlay
+            mediaKey={current.mediaUrl}
+            onReveal={() => setBlurLocked(false)}
+          />
         ) : null}
       </div>
 

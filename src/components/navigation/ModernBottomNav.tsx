@@ -14,7 +14,11 @@ const items = [
   { href: "/settings", icon: User },
 ];
 
-export default function ModernBottomNav() {
+type Props = {
+  unreadCount?: number;
+};
+
+export default function ModernBottomNav({ unreadCount = 0 }: Props) {
   const pathname = usePathname();
   const t = useT();
 
@@ -55,13 +59,18 @@ export default function ModernBottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex h-full flex-1 items-center justify-center"
+              className="relative flex h-full flex-1 items-center justify-center"
             >
               <Icon
                 size={item.href === "/shuffle" ? 38 : 31}
                 strokeWidth={2.4}
                 className={active ? "text-[#7b5cff]" : "text-[#777]"}
               />
+              {unreadCount > 0 && item.href === "/chats" ? (
+                <span className="absolute right-[calc(50%-24px)] top-[14px] min-w-[18px] rounded-full border border-orange-300/40 bg-gradient-to-br from-orange-500 to-amber-600 px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow-[0_0_18px_rgba(249,115,22,0.55)]">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              ) : null}
             </Link>
           );
         })}

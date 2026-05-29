@@ -16,6 +16,7 @@ export type StoryItem = {
   viewCount: number;
   durationMs?: number;
   moderationRequiresBlur?: boolean;
+  autoModerationRequiresBlur?: boolean;
   adminForceBlur?: boolean;
   adminDeleted?: boolean;
   likedBy?: Record<string, boolean>;

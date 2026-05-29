@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import AudioWave from "@/components/chat/media/AudioWave";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import { uploadMedia } from "@/lib/media/upload";
@@ -28,25 +29,35 @@ import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
-import { buildLegacyProfileChatIds } from "@/lib/chat/anonChatId";
-import { deleteEmptyChatIfIdle, migrateToCanonicalChat } from "@/lib/chat/migrate";
+import { chatHasActivity, deleteEmptyChatIfIdle } from "@/lib/chat/migrate";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
-import { registerSessionChat, unregisterSessionChat } from "@/lib/chat/sessionChats";
-import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
+import { unregisterSessionChat, registerSessionChat } from "@/lib/chat/sessionChats";
+import {
+  profileReplyAuthorId,
+  resolveProfileAnonMessageMine,
+} from "@/lib/chat/profileAnonMessageAuthor";
+import { clearUnread } from "@/lib/chat/unread";
+import {
+  formatAnonSessionLabel,
+} from "@/lib/chat/inboxPeerTitle";
+import { messageRequiresBlur, profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
+import { getCachedProfile, setCachedProfile } from "@/lib/profile/profileCache";
+import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
+import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
-import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
+import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
 import {
-  addDoc,
   collection,
   doc,
+  limitToLast,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
-  setDoc,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
@@ -56,12 +67,17 @@ type Message = {
   id: string;
   text: string;
   mine: boolean;
+  fromUid?: string;
   reply?: string;
   type?: "text" | "audio" | "image" | "video";
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
   viewOnce?: boolean;
+  autoModerationRequiresBlur?: boolean;
+  moderationRequiresBlur?: boolean;
   readBy?: Record<string, boolean>;
+  status?: "sending" | "error";
+  clientId?: string;
 };
 
 export default function ProfileAnonChat({
@@ -111,6 +127,7 @@ export default function ProfileAnonChat({
   const galleryRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setAnonSession(getAnonSessionId());
@@ -129,14 +146,23 @@ export default function ProfileAnonChat({
   }, []);
 
   useEffect(() => {
+    if (!chatId) return;
+    registerSessionChat(chatId);
+  }, [chatId]);
+
+  useEffect(() => {
     messagePersistedRef.current = false;
 
     return () => {
       if (messagePersistedRef.current) return;
 
-      void deleteEmptyChatIfIdle(chatId).finally(() => {
+      void (async () => {
+        const hasActivity = await chatHasActivity(chatId);
+        if (hasActivity) return;
+
+        await deleteEmptyChatIfIdle(chatId);
         unregisterSessionChat(chatId);
-      });
+      })();
     };
   }, [chatId]);
 
@@ -170,6 +196,15 @@ export default function ProfileAnonChat({
     let cancelled = false;
 
     async function loadTargetProfile() {
+      const cached = getCachedProfile(username);
+      if (cached) {
+        setTargetUid(cached.uid);
+        setTargetPhoto(cached.photo);
+        setTargetBlurPhoto(cached.blurPhoto);
+        setTargetLastActive(cached.lastActive);
+        setTargetOnline(cached.online);
+      }
+
       try {
         const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
           cache: "no-store",
@@ -187,6 +222,17 @@ export default function ProfileAnonChat({
         setTargetLastActive(String(profile?.lastActive || ""));
         setTargetOnline(profile?.online === true);
 
+        setCachedProfile(username, {
+          uid,
+          photo,
+          blurPhoto: profilePhotoRequiresBlur({
+            adminBlurProfilePhoto: profile?.adminBlurProfilePhoto === true,
+            adminBlurFotosPerfil: profile?.adminBlurFotosPerfil === true,
+          }),
+          lastActive: String(profile?.lastActive || ""),
+          online: profile?.online === true,
+        });
+
         if (photo && chatId) {
           void updateDoc(doc(db, "chats", chatId), {
             targetPhoto: photo,
@@ -198,7 +244,7 @@ export default function ProfileAnonChat({
       }
     }
 
-    loadTargetProfile();
+    void loadTargetProfile();
 
     return () => {
       cancelled = true;
@@ -209,6 +255,8 @@ export default function ProfileAnonChat({
   const isClassic = uxMode === "classic";
   const isOwnerViewing = Boolean(currentUid && targetUid && currentUid === targetUid);
   const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+  const viewerId =
+    currentUid && targetUid && currentUid === targetUid ? currentUid : anonSenderId;
   const classicChatEngaged =
     isClassic &&
     (isOwnerViewing
@@ -216,13 +264,16 @@ export default function ProfileAnonChat({
       : messages.some((message) => message.mine) || messages.length > 0);
   const showClassicIntro = isClassic && !classicChatEngaged;
   const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
+  const displayPeerName = isOwnerViewing
+    ? formatAnonSessionLabel(anonSenderId)
+    : username;
   const avatarProps = {
-    ownerUid: targetUid,
-    username,
-    photo: targetPhoto,
-    mode: "navigate" as const,
-    preferProfile: true,
-    blurPhoto: targetBlurPhoto,
+    ownerUid: isOwnerViewing ? "" : targetUid,
+    username: displayPeerName,
+    photo: isOwnerViewing ? "" : targetPhoto,
+    mode: (isOwnerViewing ? "delegate" : "navigate") as "delegate" | "navigate",
+    preferProfile: !isOwnerViewing,
+    blurPhoto: isOwnerViewing ? false : targetBlurPhoto,
   };
 
   useEffect(() => {
@@ -231,10 +282,11 @@ export default function ProfileAnonChat({
     const q = query(
       collection(db, "chats", chatId, "mensajes"),
       orderBy("createdAt", "asc"),
+      limitToLast(200),
     );
 
     const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
-    const viewerId =
+    const messageViewerId =
       currentUid && targetUid && currentUid === targetUid ? currentUid : senderId;
 
     return onSnapshot(
@@ -247,6 +299,7 @@ export default function ProfileAnonChat({
             fromUid?: string;
             ownerId?: string;
             senderUid?: string;
+            senderKind?: string;
             mine?: boolean;
             reply?: string;
             readBy?: Record<string, boolean>;
@@ -254,47 +307,88 @@ export default function ProfileAnonChat({
             mediaUrl?: string;
             source?: Message["source"];
             viewOnce?: boolean;
+            autoModerationRequiresBlur?: boolean;
+            moderationRequiresBlur?: boolean;
           };
 
           const from = String(
             data.fromUid || data.ownerId || data.senderUid || "",
           );
-          const mine = isOwnerViewing
-            ? from === currentUid
-            : from === senderId || data.mine === true;
+          const mine = resolveProfileAnonMessageMine({
+            senderKind: data.senderKind,
+            from,
+            threadAnonId: senderId,
+            profileUid: targetUid,
+            isOwnerViewing,
+            ownerUid: currentUid,
+          });
 
           return {
             id: docSnap.id,
             text: String(data.texto || data.text || ""),
             mine,
+            fromUid: from,
             reply: data.reply,
             type: data.type,
             mediaUrl: data.mediaUrl,
             source: data.source,
             viewOnce: data.viewOnce,
+            autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
+            moderationRequiresBlur: data.moderationRequiresBlur === true,
             readBy: data.readBy || {},
           };
         });
 
-        setMessages(loaded);
+        setMessages((prev) => {
+          const pending = prev.filter((message) => message.status === "sending");
+          const merged = [...loaded];
 
-        if (!viewerId) return;
+          for (const optimistic of pending) {
+            const alreadySynced = loaded.some(
+              (message) =>
+                message.mine === optimistic.mine &&
+                message.text === optimistic.text &&
+                (message.type || "text") === (optimistic.type || "text") &&
+                (message.mediaUrl || "") === (optimistic.mediaUrl || ""),
+            );
+            if (!alreadySynced) merged.push(optimistic);
+          }
+
+          return merged;
+        });
+
+        markChatMessagesWhipAlerted(
+          chatId,
+          snapshot.docs.map((docSnap) => docSnap.id),
+        );
+
+        if (!messageViewerId) return;
+
+        const batch = writeBatch(db);
+        let pendingMarks = 0;
 
         snapshot.docs.forEach((docSnap) => {
           const data = docSnap.data() as { fromUid?: string; readBy?: Record<string, boolean> };
-          if (String(data.fromUid || "") === viewerId) return;
-          if (data.readBy?.[viewerId]) return;
+          if (String(data.fromUid || "") === messageViewerId) return;
+          if (data.readBy?.[messageViewerId]) return;
 
-          updateDoc(doc(db, "chats", chatId, "mensajes", docSnap.id), {
-            [`readBy.${viewerId}`]: true,
-          }).catch(() => {});
+          batch.update(doc(db, "chats", chatId, "mensajes", docSnap.id), {
+            [`readBy.${messageViewerId}`]: true,
+          });
+          pendingMarks += 1;
         });
+
+        if (pendingMarks > 0) {
+          void batch.commit().catch(() => undefined);
+        }
 
         if (snapshot.docs.length === 0) return;
 
         updateDoc(doc(db, "chats", chatId), {
-          [`readBy.${viewerId}`]: true,
-        }).catch(() => {});
+          [`readBy.${messageViewerId}`]: true,
+        }).catch(() => undefined);
+
+        void clearUnread(chatId, messageViewerId).catch(() => undefined);
       },
       (error) => {
         console.error(error);
@@ -302,7 +396,9 @@ export default function ProfileAnonChat({
     );
   }, [chatId, authReady, anonSession, currentUid, targetUid, chatAnonSessionId, isOwnerViewing]);
 
-  useIncomingMessageWhip(messages, anonSenderId);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages.length, messages[messages.length - 1]?.id]);
 
   async function openRealCamera(mode: "photo" | "video") {
     try {
@@ -476,28 +572,92 @@ export default function ProfileAnonChat({
   }
 
   async function sendMedia() {
-    if (!pendingBlob || !pendingType) return;
+    if (!pendingBlob || !pendingType || !authReady || !chatId) return;
+    if (blockedByAbuse) {
+      alert(t("chat_abuse_write_block"));
+      return;
+    }
+    if (!targetUid) {
+      alert(t("chat_load_fail"));
+      return;
+    }
 
-    const url = await uploadMedia(
-      `chat_media/${Date.now()}`,
-      pendingBlob,
-      (pct) => setUploadProgress(pct),
-    );
+    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+    const clientId = crypto.randomUUID();
+    const previewType = pendingType;
+    const previewSource = pendingSource;
+    const previewViewOnce = viewOnce;
+    const blob = pendingBlob;
 
     setMessages((old) => [
       ...old,
       {
-        id: crypto.randomUUID(),
-        text: "",
+        id: clientId,
+        clientId,
+        text: previewType === "audio" ? t("chat_media_audio") : "",
         mine: true,
-        type: pendingType,
-        mediaUrl: url,
-        source: pendingSource,
-        viewOnce,
+        type: previewType,
+        source: previewSource,
+        viewOnce: previewViewOnce,
+        status: "sending",
       },
     ]);
 
     clearPreview();
+
+    try {
+      const scanFile = new File(
+        [blob],
+        previewType,
+        { type: blob.type || (previewType === "video" ? "video/webm" : "image/jpeg") },
+      );
+      const scanFields = firestoreScanFields(await scanUploadFile(scanFile));
+
+      const url = await uploadMedia(
+        `chat_media/${Date.now()}`,
+        blob,
+        (pct) => setUploadProgress(pct),
+      );
+
+      setMessages((old) =>
+        old.map((message) =>
+          message.clientId === clientId
+            ? { ...message, mediaUrl: url, status: undefined }
+            : message,
+        ),
+      );
+
+      await persistAnonChatMessage({
+        chatId,
+        username,
+        senderId,
+        currentUid,
+        targetUid,
+        targetPhoto,
+        messageText:
+          previewType === "audio"
+            ? t("chat_media_audio")
+            : previewType === "video"
+              ? t("chat_media_camera_video")
+              : t("chat_media_gallery_photo"),
+        type: previewType,
+        mediaUrl: url,
+        source: previewSource,
+        viewOnce: previewViewOnce,
+        ...scanFields,
+      });
+
+      messagePersistedRef.current = true;
+      setUploadProgress(null);
+    } catch (e) {
+      console.error(e);
+      setMessages((old) =>
+        old.map((message) =>
+          message.clientId === clientId ? { ...message, status: "error" } : message,
+        ),
+      );
+      alert(t("chat_save_fail"));
+    }
   }
 
   async function sendMessage() {
@@ -507,9 +667,15 @@ export default function ProfileAnonChat({
       alert(t("chat_abuse_write_block"));
       return;
     }
+    if (!targetUid) {
+      alert(t("chat_load_fail"));
+      return;
+    }
 
     const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
-    if (targetUid) {
+    const isOwnerReply = Boolean(currentUid && targetUid && currentUid === targetUid);
+
+    if (targetUid && !isOwnerReply) {
       const block = await findActiveAbuseBlock({
         receptorUid: targetUid,
         blockedAnonId: senderId,
@@ -523,107 +689,48 @@ export default function ProfileAnonChat({
     }
 
     const messageText = text.trim();
+    const clientId = crypto.randomUUID();
+    const replyText = replyingTo?.text;
     const localMessage = {
-      id: crypto.randomUUID(),
+      id: clientId,
+      clientId,
       text: messageText,
       mine: true,
-      reply: replyingTo?.text,
+      reply: replyText,
+      status: "sending" as const,
     };
 
     setMessages((old) => [...old, localMessage]);
     setText("");
     setReplyingTo(null);
 
-    try {
-      const participantes = Array.from(
-        new Set([
-          senderId,
-          ...(currentUid ? [currentUid] : []),
-          ...(targetUid ? [targetUid] : []),
-        ].filter(Boolean)),
-      );
-
-      const legacyIds = [
-        ...buildLegacyProfileChatIds(senderId, username, targetUid),
-        ...(currentUid
-          ? buildLegacyProfileChatIds(currentUid, username, targetUid)
-          : []),
-      ];
-
-      const chatMeta = {
-        id: chatId,
-        targetUsername: username,
-        receptorUsername: username,
-        receptorUid: targetUid || null,
-        targetUid: targetUid || null,
-        initiatorUid: currentUid || null,
-        anonOwnerUid: currentUid || null,
-        anonSessionId: senderId,
-        participantes,
-        anon: true,
-        senderIsAnonymous: true,
-        canonicalChatId: chatId,
-        schemaVersion: 2,
-        targetPhoto: targetPhoto || null,
-        lastMessage: messageText,
-        lastMessageSender: senderId,
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        readBy: {
-          [senderId]: true,
-        },
-        typing: {
-          [senderId]: false,
-        },
-      };
-
-      await migrateToCanonicalChat(chatId, legacyIds, chatMeta);
-
-      registerSessionChat(chatId);
-      messagePersistedRef.current = true;
-
-      await addDoc(collection(db, "chats", chatId, "mensajes"), {
-        texto: messageText,
-        text: messageText,
-        createdAt: serverTimestamp(),
-        fromUid: senderId,
-        ownerId: senderId,
-        mine: true,
-        readBy: {
-          [senderId]: true,
-        },
+    void persistAnonChatMessage({
+      chatId,
+      username,
+      senderId,
+      currentUid,
+      targetUid,
+      targetPhoto,
+      messageText,
+      reply: replyText,
+    })
+      .then(() => {
+        messagePersistedRef.current = true;
+        setMessages((old) =>
+          old.map((message) =>
+            message.clientId === clientId ? { ...message, status: undefined } : message,
+          ),
+        );
+      })
+      .catch((e) => {
+        console.error(e);
+        setMessages((old) =>
+          old.map((message) =>
+            message.clientId === clientId ? { ...message, status: "error" as const } : message,
+          ),
+        );
+        alert(t("chat_save_fail"));
       });
-
-      await setDoc(
-        doc(db, "chats", chatId),
-        {
-          lastMessage: messageText,
-          lastMessageSender: senderId,
-          updatedAt: serverTimestamp(),
-          [`readBy.${senderId}`]: true,
-          [`typing.${senderId}`]: false,
-        },
-        { merge: true },
-      );
-
-      scheduleModerationActivityTouch({
-        id: chatId,
-        targetUsername: username,
-        receptorUsername: username,
-        receptorUid: targetUid || undefined,
-        targetUid: targetUid || undefined,
-        initiatorUid: currentUid || undefined,
-        anonOwnerUid: currentUid || undefined,
-        anonSessionId: senderId,
-        lastMessage: messageText,
-        lastMessageSender: senderId,
-        anon: true,
-        senderIsAnonymous: true,
-      });
-    } catch (e) {
-      console.error(e);
-      alert(t("chat_save_fail"));
-    }
 
     setTimeout(() => inputRef.current?.focus(), 10);
   }
@@ -657,7 +764,7 @@ export default function ProfileAnonChat({
           />
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-bold tracking-[-0.03em]">{username}</h1>
+            <h1 className="truncate text-xl font-bold tracking-[-0.03em]">{displayPeerName}</h1>
             {!isClassic ? (
               <p className="text-lg text-lime-400">{presenceLabel}</p>
             ) : null}
@@ -687,7 +794,7 @@ export default function ProfileAnonChat({
             />
             <ClassicAnonPresenceBubble session={anonSenderId || anonSession} />
           </div>
-        ) : isClassic ? (
+        ) : isClassic && !isOwnerViewing ? (
           <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
             {t("chat_anon_you_are", { session: anonSenderId || anonSession })}
           </p>
@@ -731,34 +838,33 @@ export default function ProfileAnonChat({
         >
           <div className={chatWidthClass}>
             {messages.map((message) => {
-              const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+              const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+              const receiptSenderId =
+                message.mine && isOwnerViewing
+                  ? profileReplyAuthorId(targetUid || currentUid)
+                  : anonSenderId;
               const receiptStatus = resolveMessageReceiptStatus({
                 mine: message.mine,
                 readBy: message.readBy,
-                senderId,
+                senderId: receiptSenderId,
+                isSending: message.status === "sending",
+                hasError: message.status === "error",
               });
 
               return (
               <div
                 key={message.id}
                 className={[
-                  "mb-4 flex w-full flex-col",
+                  "mb-2.5 flex w-full flex-col",
                   message.mine ? "items-end pr-0.5" : "items-start pl-0.5",
                 ].join(" ")}
               >
                 <div
                   onDoubleClick={() => setReplyingTo(message)}
-                  className={[
-                    isClassic
-                      ? "max-w-[min(82vw,22rem)] rounded-[22px] px-4 py-3"
-                      : "max-w-[75%] rounded-[30px] px-5 py-4",
-                    message.mine
-                      ? "bg-violet-500/80 text-white"
-                      : "bg-[#0c0c0d] text-white",
-                  ].join(" ")}
+                  className={chatBubbleShellClass(isClassic, message.mine)}
                 >
                   {message.reply && (
-                    <div className="mb-3 rounded-2xl bg-black/30 px-4 py-3 text-xl text-zinc-300">
+                    <div className={`mb-2 rounded-md bg-black/30 px-3 py-2 ${isClassic ? "text-sm" : "text-base"} text-zinc-300`}>
                       {message.reply}
                     </div>
                   )}
@@ -791,29 +897,44 @@ export default function ProfileAnonChat({
                       <AudioWave url={message.mediaUrl || ""} />
                     </div>
                   ) : message.type === "image" ? (
-                    <button
-                      onClick={() => {
-                        if (message.viewOnce) {
-                          if (!canOpenViewOnce(message.id)) return;
-                          markOpened(message.id);
-                        }
-
-                        setFullscreenUrl(message.mediaUrl || "");
-                      }}
+                    <SensitiveMediaShell
+                      url={message.mediaUrl}
+                      staticRequiresBlur={messageRequiresBlur(message)}
+                      message={message}
+                      className="inline-block"
                     >
-                      <img
+                      <button
+                        onClick={() => {
+                          if (message.viewOnce) {
+                            if (!canOpenViewOnce(message.id)) return;
+                            markOpened(message.id);
+                          }
+
+                          setFullscreenUrl(message.mediaUrl || "");
+                        }}
+                      >
+                        <img
+                          src={message.mediaUrl || ""}
+                          className="max-h-[420px] rounded-[24px]"
+                        />
+                      </button>
+                    </SensitiveMediaShell>
+                  ) : message.type === "video" ? (
+                    <SensitiveMediaShell
+                      url={message.mediaUrl}
+                      mediaType="video"
+                      staticRequiresBlur={messageRequiresBlur(message)}
+                      message={message}
+                      className="inline-block"
+                    >
+                      <video
                         src={message.mediaUrl || ""}
+                        controls
                         className="max-h-[420px] rounded-[24px]"
                       />
-                    </button>
-                  ) : message.type === "video" ? (
-                    <video
-                      src={message.mediaUrl || ""}
-                      controls
-                      className="max-h-[420px] rounded-[24px]"
-                    />
+                    </SensitiveMediaShell>
                   ) : (
-                    <p className={isClassic ? "text-base leading-relaxed" : "text-2xl leading-relaxed"}>
+                    <p className={chatBubbleTextClass(isClassic)}>
                       {message.text}
                     </p>
                   )}
@@ -830,6 +951,7 @@ export default function ProfileAnonChat({
               </div>
             );
             })}
+            <div ref={messagesEndRef} />
           </div>
         </div>
 

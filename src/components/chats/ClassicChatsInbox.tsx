@@ -8,10 +8,11 @@ import ChatsSelectionToolbar, {
 } from "@/components/chats/ChatsSelectionToolbar";
 import ChatPeerAvatar from "@/components/chat/ChatPeerAvatar";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
-import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { formatClassicInboxTime } from "@/lib/chat/inboxTime";
-import { chatHref, chatTitle, type InboxChat } from "@/hooks/useChatsInbox";
-import { inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
+import { chatHref, type InboxChat } from "@/hooks/useChatsInbox";
+import { chatPeerTitle, shouldHidePeerProfilePhoto, shouldShowAnonPeerInbox } from "@/lib/chat/inboxPeerTitle";
+import { chatUnreadCount, resolveInboxViewerId } from "@/lib/chat/inboxUnread";
+import { inboxChatBlur, inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
 import type { useChatsSelection } from "@/hooks/useChatsSelection";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -30,6 +31,10 @@ function ClassicChatRow({
   selected,
   onToggle,
   photo,
+  blurPhoto,
+  unread,
+  isAnonPeer,
+  anonKey,
 }: {
   chat: InboxChat;
   uid: string;
@@ -38,10 +43,13 @@ function ClassicChatRow({
   selected: boolean;
   onToggle: () => void;
   photo: string;
+  blurPhoto: boolean;
+  unread: number;
+  isAnonPeer: boolean;
+  anonKey: string;
 }) {
-  const viewerId = uid || getChatAnonSenderId();
-  const unread = uid ? chat.unreadCounts?.[uid] || 0 : 0;
-  const title = chatTitle(chat);
+  const viewerId = resolveInboxViewerId(uid);
+  const title = chatPeerTitle(chat, uid);
   const timeLabel = formatClassicInboxTime(chat, viewerId, t);
   const mine = chat.lastMessageSender === viewerId;
   const readByOther = Object.entries(chat.readBy || {}).some(
@@ -55,7 +63,15 @@ function ClassicChatRow({
     <>
       {selectionMode ? <ChatSelectionCheckbox checked={selected} variant="classic" /> : null}
 
-      <ChatPeerAvatar photo={photo} username={title} size="md" />
+      <ChatPeerAvatar
+        photo={shouldHidePeerProfilePhoto(chat, uid) ? "" : photo}
+        username={title}
+        size="md"
+        blurPhoto={blurPhoto}
+        variant="classic"
+        anonAvatar={isAnonPeer}
+        anonKey={anonKey}
+      />
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-[17px] font-bold tracking-[-0.02em] text-white">{title}</p>
@@ -76,7 +92,9 @@ function ClassicChatRow({
           <span className="whitespace-nowrap text-[11px] font-medium text-white/32">{timeLabel}</span>
         ) : null}
         {unread > 0 ? (
-          <span className="h-2 w-2 rounded-full bg-violet-500 shadow-[0_0_10px_rgba(139,92,246,.55)]" />
+          <span className="min-w-[24px] rounded-full bg-violet-600 px-2 py-1 text-center text-[11px] font-black leading-none shadow-[0_0_14px_rgba(139,92,246,0.45)]">
+            {unread > 99 ? "99+" : unread}
+          </span>
         ) : null}
       </div>
     </>
@@ -91,7 +109,7 @@ function ClassicChatRow({
   }
 
   return (
-    <Link href={chatHref(chat)} prefetch={false} className={rowClass}>
+    <Link href={chatHref(chat)} prefetch className={rowClass}>
       {content}
     </Link>
   );
@@ -104,7 +122,8 @@ export default function ClassicChatsInbox({
   selection,
 }: Props) {
   const t = useT();
-  const photos = useInboxProfilePhotos(sortedChats);
+  const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
+  const viewerId = resolveInboxViewerId(uid);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
@@ -138,18 +157,27 @@ export default function ClassicChatsInbox({
             </p>
           </div>
         ) : (
-          sortedChats.map((chat) => (
+          sortedChats.map((chat) => {
+            const title = chatPeerTitle(chat, uid);
+            const isAnonPeer = shouldShowAnonPeerInbox(chat, uid);
+
+            return (
             <ClassicChatRow
               key={chat.id}
               chat={chat}
               uid={uid}
               t={t}
               photo={inboxChatPhoto(chat, photos)}
+              blurPhoto={inboxChatBlur(chat, blurPhotos)}
+              unread={chatUnreadCount(chat, viewerId)}
               selectionMode={selection.selectionMode}
               selected={selection.selectedIds.has(chat.id)}
               onToggle={() => selection.toggleChat(chat.id)}
+              isAnonPeer={isAnonPeer}
+              anonKey={chat.anonSessionId || chat.id}
             />
-          ))
+            );
+          })
         )}
       </div>
     </main>

@@ -9,9 +9,15 @@ import {
 } from "@/hooks/useChatsInbox";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
 import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
+import { getCachedProfile, setCachedProfile } from "@/lib/profile/profileCache";
+import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+
+const photoCache: Record<string, string> = {};
+const blurCache: Record<string, boolean> = {};
 
 export function useInboxProfilePhotos(chats: InboxChat[]) {
-  const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [photos, setPhotos] = useState<Record<string, string>>(() => ({ ...photoCache }));
+  const [blurPhotos, setBlurPhotos] = useState<Record<string, boolean>>(() => ({ ...blurCache }));
 
   const usernames = useMemo(() => {
     return [...new Set(chats.map((chat) => resolveChatUsername(chat)).filter(Boolean))].sort();
@@ -22,32 +28,76 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
 
     async function loadPhotos() {
       if (usernames.length === 0) {
-        setPhotos({});
         return;
       }
 
-      const entries = await Promise.all(
-        usernames.map(async (username) => {
-          const cached = chats.find(
-            (chat) => resolveChatUsername(chat) === username && chat.targetPhoto,
-          )?.targetPhoto;
+      const next: Record<string, string> = { ...photoCache };
+      const nextBlur: Record<string, boolean> = { ...blurCache };
 
-          if (cached) {
-            return [username, cached] as const;
-          }
+      const missing = usernames.filter((username) => {
+        const cachedChat = chats.find(
+          (chat) => resolveChatUsername(chat) === username && chat.targetPhoto,
+        );
+        if (cachedChat?.targetPhoto) {
+          next[username] = cachedChat.targetPhoto;
+          return false;
+        }
 
+        const profileCache = getCachedProfile(username);
+        if (profileCache?.photo) {
+          next[username] = profileCache.photo;
+          nextBlur[username] = profileCache.blurPhoto;
+          return false;
+        }
+
+        return !next[username];
+      });
+
+      if (missing.length === 0) {
+        if (!cancelled) {
+          setPhotos(next);
+          setBlurPhotos(nextBlur);
+        }
+        return;
+      }
+
+      await Promise.all(
+        missing.map(async (username) => {
           try {
             const profile = await fetchProfileByUsername(username);
-            return [username, resolveProfilePhoto(profile)] as const;
+            const photo = resolveProfilePhoto(profile);
+            if (!photo) return;
+
+            const blurPhoto = profilePhotoRequiresBlur({
+              adminBlurProfilePhoto: profile?.adminBlurProfilePhoto === true,
+              adminBlurFotosPerfil: profile?.adminBlurFotosPerfil === true,
+              adminBlurGallery: profile?.adminBlurGallery === true,
+              mediaBlurFlags: profile?.mediaBlurFlags as Record<string, boolean> | undefined,
+            });
+
+            next[username] = photo;
+            nextBlur[username] = blurPhoto;
+            photoCache[username] = photo;
+            blurCache[username] = blurPhoto;
+            setCachedProfile(username, {
+              uid: String(profile?.uid || ""),
+              photo,
+              blurPhoto,
+              lastActive: String(profile?.lastActive || ""),
+              online: profile?.online === true,
+            });
           } catch {
-            return [username, ""] as const;
+            // Ignore per-row photo failures.
           }
         }),
       );
 
       if (cancelled) return;
 
-      setPhotos(Object.fromEntries(entries.filter(([, photo]) => photo)));
+      Object.assign(photoCache, next);
+      Object.assign(blurCache, nextBlur);
+      setPhotos({ ...next });
+      setBlurPhotos({ ...nextBlur });
     }
 
     void loadPhotos();
@@ -57,7 +107,7 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
     };
   }, [chats, usernames]);
 
-  return photos;
+  return { photos, blurPhotos };
 }
 
 export function inboxChatPhoto(
@@ -65,4 +115,11 @@ export function inboxChatPhoto(
   photos: Record<string, string>,
 ) {
   return chat.targetPhoto || photos[resolveChatUsername(chat)] || photos[chatTitle(chat)] || "";
+}
+
+export function inboxChatBlur(
+  chat: InboxChat,
+  blurPhotos: Record<string, boolean>,
+) {
+  return blurPhotos[resolveChatUsername(chat)] === true;
 }

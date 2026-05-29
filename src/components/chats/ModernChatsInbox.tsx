@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { MessageSquare } from "lucide-react";
+import { Check, CheckCheck, MessageSquare } from "lucide-react";
 
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
 } from "@/components/chats/ChatsSelectionToolbar";
 import ChatPeerAvatar from "@/components/chat/ChatPeerAvatar";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
-import { chatHref, chatTitle, type InboxChat } from "@/hooks/useChatsInbox";
-import { inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
+import { formatClassicInboxTime } from "@/lib/chat/inboxTime";
+import { chatHref, type InboxChat } from "@/hooks/useChatsInbox";
+import { chatPeerTitle, shouldHidePeerProfilePhoto, shouldShowAnonPeerInbox } from "@/lib/chat/inboxPeerTitle";
+import { chatUnreadCount, resolveInboxViewerId } from "@/lib/chat/inboxUnread";
+import { inboxChatBlur, inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
 import type { useChatsSelection } from "@/hooks/useChatsSelection";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -27,7 +30,8 @@ export default function ModernChatsInbox({
   selection,
 }: Props) {
   const t = useT();
-  const photos = useInboxProfilePhotos(sortedChats);
+  const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
+  const viewerId = resolveInboxViewerId(uid);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
@@ -89,10 +93,19 @@ export default function ModernChatsInbox({
         ) : (
           <div className="space-y-3">
             {sortedChats.map((chat) => {
-              const unread = uid ? chat.unreadCounts?.[uid] || 0 : 0;
-              const title = chatTitle(chat);
+              const unread = chatUnreadCount(chat, viewerId);
+              const title = chatPeerTitle(chat, uid);
               const selected = selection.selectedIds.has(chat.id);
-              const photo = inboxChatPhoto(chat, photos);
+              const photo = shouldHidePeerProfilePhoto(chat, uid)
+                ? ""
+                : inboxChatPhoto(chat, photos);
+              const isAnonPeer = shouldShowAnonPeerInbox(chat, uid);
+              const blurPhoto = inboxChatBlur(chat, blurPhotos);
+              const timeLabel = formatClassicInboxTime(chat, viewerId, t);
+              const mine = chat.lastMessageSender === viewerId;
+              const readByOther = Object.entries(chat.readBy || {}).some(
+                ([key, value]) => key !== viewerId && value === true,
+              );
               const cardClass =
                 "group relative z-10 flex items-center gap-4 rounded-2xl border p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition active:scale-[0.99] " +
                 (selected
@@ -105,20 +118,42 @@ export default function ModernChatsInbox({
                     <ChatSelectionCheckbox checked={selected} variant="modern" />
                   ) : null}
 
-                  <ChatPeerAvatar photo={photo} username={title} size="lg" />
+                  <ChatPeerAvatar
+                    photo={photo}
+                    username={title}
+                    size="lg"
+                    blurPhoto={blurPhoto}
+                    variant="modern"
+                    anonAvatar={isAnonPeer}
+                    anonKey={chat.anonSessionId || chat.id}
+                  />
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-lg font-black">{title}</p>
-                    <p className="truncate text-sm font-bold text-white/35">
-                      {chat.lastMessage || t("chats_no_messages")}
+                    <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-sm font-bold text-white/35">
+                      {mine ? (
+                        readByOther ? (
+                          <CheckCheck size={14} className="shrink-0 text-violet-400/80" strokeWidth={2} />
+                        ) : (
+                          <Check size={14} className="shrink-0 text-white/28" strokeWidth={2} />
+                        )
+                      ) : null}
+                      <span className="truncate">{chat.lastMessage || t("chats_no_messages")}</span>
                     </p>
                   </div>
 
-                  {unread > 0 && !selection.selectionMode ? (
-                    <span className="rounded-full bg-violet-600 px-2.5 py-1 text-xs font-black">
-                      {unread}
-                    </span>
-                  ) : null}
+                  <div className="flex shrink-0 flex-col items-end gap-2 pl-2">
+                    {timeLabel && !selection.selectionMode ? (
+                      <span className="whitespace-nowrap text-[11px] font-medium text-white/32">
+                        {timeLabel}
+                      </span>
+                    ) : null}
+                    {unread > 0 && !selection.selectionMode ? (
+                      <span className="min-w-[26px] rounded-full bg-violet-600 px-2.5 py-1 text-center text-xs font-black shadow-[0_0_16px_rgba(139,92,246,0.45)]">
+                        {unread > 99 ? "99+" : unread}
+                      </span>
+                    ) : null}
+                  </div>
                 </>
               );
 
@@ -136,7 +171,7 @@ export default function ModernChatsInbox({
               }
 
               return (
-                <Link key={chat.id} href={chatHref(chat)} prefetch={false} className={cardClass}>
+                <Link key={chat.id} href={chatHref(chat)} prefetch className={cardClass}>
                   {inner}
                 </Link>
               );

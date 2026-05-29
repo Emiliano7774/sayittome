@@ -7,7 +7,7 @@ import { ArrowLeft, BadgeCheck, Heart, MessageCircle, Users } from "lucide-react
 
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import FollowButton from "@/components/FollowButton";
-import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
+import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import HeaderControls from "@/components/HeaderControls";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
@@ -73,10 +73,13 @@ export default function ModernPublicProfile({
 
   const coverImage = profile.fotoPortada || profile.fotoPrincipal;
   const profileChatHref = useMemo(() => {
+    if (isOwner) {
+      return `/u/${encodeURIComponent(profile.username)}/chat`;
+    }
     const chatId = buildProfileAnonChatId(getChatAnonSenderId(), profile.username);
     const query = new URLSearchParams({ u: profile.username });
     return `/chat/${encodeURIComponent(chatId)}?${query.toString()}`;
-  }, [profile.username]);
+  }, [profile.username, isOwner]);
 
   function openPrimary() {
     if (story.hasActive && story.storyPath) {
@@ -119,32 +122,37 @@ export default function ModernPublicProfile({
           <section className="relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40">
             <div className="relative h-80 overflow-hidden">
               {profile.videoPortada ? (
-                <>
+                <SensitiveMediaShell
+                  url={profile.videoPortada}
+                  mediaType="video"
+                  staticRequiresBlur={blurPhoto}
+                  profile={profile}
+                  className="h-full w-full"
+                  overlayLabel={t("profile_cover_moderated")}
+                >
                   <video
                     src={profile.videoPortada}
-                    className={[
-                      "h-full w-full object-cover",
-                      blurPhoto ? "blur-2xl scale-110" : "",
-                    ].join(" ")}
+                    className="h-full w-full object-cover"
                     autoPlay
                     muted
                     loop
                     playsInline
                   />
-                  {blurPhoto ? <SensitiveBlurOverlay label={t("profile_cover_moderated")} /> : null}
-                </>
+                </SensitiveMediaShell>
               ) : coverImage ? (
-                <>
+                <SensitiveMediaShell
+                  url={coverImage}
+                  staticRequiresBlur={blurPhoto}
+                  profile={profile}
+                  className="h-full w-full"
+                  overlayLabel={t("profile_photo_moderated")}
+                >
                   <img
                     src={coverImage}
                     alt={profile.username}
-                    className={[
-                      "h-full w-full object-cover",
-                      blurPhoto ? "blur-2xl scale-110" : "",
-                    ].join(" ")}
+                    className="h-full w-full object-cover"
                   />
-                  {blurPhoto ? <SensitiveBlurOverlay label={t("profile_photo_moderated")} /> : null}
-                </>
+                </SensitiveMediaShell>
               ) : (
                 <div className="h-full w-full bg-gradient-to-br from-fuchsia-600 via-purple-950 to-black" />
               )}
@@ -171,11 +179,19 @@ export default function ModernPublicProfile({
                 ].join(" ")}
               >
                 {profile.fotoPrincipal ? (
-                  <img
-                    src={profile.fotoPrincipal}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
+                  <SensitiveMediaShell
+                    url={profile.fotoPrincipal}
+                    staticRequiresBlur={blurPhoto}
+                    profile={profile}
+                    className="h-full w-full"
+                    overlayLabel={t("profile_photo_moderated")}
+                  >
+                    <img
+                      src={profile.fotoPrincipal}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  </SensitiveMediaShell>
                 ) : null}
               </button>
 

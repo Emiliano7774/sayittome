@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
+import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
+import { unlockWhipSound } from "@/lib/chat/whipSound";
 
 export default function NativeAppBootstrap() {
   useEffect(() => {
@@ -27,6 +29,12 @@ export default function NativeAppBootstrap() {
             return;
           }
           void App.exitApp();
+        });
+        await App.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) {
+            globalChatWhipManager.refresh();
+            unlockWhipSound();
+          }
         });
       } catch {
         // Ignore when not running inside Capacitor.

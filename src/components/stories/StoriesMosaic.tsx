@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { Film } from "lucide-react";
 
+import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { useT } from "@/contexts/LocaleContext";
+import { storyRequiresBlur } from "@/lib/moderation/blur";
 import { storyDisplayName } from "@/lib/stories/storyDisplay";
 import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
 
@@ -23,6 +25,7 @@ function StoryTile({
 }) {
   const href = `/stories/${encodeURIComponent(story.ownerUid)}`;
   const username = storyDisplayName(group, t);
+  const needsBlur = storyRequiresBlur(story);
 
   return (
     <Link
@@ -30,26 +33,41 @@ function StoryTile({
       className="group relative aspect-[3/4] overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-[0_0_30px_rgba(0,0,0,.35)] transition hover:border-violet-500/35 hover:scale-[1.02] active:scale-[0.98]"
     >
       {story.mediaType === "video" && story.mediaUrl ? (
-        <>
-          <video
-            src={story.mediaUrl}
-            className="h-full w-full object-cover"
-            muted
-            playsInline
-            preload="metadata"
-          />
-          <span className="absolute left-2 top-2 rounded-full bg-black/60 p-1.5">
-            <Film size={14} className="text-white" />
-          </span>
-        </>
+        <SensitiveMediaShell
+          url={story.mediaUrl}
+          mediaType="video"
+          staticRequiresBlur={needsBlur}
+          story={story}
+          className="h-full w-full"
+        >
+          <>
+            <video
+              src={story.mediaUrl}
+              className="h-full w-full object-cover"
+              muted
+              playsInline
+              preload="metadata"
+            />
+            <span className="absolute left-2 top-2 rounded-full bg-black/60 p-1.5">
+              <Film size={14} className="text-white" />
+            </span>
+          </>
+        </SensitiveMediaShell>
       ) : story.mediaUrl ? (
-        <img
-          src={story.mediaUrl}
-          alt=""
-          className="h-full w-full object-cover"
-          loading="lazy"
-          decoding="async"
-        />
+        <SensitiveMediaShell
+          url={story.mediaUrl}
+          staticRequiresBlur={needsBlur}
+          story={story}
+          className="h-full w-full"
+        >
+          <img
+            src={story.mediaUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
+          />
+        </SensitiveMediaShell>
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-950 to-black p-4 text-center text-sm font-bold text-white/80">
           {story.texto}

@@ -70,7 +70,7 @@ export default function ClassicHome() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <section className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6 font-[Arial,Helvetica,sans-serif] tracking-[-0.015em]">
+      <section className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6 font-[Arial,Helvetica,sans-serif] tracking-[-0.015em] md:max-w-6xl md:px-6 md:py-8">
         <header className="mb-9 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-300 via-violet-500 to-[#4f35ff]" />
@@ -80,53 +80,59 @@ export default function ClassicHome() {
           <HeaderControls />
         </header>
 
-        <div className="overflow-hidden rounded-[2.7rem] border border-violet-400/10 bg-[#030303] shadow-[0_0_80px_rgba(104,76,255,0.24)]">
-          <div className="flex h-[430px] items-end bg-[radial-gradient(circle_at_50%_0%,rgba(105,82,255,0.22),transparent_45%),linear-gradient(to_bottom,#18162e_0%,#101019_38%,#030303_100%)] p-8">
-            <div className="flex h-28 w-28 items-center justify-center rounded-full bg-[#1a1a1a] shadow-[inset_0_0_18px_rgba(255,255,255,0.03)]">
-              <ClassicProfileGlyph />
+        <div className="grid flex-1 items-center gap-8 md:grid-cols-2 md:gap-12 md:py-12">
+          <div className="order-2 md:order-1">
+            <div className="flex flex-col gap-4 md:flex-row md:flex-wrap">
+              <Link
+                href="/login"
+                className="flex h-20 flex-1 items-center justify-center gap-4 rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] text-[15px] font-medium tracking-[-0.02em] shadow-[0_0_45px_rgba(105,82,255,0.48)] md:h-auto md:min-h-[3.5rem] md:px-8 md:py-4"
+              >
+                <LoginIcon />
+                {t("home_classic_login")}
+              </Link>
+
+              <Link
+                href="/register"
+                className="flex h-20 flex-1 items-center justify-center gap-4 rounded-full border border-white/80 bg-black text-[15px] font-medium tracking-[-0.02em] text-zinc-100 md:h-auto md:min-h-[3.5rem] md:px-8 md:py-4"
+              >
+                <UserPlusIcon />
+                {t("home_classic_register")}
+              </Link>
+
+              <EnterShuffleButton className="flex h-20 w-full flex-1 items-center justify-center gap-4 rounded-full border border-white/80 bg-black text-[15px] font-medium tracking-[-0.02em] text-zinc-100 md:h-auto md:min-h-[3.5rem] md:w-auto md:px-8 md:py-4">
+                <ShuffleIcon />
+                {t("home_classic_anon")}
+              </EnterShuffleButton>
+            </div>
+
+            <div className="mt-8 rounded-[2rem] border border-white/10 bg-[#111] p-6 shadow-[0_0_35px_rgba(255,255,255,0.025)]">
+              <div className="flex gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-violet-400/40 bg-violet-600/20 text-violet-300">
+                  <AnonymousIcon />
+                </div>
+
+                <div>
+                  <h2 className="text-2xl font-medium tracking-[-0.05em]">{t("home_classic_anon_title")}</h2>
+                  <p className="mt-2 text-sm font-normal leading-6 tracking-[-0.025em] text-zinc-400">
+                    {t("home_classic_anon_body")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm font-normal leading-5 tracking-[-0.025em] text-zinc-400">
+                {t("home_classic_anon_note")}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-8 space-y-4">
-          <Link
-            href="/login"
-            className="flex h-20 items-center justify-center gap-4 rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] text-[15px] font-medium tracking-[-0.02em] shadow-[0_0_45px_rgba(105,82,255,0.48)]"
-          >
-            <LoginIcon />
-            {t("home_classic_login")}
-          </Link>
-
-          <Link
-            href="/register"
-            className="flex h-20 items-center justify-center gap-4 rounded-full border border-white/80 bg-black text-[15px] font-medium tracking-[-0.02em] text-zinc-100"
-          >
-            <UserPlusIcon />
-            {t("home_classic_register")}
-          </Link>
-
-          <EnterShuffleButton className="flex h-20 w-full items-center justify-center gap-4 rounded-full border border-white/80 bg-black text-[15px] font-medium tracking-[-0.02em] text-zinc-100">
-            <ShuffleIcon />
-            {t("home_classic_anon")}
-          </EnterShuffleButton>
-        </div>
-
-        <div className="mt-8 rounded-[2rem] border border-white/10 bg-[#111] p-6 shadow-[0_0_35px_rgba(255,255,255,0.025)]">
-          <div className="flex gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-violet-400/40 bg-violet-600/20 text-violet-300">
-              <AnonymousIcon />
+          <div className="order-1 md:order-2">
+            <div className="overflow-hidden rounded-[2.7rem] border border-violet-400/10 bg-[#030303] shadow-[0_0_80px_rgba(104,76,255,0.24)]">
+              <div className="flex h-[430px] items-end bg-[radial-gradient(circle_at_50%_0%,rgba(105,82,255,0.22),transparent_45%),linear-gradient(to_bottom,#18162e_0%,#101019_38%,#030303_100%)] p-8 md:h-[480px]">
+                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-[#1a1a1a] shadow-[inset_0_0_18px_rgba(255,255,255,0.03)]">
+                  <ClassicProfileGlyph />
+                </div>
+              </div>
             </div>
-
-            <div>
-              <h2 className="text-2xl font-medium tracking-[-0.05em]">{t("home_classic_anon_title")}</h2>
-              <p className="mt-2 text-sm font-normal leading-6 tracking-[-0.025em] text-zinc-400">
-                {t("home_classic_anon_body")}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm font-normal leading-5 tracking-[-0.025em] text-zinc-400">
-            {t("home_classic_anon_note")}
           </div>
         </div>
 

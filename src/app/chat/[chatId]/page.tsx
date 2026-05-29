@@ -2,23 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { doc, getDoc } from "firebase/firestore";
 
 import ProfileAnonChat from "@/components/chat/ProfileAnonChat";
 import { ChatErrorScreen, ChatLoadingScreen } from "@/components/chat/ChatScreens";
-import { maybeMigrateExistingProfileChat, chatHasActivity } from "@/lib/chat/migrate";
-import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
-import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
-import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import {
-  buildLegacyProfileChatIds,
-  buildProfileAnonChatId,
-  isProfileAnonChatId,
-  parseProfileAnonChatId,
-  usernameHintFromAnonChatId,
-} from "@/lib/chat/anonChatId";
+import { isProfileAnonChatId, usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
+import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { useT } from "@/contexts/LocaleContext";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 
 import LegacyChatPage from "./legacy-chat";
 
@@ -39,11 +30,6 @@ function ProfileAnonChatRoute() {
 
     async function prepare() {
       try {
-        if (cancelled) return;
-
-        const firebaseUid = auth.currentUser?.uid || "";
-        const senderId = getChatAnonSenderId();
-
         let resolvedUsername = usernameFromQuery;
 
         if (!resolvedUsername) {
@@ -63,68 +49,29 @@ function ProfileAnonChatRoute() {
         }
 
         if (!resolvedUsername) {
-          setErrorText(t("chat_not_found"));
-          setReady(true);
+          if (!cancelled) {
+            setErrorText(t("chat_not_found"));
+            setReady(true);
+          }
           return;
         }
 
-        const profile = await fetchProfileByUsername(resolvedUsername);
-        const canonicalUsername = String(profile?.username || resolvedUsername);
-        const targetUid = String(profile?.uid || "");
-        let canonicalId = buildProfileAnonChatId(senderId, canonicalUsername);
-
-        if (isProfileAnonChatId(rawChatId) && (await chatHasActivity(rawChatId))) {
-          canonicalId = rawChatId;
-        }
-
-        const effectiveSender = isProfileAnonChatId(canonicalId)
-          ? parseProfileAnonChatId(canonicalId).senderId
-          : senderId;
-
-        const legacyIds = [
-          ...buildLegacyProfileChatIds(effectiveSender, canonicalUsername, targetUid),
-          ...(firebaseUid
-            ? buildLegacyProfileChatIds(
-                firebaseUid,
-                canonicalUsername,
-                targetUid,
-              )
-            : []),
-          ...(effectiveSender !== senderId
-            ? buildLegacyProfileChatIds(senderId, canonicalUsername, targetUid)
-            : []),
-        ];
-
-        if (rawChatId !== canonicalId) {
-          legacyIds.push(rawChatId);
-        }
-
-        await maybeMigrateExistingProfileChat(canonicalId, legacyIds, {
-          id: canonicalId,
-          canonicalChatId: canonicalId,
-          targetUsername: canonicalUsername,
-          receptorUsername: canonicalUsername,
-          receptorUid: targetUid || null,
-          targetUid: targetUid || null,
-          anonSessionId: effectiveSender.startsWith("anon_")
-            ? effectiveSender
-            : senderId,
-          schemaVersion: 2,
-          targetPhoto: resolveProfilePhoto(profile) || null,
-        });
-
+        const resolved = await resolveProfileChat(resolvedUsername);
         if (cancelled) return;
 
-        setUsername(canonicalUsername);
-        setChatId(canonicalId);
+        setUsername(resolved.username);
+        setChatId(resolved.chatId);
         setReady(true);
 
-        if (rawChatId !== canonicalId || usernameFromQuery !== canonicalUsername) {
-          const query = new URLSearchParams({ u: canonicalUsername });
+        if (
+          rawChatId !== resolved.chatId ||
+          usernameFromQuery !== resolved.username
+        ) {
+          const query = new URLSearchParams({ u: resolved.username });
           window.history.replaceState(
             null,
             "",
-            `/chat/${encodeURIComponent(canonicalId)}?${query.toString()}`,
+            `/chat/${encodeURIComponent(resolved.chatId)}?${query.toString()}`,
           );
         }
       } catch (e) {
@@ -136,7 +83,7 @@ function ProfileAnonChatRoute() {
       }
     }
 
-    prepare();
+    void prepare();
 
     return () => {
       cancelled = true;

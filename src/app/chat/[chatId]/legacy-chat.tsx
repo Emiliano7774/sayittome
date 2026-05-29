@@ -25,10 +25,8 @@ import { auth, db, storage } from "@/lib/firebase";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
-import {
-  bindWhipSoundUnlock,
-  playIncomingWhipSound,
-} from "@/lib/chat/whipSound";
+import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
+import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 
 type MessageStatus = "sending" | "sent" | "error";
 type MediaType = "image" | "video" | "audio";
@@ -180,25 +178,20 @@ export default function LegacyChatPage() {
         const lastRealMessageId =
           lastRealMessage.id || lastRealMessage.clientMessageId || null;
 
-        const isIncoming =
-          lastRealMessage.fromUid && lastRealMessage.fromUid !== user.uid;
-
         if (firstMessagesLoadRef.current) {
           firstMessagesLoadRef.current = false;
-          lastIncomingMessageIdRef.current = isIncoming
-            ? lastRealMessageId
-            : lastIncomingMessageIdRef.current;
-        } else if (
-          isIncoming &&
-          lastRealMessageId &&
-          lastIncomingMessageIdRef.current !== lastRealMessageId
-        ) {
           lastIncomingMessageIdRef.current = lastRealMessageId;
-          playIncomingWhipSound();
+        } else if (lastRealMessageId) {
+          lastIncomingMessageIdRef.current = lastRealMessageId;
         }
       } else if (firstMessagesLoadRef.current) {
         firstMessagesLoadRef.current = false;
       }
+
+      markChatMessagesWhipAlerted(
+        chatId,
+        docs.map((message) => message.id || message.clientMessageId || "").filter(Boolean),
+      );
 
       setMessages(docs);
 
@@ -667,8 +660,8 @@ if (uxMode === "classic") {
                   <div
                     className={
                       isMine
-                        ? "max-w-[82%] rounded-[1.8rem] rounded-br-md bg-violet-600 px-5 py-4 text-sm leading-7 text-white shadow-[0_0_24px_rgba(139,92,246,0.28)]"
-                        : "max-w-[82%] rounded-[1.8rem] rounded-bl-md border border-white/10 bg-[#111111] px-5 py-4 text-sm leading-7 text-zinc-200"
+                        ? "max-w-[82%] rounded-lg rounded-br-sm bg-violet-600 px-4 py-2.5 text-sm leading-snug text-white shadow-[0_0_18px_rgba(139,92,246,0.22)]"
+                        : "max-w-[82%] rounded-lg rounded-bl-sm border border-white/10 bg-[#111111] px-4 py-2.5 text-sm leading-snug text-zinc-200"
                     }
                   >
                     {message.texto || "Mensaje"}
@@ -747,15 +740,15 @@ if (uxMode === "classic") {
                   className={
                     mine
                       ? isReplyingSelected
-                        ? "w-full rounded-[2rem] rounded-br-md border border-white/30 bg-fuchsia-600/80 px-4 py-4 text-left text-sm font-medium text-white shadow-[0_0_30px_rgba(217,70,239,0.25)]"
+                        ? "w-full rounded-[22px] rounded-br-md border border-white/30 bg-fuchsia-600/80 px-4 py-2.5 text-left text-[15px] font-medium leading-snug text-white shadow-[0_0_30px_rgba(217,70,239,0.25)]"
                         : isSending
-                          ? "w-full rounded-[2rem] rounded-br-md bg-fuchsia-600/60 px-4 py-4 text-left text-sm font-medium text-white"
+                          ? "w-full rounded-[22px] rounded-br-md bg-fuchsia-600/60 px-4 py-2.5 text-left text-[15px] font-medium leading-snug text-white"
                           : hasError
-                            ? "w-full rounded-[2rem] rounded-br-md bg-red-600 px-4 py-4 text-left text-sm font-medium text-white"
-                            : "w-full rounded-[2rem] rounded-br-md bg-fuchsia-600 px-4 py-4 text-left text-sm font-medium text-white"
-                      : isReplyingSelected
-                        ? "w-full rounded-[2rem] rounded-bl-md border border-fuchsia-400/50 bg-zinc-800 px-4 py-4 text-left text-sm font-medium text-white shadow-[0_0_30px_rgba(217,70,239,0.18)]"
-                        : "w-full rounded-[2rem] rounded-bl-md bg-zinc-900 px-4 py-4 text-left text-sm font-medium text-white"
+                            ? "w-full rounded-[22px] rounded-br-md bg-red-600 px-4 py-2.5 text-left text-[15px] font-medium leading-snug text-white"
+                            : "w-full rounded-[22px] rounded-br-md bg-fuchsia-600 px-4 py-2.5 text-left text-[15px] font-medium leading-snug text-white"
+                        : isReplyingSelected
+                        ? "w-full rounded-[22px] rounded-bl-md border border-fuchsia-400/50 bg-zinc-800 px-4 py-2.5 text-left text-[15px] font-medium leading-snug text-white shadow-[0_0_30px_rgba(217,70,239,0.18)]"
+                        : "w-full rounded-[22px] rounded-bl-md bg-zinc-900 px-4 py-2.5 text-left text-[15px] font-medium leading-snug text-white"
                   }
                 >
                   {msg.replyToText && (

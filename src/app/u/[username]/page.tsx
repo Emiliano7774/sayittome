@@ -7,7 +7,6 @@ import {
   Heart,
   MessageCircle,
   Users,
-  Copy,
   CheckCircle2,
   X,
   ChevronLeft,
@@ -23,8 +22,8 @@ import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { formatLastSeen, isRecentlyActive } from "@/lib/presence";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
+import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
-import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
@@ -66,7 +65,6 @@ export default function PublicProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUid, setCurrentUid] = useState("");
-  const [copied, setCopied] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
 
@@ -136,16 +134,6 @@ export default function PublicProfilePage() {
     : false;
   const lastSeenLabel =
     profile && !isOnline ? formatLastSeen(heartbeat, false) : "";
-
-  async function copyLink() {
-    const link = `${window.location.origin}/u/${encodeURIComponent(
-      profile?.username || usernameParam
-    )}`;
-
-    await navigator.clipboard.writeText(link);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
-  }
 
   function openViewer(index = 0) {
     if (gallery.length === 0) return;
@@ -234,18 +222,20 @@ export default function PublicProfilePage() {
     <main className="min-h-screen bg-black text-white pb-32 relative overflow-hidden">
       <div className="absolute inset-0 h-[88vh] w-full z-[1]">
         {profile.fotoPrincipal ? (
-          <div className="relative w-full h-full">
+          <SensitiveMediaShell
+            url={profile.fotoPrincipal}
+            staticRequiresBlur={blurPhoto}
+            profile={profile}
+            className="relative h-full w-full"
+            overlayLabel="Foto moderada"
+          >
             <img
               src={profile.fotoPrincipal}
               alt={profile.username}
-              className={[
-                "w-full h-full object-cover opacity-55",
-                blurPhoto ? "blur-2xl scale-110" : "",
-              ].join(" ")}
+              className="w-full h-full object-cover opacity-55"
               draggable={false}
             />
-            {blurPhoto ? <SensitiveBlurOverlay label="Foto moderada" /> : null}
-          </div>
+          </SensitiveMediaShell>
         ) : (
           <div className="w-full h-full bg-[radial-gradient(circle_at_35%_0%,rgba(139,92,246,.22),transparent_45%)]" />
         )}
@@ -302,26 +292,14 @@ export default function PublicProfilePage() {
           )}
 
           {isOwner && (
-            <button
-              type="button"
-              onClick={copyLink}
-              className="rounded-full border border-violet-400/40 bg-black/45 px-7 py-4 flex items-center gap-3 font-black shadow-[0_0_35px_rgba(139,92,246,.25)]"
-            >
-              <CheckCircle2 size={22} />
-              {copied ? "Link copiado" : "Copiar link"}
-              <Copy size={20} />
-            </button>
+            <VerifiedLinkBubble
+              username={profile.username}
+              profileUid={profile.uid}
+              variant="inline"
+            />
           )}
           </div>
         </div>
-
-        {isOwner ? (
-          <VerifiedLinkBubble
-            username={profile.username}
-            profileUid={profile.uid}
-            variant="classic"
-          />
-        ) : null}
 
         <div className="absolute left-8 md:left-24 top-[31%] md:top-[31%] -translate-y-1/2 max-w-[900px] z-[12]">
           <h1 className="text-[64px] md:text-[96px] leading-none font-black tracking-tight drop-shadow-2xl">
@@ -394,12 +372,21 @@ export default function PublicProfilePage() {
                 onClick={() => openViewer(index)}
                 className="shrink-0 w-20 h-20 rounded-2xl overflow-hidden border border-white/15 bg-white/5 active:scale-95 transition"
               >
-                <img
-                  src={photo}
-                  alt={`${profile.username} foto ${index + 1}`}
-                  className="w-full h-full object-cover"
-                  draggable={false}
-                />
+                <SensitiveMediaShell
+                  url={photo}
+                  staticRequiresBlur={blurPhoto}
+                  profile={profile}
+                  galleryContext
+                  className="h-full w-full"
+                  overlayLabel="Foto moderada"
+                >
+                  <img
+                    src={photo}
+                    alt={`${profile.username} foto ${index + 1}`}
+                    className="w-full h-full object-cover"
+                    draggable={false}
+                  />
+                </SensitiveMediaShell>
               </button>
             ))}
           </div>
@@ -428,12 +415,21 @@ export default function PublicProfilePage() {
             </button>
           )}
 
-          <img
-            src={gallery[viewerIndex]}
-            alt={profile.username}
-            className="max-w-[92vw] max-h-[88vh] object-contain rounded-3xl select-none"
-            draggable={false}
-          />
+          <SensitiveMediaShell
+            url={gallery[viewerIndex]}
+            staticRequiresBlur={blurPhoto}
+            profile={profile}
+            galleryContext
+            className="max-w-[92vw] max-h-[88vh]"
+            overlayLabel="Foto moderada"
+          >
+            <img
+              src={gallery[viewerIndex]}
+              alt={profile.username}
+              className="max-w-[92vw] max-h-[88vh] object-contain rounded-3xl select-none"
+              draggable={false}
+            />
+          </SensitiveMediaShell>
 
           {gallery.length > 1 && (
             <button
