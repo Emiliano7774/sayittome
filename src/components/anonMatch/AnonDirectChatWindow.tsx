@@ -1,7 +1,7 @@
 "use client";
 
 import { Flag, Maximize2, Minimize2, Minus, Send, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   collection,
   limitToLast,
@@ -34,6 +34,7 @@ function ChatPanel({
   onTextChange,
   onSend,
   bottomRef,
+  inputRef,
   expanded,
   modern,
 }: {
@@ -45,6 +46,7 @@ function ChatPanel({
   onTextChange: (value: string) => void;
   onSend: () => void;
   bottomRef: React.RefObject<HTMLDivElement | null>;
+  inputRef: React.RefObject<HTMLInputElement | null>;
   expanded: boolean;
   modern: boolean;
 }) {
@@ -89,10 +91,13 @@ function ChatPanel({
       {!closed ? (
         <div className="flex items-center gap-2 border-t border-white/10 px-3 py-3">
           <input
+            ref={inputRef}
             value={text}
             onChange={(e) => onTextChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") onSend();
+              if (e.key !== "Enter" || e.shiftKey) return;
+              e.preventDefault();
+              if (!sending && text.trim()) onSend();
             }}
             placeholder={t("anon_match_chat_placeholder")}
             className="min-w-0 flex-1 rounded-2xl bg-white/5 px-4 py-3 text-sm font-bold outline-none placeholder:text-white/30"
@@ -127,6 +132,8 @@ export default function AnonDirectChatWindow() {
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const sendInFlightRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const openChat = match?.openChat;
   const chatId = openChat?.chatId || "";
@@ -136,6 +143,38 @@ export default function AnonDirectChatWindow() {
   const senderId =
     role === "perfil" ? firebaseUser?.uid || "" : getAnonSessionId();
   const senderTipo = role === "perfil" ? "perfil" : "anonimo";
+
+  useEffect(() => {
+    setText("");
+    setNotice("");
+    setSending(false);
+    sendInFlightRef.current = false;
+  }, [chatId]);
+
+  const handleSend = useCallback(async () => {
+    const value = text.trim();
+    if (!value || !chatId || openChat?.closedReason) return;
+    if (sendInFlightRef.current || sending) return;
+
+    sendInFlightRef.current = true;
+    setText("");
+    setSending(true);
+
+    try {
+      await persistAnonDirectMessage({
+        chatId,
+        senderId,
+        senderTipo,
+        messageText: value,
+      });
+      inputRef.current?.focus();
+    } catch {
+      setNotice(t("anon_match_chat_send_error"));
+    } finally {
+      sendInFlightRef.current = false;
+      setSending(false);
+    }
+  }, [chatId, openChat?.closedReason, senderId, senderTipo, sending, t, text]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -192,26 +231,6 @@ export default function AnonDirectChatWindow() {
 
   const matchApi = match;
   const closed = Boolean(openChat.closedReason);
-
-  async function handleSend() {
-    const value = text.trim();
-    if (!value || !chatId || openChat?.closedReason) return;
-
-    setSending(true);
-    try {
-      await persistAnonDirectMessage({
-        chatId,
-        senderId,
-        senderTipo,
-        messageText: value,
-      });
-      setText("");
-    } catch {
-      setNotice(t("anon_match_chat_send_error"));
-    } finally {
-      setSending(false);
-    }
-  }
 
   async function handleClose() {
     if (!chatId) return;
@@ -412,6 +431,7 @@ export default function AnonDirectChatWindow() {
       onTextChange={setText}
       onSend={() => void handleSend()}
       bottomRef={bottomRef}
+      inputRef={inputRef}
       expanded={chatView === "expanded"}
       modern={modern}
     />
