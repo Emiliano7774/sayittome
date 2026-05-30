@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import {
-  countAvailableAnons,
+  countAvailableMatchTargets,
   createAnonMatchRequest,
   expireAnonMatchRequestIfNeeded,
   getAnonMatchRequest,
@@ -13,9 +13,11 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const excludeRaw = String(searchParams.get("exclude") || "").trim();
-    const exclude = excludeRaw ? excludeRaw.split("|").filter(Boolean) : [];
+    const excludeAnonIds = excludeRaw ? excludeRaw.split("|").filter(Boolean) : [];
+    const excludeUidRaw = String(searchParams.get("excludeUid") || "").trim();
+    const excludeUids = excludeUidRaw ? excludeUidRaw.split("|").filter(Boolean) : [];
 
-    const available = await countAvailableAnons(exclude);
+    const available = await countAvailableMatchTargets({ excludeAnonIds, excludeUids });
 
     return NextResponse.json({ ok: true, available, ts: Date.now() });
   } catch (e: unknown) {
@@ -41,12 +43,21 @@ export async function POST(req: Request) {
       : excludeRaw
         ? excludeRaw.split("|").filter(Boolean)
         : [];
+    const excludeUidRaw = String(body?.excludeUids || body?.excludeUid || "").trim();
+    const excludeUids = Array.isArray(body?.excludeUids)
+      ? body.excludeUids.map(String)
+      : excludeUidRaw
+        ? excludeUidRaw.split("|").filter(Boolean)
+        : solicitanteUid
+          ? [solicitanteUid]
+          : [];
 
     const result = await createAnonMatchRequest({
       solicitanteUid: solicitanteUid || undefined,
       solicitanteAnonId: solicitanteAnonId || undefined,
       localAnonId: localAnonId || undefined,
       excludeAnonIds,
+      excludeUids,
       pais: String(body?.pais || "").trim(),
       provincia: String(body?.provincia || "").trim(),
       idioma: String(body?.idioma || "es").trim(),

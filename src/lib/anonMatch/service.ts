@@ -4,116 +4,40 @@ import {
   patchFirestoreDoc,
   runCollectionQuery,
 } from "@/lib/firestore/rest";
-import { buildAnonDirectChatId, buildAnonMatchRequestId, buildAnonToAnonDirectChatId } from "@/lib/anonMatch/chatId";
 import {
-  ANON_MATCH_ACTIVE_MS,
+  buildAnonMatchRequestId,
+  buildDirectChatId,
+  resolveDirectChatTipo,
+  resolveTipoSolicitud,
+} from "@/lib/anonMatch/chatId";
+import {
+  countAvailableMatchTargets,
+  pickAvailableMatchTarget,
+  type MatchCandidate,
+} from "@/lib/anonMatch/matchPool";
+import {
   ANON_MATCH_REQUEST_MS,
   type AnonMatchRequestState,
 } from "@/lib/anonMatch/types";
 
-type AnonPresenceRow = {
-  id: string;
-  anonId?: string;
-  lastSeenAt?: string;
-  updatedAt?: string;
-  expiresAt?: string;
-  disponibleParaChat?: boolean;
-  enChat?: boolean;
-  chatActualId?: string;
-  pais?: string;
-  provincia?: string;
-  idioma?: string;
-};
+function resolveDestinatario(row: Record<string, unknown>) {
+  const destinatarioTipo = String(
+    row.destinatarioTipo || (row.destinatarioUid ? "perfil" : row.anonId ? "anonimo" : ""),
+  );
+  const destinatarioUid = String(row.destinatarioUid || "");
+  const destinatarioAnonId = String(row.anonId || "");
 
-function parseDate(value?: string | null) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return { destinatarioTipo, destinatarioUid, destinatarioAnonId };
 }
 
-export function isAnonPresenceActive(row: AnonPresenceRow, now = Date.now()) {
-  const expiresAt = parseDate(row.expiresAt);
-  if (expiresAt && expiresAt.getTime() > now) return true;
-
-  const lastSeen = parseDate(row.lastSeenAt || row.updatedAt);
-  if (!lastSeen) return false;
-
-  return now - lastSeen.getTime() <= ANON_MATCH_ACTIVE_MS;
-}
-
-function isAnonAvailable(row: AnonPresenceRow, now = Date.now()) {
-  if (!isAnonPresenceActive(row, now)) return false;
-  if (row.disponibleParaChat === false) return false;
-  if (row.enChat === true) return false;
-  if (row.chatActualId) return false;
-  return true;
-}
-
-async function listPendingRequestAnonIds(now = Date.now()) {
-  const rows = await runCollectionQuery("solicitudes_chat_anonimo", 200, "createdAt", "DESCENDING");
-  const pending = new Set<string>();
-
-  for (const row of rows) {
-    const estado = String(row.estado || "");
-    const anonId = String(row.anonId || "");
-    if (!anonId || estado !== "pendiente") continue;
-
-    const expiresAt = parseDate(String(row.expiresAt || ""));
-    if (expiresAt && expiresAt.getTime() <= now) continue;
-
-    pending.add(anonId);
-  }
-
-  return pending;
-}
-
-export async function pickAvailableAnon(input: {
-  excludeAnonIds?: string[];
-  pais?: string;
-  idioma?: string;
-  now?: number;
-}) {
-  const now = input.now ?? Date.now();
-  const exclude = new Set(input.excludeAnonIds || []);
-  const pending = await listPendingRequestAnonIds(now);
-  const rows = (await runCollectionQuery("anonimos_activos", 250)) as AnonPresenceRow[];
-
-  const eligible = rows.filter((row) => {
-    const anonId = String(row.anonId || row.id || "");
-    if (!anonId || exclude.has(anonId) || pending.has(anonId)) return false;
-    return isAnonAvailable(row, now);
-  });
-
-  if (eligible.length === 0) return null;
-
-  const preferred = eligible.filter((row) => {
-    if (input.pais && row.pais && row.pais !== input.pais) return false;
-    if (input.idioma && row.idioma && row.idioma !== input.idioma) return false;
-    return true;
-  });
-
-  const pool = preferred.length > 0 ? preferred : eligible;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-export async function countAvailableAnons(excludeAnonIds: string[] = []) {
-  const now = Date.now();
-  const exclude = new Set(excludeAnonIds);
-  const pending = await listPendingRequestAnonIds(now);
-  const rows = (await runCollectionQuery("anonimos_activos", 250)) as AnonPresenceRow[];
-
-  return rows.filter((row) => {
-    const anonId = String(row.anonId || row.id || "");
-    if (!anonId || exclude.has(anonId) || pending.has(anonId)) return false;
-    return isAnonAvailable(row, now);
-  }).length;
-}
+export { countAvailableMatchTargets as countAvailableAnons, countAvailableMatchTargets, pickAvailableMatchTarget as pickAvailableAnon, pickAvailableMatchTarget };
 
 export async function createAnonMatchRequest(input: {
   solicitanteUid?: string;
   solicitanteAnonId?: string;
   localAnonId?: string;
   excludeAnonIds?: string[];
+  excludeUids?: string[];
   pais?: string;
   provincia?: string;
   idioma?: string;
@@ -127,13 +51,16 @@ export async function createAnonMatchRequest(input: {
   }
 
   const now = Date.now();
-  const exclude = new Set(input.excludeAnonIds || []);
+  const excludeAnonIds = new Set(input.excludeAnonIds || []);
+  const excludeUids = new Set(input.excludeUids || []);
   const localAnonId = String(input.localAnonId || "").trim();
-  if (solicitanteAnonId) exclude.add(solicitanteAnonId);
-  if (localAnonId) exclude.add(localAnonId);
+  if (solicitanteAnonId) excludeAnonIds.add(solicitanteAnonId);
+  if (localAnonId) excludeAnonIds.add(localAnonId);
+  if (solicitanteUid) excludeUids.add(solicitanteUid);
 
-  const picked = await pickAvailableAnon({
-    excludeAnonIds: Array.from(exclude),
+  const picked = await pickAvailableMatchTarget({
+    excludeAnonIds: Array.from(excludeAnonIds),
+    excludeUids: Array.from(excludeUids),
     pais: input.pais,
     idioma: input.idioma,
     now,
@@ -143,19 +70,22 @@ export async function createAnonMatchRequest(input: {
     return { ok: false as const, reason: "no_anon_available" as const };
   }
 
-  const anonId = String(picked.anonId || picked.id || "");
-  if (!anonId || exclude.has(anonId)) {
+  if (!isValidTargetPick(picked, solicitanteUid, solicitanteAnonId, localAnonId, excludeAnonIds, excludeUids)) {
     return { ok: false as const, reason: "no_anon_available" as const };
   }
 
-  if (solicitanteAnonId && anonId === solicitanteAnonId) {
-    return { ok: false as const, reason: "no_anon_available" as const };
-  }
-
-  const solicitudId = buildAnonMatchRequestId(solicitanteKey, anonId);
+  const destinatarioTipo = picked.tipo;
+  const destinatarioUid = picked.tipo === "perfil" ? picked.id : "";
+  const destinatarioAnonId = picked.tipo === "anonimo" ? picked.id : "";
+  const tipoSolicitud = resolveTipoSolicitud({
+    solicitanteUid,
+    solicitanteAnonId,
+    destinatarioTipo,
+  });
+  const targetKey = picked.id;
+  const solicitudId = buildAnonMatchRequestId(solicitanteKey, targetKey);
   const createdAt = new Date(now).toISOString();
   const expiresAt = new Date(now + ANON_MATCH_REQUEST_MS).toISOString();
-  const tipoSolicitud = solicitanteUid ? "perfil_a_anonimo" : "anon_a_anonimo";
 
   await createFirestoreDoc(
     "solicitudes_chat_anonimo",
@@ -164,7 +94,9 @@ export async function createAnonMatchRequest(input: {
       solicitanteUid,
       solicitanteAnonId,
       tipoSolicitud,
-      anonId,
+      destinatarioTipo,
+      destinatarioUid,
+      anonId: destinatarioAnonId,
       estado: "pendiente",
       createdAt,
       updatedAt: createdAt,
@@ -180,9 +112,42 @@ export async function createAnonMatchRequest(input: {
   return {
     ok: true as const,
     solicitudId,
-    anonId,
+    anonId: destinatarioAnonId,
+    destinatarioUid,
+    destinatarioTipo,
     expiresAt,
   };
+}
+
+function isValidTargetPick(
+  picked: MatchCandidate,
+  solicitanteUid: string,
+  solicitanteAnonId: string,
+  localAnonId: string,
+  excludeAnonIds: Set<string>,
+  excludeUids: Set<string>,
+) {
+  if (picked.tipo === "perfil") {
+    if (!picked.id || excludeUids.has(picked.id) || picked.id === solicitanteUid) return false;
+    return true;
+  }
+
+  if (
+    !picked.id ||
+    excludeAnonIds.has(picked.id) ||
+    picked.id === solicitanteAnonId ||
+    picked.id === localAnonId
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function parseDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export async function getAnonMatchRequest(solicitudId: string) {
@@ -242,7 +207,8 @@ export async function expireAnonMatchRequestIfNeeded(row: Record<string, unknown
 
 export async function respondAnonMatchRequest(input: {
   solicitudId: string;
-  anonId: string;
+  responderAnonId?: string;
+  responderUid?: string;
   accept: boolean;
 }) {
   const row = await getAnonMatchRequest(input.solicitudId);
@@ -253,15 +219,28 @@ export async function respondAnonMatchRequest(input: {
     return { ok: false as const, reason: estado === "expirado" ? "expired" as const : "not_pending" as const };
   }
 
-  if (String(row.anonId || "") !== input.anonId) {
+  const solicitanteUid = String(row.solicitanteUid || "");
+  const solicitanteAnonId = String(row.solicitanteAnonId || "");
+  const { destinatarioTipo, destinatarioUid, destinatarioAnonId } = resolveDestinatario(row);
+  const tipoSolicitud = String(row.tipoSolicitud || "");
+
+  if (destinatarioTipo === "perfil") {
+    if (!input.responderUid || input.responderUid !== destinatarioUid) {
+      return { ok: false as const, reason: "forbidden" as const };
+    }
+  } else if (!input.responderAnonId || input.responderAnonId !== destinatarioAnonId) {
     return { ok: false as const, reason: "forbidden" as const };
   }
 
-  const solicitanteUid = String(row.solicitanteUid || "");
-  const solicitanteAnonId = String(row.solicitanteAnonId || "");
-  const isAnonToAnon = !solicitanteUid && Boolean(solicitanteAnonId);
+  if (
+    solicitanteAnonId &&
+    destinatarioAnonId &&
+    solicitanteAnonId === destinatarioAnonId
+  ) {
+    return { ok: false as const, reason: "self_match" as const };
+  }
 
-  if (isAnonToAnon && solicitanteAnonId === input.anonId) {
+  if (solicitanteUid && destinatarioUid && solicitanteUid === destinatarioUid) {
     return { ok: false as const, reason: "self_match" as const };
   }
 
@@ -275,37 +254,39 @@ export async function respondAnonMatchRequest(input: {
     return { ok: true as const, estado: "rechazado" as const };
   }
 
-  const chatId = isAnonToAnon
-    ? buildAnonToAnonDirectChatId(solicitanteAnonId, input.anonId)
-    : buildAnonDirectChatId(solicitanteUid, input.anonId);
+  const chatId = buildDirectChatId({
+    solicitanteUid,
+    solicitanteAnonId,
+    destinatarioUid,
+    destinatarioAnonId,
+  });
+  const chatTipo = resolveDirectChatTipo(tipoSolicitud);
 
   const existingChat = await getAnonDirectChat(chatId);
+  const chatFields = {
+    chatId,
+    tipo: chatTipo,
+    solicitanteUid,
+    solicitanteAnonId,
+    destinatarioUid,
+    anonId: destinatarioAnonId,
+    estado: "activo",
+    updatedAt: now,
+    ultimoMensaje: String(existingChat?.ultimoMensaje || ""),
+    cerradoPor: "",
+    cerradoAt: "",
+    denunciadoPor: "",
+    denunciadoAt: "",
+  };
+
   if (existingChat) {
-    await patchFirestoreDoc("chats_anonimos", chatId, {
-      tipo: isAnonToAnon ? "anon_con_anonimo" : "perfil_con_anonimo",
-      solicitanteUid,
-      solicitanteAnonId,
-      anonId: input.anonId,
-      estado: "activo",
-      updatedAt: now,
-      ultimoMensaje: String(existingChat.ultimoMensaje || ""),
-      cerradoPor: "",
-      cerradoAt: "",
-      denunciadoPor: "",
-      denunciadoAt: "",
-    });
+    await patchFirestoreDoc("chats_anonimos", chatId, chatFields);
   } else {
     await createFirestoreDoc(
       "chats_anonimos",
       {
-        chatId,
-        tipo: isAnonToAnon ? "anon_con_anonimo" : "perfil_con_anonimo",
-        solicitanteUid,
-        solicitanteAnonId,
-        anonId: input.anonId,
-        estado: "activo",
+        ...chatFields,
         createdAt: now,
-        updatedAt: now,
         ultimoMensaje: "",
       },
       chatId,
@@ -318,14 +299,16 @@ export async function respondAnonMatchRequest(input: {
     updatedAt: now,
   });
 
-  await patchFirestoreDoc("anonimos_activos", input.anonId, {
-    enChat: true,
-    disponibleParaChat: false,
-    chatActualId: chatId,
-    updatedAt: now,
-  });
+  if (destinatarioAnonId) {
+    await patchFirestoreDoc("anonimos_activos", destinatarioAnonId, {
+      enChat: true,
+      disponibleParaChat: false,
+      chatActualId: chatId,
+      updatedAt: now,
+    });
+  }
 
-  if (isAnonToAnon && solicitanteAnonId) {
+  if (solicitanteAnonId) {
     await patchFirestoreDoc("anonimos_activos", solicitanteAnonId, {
       enChat: true,
       disponibleParaChat: false,

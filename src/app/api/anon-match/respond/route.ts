@@ -8,14 +8,20 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const solicitudId = String(body?.solicitudId || "").trim();
-    const anonId = String(body?.anonId || "").trim();
+    const responderAnonId = String(body?.anonId || body?.responderAnonId || "").trim();
+    const responderUid = String(body?.responderUid || body?.uid || "").trim();
     const accept = body?.accept === true;
 
-    if (!solicitudId || !anonId) {
+    if (!solicitudId || (!responderAnonId && !responderUid)) {
       return NextResponse.json({ ok: false, error: "missing_fields" }, { status: 400 });
     }
 
-    const result = await respondAnonMatchRequest({ solicitudId, anonId, accept });
+    const result = await respondAnonMatchRequest({
+      solicitudId,
+      responderAnonId: responderAnonId || undefined,
+      responderUid: responderUid || undefined,
+      accept,
+    });
 
     if (!result.ok) {
       return NextResponse.json({ ok: false, reason: result.reason, ts: Date.now() });

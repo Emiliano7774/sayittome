@@ -11,7 +11,9 @@ export type AnonMatchRequest = {
   solicitudId: string;
   solicitanteUid: string;
   solicitanteAnonId?: string;
-  tipoSolicitud?: "perfil_a_anonimo" | "anon_a_anonimo";
+  tipoSolicitud?: "perfil_a_anonimo" | "anon_a_anonimo" | "perfil_a_perfil" | "anon_a_perfil";
+  destinatarioTipo?: "perfil" | "anonimo";
+  destinatarioUid?: string;
   anonId: string;
   estado: AnonMatchRequestState;
   createdAt: string;
@@ -25,9 +27,10 @@ export type AnonMatchRequest = {
 
 export type AnonDirectChat = {
   chatId: string;
-  tipo: "perfil_con_anonimo" | "anon_con_anonimo";
+  tipo: "perfil_con_anonimo" | "anon_con_anonimo" | "perfil_con_perfil" | "anon_con_perfil";
   solicitanteUid: string;
   solicitanteAnonId?: string;
+  destinatarioUid?: string;
   anonId: string;
   estado: AnonDirectChatState;
   createdAt: string;

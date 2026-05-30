@@ -78,6 +78,8 @@ type AnonMatchContextValue = {
 type IncomingRequest = {
   solicitudId: string;
   solicitanteUid: string;
+  solicitanteAnonId?: string;
+  destinatarioTipo: "perfil" | "anonimo";
   expiresAt: string;
 };
 
@@ -286,14 +288,25 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     async function discoverActiveChat() {
       try {
         if (uid) {
-          const q = query(
-            collection(db, "chats_anonimos"),
-            where("solicitanteUid", "==", uid),
-            where("estado", "==", "activo"),
-          );
-          const snap = await getDocs(q);
-          if (cancelled || snap.empty) return;
-          const row = snap.docs[0];
+          const [asSolicitante, asDestinatario] = await Promise.all([
+            getDocs(
+              query(
+                collection(db, "chats_anonimos"),
+                where("solicitanteUid", "==", uid),
+                where("estado", "==", "activo"),
+              ),
+            ),
+            getDocs(
+              query(
+                collection(db, "chats_anonimos"),
+                where("destinatarioUid", "==", uid),
+                where("estado", "==", "activo"),
+              ),
+            ),
+          ]);
+          if (cancelled) return;
+          const row = asSolicitante.docs[0] || asDestinatario.docs[0];
+          if (!row) return;
           setOpenChat({ chatId: row.id, role: "perfil" });
           setChatViewState("minimized");
           setPhase("accepted");
@@ -403,6 +416,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
                 solicitanteUid: uid,
                 localAnonId,
                 excludeAnonIds: localAnonId ? [localAnonId] : [],
+                excludeUids: [uid],
               }
             : {
                 solicitanteAnonId: anonSessionId,
@@ -524,27 +538,59 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     if (!uid && (!anonId || anonId === "anon_server")) return;
 
     let cancelled = false;
+    const unsubs: Array<() => void> = [];
 
-    const chatQuery = uid
-      ? query(
+    function watchActiveChats(
+      chatQuery: ReturnType<typeof query>,
+      role: "perfil" | "anonimo",
+    ) {
+      unsubs.push(
+        onSnapshot(chatQuery, (snap) => {
+          if (cancelled || snap.empty) return;
+          openDirectChat(snap.docs[0].id, role);
+        }),
+      );
+    }
+
+    if (uid) {
+      watchActiveChats(
+        query(
           collection(db, "chats_anonimos"),
           where("solicitanteUid", "==", uid),
           where("estado", "==", "activo"),
-        )
-      : query(
+        ),
+        "perfil",
+      );
+      watchActiveChats(
+        query(
+          collection(db, "chats_anonimos"),
+          where("destinatarioUid", "==", uid),
+          where("estado", "==", "activo"),
+        ),
+        "perfil",
+      );
+    } else if (anonId && anonId !== "anon_server") {
+      watchActiveChats(
+        query(
           collection(db, "chats_anonimos"),
           where("solicitanteAnonId", "==", anonId),
           where("estado", "==", "activo"),
-        );
-
-    const unsub = onSnapshot(chatQuery, (snap) => {
-      if (cancelled || snap.empty) return;
-      openDirectChat(snap.docs[0].id, uid ? "perfil" : "anonimo");
-    });
+        ),
+        "anonimo",
+      );
+      watchActiveChats(
+        query(
+          collection(db, "chats_anonimos"),
+          where("anonId", "==", anonId),
+          where("estado", "==", "activo"),
+        ),
+        "anonimo",
+      );
+    }
 
     return () => {
       cancelled = true;
-      unsub();
+      unsubs.forEach((unsub) => unsub());
     };
   }, [firebaseUser?.uid, hydrated, openChat?.chatId, openDirectChat, phase, searchSessionActive]);
 
@@ -552,62 +598,70 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     if (!incomingRequest?.solicitudId) return;
 
     const ref = doc(db, "solicitudes_chat_anonimo", incomingRequest.solicitudId);
+    const receiverRole = incomingRequest.destinatarioTipo === "perfil" ? "perfil" : "anonimo";
     const unsub = onSnapshot(ref, (snap) => {
       if (!snap.exists()) return;
       const estado = String(snap.data().estado || "");
       const chatId = String(snap.data().chatId || "");
       if (estado === "aceptado" && chatId) {
-        openDirectChat(chatId, "anonimo");
+        openDirectChat(chatId, receiverRole);
         setIncomingRequest(null);
       }
     });
 
     return () => unsub();
-  }, [incomingRequest?.solicitudId, openDirectChat]);
+  }, [incomingRequest?.destinatarioTipo, incomingRequest?.solicitudId, openDirectChat]);
 
   useEffect(() => {
     if (!hydrated) return;
 
     const anonId = getAnonSessionId();
-    if (!anonId || anonId === "anon_server") return;
-
     const uid = firebaseUser?.uid || "";
+    if ((!anonId || anonId === "anon_server") && !uid) return;
 
-    const q = query(
-      collection(db, "solicitudes_chat_anonimo"),
-      where("anonId", "==", anonId),
-    );
+    let anonDocs: IncomingRequest[] = [];
+    let profileDocs: IncomingRequest[] = [];
+    const unsubs: Array<() => void> = [];
 
-    const unsub = onSnapshot(q, (snap) => {
-      const pending = snap.docs
-        .map((item) => ({
-          solicitudId: item.id,
-          solicitanteUid: String(item.data().solicitanteUid || ""),
-          solicitanteAnonId: String(item.data().solicitanteAnonId || ""),
-          targetAnonId: String(item.data().anonId || ""),
-          expiresAt: String(item.data().expiresAt || ""),
-          estado: String(item.data().estado || ""),
-        }))
-        .filter((row) => {
-          if (row.estado !== "pendiente") return false;
-          if (row.solicitanteAnonId && row.solicitanteAnonId === row.targetAnonId) return false;
-          if (row.solicitanteAnonId === anonId) return false;
-          if (uid && row.solicitanteUid === uid) return false;
-          const expiresAt = new Date(row.expiresAt);
-          if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()) {
-            return false;
-          }
-          return true;
-        })
-        .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
+    function normalizeIncoming(
+      item: { id: string; data: () => Record<string, unknown> },
+      destinatarioTipo: "perfil" | "anonimo",
+    ): IncomingRequest | null {
+      const data = item.data();
+      const estado = String(data.estado || "");
+      if (estado !== "pendiente") return null;
 
-      const next = pending[0]
-        ? {
-            solicitudId: pending[0].solicitudId,
-            solicitanteUid: pending[0].solicitanteUid,
-            expiresAt: pending[0].expiresAt,
-          }
-        : null;
+      const expiresAt = String(data.expiresAt || "");
+      const expiresDate = new Date(expiresAt);
+      if (!Number.isNaN(expiresDate.getTime()) && expiresDate.getTime() <= Date.now()) {
+        return null;
+      }
+
+      const solicitanteUid = String(data.solicitanteUid || "");
+      const solicitanteAnonId = String(data.solicitanteAnonId || "");
+      const targetAnonId = String(data.anonId || "");
+      const destinatarioUid = String(data.destinatarioUid || "");
+
+      if (solicitanteAnonId && solicitanteAnonId === targetAnonId) return null;
+      if (solicitanteAnonId === anonId) return null;
+      if (uid && solicitanteUid === uid) return null;
+      if (destinatarioTipo === "perfil" && destinatarioUid !== uid) return null;
+      if (destinatarioTipo === "anonimo" && targetAnonId !== anonId) return null;
+
+      return {
+        solicitudId: item.id,
+        solicitanteUid,
+        solicitanteAnonId,
+        destinatarioTipo,
+        expiresAt,
+      };
+    }
+
+    function publishIncoming() {
+      const pending = [...profileDocs, ...anonDocs].sort((a, b) =>
+        a.expiresAt.localeCompare(b.expiresAt),
+      );
+      const next = pending[0] || null;
       setIncomingRequest(next);
 
       if (next && !alertedRequestIds.has(next.solicitudId)) {
@@ -626,9 +680,47 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-    });
+    }
 
-    return () => unsub();
+    if (uid) {
+      unsubs.push(
+        onSnapshot(
+          query(
+            collection(db, "solicitudes_chat_anonimo"),
+            where("destinatarioUid", "==", uid),
+          ),
+          (snap) => {
+            profileDocs = snap.docs
+              .map((item) => normalizeIncoming(item, "perfil"))
+              .filter(Boolean) as IncomingRequest[];
+            publishIncoming();
+          },
+        ),
+      );
+    }
+
+    if (anonId && anonId !== "anon_server") {
+      unsubs.push(
+        onSnapshot(
+          query(collection(db, "solicitudes_chat_anonimo"), where("anonId", "==", anonId)),
+          (snap) => {
+            anonDocs = snap.docs
+              .map((item) => {
+                const data = item.data();
+                const destinatarioTipo = String(data.destinatarioTipo || "");
+                if (destinatarioTipo === "perfil") return null;
+                return normalizeIncoming(item, "anonimo");
+              })
+              .filter(Boolean) as IncomingRequest[];
+            publishIncoming();
+          },
+        ),
+      );
+    }
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
   }, [firebaseUser?.uid, hydrated]);
 
   useEffect(() => {
@@ -705,17 +797,24 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       if (!incomingRequest) return;
 
       const solicitudId = incomingRequest.solicitudId;
+      const receiverRole =
+        incomingRequest.destinatarioTipo === "perfil" ? "perfil" : "anonimo";
+      const responderUid = firebaseUser?.uid || "";
+      const responderAnonId = getAnonSessionId();
+
+      const buildRespondBody = (accepted: boolean) => {
+        if (receiverRole === "perfil" && responderUid) {
+          return { solicitudId, accept: accepted, responderUid };
+        }
+        return { solicitudId, accept: accepted, anonId: responderAnonId };
+      };
 
       if (!accept) {
         try {
           await fetch("/api/anon-match/respond", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              solicitudId,
-              anonId: getAnonSessionId(),
-              accept: false,
-            }),
+            body: JSON.stringify(buildRespondBody(false)),
           });
         } catch {
           // Ignore reject errors; incoming listener will refresh.
@@ -725,7 +824,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       }
 
       const openAcceptedChat = (chatId: string) => {
-        openDirectChat(chatId, "anonimo");
+        openDirectChat(chatId, receiverRole);
         setIncomingRequest(null);
       };
 
@@ -741,11 +840,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         const res = await fetch("/api/anon-match/respond", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            solicitudId,
-            anonId: getAnonSessionId(),
-            accept: true,
-          }),
+          body: JSON.stringify(buildRespondBody(true)),
         });
         const json = await res.json();
 
@@ -771,7 +866,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [incomingRequest, openDirectChat],
+    [firebaseUser?.uid, incomingRequest, openDirectChat],
   );
 
   const minimizeChat = useCallback(() => setChatView("minimized"), [setChatView]);
