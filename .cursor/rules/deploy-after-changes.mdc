@@ -1,0 +1,12 @@
+---
+description: Always deploy web + APK after completing changes in sayittome-web
+alwaysApply: true
+---
+
+When you finish implementing or fixing something in this project, always run a full production deploy without waiting to be asked:
+
+1. Commit the relevant changes with a clear message.
+2. Run `npm run deploy:all` (web build + APK build + Firebase Hosting), not hosting-only deploy.
+3. Commit APK/version artifacts if the build bumped `apk.release.json`, `public/app-version.json`, or `public/downloads/sayittome.apk`.
+
+The user expects both https://sayittome-app.web.app and the downloadable APK to stay in sync with every completed task.
