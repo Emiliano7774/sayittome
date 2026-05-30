@@ -187,9 +187,9 @@ const es = {
   shuffle_no_profiles: "No hay perfiles para mostrar.",
   shuffle_no_profiles_filters: "Ningún perfil coincide con tus filtros.",
   anon_match_card_title:
-    "¿No encontraste a nadie interesante? Probá hablar con alguien conectado ahora — con perfil o en modo anónimo (activos en los últimos 15 minutos).",
+    "¿No encontraste a nadie interesante? Probá hablar con visitantes anónimos, sin perfil en la app, que están en modo incógnito ahora.",
   anon_match_card_title_anon:
-    "¿No encontraste a nadie interesante? Probá hablar con alguien conectado ahora — con perfil o en modo anónimo (activos en los últimos 15 minutos).",
+    "¿No encontraste a nadie interesante? Probá hablar con visitantes anónimos, sin perfil en la app, que están en modo incógnito ahora.",
   anon_match_cta: "Conectar",
   anon_match_searching: "Buscando...",
   anon_match_disclaimer_title: "Personas conectadas",
@@ -630,9 +630,9 @@ const en: Record<keyof typeof es, string> = {
   shuffle_no_profiles: "No profiles to show.",
   shuffle_no_profiles_filters: "No profiles match your filters.",
   anon_match_card_title:
-    "Didn't find anyone interesting? Try talking to someone connected now — with a profile or in anonymous mode (active in the last 15 minutes).",
+    "Didn't find anyone interesting? Try talking to anonymous visitors with no profile in the app who are in incognito mode right now.",
   anon_match_card_title_anon:
-    "Didn't find anyone interesting? Try talking to someone connected now — with a profile or in anonymous mode (active in the last 15 minutes).",
+    "Didn't find anyone interesting? Try talking to anonymous visitors with no profile in the app who are in incognito mode right now.",
   anon_match_cta: "Connect",
   anon_match_searching: "Searching...",
   anon_match_disclaimer_title: "Connected people",
