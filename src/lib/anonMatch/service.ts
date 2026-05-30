@@ -181,6 +181,36 @@ export async function getAnonMatchRequest(solicitudId: string) {
   return parseFirestoreDoc(await res.json()) as Record<string, unknown>;
 }
 
+async function getAnonDirectChat(chatId: string) {
+  const url = `https://firestore.googleapis.com/v1/projects/sayittome-app/databases/(default)/documents/chats_anonimos/${encodeURIComponent(chatId)}?key=${process.env.FIREBASE_API_KEY || "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk"}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  return parseFirestoreDoc(await res.json()) as Record<string, unknown>;
+}
+
+/** Vuelve a habilitar anónimos en el match — sin bloqueo permanente. */
+async function releaseDirectChatParticipants(
+  chat: Record<string, unknown>,
+  now = new Date().toISOString(),
+) {
+  const ids = Array.from(
+    new Set(
+      [String(chat.anonId || ""), String(chat.solicitanteAnonId || "")].filter(Boolean),
+    ),
+  );
+
+  await Promise.all(
+    ids.map((anonId) =>
+      patchFirestoreDoc("anonimos_activos", anonId, {
+        enChat: false,
+        disponibleParaChat: true,
+        chatActualId: "",
+        updatedAt: now,
+      }),
+    ),
+  );
+}
+
 export async function expireAnonMatchRequestIfNeeded(row: Record<string, unknown>) {
   const estado = String(row.estado || "");
   if (estado !== "pendiente") return estado as AnonMatchRequestState;
@@ -279,6 +309,8 @@ export async function closeAnonDirectChat(input: {
   closedBy: string;
 }) {
   const now = new Date().toISOString();
+  const chat = await getAnonDirectChat(input.chatId);
+
   await patchFirestoreDoc("chats_anonimos", input.chatId, {
     estado: "cerrado",
     cerradoPor: input.closedBy,
@@ -286,30 +318,8 @@ export async function closeAnonDirectChat(input: {
     updatedAt: now,
   });
 
-  const url = `https://firestore.googleapis.com/v1/projects/sayittome-app/databases/(default)/documents/chats_anonimos/${encodeURIComponent(input.chatId)}?key=${process.env.FIREBASE_API_KEY || "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk"}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (res.ok) {
-    const chat = parseFirestoreDoc(await res.json()) as Record<string, unknown>;
-    const anonId = String(chat.anonId || "");
-    const solicitanteAnonId = String(chat.solicitanteAnonId || "");
-
-    if (anonId) {
-      await patchFirestoreDoc("anonimos_activos", anonId, {
-        enChat: false,
-        disponibleParaChat: true,
-        chatActualId: "",
-        updatedAt: now,
-      });
-    }
-
-    if (solicitanteAnonId) {
-      await patchFirestoreDoc("anonimos_activos", solicitanteAnonId, {
-        enChat: false,
-        disponibleParaChat: true,
-        chatActualId: "",
-        updatedAt: now,
-      });
-    }
+  if (chat) {
+    await releaseDirectChatParticipants(chat, now);
   }
 
   return { ok: true as const };
@@ -322,6 +332,9 @@ export async function reportAnonDirectChat(input: {
   detalle?: string;
 }) {
   const now = new Date().toISOString();
+  const chat = (await getAnonDirectChat(input.chatId)) || {};
+  const reportedAnonId = String(chat.anonId || "");
+  const reportedSolicitanteAnonId = String(chat.solicitanteAnonId || "");
 
   await patchFirestoreDoc("chats_anonimos", input.chatId, {
     estado: "denunciado",
@@ -336,12 +349,18 @@ export async function reportAnonDirectChat(input: {
     detalle: String(input.detalle || ""),
     chatId: input.chatId,
     reporterUid: input.reporterUid || "",
+    reporterFingerprint: input.reporterId,
+    reportedAnonId,
+    reportedSolicitanteAnonId,
+    solicitanteUid: String(chat.solicitanteUid || ""),
+    chatTipo: String(chat.tipo || ""),
+    permanentBlock: false,
     blockedFingerprint: input.reporterId,
     estado: "pendiente",
     createdAt: now,
   });
 
-  await closeAnonDirectChat({ chatId: input.chatId, closedBy: input.reporterId });
+  await releaseDirectChatParticipants(chat, now);
 
   return { ok: true as const };
 }

@@ -187,7 +187,8 @@ const es = {
   shuffle_no_profiles: "No hay perfiles para mostrar.",
   shuffle_no_profiles_filters: "Ningún perfil coincide con tus filtros.",
   anon_match_card_title: "¿Querés hablar con alguien ahora?",
-  anon_match_card_title_anon: "¿Querés hablar con otro anónimo?",
+  anon_match_card_title_anon:
+    "¿No encontraste a nadie interesante? Probá hablar con visitantes anónimos, sin perfil en la app, que están en modo incógnito ahora.",
   anon_match_cta: "Conectar",
   anon_match_searching: "Buscando...",
   anon_match_disclaimer_title: "Solo visitantes anónimos",
@@ -219,7 +220,7 @@ const es = {
   anon_match_chat_report: "Denunciar chat",
   anon_match_chat_report_confirm_title: "¿Denunciar este chat?",
   anon_match_chat_report_confirm_body:
-    "El chat se cerrará de inmediato para vos y para la otra persona. Esta acción no se puede deshacer.",
+    "El chat se cerrará de inmediato para vos y para la otra persona, y el reporte se enviará al equipo de moderación. La persona denunciada podrá volver a conectarse con otra sesión anónima.",
   anon_match_chat_report_confirm_action: "Sí, denunciar",
   anon_match_chat_report_confirm_cancel: "Cancelar",
   anon_match_chat_close_confirm_title: "¿Cerrar el chat?",
@@ -628,7 +629,8 @@ const en: Record<keyof typeof es, string> = {
   shuffle_no_profiles: "No profiles to show.",
   shuffle_no_profiles_filters: "No profiles match your filters.",
   anon_match_card_title: "Want to talk to someone now?",
-  anon_match_card_title_anon: "Want to talk to another anonymous user?",
+  anon_match_card_title_anon:
+    "Didn't find anyone interesting? Try talking to anonymous visitors with no profile in the app who are in incognito mode right now.",
   anon_match_cta: "Connect",
   anon_match_searching: "Searching...",
   anon_match_disclaimer_title: "Anonymous visitors only",
@@ -660,7 +662,7 @@ const en: Record<keyof typeof es, string> = {
   anon_match_chat_report: "Report chat",
   anon_match_chat_report_confirm_title: "Report this chat?",
   anon_match_chat_report_confirm_body:
-    "The chat will close immediately for you and the other person. This action cannot be undone.",
+    "The chat will close immediately for you and the other person, and the report will be sent to the moderation team. The reported person can connect again with a new anonymous session.",
   anon_match_chat_report_confirm_action: "Yes, report",
   anon_match_chat_report_confirm_cancel: "Cancel",
   anon_match_chat_close_confirm_title: "Close the chat?",
