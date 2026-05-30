@@ -112,6 +112,7 @@ export async function countAvailableAnons(excludeAnonIds: string[] = []) {
 export async function createAnonMatchRequest(input: {
   solicitanteUid?: string;
   solicitanteAnonId?: string;
+  localAnonId?: string;
   excludeAnonIds?: string[];
   pais?: string;
   provincia?: string;
@@ -127,7 +128,9 @@ export async function createAnonMatchRequest(input: {
 
   const now = Date.now();
   const exclude = new Set(input.excludeAnonIds || []);
+  const localAnonId = String(input.localAnonId || "").trim();
   if (solicitanteAnonId) exclude.add(solicitanteAnonId);
+  if (localAnonId) exclude.add(localAnonId);
 
   const picked = await pickAvailableAnon({
     excludeAnonIds: Array.from(exclude),
@@ -141,6 +144,14 @@ export async function createAnonMatchRequest(input: {
   }
 
   const anonId = String(picked.anonId || picked.id || "");
+  if (!anonId || exclude.has(anonId)) {
+    return { ok: false as const, reason: "no_anon_available" as const };
+  }
+
+  if (solicitanteAnonId && anonId === solicitanteAnonId) {
+    return { ok: false as const, reason: "no_anon_available" as const };
+  }
+
   const solicitudId = buildAnonMatchRequestId(solicitanteKey, anonId);
   const createdAt = new Date(now).toISOString();
   const expiresAt = new Date(now + ANON_MATCH_REQUEST_MS).toISOString();
@@ -246,10 +257,15 @@ export async function respondAnonMatchRequest(input: {
     return { ok: false as const, reason: "forbidden" as const };
   }
 
-  const now = new Date().toISOString();
   const solicitanteUid = String(row.solicitanteUid || "");
   const solicitanteAnonId = String(row.solicitanteAnonId || "");
   const isAnonToAnon = !solicitanteUid && Boolean(solicitanteAnonId);
+
+  if (isAnonToAnon && solicitanteAnonId === input.anonId) {
+    return { ok: false as const, reason: "self_match" as const };
+  }
+
+  const now = new Date().toISOString();
 
   if (!input.accept) {
     await patchFirestoreDoc("solicitudes_chat_anonimo", input.solicitudId, {

@@ -29,6 +29,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const solicitanteUid = String(body?.solicitanteUid || "").trim();
     const solicitanteAnonId = String(body?.solicitanteAnonId || "").trim();
+    const localAnonId = String(body?.localAnonId || "").trim();
 
     if (!solicitanteUid && !solicitanteAnonId) {
       return NextResponse.json({ ok: false, error: "missing_solicitant" }, { status: 400 });
@@ -44,6 +45,7 @@ export async function POST(req: Request) {
     const result = await createAnonMatchRequest({
       solicitanteUid: solicitanteUid || undefined,
       solicitanteAnonId: solicitanteAnonId || undefined,
+      localAnonId: localAnonId || undefined,
       excludeAnonIds,
       pais: String(body?.pais || "").trim(),
       provincia: String(body?.provincia || "").trim(),

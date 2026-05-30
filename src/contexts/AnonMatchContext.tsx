@@ -392,11 +392,23 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     setSolicitudId("");
 
     try {
+      const localAnonId =
+        anonSessionId && anonSessionId !== "anon_server" ? anonSessionId : "";
       const res = await fetch("/api/anon-match/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          uid ? { solicitanteUid: uid } : { solicitanteAnonId: anonSessionId },
+          uid
+            ? {
+                solicitanteUid: uid,
+                localAnonId,
+                excludeAnonIds: localAnonId ? [localAnonId] : [],
+              }
+            : {
+                solicitanteAnonId: anonSessionId,
+                localAnonId,
+                excludeAnonIds: localAnonId ? [localAnonId] : [],
+              },
         ),
       });
       const json = await res.json();
@@ -559,6 +571,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     const anonId = getAnonSessionId();
     if (!anonId || anonId === "anon_server") return;
 
+    const uid = firebaseUser?.uid || "";
+
     const q = query(
       collection(db, "solicitudes_chat_anonimo"),
       where("anonId", "==", anonId),
@@ -569,11 +583,16 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         .map((item) => ({
           solicitudId: item.id,
           solicitanteUid: String(item.data().solicitanteUid || ""),
+          solicitanteAnonId: String(item.data().solicitanteAnonId || ""),
+          targetAnonId: String(item.data().anonId || ""),
           expiresAt: String(item.data().expiresAt || ""),
           estado: String(item.data().estado || ""),
         }))
         .filter((row) => {
           if (row.estado !== "pendiente") return false;
+          if (row.solicitanteAnonId && row.solicitanteAnonId === row.targetAnonId) return false;
+          if (row.solicitanteAnonId === anonId) return false;
+          if (uid && row.solicitanteUid === uid) return false;
           const expiresAt = new Date(row.expiresAt);
           if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()) {
             return false;
@@ -582,7 +601,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         })
         .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
 
-      const next = pending[0] || null;
+      const next = pending[0]
+        ? {
+            solicitudId: pending[0].solicitudId,
+            solicitanteUid: pending[0].solicitanteUid,
+            expiresAt: pending[0].expiresAt,
+          }
+        : null;
       setIncomingRequest(next);
 
       if (next && !alertedRequestIds.has(next.solicitudId)) {
@@ -604,7 +629,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsub();
-  }, [hydrated]);
+  }, [firebaseUser?.uid, hydrated]);
 
   useEffect(() => {
     if (!openChat?.chatId || openChat.closedReason) return;
