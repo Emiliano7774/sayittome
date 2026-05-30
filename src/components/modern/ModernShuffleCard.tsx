@@ -2,8 +2,9 @@
 
 import { memo } from "react";
 import Link from "next/link";
+import { UserRound } from "lucide-react";
 
-import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
+import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -14,33 +15,34 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
       ? story.storyPath
       : `/u/${encodeURIComponent(profile.username)}`;
 
+  const subtext = profile.bio?.trim() || "Perfil SayItToMe";
+
   return (
     <Link href={href} className="relative block w-full">
       <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
-      <div className="relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40">
-        <div className="relative h-44 sm:h-48">
+      <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
+        <div className="relative aspect-[3/4] w-full overflow-hidden">
           {profile.photo ? (
-            <SensitiveMediaShell
-              url={profile.photo}
-              staticRequiresBlur={profile.blurPhoto}
-              profile={{
-                adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
-                adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
-              }}
-              className="absolute inset-0 h-full w-full"
-              overlayLabel="Contenido moderado"
-            >
+            <>
               <img
                 src={profile.photo}
                 alt={profile.username}
                 loading="lazy"
                 decoding="async"
-                className="absolute inset-0 h-full w-full object-cover"
+                className={[
+                  "absolute inset-0 h-full w-full object-cover",
+                  profile.blurPhoto ? "scale-110 blur-2xl" : "",
+                ].join(" ")}
               />
-            </SensitiveMediaShell>
+              {profile.blurPhoto ? (
+                <SensitiveBlurOverlay label="Contenido moderado" mediaKey={profile.photo} />
+              ) : null}
+            </>
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-600 via-purple-950 to-black" />
+            <div className="absolute inset-0 bg-gradient-to-b from-fuchsia-700/35 via-[#12081f] to-black" />
           )}
+
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
 
           {profile.showOnline ? (
             <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-green-400/30 bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-green-300 backdrop-blur-sm">
@@ -48,44 +50,47 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
               En línea
             </span>
           ) : null}
-        </div>
 
-        <div className="relative bg-zinc-950 px-4 pb-5 sm:px-5 sm:pb-6">
-          <div className="absolute left-4 top-0 z-10 -translate-y-1/2 sm:left-5">
-            <div
-              className={[
-                "h-16 w-16 overflow-hidden rounded-full border-4 border-black bg-gradient-to-br from-white to-zinc-500 sm:h-20 sm:w-20",
-                story.hasUnseen
-                  ? "ring-2 ring-fuchsia-400"
-                  : story.hasActive
-                    ? "ring-2 ring-zinc-600"
-                    : "",
-              ].join(" ")}
-            >
-              {profile.photo ? (
-                <SensitiveMediaShell
-                  url={profile.photo}
-                  staticRequiresBlur={profile.blurPhoto}
-                  profile={{
-                    adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
-                    adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
-                  }}
-                  className="h-full w-full"
-                  overlayLabel="Contenido moderado"
+          <div className="absolute inset-x-0 bottom-0 p-4">
+            <div className="flex items-end gap-3">
+              <div className="relative shrink-0">
+                <div
+                  className={[
+                    "flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-[3px] border-black bg-gradient-to-br from-white to-zinc-500 sm:h-16 sm:w-16",
+                    story.hasUnseen
+                      ? "ring-2 ring-fuchsia-400"
+                      : story.hasActive
+                        ? "ring-2 ring-zinc-600"
+                        : "",
+                  ].join(" ")}
                 >
-                  <img src={profile.photo} alt="" className="h-full w-full object-cover" />
-                </SensitiveMediaShell>
-              ) : null}
-            </div>
-          </div>
+                  {profile.photo ? (
+                    <img
+                      src={profile.photo}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className={[
+                        "h-full w-full object-cover",
+                        profile.blurPhoto ? "scale-110 blur-2xl" : "",
+                      ].join(" ")}
+                    />
+                  ) : (
+                    <UserRound size={28} className="text-black/45" strokeWidth={1.75} />
+                  )}
+                </div>
+                {profile.showOnline ? (
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black bg-green-500 shadow-[0_0_10px_rgba(34,197,94,.85)]" />
+                ) : null}
+              </div>
 
-          <div className="pt-10 sm:pt-11">
-            <h3 className="truncate text-lg font-semibold sm:text-xl">
-              @{profile.username}
-            </h3>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-400 sm:mt-2 sm:text-sm sm:leading-6">
-              {profile.bio?.trim() || "Perfil SayItToMe"}
-            </p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-lg font-semibold sm:text-xl">@{profile.username}</p>
+                <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-white/55 sm:text-sm sm:leading-6">
+                  {subtext}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -96,5 +101,8 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
 export default memo(
   ModernShuffleCard,
   (a, b) =>
-    a.profile.uid === b.profile.uid && a.profile.username === b.profile.username,
+    a.profile.uid === b.profile.uid &&
+    a.profile.username === b.profile.username &&
+    a.profile.photo === b.profile.photo &&
+    a.profile.showOnline === b.profile.showOnline,
 );
