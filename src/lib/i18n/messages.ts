@@ -186,7 +186,8 @@ const es = {
 
   shuffle_no_profiles: "No hay perfiles para mostrar.",
   shuffle_no_profiles_filters: "Ningún perfil coincide con tus filtros.",
-  anon_match_card_title: "¿Querés hablar con alguien ahora?",
+  anon_match_card_title:
+    "¿No encontraste a nadie interesante? Probá hablar con visitantes anónimos, sin perfil en la app, que están en modo incógnito ahora.",
   anon_match_card_title_anon:
     "¿No encontraste a nadie interesante? Probá hablar con visitantes anónimos, sin perfil en la app, que están en modo incógnito ahora.",
   anon_match_cta: "Conectar",
@@ -628,7 +629,8 @@ const en: Record<keyof typeof es, string> = {
 
   shuffle_no_profiles: "No profiles to show.",
   shuffle_no_profiles_filters: "No profiles match your filters.",
-  anon_match_card_title: "Want to talk to someone now?",
+  anon_match_card_title:
+    "Didn't find anyone interesting? Try talking to anonymous visitors with no profile in the app who are in incognito mode right now.",
   anon_match_card_title_anon:
     "Didn't find anyone interesting? Try talking to anonymous visitors with no profile in the app who are in incognito mode right now.",
   anon_match_cta: "Connect",
