@@ -373,7 +373,26 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     }, RETRY_DELAY_MS);
   }, [clearRetryTimer]);
 
-  const openDirectChat = useCallback((chatId: string, role: "perfil" | "anonimo") => {
+  const openDirectChat = useCallback(async (chatId: string, role: "perfil" | "anonimo") => {
+    const previous = openChatRef.current;
+    if (previous?.chatId && previous.chatId !== chatId && !previous.closedReason) {
+      const closedBy =
+        previous.role === "perfil"
+          ? firebaseUser?.uid || ""
+          : getAnonSessionId();
+      if (closedBy) {
+        try {
+          await fetch("/api/anon-match/close", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chatId: previous.chatId, closedBy }),
+          });
+        } catch {
+          // The server may have already closed the previous chat on accept.
+        }
+      }
+    }
+
     clearRetryTimer();
     stopSearchSessionState({
       setSearchSessionActive,
@@ -387,7 +406,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     setChatViewState("compact");
     setPhase("accepted");
     persistOpenChat(next, "compact", "accepted");
-  }, [clearRetryTimer]);
+  }, [clearRetryTimer, firebaseUser?.uid]);
 
   const attemptConnect = useCallback(async () => {
     const uid = firebaseUser?.uid || "";

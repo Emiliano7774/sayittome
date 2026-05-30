@@ -245,6 +245,52 @@ async function closeActiveChatsForParticipantPair(
   }
 }
 
+function userIsChatParticipant(
+  chat: Record<string, unknown>,
+  uid: string,
+  anonId: string,
+) {
+  if (uid) {
+    if (String(chat.solicitanteUid || "") === uid) return true;
+    if (String(chat.destinatarioUid || "") === uid) return true;
+  }
+  if (anonId) {
+    if (String(chat.anonId || "") === anonId) return true;
+    if (String(chat.solicitanteAnonId || "") === anonId) return true;
+  }
+  return false;
+}
+
+async function closeActiveChatsForUser(input: {
+  uid?: string;
+  anonId?: string;
+  closedBy: string;
+  exceptChatId?: string;
+}) {
+  const uid = String(input.uid || "");
+  const anonId = String(input.anonId || "");
+  if (!uid && !anonId) return;
+
+  const rows = await runCollectionQuery("chats_anonimos", 200, "updatedAt", "DESCENDING");
+  const now = new Date().toISOString();
+
+  for (const row of rows) {
+    if (String(row.estado || "") !== "activo") continue;
+
+    const chatId = String(row.chatId || row.id || "");
+    if (!chatId || chatId === input.exceptChatId) continue;
+    if (!userIsChatParticipant(row, uid, anonId)) continue;
+
+    await patchFirestoreDoc("chats_anonimos", chatId, {
+      estado: "cerrado",
+      cerradoPor: input.closedBy,
+      cerradoAt: now,
+      updatedAt: now,
+    });
+    await releaseDirectChatParticipants(row, now);
+  }
+}
+
 export async function expireAnonMatchRequestIfNeeded(row: Record<string, unknown>) {
   const estado = String(row.estado || "");
   if (estado !== "pendiente") return estado as AnonMatchRequestState;
@@ -325,6 +371,19 @@ export async function respondAnonMatchRequest(input: {
     solicitanteUid ||
     solicitanteAnonId ||
     "system";
+
+  await closeActiveChatsForUser({
+    uid: input.responderUid,
+    anonId: input.responderAnonId,
+    closedBy,
+    exceptChatId: chatId,
+  });
+  await closeActiveChatsForUser({
+    uid: solicitanteUid,
+    anonId: solicitanteAnonId,
+    closedBy,
+    exceptChatId: chatId,
+  });
 
   await closeActiveChatsForParticipantPair(
     {
