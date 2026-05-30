@@ -38,6 +38,15 @@ export function isActiveWithinWindow(
   return isLiveByConnection(presenceAt || lastActive, windowMs, now);
 }
 
+/** Perfil "online" para filtros shuffle: heartbeat real dentro de la ventana (15 min). */
+export function isShuffleProfileOnline(
+  profile: { presenceAt?: string | null; lastActive?: string | null },
+  now = Date.now(),
+  windowMs = ONLINE_WINDOW_MS,
+) {
+  return isLiveByConnection(profile.presenceAt || profile.lastActive, windowMs, now);
+}
+
 export function formatLastSeen(
   lastActive?: string | null,
   online?: boolean,

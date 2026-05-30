@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
+import { isShuffleProfileOnline } from "@/lib/presence";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
@@ -126,17 +127,21 @@ export function useShufflePool() {
     (needle: string, nextFilters = filtersRef.current) => {
       const q = needle.trim();
       const storyOwnerUids = storyOwnerUidsRef.current;
+      const now = Date.now();
 
       const filtered = refreshPoolPresence(
         poolRef.current.filter((profile) => {
           if (!profileMatchesShuffleSearch(profile, q)) return false;
-          return profileMatchesShuffleFilters(profile, nextFilters, { storyOwnerUids });
+          return profileMatchesShuffleFilters(profile, nextFilters, { storyOwnerUids, now });
         }),
+        now,
       );
 
       activePoolRef.current = filtered;
       setFilteredCount(filtered.length);
-      setFilteredOnlineCount(filtered.filter((profile) => profile.showOnline).length);
+      setFilteredOnlineCount(
+        filtered.filter((profile) => isShuffleProfileOnline(profile, now)).length,
+      );
       applyWindowFromPool(filtered);
     },
     [applyWindowFromPool],
@@ -366,13 +371,19 @@ export function useShufflePool() {
     const presenceTimer = window.setInterval(() => {
       if (poolRef.current.length === 0) return;
 
-      poolRef.current = refreshPoolPresence(poolRef.current);
+      const now = Date.now();
+      poolRef.current = refreshPoolPresence(poolRef.current, now);
       filterActivePool(searchRef.current, filtersRef.current);
+    }, 45_000);
+
+    const poolSyncTimer = window.setInterval(() => {
+      void loadProfiles({ q: searchRef.current.trim(), force: true });
     }, 45_000);
 
     return () => {
       mountedRef.current = false;
       window.clearInterval(presenceTimer);
+      window.clearInterval(poolSyncTimer);
       window.removeEventListener("sayittome:shuffle", onShuffleEvent);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
       abortRef.current?.abort();

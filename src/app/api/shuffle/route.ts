@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { isLiveByConnection, ONLINE_WINDOW_MS } from "@/lib/presence";
+import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { resolveProfileCountryCode } from "@/lib/geo/countries";
@@ -85,9 +85,9 @@ function shuffleArray<T>(arr: T[]) {
   return copy;
 }
 
-/** Solo para badge verde — nunca filtra la lista de shuffle. */
+/** Solo para badge verde — heartbeat real dentro de los últimos 15 min. */
 function isProfileOnlineForBadge(profile: ApiProfile, now = Date.now()) {
-  return isLiveByConnection(profile.presenceAt || profile.lastActive, ONLINE_WINDOW_MS, now);
+  return isShuffleProfileOnline(profile, now, ONLINE_WINDOW_MS);
 }
 
 function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {

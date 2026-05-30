@@ -1,4 +1,4 @@
-import { isLiveByConnection, ONLINE_WINDOW_MS } from "@/lib/presence";
+import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { inferCountryCodeFromSubdivision, normalizeGeoValue, resolveProfileCountryCode } from "@/lib/geo/countries";
 import {
   normalizeDiscoveryValue,
@@ -67,8 +67,7 @@ function interestKeys(values: string[] | undefined) {
 }
 
 function isProfileOnline(profile: ShuffleFilterProfile, now = Date.now()) {
-  const heartbeat = profile.presenceAt || profile.lastActive;
-  return isLiveByConnection(heartbeat, ONLINE_WINDOW_MS, now);
+  return isShuffleProfileOnline(profile, now, ONLINE_WINDOW_MS);
 }
 
 export function profileMatchesShuffleServerFilters(

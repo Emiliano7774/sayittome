@@ -1,13 +1,16 @@
-import { isActiveWithinWindow } from "@/lib/presence";
+import { isShuffleProfileOnline } from "@/lib/presence";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
-export function refreshProfilePresence(profile: ShuffleProfile): ShuffleProfile {
+export function refreshProfilePresence(
+  profile: ShuffleProfile,
+  now = Date.now(),
+): ShuffleProfile {
   return {
     ...profile,
-    showOnline: isActiveWithinWindow(profile.presenceAt, profile.lastActive),
+    showOnline: isShuffleProfileOnline(profile, now),
   };
 }
 
-export function refreshPoolPresence(pool: ShuffleProfile[]) {
-  return pool.map(refreshProfilePresence);
+export function refreshPoolPresence(pool: ShuffleProfile[], now = Date.now()) {
+  return pool.map((profile) => refreshProfilePresence(profile, now));
 }
