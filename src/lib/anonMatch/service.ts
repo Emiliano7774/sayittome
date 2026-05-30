@@ -263,21 +263,38 @@ export async function respondAnonMatchRequest(input: {
     ? buildAnonToAnonDirectChatId(solicitanteAnonId, input.anonId)
     : buildAnonDirectChatId(solicitanteUid, input.anonId);
 
-  await createFirestoreDoc(
-    "chats_anonimos",
-    {
-      chatId,
+  const existingChat = await getAnonDirectChat(chatId);
+  if (existingChat) {
+    await patchFirestoreDoc("chats_anonimos", chatId, {
       tipo: isAnonToAnon ? "anon_con_anonimo" : "perfil_con_anonimo",
       solicitanteUid,
       solicitanteAnonId,
       anonId: input.anonId,
       estado: "activo",
-      createdAt: now,
       updatedAt: now,
-      ultimoMensaje: "",
-    },
-    chatId,
-  );
+      ultimoMensaje: String(existingChat.ultimoMensaje || ""),
+      cerradoPor: "",
+      cerradoAt: "",
+      denunciadoPor: "",
+      denunciadoAt: "",
+    });
+  } else {
+    await createFirestoreDoc(
+      "chats_anonimos",
+      {
+        chatId,
+        tipo: isAnonToAnon ? "anon_con_anonimo" : "perfil_con_anonimo",
+        solicitanteUid,
+        solicitanteAnonId,
+        anonId: input.anonId,
+        estado: "activo",
+        createdAt: now,
+        updatedAt: now,
+        ultimoMensaje: "",
+      },
+      chatId,
+    );
+  }
 
   await patchFirestoreDoc("solicitudes_chat_anonimo", input.solicitudId, {
     estado: "aceptado",

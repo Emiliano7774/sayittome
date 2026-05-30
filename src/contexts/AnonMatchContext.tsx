@@ -481,9 +481,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ solicitudId }),
         });
         const json = await res.json();
-        if (json?.estado === "expirado" || json?.estado === "rechazado") {
-          handleFailure();
-        } else {
+        const estado = String(json?.estado || "");
+        const chatId = String(json?.chatId || "");
+
+        if (estado === "aceptado" && chatId) {
+          openDirectChat(chatId, firebaseUser?.uid ? "perfil" : "anonimo");
+          return;
+        }
+
+        if (estado === "expirado" || estado === "rechazado" || estado === "cancelado") {
           handleFailure();
         }
       } catch {
@@ -496,6 +502,56 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(expiryTimer);
     };
   }, [firebaseUser?.uid, openDirectChat, phase, scheduleRetry, solicitudId]);
+
+  useEffect(() => {
+    if (!hydrated || openChat?.chatId || skipServerDiscoveryRef.current) return;
+    if (!searchSessionActive || phase !== "waiting") return;
+
+    const uid = firebaseUser?.uid || "";
+    const anonId = getAnonSessionId();
+    if (!uid && (!anonId || anonId === "anon_server")) return;
+
+    let cancelled = false;
+
+    const chatQuery = uid
+      ? query(
+          collection(db, "chats_anonimos"),
+          where("solicitanteUid", "==", uid),
+          where("estado", "==", "activo"),
+        )
+      : query(
+          collection(db, "chats_anonimos"),
+          where("solicitanteAnonId", "==", anonId),
+          where("estado", "==", "activo"),
+        );
+
+    const unsub = onSnapshot(chatQuery, (snap) => {
+      if (cancelled || snap.empty) return;
+      openDirectChat(snap.docs[0].id, uid ? "perfil" : "anonimo");
+    });
+
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [firebaseUser?.uid, hydrated, openChat?.chatId, openDirectChat, phase, searchSessionActive]);
+
+  useEffect(() => {
+    if (!incomingRequest?.solicitudId) return;
+
+    const ref = doc(db, "solicitudes_chat_anonimo", incomingRequest.solicitudId);
+    const unsub = onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
+      const estado = String(snap.data().estado || "");
+      const chatId = String(snap.data().chatId || "");
+      if (estado === "aceptado" && chatId) {
+        openDirectChat(chatId, "anonimo");
+        setIncomingRequest(null);
+      }
+    });
+
+    return () => unsub();
+  }, [incomingRequest?.solicitudId, openDirectChat]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -623,25 +679,71 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     async (accept: boolean) => {
       if (!incomingRequest) return;
 
+      const solicitudId = incomingRequest.solicitudId;
+
+      if (!accept) {
+        try {
+          await fetch("/api/anon-match/respond", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              solicitudId,
+              anonId: getAnonSessionId(),
+              accept: false,
+            }),
+          });
+        } catch {
+          // Ignore reject errors; incoming listener will refresh.
+        }
+        setIncomingRequest(null);
+        return;
+      }
+
+      const openAcceptedChat = (chatId: string) => {
+        openDirectChat(chatId, "anonimo");
+        setIncomingRequest(null);
+      };
+
+      const readAcceptedChatId = async () => {
+        const snap = await getDoc(doc(db, "solicitudes_chat_anonimo", solicitudId));
+        if (!snap.exists()) return "";
+        const data = snap.data();
+        if (String(data.estado || "") !== "aceptado") return "";
+        return String(data.chatId || "");
+      };
+
       try {
         const res = await fetch("/api/anon-match/respond", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            solicitudId: incomingRequest.solicitudId,
+            solicitudId,
             anonId: getAnonSessionId(),
-            accept,
+            accept: true,
           }),
         });
         const json = await res.json();
 
-        if (accept && json?.ok && json?.chatId) {
-          openDirectChat(String(json.chatId), "anonimo");
+        if (json?.ok && json?.chatId) {
+          openAcceptedChat(String(json.chatId));
+          return;
         }
 
-        setIncomingRequest(null);
+        const chatId = await readAcceptedChatId();
+        if (chatId) {
+          openAcceptedChat(chatId);
+          return;
+        }
       } catch {
-        setIncomingRequest(null);
+        try {
+          const chatId = await readAcceptedChatId();
+          if (chatId) {
+            openAcceptedChat(chatId);
+            return;
+          }
+        } catch {
+          // Keep modal open so the user can retry.
+        }
       }
     },
     [incomingRequest, openDirectChat],

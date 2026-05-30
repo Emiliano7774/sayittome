@@ -81,13 +81,17 @@ export async function PATCH(req: Request) {
     }
 
     const estado = await expireAnonMatchRequestIfNeeded(row);
+    const fresh =
+      String(row.estado || "") === estado
+        ? row
+        : (await getAnonMatchRequest(solicitudId)) || row;
 
     return NextResponse.json({
       ok: true,
       solicitudId,
       estado,
-      chatId: String(row.chatId || ""),
-      anonId: String(row.anonId || ""),
+      chatId: String(fresh.chatId || ""),
+      anonId: String(fresh.anonId || ""),
       ts: Date.now(),
     });
   } catch (e: unknown) {
