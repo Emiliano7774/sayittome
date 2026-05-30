@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
@@ -36,6 +37,11 @@ import {
   saveAnonDirectChatSession,
   type AnonDirectChatView,
 } from "@/lib/anonMatch/directChatSession";
+import {
+  clearAnonDirectSearchSession,
+  loadAnonDirectSearchSession,
+  saveAnonDirectSearchSession,
+} from "@/lib/anonMatch/directSearchSession";
 import { ANON_MATCH_REQUEST_MS } from "@/lib/anonMatch/types";
 import { db } from "@/lib/firebase";
 import type { AnonMatchRequestState } from "@/lib/anonMatch/types";
@@ -99,6 +105,37 @@ function persistOpenChat(
   });
 }
 
+function persistSearchSession(
+  active: boolean,
+  phase: AnonMatchConnectPhase,
+  solicitudId: string,
+) {
+  if (!active || phase === "accepted") {
+    clearAnonDirectSearchSession();
+    return;
+  }
+
+  saveAnonDirectSearchSession({
+    active: true,
+    phase,
+    solicitudId,
+    savedAt: Date.now(),
+  });
+}
+
+function stopSearchSessionState(input: {
+  setSearchSessionActive: (value: boolean) => void;
+  setPhase: (value: AnonMatchConnectPhase) => void;
+  setSolicitudId: (value: string) => void;
+  searchSessionActiveRef: MutableRefObject<boolean>;
+}) {
+  input.searchSessionActiveRef.current = false;
+  input.setSearchSessionActive(false);
+  input.setSolicitudId("");
+  input.setPhase("idle");
+  clearAnonDirectSearchSession();
+}
+
 export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { firebaseUser } = useAuth();
@@ -150,30 +187,53 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function hydrateSession() {
-      const saved = loadAnonDirectChatSession();
-      if (!saved?.openChat?.chatId) {
-        if (!cancelled) setHydrated(true);
-        return;
-      }
+      const savedChat = loadAnonDirectChatSession();
+      if (savedChat?.openChat?.chatId) {
+        try {
+          const snap = await getDoc(doc(db, "chats_anonimos", savedChat.openChat.chatId));
+          if (cancelled) return;
 
-      try {
-        const snap = await getDoc(doc(db, "chats_anonimos", saved.openChat.chatId));
-        if (cancelled) return;
+          if (snap.exists() && String(snap.data()?.estado || "") === "activo") {
+            setOpenChat(savedChat.openChat);
+            setChatViewState(savedChat.chatView || "minimized");
+            setPhase("accepted");
+            if (!cancelled) setHydrated(true);
+            return;
+          }
 
-        if (!snap.exists() || String(snap.data()?.estado || "") !== "activo") {
           clearAnonDirectChatSession();
-          setHydrated(true);
-          return;
+        } catch {
+          if (!cancelled) clearAnonDirectChatSession();
         }
-
-        setOpenChat(saved.openChat);
-        setChatViewState(saved.chatView || "minimized");
-        setPhase("accepted");
-      } catch {
-        if (!cancelled) clearAnonDirectChatSession();
-      } finally {
-        if (!cancelled) setHydrated(true);
       }
+
+      const savedSearch = loadAnonDirectSearchSession();
+      if (savedSearch?.active) {
+        searchSessionActiveRef.current = true;
+        setSearchSessionActive(true);
+        setPhase(savedSearch.phase === "accepted" ? "searching" : savedSearch.phase);
+        setSolicitudId(savedSearch.solicitudId || "");
+
+        if (savedSearch.phase === "waiting" && savedSearch.solicitudId) {
+          try {
+            const snap = await getDoc(
+              doc(db, "solicitudes_chat_anonimo", savedSearch.solicitudId),
+            );
+            if (cancelled) return;
+
+            const estado = String(snap.data()?.estado || "");
+            if (!snap.exists() || estado !== "pendiente") {
+              setSolicitudId("");
+              setPhase("searching");
+            }
+          } catch {
+            setSolicitudId("");
+            setPhase("searching");
+          }
+        }
+      }
+
+      if (!cancelled) setHydrated(true);
     }
 
     void hydrateSession();
@@ -187,6 +247,22 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     if (!hydrated) return;
     persistOpenChat(openChat, chatView, phase);
   }, [chatView, hydrated, openChat, phase]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    persistSearchSession(searchSessionActive, phase, solicitudId);
+  }, [hydrated, phase, searchSessionActive, solicitudId]);
+
+  useEffect(() => {
+    if (!hydrated || !searchSessionActiveRef.current) return;
+    if (phase === "accepted" || openChat?.chatId) return;
+
+    if (phase === "waiting" && solicitudId) return;
+
+    if (connectInFlightRef.current) return;
+
+    void attemptConnectRef.current?.();
+  }, [hydrated, openChat?.chatId, pathname, phase, searchSessionActive, solicitudId]);
 
   useEffect(() => {
     if (!hydrated || lastPathRef.current === pathname) return;
@@ -286,14 +362,17 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   const openDirectChat = useCallback((chatId: string, role: "perfil" | "anonimo") => {
     clearRetryTimer();
-    searchSessionActiveRef.current = false;
+    stopSearchSessionState({
+      setSearchSessionActive,
+      setPhase,
+      setSolicitudId,
+      searchSessionActiveRef,
+    });
     skipServerDiscoveryRef.current = false;
-    setSearchSessionActive(false);
     const next = { chatId, role };
     setOpenChat(next);
     setChatViewState("compact");
     setPhase("accepted");
-    setSolicitudId("");
     persistOpenChat(next, "compact", "accepted");
   }, [clearRetryTimer]);
 
@@ -574,13 +653,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   const closeChatWindow = useCallback(() => {
     clearRetryTimer();
-    searchSessionActiveRef.current = false;
+    stopSearchSessionState({
+      setSearchSessionActive,
+      setPhase,
+      setSolicitudId,
+      searchSessionActiveRef,
+    });
     skipServerDiscoveryRef.current = true;
-    setSearchSessionActive(false);
     setOpenChat(null);
     setChatViewState("compact");
-    setSolicitudId("");
-    setPhase("idle");
     clearAnonDirectChatSession();
   }, [clearRetryTimer]);
 
