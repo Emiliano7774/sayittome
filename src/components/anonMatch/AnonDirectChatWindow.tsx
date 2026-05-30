@@ -149,6 +149,7 @@ export default function AnonDirectChatWindow() {
     setNotice("");
     setSending(false);
     sendInFlightRef.current = false;
+    setMessages([]);
   }, [chatId]);
 
   const handleSend = useCallback(async () => {

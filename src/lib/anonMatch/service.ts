@@ -6,7 +6,7 @@ import {
 } from "@/lib/firestore/rest";
 import {
   buildAnonMatchRequestId,
-  buildDirectChatId,
+  buildDirectChatSessionId,
   resolveDirectChatTipo,
   resolveTipoSolicitud,
 } from "@/lib/anonMatch/chatId";
@@ -187,6 +187,64 @@ async function releaseDirectChatParticipants(
   );
 }
 
+function participantFingerprint(input: {
+  solicitanteUid?: string;
+  solicitanteAnonId?: string;
+  destinatarioUid?: string;
+  destinatarioAnonId?: string;
+}) {
+  const uids = [String(input.solicitanteUid || ""), String(input.destinatarioUid || "")]
+    .filter(Boolean)
+    .sort();
+  const anons = [
+    String(input.solicitanteAnonId || ""),
+    String(input.destinatarioAnonId || ""),
+  ]
+    .filter(Boolean)
+    .sort();
+
+  return `${uids.join("|")}::${anons.join("|")}`;
+}
+
+function chatParticipantFingerprint(chat: Record<string, unknown>) {
+  return participantFingerprint({
+    solicitanteUid: String(chat.solicitanteUid || ""),
+    solicitanteAnonId: String(chat.solicitanteAnonId || ""),
+    destinatarioUid: String(chat.destinatarioUid || ""),
+    destinatarioAnonId: String(chat.anonId || ""),
+  });
+}
+
+async function closeActiveChatsForParticipantPair(
+  participants: {
+    solicitanteUid?: string;
+    solicitanteAnonId?: string;
+    destinatarioUid?: string;
+    destinatarioAnonId?: string;
+  },
+  closedBy: string,
+) {
+  const target = participantFingerprint(participants);
+  const rows = await runCollectionQuery("chats_anonimos", 200, "updatedAt", "DESCENDING");
+  const now = new Date().toISOString();
+
+  for (const row of rows) {
+    if (String(row.estado || "") !== "activo") continue;
+    if (chatParticipantFingerprint(row) !== target) continue;
+
+    const chatId = String(row.chatId || row.id || "");
+    if (!chatId) continue;
+
+    await patchFirestoreDoc("chats_anonimos", chatId, {
+      estado: "cerrado",
+      cerradoPor: closedBy,
+      cerradoAt: now,
+      updatedAt: now,
+    });
+    await releaseDirectChatParticipants(row, now);
+  }
+}
+
 export async function expireAnonMatchRequestIfNeeded(row: Record<string, unknown>) {
   const estado = String(row.estado || "");
   if (estado !== "pendiente") return estado as AnonMatchRequestState;
@@ -254,44 +312,46 @@ export async function respondAnonMatchRequest(input: {
     return { ok: true as const, estado: "rechazado" as const };
   }
 
-  const chatId = buildDirectChatId({
+  const chatId = buildDirectChatSessionId({
     solicitanteUid,
     solicitanteAnonId,
     destinatarioUid,
     destinatarioAnonId,
   });
   const chatTipo = resolveDirectChatTipo(tipoSolicitud);
+  const closedBy =
+    input.responderUid ||
+    input.responderAnonId ||
+    solicitanteUid ||
+    solicitanteAnonId ||
+    "system";
 
-  const existingChat = await getAnonDirectChat(chatId);
-  const chatFields = {
-    chatId,
-    tipo: chatTipo,
-    solicitanteUid,
-    solicitanteAnonId,
-    destinatarioUid,
-    anonId: destinatarioAnonId,
-    estado: "activo",
-    updatedAt: now,
-    ultimoMensaje: String(existingChat?.ultimoMensaje || ""),
-    cerradoPor: "",
-    cerradoAt: "",
-    denunciadoPor: "",
-    denunciadoAt: "",
-  };
+  await closeActiveChatsForParticipantPair(
+    {
+      solicitanteUid,
+      solicitanteAnonId,
+      destinatarioUid,
+      destinatarioAnonId,
+    },
+    closedBy,
+  );
 
-  if (existingChat) {
-    await patchFirestoreDoc("chats_anonimos", chatId, chatFields);
-  } else {
-    await createFirestoreDoc(
-      "chats_anonimos",
-      {
-        ...chatFields,
-        createdAt: now,
-        ultimoMensaje: "",
-      },
+  await createFirestoreDoc(
+    "chats_anonimos",
+    {
       chatId,
-    );
-  }
+      tipo: chatTipo,
+      solicitanteUid,
+      solicitanteAnonId,
+      destinatarioUid,
+      anonId: destinatarioAnonId,
+      estado: "activo",
+      createdAt: now,
+      updatedAt: now,
+      ultimoMensaje: "",
+    },
+    chatId,
+  );
 
   await patchFirestoreDoc("solicitudes_chat_anonimo", input.solicitudId, {
     estado: "aceptado",

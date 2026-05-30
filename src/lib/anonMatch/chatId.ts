@@ -53,6 +53,18 @@ export function buildDirectChatId(input: {
   throw new Error("invalid_direct_chat_participants");
 }
 
+export function buildDirectChatSessionId(input: {
+  solicitanteUid?: string;
+  solicitanteAnonId?: string;
+  destinatarioUid?: string;
+  destinatarioAnonId?: string;
+  now?: number;
+}) {
+  const base = buildDirectChatId(input);
+  const stamp = (input.now ?? Date.now()).toString(36);
+  return `${base}_${stamp}`;
+}
+
 export function resolveTipoSolicitud(input: {
   solicitanteUid?: string;
   solicitanteAnonId?: string;
