@@ -81,6 +81,7 @@ export default function ClassicEditProfilePage() {
   const [principalIndex, setPrincipalIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadText, setUploadText] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   const [visibleBadges, setVisibleBadges] = useState<Record<BadgeKey, boolean>>({
     superMessages: true,
@@ -257,6 +258,7 @@ export default function ClassicEditProfilePage() {
     if (!uid) return;
 
     setSaving(true);
+    setSaveError("");
 
     const tagArray = tags
       .split(",")
@@ -266,33 +268,39 @@ export default function ClassicEditProfilePage() {
     const fotos = media.filter((item) => item.type === "image").map((item) => item.url);
     const videos = media.filter((item) => item.type === "video").map((item) => item.url);
 
-    await setDoc(
-      doc(db, "usuarios", uid),
-      {
-        username: username.trim(),
-        usernameLower: username.trim().toLowerCase(),
-        nombre: username.trim(),
-        bio: bio.trim(),
-        descripcion: bio.trim(),
-        etiquetas: tagArray,
-        intereses: tagArray,
-        provincia,
-        mostrarProvincia,
-        fotos,
-        videos,
-        fotoPrincipal,
-        mostrarSuperMessages: visibleBadges.superMessages,
-        mostrarLikes: visibleBadges.likes,
-        mostrarConversaciones: visibleBadges.conversations,
-        mostrarSeguidores: visibleBadges.followers,
-        perfilCompleto: Boolean(username.trim() && fotoPrincipal),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    try {
+      await setDoc(
+        doc(db, "usuarios", uid),
+        {
+          username: username.trim(),
+          usernameLower: username.trim().toLowerCase(),
+          nombre: username.trim(),
+          bio: bio.trim(),
+          descripcion: bio.trim(),
+          etiquetas: tagArray,
+          intereses: tagArray,
+          provincia,
+          mostrarProvincia,
+          fotos,
+          videos,
+          fotoPrincipal,
+          mostrarSuperMessages: visibleBadges.superMessages,
+          mostrarLikes: visibleBadges.likes,
+          mostrarConversaciones: visibleBadges.conversations,
+          mostrarSeguidores: visibleBadges.followers,
+          perfilCompleto: Boolean(username.trim() && fotoPrincipal),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
 
-    setSaving(false);
-    router.push("/settings");
+      router.push("/settings");
+    } catch (error) {
+      console.error(error);
+      setSaveError("No se pudo guardar tu perfil. Probá de nuevo.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) {
@@ -322,6 +330,10 @@ export default function ClassicEditProfilePage() {
             {saving ? "Guardando..." : "Guardar"}
           </button>
         </div>
+
+        {saveError ? (
+          <p className="mb-6 text-sm font-semibold text-red-400">{saveError}</p>
+        ) : null}
 
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(420px,520px)_1fr] gap-10 xl:gap-16 items-start">
           <aside className="w-full">

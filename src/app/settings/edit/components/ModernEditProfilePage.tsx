@@ -39,6 +39,7 @@ export default function ModernEditProfilePage() {
   const [videoPortada, setVideoPortada] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadText, setUploadText] = useState("");
+  const [saveError, setSaveError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const coverVideoInputRef = useRef<HTMLInputElement | null>(null);
@@ -164,40 +165,47 @@ export default function ModernEditProfilePage() {
     if (!user) return;
 
     setSaving(true);
+    setSaveError("");
 
     const fotos = media.filter((m) => m.type === "image").map((m) => m.url);
     const videos = media.filter((m) => m.type === "video").map((m) => m.url);
     const interesesArray = intereses.split(",").map((x) => x.trim()).filter(Boolean);
 
-    await setDoc(
-      doc(db, "usuarios", user.uid),
-      {
-        uid: user.uid,
-        email: user.email || "",
-        username: username.trim(),
-        usernameLower: username.trim().toLowerCase(),
-        nombre: username.trim(),
-        bio: bio.trim(),
-        descripcion: bio.trim(),
-        provincia,
-        mostrarProvincia,
-        intereses: interesesArray,
-        fotos,
-        videos,
-        fotoPrincipal,
-        fotoPortada: fotoPortada || null,
-        coverPhoto: fotoPortada || null,
-        portada: fotoPortada || null,
-        videoPortada: videoPortada || null,
-        coverVideo: videoPortada || null,
-        perfilCompleto: Boolean(username.trim() && fotoPrincipal),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    try {
+      await setDoc(
+        doc(db, "usuarios", user.uid),
+        {
+          uid: user.uid,
+          email: user.email || "",
+          username: username.trim(),
+          usernameLower: username.trim().toLowerCase(),
+          nombre: username.trim(),
+          bio: bio.trim(),
+          descripcion: bio.trim(),
+          provincia,
+          mostrarProvincia,
+          intereses: interesesArray,
+          fotos,
+          videos,
+          fotoPrincipal,
+          fotoPortada: fotoPortada || null,
+          coverPhoto: fotoPortada || null,
+          portada: fotoPortada || null,
+          videoPortada: videoPortada || null,
+          coverVideo: videoPortada || null,
+          perfilCompleto: Boolean(username.trim() && fotoPrincipal),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
 
-    setSaving(false);
-    router.push("/settings");
+      router.push("/settings");
+    } catch (error) {
+      console.error(error);
+      setSaveError(t("setup_save_fail"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) {
@@ -226,6 +234,10 @@ export default function ModernEditProfilePage() {
             {saving ? t("setup_saving") : t("edit_save")}
           </button>
         </div>
+
+        {saveError ? (
+          <p className="mb-6 text-sm font-semibold text-red-400">{saveError}</p>
+        ) : null}
 
         <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-10">
           <div>

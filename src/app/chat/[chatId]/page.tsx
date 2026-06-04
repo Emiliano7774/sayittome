@@ -32,16 +32,17 @@ function ProfileAnonChatRoute() {
       try {
         let resolvedUsername = usernameFromQuery;
 
-        if (!resolvedUsername) {
-          const chatSnap = await getDoc(doc(db, "chats", rawChatId));
-          if (chatSnap.exists()) {
-            const data = chatSnap.data() as {
+        const requestedSnap = await getDoc(doc(db, "chats", rawChatId));
+        const requestedData = requestedSnap.exists()
+          ? (requestedSnap.data() as {
               targetUsername?: string;
               receptorUsername?: string;
-            };
-            resolvedUsername =
-              data.targetUsername || data.receptorUsername || "";
-          }
+            })
+          : null;
+
+        if (!resolvedUsername && requestedData) {
+          resolvedUsername =
+            requestedData.targetUsername || requestedData.receptorUsername || "";
         }
 
         if (!resolvedUsername) {
@@ -52,6 +53,24 @@ function ProfileAnonChatRoute() {
           if (!cancelled) {
             setErrorText(t("chat_not_found"));
             setReady(true);
+          }
+          return;
+        }
+
+        if (requestedSnap.exists()) {
+          if (cancelled) return;
+
+          setUsername(resolvedUsername);
+          setChatId(rawChatId);
+          setReady(true);
+
+          if (usernameFromQuery !== resolvedUsername) {
+            const query = new URLSearchParams({ u: resolvedUsername });
+            window.history.replaceState(
+              null,
+              "",
+              `/chat/${encodeURIComponent(rawChatId)}?${query.toString()}`,
+            );
           }
           return;
         }

@@ -9,7 +9,7 @@ import {
   getAnonSessionId,
   markAnonSessionForReset,
 } from "@/lib/chat/anonSession";
-import { clearAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
+import { clearSessionShuffleLegalAcceptance } from "@/lib/legal/shuffleTerms";
 import { deleteAnonymousStoriesForSession } from "@/lib/stories/anonStories";
 
 /**
@@ -23,7 +23,7 @@ export default function AnonSessionLifecycle() {
     if (pathname === "/") {
       void deleteAnonymousStoriesForSession(getAnonSessionId());
       markAnonSessionForReset();
-      clearAnonLegalAcceptance();
+      clearSessionShuffleLegalAcceptance();
       return;
     }
 

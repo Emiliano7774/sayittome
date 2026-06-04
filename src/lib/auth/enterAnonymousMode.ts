@@ -3,7 +3,7 @@ import { signOut } from "firebase/auth";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
 import { auth } from "@/lib/firebase";
-import { setAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
+import { setShuffleLegalAcceptance } from "@/lib/legal/shuffleTerms";
 
 /**
  * Enter anonymous shuffle mode with a clean session.
@@ -21,7 +21,7 @@ export async function enterAnonymousMode() {
     }
   }
 
-  setAnonLegalAcceptance();
+  setShuffleLegalAcceptance();
 }
 
 export async function hasCompleteRegisteredProfile(uid: string, emailVerified: boolean) {

@@ -33,6 +33,12 @@ export default function SettingsPage() {
   const [showAnonGate, setShowAnonGate] = useState(false);
 
   useEffect(() => {
+    async function loadProfile(user: { uid: string }) {
+      const snap = await getDoc(doc(db, "usuarios", user.uid));
+      setProfile(snap.exists() ? { uid: user.uid, ...snap.data() } : { uid: user.uid });
+      setLoading(false);
+    }
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         setShowAnonGate(true);
@@ -56,12 +62,23 @@ export default function SettingsPage() {
         return;
       }
 
-      const snap = await getDoc(doc(db, "usuarios", user.uid));
-      setProfile(snap.exists() ? { uid: user.uid, ...snap.data() } : { uid: user.uid });
-      setLoading(false);
+      await loadProfile(user);
     });
 
-    return () => unsub();
+    function refreshProfileOnFocus() {
+      const user = auth.currentUser;
+      if (!user || document.visibilityState !== "visible") return;
+      void loadProfile(user);
+    }
+
+    window.addEventListener("focus", refreshProfileOnFocus);
+    document.addEventListener("visibilitychange", refreshProfileOnFocus);
+
+    return () => {
+      unsub();
+      window.removeEventListener("focus", refreshProfileOnFocus);
+      document.removeEventListener("visibilitychange", refreshProfileOnFocus);
+    };
   }, [router]);
 
   const username = profile?.username || profile?.nombre || t("settings_no_username");
