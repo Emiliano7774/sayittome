@@ -8,9 +8,11 @@ import StoryRing from "@/components/stories/StoryRing";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 
-type Size = "sm" | "md" | "lg" | "xl" | "hero";
+type Size = "2xs" | "xs" | "sm" | "md" | "lg" | "xl" | "hero";
 
 const SIZE_CLASS: Record<Size, string> = {
+  "2xs": "w-8 h-8",
+  xs: "w-10 h-10",
   sm: "w-12 h-12",
   md: "w-16 h-16",
   lg: "w-28 h-28 md:w-32 md:h-32",

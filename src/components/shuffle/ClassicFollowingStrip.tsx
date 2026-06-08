@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { UserRound } from "lucide-react";
 
+import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useT } from "@/contexts/LocaleContext";
+import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 import type { FollowingProfile } from "@/hooks/useFollowingProfiles";
 
 type Props = {
@@ -18,26 +20,31 @@ export default function ClassicFollowingStrip({
   hasSession,
 }: Props) {
   const t = useT();
+  const { density } = useClassicShuffleDensity();
+  const tokens = getClassicShuffleDensityTokens(density);
+
+  const labelClass = `${tokens.followingLabel} font-semibold uppercase tracking-[0.24em] text-white/28`;
+  const sectionClass = `${tokens.followingMt} border-b border-white/10 ${tokens.followingPb}`;
 
   if (!hasSession) {
     return (
-      <div className="mt-4 border-b border-white/10 pb-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/28">
-          {t("shuffle_following_title")}
+      <div className={sectionClass}>
+        <p className={labelClass}>{t("shuffle_following_title")}</p>
+
+        <p className={`mt-1.5 ${tokens.metaText} leading-snug text-white/38`}>
+          {t("shuffle_following_login")}
         </p>
 
-        <p className="mt-2 text-sm leading-6 text-white/38">{t("shuffle_following_login")}</p>
-
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className={`mt-2 flex flex-wrap ${tokens.followingGap}`}>
           <Link
             href="/login"
-            className="rounded-full border border-white/12 px-4 py-2 text-xs font-black text-white/80"
+            className={`rounded-full border border-white/12 px-3 py-1.5 font-medium text-white/80 ${tokens.followingName}`}
           >
             {t("shuffle_following_login_btn")}
           </Link>
           <Link
             href="/register"
-            className="rounded-full bg-violet-600 px-4 py-2 text-xs font-black text-white"
+            className={`rounded-full bg-violet-600 px-3 py-1.5 font-medium text-white ${tokens.followingName}`}
           >
             {t("shuffle_following_register_btn")}
           </Link>
@@ -48,32 +55,41 @@ export default function ClassicFollowingStrip({
 
   if (loading) {
     return (
-      <div className="mt-4 border-b border-white/10 pb-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/28">
-          {t("shuffle_following_title")}
+      <div className={sectionClass}>
+        <p className={labelClass}>{t("shuffle_following_title")}</p>
+        <p className={`mt-1.5 font-medium text-white/22 ${tokens.followingName}`}>
+          {t("common_loading")}
         </p>
-        <p className="mt-2 text-xs font-bold text-white/22">{t("common_loading")}</p>
       </div>
     );
   }
 
   return (
-    <div className="mt-4 border-b border-white/10 pb-4">
-      <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/28">
-        {t("shuffle_following_title")}
-      </p>
+    <div className={sectionClass}>
+      <p className={labelClass}>{t("shuffle_following_title")}</p>
 
       {profiles.length === 0 ? (
-        <p className="mt-2 text-xs font-bold text-white/28">{t("shuffle_following_empty")}</p>
+        <p className={`mt-1.5 font-medium text-white/28 ${tokens.followingName}`}>
+          {t("shuffle_following_empty")}
+        </p>
       ) : (
-        <div className="mt-3 flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          className={`mt-2 flex overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${tokens.followingGap}`}
+        >
           {profiles.map((profile) => (
             <Link
               key={profile.uid}
               href={`/u/${encodeURIComponent(profile.username)}`}
-              className="flex w-[64px] shrink-0 flex-col items-center gap-1.5 active:scale-[0.98]"
+              className="flex shrink-0 flex-col items-center gap-1 active:scale-[0.98]"
+              style={{ width: tokens.followingItemW }}
             >
-              <div className="relative h-[48px] w-[48px] overflow-hidden rounded-full bg-[#141414]">
+              <div
+                className="relative overflow-hidden rounded-full bg-[#141414]"
+                style={{
+                  width: tokens.followingAvatar,
+                  height: tokens.followingAvatar,
+                }}
+              >
                 {profile.photo ? (
                   <img
                     src={profile.photo}
@@ -83,16 +99,19 @@ export default function ClassicFollowingStrip({
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-white/30">
-                    <UserRound size={20} strokeWidth={1.75} />
+                    <UserRound size={Math.max(12, tokens.followingAvatar * 0.42)} strokeWidth={1.75} />
                   </div>
                 )}
 
                 {profile.showOnline ? (
-                  <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-black bg-green-500" />
+                  <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border border-black bg-green-500" />
                 ) : null}
               </div>
 
-              <span className="max-w-[64px] truncate text-[10px] font-bold text-white/55">
+              <span
+                className={`truncate font-medium text-white/55 ${tokens.followingName}`}
+                style={{ maxWidth: tokens.followingItemW }}
+              >
                 {profile.username}
               </span>
             </Link>

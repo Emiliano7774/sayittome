@@ -9,7 +9,11 @@ import {
 } from "@/lib/shuffle/classicDensity";
 import { useT } from "@/contexts/LocaleContext";
 
-export default function ClassicShuffleDensityControl() {
+type Props = {
+  className?: string;
+};
+
+export default function ClassicShuffleDensityControl({ className = "mt-3" }: Props) {
   const t = useT();
   const { density, setDensity } = useClassicShuffleDensity();
 
@@ -22,7 +26,7 @@ export default function ClassicShuffleDensityControl() {
 
   return (
     <div
-      className="mt-3 flex items-center justify-end gap-2 text-white/28"
+      className={`flex items-center justify-end gap-1.5 text-white/28 ${className}`}
       aria-label={t("shuffle_density_label")}
     >
       <button

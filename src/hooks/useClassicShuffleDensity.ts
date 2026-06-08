@@ -27,7 +27,7 @@ function setDensity(next: ClassicShuffleDensity) {
 }
 
 export function useClassicShuffleDensity() {
-  const value = useSyncExternalStore(subscribe, getSnapshot, () => 10 as ClassicShuffleDensity);
+  const value = useSyncExternalStore(subscribe, getSnapshot, () => 20 as ClassicShuffleDensity);
 
   const update = useCallback((next: ClassicShuffleDensity) => {
     setDensity(next);

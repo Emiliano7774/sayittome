@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useT } from "@/contexts/LocaleContext";
 import { hasAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
+import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 
 function hasActiveDirectChat(match: NonNullable<ReturnType<typeof useAnonMatchOptional>>) {
   return Boolean(
@@ -20,6 +22,8 @@ export default function ClassicAnonConnectCard() {
   const match = useAnonMatchOptional();
   const { firebaseUser, loading } = useAuth();
   const t = useT();
+  const { density } = useClassicShuffleDensity();
+  const tokens = getClassicShuffleDensityTokens(density);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [incognitoMode, setIncognitoMode] = useState(false);
 
@@ -52,50 +56,55 @@ export default function ClassicAnonConnectCard() {
 
   return (
     <>
-      <div className="mt-4 border-t border-white/[0.06] pt-4">
+      <div className={`${tokens.anonMt} border-t border-white/[0.06] ${tokens.anonPt}`}>
         {isIncognitoVisitor ? (
           <>
-            <div className="flex items-center gap-2.5">
+            <div className={`flex items-center ${tokens.filterGap}`}>
               <Globe2
-                size={18}
+                size={tokens.anonIcon}
                 strokeWidth={1.6}
                 className="shrink-0 text-violet-400/90"
                 aria-hidden
               />
-              <p className="text-[15px] font-semibold tracking-[-0.02em] text-white/88">
+              <p className={`font-semibold tracking-[-0.02em] text-white/88 ${tokens.anonTitle}`}>
                 {t("anon_match_incognito_title")}
               </p>
-              <span className="ml-auto h-2 w-2 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.8)]" />
+              <span className="ml-auto h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" />
             </div>
-            <p className="mt-2 pl-[26px] text-[13px] font-medium tracking-[-0.01em] text-white/42">
+            <p className={`mt-1.5 ${tokens.anonIndent} font-medium tracking-[-0.01em] text-white/42 ${tokens.anonBody}`}>
               {t("anon_match_incognito_body")}
             </p>
           </>
         ) : null}
 
-        <div className={`flex items-center gap-2.5 ${isIncognitoVisitor ? "mt-4" : ""}`}>
+        <div className={`flex items-center ${tokens.filterGap} ${isIncognitoVisitor ? tokens.filterMt : ""}`}>
           {!isIncognitoVisitor ? (
             <Globe2
-              size={18}
+              size={tokens.anonIcon}
               strokeWidth={1.6}
               className="shrink-0 text-violet-400/90"
               aria-hidden
             />
           ) : null}
-          <p className={`text-[15px] font-semibold tracking-[-0.02em] text-white/88 ${isIncognitoVisitor ? "pl-[26px]" : ""}`}>
+          <p
+            className={[
+              `font-semibold tracking-[-0.02em] text-white/88 ${tokens.anonTitle}`,
+              isIncognitoVisitor ? tokens.anonIndent : "",
+            ].join(" ")}
+          >
             {cardTitle}
           </p>
         </div>
 
         {searching ? (
-          <p className="mt-3 pl-[26px] text-[13px] font-medium tracking-[-0.01em] text-white/42">
+          <p className={`mt-1.5 ${tokens.anonIndent} font-medium tracking-[-0.01em] text-white/42 ${tokens.anonBody}`}>
             {t("anon_match_searching")}
           </p>
         ) : (
           <button
             type="button"
             onClick={() => setDisclaimerOpen(true)}
-            className="mt-3 w-full rounded-xl border border-violet-500/25 bg-gradient-to-b from-[#7c3aed] to-[#5b21b6] px-4 py-3 text-[14px] font-semibold tracking-[-0.02em] text-white shadow-[0_10px_28px_rgba(91,33,182,0.38)] transition active:scale-[0.99]"
+            className={`mt-1.5 w-full rounded-lg border border-violet-500/25 bg-gradient-to-b from-[#7c3aed] to-[#5b21b6] px-3 font-semibold tracking-[-0.02em] text-white shadow-[0_8px_22px_rgba(91,33,182,0.32)] transition active:scale-[0.99] ${tokens.anonBtnText} ${tokens.anonBtnPy}`}
           >
             {t("anon_match_cta")}
           </button>
