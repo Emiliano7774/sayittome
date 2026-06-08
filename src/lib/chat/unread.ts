@@ -1,4 +1,4 @@
-﻿import { doc, increment, updateDoc } from "firebase/firestore";
+import { doc, increment, updateDoc } from "firebase/firestore";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { markChatReadLocally } from "@/lib/chat/localChatRead";

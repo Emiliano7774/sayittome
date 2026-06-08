@@ -26,6 +26,7 @@ import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories"
 import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import { markStoryViewedLocally } from "@/lib/stories/storiesIndexStore";
+import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
 import type { StoryItem } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
@@ -38,6 +39,7 @@ type Props = {
 
 const DEFAULT_IMAGE_MS = 5500;
 const SWIPE_REPLY_PX = 56;
+const SWIPE_DISMISS_PX = 48;
 const TAP_MAX_MS = 380;
 
 export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props) {
@@ -55,11 +57,15 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const [deleting, setDeleting] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState("");
-  const [replySending, setReplySending] = useState(false);
+  const [replyDragY, setReplyDragY] = useState(0);
+  const [replyDragging, setReplyDragging] = useState(false);
+  const [replySentToast, setReplySentToast] = useState(false);
   const timerRef = useRef<number | null>(null);
   const startedRef = useRef(false);
   const viewedRef = useRef<Set<string>>(new Set());
   const pointerRef = useRef({ x: 0, y: 0, t: 0, swiped: false });
+  const replyPointerRef = useRef({ y: 0, dragging: false });
+  const replySentTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setLocalStories(stories);
@@ -92,11 +98,43 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const topChromeHidden = paused && !blurLocked;
   const bottomChromeHidden = topChromeHidden || replyOpen;
 
+  const closeReply = useCallback(() => {
+    setReplyOpen(false);
+    setReplyText("");
+    setReplyDragY(0);
+    setReplyDragging(false);
+    replyPointerRef.current.dragging = false;
+  }, []);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setViewerUid(resolveStoryViewerId(user));
     });
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!replyOpen || !profileUsername) return;
+    void resolveProfileChat(profileUsername).catch(() => {});
+  }, [replyOpen, profileUsername]);
+
+  useEffect(() => {
+    if (!replyOpen) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeReply();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [replyOpen, closeReply]);
+
+  useEffect(() => {
+    return () => {
+      if (replySentTimerRef.current) {
+        window.clearTimeout(replySentTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -316,22 +354,62 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     }
   }
 
-  async function handleSendReply() {
-    if (!current || !canReply || !replyText.trim() || replySending) return;
+  function handleReplyPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("input,button")) return;
 
-    setReplySending(true);
+    replyPointerRef.current = { y: event.clientY, dragging: true };
+    setReplyDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
 
-    try {
-      const chatId = await sendStoryReplyMessage(current, profileUsername, replyText.trim());
-      router.push(
-        `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(profileUsername)}`,
-      );
-    } catch (error) {
-      console.error(error);
-      window.alert(t("chat_save_fail"));
-    } finally {
-      setReplySending(false);
+  function handleReplyPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!replyPointerRef.current.dragging) return;
+
+    setReplyDragY(Math.max(0, event.clientY - replyPointerRef.current.y));
+  }
+
+  function handleReplyPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (!replyPointerRef.current.dragging) return;
+
+    const deltaY = Math.max(0, event.clientY - replyPointerRef.current.y);
+    replyPointerRef.current.dragging = false;
+    setReplyDragging(false);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
     }
+
+    if (deltaY >= SWIPE_DISMISS_PX) {
+      closeReply();
+      return;
+    }
+
+    setReplyDragY(0);
+  }
+
+  function handleSendReply() {
+    if (!current || !canReply || !replyText.trim()) return;
+
+    const text = replyText.trim();
+    const story = current;
+    const username = profileUsername;
+
+    closeReply();
+    setReplySentToast(true);
+
+    if (replySentTimerRef.current) {
+      window.clearTimeout(replySentTimerRef.current);
+    }
+    replySentTimerRef.current = window.setTimeout(() => {
+      setReplySentToast(false);
+      replySentTimerRef.current = null;
+    }, 1800);
+
+    void sendStoryReplyMessage(story, username, text).catch((error) => {
+      console.error(error);
+      setReplySentToast(false);
+      window.alert(t("chat_save_fail"));
+    });
   }
 
   function openProfile() {
@@ -532,47 +610,78 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         </div>
       </div>
 
-      {replyOpen && canReply ? (
-        <div
-          className="absolute inset-x-0 bottom-0 z-[60] border-t border-white/10 bg-black/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md"
-          data-story-chrome
-        >
-          <div className="mb-3 flex items-center gap-3">
-            {current.mediaUrl ? (
-              <img
-                src={current.mediaUrl}
-                alt=""
-                className="h-12 w-12 rounded-lg object-cover"
-              />
-            ) : null}
-            <p className="truncate text-sm font-semibold text-white/70">@{profileUsername}</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              value={replyText}
-              onChange={(event) => setReplyText(event.target.value)}
-              placeholder={t("story_reply_placeholder")}
-              className="min-w-0 flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none placeholder:text-white/35"
-              autoFocus
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  void handleSendReply();
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => void handleSendReply()}
-              disabled={replySending || !replyText.trim()}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white disabled:opacity-40"
-              aria-label={t("story_reply_send")}
-            >
-              <Send size={18} />
-            </button>
-          </div>
+      {replySentToast ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(6.5rem,env(safe-area-inset-bottom))] z-[70] flex justify-center">
+          <span className="rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-white backdrop-blur-md">
+            {t("story_reply_sent")}
+          </span>
         </div>
+      ) : null}
+
+      {replyOpen && canReply ? (
+        <>
+          <button
+            type="button"
+            className="absolute inset-0 z-[55] bg-black/25"
+            onClick={closeReply}
+            aria-label={t("common_cancel")}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 z-[60] touch-none border-t border-white/10 bg-black/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md transition-transform duration-150 ease-out"
+            data-story-chrome
+            style={{
+              transform: `translateY(${replyDragY}px)`,
+              transition: replyDragging ? "none" : undefined,
+            }}
+            onPointerDown={handleReplyPointerDown}
+            onPointerMove={handleReplyPointerMove}
+            onPointerUp={handleReplyPointerUp}
+            onPointerCancel={handleReplyPointerUp}
+          >
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-white/30" aria-hidden />
+
+            <p className="mb-3 text-center text-xs font-semibold text-white/40">
+              {t("story_reply_dismiss_hint")}
+            </p>
+
+            <div className="mb-3 flex items-center gap-3">
+              {current.mediaUrl ? (
+                <img
+                  src={current.mediaUrl}
+                  alt=""
+                  className="h-12 w-12 rounded-lg object-cover"
+                />
+              ) : null}
+              <p className="truncate text-sm font-semibold text-white/70">@{profileUsername}</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                value={replyText}
+                onChange={(event) => setReplyText(event.target.value)}
+                placeholder={t("story_reply_placeholder")}
+                className="min-w-0 flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none placeholder:text-white/35"
+                autoFocus
+                onPointerDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleSendReply();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleSendReply}
+                disabled={!replyText.trim()}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white disabled:opacity-40"
+                aria-label={t("story_reply_send")}
+              >
+                <Send size={18} />
+              </button>
+            </div>
+          </div>
+        </>
       ) : null}
     </main>
   );

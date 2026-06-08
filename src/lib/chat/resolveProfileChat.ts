@@ -14,6 +14,7 @@ export type ResolvedProfileChat = {
   senderId: string;
   username: string;
   targetUid: string;
+  targetPhoto: string;
   isLoggedIn: boolean;
 };
 
@@ -25,7 +26,27 @@ export async function fetchProfileByUsername(username: string) {
   return json?.profile || null;
 }
 
+const profileChatCache = new Map<string, Promise<ResolvedProfileChat>>();
+
 export async function resolveProfileChat(username: string): Promise<ResolvedProfileChat> {
+  const key = username.trim().toLowerCase();
+  if (!key) {
+    throw new Error("missing_profile_username");
+  }
+
+  const cached = profileChatCache.get(key);
+  if (cached) return cached;
+
+  const promise = resolveProfileChatUncached(username).catch((error) => {
+    profileChatCache.delete(key);
+    throw error;
+  });
+
+  profileChatCache.set(key, promise);
+  return promise;
+}
+
+async function resolveProfileChatUncached(username: string): Promise<ResolvedProfileChat> {
   const profile = await fetchProfileByUsername(username);
   const targetUid = String(profile?.uid || "");
   const firebaseUid = auth.currentUser?.uid || "";
@@ -83,6 +104,7 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
     senderId: effectiveSender,
     username,
     targetUid,
+    targetPhoto: targetPhoto || "",
     isLoggedIn,
   };
 }

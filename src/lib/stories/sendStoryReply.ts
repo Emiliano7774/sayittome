@@ -1,10 +1,6 @@
 import { auth } from "@/lib/firebase";
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
-import {
-  fetchProfileByUsername,
-  resolveProfileChat,
-} from "@/lib/chat/resolveProfileChat";
-import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
+import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import type { StoryItem } from "@/lib/stories/types";
 
 export type StoryReplyPayload = {
@@ -29,10 +25,6 @@ export async function sendStoryReplyMessage(
     throw new Error("missing_story_reply_target");
   }
 
-  const profile = await fetchProfileByUsername(username);
-  const targetPhoto = resolveProfilePhoto(profile);
-  const currentUid = auth.currentUser?.uid || "";
-
   const storyReply: StoryReplyPayload = {
     storyId: story.id,
     mediaUrl: story.mediaUrl || undefined,
@@ -44,9 +36,9 @@ export async function sendStoryReplyMessage(
     chatId: resolved.chatId,
     username: resolved.username,
     senderId: resolved.senderId,
-    currentUid,
+    currentUid: auth.currentUser?.uid || "",
     targetUid: resolved.targetUid,
-    targetPhoto,
+    targetPhoto: resolved.targetPhoto,
     messageText: messageText.trim(),
     storyReply,
   });
