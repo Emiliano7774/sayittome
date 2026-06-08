@@ -10,6 +10,10 @@ const ChatAlertsContext = createContext<ChatAlertsValue>({
   totalUnread: 0,
   viewerId: "",
   sortedChats: [],
+  uid: "",
+  loading: true,
+  isAnonymousSession: false,
+  inboxQueriesEnabled: false,
 });
 
 export function ChatAlertsProvider({ children }: { children: ReactNode }) {

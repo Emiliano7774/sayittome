@@ -17,6 +17,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   limitToLast,
   onSnapshot,
   orderBy,
@@ -83,7 +84,7 @@ type IncomingRequest = {
   expiresAt: string;
 };
 
-const RETRY_DELAY_MS = 1200;
+const RETRY_DELAY_MS = 30_000;
 
 const AnonMatchContext = createContext<AnonMatchContextValue | null>(null);
 
@@ -258,10 +259,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hydrated || !searchSessionActiveRef.current) return;
     if (phase === "accepted" || openChat?.chatId) return;
-
     if (phase === "waiting" && solicitudId) return;
-
     if (connectInFlightRef.current) return;
+    if (typeof document !== "undefined" && document.hidden) return;
 
     void attemptConnectRef.current?.();
   }, [hydrated, openChat?.chatId, pathname, phase, searchSessionActive, solicitudId]);
@@ -294,6 +294,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
                 collection(db, "chats_anonimos"),
                 where("solicitanteUid", "==", uid),
                 where("estado", "==", "activo"),
+                limit(1),
               ),
             ),
             getDocs(
@@ -301,6 +302,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
                 collection(db, "chats_anonimos"),
                 where("destinatarioUid", "==", uid),
                 where("estado", "==", "activo"),
+                limit(1),
               ),
             ),
           ]);
@@ -318,6 +320,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
             collection(db, "chats_anonimos"),
             where("anonId", "==", anonId),
             where("estado", "==", "activo"),
+            limit(1),
           );
           const receiverSnap = await getDocs(receiverQuery);
           if (cancelled || !receiverSnap.empty) {
@@ -334,6 +337,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
             collection(db, "chats_anonimos"),
             where("solicitanteAnonId", "==", anonId),
             where("estado", "==", "activo"),
+            limit(1),
           );
           const initiatorSnap = await getDocs(initiatorQuery);
           if (cancelled || initiatorSnap.empty) return;
@@ -363,15 +367,38 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   const scheduleRetry = useCallback(() => {
     if (!searchSessionActiveRef.current) return;
+    if (typeof document !== "undefined" && document.hidden) return;
 
     clearRetryTimer();
     retryTimerRef.current = window.setTimeout(() => {
       retryTimerRef.current = null;
-      if (searchSessionActiveRef.current) {
+      if (searchSessionActiveRef.current && !document.hidden) {
         void attemptConnectRef.current?.();
       }
     }, RETRY_DELAY_MS);
   }, [clearRetryTimer]);
+
+  useEffect(() => {
+    if (!searchSessionActive) return;
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearRetryTimer();
+        return;
+      }
+
+      if (
+        searchSessionActiveRef.current &&
+        phaseRef.current === "searching" &&
+        !connectInFlightRef.current
+      ) {
+        scheduleRetry();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [clearRetryTimer, scheduleRetry, searchSessionActive]);
 
   const openDirectChat = useCallback(async (chatId: string, role: "perfil" | "anonimo") => {
     const previous = openChatRef.current;
@@ -417,6 +444,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     if (!uid && !canConnectAsAnon) return;
     if (!searchSessionActiveRef.current) return;
     if (connectInFlightRef.current) return;
+    if (typeof document !== "undefined" && document.hidden) return;
     if (phaseRef.current === "waiting" && solicitudRef.current) return;
 
     connectInFlightRef.current = true;
@@ -577,6 +605,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           collection(db, "chats_anonimos"),
           where("solicitanteUid", "==", uid),
           where("estado", "==", "activo"),
+          limit(1),
         ),
         "perfil",
       );
@@ -585,6 +614,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           collection(db, "chats_anonimos"),
           where("destinatarioUid", "==", uid),
           where("estado", "==", "activo"),
+          limit(1),
         ),
         "perfil",
       );
@@ -594,6 +624,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           collection(db, "chats_anonimos"),
           where("solicitanteAnonId", "==", anonId),
           where("estado", "==", "activo"),
+          limit(1),
         ),
         "anonimo",
       );
@@ -602,6 +633,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           collection(db, "chats_anonimos"),
           where("anonId", "==", anonId),
           where("estado", "==", "activo"),
+          limit(1),
         ),
         "anonimo",
       );
@@ -707,6 +739,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           query(
             collection(db, "solicitudes_chat_anonimo"),
             where("destinatarioUid", "==", uid),
+            where("estado", "==", "pendiente"),
+            limit(10),
           ),
           (snap) => {
             profileDocs = snap.docs
@@ -721,7 +755,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     if (anonId && anonId !== "anon_server") {
       unsubs.push(
         onSnapshot(
-          query(collection(db, "solicitudes_chat_anonimo"), where("anonId", "==", anonId)),
+          query(
+            collection(db, "solicitudes_chat_anonimo"),
+            where("anonId", "==", anonId),
+            where("estado", "==", "pendiente"),
+            limit(10),
+          ),
           (snap) => {
             anonDocs = snap.docs
               .map((item) => {

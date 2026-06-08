@@ -1,14 +1,14 @@
 "use client";
 
 import { useUxMode } from "@/contexts/UxModeContext";
+import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import ClassicChatsInbox from "@/components/chats/ClassicChatsInbox";
 import ModernChatsInbox from "@/components/chats/ModernChatsInbox";
-import { useChatsInbox } from "@/hooks/useChatsInbox";
 import { useChatsSelection } from "@/hooks/useChatsSelection";
 
 export default function ChatsPage() {
   const { uxMode } = useUxMode();
-  const inbox = useChatsInbox();
+  const inbox = useChatAlerts();
   const selection = useChatsSelection(inbox.sortedChats);
 
   if (uxMode === "modern") {

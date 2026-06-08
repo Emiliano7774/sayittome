@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +8,10 @@ import { useChatsInbox } from "@/hooks/useChatsInbox";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { chatPeerTitle } from "@/lib/chat/inboxPeerTitle";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import {
+  shouldEnableChatAlerts,
+  shouldEnableInboxListeners,
+} from "@/lib/chat/inboxListenerRoutes";
 import {
   getLocalChatReadVersion,
   subscribeLocalChatRead,
@@ -21,22 +25,47 @@ import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 export function useGlobalChatAlerts() {
   const pathname = usePathname();
   const { firebaseUser } = useAuth();
-  const { sortedChats, uid, loading } = useChatsInbox();
+  const [tabVisible, setTabVisible] = useState(
+    () => typeof document === "undefined" || !document.hidden,
+  );
+
+  const inboxQueriesEnabled = useMemo(
+    () => tabVisible && shouldEnableInboxListeners(pathname),
+    [pathname, tabVisible],
+  );
+  const chatAlertsEnabled = useMemo(
+    () => tabVisible && shouldEnableChatAlerts(pathname),
+    [pathname, tabVisible],
+  );
+
+  const { sortedChats, uid, loading, isAnonymousSession } = useChatsInbox({
+    enableInboxQueries: inboxQueriesEnabled,
+  });
+
   const viewerId = resolveInboxViewerId(uid);
   const firebaseUid = firebaseUser?.uid || uid || "";
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
+
   const activeChatId = (() => {
     const match = pathname.match(/\/chat\/([^/?#]+)/);
     return match ? decodeURIComponent(match[1]) : "";
   })();
+
   const totalUnread = totalUnreadCount(sortedChats, firebaseUid, {
     excludeChatId: activeChatId,
   });
+
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);
 
   pathnameRef.current = pathname;
   sortedChatsRef.current = sortedChats;
+
+  useEffect(() => {
+    const onVisibility = () => setTabVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   useEffect(() => bindWhipSoundUnlock(), []);
 
@@ -58,17 +87,24 @@ export function useGlobalChatAlerts() {
   }, [viewerId, firebaseUid]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || !chatAlertsEnabled) {
+      globalChatWhipManager.syncInboxChatIds([]);
+      return;
+    }
 
     globalChatWhipManager.start();
     globalChatWhipManager.syncInboxChatIds(
       sortedChats.map((chat) => chat.canonicalChatId || chat.id),
     );
-  }, [loading, sortedChats]);
+  }, [chatAlertsEnabled, loading, sortedChats]);
 
   return {
     totalUnread,
     viewerId,
     sortedChats,
+    uid,
+    loading,
+    isAnonymousSession,
+    inboxQueriesEnabled,
   };
 }

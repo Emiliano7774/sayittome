@@ -85,7 +85,8 @@ function dedupeChats(chats: InboxChat[], viewerUid = "") {
   });
 }
 
-export function useChatsInbox() {
+export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
+  const enableInboxQueries = options?.enableInboxQueries ?? true;
   const { firebaseUser, loading } = useAuth();
   const [chats, setChats] = useState<InboxChat[]>([]);
   const [sessionChats, setSessionChats] = useState<InboxChat[]>([]);
@@ -118,7 +119,7 @@ export function useChatsInbox() {
   useEffect(() => {
     if (loading) return;
 
-    if (!uid) {
+    if (!enableInboxQueries || !uid) {
       setChats([]);
       return;
     }
@@ -196,7 +197,7 @@ export function useChatsInbox() {
       unsubC();
       unsubD();
     };
-  }, [uid, loading]);
+  }, [uid, loading, enableInboxQueries]);
 
   useEffect(() => {
     if (loading) return;

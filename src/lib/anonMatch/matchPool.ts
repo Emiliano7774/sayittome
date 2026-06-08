@@ -39,6 +39,28 @@ type ProfileRow = Record<string, unknown> & {
   banned?: boolean;
 };
 
+const MATCH_POOL_QUERY_LIMIT = 50;
+const MATCH_AUX_QUERY_LIMIT = 50;
+const MATCH_POOL_CACHE_MS = 2 * 60_000;
+
+type PoolCache = {
+  anonRows: AnonPresenceRow[];
+  profileRows: ProfileRow[];
+  fetchedAt: number;
+};
+
+let poolCache: PoolCache | null = null;
+let pendingTargetsCache: {
+  pendingAnonIds: Set<string>;
+  pendingUids: Set<string>;
+  fetchedAt: number;
+} | null = null;
+let busyParticipantsCache: {
+  busyAnonIds: Set<string>;
+  busyUids: Set<string>;
+  fetchedAt: number;
+} | null = null;
+
 function parseDate(value?: string | null) {
   if (!value) return null;
   const date = new Date(value);
@@ -86,8 +108,39 @@ function isProfileAvailable(
   );
 }
 
+async function getMatchPoolRows(now = Date.now()) {
+  if (poolCache && now - poolCache.fetchedAt < MATCH_POOL_CACHE_MS) {
+    return poolCache;
+  }
+
+  const [anonRows, profileRows] = await Promise.all([
+    runCollectionQuery("anonimos_activos", MATCH_POOL_QUERY_LIMIT) as Promise<
+      AnonPresenceRow[]
+    >,
+    runCollectionQuery("usuarios", MATCH_POOL_QUERY_LIMIT) as Promise<ProfileRow[]>,
+  ]);
+
+  poolCache = { anonRows, profileRows, fetchedAt: now };
+  return poolCache;
+}
+
 export async function listPendingMatchTargets(now = Date.now()) {
-  const rows = await runCollectionQuery("solicitudes_chat_anonimo", 200, "createdAt", "DESCENDING");
+  if (
+    pendingTargetsCache &&
+    now - pendingTargetsCache.fetchedAt < MATCH_POOL_CACHE_MS
+  ) {
+    return {
+      pendingAnonIds: pendingTargetsCache.pendingAnonIds,
+      pendingUids: pendingTargetsCache.pendingUids,
+    };
+  }
+
+  const rows = await runCollectionQuery(
+    "solicitudes_chat_anonimo",
+    MATCH_AUX_QUERY_LIMIT,
+    "createdAt",
+    "DESCENDING",
+  );
   const pendingAnonIds = new Set<string>();
   const pendingUids = new Set<string>();
 
@@ -109,11 +162,27 @@ export async function listPendingMatchTargets(now = Date.now()) {
     }
   }
 
+  pendingTargetsCache = { pendingAnonIds, pendingUids, fetchedAt: now };
   return { pendingAnonIds, pendingUids };
 }
 
-export async function listBusyDirectChatParticipants() {
-  const rows = await runCollectionQuery("chats_anonimos", 200, "updatedAt", "DESCENDING");
+export async function listBusyDirectChatParticipants(now = Date.now()) {
+  if (
+    busyParticipantsCache &&
+    now - busyParticipantsCache.fetchedAt < MATCH_POOL_CACHE_MS
+  ) {
+    return {
+      busyAnonIds: busyParticipantsCache.busyAnonIds,
+      busyUids: busyParticipantsCache.busyUids,
+    };
+  }
+
+  const rows = await runCollectionQuery(
+    "chats_anonimos",
+    MATCH_AUX_QUERY_LIMIT,
+    "updatedAt",
+    "DESCENDING",
+  );
   const busyAnonIds = new Set<string>();
   const busyUids = new Set<string>();
 
@@ -135,6 +204,7 @@ export async function listBusyDirectChatParticipants() {
     }
   }
 
+  busyParticipantsCache = { busyAnonIds, busyUids, fetchedAt: now };
   return { busyAnonIds, busyUids };
 }
 
@@ -149,12 +219,8 @@ export async function pickAvailableMatchTarget(input: {
   const excludeAnonIds = new Set(input.excludeAnonIds || []);
   const excludeUids = new Set(input.excludeUids || []);
   const { pendingAnonIds, pendingUids } = await listPendingMatchTargets(now);
-  const { busyAnonIds, busyUids } = await listBusyDirectChatParticipants();
-
-  const [anonRows, profileRows] = await Promise.all([
-    runCollectionQuery("anonimos_activos", 250) as Promise<AnonPresenceRow[]>,
-    runCollectionQuery("usuarios", 500) as Promise<ProfileRow[]>,
-  ]);
+  const { busyAnonIds, busyUids } = await listBusyDirectChatParticipants(now);
+  const { anonRows, profileRows } = await getMatchPoolRows(now);
 
   const anonCandidates: MatchCandidate[] = anonRows
     .map((row) => {
@@ -201,21 +267,19 @@ export async function pickAvailableMatchTarget(input: {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-export async function countAvailableMatchTargets(input: {
-  excludeAnonIds?: string[];
-  excludeUids?: string[];
-  now?: number;
-} = {}) {
+export async function countAvailableMatchTargets(
+  input: {
+    excludeAnonIds?: string[];
+    excludeUids?: string[];
+    now?: number;
+  } = {},
+) {
   const now = input.now ?? Date.now();
   const excludeAnonIds = new Set(input.excludeAnonIds || []);
   const excludeUids = new Set(input.excludeUids || []);
   const { pendingAnonIds, pendingUids } = await listPendingMatchTargets(now);
-  const { busyAnonIds, busyUids } = await listBusyDirectChatParticipants();
-
-  const [anonRows, profileRows] = await Promise.all([
-    runCollectionQuery("anonimos_activos", 250) as Promise<AnonPresenceRow[]>,
-    runCollectionQuery("usuarios", 500) as Promise<ProfileRow[]>,
-  ]);
+  const { busyAnonIds, busyUids } = await listBusyDirectChatParticipants(now);
+  const { anonRows, profileRows } = await getMatchPoolRows(now);
 
   const anonCount = anonRows.filter((row) => {
     const id = String(row.anonId || row.id || "");
