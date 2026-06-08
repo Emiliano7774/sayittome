@@ -61,8 +61,10 @@ export function useGlobalChatAlerts() {
     if (loading) return;
 
     globalChatWhipManager.start();
-    globalChatWhipManager.syncInboxForUid(firebaseUid);
-  }, [loading, firebaseUid]);
+    globalChatWhipManager.syncInboxChatIds(
+      sortedChats.map((chat) => chat.canonicalChatId || chat.id),
+    );
+  }, [loading, sortedChats]);
 
   return {
     totalUnread,

@@ -12,17 +12,9 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { auth, db } from "@/lib/firebase";
-import {
-  buildLegacyProfileChatIds,
-  buildProfileAnonChatId,
-  isProfileAnonChatId,
-  parseProfileAnonChatId,
-  usernameHintFromAnonChatId,
-} from "@/lib/chat/anonChatId";
+import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { inboxPeerDedupeKey } from "@/lib/chat/inboxPeerTitle";
-import { migrateToCanonicalChat } from "@/lib/chat/migrate";
 import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
-import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 
 export type InboxChat = {
@@ -228,78 +220,6 @@ export function useChatsInbox() {
       unsubs.forEach((unsub) => unsub());
     };
   }, [loading, sessionChatIds]);
-
-  useEffect(() => {
-    if (loading) return;
-
-    let cancelled = false;
-
-    async function migrateInbox() {
-      const anonSenderId = getChatAnonSenderId();
-      const all = [...chats, ...sessionChats];
-
-      for (const chat of all) {
-        if (cancelled) return;
-        if (!isVisibleInboxChat(chat)) continue;
-
-        const username = chat.targetUsername || chat.receptorUsername;
-        if (!username || !isProfileAnonChatId(chat.id)) continue;
-
-        const chatAnonSender = parseProfileAnonChatId(chat.id).senderId;
-        const targetId =
-          chatAnonSender.startsWith("anon_")
-            ? chat.id
-            : buildProfileAnonChatId(anonSenderId, username);
-
-        if (
-          chatAnonSender.startsWith("anon_") &&
-          chatAnonSender !== anonSenderId &&
-          chat.id !== buildProfileAnonChatId(anonSenderId, username)
-        ) {
-          continue;
-        }
-
-        const legacyIds = Array.from(
-          new Set([
-            ...buildLegacyProfileChatIds(anonSenderId, username),
-            ...(uid ? buildLegacyProfileChatIds(uid, username) : []),
-            chat.id,
-          ]),
-        ).filter((id) => id && id !== targetId);
-
-        if (legacyIds.length === 0 && chat.id === targetId) continue;
-
-        try {
-          await migrateToCanonicalChat(targetId, legacyIds, {
-            id: targetId,
-            canonicalChatId: targetId,
-            targetUsername: username,
-            receptorUsername: username,
-            anonSessionId: chatAnonSender.startsWith("anon_")
-              ? chatAnonSender
-              : anonSenderId,
-          });
-        } catch (e) {
-          console.error("inbox migrate", chat.id, e);
-        }
-      }
-    }
-
-    if (chats.length > 0 || sessionChats.length > 0) {
-      const migrateTimer = window.setTimeout(() => {
-        if (!cancelled) void migrateInbox();
-      }, 300);
-
-      return () => {
-        cancelled = true;
-        window.clearTimeout(migrateTimer);
-      };
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [chats, sessionChats, uid, loading]);
 
   const sortedChats = useMemo(() => {
     return dedupeChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);

@@ -8,6 +8,10 @@
     />
     <meta name="theme-color" content="#000000" />
     <title>SayItToMe</title>
+    <link rel="dns-prefetch" href="https://sayittome-app.web.app" />
+    <link rel="preconnect" href="https://sayittome-app.web.app" crossorigin />
+    <link rel="prefetch" href="https://sayittome-app.web.app/shuffle" />
+    <link rel="prefetch" href="https://sayittome-app.web.app/stories" />
     <style>
       html,
       body {
@@ -42,7 +46,11 @@
   <body>
     <div class="pulse" aria-hidden="true"></div>
     <script>
-      window.location.replace("https://sayittome-app.web.app/");
+      (function () {
+        var target = "https://sayittome-app.web.app/";
+        if (window.location.href.indexOf("sayittome-app.web.app") !== -1) return;
+        window.location.replace(target);
+      })();
     </script>
   </body>
 </html>

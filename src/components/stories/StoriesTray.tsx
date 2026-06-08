@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import StoryRing from "@/components/stories/StoryRing";
+import AppImage from "@/components/media/AppImage";
 import { useT } from "@/contexts/LocaleContext";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 import { storyDisplayName } from "@/lib/stories/storyDisplay";
@@ -42,14 +43,14 @@ export default function StoriesTray({ groups, showAdd = true }: Props) {
           onFocus={() => prefetchOwnerStories(group.ownerUid, group.ownerUsername)}
         >
           <StoryRing active={group.hasUnseen}>
-            <div className="h-[66px] w-[66px] overflow-hidden rounded-full bg-[#242424]">
+            <div className="relative h-[66px] w-[66px] overflow-hidden rounded-full bg-[#242424]">
               {group.ownerPhoto ? (
-                <img
+                <AppImage
                   src={group.ownerPhoto}
                   alt={group.ownerUsername}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  decoding="async"
+                  fill
+                  sizes="66px"
+                  className="object-cover"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-lg font-black text-white/50">

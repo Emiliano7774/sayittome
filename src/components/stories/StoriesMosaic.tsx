@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Film } from "lucide-react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
+import AppImage from "@/components/media/AppImage";
 import { useT } from "@/contexts/LocaleContext";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
 import { storyDisplayName } from "@/lib/stories/storyDisplay";
@@ -62,13 +63,15 @@ function StoryTile({
           story={story}
           className="h-full w-full"
         >
-          <img
-            src={story.mediaUrl}
-            alt=""
-            className="h-full w-full object-cover"
-            loading="lazy"
-            decoding="async"
-          />
+          <div className="relative h-full w-full">
+            <AppImage
+              src={story.mediaUrl}
+              alt=""
+              fill
+              sizes="(max-width: 640px) 50vw, 20vw"
+              className="object-cover"
+            />
+          </div>
         </SensitiveMediaShell>
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-950 to-black p-4 text-center text-sm font-bold text-white/80">

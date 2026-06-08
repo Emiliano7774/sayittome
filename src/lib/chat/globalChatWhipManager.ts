@@ -6,7 +6,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  where,
   type Unsubscribe,
 } from "firebase/firestore";
 
@@ -29,13 +28,19 @@ type WhipContext = {
   getChatLabel: (chatId: string) => string;
 };
 
+function sameIdSet(a: Set<string>, b: Set<string>) {
+  if (a.size !== b.size) return false;
+  for (const id of a) {
+    if (!b.has(id)) return false;
+  }
+  return true;
+}
+
 class GlobalChatWhipManager {
   private context: WhipContext | null = null;
   private inboxIds = new Set<string>();
   private sessionIds = new Set<string>();
-  private inboxMaps = new Map<string, Map<string, string>>();
   private messageUnsubs = new Map<string, Unsubscribe>();
-  private inboxUnsubs: Unsubscribe[] = [];
   private lastMessageId = new Map<string, string>();
   private bootstrapped = false;
   private sessionListenerAttached = false;
@@ -54,55 +59,17 @@ class GlobalChatWhipManager {
   stop() {
     this.bootstrapped = false;
     this.detachSessionListener();
-    this.clearInboxListeners();
     this.clearMessageListeners();
     this.inboxIds.clear();
     this.sessionIds.clear();
     this.lastMessageId.clear();
   }
 
-  syncInboxForUid(uid: string) {
-    this.clearInboxListeners();
-    this.inboxMaps.clear();
-    if (!uid) {
-      this.rebuildMessageListeners();
-      return;
-    }
-
-    const mergeQuery = (key: string) => (snap: { docs: Array<{ id: string }> }) => {
-      const map = new Map<string, string>();
-      for (const docSnap of snap.docs) {
-        map.set(docSnap.id, docSnap.id);
-      }
-      this.inboxMaps.set(key, map);
-      this.rebuildInboxIdsFromMaps();
-    };
-
-    const queries = [
-      query(collection(db, "chats"), where("participantes", "array-contains", uid)),
-      query(collection(db, "chats"), where("anonOwnerUid", "==", uid)),
-      query(collection(db, "chats"), where("receptorUid", "==", uid)),
-      query(collection(db, "chats"), where("targetUid", "==", uid)),
-    ];
-
-    const keys = ["participantes", "anonOwner", "receptor", "target"];
-    this.inboxUnsubs = queries.map((q, index) =>
-      onSnapshot(
-        q,
-        mergeQuery(keys[index]),
-        (error) => console.error("whip inbox listener", error),
-      ),
-    );
-  }
-
-  private rebuildInboxIdsFromMaps() {
-    const merged = new Set<string>();
-    for (const map of this.inboxMaps.values()) {
-      for (const chatId of map.keys()) {
-        merged.add(chatId);
-      }
-    }
-    this.inboxIds = merged;
+  /** Reuse inbox chat ids from useChatsInbox instead of duplicating Firestore listeners. */
+  syncInboxChatIds(chatIds: string[]) {
+    const next = new Set(chatIds.filter(Boolean));
+    if (sameIdSet(next, this.inboxIds)) return;
+    this.inboxIds = next;
     this.rebuildMessageListeners();
   }
 
@@ -226,14 +193,6 @@ class GlobalChatWhipManager {
       unsub();
     }
     this.messageUnsubs.clear();
-  }
-
-  private clearInboxListeners() {
-    for (const unsub of this.inboxUnsubs) {
-      unsub();
-    }
-    this.inboxUnsubs = [];
-    this.inboxIds.clear();
   }
 }
 
