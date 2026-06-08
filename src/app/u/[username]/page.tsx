@@ -254,7 +254,7 @@ export default function PublicProfilePage() {
   const heroPhoto = gallery[heroIndex] || profile.fotoPrincipal || "";
 
   return (
-    <main className="min-h-screen bg-black text-white pb-32 relative">
+    <main className="min-h-screen bg-black text-white pb-32 relative overflow-x-hidden">
       <div
         className="absolute inset-x-0 top-0 z-[1]"
         style={{ height: profileUi.heroHeight }}
@@ -295,7 +295,10 @@ export default function PublicProfilePage() {
         className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/10 via-black/62 to-black pointer-events-none z-[2]"
         style={{ height: profileUi.heroHeight }}
       />
-      <div className="absolute inset-x-0 bottom-0 h-[44vh] bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-none z-[2]" />
+      <div
+        className="absolute inset-x-0 top-0 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-none z-[2]"
+        style={{ height: profileUi.heroHeight }}
+      />
 
       {storyStatus.hasActive ? (
         <div
@@ -458,7 +461,7 @@ export default function PublicProfilePage() {
       {profile.createdAtLabel ? (
         <ProfileCreatedFooter
           label={`Perfil creado el ${profile.createdAtLabel}`}
-          className="relative z-[6]"
+          className="relative z-[6] bg-black"
           style={{ fontSize: profileUi.createdText }}
         />
       ) : null}

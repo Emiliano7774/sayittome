@@ -13,7 +13,8 @@ export function getClassicProfileUiTokens(density: ClassicShuffleDensity) {
 
   return {
     scale,
-    heroHeight: `${Math.round(88 * scale)}vh`,
+    /** Hero/backdrop stays full height — scaling it causes a visible gray frame from story inset. */
+    heroHeight: "88vh",
     usernameSize: `${Math.round(64 * scale)}px`,
     usernameSizeMd: `${Math.round(96 * scale)}px`,
     provinceSize: `${Math.round(24 * scale)}px`,
