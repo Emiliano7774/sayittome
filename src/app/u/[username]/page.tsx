@@ -281,7 +281,7 @@ export default function PublicProfilePage() {
               <img
                 src={heroPhoto}
                 alt={profile.username}
-                className="w-full h-full object-cover opacity-55 transition-opacity duration-200"
+                className="h-full w-full object-cover object-center"
                 draggable={false}
               />
             </SensitiveMediaShell>
@@ -292,11 +292,7 @@ export default function PublicProfilePage() {
       </div>
 
       <div
-        className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/10 via-black/62 to-black pointer-events-none z-[2]"
-        style={{ height: profileUi.heroHeight }}
-      />
-      <div
-        className="absolute inset-x-0 top-0 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-none z-[2]"
+        className="pointer-events-none absolute inset-x-0 top-0 z-[2] bg-gradient-to-b from-black/25 via-black/70 to-black"
         style={{ height: profileUi.heroHeight }}
       />
 
@@ -387,16 +383,11 @@ export default function PublicProfilePage() {
             icon={<BookOpen size={profileUi.statIcon} />}
             ui={profileUi}
             onClick={
-              storyStatus.hasActive && storyStatus.storyPath
+              storyStatus.hasActive && storyStatus.hasUnseen && storyStatus.storyPath
                 ? () => router.push(storyStatus.storyPath!)
                 : undefined
             }
-            ring={
-              storyStatus.hasActive
-                ? storyStatus.hasUnseen
-                : undefined
-            }
-            ringSeen={storyStatus.hasActive && !storyStatus.hasUnseen}
+            ring={storyStatus.hasActive && storyStatus.hasUnseen ? true : undefined}
           />
         </div>
 
@@ -411,7 +402,7 @@ export default function PublicProfilePage() {
       </section>
 
       {gallery.length > 1 && (
-        <section className="relative z-[6] bg-black px-8 md:px-24 -mt-2 mb-8">
+        <section className="relative z-[6] mb-8 mt-4 bg-black px-8 md:px-24">
           <div className="flex gap-4 overflow-x-auto pb-3">
             {gallery.map((photo, index) => (
               <button
@@ -421,7 +412,7 @@ export default function PublicProfilePage() {
                   setHeroIndex(index);
                   openViewer(index);
                 }}
-                className="shrink-0 rounded-2xl overflow-hidden border border-white/15 bg-white/5 active:scale-95 transition"
+                className="shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black active:scale-95 transition"
                 style={{ width: profileUi.thumb, height: profileUi.thumb }}
               >
                 <SensitiveMediaShell
@@ -525,7 +516,6 @@ function StatBubble({
   icon,
   onClick,
   ring,
-  ringSeen,
   ui,
 }: {
   color: string;
@@ -534,18 +524,13 @@ function StatBubble({
   icon: ReactNode;
   onClick?: () => void;
   ring?: boolean;
-  ringSeen?: boolean;
   ui: ReturnType<typeof getClassicProfileUiTokens>;
 }) {
   const bubble = (
     <div
       className={[
-        `${color} rounded-full flex items-center justify-center shadow-[0_0_35px_rgba(255,255,255,.12)]`,
-        ring
-          ? "ring-4 ring-violet-400/70"
-          : ringSeen
-            ? "ring-4 ring-zinc-600/80"
-            : "",
+        `${color} flex items-center justify-center rounded-full shadow-[0_0_35px_rgba(255,255,255,.12)]`,
+        ring ? "ring-4 ring-violet-400/70" : "",
       ].join(" ")}
       style={{ width: ui.statBubble, height: ui.statBubble }}
     >

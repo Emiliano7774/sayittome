@@ -61,7 +61,9 @@ function StoryAvatarButton({
   }, [ownerUid, username, status.hasActive, status.storyCount]);
 
   function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
-    if (status.hasActive && status.storyPath && !preferProfile) {
+    const openStories = status.hasActive && status.hasUnseen && status.storyPath;
+
+    if (openStories && !preferProfile) {
       event.preventDefault();
       event.stopPropagation();
       router.push(status.storyPath);
@@ -79,7 +81,8 @@ function StoryAvatarButton({
     }
   }
 
-  const dataAction = status.hasActive ? "story" : "profile";
+  const openStories = status.hasActive && status.hasUnseen;
+  const dataAction = openStories ? "story" : "profile";
 
   const avatar = (
     <div
@@ -122,7 +125,7 @@ function StoryAvatarButton({
         className,
       ].join(" ")}
       aria-label={
-        status.hasActive
+        openStories
           ? `Ver historias de ${username}`
           : `Abrir perfil de ${username}`
       }

@@ -1,6 +1,19 @@
 import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
 import { preloadStoryGroup } from "@/lib/stories/preload";
-import type { StoryUserGroup } from "@/lib/stories/types";
+import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
+
+function storyUnseenForViewer(story: StoryItem, viewerId: string) {
+  if (!viewerId) return true;
+  if (viewerId.startsWith("anon_")) {
+    return !story.viewedByAnon?.[viewerId];
+  }
+  return !story.viewedBy?.[viewerId];
+}
+
+function groupHasUnseen(stories: StoryItem[], viewerId: string) {
+  if (!viewerId) return true;
+  return stories.some((story) => storyUnseenForViewer(story, viewerId));
+}
 
 const TTL_MS = 45_000;
 
@@ -85,4 +98,27 @@ export function prefetchOwnerStories(ownerUid?: string, username?: string) {
 
 export function getCachedStoryGroups() {
   return cachedGroups;
+}
+
+export function markStoryViewedLocally(
+  ownerUid: string,
+  storyId: string,
+  viewerId: string,
+) {
+  if (!ownerUid || !storyId || !viewerId) return;
+
+  const group = byUid.get(ownerUid);
+  if (!group) return;
+
+  const story = group.stories.find((item) => item.id === storyId);
+  if (!story) return;
+
+  if (viewerId.startsWith("anon_")) {
+    story.viewedByAnon = { ...(story.viewedByAnon || {}), [viewerId]: true };
+  } else {
+    story.viewedBy = { ...(story.viewedBy || {}), [viewerId]: true };
+  }
+
+  group.hasUnseen = groupHasUnseen(group.stories, viewerId);
+  notify();
 }

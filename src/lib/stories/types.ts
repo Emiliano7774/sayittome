@@ -21,6 +21,7 @@ export type StoryItem = {
   adminDeleted?: boolean;
   likedBy?: Record<string, boolean>;
   viewedBy?: Record<string, boolean>;
+  viewedByAnon?: Record<string, boolean>;
 };
 
 export type StoryUserGroup = {

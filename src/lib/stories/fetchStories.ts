@@ -52,6 +52,7 @@ export async function fetchActiveStoriesGrouped(viewerUid = "") {
       adminDeleted: data.adminDeleted === true,
       likedBy: (data.likedBy as Record<string, boolean>) || {},
       viewedBy: (data.viewedBy as Record<string, boolean>) || {},
+      viewedByAnon: (data.viewedByAnon as Record<string, boolean>) || {},
     };
 
     if (!item.mediaUrl && !item.texto) return;
@@ -67,7 +68,12 @@ export async function fetchActiveStoriesGrouped(viewerUid = "") {
     stories.sort((a, b) => a.createdAtMs - b.createdAtMs);
 
     const hasUnseen = viewerUid
-      ? stories.some((s) => !s.viewedBy?.[viewerUid])
+      ? stories.some((story) => {
+          if (viewerUid.startsWith("anon_")) {
+            return !story.viewedByAnon?.[viewerUid];
+          }
+          return !story.viewedBy?.[viewerUid];
+        })
       : true;
 
     groups.push({

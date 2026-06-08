@@ -25,6 +25,7 @@ import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories";
 import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
+import { markStoryViewedLocally } from "@/lib/stories/storiesIndexStore";
 import type { StoryItem } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -116,16 +117,19 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     if (viewedRef.current.has(story.id)) return;
     viewedRef.current.add(story.id);
 
-    const uid = auth.currentUser?.uid;
-    const likerId = getLikerId();
+    const viewerId = resolveStoryViewerId(auth.currentUser);
     const payload: Record<string, unknown> = {
       viewCount: increment(1),
     };
 
-    if (uid) {
-      payload[`viewedBy.${uid}`] = true;
-    } else if (likerId) {
-      payload[`viewedByAnon.${likerId}`] = true;
+    if (viewerId.startsWith("anon_")) {
+      payload[`viewedByAnon.${viewerId}`] = true;
+    } else if (viewerId) {
+      payload[`viewedBy.${viewerId}`] = true;
+    }
+
+    if (viewerId && story.ownerUid) {
+      markStoryViewedLocally(story.ownerUid, story.id, viewerId);
     }
 
     try {

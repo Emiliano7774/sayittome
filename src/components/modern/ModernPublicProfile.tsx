@@ -89,7 +89,7 @@ export default function ModernPublicProfile({
   }
 
   function openPrimary() {
-    if (story.hasActive && story.storyPath) {
+    if (story.hasActive && story.hasUnseen && story.storyPath) {
       router.push(story.storyPath);
       return;
     }
@@ -226,11 +226,7 @@ export default function ModernPublicProfile({
                   onClick={openPrimary}
                   className={[
                     "h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-800",
-                    story.hasUnseen
-                      ? "ring-2 ring-fuchsia-400 ring-offset-0"
-                      : story.hasActive
-                        ? "ring-2 ring-zinc-600 ring-offset-0"
-                        : "",
+                    story.hasUnseen ? "ring-2 ring-fuchsia-400 ring-offset-0" : "",
                   ].join(" ")}
                 >
                   {profile.fotoPrincipal ? (
@@ -307,7 +303,7 @@ export default function ModernPublicProfile({
                   {t("profile_open_chat")}
                 </Link>
                 {!isOwner ? <FollowButton targetUid={profile.uid} /> : null}
-                {story.hasActive && story.storyPath ? (
+                {story.hasActive && story.hasUnseen && story.storyPath ? (
                   <Link
                     href={story.storyPath}
                     className="flex-1 rounded-full bg-fuchsia-500/30 px-6 py-3.5 text-center text-sm font-normal"
