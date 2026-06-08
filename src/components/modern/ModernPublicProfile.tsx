@@ -66,7 +66,7 @@ export default function ModernPublicProfile({
   const blurPhoto = profilePhotoRequiresBlur(profile);
   const heartbeat = profile.presenceAt || profile.lastActive;
   const isOnline = isPresenceOnline(heartbeat, profile.online);
-  const lastSeen = isOnline ? "" : formatLastSeen(heartbeat, false);
+  const lastSeen = formatLastSeen(heartbeat, isOnline);
   const historiasCount = story.hasActive
     ? story.storyCount
     : Number(profile.historias || profile.stories || 0);
@@ -265,10 +265,6 @@ export default function ModernPublicProfile({
                 @{profile.username}
               </h1>
 
-              {lastSeen ? (
-                <p className="mt-1 text-sm font-normal text-zinc-500">{lastSeen}</p>
-              ) : null}
-
               {verifiedVisit ? (
                 <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-100">
                   <BadgeCheck size={16} />
@@ -282,6 +278,12 @@ export default function ModernPublicProfile({
 
               {profile.mostrarProvincia && profile.provincia ? (
                 <p className="mt-2 text-sm font-normal text-zinc-500">{profile.provincia}</p>
+              ) : null}
+
+              {lastSeen ? (
+                <p className="mt-4 text-center text-base font-semibold text-zinc-400">
+                  {lastSeen}
+                </p>
               ) : null}
 
               <div className="mt-5 grid grid-cols-3 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">

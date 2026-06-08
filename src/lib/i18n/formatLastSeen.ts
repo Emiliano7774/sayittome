@@ -27,12 +27,16 @@ export function formatLastSeenLocalized(
 
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) {
-    return getMessage(locale, "presence_last_min", { minutes: String(minutes) });
+    return minutes === 1
+      ? getMessage(locale, "presence_last_min_one")
+      : getMessage(locale, "presence_last_min", { minutes: String(minutes) });
   }
 
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
-    return getMessage(locale, "presence_last_hours", { hours: String(hours) });
+    return hours === 1
+      ? getMessage(locale, "presence_last_hour")
+      : getMessage(locale, "presence_last_hours", { hours: String(hours) });
   }
 
   const days = Math.floor(hours / 24);

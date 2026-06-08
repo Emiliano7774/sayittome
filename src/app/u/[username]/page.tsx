@@ -24,7 +24,8 @@ import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
-import { formatLastSeen, isActiveWithinWindow } from "@/lib/presence";
+import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
+import { isActiveWithinWindow } from "@/lib/presence";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
@@ -83,6 +84,7 @@ export default function PublicProfilePage() {
   const [heroIndex, setHeroIndex] = useState(0);
   const { density } = useClassicShuffleDensity();
   const profileUi = getClassicProfileUiTokens(density);
+  const formatLastSeen = useFormatLastSeen();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -148,8 +150,7 @@ export default function PublicProfilePage() {
   const isOnline = profile
     ? isActiveWithinWindow(profile.presenceAt, profile.lastActive)
     : false;
-  const lastSeenLabel =
-    profile && !isOnline ? formatLastSeen(heartbeat, false) : "";
+  const lastSeenLabel = profile ? formatLastSeen(heartbeat, isOnline) : "";
 
   function openViewer(index = 0) {
     if (gallery.length === 0) return;
@@ -363,16 +364,19 @@ export default function PublicProfilePage() {
               {profile.provincia}
             </p>
           )}
-
-          {lastSeenLabel ? (
-            <p
-              className="mt-4 font-black text-white/55"
-              style={{ fontSize: profileUi.lastSeenSize }}
-            >
-              {lastSeenLabel}
-            </p>
-          ) : null}
         </div>
+
+        {lastSeenLabel ? (
+          <p
+            className="pointer-events-none absolute left-1/2 z-[18] w-full max-w-[900px] -translate-x-1/2 px-8 text-center font-black text-white/70"
+            style={{
+              bottom: "36vh",
+              fontSize: profileUi.lastSeenSizeMd,
+            }}
+          >
+            {lastSeenLabel}
+          </p>
+        ) : null}
 
         <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-none">
           <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={profileUi.statIcon} fill="white" />} ui={profileUi} />
