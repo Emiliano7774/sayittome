@@ -10,25 +10,38 @@ service firebase.storage {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isAllowedMedia() {
+      return request.resource.size < 120 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+          || request.resource.contentType == 'application/octet-stream'
+        );
+    }
+
     match /usuarios/{userId}/perfil/{allPaths=**} {
       allow read: if true;
-      allow write: if isOwner(userId)
-        && request.resource.size < 120 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|video/.*');
+      allow write: if isOwner(userId) && isAllowedMedia();
+    }
+
+    match /usuarios/{userId}/fotos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isAllowedMedia();
+    }
+
+    match /usuarios/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isAllowedMedia();
     }
 
     match /historias/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isOwner(userId)
-        && request.resource.size < 120 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|video/.*');
+      allow write: if isOwner(userId) && isAllowedMedia();
     }
 
     match /historias/anon/{sessionId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn()
-        && request.resource.size < 120 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|video/.*');
+      allow write: if isSignedIn() && isAllowedMedia();
     }
 
     match /chats/{chatId}/{allPaths=**} {

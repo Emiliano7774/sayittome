@@ -8,19 +8,32 @@ const IMAGE_EXT = new Set([
   "heif",
   "bmp",
   "avif",
+  "jfif",
 ]);
 
 const VIDEO_EXT = new Set(["mp4", "mov", "webm", "mkv", "3gp", "m4v"]);
 
 export type MediaFileKind = "image" | "video";
 
+function fileExtension(name: string) {
+  const parts = name.split(".");
+  if (parts.length < 2) return "";
+  return parts.pop()?.toLowerCase() || "";
+}
+
 export function guessMediaFileKind(file: File): MediaFileKind | null {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("video/")) return "video";
 
-  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  const ext = fileExtension(file.name);
   if (IMAGE_EXT.has(ext)) return "image";
   if (VIDEO_EXT.has(ext)) return "video";
+
+  // Android gallery picks often have empty type and no extension.
+  if (!file.type && !ext) {
+    return "image";
+  }
+
   return null;
 }
 
@@ -33,10 +46,10 @@ export function resolveUploadContentType(file: File, kind: MediaFileKind): strin
     return file.type;
   }
 
-  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  const ext = fileExtension(file.name);
 
   if (kind === "image") {
-    if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+    if (ext === "jpg" || ext === "jpeg" || ext === "jfif") return "image/jpeg";
     if (ext === "png") return "image/png";
     if (ext === "gif") return "image/gif";
     if (ext === "webp") return "image/webp";

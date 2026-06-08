@@ -1,5 +1,6 @@
 "use client";
 
+import { guessMediaFileKind } from "@/lib/media/fileKind";
 import { scanImageBlob, type NsfwScanResult } from "@/lib/moderation/nsfwDetector";
 
 export type MediaScanPayload = {
@@ -19,10 +20,9 @@ export function toMediaScanPayload(result: NsfwScanResult): MediaScanPayload {
 }
 
 export async function scanUploadFile(file: File): Promise<MediaScanPayload> {
-  const isImage = file.type.startsWith("image/");
-  const isVideo = file.type.startsWith("video/");
+  const kind = guessMediaFileKind(file);
 
-  if (!isImage && !isVideo) {
+  if (kind !== "image" && kind !== "video") {
     return {
       requiresBlur: false,
       score: 0,
@@ -31,7 +31,7 @@ export async function scanUploadFile(file: File): Promise<MediaScanPayload> {
     };
   }
 
-  if (isVideo) {
+  if (kind === "video") {
     const frameBlob = await extractVideoFrameBlob(file);
     if (!frameBlob) {
       return {

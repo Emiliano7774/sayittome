@@ -12,6 +12,8 @@ const config: CapacitorConfig = {
       "sayittome-app.web.app",
       "*.web.app",
       "*.googleapis.com",
+      "firebasestorage.googleapis.com",
+      "*.firebasestorage.app",
       "*.firebaseapp.com",
       "*.gstatic.com",
       "accounts.google.com",

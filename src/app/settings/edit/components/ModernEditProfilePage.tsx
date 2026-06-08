@@ -8,7 +8,10 @@ import { useRouter } from "next/navigation";
 
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
-import { uploadFileToStorage } from "@/lib/media/uploadFileToStorage";
+import {
+  profileUploadErrorKey,
+  uploadFileToStorage,
+} from "@/lib/media/uploadFileToStorage";
 import { persistProfileMediaScan } from "@/lib/moderation/persistMediaScan";
 import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
@@ -84,6 +87,17 @@ export default function ModernEditProfilePage() {
     });
   }, []);
 
+  function scheduleProfileMediaScan(uid: string, url: string, file: File) {
+    void (async () => {
+      try {
+        const scan = await scanUploadFile(file);
+        await persistProfileMediaScan(uid, url, scan);
+      } catch (error) {
+        console.error("profile_media_scan_failed", error);
+      }
+    })();
+  }
+
   async function uploadSingleFile(
     file: File,
     folder: "avatar" | "cover" | "cover-video",
@@ -93,13 +107,18 @@ export default function ModernEditProfilePage() {
     const kind = guessMediaFileKind(file);
     if (!kind) throw new Error("unsupported_media_type");
 
-    const ext = file.name.split(".").pop() || "file";
+    const ext = file.name.split(".").pop() || (kind === "video" ? "mp4" : "jpg");
     const prefix =
       folder === "avatar" ? "avatar" : folder === "cover" ? "cover" : "cover_video";
-    const path = `usuarios/${user.uid}/perfil/${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const path = `usuarios/${user.uid}/fotos/${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
-    const url = await uploadFileToStorage({ path, file, kind });
-    void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
+    const url = await uploadFileToStorage({
+      path,
+      file,
+      kind,
+      requireRegisteredUser: true,
+    });
+    scheduleProfileMediaScan(user.uid, url, file);
     return url;
   }
 
@@ -128,17 +147,22 @@ export default function ModernEditProfilePage() {
 
         setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
 
-        const ext = file.name.split(".").pop() || "file";
-        const path = `usuarios/${user.uid}/perfil/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-        const url = await uploadFileToStorage({ path, file, kind });
-        void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
+        const ext = file.name.split(".").pop() || (kind === "video" ? "mp4" : "jpg");
+        const path = `usuarios/${user.uid}/fotos/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const url = await uploadFileToStorage({
+          path,
+          file,
+          kind,
+          requireRegisteredUser: true,
+        });
+        scheduleProfileMediaScan(user.uid, url, file);
         uploaded.push({ url, type: kind, path });
       }
 
       setMedia((prev) => [...prev, ...uploaded].slice(0, 100));
     } catch (error) {
       console.error(error);
-      setUploadError(t("edit_upload_fail"));
+      setUploadError(t(profileUploadErrorKey(error)));
     } finally {
       setUploading(false);
       setUploadText("");
@@ -304,7 +328,7 @@ export default function ModernEditProfilePage() {
                   }
                 } catch (error) {
                   console.error(error);
-                  setUploadError(t("edit_upload_fail"));
+                  setUploadError(t(profileUploadErrorKey(error)));
                 } finally {
                   setUploading(false);
                   e.target.value = "";
@@ -326,7 +350,7 @@ export default function ModernEditProfilePage() {
                   if (url) setFotoPortada(url);
                 } catch (error) {
                   console.error(error);
-                  setUploadError(t("edit_upload_fail"));
+                  setUploadError(t(profileUploadErrorKey(error)));
                 } finally {
                   setUploading(false);
                   e.target.value = "";
@@ -348,7 +372,7 @@ export default function ModernEditProfilePage() {
                   if (url) setVideoPortada(url);
                 } catch (error) {
                   console.error(error);
-                  setUploadError(t("edit_upload_fail"));
+                  setUploadError(t(profileUploadErrorKey(error)));
                 } finally {
                   setUploading(false);
                   e.target.value = "";

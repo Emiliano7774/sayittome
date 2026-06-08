@@ -13,7 +13,10 @@ import {
 import { useT } from "@/contexts/LocaleContext";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind } from "@/lib/media/fileKind";
-import { uploadFileToStorage } from "@/lib/media/uploadFileToStorage";
+import {
+  formatStorageUploadError,
+  uploadFileToStorage,
+} from "@/lib/media/uploadFileToStorage";
 import { resolveStoryAuthor } from "@/lib/stories/anonStories";
 import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
 
@@ -58,6 +61,7 @@ export default function NewStoryPage() {
     }
 
     try {
+      await auth.authStateReady();
       const author = await resolveStoryAuthor(auth.currentUser);
       setUploading(true);
       setUploadProgress(0);
@@ -97,6 +101,8 @@ export default function NewStoryPage() {
           file,
           kind,
           onProgress: setUploadProgress,
+          allowAnonymousAuth: author.isAnonymousStory,
+          requireRegisteredUser: !author.isAnonymousStory,
         });
 
         mediaType = kind;
@@ -143,7 +149,16 @@ export default function NewStoryPage() {
       if ((error as Error)?.message === "profile_username_missing") {
         window.alert(t("story_new_profile_username_required"));
       } else {
-        window.alert(t("story_new_alert_fail"));
+        const code = formatStorageUploadError(error);
+        if (code === "auth_required") {
+          window.alert(t("story_new_auth_required"));
+        } else if (code === "anon_auth_disabled") {
+          window.alert(t("story_new_anon_auth_disabled"));
+        } else if (code === "storage_unauthorized") {
+          window.alert(t("story_new_storage_unauthorized"));
+        } else {
+          window.alert(t("story_new_alert_fail"));
+        }
       }
     }
 

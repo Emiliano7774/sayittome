@@ -20,7 +20,10 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
-import { uploadFileToStorage } from "@/lib/media/uploadFileToStorage";
+import {
+  profileUploadErrorKey,
+  uploadFileToStorage,
+} from "@/lib/media/uploadFileToStorage";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -198,14 +201,19 @@ export default function ClassicEditProfilePage() {
         const kind = guessMediaFileKind(file);
         if (!kind) continue;
 
-        const ext = file.name.split(".").pop() || "file";
-        const path = `usuarios/${uid}/perfil/${Date.now()}_${Math.random()
+        const ext = file.name.split(".").pop() || (kind === "video" ? "mp4" : "jpg");
+        const path = `usuarios/${uid}/fotos/${Date.now()}_${Math.random()
           .toString(36)
           .slice(2)}.${ext}`;
 
         setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
 
-        const url = await uploadFileToStorage({ path, file, kind });
+        const url = await uploadFileToStorage({
+          path,
+          file,
+          kind,
+          requireRegisteredUser: true,
+        });
         uploaded.push({
           url,
           type: kind,
@@ -216,7 +224,7 @@ export default function ClassicEditProfilePage() {
       setMedia((prev) => [...prev, ...uploaded].slice(0, 100));
     } catch (error) {
       console.error(error);
-      setUploadError(t("edit_upload_fail"));
+      setUploadError(t(profileUploadErrorKey(error)));
     } finally {
       setUploading(false);
       setUploadText("");
