@@ -64,12 +64,12 @@ export default function ShuffleClient() {
             <button
               type="button"
               onClick={pool.openFilters}
-              className={`relative flex ${tokens.filterBtn} items-center justify-center rounded-full border border-white/10 transition active:scale-95`}
+              className="relative shrink-0 text-white/70 transition active:scale-95 active:text-white"
               aria-label={t("shuffle_filters_title")}
             >
               <SlidersHorizontal size={tokens.filterIcon} />
               {pool.filtersActiveCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[#8C84FF]" />
+                <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#8C84FF]" />
               ) : null}
             </button>
 

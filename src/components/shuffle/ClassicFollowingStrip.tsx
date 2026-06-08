@@ -23,7 +23,7 @@ export default function ClassicFollowingStrip({
   const { density } = useClassicShuffleDensity();
   const tokens = getClassicShuffleDensityTokens(density);
 
-  const labelClass = `${tokens.followingLabel} font-semibold uppercase tracking-[0.24em] text-white/28`;
+  const labelClass = `${tokens.followingLabel} font-semibold uppercase text-white/28`;
   const sectionClass = `${tokens.followingMt} border-b border-white/10 ${tokens.followingPb}`;
 
   if (!hasSession) {
