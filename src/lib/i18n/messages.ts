@@ -403,6 +403,7 @@ const es = {
   stories_delete: "Eliminar",
   stories_delete_confirm: "¿Eliminar esta historia?",
   stories_delete_fail: "No se pudo eliminar la historia.",
+  stories_view_profile: "Ver perfil de {username}",
   story_new_profile_username_required:
     "Tenés que tener un username de perfil configurado antes de publicar historias.",
 
@@ -856,6 +857,7 @@ const en: Record<keyof typeof es, string> = {
   stories_delete: "Delete",
   stories_delete_confirm: "Delete this story?",
   stories_delete_fail: "Could not delete the story.",
+  stories_view_profile: "View {username}'s profile",
   story_new_profile_username_required:
     "You need a configured profile username before publishing stories.",
 

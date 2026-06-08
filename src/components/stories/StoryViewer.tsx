@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, Trash2, X } from "lucide-react";
+import { Heart, Trash2, UserRound, X } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   doc,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/likes/profileLike";
 import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories";
+import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import type { StoryItem } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
@@ -63,6 +64,12 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const displayName = current
     ? storyDisplayName(current, t)
     : storyDisplayName({ ownerUsername, ownerUid: resolvedOwnerUid }, t);
+  const profileUsername = String(current?.ownerUsername || ownerUsername || "").trim();
+  const profilePhoto = String(current?.ownerPhoto || "").trim();
+  const canOpenProfile =
+    !anonymousStory &&
+    Boolean(profileUsername) &&
+    !isInvalidPublicStoryUsername(profileUsername);
   const needsBlur = current ? storyRequiresBlur(current) : false;
   const isPaused = paused || (needsBlur && blurLocked);
   const canDelete = current ? canManageStory(current, viewerUid) : false;
@@ -243,6 +250,11 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     }
   }
 
+  function openProfile() {
+    if (!canOpenProfile) return;
+    router.push(`/u/${encodeURIComponent(profileUsername)}`);
+  }
+
   if (!current) {
     return null;
   }
@@ -287,8 +299,10 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         </button>
       ) : null}
 
-      <div className="absolute left-4 top-6 z-50">
-        <p className="text-lg font-black">{displayName}</p>
+      <div className="absolute left-4 top-14 z-50 max-w-[70%]">
+        <p className="truncate text-lg font-black">
+          {anonymousStory ? displayName : `@${displayName}`}
+        </p>
         {anonymousStory ? (
           <p className="text-xs font-bold text-white/55">{t("stories_anonymous_caption")}</p>
         ) : null}
@@ -362,27 +376,54 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         ) : null}
       </div>
 
-      <div className="absolute bottom-8 left-0 right-0 z-50 flex items-center justify-center gap-6 px-6">
-        {!anonymousStory ? (
-          <button
-            type="button"
-            onClick={handleLike}
-            disabled={likeBusy || getLikerId() === resolvedOwnerUid}
-            className={[
-              "flex items-center gap-2 rounded-full px-6 py-3 text-sm font-black transition",
-              liked
-                ? "bg-pink-500 text-white shadow-[0_0_30px_rgba(236,72,153,.35)]"
-                : "bg-white/10 text-white",
-              likeBusy ? "opacity-60" : "",
-            ].join(" ")}
-          >
-            <Heart size={18} fill={liked ? "currentColor" : "none"} />
-            {liked ? t("stories_liked") : t("settings_likes")} · {profileLikes}
-          </button>
-        ) : null}
-        <span className="text-sm font-bold text-white/50">
-          {current.viewCount || 0} {t("stories_views")}
-        </span>
+      <div className="absolute bottom-0 left-0 right-0 z-50 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
+        <div className="flex items-end justify-between gap-4">
+          {canOpenProfile ? (
+            <button
+              type="button"
+              onClick={openProfile}
+              className="shrink-0 rounded-full ring-2 ring-white/90 transition active:scale-95"
+              aria-label={t("stories_view_profile", { username: profileUsername })}
+            >
+              {profilePhoto ? (
+                <img
+                  src={profilePhoto}
+                  alt={profileUsername}
+                  className="h-14 w-14 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-800 text-white/70">
+                  <UserRound size={28} strokeWidth={1.75} />
+                </span>
+              )}
+            </button>
+          ) : (
+            <div />
+          )}
+
+          <div className="mb-1 flex items-center justify-end gap-4">
+            {!anonymousStory ? (
+              <button
+                type="button"
+                onClick={handleLike}
+                disabled={likeBusy || getLikerId() === resolvedOwnerUid}
+                className={[
+                  "flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-black transition",
+                  liked
+                    ? "bg-pink-500 text-white shadow-[0_0_30px_rgba(236,72,153,.35)]"
+                    : "bg-white/10 text-white",
+                  likeBusy ? "opacity-60" : "",
+                ].join(" ")}
+              >
+                <Heart size={18} fill={liked ? "currentColor" : "none"} />
+                {liked ? t("stories_liked") : t("settings_likes")} · {profileLikes}
+              </button>
+            ) : null}
+            <span className="text-sm font-bold text-white/50">
+              {current.viewCount || 0} {t("stories_views")}
+            </span>
+          </div>
+        </div>
       </div>
     </main>
   );
