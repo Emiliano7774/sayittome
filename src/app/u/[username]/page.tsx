@@ -368,9 +368,9 @@ export default function PublicProfilePage() {
 
         {lastSeenLabel ? (
           <p
-            className="pointer-events-none absolute left-1/2 z-[18] w-full max-w-[900px] -translate-x-1/2 px-8 text-center font-black text-white/70"
+            className="pointer-events-none absolute left-8 md:left-24 z-[18] max-w-[900px] font-black text-white/70"
             style={{
-              bottom: "36vh",
+              top: "42%",
               fontSize: profileUi.lastSeenSizeMd,
             }}
           >
