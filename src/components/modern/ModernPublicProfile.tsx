@@ -170,8 +170,9 @@ export default function ModernPublicProfile({
                 }}
                 disabled={gallery.length === 0}
                 onTouchStart={heroSwipe.onTouchStart}
+                onTouchMove={heroSwipe.onTouchMove}
                 onTouchEnd={heroSwipe.onTouchEnd}
-                className="absolute inset-0 z-[2] touch-pan-y disabled:cursor-default"
+                className={`absolute inset-0 z-[2] ${heroSwipe.touchActionClass} disabled:cursor-default`}
                 aria-label="Ver fotos del perfil"
               />
               {profile.videoPortada ? (
@@ -340,6 +341,7 @@ export default function ModernPublicProfile({
         <div
           className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95"
           onTouchStart={viewerSwipe.onTouchStart}
+          onTouchMove={viewerSwipe.onTouchMove}
           onTouchEnd={viewerSwipe.onTouchEnd}
         >
           <button

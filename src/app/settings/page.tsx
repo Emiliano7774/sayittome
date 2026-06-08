@@ -18,7 +18,7 @@ import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
 import { useLocaleDateFormatter } from "@/hooks/useLocaleFormatters";
-import { classicProfileScaleStyle } from "@/lib/shuffle/classicProfileScale";
+import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
 type MediaItem = {
   url: string;
@@ -37,7 +37,7 @@ export default function SettingsPage() {
   const [showAnonGate, setShowAnonGate] = useState(false);
   const [coverIndex, setCoverIndex] = useState(0);
   const { density } = useClassicShuffleDensity();
-  const profileScaleStyle = classicProfileScaleStyle(density);
+  const profileUi = getClassicProfileUiTokens(density);
 
   useEffect(() => {
     async function loadProfile(user: { uid: string }) {
@@ -203,22 +203,22 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white pb-28 overflow-x-hidden">
-      <div className="relative min-h-screen" style={profileScaleStyle}>
+    <main className="min-h-screen bg-black text-white pb-28">
       <section className="relative min-h-screen overflow-hidden px-6 sm:px-10 lg:px-16 py-10">
         {coverPhoto && (
-          <button
-            type="button"
+          <div
+            role="presentation"
             onClick={() => {
               if (coverSwipe.consumeSwipe()) return;
               openCover();
             }}
             onTouchStart={coverSwipe.onTouchStart}
+            onTouchMove={coverSwipe.onTouchMove}
             onTouchEnd={coverSwipe.onTouchEnd}
-            className="absolute inset-0 w-full h-full touch-pan-y"
+            className={`absolute inset-0 w-full h-full ${coverSwipe.touchActionClass}`}
           >
             <img src={coverPhoto} alt={username} className="w-full h-full object-cover opacity-45 blur-[1px] transition-opacity duration-200" />
-          </button>
+          </div>
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
@@ -250,55 +250,89 @@ export default function SettingsPage() {
           </div>
 
           <div className="mt-24">
-            <h1 className="text-7xl sm:text-8xl font-black leading-none">{username}</h1></div>
+            <h1
+              className="font-black leading-none"
+              style={{ fontSize: profileUi.usernameSizeMd }}
+            >
+              {username}
+            </h1>
+          </div>
 
-<div className="grid grid-cols-2 md:grid-cols-4 gap-10 mt-20">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mt-20">
             {profile?.mostrarLikes !== false && (
               <div className="text-center">
-                <div className="mx-auto w-36 h-36 rounded-full bg-pink-500 flex items-center justify-center shadow-[0_0_45px_rgba(236,72,153,.45)]">
-                  <Heart size={58} fill="white" />
+                <div
+                  className="mx-auto rounded-full bg-pink-500 flex items-center justify-center shadow-[0_0_45px_rgba(236,72,153,.45)]"
+                  style={{ width: profileUi.statBubbleMd, height: profileUi.statBubbleMd }}
+                >
+                  <Heart size={profileUi.statIcon} fill="white" />
                 </div>
-                <p className="mt-5 text-5xl font-black">{profile?.likesCount || 0}</p>
-                <p className="text-white/70 text-2xl">{t("settings_likes")}</p>
+                <p className="mt-5 font-black" style={{ fontSize: profileUi.statValueMd }}>
+                  {profile?.likesCount || 0}
+                </p>
+                <p className="text-white/70" style={{ fontSize: profileUi.statLabelMd }}>
+                  {t("settings_likes")}
+                </p>
               </div>
             )}
 
             {profile?.mostrarConversaciones !== false && (
               <div className="text-center">
-                <div className="mx-auto w-36 h-36 rounded-full bg-green-500 flex items-center justify-center shadow-[0_0_45px_rgba(34,197,94,.45)]">
-                  <MessageCircle size={58} fill="white" />
+                <div
+                  className="mx-auto rounded-full bg-green-500 flex items-center justify-center shadow-[0_0_45px_rgba(34,197,94,.45)]"
+                  style={{ width: profileUi.statBubbleMd, height: profileUi.statBubbleMd }}
+                >
+                  <MessageCircle size={profileUi.statIcon} fill="white" />
                 </div>
-                <p className="mt-5 text-5xl font-black">{profile?.conversacionesCount || 0}</p>
-                <p className="text-white/70 text-2xl">{t("settings_conversations")}</p>
+                <p className="mt-5 font-black" style={{ fontSize: profileUi.statValueMd }}>
+                  {profile?.conversacionesCount || 0}
+                </p>
+                <p className="text-white/70" style={{ fontSize: profileUi.statLabelMd }}>
+                  {t("settings_conversations")}
+                </p>
               </div>
             )}
 
             {profile?.mostrarSeguidores !== false && (
               <div className="text-center">
-                <div className="mx-auto w-36 h-36 rounded-full bg-violet-500 flex items-center justify-center shadow-[0_0_45px_rgba(139,92,246,.45)]">
-                  <Users size={58} />
+                <div
+                  className="mx-auto rounded-full bg-violet-500 flex items-center justify-center shadow-[0_0_45px_rgba(139,92,246,.45)]"
+                  style={{ width: profileUi.statBubbleMd, height: profileUi.statBubbleMd }}
+                >
+                  <Users size={profileUi.statIcon} />
                 </div>
-                <p className="mt-5 text-5xl font-black">{profile?.seguidoresCount || 0}</p>
-                <p className="text-white/70 text-2xl">{t("settings_followers")}</p>
+                <p className="mt-5 font-black" style={{ fontSize: profileUi.statValueMd }}>
+                  {profile?.seguidoresCount || 0}
+                </p>
+                <p className="text-white/70" style={{ fontSize: profileUi.statLabelMd }}>
+                  {t("settings_followers")}
+                </p>
               </div>
             )}
 
             <div className="text-center">
-              <div className="mx-auto w-36 h-36 rounded-full bg-sky-400 flex items-center justify-center shadow-[0_0_45px_rgba(56,189,248,.45)]">
-                <BookOpen size={58} />
+              <div
+                className="mx-auto rounded-full bg-sky-400 flex items-center justify-center shadow-[0_0_45px_rgba(56,189,248,.45)]"
+                style={{ width: profileUi.statBubbleMd, height: profileUi.statBubbleMd }}
+              >
+                <BookOpen size={profileUi.statIcon} />
               </div>
-              <p className="mt-5 text-5xl font-black">{profile?.historiasCount || 0}</p>
-              <p className="text-white/70 text-2xl">{t("settings_stories_stat")}</p>
+              <p className="mt-5 font-black" style={{ fontSize: profileUi.statValueMd }}>
+                {profile?.historiasCount || 0}
+              </p>
+              <p className="text-white/70" style={{ fontSize: profileUi.statLabelMd }}>
+                {t("settings_stories_stat")}
+              </p>
             </div>
           </div>
 
           <div className="mt-32 max-w-4xl">
-            <p className="text-2xl sm:text-3xl text-white/82 leading-snug pt-4">
+            <p className="text-white/82 leading-snug pt-4" style={{ fontSize: profileUi.bioSizeMd }}>
               {bio}
             </p>
 
             {profile?.mostrarProvincia !== false && profile?.provincia && (
-              <p className="mt-8 text-white/38 text-xl font-bold">
+              <p className="mt-8 text-white/38 font-bold" style={{ fontSize: profileUi.provinceSize }}>
                 {profile.provincia}
               </p>
             )}
@@ -307,16 +341,17 @@ export default function SettingsPage() {
           {createdAtLabel ? (
             <ProfileCreatedFooter
               label={t("settings_profile_created", { date: createdAtLabel })}
+              style={{ fontSize: profileUi.createdText }}
             />
           ) : null}
         </div>
       </section>
-      </div>
 
       {selected && (
         <div
           onClick={() => setSelectedIndex(null)}
           onTouchStart={viewerSwipe.onTouchStart}
+          onTouchMove={viewerSwipe.onTouchMove}
           onTouchEnd={viewerSwipe.onTouchEnd}
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-5"
         >

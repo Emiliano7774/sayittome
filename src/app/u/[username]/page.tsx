@@ -30,7 +30,7 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
-import { classicProfileScaleStyle } from "@/lib/shuffle/classicProfileScale";
+import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
 type Profile = {
   uid: string;
@@ -73,7 +73,7 @@ export default function PublicProfilePage() {
   const [viewerIndex, setViewerIndex] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
   const { density } = useClassicShuffleDensity();
-  const profileScaleStyle = classicProfileScaleStyle(density);
+  const profileUi = getClassicProfileUiTokens(density);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -254,58 +254,66 @@ export default function PublicProfilePage() {
   const heroPhoto = gallery[heroIndex] || profile.fotoPrincipal || "";
 
   return (
-    <main className="min-h-screen bg-black text-white pb-32 relative overflow-x-hidden">
-      <div className="relative min-h-screen" style={profileScaleStyle}>
-      <div className="absolute inset-0 h-[88vh] w-full z-[1]">
-        {heroPhoto ? (
-          <SensitiveMediaShell
-            url={heroPhoto}
-            staticRequiresBlur={blurPhoto}
-            profile={profile}
-            className="relative h-full w-full"
-            overlayLabel="Foto moderada"
-          >
-            <img
-              src={heroPhoto}
-              alt={profile.username}
-              className="w-full h-full object-cover opacity-55 transition-opacity duration-200"
-              draggable={false}
-            />
-          </SensitiveMediaShell>
-        ) : (
-          <div className="w-full h-full bg-[radial-gradient(circle_at_35%_0%,rgba(139,92,246,.22),transparent_45%)]" />
-        )}
+    <main className="min-h-screen bg-black text-white pb-32 relative">
+      <div
+        className="absolute inset-x-0 top-0 z-[1]"
+        style={{ height: profileUi.heroHeight }}
+      >
+        <div
+          role="presentation"
+          onClick={() => {
+            if (heroSwipe.consumeSwipe()) return;
+            if (gallery.length > 0) openViewer(heroIndex);
+          }}
+          onTouchStart={heroSwipe.onTouchStart}
+          onTouchMove={heroSwipe.onTouchMove}
+          onTouchEnd={heroSwipe.onTouchEnd}
+          className={`relative h-full w-full ${heroSwipe.touchActionClass}`}
+        >
+          {heroPhoto ? (
+            <SensitiveMediaShell
+              url={heroPhoto}
+              staticRequiresBlur={blurPhoto}
+              profile={profile}
+              className="relative h-full w-full"
+              overlayLabel="Foto moderada"
+            >
+              <img
+                src={heroPhoto}
+                alt={profile.username}
+                className="w-full h-full object-cover opacity-55 transition-opacity duration-200"
+                draggable={false}
+              />
+            </SensitiveMediaShell>
+          ) : (
+            <div className="w-full h-full bg-[radial-gradient(circle_at_35%_0%,rgba(139,92,246,.22),transparent_45%)]" />
+          )}
+        </div>
       </div>
 
-      <div className="absolute inset-0 h-[88vh] bg-gradient-to-b from-black/10 via-black/62 to-black pointer-events-none z-[2]" />
+      <div
+        className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/10 via-black/62 to-black pointer-events-none z-[2]"
+        style={{ height: profileUi.heroHeight }}
+      />
       <div className="absolute inset-x-0 bottom-0 h-[44vh] bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-none z-[2]" />
 
       {storyStatus.hasActive ? (
         <div
           className={[
-            "absolute inset-0 h-[88vh] w-full z-[4] pointer-events-none",
+            "absolute inset-x-0 top-0 w-full z-[4] pointer-events-none",
             storyStatus.hasUnseen
               ? "shadow-[inset_0_0_0_4px_rgba(167,139,250,.55)]"
               : "shadow-[inset_0_0_0_4px_rgba(82,82,91,.65)]",
           ].join(" ")}
+          style={{ height: profileUi.heroHeight }}
           aria-hidden
         />
       ) : null}
 
-      <button
-        type="button"
-        onClick={() => {
-          if (heroSwipe.consumeSwipe()) return;
-          openViewer(heroIndex);
-        }}
-        disabled={gallery.length === 0}
-        onTouchStart={heroSwipe.onTouchStart}
-        onTouchEnd={heroSwipe.onTouchEnd}
-        className="absolute inset-0 h-[88vh] w-full z-[3] cursor-pointer touch-pan-y pointer-events-auto disabled:cursor-default"
-        aria-label="Ver fotos del perfil"
-      />
-
-      <section className="relative z-[5] px-8 md:px-24 min-h-[88vh] pointer-events-none">
+      <section
+        className="relative z-[5] px-8 md:px-24 pointer-events-none"
+        style={{ minHeight: profileUi.heroHeight }}
+      >
         <div className="absolute top-[max(1rem,env(safe-area-inset-top))] inset-x-4 z-[30] pointer-events-auto flex flex-col items-end gap-3 md:inset-x-auto md:right-8 md:left-auto md:top-10">
           <ClassicUxModeBar className="max-w-full" />
 
@@ -316,7 +324,12 @@ export default function PublicProfilePage() {
             <button
               type="button"
               onClick={() => router.push("/settings/edit")}
-              className="rounded-full bg-white text-black px-8 py-4 font-black shadow-2xl"
+              className="rounded-full bg-white text-black font-black shadow-2xl"
+              style={{
+                paddingInline: profileUi.editBtnPx,
+                paddingBlock: profileUi.editBtnPy,
+                fontSize: profileUi.editBtnText,
+              }}
             >
               Editar perfil
             </button>
@@ -333,7 +346,10 @@ export default function PublicProfilePage() {
         </div>
 
         <div className="absolute left-8 md:left-24 top-[31%] md:top-[31%] -translate-y-1/2 max-w-[900px] z-[12]">
-          <h1 className="text-[64px] md:text-[96px] leading-none font-black tracking-tight drop-shadow-2xl">
+          <h1
+            className="leading-none font-black tracking-tight drop-shadow-2xl"
+            style={{ fontSize: profileUi.usernameSize }}
+          >
             {profile.username}
           </h1>
 
@@ -345,33 +361,41 @@ export default function PublicProfilePage() {
           ) : null}
 
           {profile.mostrarProvincia && profile.provincia && (
-            <p className="mt-5 text-2xl md:text-3xl font-black text-white/55">
+            <p
+              className="mt-5 font-black text-white/55"
+              style={{ fontSize: profileUi.provinceSize }}
+            >
               {profile.provincia}
             </p>
           )}
 
           {lastSeenLabel ? (
-            <p className="mt-4 text-xl md:text-2xl font-black text-white/55">
+            <p
+              className="mt-4 font-black text-white/55"
+              style={{ fontSize: profileUi.lastSeenSize }}
+            >
               {lastSeenLabel}
             </p>
           ) : null}
         </div>
 
         <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-none">
-          <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={44} fill="white" />} />
+          <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={profileUi.statIcon} fill="white" />} ui={profileUi} />
           <StatBubble
             color="bg-green-500"
             value={profile.conversaciones || 0}
             label="conv."
-            icon={<MessageCircle size={44} fill="white" />}
+            icon={<MessageCircle size={profileUi.statIcon} fill="white" />}
+            ui={profileUi}
             onClick={() => router.push(`/u/${encodeURIComponent(profile.username)}/chat`)}
           />
-          <StatBubble color="bg-violet-500" value={profile.seguidores || 0} label="seguidores" icon={<Users size={44} />} />
+          <StatBubble color="bg-violet-500" value={profile.seguidores || 0} label="seguidores" icon={<Users size={profileUi.statIcon} />} ui={profileUi} />
           <StatBubble
             color="bg-sky-400"
             value={storyStatus.hasActive ? storyStatus.storyCount : historiasCount}
             label="historias"
-            icon={<BookOpen size={44} />}
+            icon={<BookOpen size={profileUi.statIcon} />}
+            ui={profileUi}
             onClick={
               storyStatus.hasActive && storyStatus.storyPath
                 ? () => router.push(storyStatus.storyPath!)
@@ -387,7 +411,10 @@ export default function PublicProfilePage() {
         </div>
 
         {profile.bio && (
-          <p className="absolute left-8 md:left-24 bottom-[5vh] z-[21] max-w-[760px] text-xl md:text-3xl text-white font-medium leading-tight line-clamp-2 md:line-clamp-none overflow-hidden text-ellipsis pr-2">
+          <p
+            className="absolute left-8 md:left-24 bottom-[5vh] z-[21] max-w-[760px] text-white font-medium leading-tight line-clamp-2 md:line-clamp-none overflow-hidden text-ellipsis pr-2"
+            style={{ fontSize: profileUi.bioSize }}
+          >
             {profile.bio}
           </p>
         )}
@@ -404,7 +431,8 @@ export default function PublicProfilePage() {
                   setHeroIndex(index);
                   openViewer(index);
                 }}
-                className="shrink-0 w-20 h-20 rounded-2xl overflow-hidden border border-white/15 bg-white/5 active:scale-95 transition"
+                className="shrink-0 rounded-2xl overflow-hidden border border-white/15 bg-white/5 active:scale-95 transition"
+                style={{ width: profileUi.thumb, height: profileUi.thumb }}
               >
                 <SensitiveMediaShell
                   url={photo}
@@ -430,14 +458,16 @@ export default function PublicProfilePage() {
       {profile.createdAtLabel ? (
         <ProfileCreatedFooter
           label={`Perfil creado el ${profile.createdAtLabel}`}
+          className="relative z-[6]"
+          style={{ fontSize: profileUi.createdText }}
         />
       ) : null}
-      </div>
 
       {viewerOpen && gallery.length > 0 && (
         <div
           className="fixed inset-0 z-[999999] bg-black/95 flex items-center justify-center"
           onTouchStart={viewerSwipe.onTouchStart}
+          onTouchMove={viewerSwipe.onTouchMove}
           onTouchEnd={viewerSwipe.onTouchEnd}
         >
           <button
@@ -506,6 +536,7 @@ function StatBubble({
   onClick,
   ring,
   ringSeen,
+  ui,
 }: {
   color: string;
   value: number;
@@ -514,17 +545,19 @@ function StatBubble({
   onClick?: () => void;
   ring?: boolean;
   ringSeen?: boolean;
+  ui: ReturnType<typeof getClassicProfileUiTokens>;
 }) {
   const bubble = (
     <div
       className={[
-        `${color} w-20 h-20 md:w-28 md:h-28 rounded-full flex items-center justify-center shadow-[0_0_35px_rgba(255,255,255,.12)]`,
+        `${color} rounded-full flex items-center justify-center shadow-[0_0_35px_rgba(255,255,255,.12)]`,
         ring
           ? "ring-4 ring-violet-400/70"
           : ringSeen
             ? "ring-4 ring-zinc-600/80"
             : "",
       ].join(" ")}
+      style={{ width: ui.statBubble, height: ui.statBubble }}
     >
       {icon}
     </div>
@@ -539,8 +572,12 @@ function StatBubble({
       ) : (
         bubble
       )}
-      <div className="mt-4 text-4xl md:text-5xl font-black">{value}</div>
-      <div className="text-white/65 font-medium md:text-xl">{label}</div>
+      <div className="mt-4 font-black" style={{ fontSize: ui.statValue }}>
+        {value}
+      </div>
+      <div className="text-white/65 font-medium" style={{ fontSize: ui.statLabel }}>
+        {label}
+      </div>
     </div>
   );
 }

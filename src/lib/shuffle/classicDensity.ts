@@ -1,4 +1,4 @@
-export const CLASSIC_SHUFFLE_DENSITY_OPTIONS = [5, 10, 20, 30, 40, 50] as const;
+export const CLASSIC_SHUFFLE_DENSITY_OPTIONS = [5, 10, 20, 30] as const;
 
 export type ClassicShuffleDensity =
   (typeof CLASSIC_SHUFFLE_DENSITY_OPTIONS)[number];
@@ -210,86 +210,6 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     anonPt: "pt-2",
     anonIndent: "pl-4",
   },
-  40: {
-    scale: 0.52,
-    rowPadding: "py-1.5",
-    avatarSize: "2xs",
-    iconSize: 14,
-    nameClass: "text-[11px] font-normal text-white/78",
-    bioClass: "text-[9px] font-normal text-white/28 line-clamp-1",
-    gapClass: "gap-1.5",
-    searchHeight: "h-7",
-    searchIcon: 13,
-    searchText: "text-[11px]",
-    searchRadius: "rounded-lg",
-    searchGap: "gap-1.5",
-    filterBtn: "h-6 w-6",
-    filterIcon: 12,
-    filterTitle: "text-xs font-medium",
-    filterGap: "gap-2",
-    filterMt: "mt-2",
-    metaText: "text-[9px]",
-    metaIcon: 11,
-    metaMt: "mt-1",
-    headerPb: "pb-2",
-    headerPt: "pt-0.5",
-    densityMt: "mt-1",
-    followingLabel: "text-[7px]",
-    followingAvatar: 24,
-    followingName: "text-[7px]",
-    followingGap: "gap-1",
-    followingMt: "mt-1.5",
-    followingPb: "pb-1.5",
-    followingItemW: 32,
-    anonIcon: 11,
-    anonTitle: "text-[10px]",
-    anonBody: "text-[8px]",
-    anonBtnText: "text-[9px]",
-    anonBtnPy: "py-1",
-    anonMt: "mt-1.5",
-    anonPt: "pt-1.5",
-    anonIndent: "pl-3.5",
-  },
-  50: {
-    scale: 0.44,
-    rowPadding: "py-1",
-    avatarSize: "2xs",
-    iconSize: 12,
-    nameClass: "text-[10px] font-normal text-white/74",
-    bioClass: "text-[8px] font-normal text-white/26 line-clamp-1",
-    gapClass: "gap-1.5",
-    searchHeight: "h-6",
-    searchIcon: 12,
-    searchText: "text-[10px]",
-    searchRadius: "rounded-md",
-    searchGap: "gap-1.5",
-    filterBtn: "h-5 w-5",
-    filterIcon: 11,
-    filterTitle: "text-[11px] font-medium",
-    filterGap: "gap-1.5",
-    filterMt: "mt-1.5",
-    metaText: "text-[8px]",
-    metaIcon: 10,
-    metaMt: "mt-1",
-    headerPb: "pb-1.5",
-    headerPt: "pt-0.5",
-    densityMt: "mt-0.5",
-    followingLabel: "text-[6px]",
-    followingAvatar: 20,
-    followingName: "text-[6px]",
-    followingGap: "gap-1",
-    followingMt: "mt-1",
-    followingPb: "pb-1",
-    followingItemW: 28,
-    anonIcon: 10,
-    anonTitle: "text-[9px]",
-    anonBody: "text-[8px]",
-    anonBtnText: "text-[8px]",
-    anonBtnPy: "py-1",
-    anonMt: "mt-1",
-    anonPt: "pt-1",
-    anonIndent: "pl-3",
-  },
 };
 
 export function isClassicShuffleDensity(
@@ -305,6 +225,12 @@ export function readClassicShuffleDensity(): ClassicShuffleDensity {
 
   const raw = window.localStorage.getItem(STORAGE_KEY);
   const parsed = Number(raw);
+
+  if (parsed === 40 || parsed === 50) {
+    writeClassicShuffleDensity(30);
+    return 30;
+  }
+
   return isClassicShuffleDensity(parsed) ? parsed : 20;
 }
 

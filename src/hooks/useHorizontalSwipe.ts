@@ -29,6 +29,24 @@ export function useHorizontalSwipe({
     [enabled],
   );
 
+  const onTouchMove = useCallback(
+    (event: React.TouchEvent) => {
+      if (!enabled || !startRef.current) return;
+
+      const touch = event.touches[0];
+      if (!touch) return;
+
+      const dx = touch.clientX - startRef.current.x;
+      const dy = touch.clientY - startRef.current.y;
+
+      // Let vertical scroll win unless the gesture is clearly horizontal.
+      if (Math.abs(dy) > Math.abs(dx) + 12) {
+        startRef.current = null;
+      }
+    },
+    [enabled],
+  );
+
   const onTouchEnd = useCallback(
     (event: React.TouchEvent) => {
       if (!enabled || !startRef.current) return;
@@ -65,7 +83,9 @@ export function useHorizontalSwipe({
 
   return {
     onTouchStart,
+    onTouchMove,
     onTouchEnd,
     consumeSwipe,
+    touchActionClass: "touch-pan-y",
   };
 }
