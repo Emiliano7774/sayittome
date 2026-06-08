@@ -115,6 +115,18 @@ main[data-scroll-root].sayittome-shuffle-scroll-classic {
   padding-bottom: calc(var(--sayittome-bottom-ui) + 1.5rem);
 }
 
+.sayittome-shuffle-header {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (max-width: 767px) {
+  .sayittome-shuffle-header {
+    -webkit-text-size-adjust: none;
+    text-size-adjust: none;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
