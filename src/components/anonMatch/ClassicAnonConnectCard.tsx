@@ -56,7 +56,7 @@ export default function ClassicAnonConnectCard() {
 
   return (
     <>
-      <div className={`${tokens.anonMt} border-t border-white/[0.06] ${tokens.anonPt}`}>
+      <div className={`${tokens.anonMt} border-t border-white/[0.06] ${tokens.anonPt} ${tokens.anonMb}`}>
         {isIncognitoVisitor ? (
           <>
             <div className={`flex items-center ${tokens.filterGap}`}>

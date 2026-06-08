@@ -46,6 +46,7 @@ export type ClassicShuffleDensityTokens = {
   anonBtnPy: string;
   anonMt: string;
   anonPt: string;
+  anonMb: string;
   anonIndent: string;
 };
 
@@ -71,9 +72,9 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     metaText: "text-[13px]",
     metaIcon: 16,
     metaMt: "mt-3",
-    headerPb: "pb-4",
+    headerPb: "pb-2",
     headerPt: "pt-2",
-    densityMt: "mt-2.5",
+    densityMt: "mt-3",
     followingLabel: "text-[11px]",
     followingAvatar: 44,
     followingName: "text-[10px]",
@@ -86,8 +87,9 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     anonBody: "text-[12px]",
     anonBtnText: "text-[13px]",
     anonBtnPy: "py-2.5",
-    anonMt: "mt-3.5",
-    anonPt: "pt-3.5",
+    anonMt: "mt-5",
+    anonPt: "pt-4",
+    anonMb: "mb-4",
     anonIndent: "pl-[22px]",
   },
   10: {
@@ -111,9 +113,9 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     metaText: "text-xs",
     metaIcon: 15,
     metaMt: "mt-2.5",
-    headerPb: "pb-3.5",
+    headerPb: "pb-1.5",
     headerPt: "pt-1.5",
-    densityMt: "mt-2",
+    densityMt: "mt-2.5",
     followingLabel: "text-[10px]",
     followingAvatar: 40,
     followingName: "text-[9px]",
@@ -126,8 +128,9 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     anonBody: "text-[11px]",
     anonBtnText: "text-[12px]",
     anonBtnPy: "py-2",
-    anonMt: "mt-3",
-    anonPt: "pt-3",
+    anonMt: "mt-4",
+    anonPt: "pt-3.5",
+    anonMb: "mb-3.5",
     anonIndent: "pl-5",
   },
   20: {
@@ -151,9 +154,9 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     metaText: "text-[11px]",
     metaIcon: 14,
     metaMt: "mt-2",
-    headerPb: "pb-3",
+    headerPb: "pb-1.5",
     headerPt: "pt-1",
-    densityMt: "mt-1.5",
+    densityMt: "mt-2",
     followingLabel: "text-[9px]",
     followingAvatar: 34,
     followingName: "text-[8px]",
@@ -166,8 +169,9 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     anonBody: "text-[10px]",
     anonBtnText: "text-[11px]",
     anonBtnPy: "py-1.5",
-    anonMt: "mt-2.5",
-    anonPt: "pt-2.5",
+    anonMt: "mt-3.5",
+    anonPt: "pt-3",
+    anonMb: "mb-3",
     anonIndent: "pl-[18px]",
   },
   30: {
@@ -191,9 +195,9 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     metaText: "text-[10px]",
     metaIcon: 12,
     metaMt: "mt-1.5",
-    headerPb: "pb-2.5",
+    headerPb: "pb-1",
     headerPt: "pt-1",
-    densityMt: "mt-1",
+    densityMt: "mt-1.5",
     followingLabel: "text-[8px]",
     followingAvatar: 28,
     followingName: "text-[7px]",
@@ -206,8 +210,9 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     anonBody: "text-[9px]",
     anonBtnText: "text-[10px]",
     anonBtnPy: "py-1.5",
-    anonMt: "mt-2",
-    anonPt: "pt-2",
+    anonMt: "mt-3",
+    anonPt: "pt-2.5",
+    anonMb: "mb-2.5",
     anonIndent: "pl-4",
   },
 };
