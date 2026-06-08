@@ -43,6 +43,7 @@ const BASE = {
   anonBody: 12,
   anonBtn: 13,
   anonBtnPadY: 10,
+  onlineDot: 10,
 } as const;
 
 function spx(value: number, scale: number, min = 0) {
@@ -89,6 +90,7 @@ export type ClassicShuffleHeaderUi = {
   anonBodyPx: number;
   anonBtnPx: number;
   anonBtnPadYPx: number;
+  onlineDotPx: number;
 };
 
 export function getClassicShuffleHeaderUi(
@@ -136,5 +138,6 @@ export function getClassicShuffleHeaderUi(
     anonBodyPx: spx(BASE.anonBody, scale, 9),
     anonBtnPx: spx(BASE.anonBtn, scale, 10),
     anonBtnPadYPx: spx(BASE.anonBtnPadY, scale, 6),
+    onlineDotPx: spx(BASE.onlineDot, scale, 5),
   };
 }

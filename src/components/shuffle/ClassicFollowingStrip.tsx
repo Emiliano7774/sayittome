@@ -137,7 +137,15 @@ export default function ClassicFollowingStrip({
                 )}
 
                 {profile.showOnline ? (
-                  <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border border-black bg-green-500" />
+                  <span
+                    className="absolute bottom-0 right-0 rounded-full border-black bg-green-500"
+                    style={{
+                      width: ui.onlineDotPx,
+                      height: ui.onlineDotPx,
+                      borderWidth: Math.max(1, Math.round(ui.onlineDotPx * 0.22)),
+                      borderStyle: "solid",
+                    }}
+                  />
                 ) : null}
               </div>
 

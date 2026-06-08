@@ -20,6 +20,31 @@ const SIZE_CLASS: Record<Size, string> = {
   hero: "w-full h-full",
 };
 
+/** Avatar edge length in px — used to scale the online badge. */
+const AVATAR_PX: Record<Size, number> = {
+  "2xs": 32,
+  xs: 40,
+  sm: 48,
+  md: 64,
+  lg: 112,
+  xl: 168,
+  hero: 64,
+};
+
+function getOnlineBadgeStyle(size: Size) {
+  const avatarPx = AVATAR_PX[size];
+  const dotPx = Math.max(5, Math.round(avatarPx * 0.19));
+  const borderPx = Math.max(1, Math.round(dotPx * 0.22));
+
+  return {
+    width: dotPx,
+    height: dotPx,
+    borderWidth: borderPx,
+    bottom: Math.max(1, Math.round(dotPx * 0.12)),
+    right: Math.max(1, Math.round(dotPx * 0.12)),
+  };
+}
+
 type Props = {
   ownerUid?: string;
   username: string;
@@ -86,6 +111,7 @@ function StoryAvatarButton({
 
   const openStories = status.hasActive && status.hasUnseen;
   const dataAction = openStories ? "story" : "profile";
+  const onlineBadge = getOnlineBadgeStyle(size);
 
   const avatar = (
     <div
@@ -140,7 +166,17 @@ function StoryAvatarButton({
       {inner}
 
       {showOnline ? (
-        <div className="absolute bottom-1 right-1 h-6 w-6 rounded-full border-[3px] border-black bg-green-500" />
+        <div
+          className="absolute rounded-full border-black bg-green-500"
+          style={{
+            width: onlineBadge.width,
+            height: onlineBadge.height,
+            borderWidth: onlineBadge.borderWidth,
+            borderStyle: "solid",
+            bottom: onlineBadge.bottom,
+            right: onlineBadge.right,
+          }}
+        />
       ) : null}
     </button>
   );
