@@ -396,8 +396,8 @@ export function useShufflePool() {
 
     async function pollLivePeopleCount() {
       try {
-        const res = await fetch(`/api/shuffle?countOnly=1&ts=${Date.now()}`, {
-          cache: "no-store",
+        const res = await fetch(`/api/shuffle?countOnly=1`, {
+          cache: "default",
         });
         const json = await res.json();
         if (cancelled || !mountedRef.current) return;
@@ -419,7 +419,7 @@ export function useShufflePool() {
     }
 
     void pollLivePeopleCount();
-    const liveCountTimer = window.setInterval(pollLivePeopleCount, 1000);
+    const liveCountTimer = window.setInterval(pollLivePeopleCount, 20_000);
 
     return () => {
       cancelled = true;

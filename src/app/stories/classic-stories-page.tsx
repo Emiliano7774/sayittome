@@ -1,45 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
 
 import StoriesHub from "@/components/stories/StoriesHub";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
-import { auth } from "@/lib/firebase";
-import { resolveStoryViewerId } from "@/lib/stories/anonStories";
-import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
-import type { StoryUserGroup } from "@/lib/stories/types";
+import { useStoriesGroups } from "@/hooks/useStoriesGroups";
 import { useT } from "@/contexts/LocaleContext";
 
 export default function ClassicStoriesPage() {
   const t = useT();
-  const [groups, setGroups] = useState<StoryUserGroup[]>([]);
-  const [viewerUid, setViewerUid] = useState("");
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      const uid = resolveStoryViewerId(user);
-      setViewerUid(uid);
-
-      try {
-        const data = await fetchActiveStoriesGrouped(uid);
-        if (!cancelled) setGroups(data);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      unsub();
-    };
-  }, []);
+  const { groups, viewerUid, loading } = useStoriesGroups();
 
   return (
     <main className="min-h-screen bg-black px-5 py-8 pb-32 text-white">
@@ -62,7 +32,7 @@ export default function ClassicStoriesPage() {
           </Link>
         </div>
       ) : (
-        <StoriesHub groups={groups} viewerUid={viewerUid} variant="classic" />
+        <StoriesHub groups={groups} viewerUid={viewerUid} />
       )}
     </main>
   );

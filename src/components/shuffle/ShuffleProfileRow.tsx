@@ -34,6 +34,7 @@ function ShuffleProfileRow({ profile, slot }: Props) {
               <SensitiveMediaShell
                 url={profile.photo}
                 staticRequiresBlur={blurPhoto}
+                enableRuntimeScan={false}
                 profile={{
                   adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
                   adminBlurFotosPerfil: profile.adminBlurFotosPerfil,

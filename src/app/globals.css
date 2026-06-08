@@ -53,6 +53,22 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   padding-bottom: 0 !important;
 }
 
+@keyframes sayittomeStoryProgress {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.sayittome-story-progress {
+  width: 0%;
+  animation-name: sayittomeStoryProgress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
 :root {
   --sayittome-nav-height: 74px;
   --sayittome-admob-banner-height: 0px;

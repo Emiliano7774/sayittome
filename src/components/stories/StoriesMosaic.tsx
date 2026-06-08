@@ -37,6 +37,7 @@ function StoryTile({
           url={story.mediaUrl}
           mediaType="video"
           staticRequiresBlur={needsBlur}
+          enableRuntimeScan={false}
           story={story}
           className="h-full w-full"
         >
@@ -57,6 +58,7 @@ function StoryTile({
         <SensitiveMediaShell
           url={story.mediaUrl}
           staticRequiresBlur={needsBlur}
+          enableRuntimeScan={false}
           story={story}
           className="h-full w-full"
         >

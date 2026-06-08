@@ -6,7 +6,12 @@ import { onAuthStateChanged } from "firebase/auth";
 
 import StoriesTray from "@/components/stories/StoriesTray";
 import { auth } from "@/lib/firebase";
-import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
+import { resolveStoryViewerId } from "@/lib/stories/anonStories";
+import {
+  getCachedStoryGroups,
+  refreshStoriesIndex,
+  subscribeStoriesIndex,
+} from "@/lib/stories/storiesIndexStore";
 import type { StoryUserGroup } from "@/lib/stories/types";
 
 type Props = {
@@ -15,19 +20,24 @@ type Props = {
 };
 
 export default function ModernStoriesBar({ compact = false }: Props) {
-  const [groups, setGroups] = useState<StoryUserGroup[]>([]);
+  const [groups, setGroups] = useState<StoryUserGroup[]>(() => getCachedStoryGroups());
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      try {
-        const next = await fetchActiveStoriesGrouped(user?.uid || "");
-        setGroups(next);
-      } catch (e) {
-        console.error(e);
-      }
+    let cancelled = false;
+
+    const unsubIndex = subscribeStoriesIndex(() => {
+      if (!cancelled) setGroups(getCachedStoryGroups());
     });
 
-    return () => unsub();
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      void refreshStoriesIndex(resolveStoryViewerId(user)).catch(() => {});
+    });
+
+    return () => {
+      cancelled = true;
+      unsubIndex();
+      unsubAuth();
+    };
   }, []);
 
   if (compact) {

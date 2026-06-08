@@ -26,6 +26,7 @@ import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories"
 import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import { markStoryViewedLocally } from "@/lib/stories/storiesIndexStore";
+import { preloadStoryMedia } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
 import type { StoryItem } from "@/lib/stories/types";
@@ -49,7 +50,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const [localStories, setLocalStories] = useState(stories);
   const [paused, setPaused] = useState(false);
   const [blurLocked, setBlurLocked] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [liked, setLiked] = useState(false);
   const [profileLikes, setProfileLikes] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
@@ -60,7 +60,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const [replyDragY, setReplyDragY] = useState(0);
   const [replyDragging, setReplyDragging] = useState(false);
   const [replySentToast, setReplySentToast] = useState(false);
-  const timerRef = useRef<number | null>(null);
   const startedRef = useRef(false);
   const viewedRef = useRef<Set<string>>(new Set());
   const pointerRef = useRef({ x: 0, y: 0, t: 0, swiped: false });
@@ -97,6 +96,10 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const canDelete = current ? canManageStory(current, viewerUid) : false;
   const topChromeHidden = paused && !blurLocked;
   const bottomChromeHidden = topChromeHidden || replyOpen;
+  const durationMs =
+    current?.mediaType === "video" && current.durationMs
+      ? current.durationMs
+      : DEFAULT_IMAGE_MS;
 
   const closeReply = useCallback(() => {
     setReplyOpen(false);
@@ -114,9 +117,14 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   }, []);
 
   useEffect(() => {
-    if (!replyOpen || !profileUsername) return;
+    if (!profileUsername || !canReply) return;
     void resolveProfileChat(profileUsername).catch(() => {});
-  }, [replyOpen, profileUsername]);
+  }, [profileUsername, canReply]);
+
+  useEffect(() => {
+    const next = localStories[index + 1];
+    if (next) preloadStoryMedia(next);
+  }, [index, localStories]);
 
   useEffect(() => {
     if (!replyOpen) return;
@@ -161,13 +169,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     };
   }, [resolvedOwnerUid, anonymousStory]);
 
-  const clearTimer = useCallback(() => {
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
   const markViewed = useCallback(async (story: StoryItem) => {
     if (viewedRef.current.has(story.id)) return;
     viewedRef.current.add(story.id);
@@ -195,7 +196,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   }, []);
 
   const goNext = useCallback(() => {
-    setProgress(0);
     setBlurLocked(storyRequiresBlur(localStories[Math.min(index + 1, localStories.length - 1)] || current));
     setReplyOpen(false);
     setReplyText("");
@@ -209,7 +209,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   }, [current, index, localStories, router]);
 
   const goPrev = useCallback(() => {
-    setProgress(0);
     const prevIndex = Math.max(0, index - 1);
     setBlurLocked(storyRequiresBlur(localStories[prevIndex]));
     setReplyOpen(false);
@@ -218,36 +217,9 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   }, [index, localStories]);
 
   useEffect(() => {
-    if (!current || isPaused) {
-      clearTimer();
-      return;
-    }
-
+    if (!current || isPaused) return;
     markViewed(current);
-
-    const durationMs =
-      current.mediaType === "video" && current.durationMs
-        ? current.durationMs
-        : DEFAULT_IMAGE_MS;
-
-    const started = performance.now();
-
-    const tick = () => {
-      const elapsed = performance.now() - started;
-      setProgress(Math.min(1, elapsed / durationMs));
-
-      if (elapsed >= durationMs) {
-        goNext();
-        return;
-      }
-
-      timerRef.current = window.setTimeout(tick, 50);
-    };
-
-    timerRef.current = window.setTimeout(tick, 50);
-
-    return clearTimer;
-  }, [clearTimer, current, goNext, isPaused, markViewed]);
+  }, [current, isPaused, markViewed]);
 
   useEffect(() => {
     if (current) setBlurLocked(storyRequiresBlur(current));
@@ -332,7 +304,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     if (!confirmed) return;
 
     setDeleting(true);
-    clearTimer();
 
     try {
       await deleteStoryById(current.id);
@@ -345,7 +316,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
 
       setLocalStories(nextStories);
       setIndex((value) => Math.min(value, nextStories.length - 1));
-      setProgress(0);
     } catch (error) {
       console.error(error);
       window.alert(t("stories_delete_fail"));
@@ -435,13 +405,22 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
             key={story.id}
             className="h-1 flex-1 overflow-hidden rounded-full bg-white/25"
           >
-            <div
-              className="h-full bg-white transition-[width] duration-75 ease-linear"
-              style={{
-                width:
-                  i < index ? "100%" : i === index ? `${progress * 100}%` : "0%",
-              }}
-            />
+            {i < index ? (
+              <div className="h-full w-full bg-white" />
+            ) : i === index ? (
+              <div
+                key={`${story.id}-${index}`}
+                className="sayittome-story-progress h-full bg-white"
+                style={{
+                  animationDuration: `${durationMs}ms`,
+                  animationPlayState: isPaused ? "paused" : "running",
+                }}
+                onAnimationEnd={(event) => {
+                  if (event.currentTarget !== event.target || isPaused) return;
+                  goNext();
+                }}
+              />
+            ) : null}
           </div>
         ))}
       </div>

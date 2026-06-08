@@ -9,6 +9,7 @@ type CachedProfile = {
 
 const CACHE_TTL_MS = 5 * 60_000;
 const cache = new Map<string, CachedProfile>();
+const fullProfileCache = new Map<string, { profile: unknown; fetchedAt: number }>();
 
 export function getCachedProfile(username: string) {
   const key = username.toLowerCase();
@@ -27,6 +28,25 @@ export function setCachedProfile(
 ) {
   cache.set(username.toLowerCase(), {
     ...data,
+    fetchedAt: Date.now(),
+  });
+}
+
+export function getCachedFullProfile(username: string) {
+  const key = username.toLowerCase();
+  const hit = fullProfileCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.fetchedAt > CACHE_TTL_MS) {
+    fullProfileCache.delete(key);
+    return null;
+  }
+  return hit.profile;
+}
+
+export function setCachedFullProfile(username: string, profile: unknown) {
+  if (!profile) return;
+  fullProfileCache.set(username.toLowerCase(), {
+    profile,
     fetchedAt: Date.now(),
   });
 }

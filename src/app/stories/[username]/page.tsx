@@ -2,48 +2,59 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { onAuthStateChanged } from "firebase/auth";
 
 import StoryViewer from "@/components/stories/StoryViewer";
-import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
-import { preloadStoryGroup } from "@/lib/stories/preload";
-import { refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
-import type { StoryItem } from "@/lib/stories/types";
 import { auth } from "@/lib/firebase";
 import { resolveStoryViewerId } from "@/lib/stories/anonStories";
-import { onAuthStateChanged } from "firebase/auth";
+import { preloadStoryGroup } from "@/lib/stories/preload";
+import {
+  getStoryGroup,
+  refreshStoriesIndex,
+} from "@/lib/stories/storiesIndexStore";
+import type { StoryItem } from "@/lib/stories/types";
 
 export default function StoryUserPage() {
   const params = useParams<{ username: string }>();
   const param = String(params.username || "");
 
-  const [stories, setStories] = useState<StoryItem[]>([]);
-  const [ownerUsername, setOwnerUsername] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [stories, setStories] = useState<StoryItem[]>(() => {
+    const group = getStoryGroup(param, param);
+    return group?.stories || [];
+  });
+  const [ownerUsername, setOwnerUsername] = useState(() => {
+    const group = getStoryGroup(param, param);
+    return group?.ownerUsername || "";
+  });
+  const [loading, setLoading] = useState(() => {
+    const group = getStoryGroup(param, param);
+    return !group || group.stories.length === 0;
+  });
 
   useEffect(() => {
     let cancelled = false;
 
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      try {
-        const groups = await fetchActiveStoriesGrouped(resolveStoryViewerId(user));
-        const group =
-          groups.find((g) => g.ownerUid === param) ||
-          groups.find(
-            (g) =>
-              g.ownerUsername.toLowerCase() === param.toLowerCase(),
-          );
+    const cached = getStoryGroup(param, param);
+    if (cached) {
+      setStories(cached.stories);
+      setOwnerUsername(cached.ownerUsername);
+      preloadStoryGroup(cached, 3);
+      setLoading(false);
+    }
 
-        if (!cancelled && group) {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      const viewerId = resolveStoryViewerId(user);
+      void refreshStoriesIndex(viewerId).then(() => {
+        if (cancelled) return;
+
+        const group = getStoryGroup(param, param);
+        if (group) {
           setStories(group.stories);
           setOwnerUsername(group.ownerUsername);
           preloadStoryGroup(group, 3);
-          refreshStoriesIndex(resolveStoryViewerId(user), true).catch(() => {});
         }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+        setLoading(false);
+      });
     });
 
     return () => {
@@ -68,5 +79,11 @@ export default function StoryUserPage() {
     );
   }
 
-  return <StoryViewer stories={stories} ownerUsername={ownerUsername} ownerUid={stories[0]?.ownerUid} />;
+  return (
+    <StoryViewer
+      stories={stories}
+      ownerUsername={ownerUsername}
+      ownerUid={stories[0]?.ownerUid}
+    />
+  );
 }

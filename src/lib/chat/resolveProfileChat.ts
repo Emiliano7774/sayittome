@@ -8,6 +8,10 @@ import {
 import { findOwnerIncomingChat } from "@/lib/chat/findOwnerIncomingChat";
 import { maybeMigrateExistingProfileChat } from "@/lib/chat/migrate";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
+import {
+  getCachedFullProfile,
+  setCachedFullProfile,
+} from "@/lib/profile/profileCache";
 
 export type ResolvedProfileChat = {
   chatId: string;
@@ -18,12 +22,18 @@ export type ResolvedProfileChat = {
   isLoggedIn: boolean;
 };
 
-export async function fetchProfileByUsername(username: string) {
-  const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
-    cache: "no-store",
-  });
+export async function fetchProfileByUsername(username: string, force = false) {
+  const key = username.trim().toLowerCase();
+  if (!force) {
+    const cached = getCachedFullProfile(key);
+    if (cached) return cached;
+  }
+
+  const res = await fetch(`/api/profile/${encodeURIComponent(username)}`);
   const json = await res.json();
-  return json?.profile || null;
+  const profile = json?.profile || null;
+  if (profile) setCachedFullProfile(key, profile);
+  return profile;
 }
 
 const profileChatCache = new Map<string, Promise<ResolvedProfileChat>>();
@@ -83,7 +93,7 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
 
   const targetPhoto = resolveProfilePhoto(profile);
 
-  await maybeMigrateExistingProfileChat(chatId, legacyIds, {
+  const migrationMeta = {
     id: chatId,
     canonicalChatId: chatId,
     targetUsername: username,
@@ -97,6 +107,10 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
     anon: true,
     schemaVersion: 2,
     targetPhoto: targetPhoto || null,
+  };
+
+  void maybeMigrateExistingProfileChat(chatId, legacyIds, migrationMeta).catch((error) => {
+    console.error("profile chat migration", error);
   });
 
   return {

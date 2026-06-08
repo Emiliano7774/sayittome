@@ -30,6 +30,8 @@ import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
+import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
@@ -67,8 +69,14 @@ export default function PublicProfilePage() {
   const usernameParam =
     typeof params?.username === "string" ? params.username : "";
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<Profile | null>(() => {
+    const cached = usernameParam ? getCachedFullProfile(usernameParam) : null;
+    return (cached as Profile | null) || null;
+  });
+  const [loading, setLoading] = useState(() => {
+    if (!usernameParam) return true;
+    return !getCachedFullProfile(usernameParam);
+  });
   const [currentUid, setCurrentUid] = useState("");
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
@@ -86,18 +94,18 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     async function load() {
+      const cached = getCachedFullProfile(usernameParam);
+      if (cached) {
+        setProfile(cached as Profile);
+        setLoading(false);
+      }
+
       try {
-        setLoading(true);
-
-        const res = await fetch(
-          `/api/profile/${encodeURIComponent(usernameParam)}?ts=${Date.now()}`,
-          { cache: "no-store" }
-        );
-
-        const json = await res.json();
-        setProfile(json?.profile || null);
+        if (!cached) setLoading(true);
+        const next = (await fetchProfileByUsername(usernameParam)) as Profile | null;
+        setProfile(next);
       } catch {
-        setProfile(null);
+        if (!cached) setProfile(null);
       } finally {
         setLoading(false);
       }
