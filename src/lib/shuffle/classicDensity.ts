@@ -32,6 +32,10 @@ export type ClassicShuffleDensityTokens = {
   headerPb: string;
   headerPt: string;
   densityMt: string;
+  densityBtnText: string;
+  densityZoomBtn: string;
+  densityZoomIcon: number;
+  densityGap: string;
   followingLabel: string;
   followingAvatar: number;
   followingName: string;
@@ -39,6 +43,10 @@ export type ClassicShuffleDensityTokens = {
   followingMt: string;
   followingPb: string;
   followingItemW: number;
+  followingGuestText: string;
+  followingBtnText: string;
+  followingBtnPx: string;
+  followingBtnPy: string;
   anonIcon: number;
   anonTitle: string;
   anonBody: string;
@@ -75,13 +83,21 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     headerPb: "pb-2",
     headerPt: "pt-2",
     densityMt: "mt-3",
-    followingLabel: "text-[11px]",
-    followingAvatar: 44,
-    followingName: "text-[10px]",
+    densityBtnText: "text-xs",
+    densityZoomBtn: "h-9 w-9",
+    densityZoomIcon: 17,
+    densityGap: "gap-1.5",
+    followingLabel: "text-xs",
+    followingAvatar: 54,
+    followingName: "text-sm",
     followingGap: "gap-2.5",
     followingMt: "mt-3.5",
     followingPb: "pb-3.5",
-    followingItemW: 56,
+    followingItemW: 64,
+    followingGuestText: "text-sm",
+    followingBtnText: "text-sm",
+    followingBtnPx: "px-4",
+    followingBtnPy: "py-2",
     anonIcon: 16,
     anonTitle: "text-[14px]",
     anonBody: "text-[12px]",
@@ -116,13 +132,21 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     headerPb: "pb-1.5",
     headerPt: "pt-1.5",
     densityMt: "mt-2.5",
-    followingLabel: "text-[10px]",
-    followingAvatar: 40,
-    followingName: "text-[9px]",
+    densityBtnText: "text-[11px]",
+    densityZoomBtn: "h-8 w-8",
+    densityZoomIcon: 15,
+    densityGap: "gap-1.5",
+    followingLabel: "text-[11px]",
+    followingAvatar: 46,
+    followingName: "text-xs",
     followingGap: "gap-2",
     followingMt: "mt-3",
     followingPb: "pb-3",
-    followingItemW: 52,
+    followingItemW: 56,
+    followingGuestText: "text-xs",
+    followingBtnText: "text-xs",
+    followingBtnPx: "px-3.5",
+    followingBtnPy: "py-1.5",
     anonIcon: 15,
     anonTitle: "text-[13px]",
     anonBody: "text-[11px]",
@@ -157,13 +181,21 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     headerPb: "pb-1.5",
     headerPt: "pt-1",
     densityMt: "mt-2",
-    followingLabel: "text-[9px]",
-    followingAvatar: 34,
-    followingName: "text-[8px]",
-    followingGap: "gap-1.5",
+    densityBtnText: "text-[10px]",
+    densityZoomBtn: "h-7 w-7",
+    densityZoomIcon: 14,
+    densityGap: "gap-1",
+    followingLabel: "text-[11px]",
+    followingAvatar: 38,
+    followingName: "text-[13px]",
+    followingGap: "gap-2",
     followingMt: "mt-2.5",
     followingPb: "pb-2.5",
-    followingItemW: 44,
+    followingItemW: 50,
+    followingGuestText: "text-[11px]",
+    followingBtnText: "text-[13px]",
+    followingBtnPx: "px-3",
+    followingBtnPy: "py-1.5",
     anonIcon: 14,
     anonTitle: "text-[12px]",
     anonBody: "text-[10px]",
@@ -198,13 +230,21 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     headerPb: "pb-1",
     headerPt: "pt-1",
     densityMt: "mt-1.5",
-    followingLabel: "text-[8px]",
-    followingAvatar: 28,
-    followingName: "text-[7px]",
+    densityBtnText: "text-[9px]",
+    densityZoomBtn: "h-6 w-6",
+    densityZoomIcon: 12,
+    densityGap: "gap-1",
+    followingLabel: "text-[10px]",
+    followingAvatar: 32,
+    followingName: "text-[11px]",
     followingGap: "gap-1.5",
     followingMt: "mt-2",
     followingPb: "pb-2",
-    followingItemW: 38,
+    followingItemW: 44,
+    followingGuestText: "text-[10px]",
+    followingBtnText: "text-[11px]",
+    followingBtnPx: "px-2.5",
+    followingBtnPy: "py-1",
     anonIcon: 12,
     anonTitle: "text-[11px]",
     anonBody: "text-[9px]",

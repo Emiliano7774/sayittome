@@ -23,28 +23,29 @@ export default function ClassicFollowingStrip({
   const { density } = useClassicShuffleDensity();
   const tokens = getClassicShuffleDensityTokens(density);
 
-  const labelClass = `${tokens.followingLabel} font-semibold uppercase text-white/28`;
+  const labelClass = `${tokens.followingLabel} font-semibold uppercase text-white/40`;
   const sectionClass = `${tokens.followingMt} border-b border-white/10 ${tokens.followingPb}`;
+  const guestBtnClass = `${tokens.followingBtnPx} ${tokens.followingBtnPy} rounded-full font-medium ${tokens.followingBtnText}`;
 
   if (!hasSession) {
     return (
       <div className={sectionClass}>
         <p className={labelClass}>{t("shuffle_following_title")}</p>
 
-        <p className={`mt-1.5 ${tokens.metaText} leading-snug text-white/38`}>
+        <p className={`mt-1.5 leading-snug text-white/38 ${tokens.followingGuestText}`}>
           {t("shuffle_following_login")}
         </p>
 
         <div className={`mt-2 flex flex-wrap ${tokens.followingGap}`}>
           <Link
             href="/login"
-            className={`rounded-full border border-white/12 px-3 py-1.5 font-medium text-white/80 ${tokens.followingName}`}
+            className={`border border-white/12 text-white/80 ${guestBtnClass}`}
           >
             {t("shuffle_following_login_btn")}
           </Link>
           <Link
             href="/register"
-            className={`rounded-full bg-violet-600 px-3 py-1.5 font-medium text-white ${tokens.followingName}`}
+            className={`bg-violet-600 text-white ${guestBtnClass}`}
           >
             {t("shuffle_following_register_btn")}
           </Link>
@@ -57,7 +58,7 @@ export default function ClassicFollowingStrip({
     return (
       <div className={sectionClass}>
         <p className={labelClass}>{t("shuffle_following_title")}</p>
-        <p className={`mt-1.5 font-medium text-white/22 ${tokens.followingName}`}>
+        <p className={`mt-1.5 font-medium text-white/22 ${tokens.followingGuestText}`}>
           {t("common_loading")}
         </p>
       </div>
@@ -69,7 +70,7 @@ export default function ClassicFollowingStrip({
       <p className={labelClass}>{t("shuffle_following_title")}</p>
 
       {profiles.length === 0 ? (
-        <p className={`mt-1.5 font-medium text-white/28 ${tokens.followingName}`}>
+        <p className={`mt-1.5 font-medium text-white/28 ${tokens.followingGuestText}`}>
           {t("shuffle_following_empty")}
         </p>
       ) : (
@@ -109,7 +110,7 @@ export default function ClassicFollowingStrip({
               </div>
 
               <span
-                className={`truncate font-medium text-white/55 ${tokens.followingName}`}
+                className={`truncate font-medium text-white/75 ${tokens.followingName}`}
                 style={{ maxWidth: tokens.followingItemW }}
               >
                 {profile.username}
