@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useT } from "@/contexts/LocaleContext";
 import { hasAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
-import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
+import { getClassicShuffleHeaderUi } from "@/lib/shuffle/classicHeaderUi";
 
 function hasActiveDirectChat(match: NonNullable<ReturnType<typeof useAnonMatchOptional>>) {
   return Boolean(
@@ -23,7 +23,7 @@ export default function ClassicAnonConnectCard() {
   const { firebaseUser, loading } = useAuth();
   const t = useT();
   const { density } = useClassicShuffleDensity();
-  const tokens = getClassicShuffleDensityTokens(density);
+  const ui = getClassicShuffleHeaderUi(density);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [incognitoMode, setIncognitoMode] = useState(false);
 
@@ -56,55 +56,88 @@ export default function ClassicAnonConnectCard() {
 
   return (
     <>
-      <div className={`${tokens.anonMt} border-t border-white/[0.06] ${tokens.anonPt} ${tokens.anonMb}`}>
+      <div
+        className="border-t border-white/[0.06]"
+        style={{
+          marginTop: ui.anonMtPx,
+          paddingTop: ui.anonPtPx,
+          marginBottom: ui.anonMbPx,
+        }}
+      >
         {isIncognitoVisitor ? (
           <>
-            <div className={`flex items-center ${tokens.filterGap}`}>
+            <div className="flex items-center" style={{ gap: ui.followingGapPx }}>
               <Globe2
-                size={tokens.anonIcon}
+                size={ui.anonIconPx}
                 strokeWidth={1.6}
                 className="shrink-0 text-violet-400/90"
                 aria-hidden
               />
-              <p className={`font-semibold tracking-[-0.02em] text-white/88 ${tokens.anonTitle}`}>
+              <p
+                className="font-semibold tracking-[-0.02em] text-white/88"
+                style={{ fontSize: ui.anonTitlePx }}
+              >
                 {t("anon_match_incognito_title")}
               </p>
               <span className="ml-auto h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" />
             </div>
-            <p className={`mt-1.5 ${tokens.anonIndent} font-medium tracking-[-0.01em] text-white/42 ${tokens.anonBody}`}>
+            <p
+              className="mt-1.5 font-medium tracking-[-0.01em] text-white/42"
+              style={{
+                fontSize: ui.anonBodyPx,
+                paddingLeft: ui.anonIconPx + ui.followingGapPx,
+              }}
+            >
               {t("anon_match_incognito_body")}
             </p>
           </>
         ) : null}
 
-        <div className={`flex items-center ${tokens.filterGap} ${isIncognitoVisitor ? tokens.filterMt : ""}`}>
+        <div
+          className="flex items-center"
+          style={{
+            gap: ui.followingGapPx,
+            marginTop: isIncognitoVisitor ? ui.filterMtPx : 0,
+          }}
+        >
           {!isIncognitoVisitor ? (
             <Globe2
-              size={tokens.anonIcon}
+              size={ui.anonIconPx}
               strokeWidth={1.6}
               className="shrink-0 text-violet-400/90"
               aria-hidden
             />
           ) : null}
           <p
-            className={[
-              `font-semibold tracking-[-0.02em] text-white/88 ${tokens.anonTitle}`,
-              isIncognitoVisitor ? tokens.anonIndent : "",
-            ].join(" ")}
+            className="font-semibold tracking-[-0.02em] text-white/88"
+            style={{
+              fontSize: ui.anonTitlePx,
+              paddingLeft: isIncognitoVisitor ? ui.anonIconPx + ui.followingGapPx : 0,
+            }}
           >
             {cardTitle}
           </p>
         </div>
 
         {searching ? (
-          <p className={`mt-1.5 ${tokens.anonIndent} font-medium tracking-[-0.01em] text-white/42 ${tokens.anonBody}`}>
+          <p
+            className="mt-1.5 font-medium tracking-[-0.01em] text-white/42"
+            style={{
+              fontSize: ui.anonBodyPx,
+              paddingLeft: ui.anonIconPx + ui.followingGapPx,
+            }}
+          >
             {t("anon_match_searching")}
           </p>
         ) : (
           <button
             type="button"
             onClick={() => setDisclaimerOpen(true)}
-            className={`mt-1.5 w-full rounded-lg border border-violet-500/25 bg-gradient-to-b from-[#7c3aed] to-[#5b21b6] px-3 font-semibold tracking-[-0.02em] text-white shadow-[0_8px_22px_rgba(91,33,182,0.32)] transition active:scale-[0.99] ${tokens.anonBtnText} ${tokens.anonBtnPy}`}
+            className="mt-1.5 w-full rounded-lg border border-violet-500/25 bg-gradient-to-b from-[#7c3aed] to-[#5b21b6] px-3 font-semibold tracking-[-0.02em] text-white shadow-[0_8px_22px_rgba(91,33,182,0.32)] transition active:scale-[0.99]"
+            style={{
+              fontSize: ui.anonBtnPx,
+              paddingBlock: ui.anonBtnPadYPx,
+            }}
           >
             {t("anon_match_cta")}
           </button>

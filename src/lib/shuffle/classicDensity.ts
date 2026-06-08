@@ -1,3 +1,5 @@
+import { getClassicShuffleHeaderUi } from "@/lib/shuffle/classicHeaderUi";
+
 export const CLASSIC_SHUFFLE_DENSITY_OPTIONS = [5, 10, 20, 30] as const;
 
 export type ClassicShuffleDensity =
@@ -275,17 +277,16 @@ export function getClassicShuffleDensityTokens(
   return DENSITY_TOKENS[density];
 }
 
-/** Siguiendo strip sizes derived from the same zoom scale as profile rows. */
+/** @deprecated Use getClassicShuffleHeaderUi */
 export function getFollowingScaledSizes(density: ClassicShuffleDensity) {
-  const scale = getClassicShuffleDensityTokens(density).scale;
-
+  const ui = getClassicShuffleHeaderUi(density);
   return {
-    labelPx: Math.max(8, Math.round(10 * scale)),
-    textPx: Math.max(9, Math.round(11 * scale)),
-    avatarPx: Math.max(26, Math.round(52 * scale)),
-    itemWPx: Math.max(34, Math.round(54 * scale)),
-    btnPx: Math.max(8, Math.round(12 * scale)),
-    btnPy: Math.max(4, Math.round(7 * scale)),
+    labelPx: ui.followingLabelPx,
+    textPx: ui.followingTextPx,
+    avatarPx: ui.followingAvatarPx,
+    itemWPx: ui.followingItemWPx,
+    btnPx: ui.followingBtnTextPx,
+    btnPy: ui.followingBtnPadYPx,
   };
 }
 

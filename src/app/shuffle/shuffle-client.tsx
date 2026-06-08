@@ -14,6 +14,7 @@ import { useFollowingProfiles } from "@/hooks/useFollowingProfiles";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useShufflePool } from "@/hooks/useShufflePool";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
+import { getClassicShuffleHeaderUi } from "@/lib/shuffle/classicHeaderUi";
 import { useT } from "@/contexts/LocaleContext";
 
 /** Classic UX — lista congelada visualmente. */
@@ -23,6 +24,7 @@ export default function ShuffleClient() {
   const following = useFollowingProfiles();
   const { density } = useClassicShuffleDensity();
   const tokens = getClassicShuffleDensityTokens(density);
+  const headerUi = getClassicShuffleHeaderUi(density);
 
   useEffect(() => {
     document.body.classList.add("sayittome-shuffle-route");
@@ -42,15 +44,22 @@ export default function ShuffleClient() {
 
         <div className={`border-b border-white/10 ${tokens.headerPb} ${tokens.headerPt}`}>
           <div
-            className={`flex ${tokens.searchHeight} items-center ${tokens.searchGap} ${tokens.searchRadius} bg-[#141414] px-3`}
+            className="flex items-center bg-[#141414]"
+            style={{
+              height: headerUi.searchHeightPx,
+              gap: headerUi.searchPadXPx / 3,
+              paddingInline: headerUi.searchPadXPx,
+              borderRadius: headerUi.searchRadiusPx,
+            }}
           >
-            <Search size={tokens.searchIcon} className="shrink-0 text-white/35" />
+            <Search size={headerUi.searchIconPx} className="shrink-0 text-white/35" />
 
             <input
               value={pool.search}
               onChange={(e) => pool.handleSearchChange(e.target.value)}
               placeholder={t("shuffle_classic_search")}
-              className={`w-full bg-transparent font-medium text-white outline-none placeholder:text-white/25 ${tokens.searchText}`}
+              className="w-full bg-transparent font-medium text-white outline-none placeholder:text-white/25"
+              style={{ fontSize: headerUi.searchTextPx }}
             />
           </div>
 
@@ -60,14 +69,17 @@ export default function ShuffleClient() {
             hasSession={following.hasSession}
           />
 
-          <div className={`${tokens.filterMt} flex items-center ${tokens.filterGap}`}>
+          <div
+            className="flex items-center"
+            style={{ marginTop: headerUi.filterMtPx, gap: headerUi.followingGapPx }}
+          >
             <button
               type="button"
               onClick={pool.openFilters}
               className="relative shrink-0 text-white/70 transition active:scale-95 active:text-white"
               aria-label={t("shuffle_filters_title")}
             >
-              <SlidersHorizontal size={tokens.filterIcon} />
+              <SlidersHorizontal size={headerUi.filterIconPx} />
               {pool.filtersActiveCount > 0 ? (
                 <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#8C84FF]" />
               ) : null}
@@ -78,27 +90,39 @@ export default function ShuffleClient() {
               onClick={pool.openFilters}
               className="min-w-0 flex-1 text-left"
             >
-              <h1 className={`text-white ${tokens.filterTitle}`}>{t("shuffle_filters_title")}</h1>
+              <h1
+                className="font-semibold tracking-[-0.03em] text-white"
+                style={{ fontSize: headerUi.filterTitlePx }}
+              >
+                {t("shuffle_filters_title")}
+              </h1>
             </button>
           </div>
 
-          <div className={`${tokens.metaMt} flex flex-col ${tokens.metaDensityGap}`}>
+          <div
+            className="flex flex-col"
+            style={{
+              marginTop: headerUi.metaMtPx,
+              gap: headerUi.metaDensityGapPx,
+            }}
+          >
             <button
               type="button"
               onClick={pool.handleShuffleClick}
-              className={`flex w-full items-center justify-between font-medium text-white/38 transition active:text-white/55 ${tokens.metaText}`}
+              className="flex w-full items-center justify-between font-medium text-white/38 transition active:text-white/55"
+              style={{ fontSize: headerUi.metaTextPx }}
             >
               <span>{t("shuffle_change_result")}</span>
 
               <span className="flex items-center gap-1.5">
-                <User size={tokens.metaIcon} />
+                <User size={headerUi.metaIconPx} />
                 {t("shuffle_people_count", {
                   count: String(pool.livePeopleCount),
                 })}
               </span>
             </button>
 
-            <ClassicShuffleDensityControl className={tokens.densityMt} />
+            <ClassicShuffleDensityControl />
           </div>
 
           <ClassicAnonConnectCard />
