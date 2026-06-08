@@ -53,9 +53,14 @@ public final class AppOpenAdManager {
     }
 
     public void showAdIfAvailable(@NonNull Activity activity) {
-        if (isShowing) return;
+        if (isShowing || activity.isFinishing() || activity.isDestroyed()) return;
 
         if (!isAdAvailable()) {
+            loadAd(activity);
+            return;
+        }
+
+        if (appOpenAd == null) {
             loadAd(activity);
             return;
         }

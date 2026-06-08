@@ -8,9 +8,19 @@ import {
 let initialized = false;
 let initPromise: Promise<boolean> | null = null;
 let bannerVisible = false;
+let lastBannerMargin = -1;
+let bannerQueue: Promise<void> = Promise.resolve();
+let syncTimer: number | null = null;
 
 async function loadAdMobModule() {
   return import("@capacitor-community/admob");
+}
+
+function runBannerTask(task: () => Promise<void>) {
+  bannerQueue = bannerQueue.then(task).catch((error) => {
+    console.error("AdMob banner task failed:", error);
+  });
+  return bannerQueue;
 }
 
 /** Distance from screen bottom to top of bottom nav — AdMob sits below the web nav. */
@@ -52,6 +62,8 @@ export async function initializeAdMob() {
 }
 
 async function renderAdMobBanner(margin: number) {
+  if (bannerVisible && margin === lastBannerMargin) return;
+
   const { AdMob, BannerAdPosition, BannerAdSize } = await loadAdMobModule();
 
   if (bannerVisible) {
@@ -60,6 +72,8 @@ async function renderAdMobBanner(margin: number) {
     } catch {
       // Ignore when banner was never shown.
     }
+    document.body.classList.remove("sayittome-admob-banner-visible");
+    bannerVisible = false;
   }
 
   await AdMob.showBanner({
@@ -70,31 +84,51 @@ async function renderAdMobBanner(margin: number) {
   });
 
   bannerVisible = true;
+  lastBannerMargin = margin;
   document.body.classList.add("sayittome-admob-banner-visible");
 }
 
 export async function showAdMobBanner() {
   if (!(await initializeAdMob())) return false;
 
-  try {
-    const margin = measureBottomNavClearancePx();
-    await renderAdMobBanner(margin);
-    return true;
-  } catch (error) {
-    console.error("AdMob banner failed:", error);
-    return false;
-  }
+  return runBannerTask(async () => {
+    try {
+      const margin = measureBottomNavClearancePx();
+      await renderAdMobBanner(margin);
+    } catch (error) {
+      console.error("AdMob banner failed:", error);
+      bannerVisible = false;
+      lastBannerMargin = -1;
+      document.body.classList.remove("sayittome-admob-banner-visible");
+    }
+  })
+    .then(() => true)
+    .catch(() => false);
+}
+
+export function scheduleAdMobBannerSync(delayMs = 180) {
+  if (typeof window === "undefined") return;
+  if (syncTimer) window.clearTimeout(syncTimer);
+
+  syncTimer = window.setTimeout(() => {
+    syncTimer = null;
+    void syncAdMobBannerPosition();
+  }, delayMs);
 }
 
 export async function syncAdMobBannerPosition() {
   if (!isNativeAppShell() || !initialized || !bannerVisible) return;
 
-  try {
-    const margin = measureBottomNavClearancePx();
-    await renderAdMobBanner(margin);
-  } catch (error) {
-    console.error("AdMob banner sync failed:", error);
-  }
+  const margin = measureBottomNavClearancePx();
+  if (margin === lastBannerMargin) return;
+
+  await runBannerTask(async () => {
+    try {
+      await renderAdMobBanner(margin);
+    } catch (error) {
+      console.error("AdMob banner sync failed:", error);
+    }
+  });
 }
 
 export async function hideAdMobBanner() {
@@ -113,20 +147,23 @@ export async function hideAdMobBanner() {
 export async function removeAdMobBanner() {
   document.body.classList.remove("sayittome-admob-banner-visible");
   bannerVisible = false;
+  lastBannerMargin = -1;
 
   if (!initialized) return;
 
-  try {
-    const { AdMob } = await loadAdMobModule();
-    await AdMob.removeBanner();
-  } catch {
+  await runBannerTask(async () => {
     try {
       const { AdMob } = await loadAdMobModule();
-      await AdMob.hideBanner();
+      await AdMob.removeBanner();
     } catch {
-      // Ignore when banner was never shown.
+      try {
+        const { AdMob } = await loadAdMobModule();
+        await AdMob.hideBanner();
+      } catch {
+        // Ignore when banner was never shown.
+      }
     }
-  }
+  });
 }
 
 export async function prepareAdMobInterstitial() {
