@@ -40,10 +40,12 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
                 key={item.href}
                 type="button"
                 onClick={dispatchShuffle}
-                className="flex h-full flex-1 items-center justify-center"
+                className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0"
                 aria-label={t("nav_shuffle_refresh")}
               >
-                <Icon size={38} strokeWidth={2.4} className="text-[#7b5cff]" />
+                <span className="flex h-10 w-10 items-center justify-center">
+                  <Icon size={38} strokeWidth={2.4} className="text-[#7b5cff]" />
+                </span>
               </button>
             );
           }

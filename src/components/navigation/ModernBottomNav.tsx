@@ -41,7 +41,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
                 key={item.href}
                 type="button"
                 onClick={dispatchShuffle}
-                className="flex h-full flex-1 items-center justify-center"
+                className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0"
                 aria-label={t("nav_shuffle_refresh")}
               >
                 <span className="flex h-10 w-10 items-center justify-center">

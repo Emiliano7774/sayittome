@@ -1,4 +1,4 @@
-﻿@tailwind base;
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -42,9 +42,9 @@ body.sayittome-native-shell .sayittome-page-shell {
 body.sayittome-native-shell.sayittome-admob-banner-visible .sayittome-bottom-nav,
 body.sayittome-native-shell.sayittome-admob-banner-visible nav.fixed.bottom-0,
 body.sayittome-native-shell.sayittome-admob-banner-visible .fixed.inset-x-0.bottom-0 {
-  bottom: 0;
-  padding-bottom: calc(
-    60px + env(safe-area-inset-bottom, 0px) + var(--sayittome-browser-chrome-bottom, 0px)
+  bottom: calc(
+    var(--sayittome-admob-banner-height) + env(safe-area-inset-bottom, 0px) +
+      var(--sayittome-browser-chrome-bottom, 0px)
   );
 }
 
@@ -66,6 +66,12 @@ body.sayittome-native-shell.sayittome-admob-banner-visible .fixed.inset-x-0.bott
 
 .sayittome-bottom-nav-inner {
   height: var(--sayittome-nav-height);
+}
+
+.sayittome-bottom-nav button {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
 }
 
 .sayittome-fixed-bottom {
