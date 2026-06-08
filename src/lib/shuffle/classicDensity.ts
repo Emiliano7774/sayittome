@@ -32,6 +32,7 @@ export type ClassicShuffleDensityTokens = {
   headerPb: string;
   headerPt: string;
   densityMt: string;
+  metaDensityGap: string;
   followingLabel: string;
   followingAvatar: number;
   followingName: string;
@@ -78,7 +79,8 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     metaMt: "mt-3",
     headerPb: "pb-2",
     headerPt: "pt-2",
-    densityMt: "mt-3",
+    densityMt: "mt-0",
+    metaDensityGap: "gap-3",
     followingLabel: "text-[10px]",
     followingAvatar: 50,
     followingName: "text-[11px]",
@@ -123,7 +125,8 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     metaMt: "mt-2.5",
     headerPb: "pb-1.5",
     headerPt: "pt-1.5",
-    densityMt: "mt-4.5",
+    densityMt: "mt-0",
+    metaDensityGap: "gap-5",
     followingLabel: "text-[9px]",
     followingAvatar: 40,
     followingName: "text-[10px]",
@@ -168,7 +171,8 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     metaMt: "mt-2",
     headerPb: "pb-1.5",
     headerPt: "pt-1",
-    densityMt: "mt-2",
+    densityMt: "mt-0",
+    metaDensityGap: "gap-3",
     followingLabel: "text-[8px]",
     followingAvatar: 34,
     followingName: "text-[9px]",
@@ -213,7 +217,8 @@ const DENSITY_TOKENS: Record<ClassicShuffleDensity, ClassicShuffleDensityTokens>
     metaMt: "mt-1.5",
     headerPb: "pb-1",
     headerPt: "pt-1",
-    densityMt: "mt-1.5",
+    densityMt: "mt-0",
+    metaDensityGap: "gap-2.5",
     followingLabel: "text-[8px]",
     followingAvatar: 28,
     followingName: "text-[8px]",
@@ -268,6 +273,20 @@ export function getClassicShuffleDensityTokens(
   density: ClassicShuffleDensity,
 ): ClassicShuffleDensityTokens {
   return DENSITY_TOKENS[density];
+}
+
+/** Siguiendo strip sizes derived from the same zoom scale as profile rows. */
+export function getFollowingScaledSizes(density: ClassicShuffleDensity) {
+  const scale = getClassicShuffleDensityTokens(density).scale;
+
+  return {
+    labelPx: Math.max(8, Math.round(10 * scale)),
+    textPx: Math.max(9, Math.round(11 * scale)),
+    avatarPx: Math.max(26, Math.round(52 * scale)),
+    itemWPx: Math.max(34, Math.round(54 * scale)),
+    btnPx: Math.max(8, Math.round(12 * scale)),
+    btnPy: Math.max(4, Math.round(7 * scale)),
+  };
 }
 
 /** @deprecated Use getClassicShuffleDensityTokens */

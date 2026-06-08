@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { resolveStoryViewerId } from "@/lib/stories/storyAuthor";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -29,6 +30,7 @@ import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { resolveStoryViewerId } from "@/lib/stories/storyAuthor";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
@@ -131,7 +133,7 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     if (!profile?.uid) return;
-    refreshStoriesIndex(currentUid, false).catch(() => {});
+    refreshStoriesIndex(resolveStoryViewerId(auth.currentUser), false).catch(() => {});
     prefetchOwnerStories(profile.uid, profile.username);
   }, [profile?.uid, profile?.username, currentUid]);
 
@@ -254,9 +256,9 @@ export default function PublicProfilePage() {
   const heroPhoto = gallery[heroIndex] || profile.fotoPrincipal || "";
 
   return (
-    <main className="min-h-screen bg-black text-white pb-32 relative overflow-x-hidden">
+    <main className="relative min-h-screen overflow-x-hidden bg-black pb-32 text-white">
       <div
-        className="absolute inset-x-0 top-0 z-[1] overflow-hidden bg-black"
+        className="pointer-events-none absolute left-1/2 top-0 z-[1] w-screen max-w-none -translate-x-1/2 overflow-hidden bg-black"
         style={{ height: profileUi.heroHeight }}
       >
         <div
@@ -268,31 +270,31 @@ export default function PublicProfilePage() {
           onTouchStart={heroSwipe.onTouchStart}
           onTouchMove={heroSwipe.onTouchMove}
           onTouchEnd={heroSwipe.onTouchEnd}
-          className={`relative h-full w-full ${heroSwipe.touchActionClass}`}
+          className={`pointer-events-auto relative h-full w-full ${heroSwipe.touchActionClass}`}
         >
           {heroPhoto ? (
             <SensitiveMediaShell
               url={heroPhoto}
               staticRequiresBlur={blurPhoto}
               profile={profile}
-              className="relative h-full w-full"
+              className="relative h-full w-full bg-black"
               overlayLabel="Foto moderada"
             >
               <img
                 src={heroPhoto}
                 alt={profile.username}
-                className="h-full w-full object-cover object-center"
+                className="h-full w-full scale-[1.03] object-cover object-center"
                 draggable={false}
               />
             </SensitiveMediaShell>
           ) : (
-            <div className="w-full h-full bg-[radial-gradient(circle_at_35%_0%,rgba(139,92,246,.22),transparent_45%)]" />
+            <div className="h-full w-full bg-[radial-gradient(circle_at_35%_0%,rgba(139,92,246,.22),transparent_45%)]" />
           )}
         </div>
       </div>
 
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 z-[2] bg-gradient-to-b from-black/25 via-black/70 to-black"
+        className="pointer-events-none absolute left-1/2 top-0 z-[2] w-screen max-w-none -translate-x-1/2 bg-gradient-to-b from-black/25 via-black/70 to-black"
         style={{ height: profileUi.heroHeight }}
       />
 

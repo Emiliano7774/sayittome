@@ -2,7 +2,7 @@ import { doc, getDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 
 import { getAnonSessionId } from "@/lib/chat/anonSession";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
 
 export type StoryAuthor = {
@@ -86,6 +86,12 @@ export function resolveStoryViewerId(user: User | null) {
   }
 
   return getAnonSessionId();
+}
+
+/** Same identity used to mark and read story views (not getLikerId). */
+export function getStoryViewerKey() {
+  if (typeof window === "undefined") return "";
+  return resolveStoryViewerId(auth.currentUser);
 }
 
 export function canManageStory(

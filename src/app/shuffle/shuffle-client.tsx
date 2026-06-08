@@ -82,22 +82,24 @@ export default function ShuffleClient() {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={pool.handleShuffleClick}
-            className={`${tokens.metaMt} flex w-full items-center justify-between font-medium text-white/38 transition active:text-white/55 ${tokens.metaText}`}
-          >
-            <span>{t("shuffle_change_result")}</span>
+          <div className={`${tokens.metaMt} flex flex-col ${tokens.metaDensityGap}`}>
+            <button
+              type="button"
+              onClick={pool.handleShuffleClick}
+              className={`flex w-full items-center justify-between font-medium text-white/38 transition active:text-white/55 ${tokens.metaText}`}
+            >
+              <span>{t("shuffle_change_result")}</span>
 
-            <span className="flex items-center gap-1.5">
-              <User size={tokens.metaIcon} />
-              {t("shuffle_people_count", {
-                count: String(pool.livePeopleCount),
-              })}
-            </span>
-          </button>
+              <span className="flex items-center gap-1.5">
+                <User size={tokens.metaIcon} />
+                {t("shuffle_people_count", {
+                  count: String(pool.livePeopleCount),
+                })}
+              </span>
+            </button>
 
-          <ClassicShuffleDensityControl className={tokens.densityMt} />
+            <ClassicShuffleDensityControl className={tokens.densityMt} />
+          </div>
 
           <ClassicAnonConnectCard />
         </div>

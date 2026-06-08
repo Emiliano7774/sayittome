@@ -8,7 +8,7 @@ import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
 import { isShuffleProfileOnline } from "@/lib/presence";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { getLikerId } from "@/lib/likes/profileLike";
+import { getStoryViewerKey } from "@/lib/stories/storyAuthor";
 import {
   defaultShuffleFilters,
   loadStoredShuffleFilters,
@@ -347,7 +347,7 @@ export function useShufflePool() {
 
     const scheduleStoriesIndex = () => {
       const run = () =>
-        refreshStoriesIndex(getLikerId(), false)
+        refreshStoriesIndex(getStoryViewerKey(), false)
           .then(() => {
             storyOwnerUidsRef.current = new Set(
               getCachedStoryGroups().map((group) => group.ownerUid),
