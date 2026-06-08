@@ -25,6 +25,12 @@ type PersistAnonMessageInput = {
   targetPhoto: string;
   messageText: string;
   reply?: string;
+  storyReply?: {
+    storyId: string;
+    mediaUrl?: string;
+    mediaType?: string;
+    ownerUsername?: string;
+  };
   type?: "text" | "audio" | "image" | "video";
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
@@ -105,6 +111,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     ...(isOwnerReply && targetUid ? { profileUid: targetUid } : {}),
     [`readBy.${messageAuthorId}`]: true,
     ...(reply ? { reply } : {}),
+    ...(input.storyReply ? { storyReply: input.storyReply } : {}),
     ...(type !== "text" ? { type } : {}),
     ...(mediaUrl ? { mediaUrl } : {}),
     ...(source ? { source } : {}),

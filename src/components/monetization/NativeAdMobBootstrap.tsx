@@ -11,6 +11,7 @@ import {
   removeAdMobBanner,
   showAdMobBanner,
   showAdMobInterstitial,
+  syncAdMobBannerPosition,
 } from "@/lib/monetization/admobService";
 import {
   shouldLoadAdMobInterstitials,
@@ -122,6 +123,34 @@ export default function NativeAdMobBootstrap() {
       await removeAdMobBanner();
     })();
   }, [pathname]);
+
+  useEffect(() => {
+    if (!isNativeAppShell()) return;
+
+    const sync = () => {
+      if (!shouldShowAdMobBanner(window.location.pathname)) return;
+      void syncAdMobBannerPosition();
+    };
+
+    sync();
+
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    window.addEventListener("resize", sync);
+    window.visualViewport?.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", sync);
+      window.visualViewport?.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+    };
+  }, []);
 
   return null;
 }

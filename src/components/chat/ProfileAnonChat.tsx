@@ -69,6 +69,12 @@ type Message = {
   mine: boolean;
   fromUid?: string;
   reply?: string;
+  storyReply?: {
+    storyId: string;
+    mediaUrl?: string;
+    mediaType?: string;
+    ownerUsername?: string;
+  };
   type?: "text" | "audio" | "image" | "video";
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
@@ -314,6 +320,7 @@ export default function ProfileAnonChat({
             senderKind?: string;
             mine?: boolean;
             reply?: string;
+            storyReply?: Message["storyReply"];
             readBy?: Record<string, boolean>;
             type?: Message["type"];
             mediaUrl?: string;
@@ -341,6 +348,7 @@ export default function ProfileAnonChat({
             mine,
             fromUid: from,
             reply: data.reply,
+            storyReply: data.storyReply,
             type: data.type,
             mediaUrl: data.mediaUrl,
             source: data.source,
@@ -894,6 +902,21 @@ export default function ProfileAnonChat({
                       {message.reply}
                     </div>
                   )}
+
+                  {message.storyReply?.mediaUrl ? (
+                    <div className="mb-2 overflow-hidden rounded-lg border border-white/10 bg-black/30">
+                      <img
+                        src={message.storyReply.mediaUrl}
+                        alt=""
+                        className="max-h-28 w-full object-cover"
+                      />
+                      {message.storyReply.ownerUsername ? (
+                        <p className="px-3 py-1.5 text-xs font-semibold text-white/55">
+                          @{message.storyReply.ownerUsername}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {message.viewOnce && (message.type === "image" || message.type === "video") ? (
                     <button

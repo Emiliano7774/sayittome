@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, Trash2, UserRound, X } from "lucide-react";
+import { Heart, Send, Trash2, UserRound, X } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   doc,
@@ -26,6 +26,7 @@ import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories"
 import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import { markStoryViewedLocally } from "@/lib/stories/storiesIndexStore";
+import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
 import type { StoryItem } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -36,6 +37,8 @@ type Props = {
 };
 
 const DEFAULT_IMAGE_MS = 5500;
+const SWIPE_REPLY_PX = 56;
+const TAP_MAX_MS = 380;
 
 export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props) {
   const router = useRouter();
@@ -50,14 +53,25 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const [likeBusy, setLikeBusy] = useState(false);
   const [viewerUid, setViewerUid] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
   const timerRef = useRef<number | null>(null);
   const startedRef = useRef(false);
   const viewedRef = useRef<Set<string>>(new Set());
+  const pointerRef = useRef({ x: 0, y: 0, t: 0, swiped: false });
 
   useEffect(() => {
     setLocalStories(stories);
     setIndex(0);
   }, [stories]);
+
+  useEffect(() => {
+    document.body.classList.add("sayittome-story-viewer-open");
+    return () => {
+      document.body.classList.remove("sayittome-story-viewer-open");
+    };
+  }, []);
 
   const current = localStories[index];
   const resolvedOwnerUid = ownerUid || current?.ownerUid || "";
@@ -71,9 +85,12 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     !anonymousStory &&
     Boolean(profileUsername) &&
     !isInvalidPublicStoryUsername(profileUsername);
+  const canReply = canOpenProfile;
   const needsBlur = current ? storyRequiresBlur(current) : false;
-  const isPaused = paused || (needsBlur && blurLocked);
+  const isPaused = paused || replyOpen || (needsBlur && blurLocked);
   const canDelete = current ? canManageStory(current, viewerUid) : false;
+  const topChromeHidden = paused && !blurLocked;
+  const bottomChromeHidden = topChromeHidden || replyOpen;
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -142,6 +159,8 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const goNext = useCallback(() => {
     setProgress(0);
     setBlurLocked(storyRequiresBlur(localStories[Math.min(index + 1, localStories.length - 1)] || current));
+    setReplyOpen(false);
+    setReplyText("");
 
     if (index >= localStories.length - 1) {
       router.back();
@@ -155,6 +174,8 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     setProgress(0);
     const prevIndex = Math.max(0, index - 1);
     setBlurLocked(storyRequiresBlur(localStories[prevIndex]));
+    setReplyOpen(false);
+    setReplyText("");
     setIndex(prevIndex);
   }, [index, localStories]);
 
@@ -193,6 +214,47 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   useEffect(() => {
     if (current) setBlurLocked(storyRequiresBlur(current));
   }, [current?.id]);
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("[data-story-chrome]")) return;
+
+    pointerRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      t: Date.now(),
+      swiped: false,
+    };
+    setPaused(true);
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!canReply || replyOpen || pointerRef.current.swiped) return;
+
+    const deltaY = pointerRef.current.y - event.clientY;
+    if (deltaY >= SWIPE_REPLY_PX) {
+      pointerRef.current.swiped = true;
+      setReplyOpen(true);
+    }
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    setPaused(false);
+
+    if (pointerRef.current.swiped || replyOpen) return;
+
+    const elapsed = Date.now() - pointerRef.current.t;
+    const deltaX = event.clientX - pointerRef.current.x;
+    const deltaY = Math.abs(event.clientY - pointerRef.current.y);
+
+    if (elapsed > TAP_MAX_MS || Math.abs(deltaX) > 48 || deltaY > 32) return;
+
+    const third = window.innerWidth / 3;
+    if (event.clientX < third) {
+      goPrev();
+    } else if (event.clientX > third * 2) {
+      goNext();
+    }
+  }
 
   async function handleLike() {
     if (!current || !resolvedOwnerUid || likeBusy) return;
@@ -254,6 +316,24 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     }
   }
 
+  async function handleSendReply() {
+    if (!current || !canReply || !replyText.trim() || replySending) return;
+
+    setReplySending(true);
+
+    try {
+      const chatId = await sendStoryReplyMessage(current, profileUsername, replyText.trim());
+      router.push(
+        `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(profileUsername)}`,
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert(t("chat_save_fail"));
+    } finally {
+      setReplySending(false);
+    }
+  }
+
   function openProfile() {
     if (!canOpenProfile) return;
     router.push(`/u/${encodeURIComponent(profileUsername)}`);
@@ -265,7 +345,13 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
 
   return (
     <main className="fixed inset-0 z-[99999] bg-black text-white">
-      <div className="absolute left-0 right-0 top-0 z-40 flex gap-1 px-3 pb-2 pt-4">
+      <div
+        className={[
+          "absolute left-0 right-0 top-0 z-40 flex gap-1 px-3 pb-2 pt-4 transition-opacity duration-150",
+          topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+        ].join(" ")}
+        data-story-chrome
+      >
         {localStories.map((story, i) => (
           <div
             key={story.id}
@@ -285,7 +371,11 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
       <button
         type="button"
         onClick={() => router.back()}
-        className="absolute right-4 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50"
+        className={[
+          "absolute right-4 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 transition-opacity duration-150",
+          topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+        ].join(" ")}
+        data-story-chrome
         aria-label={t("common_cancel")}
       >
         <X size={26} />
@@ -296,14 +386,24 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
           type="button"
           onClick={handleDeleteStory}
           disabled={deleting}
-          className="absolute right-20 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-red-300 disabled:opacity-50"
+          className={[
+            "absolute right-20 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-red-300 transition-opacity duration-150 disabled:opacity-50",
+            topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+          ].join(" ")}
+          data-story-chrome
           aria-label={t("stories_delete")}
         >
           <Trash2 size={22} />
         </button>
       ) : null}
 
-      <div className="absolute left-4 top-14 z-50 max-w-[70%]">
+      <div
+        className={[
+          "absolute left-4 top-14 z-50 max-w-[70%] transition-opacity duration-150",
+          topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+        ].join(" ")}
+        data-story-chrome
+      >
         <p className="truncate text-lg font-black">
           {anonymousStory ? displayName : `@${displayName}`}
         </p>
@@ -312,26 +412,16 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         ) : null}
       </div>
 
-      <button
-        type="button"
-        aria-label="Anterior"
-        className="absolute left-0 top-0 z-30 h-full w-1/3"
-        onClick={goPrev}
-        onMouseDown={() => setPaused(true)}
-        onMouseUp={() => setPaused(false)}
-        onTouchStart={() => setPaused(true)}
-        onTouchEnd={() => setPaused(false)}
-      />
-
-      <button
-        type="button"
-        aria-label="Siguiente"
-        className="absolute right-0 top-0 z-30 h-full w-1/3"
-        onClick={goNext}
-        onMouseDown={() => setPaused(true)}
-        onMouseUp={() => setPaused(false)}
-        onTouchStart={() => setPaused(true)}
-        onTouchEnd={() => setPaused(false)}
+      <div
+        className={[
+          "absolute inset-0 z-20 touch-none",
+          replyOpen ? "pointer-events-none" : "",
+        ].join(" ")}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => setPaused(false)}
+        aria-hidden
       />
 
       <div className="relative flex h-full items-center justify-center pt-10">
@@ -380,7 +470,19 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         ) : null}
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 z-50 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4">
+      <div
+        className={[
+          "absolute bottom-0 left-0 right-0 z-50 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4 transition-opacity duration-150",
+          bottomChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+        ].join(" ")}
+        data-story-chrome
+      >
+        {canReply && !replyOpen ? (
+          <p className="mb-3 text-center text-xs font-semibold text-white/45">
+            {t("story_reply_hint")}
+          </p>
+        ) : null}
+
         <div className="flex items-end justify-between gap-4">
           {canOpenProfile ? (
             <button
@@ -429,6 +531,49 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
           </div>
         </div>
       </div>
+
+      {replyOpen && canReply ? (
+        <div
+          className="absolute inset-x-0 bottom-0 z-[60] border-t border-white/10 bg-black/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md"
+          data-story-chrome
+        >
+          <div className="mb-3 flex items-center gap-3">
+            {current.mediaUrl ? (
+              <img
+                src={current.mediaUrl}
+                alt=""
+                className="h-12 w-12 rounded-lg object-cover"
+              />
+            ) : null}
+            <p className="truncate text-sm font-semibold text-white/70">@{profileUsername}</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              value={replyText}
+              onChange={(event) => setReplyText(event.target.value)}
+              placeholder={t("story_reply_placeholder")}
+              className="min-w-0 flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none placeholder:text-white/35"
+              autoFocus
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleSendReply();
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void handleSendReply()}
+              disabled={replySending || !replyText.trim()}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white disabled:opacity-40"
+              aria-label={t("story_reply_send")}
+            >
+              <Send size={18} />
+            </button>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

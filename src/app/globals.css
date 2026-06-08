@@ -42,10 +42,15 @@ body.sayittome-native-shell .sayittome-page-shell {
 body.sayittome-native-shell.sayittome-admob-banner-visible .sayittome-bottom-nav,
 body.sayittome-native-shell.sayittome-admob-banner-visible nav.fixed.bottom-0,
 body.sayittome-native-shell.sayittome-admob-banner-visible .fixed.inset-x-0.bottom-0 {
-  bottom: calc(
-    var(--sayittome-admob-banner-height) + env(safe-area-inset-bottom, 0px) +
-      var(--sayittome-browser-chrome-bottom, 0px)
-  );
+  bottom: 0;
+}
+
+body.sayittome-story-viewer-open .sayittome-bottom-nav {
+  display: none !important;
+}
+
+body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
+  padding-bottom: 0 !important;
 }
 
 :root {
