@@ -256,7 +256,7 @@ export default function PublicProfilePage() {
   return (
     <main className="min-h-screen bg-black text-white pb-32 relative overflow-x-hidden">
       <div
-        className="absolute inset-x-0 top-0 z-[1]"
+        className="absolute inset-x-0 top-0 z-[1] overflow-hidden bg-black"
         style={{ height: profileUi.heroHeight }}
       >
         <div
@@ -299,19 +299,6 @@ export default function PublicProfilePage() {
         className="absolute inset-x-0 top-0 bg-gradient-to-t from-black via-black/95 to-transparent pointer-events-none z-[2]"
         style={{ height: profileUi.heroHeight }}
       />
-
-      {storyStatus.hasActive ? (
-        <div
-          className={[
-            "absolute inset-x-0 top-0 w-full z-[4] pointer-events-none",
-            storyStatus.hasUnseen
-              ? "shadow-[inset_0_0_0_4px_rgba(167,139,250,.55)]"
-              : "shadow-[inset_0_0_0_4px_rgba(82,82,91,.65)]",
-          ].join(" ")}
-          style={{ height: profileUi.heroHeight }}
-          aria-hidden
-        />
-      ) : null}
 
       <section
         className="relative z-[5] px-8 md:px-24 pointer-events-none"
@@ -424,7 +411,7 @@ export default function PublicProfilePage() {
       </section>
 
       {gallery.length > 1 && (
-        <section className="relative z-[6] px-8 md:px-24 -mt-2 mb-8">
+        <section className="relative z-[6] bg-black px-8 md:px-24 -mt-2 mb-8">
           <div className="flex gap-4 overflow-x-auto pb-3">
             {gallery.map((photo, index) => (
               <button
