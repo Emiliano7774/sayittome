@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -18,6 +18,8 @@ import { auth } from "@/lib/firebase";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
+import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
+import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
@@ -28,6 +30,7 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
+import { classicProfileScaleStyle } from "@/lib/shuffle/classicProfileScale";
 
 type Profile = {
   uid: string;
@@ -68,6 +71,9 @@ export default function PublicProfilePage() {
   const [currentUid, setCurrentUid] = useState("");
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const { density } = useClassicShuffleDensity();
+  const profileScaleStyle = classicProfileScaleStyle(density);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -156,6 +162,32 @@ export default function PublicProfilePage() {
     setViewerIndex((v) => (v + 1) % gallery.length);
   }
 
+  const prevHero = useCallback(() => {
+    if (gallery.length <= 1) return;
+    setHeroIndex((v) => (v - 1 + gallery.length) % gallery.length);
+  }, [gallery.length]);
+
+  const nextHero = useCallback(() => {
+    if (gallery.length <= 1) return;
+    setHeroIndex((v) => (v + 1) % gallery.length);
+  }, [gallery.length]);
+
+  const heroSwipe = useHorizontalSwipe({
+    enabled: gallery.length > 1,
+    onSwipeLeft: nextHero,
+    onSwipeRight: prevHero,
+  });
+
+  const viewerSwipe = useHorizontalSwipe({
+    enabled: viewerOpen && gallery.length > 1,
+    onSwipeLeft: nextPhoto,
+    onSwipeRight: prevPhoto,
+  });
+
+  useEffect(() => {
+    setHeroIndex(0);
+  }, [usernameParam, gallery.length]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!viewerOpen) return;
@@ -219,21 +251,24 @@ export default function PublicProfilePage() {
     );
   }
 
+  const heroPhoto = gallery[heroIndex] || profile.fotoPrincipal || "";
+
   return (
-    <main className="min-h-screen bg-black text-white pb-32 relative overflow-hidden">
+    <main className="min-h-screen bg-black text-white pb-32 relative overflow-x-hidden">
+      <div className="relative min-h-screen" style={profileScaleStyle}>
       <div className="absolute inset-0 h-[88vh] w-full z-[1]">
-        {profile.fotoPrincipal ? (
+        {heroPhoto ? (
           <SensitiveMediaShell
-            url={profile.fotoPrincipal}
+            url={heroPhoto}
             staticRequiresBlur={blurPhoto}
             profile={profile}
             className="relative h-full w-full"
             overlayLabel="Foto moderada"
           >
             <img
-              src={profile.fotoPrincipal}
+              src={heroPhoto}
               alt={profile.username}
-              className="w-full h-full object-cover opacity-55"
+              className="w-full h-full object-cover opacity-55 transition-opacity duration-200"
               draggable={false}
             />
           </SensitiveMediaShell>
@@ -259,9 +294,14 @@ export default function PublicProfilePage() {
 
       <button
         type="button"
-        onClick={() => openViewer(0)}
+        onClick={() => {
+          if (heroSwipe.consumeSwipe()) return;
+          openViewer(heroIndex);
+        }}
         disabled={gallery.length === 0}
-        className="absolute inset-0 h-[88vh] w-full z-[3] cursor-pointer pointer-events-auto disabled:cursor-default"
+        onTouchStart={heroSwipe.onTouchStart}
+        onTouchEnd={heroSwipe.onTouchEnd}
+        className="absolute inset-0 h-[88vh] w-full z-[3] cursor-pointer touch-pan-y pointer-events-auto disabled:cursor-default"
         aria-label="Ver fotos del perfil"
       />
 
@@ -353,12 +393,6 @@ export default function PublicProfilePage() {
         )}
       </section>
 
-      {profile.createdAtLabel && (
-        <ProfileCreatedFooter
-          label={`Perfil creado el ${profile.createdAtLabel}`}
-        />
-      )}
-
       {gallery.length > 1 && (
         <section className="relative z-[6] px-8 md:px-24 -mt-2 mb-8">
           <div className="flex gap-4 overflow-x-auto pb-3">
@@ -366,7 +400,10 @@ export default function PublicProfilePage() {
               <button
                 type="button"
                 key={`${photo}-${index}`}
-                onClick={() => openViewer(index)}
+                onClick={() => {
+                  setHeroIndex(index);
+                  openViewer(index);
+                }}
                 className="shrink-0 w-20 h-20 rounded-2xl overflow-hidden border border-white/15 bg-white/5 active:scale-95 transition"
               >
                 <SensitiveMediaShell
@@ -390,8 +427,19 @@ export default function PublicProfilePage() {
         </section>
       )}
 
+      {profile.createdAtLabel ? (
+        <ProfileCreatedFooter
+          label={`Perfil creado el ${profile.createdAtLabel}`}
+        />
+      ) : null}
+      </div>
+
       {viewerOpen && gallery.length > 0 && (
-        <div className="fixed inset-0 z-[999999] bg-black/95 flex items-center justify-center">
+        <div
+          className="fixed inset-0 z-[999999] bg-black/95 flex items-center justify-center"
+          onTouchStart={viewerSwipe.onTouchStart}
+          onTouchEnd={viewerSwipe.onTouchEnd}
+        >
           <button
             type="button"
             onClick={closeViewer}

@@ -1,34 +1,22 @@
-"use client";
-
-import { createPortal } from "react-dom";
-import { useEffect, useState } from "react";
-
 type Props = {
   label: string;
+  className?: string;
 };
 
-/** Always pinned above the app bottom nav, independent of page scroll. */
-export default function ProfileCreatedFooter({ label }: Props) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted || !label) {
+/** Bottom-right signature at the end of the profile — scrolls with content, not fixed. */
+export default function ProfileCreatedFooter({ label, className = "" }: Props) {
+  if (!label) {
     return null;
   }
 
-  return createPortal(
-    <div
-      className="sayittome-profile-created-footer pointer-events-none fixed inset-x-0 z-[9990] px-6 text-center text-sm italic text-white/35 md:text-base"
-      style={{
-        bottom: "calc(var(--sayittome-bottom-ui, 74px) + 0.5rem)",
-        transform: "translateZ(0)",
-      }}
+  return (
+    <footer
+      className={[
+        "pointer-events-none w-full px-6 pb-8 pt-4 text-right text-xs italic text-white/35 md:px-10 md:text-sm",
+        className,
+      ].join(" ")}
     >
       {label}
-    </div>,
-    document.body,
+    </footer>
   );
 }

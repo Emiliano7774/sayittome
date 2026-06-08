@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { BookOpen, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -11,11 +11,14 @@ import { isAdminEmail } from "@/lib/admin/isAdmin";
 import ProfileEntryGate from "@/components/profile/ProfileEntryGate";
 import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
+import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
+import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
 import { useLocaleDateFormatter } from "@/hooks/useLocaleFormatters";
+import { classicProfileScaleStyle } from "@/lib/shuffle/classicProfileScale";
 
 type MediaItem = {
   url: string;
@@ -32,6 +35,9 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [showAnonGate, setShowAnonGate] = useState(false);
+  const [coverIndex, setCoverIndex] = useState(0);
+  const { density } = useClassicShuffleDensity();
+  const profileScaleStyle = classicProfileScaleStyle(density);
 
   useEffect(() => {
     async function loadProfile(user: { uid: string }) {
@@ -105,26 +111,52 @@ export default function SettingsPage() {
   }, [profile]);
 
   const portada = profile?.fotoPrincipal || media.find((m) => m.type === "image")?.url || "";
+  const coverPhoto =
+    (media[coverIndex]?.type === "image" ? media[coverIndex]?.url : null) ||
+    portada ||
+    "";
   const selected = selectedIndex === null ? null : media[selectedIndex] || null;
 
-  function openCover() {
-    if (!media.length) return;
-    const index = Math.max(0, media.findIndex((m) => m.url === portada));
-    setSelectedIndex(index);
-  }
-
-  function previousMedia() {
+  const previousMedia = useCallback(() => {
     setSelectedIndex((prev) => {
       if (prev === null) return 0;
       return prev <= 0 ? media.length - 1 : prev - 1;
     });
-  }
+  }, [media.length]);
 
-  function nextMedia() {
+  const nextMedia = useCallback(() => {
     setSelectedIndex((prev) => {
       if (prev === null) return 0;
       return prev >= media.length - 1 ? 0 : prev + 1;
     });
+  }, [media.length]);
+
+  const prevCover = useCallback(() => {
+    if (media.length <= 1) return;
+    setCoverIndex((prev) => (prev <= 0 ? media.length - 1 : prev - 1));
+  }, [media.length]);
+
+  const nextCover = useCallback(() => {
+    if (media.length <= 1) return;
+    setCoverIndex((prev) => (prev >= media.length - 1 ? 0 : prev + 1));
+  }, [media.length]);
+
+  const coverSwipe = useHorizontalSwipe({
+    enabled: media.length > 1,
+    onSwipeLeft: nextCover,
+    onSwipeRight: prevCover,
+  });
+
+  const viewerSwipe = useHorizontalSwipe({
+    enabled: selectedIndex !== null && media.length > 1,
+    onSwipeLeft: nextMedia,
+    onSwipeRight: previousMedia,
+  });
+
+  function openCover() {
+    if (!media.length) return;
+    const index = Math.max(0, coverIndex);
+    setSelectedIndex(index);
   }
 
   if (loading) {
@@ -171,11 +203,21 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white pb-28">
+    <main className="min-h-screen bg-black text-white pb-28 overflow-x-hidden">
+      <div className="relative min-h-screen" style={profileScaleStyle}>
       <section className="relative min-h-screen overflow-hidden px-6 sm:px-10 lg:px-16 py-10">
-        {portada && (
-          <button type="button" onClick={openCover} className="absolute inset-0 w-full h-full">
-            <img src={portada} alt={username} className="w-full h-full object-cover opacity-45 blur-[1px]" />
+        {coverPhoto && (
+          <button
+            type="button"
+            onClick={() => {
+              if (coverSwipe.consumeSwipe()) return;
+              openCover();
+            }}
+            onTouchStart={coverSwipe.onTouchStart}
+            onTouchEnd={coverSwipe.onTouchEnd}
+            className="absolute inset-0 w-full h-full touch-pan-y"
+          >
+            <img src={coverPhoto} alt={username} className="w-full h-full object-cover opacity-45 blur-[1px] transition-opacity duration-200" />
           </button>
         )}
 
@@ -248,8 +290,9 @@ export default function SettingsPage() {
               <p className="mt-5 text-5xl font-black">{profile?.historiasCount || 0}</p>
               <p className="text-white/70 text-2xl">{t("settings_stories_stat")}</p>
             </div>
-        <div className="mt-32 flex flex-col lg:flex-row lg:justify-between gap-10 items-end">
-          <div className="max-w-4xl">
+          </div>
+
+          <div className="mt-32 max-w-4xl">
             <p className="text-2xl sm:text-3xl text-white/82 leading-snug pt-4">
               {bio}
             </p>
@@ -259,21 +302,22 @@ export default function SettingsPage() {
                 {profile.provincia}
               </p>
             )}
-          </div></div>
-
           </div>
+
+          {createdAtLabel ? (
+            <ProfileCreatedFooter
+              label={t("settings_profile_created", { date: createdAtLabel })}
+            />
+          ) : null}
         </div>
       </section>
-
-      {createdAtLabel && (
-        <ProfileCreatedFooter
-          label={t("settings_profile_created", { date: createdAtLabel })}
-        />
-      )}
+      </div>
 
       {selected && (
         <div
           onClick={() => setSelectedIndex(null)}
+          onTouchStart={viewerSwipe.onTouchStart}
+          onTouchEnd={viewerSwipe.onTouchEnd}
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-5"
         >
           {media.length > 1 && (

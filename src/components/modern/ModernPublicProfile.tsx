@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { ArrowLeft, BadgeCheck, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -12,6 +12,7 @@ import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import HeaderControls from "@/components/HeaderControls";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
+import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
@@ -71,6 +72,7 @@ export default function ModernPublicProfile({
     : Number(profile.historias || profile.stories || 0);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
+  const [heroIndex, setHeroIndex] = useState(0);
 
   const coverImage = profile.fotoPortada || profile.fotoPrincipal;
   const gallery = useMemo(() => {
@@ -91,8 +93,42 @@ export default function ModernPublicProfile({
       router.push(story.storyPath);
       return;
     }
-    openViewer(0);
+    openViewer(heroIndex);
   }
+
+  const prevPhoto = useCallback(() => {
+    if (gallery.length <= 1) return;
+    setViewerIndex((v) => (v - 1 + gallery.length) % gallery.length);
+  }, [gallery.length]);
+
+  const nextPhoto = useCallback(() => {
+    if (gallery.length <= 1) return;
+    setViewerIndex((v) => (v + 1) % gallery.length);
+  }, [gallery.length]);
+
+  const prevHero = useCallback(() => {
+    if (gallery.length <= 1) return;
+    setHeroIndex((v) => (v - 1 + gallery.length) % gallery.length);
+  }, [gallery.length]);
+
+  const nextHero = useCallback(() => {
+    if (gallery.length <= 1) return;
+    setHeroIndex((v) => (v + 1) % gallery.length);
+  }, [gallery.length]);
+
+  const heroSwipe = useHorizontalSwipe({
+    enabled: gallery.length > 1 && !profile.videoPortada,
+    onSwipeLeft: nextHero,
+    onSwipeRight: prevHero,
+  });
+
+  const viewerSwipe = useHorizontalSwipe({
+    enabled: viewerOpen && gallery.length > 1,
+    onSwipeLeft: nextPhoto,
+    onSwipeRight: prevPhoto,
+  });
+
+  const heroPhoto = gallery[heroIndex] || coverImage;
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
@@ -128,9 +164,14 @@ export default function ModernPublicProfile({
             <div className="relative z-0 h-80 overflow-hidden">
               <button
                 type="button"
-                onClick={() => openViewer(0)}
+                onClick={() => {
+                  if (heroSwipe.consumeSwipe()) return;
+                  openViewer(heroIndex);
+                }}
                 disabled={gallery.length === 0}
-                className="absolute inset-0 z-[1] disabled:cursor-default"
+                onTouchStart={heroSwipe.onTouchStart}
+                onTouchEnd={heroSwipe.onTouchEnd}
+                className="absolute inset-0 z-[2] touch-pan-y disabled:cursor-default"
                 aria-label="Ver fotos del perfil"
               />
               {profile.videoPortada ? (
@@ -151,18 +192,18 @@ export default function ModernPublicProfile({
                     playsInline
                   />
                 </SensitiveMediaShell>
-              ) : coverImage ? (
+              ) : heroPhoto ? (
                 <SensitiveMediaShell
-                  url={coverImage}
+                  url={heroPhoto}
                   staticRequiresBlur={blurPhoto}
                   profile={profile}
                   className="h-full w-full"
                   overlayLabel={t("profile_photo_moderated")}
                 >
                   <img
-                    src={coverImage}
+                    src={heroPhoto}
                     alt={profile.username}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover transition-opacity duration-200"
                   />
                 </SensitiveMediaShell>
               ) : (
@@ -286,16 +327,21 @@ export default function ModernPublicProfile({
             </div>
           </section>
         </div>
+
+        {profile.createdAtLabel ? (
+          <ProfileCreatedFooter
+            label={t("settings_profile_created", { date: profile.createdAtLabel })}
+            className="max-w-3xl mx-auto"
+          />
+        ) : null}
       </div>
 
-      {profile.createdAtLabel ? (
-        <ProfileCreatedFooter
-          label={t("settings_profile_created", { date: profile.createdAtLabel })}
-        />
-      ) : null}
-
       {viewerOpen && gallery.length > 0 ? (
-        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95">
+        <div
+          className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95"
+          onTouchStart={viewerSwipe.onTouchStart}
+          onTouchEnd={viewerSwipe.onTouchEnd}
+        >
           <button
             type="button"
             onClick={() => setViewerOpen(false)}
