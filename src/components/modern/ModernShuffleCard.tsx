@@ -57,7 +57,11 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
                 <div
                   className={[
                     "flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-[3px] border-black bg-gradient-to-br from-white to-zinc-500 sm:h-16 sm:w-16",
-                    story.hasUnseen ? "ring-2 ring-fuchsia-400" : "",
+                    story.hasUnseen
+                      ? "ring-2 ring-fuchsia-400"
+                      : story.hasActive
+                        ? "ring-2 ring-zinc-600"
+                        : "",
                   ].join(" ")}
                 >
                   {profile.photo ? (

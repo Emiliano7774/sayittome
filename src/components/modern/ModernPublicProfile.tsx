@@ -226,7 +226,11 @@ export default function ModernPublicProfile({
                   onClick={openPrimary}
                   className={[
                     "h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-800",
-                    story.hasUnseen ? "ring-2 ring-fuchsia-400 ring-offset-0" : "",
+                    story.hasUnseen
+                      ? "ring-2 ring-fuchsia-400 ring-offset-0"
+                      : story.hasActive
+                        ? "ring-2 ring-zinc-600 ring-offset-0"
+                        : "",
                   ].join(" ")}
                 >
                   {profile.fotoPrincipal ? (

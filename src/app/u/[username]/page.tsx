@@ -388,7 +388,12 @@ export default function PublicProfilePage() {
                 ? () => router.push(storyStatus.storyPath!)
                 : undefined
             }
-            ring={storyStatus.hasActive && storyStatus.hasUnseen ? true : undefined}
+            ring={
+              storyStatus.hasActive
+                ? storyStatus.hasUnseen
+                : undefined
+            }
+            ringSeen={storyStatus.hasActive && !storyStatus.hasUnseen}
           />
         </div>
 
@@ -517,6 +522,7 @@ function StatBubble({
   icon,
   onClick,
   ring,
+  ringSeen,
   ui,
 }: {
   color: string;
@@ -525,13 +531,18 @@ function StatBubble({
   icon: ReactNode;
   onClick?: () => void;
   ring?: boolean;
+  ringSeen?: boolean;
   ui: ReturnType<typeof getClassicProfileUiTokens>;
 }) {
   const bubble = (
     <div
       className={[
         `${color} flex items-center justify-center rounded-full shadow-[0_0_35px_rgba(255,255,255,.12)]`,
-        ring ? "ring-4 ring-violet-400/70" : "",
+        ring
+          ? "ring-4 ring-violet-400/70"
+          : ringSeen
+            ? "ring-4 ring-zinc-600/80"
+            : "",
       ].join(" ")}
       style={{ width: ui.statBubble, height: ui.statBubble }}
     >

@@ -114,12 +114,11 @@ function StoryAvatarButton({
     </div>
   );
 
-  const inner =
-    status.hasActive && status.hasUnseen ? (
-      <StoryRing active>{avatar}</StoryRing>
-    ) : (
-      avatar
-    );
+  const inner = status.hasActive ? (
+    <StoryRing active={status.hasUnseen}>{avatar}</StoryRing>
+  ) : (
+    avatar
+  );
 
   return (
     <button
