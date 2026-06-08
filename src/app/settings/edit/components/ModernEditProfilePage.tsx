@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
-import { ArrowLeft, Camera, Film, GripVertical, ImagePlus, Save, Star, Trash2 } from "lucide-react";
+import { ArrowLeft, Camera, Film, GripVertical, ImagePlus, Star, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { auth, db, storage } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
+import { uploadFileToStorage } from "@/lib/media/uploadFileToStorage";
 import { persistProfileMediaScan } from "@/lib/moderation/persistMediaScan";
 import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
@@ -89,30 +90,30 @@ export default function ModernEditProfilePage() {
   ): Promise<string> {
     if (!user) return "";
 
+    const kind = guessMediaFileKind(file);
+    if (!kind) throw new Error("unsupported_media_type");
+
     const ext = file.name.split(".").pop() || "file";
     const prefix =
       folder === "avatar" ? "avatar" : folder === "cover" ? "cover" : "cover_video";
     const path = `usuarios/${user.uid}/perfil/${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const storageRef = ref(storage, path);
 
-    return new Promise<string>((resolve, reject) => {
-      const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
-      task.on("state_changed", undefined, reject, async () => {
-        const url = await getDownloadURL(task.snapshot.ref);
-        void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
-        resolve(url);
-      });
-    });
+    const url = await uploadFileToStorage({ path, file, kind });
+    void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
+    return url;
   }
 
   async function uploadFiles(files: FileList | null) {
     if (!user || !files?.length) return;
 
-    const selected = Array.from(files).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+    const selected = Array.from(files).filter(isMediaFile);
     const freeSlots = Math.max(0, 100 - media.length);
     const batch = selected.slice(0, freeSlots);
 
-    if (!batch.length) return;
+    if (!batch.length) {
+      setUploadError(t("edit_upload_fail"));
+      return;
+    }
 
     setUploading(true);
     setUploadError("");
@@ -122,22 +123,16 @@ export default function ModernEditProfilePage() {
     try {
       for (let i = 0; i < batch.length; i++) {
         const file = batch[i];
+        const kind = guessMediaFileKind(file);
+        if (!kind) continue;
+
         setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
 
         const ext = file.name.split(".").pop() || "file";
-        const kind = file.type.startsWith("video/") ? "video" : "image";
         const path = `usuarios/${user.uid}/perfil/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-        const storageRef = ref(storage, path);
-
-        await new Promise<void>((resolve, reject) => {
-          const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
-          task.on("state_changed", undefined, reject, async () => {
-            const url = await getDownloadURL(task.snapshot.ref);
-            void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
-            uploaded.push({ url, type: kind, path });
-            resolve();
-          });
-        });
+        const url = await uploadFileToStorage({ path, file, kind });
+        void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
+        uploaded.push({ url, type: kind, path });
       }
 
       setMedia((prev) => [...prev, ...uploaded].slice(0, 100));

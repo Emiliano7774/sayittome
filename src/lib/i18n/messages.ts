@@ -276,6 +276,10 @@ const es = {
   shuffle_following_register_btn: "Crear perfil",
   shuffle_change_result: "Cambiar resultado",
   shuffle_people_count: "{count} personas",
+  shuffle_density_label: "Cantidad de perfiles visibles",
+  shuffle_density_zoom_in: "Ver menos perfiles (más grande)",
+  shuffle_density_zoom_out: "Ver más perfiles (más chico)",
+  shuffle_density_profiles: "Mostrar {count} perfiles en pantalla",
   nav_shuffle_refresh: "Cambiar perfiles",
 
   setup_username_invalid: "El usuario debe tener entre 3 y 24 caracteres (letras, números, . _ -).",
@@ -719,6 +723,10 @@ const en: Record<keyof typeof es, string> = {
   shuffle_following_register_btn: "Create profile",
   shuffle_change_result: "Change result",
   shuffle_people_count: "{count} people",
+  shuffle_density_label: "Visible profiles on screen",
+  shuffle_density_zoom_in: "Show fewer profiles (larger)",
+  shuffle_density_zoom_out: "Show more profiles (smaller)",
+  shuffle_density_profiles: "Show {count} profiles on screen",
   nav_shuffle_refresh: "Refresh profiles",
 
   setup_username_invalid: "Username must be 3–24 characters (letters, numbers, . _ -).",

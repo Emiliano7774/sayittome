@@ -18,9 +18,11 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
-import { auth, db, storage } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
+import { uploadFileToStorage } from "@/lib/media/uploadFileToStorage";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
+import { useT } from "@/contexts/LocaleContext";
 
 type BadgeKey = "superMessages" | "likes" | "conversations" | "followers";
 
@@ -64,6 +66,7 @@ const badgeItems: Array<{
 
 export default function ClassicEditProfilePage() {
   const router = useRouter();
+  const t = useT();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [uid, setUid] = useState("");
@@ -81,6 +84,7 @@ export default function ClassicEditProfilePage() {
   const [principalIndex, setPrincipalIndex] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadText, setUploadText] = useState("");
+  const [uploadError, setUploadError] = useState("");
   const [saveError, setSaveError] = useState("");
 
   const [visibleBadges, setVisibleBadges] = useState<Record<BadgeKey, boolean>>({
@@ -173,55 +177,50 @@ export default function ClassicEditProfilePage() {
   async function uploadFiles(files: FileList | null) {
     if (!uid || !files?.length) return;
 
-    const selected = Array.from(files).filter(
-      (file) => file.type.startsWith("image/") || file.type.startsWith("video/")
-    );
+    const selected = Array.from(files).filter(isMediaFile);
 
     const freeSlots = Math.max(0, 100 - media.length);
     const batch = selected.slice(0, freeSlots);
 
-    if (!batch.length) return;
+    if (!batch.length) {
+      setUploadError(t("edit_upload_fail"));
+      return;
+    }
 
     setUploading(true);
+    setUploadError("");
 
     const uploaded: MediaItem[] = [];
 
-    for (let i = 0; i < batch.length; i++) {
-      const file = batch[i];
-      const kind = file.type.startsWith("video/") ? "video" : "image";
-      const ext = file.name.split(".").pop() || "file";
-      const path = `usuarios/${uid}/perfil/${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2)}.${ext}`;
+    try {
+      for (let i = 0; i < batch.length; i++) {
+        const file = batch[i];
+        const kind = guessMediaFileKind(file);
+        if (!kind) continue;
 
-      setUploadText(`Subiendo ${i + 1}/${batch.length}...`);
+        const ext = file.name.split(".").pop() || "file";
+        const path = `usuarios/${uid}/perfil/${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2)}.${ext}`;
 
-      await new Promise<void>((resolve, reject) => {
-        const storageRef = ref(storage, path);
-        const task = uploadBytesResumable(storageRef, file, {
-          contentType: file.type,
+        setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
+
+        const url = await uploadFileToStorage({ path, file, kind });
+        uploaded.push({
+          url,
+          type: kind,
+          path,
         });
+      }
 
-        task.on(
-          "state_changed",
-          undefined,
-          reject,
-          async () => {
-            const url = await getDownloadURL(task.snapshot.ref);
-            uploaded.push({
-              url,
-              type: kind,
-              path,
-            });
-            resolve();
-          }
-        );
-      });
+      setMedia((prev) => [...prev, ...uploaded].slice(0, 100));
+    } catch (error) {
+      console.error(error);
+      setUploadError(t("edit_upload_fail"));
+    } finally {
+      setUploading(false);
+      setUploadText("");
     }
-
-    setMedia((prev) => [...prev, ...uploaded].slice(0, 100));
-    setUploading(false);
-    setUploadText("");
   }
 
   function moveMedia(index: number, direction: -1 | 1) {
@@ -383,6 +382,10 @@ export default function ClassicEditProfilePage() {
                       {uploadText}
                     </p>
                   )}
+
+                  {uploadError ? (
+                    <p className="mt-3 text-sm font-semibold text-red-400">{uploadError}</p>
+                  ) : null}
 
                   <p className="text-white/35 mt-3 leading-relaxed">
                     Tocá la estrella para elegir la foto principal. Usá las flechas para mover el orden.

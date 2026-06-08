@@ -10,15 +10,10 @@ import {
   Timestamp,
 } from "firebase/firestore";
 
-import {
-  getDownloadURL,
-  ref,
-  uploadBytesResumable,
-} from "firebase/storage";
-
 import { useT } from "@/contexts/LocaleContext";
-import { auth, db, storage } from "@/lib/firebase";
-import { ensureStorageAuth } from "@/lib/auth/ensureStorageAuth";
+import { auth, db } from "@/lib/firebase";
+import { guessMediaFileKind } from "@/lib/media/fileKind";
+import { uploadFileToStorage } from "@/lib/media/uploadFileToStorage";
 import { resolveStoryAuthor } from "@/lib/stories/anonStories";
 import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
 
@@ -39,11 +34,12 @@ export default function NewStoryPage() {
   const preview = useMemo<PreviewData | null>(() => {
     if (!file) return null;
 
-    const type = file.type.startsWith("video/") ? "video" : "image";
+    const kind = guessMediaFileKind(file);
+    if (!kind) return null;
 
     return {
       url: URL.createObjectURL(file),
-      type,
+      type: kind,
     };
   }, [file]);
 
@@ -62,7 +58,6 @@ export default function NewStoryPage() {
     }
 
     try {
-      await ensureStorageAuth();
       const author = await resolveStoryAuthor(auth.currentUser);
       setUploading(true);
       setUploadProgress(0);
@@ -73,15 +68,15 @@ export default function NewStoryPage() {
       let mediaSize = 0;
 
       if (file) {
-        const isImage = file.type.startsWith("image/");
-        const isVideo = file.type.startsWith("video/");
+        const kind = guessMediaFileKind(file);
 
-        if (!isImage && !isVideo) {
+        if (!kind) {
           window.alert(t("story_new_alert_type"));
           setUploading(false);
           return;
         }
 
+        const isVideo = kind === "video";
         const maxSize = isVideo ? 120 * 1024 * 1024 : 20 * 1024 * 1024;
 
         if (file.size > maxSize) {
@@ -96,45 +91,30 @@ export default function NewStoryPage() {
           : `historias/${author.ownerUid}`;
 
         const path = `${storageFolder}/${Date.now()}-${safeName}`;
-        const storageRef = ref(storage, path);
 
-        const uploadTask = uploadBytesResumable(storageRef, file, {
-          contentType: file.type,
+        mediaUrl = await uploadFileToStorage({
+          path,
+          file,
+          kind,
+          onProgress: setUploadProgress,
         });
 
-        mediaUrl = await new Promise<string>((resolve, reject) => {
-          uploadTask.on(
-            "state_changed",
-            (snapshot) => {
-              const progress = Math.round(
-                (snapshot.bytesTransferred / snapshot.totalBytes) * 100,
-              );
-
-              setUploadProgress(progress);
-            },
-            reject,
-            async () => {
-              try {
-                const url = await getDownloadURL(uploadTask.snapshot.ref);
-                resolve(url);
-              } catch (error) {
-                reject(error);
-              }
-            },
-          );
-        });
-
-        mediaType = isVideo ? "video" : "image";
+        mediaType = kind;
         mediaName = file.name;
         mediaSize = file.size;
       }
 
       const now = new Date();
       const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const scanFields =
-        file != null
-          ? firestoreScanFields(await scanUploadFile(file))
-          : {};
+      let scanFields = {};
+
+      if (file) {
+        try {
+          scanFields = firestoreScanFields(await scanUploadFile(file));
+        } catch (scanError) {
+          console.error("story_scan_failed", scanError);
+        }
+      }
 
       await addDoc(collection(db, "historias"), {
         ownerUid: author.ownerUid,

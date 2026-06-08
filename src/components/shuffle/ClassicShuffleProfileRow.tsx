@@ -1,26 +1,30 @@
 "use client";
 
-import { memo, useSyncExternalStore } from "react";
+import { memo } from "react";
 
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
+import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
+import { getClassicShuffleDensityStyle } from "@/lib/shuffle/classicDensity";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
+  const { density } = useClassicShuffleDensity();
+  const style = getClassicShuffleDensityStyle(density);
   const username = profile.username;
   const bio = profile.bio || "Sin descripcion.";
 
   return (
     <div className="w-full border-b border-white/10 contain-[layout_paint_style]">
-      <div className="flex w-full items-center gap-4 py-4">
+      <div className={`flex w-full items-center ${style.gapClass} ${style.rowPadding}`}>
         <StoryAvatarButton
           ownerUid={profile.uid}
           username={username}
           photo={profile.photo}
-          size="md"
+          size={style.avatarSize}
           mode="delegate"
           blurPhoto={profile.blurPhoto}
           showOnline={profile.showOnline}
-          iconSize={28}
+          iconSize={style.iconSize}
         />
 
         <button
@@ -30,8 +34,8 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
           className="min-w-0 flex-1 text-left transition active:scale-[0.99]"
           aria-label={`Abrir chat con ${username}`}
         >
-          <h2 className="truncate text-xl font-black">{username}</h2>
-          <p className="mt-1 line-clamp-2 text-sm font-bold text-white/45">{bio}</p>
+          <h2 className={`truncate ${style.nameClass}`}>{username}</h2>
+          <p className={`mt-0.5 ${style.bioClass}`}>{bio}</p>
         </button>
       </div>
     </div>

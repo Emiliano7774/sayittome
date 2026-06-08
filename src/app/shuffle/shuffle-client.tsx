@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import ClassicAnonConnectCard from "@/components/anonMatch/ClassicAnonConnectCard";
 import ClassicFollowingStrip from "@/components/shuffle/ClassicFollowingStrip";
+import ClassicShuffleDensityControl from "@/components/shuffle/ClassicShuffleDensityControl";
 import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
@@ -89,6 +90,8 @@ export default function ShuffleClient() {
               })}
             </span>
           </button>
+
+          <ClassicShuffleDensityControl />
 
           <ClassicAnonConnectCard />
         </div>
