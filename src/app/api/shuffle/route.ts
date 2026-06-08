@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { readPublicStats, writePublicStats } from "@/lib/firestore/publicStats";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
@@ -13,6 +14,13 @@ export const dynamic = "force-dynamic";
 
 const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
 const PROJECT_ID = "sayittome-app";
+
+const PROFILE_CACHE_MS = 8 * 60_000;
+const ANON_CACHE_MS = 5 * 60_000;
+const STATS_REFRESH_MS = 10 * 60_000;
+const SHUFFLE_POOL_LIMIT = 50;
+const ANON_SCAN_LIMIT = 40;
+const ANON_ACTIVE_MS = 90 * 1000;
 
 type ApiProfile = {
   uid: string;
@@ -47,10 +55,8 @@ let cachedProfiles: ApiProfile[] = [];
 let cachedProfilesAt = 0;
 let cachedAnonymousOnline = 0;
 let cachedAnonymousAt = 0;
-
-const PROFILE_CACHE_MS = 10000;
-const ANON_CACHE_MS = 1000;
-const ANON_ACTIVE_MS = 45 * 1000;
+let cachedRegisteredCount = 0;
+let cachedRegisteredAt = 0;
 
 function fieldString(fields: any, key: string) {
   return fields?.[key]?.stringValue || "";
@@ -72,6 +78,10 @@ function fieldArrayStrings(fields: any, key: string) {
   );
 }
 
+function fieldInt(fields: any, key: string) {
+  return Number(fields?.[key]?.integerValue || fields?.[key]?.doubleValue || 0);
+}
+
 function shuffleArray<T>(arr: T[]) {
   const copy = [...arr];
 
@@ -85,7 +95,6 @@ function shuffleArray<T>(arr: T[]) {
   return copy;
 }
 
-/** Solo para badge verde — heartbeat real dentro de los últimos 15 min. */
 function isProfileOnlineForBadge(profile: ApiProfile, now = Date.now()) {
   return isShuffleProfileOnline(profile, now, ONLINE_WINDOW_MS);
 }
@@ -118,22 +127,35 @@ function isAnonymousDocActive(doc: any, now = Date.now()) {
   return now - seenDate.getTime() <= ANON_ACTIVE_MS;
 }
 
-async function runCollectionQuery(collectionId: string, limit = 500) {
+async function runQuery(
+  collectionId: string,
+  options?: {
+    limit?: number;
+    orderBy?: { field: string; direction?: "ASCENDING" | "DESCENDING" };
+  },
+) {
   const url =
     `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents:runQuery?key=${API_KEY}`;
 
+  const structuredQuery: Record<string, unknown> = {
+    from: [{ collectionId }],
+    limit: options?.limit || SHUFFLE_POOL_LIMIT,
+  };
+
+  if (options?.orderBy) {
+    structuredQuery.orderBy = [
+      {
+        field: { fieldPath: options.orderBy.field },
+        direction: options.orderBy.direction || "DESCENDING",
+      },
+    ];
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     cache: "no-store",
-    body: JSON.stringify({
-      structuredQuery: {
-        from: [{ collectionId }],
-        limit,
-      },
-    }),
+    body: JSON.stringify({ structuredQuery }),
   });
 
   if (!res.ok) {
@@ -141,16 +163,35 @@ async function runCollectionQuery(collectionId: string, limit = 500) {
   }
 
   const json = await res.json();
-
   if (!Array.isArray(json)) return [];
 
-  return json
-    .map((row: any) => row.document)
-    .filter(Boolean);
+  return json.map((row: any) => row.document).filter(Boolean);
 }
 
-function fieldInt(fields: any, key: string) {
-  return Number(fields?.[key]?.integerValue || fields?.[key]?.doubleValue || 0);
+async function runCollectionCount(collectionId: string) {
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents:runAggregationQuery?key=${API_KEY}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({
+      structuredAggregationQuery: {
+        aggregations: [{ alias: "total", count: {} }],
+        structuredQuery: {
+          from: [{ collectionId }],
+        },
+      },
+    }),
+  });
+
+  if (!res.ok) return 0;
+
+  const json = await res.json();
+  const rows = Array.isArray(json) ? json : [json];
+  const value = rows[0]?.result?.aggregateFields?.total?.integerValue;
+  return Number(value || 0);
 }
 
 function docToProfile(doc: any): ApiProfile {
@@ -181,36 +222,30 @@ function docToProfile(doc: any): ApiProfile {
       fieldString(fields, "uid") ||
       String(doc.name || "").split("/").pop() ||
       "",
-
     username:
       fieldString(fields, "username") ||
       fieldString(fields, "usernameLower") ||
       fieldString(fields, "nombre") ||
       "usuario",
-
     bio:
       fieldString(fields, "bio") ||
       fieldString(fields, "descripcion") ||
       "Sin descripcion.",
-
     photo:
       fieldString(fields, "fotoPrincipal") ||
       fieldString(fields, "photoURL") ||
       fotos[0] ||
       "",
-
     coverPhoto:
       fieldString(fields, "fotoPortada") ||
       fieldString(fields, "coverPhoto") ||
       fieldString(fields, "portada") ||
       fieldString(fields, "heroPhoto") ||
       "",
-
     coverVideo:
       fieldString(fields, "videoPortada") ||
       fieldString(fields, "coverVideo") ||
       "",
-
     lastActive,
     presenceAt: presenceAt || undefined,
     online: fieldBool(fields, "online"),
@@ -248,14 +283,44 @@ function withResolvedCountry(profile: ApiProfile): ApiProfile {
   return resolved ? { ...profile, pais: resolved } : profile;
 }
 
-async function getProfilesCached() {
+async function getRegisteredCountCached(force = false) {
+  const now = Date.now();
+  if (!force && cachedRegisteredCount > 0 && now - cachedRegisteredAt < STATS_REFRESH_MS) {
+    return cachedRegisteredCount;
+  }
+
+  const stats = await readPublicStats();
+  if (stats?.registeredUsersCount && now - stats.updatedAt < STATS_REFRESH_MS) {
+    cachedRegisteredCount = stats.registeredUsersCount;
+    cachedRegisteredAt = now;
+    return cachedRegisteredCount;
+  }
+
+  const count = await runCollectionCount("usuarios");
+  cachedRegisteredCount = count;
+  cachedRegisteredAt = now;
+
+  void writePublicStats({ registeredUsersCount: count }).catch(() => {});
+  return count;
+}
+
+async function getProfilesCached(force = false) {
   const now = Date.now();
 
-  if (cachedProfiles.length > 0 && now - cachedProfilesAt < PROFILE_CACHE_MS) {
+  if (!force && cachedProfiles.length > 0 && now - cachedProfilesAt < PROFILE_CACHE_MS) {
     return cachedProfiles;
   }
 
-  const docs = await runCollectionQuery("usuarios", 500);
+  let docs: any[] = [];
+
+  try {
+    docs = await runQuery("usuarios", {
+      limit: SHUFFLE_POOL_LIMIT,
+      orderBy: { field: "lastActiveAt", direction: "DESCENDING" },
+    });
+  } catch {
+    docs = await runQuery("usuarios", { limit: SHUFFLE_POOL_LIMIT });
+  }
 
   const profiles = docs
     .map((doc: any) => ({ doc, raw: parseFirestoreDoc(doc) }))
@@ -276,12 +341,23 @@ async function getAnonymousOnlineCached(forceFresh = false) {
     return cachedAnonymousOnline;
   }
 
-  try {
-    const docs = await runCollectionQuery("anonimos_activos", 250);
-    cachedAnonymousOnline = docs.filter((doc: any) =>
-      isAnonymousDocActive(doc, now),
-    ).length;
+  const stats = await readPublicStats();
+  if (
+    !forceFresh &&
+    stats?.anonymousOnlineCount != null &&
+    now - stats.updatedAt < ANON_CACHE_MS
+  ) {
+    cachedAnonymousOnline = stats.anonymousOnlineCount;
     cachedAnonymousAt = now;
+    return cachedAnonymousOnline;
+  }
+
+  try {
+    const docs = await runQuery("anonimos_activos", { limit: ANON_SCAN_LIMIT });
+    cachedAnonymousOnline = docs.filter((doc: any) => isAnonymousDocActive(doc, now)).length;
+    cachedAnonymousAt = now;
+
+    void writePublicStats({ anonymousOnlineCount: cachedAnonymousOnline }).catch(() => {});
     return cachedAnonymousOnline;
   } catch {
     cachedAnonymousAt = now;
@@ -289,24 +365,48 @@ async function getAnonymousOnlineCached(forceFresh = false) {
   }
 }
 
+async function resolveLiveCounts(countOnly: boolean) {
+  const stats = await readPublicStats();
+  const now = Date.now();
+  const statsFresh = stats && now - stats.updatedAt < STATS_REFRESH_MS;
+
+  if (countOnly && statsFresh) {
+    return {
+      profilesCreated: stats!.registeredUsersCount,
+      anonymousOnline: stats!.anonymousOnlineCount,
+      totalLive: stats!.registeredUsersCount + stats!.anonymousOnlineCount,
+    };
+  }
+
+  const [profilesCreated, anonymousOnline] = await Promise.all([
+    countOnly ? getRegisteredCountCached(false) : getRegisteredCountCached(false),
+    getAnonymousOnlineCached(!statsFresh),
+  ]);
+
+  const totalLive = profilesCreated + anonymousOnline;
+
+  if (countOnly || !statsFresh) {
+    void writePublicStats({
+      registeredUsersCount: profilesCreated,
+      anonymousOnlineCount: anonymousOnline,
+    }).catch(() => {});
+  }
+
+  return { profilesCreated, anonymousOnline, totalLive };
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
 
     const q = String(searchParams.get("q") || "").trim().toLowerCase();
-    const limit = Number(searchParams.get("limit") || 35) || 35;
+    const limit = Math.min(Number(searchParams.get("limit") || 35) || 35, SHUFFLE_POOL_LIMIT);
     const shouldShuffle = searchParams.get("shuffle") === "1";
     const countOnly = searchParams.get("countOnly") === "1";
+    const force = searchParams.get("force") === "1";
     const filters = parseShuffleFiltersFromSearchParams(searchParams);
 
-    const allProfiles = await getProfilesCached();
-    const anonymousOnline = await getAnonymousOnlineCached(countOnly);
-    const profilesCreated = allProfiles.length;
-    const totalLive = profilesCreated + anonymousOnline;
-
-    const filteredByDiscovery = allProfiles.filter((profile) =>
-      profileMatchesShuffleServerFilters(profile, filters),
-    );
+    const { profilesCreated, anonymousOnline, totalLive } = await resolveLiveCounts(countOnly);
 
     if (countOnly) {
       return NextResponse.json({
@@ -315,11 +415,16 @@ export async function GET(req: Request) {
         profilesCreated,
         anonymousOnline,
         totalLive,
-        filteredCount: filteredByDiscovery.length,
+        filteredCount: 0,
         returned: 0,
         ts: Date.now(),
       });
     }
+
+    const allProfiles = await getProfilesCached(force);
+    const filteredByDiscovery = allProfiles.filter((profile) =>
+      profileMatchesShuffleServerFilters(profile, filters),
+    );
 
     let filtered = filteredByDiscovery;
 
@@ -346,7 +451,7 @@ export async function GET(req: Request) {
       ts: Date.now(),
     });
   } catch (e: any) {
-    const profilesCreated = cachedProfiles.length;
+    const profilesCreated = cachedRegisteredCount || cachedProfiles.length;
     const totalLive = profilesCreated + cachedAnonymousOnline;
 
     return NextResponse.json(

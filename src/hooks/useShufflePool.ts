@@ -34,6 +34,12 @@ import { setShuffleSlots } from "@/lib/shuffle/shuffleSlotsStore";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import {
+  readCachedShufflePool,
+  readCachedShuffleStats,
+  writeCachedShufflePool,
+  writeCachedShuffleStats,
+} from "@/lib/shuffle/shuffleClientCache";
+import {
   getCachedStoryGroups,
   getStoriesIndexVersion,
   refreshStoriesIndex,
@@ -176,11 +182,11 @@ export function useShufflePool() {
 
       try {
         const params = new URLSearchParams({
-          limit: "500",
+          limit: "50",
           shuffle: "0",
-          ts: String(Date.now()),
         });
         if (q) params.set("q", q);
+        if (force) params.set("force", "1");
 
         const res = await fetch(`/api/shuffle?${params.toString()}`, {
           cache: "no-store",
@@ -204,6 +210,12 @@ export function useShufflePool() {
 
         if (nextProfiles.length > 0) {
           applyPool(nextProfiles, total || profilesCreated || nextProfiles.length);
+          writeCachedShufflePool(nextProfiles);
+          writeCachedShuffleStats({
+            profilesCreated,
+            anonymousOnline,
+            totalLive: total > 0 ? total : profilesCreated + anonymousOnline,
+          });
           filterActivePool(q, filtersRef.current);
         } else if (poolRef.current.length > 0) {
           filterActivePool(q, filtersRef.current);
@@ -343,7 +355,23 @@ export function useShufflePool() {
     attachShuffleProfilerWindow();
     document.body.classList.remove("sayittome-chat-open");
 
-    loadProfiles({ q: "", force: true });
+    const cachedProfiles = readCachedShufflePool();
+    const cachedStats = readCachedShuffleStats();
+
+    if (cachedProfiles?.length) {
+      applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
+      filterActivePool("", filtersRef.current);
+    }
+
+    if (cachedStats) {
+      setProfilesCreated(cachedStats.profilesCreated);
+      setAnonymousOnline(cachedStats.anonymousOnline);
+      setLivePeopleCount(cachedStats.totalLive);
+      setTotalLive(cachedStats.totalLive);
+      totalLiveRef.current = cachedStats.totalLive;
+    }
+
+    void loadProfiles({ q: "", force: !cachedProfiles?.length });
 
     const scheduleStoriesIndex = () => {
       const run = () =>
@@ -379,7 +407,7 @@ export function useShufflePool() {
 
     const poolSyncTimer = window.setInterval(() => {
       void loadProfiles({ q: searchRef.current.trim(), force: true });
-    }, 45_000);
+    }, 8 * 60_000);
 
     return () => {
       mountedRef.current = false;
@@ -419,7 +447,7 @@ export function useShufflePool() {
     }
 
     void pollLivePeopleCount();
-    const liveCountTimer = window.setInterval(pollLivePeopleCount, 20_000);
+    const liveCountTimer = window.setInterval(pollLivePeopleCount, 5 * 60_000);
 
     return () => {
       cancelled = true;

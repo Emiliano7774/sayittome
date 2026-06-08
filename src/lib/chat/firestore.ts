@@ -2,6 +2,7 @@
   addDoc,
   collection,
   doc,
+  limitToLast,
   onSnapshot,
   orderBy,
   query,
@@ -76,6 +77,7 @@ export function listenMessages(
       "createdAt",
       "asc",
     ),
+    limitToLast(50),
   );
 
   return onSnapshot(

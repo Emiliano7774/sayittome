@@ -10,8 +10,8 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let lastWriteAt = 0;
 let currentUid: string | null = null;
 
-const HEARTBEAT_MS = 45_000;
-const MIN_WRITE_GAP_MS = 12_000;
+const HEARTBEAT_MS = 90_000;
+const MIN_WRITE_GAP_MS = 60_000;
 
 async function writePresence(uid: string, online: boolean, force = false) {
   const now = Date.now();

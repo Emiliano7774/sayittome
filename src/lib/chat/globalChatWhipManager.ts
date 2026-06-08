@@ -36,6 +36,8 @@ function sameIdSet(a: Set<string>, b: Set<string>) {
   return true;
 }
 
+const MAX_WHIP_CHAT_LISTENERS = 25;
+
 class GlobalChatWhipManager {
   private context: WhipContext | null = null;
   private inboxIds = new Set<string>();
@@ -103,16 +105,17 @@ class GlobalChatWhipManager {
   }
 
   private rebuildMessageListeners() {
-    const nextIds = this.watchedChatIds();
+    const nextIds = [...this.watchedChatIds()].slice(0, MAX_WHIP_CHAT_LISTENERS);
+    const nextSet = new Set(nextIds);
 
     for (const [chatId, unsub] of this.messageUnsubs) {
-      if (!nextIds.has(chatId)) {
+      if (!nextSet.has(chatId)) {
         unsub();
         this.messageUnsubs.delete(chatId);
       }
     }
 
-    for (const chatId of nextIds) {
+    for (const chatId of nextSet) {
       if (this.messageUnsubs.has(chatId)) continue;
       this.messageUnsubs.set(chatId, this.attachMessageListener(chatId));
     }

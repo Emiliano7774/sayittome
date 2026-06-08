@@ -10,6 +10,7 @@ import {
   addDoc,
   collection,
   doc,
+  limitToLast,
   onSnapshot,
   orderBy,
   query,
@@ -158,7 +159,8 @@ export default function LegacyChatPage() {
 
     const q = query(
       collection(db, "chats", chatId, "mensajes"),
-      orderBy("createdAt", "asc")
+      orderBy("createdAt", "asc"),
+      limitToLast(50),
     );
 
     const unsub = onSnapshot(q, async (snapshot) => {

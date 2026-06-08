@@ -20,7 +20,7 @@ export default function StoriesBootstrap() {
           : (cb: () => void) => window.setTimeout(cb, 0);
 
       schedule(() => {
-        refreshStoriesIndex(viewerKey, true).catch(() => {});
+    refreshStoriesIndex(viewerKey, false).catch(() => {});
       });
     };
 
@@ -30,7 +30,7 @@ export default function StoriesBootstrap() {
 
     const timer = window.setInterval(() => {
       refreshStoriesIndex(resolveStoryViewerId(auth.currentUser), false).catch(() => {});
-    }, 60_000);
+    }, 5 * 60_000);
 
     return () => {
       cancelled = true;

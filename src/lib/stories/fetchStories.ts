@@ -1,4 +1,4 @@
-import { collection, getDocs, query, Timestamp, where } from "firebase/firestore";
+import { collection, getDocs, limit, query, Timestamp, where } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
 import {
@@ -98,6 +98,8 @@ function groupStories(stories: StoryItem[], viewerUid: string) {
   return groups;
 }
 
+const STORIES_QUERY_LIMIT = 120;
+
 async function fetchActiveStoryDocs(now: number) {
   const expiresAfter = Timestamp.fromMillis(now);
 
@@ -107,12 +109,13 @@ async function fetchActiveStoryDocs(now: number) {
         collection(db, "historias"),
         where("active", "==", true),
         where("expiresAt", ">", expiresAfter),
+        limit(STORIES_QUERY_LIMIT),
       ),
     );
     return indexed;
   } catch (error) {
-    console.warn("historias indexed query failed, falling back to full scan", error);
-    return getDocs(collection(db, "historias"));
+    console.warn("historias indexed query failed, falling back to limited scan", error);
+    return getDocs(query(collection(db, "historias"), limit(STORIES_QUERY_LIMIT)));
   }
 }
 

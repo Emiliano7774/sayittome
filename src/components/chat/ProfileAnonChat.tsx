@@ -134,6 +134,8 @@ export default function ProfileAnonChat({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
 
   useEffect(() => {
     setAnonSession(getAnonSessionId());
@@ -195,7 +197,13 @@ export default function ProfileAnonChat({
       setChatAnonSessionId(String(data?.anonSessionId || ""));
     });
 
-    return () => unsub();
+    return () => {
+      if (readMarkTimerRef.current) {
+        clearTimeout(readMarkTimerRef.current);
+        readMarkTimerRef.current = null;
+      }
+      unsub();
+    };
   }, [chatId]);
 
   useEffect(() => {
@@ -300,14 +308,14 @@ export default function ProfileAnonChat({
     const q = query(
       collection(db, "chats", chatId, "mensajes"),
       orderBy("createdAt", "asc"),
-      limitToLast(200),
+      limitToLast(50),
     );
 
     const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
     const messageViewerId =
       currentUid && targetUid && currentUid === targetUid ? currentUid : senderId;
 
-    return onSnapshot(
+    const unsub = onSnapshot(
       q,
       (snapshot) => {
         const loaded: Message[] = snapshot.docs.map((docSnap) => {
@@ -384,23 +392,33 @@ export default function ProfileAnonChat({
 
         if (!messageViewerId) return;
 
-        const batch = writeBatch(db);
-        let pendingMarks = 0;
+        pendingReadMarkRef.current = { chatId, viewerId: messageViewerId };
+        if (readMarkTimerRef.current) clearTimeout(readMarkTimerRef.current);
 
-        snapshot.docs.forEach((docSnap) => {
-          const data = docSnap.data() as { fromUid?: string; readBy?: Record<string, boolean> };
-          if (String(data.fromUid || "") === messageViewerId) return;
-          if (data.readBy?.[messageViewerId]) return;
+        readMarkTimerRef.current = setTimeout(() => {
+          const pending = pendingReadMarkRef.current;
+          if (!pending || pending.chatId !== chatId || pending.viewerId !== messageViewerId) {
+            return;
+          }
 
-          batch.update(doc(db, "chats", chatId, "mensajes", docSnap.id), {
-            [`readBy.${messageViewerId}`]: true,
+          const batch = writeBatch(db);
+          let pendingMarks = 0;
+
+          snapshot.docs.forEach((docSnap) => {
+            const data = docSnap.data() as { fromUid?: string; readBy?: Record<string, boolean> };
+            if (String(data.fromUid || "") === messageViewerId) return;
+            if (data.readBy?.[messageViewerId]) return;
+
+            batch.update(doc(db, "chats", chatId, "mensajes", docSnap.id), {
+              [`readBy.${messageViewerId}`]: true,
+            });
+            pendingMarks += 1;
           });
-          pendingMarks += 1;
-        });
 
-        if (pendingMarks > 0) {
-          void batch.commit().catch(() => undefined);
-        }
+          if (pendingMarks > 0) {
+            void batch.commit().catch(() => undefined);
+          }
+        }, 900);
 
         if (snapshot.docs.length === 0) return;
 
@@ -428,7 +446,15 @@ export default function ProfileAnonChat({
         console.error(error);
       },
     );
-  }, [chatId, authReady, anonSession, currentUid, targetUid, chatAnonSessionId, isOwnerViewing]);
+
+    return () => {
+      if (readMarkTimerRef.current) {
+        clearTimeout(readMarkTimerRef.current);
+        readMarkTimerRef.current = null;
+      }
+      unsub();
+    };
+  }, [chatId, authReady, anonSession, currentUid, targetUid, chatAnonSessionId, isOwnerViewing, username]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });

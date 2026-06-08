@@ -5,6 +5,7 @@ import type { QuerySnapshot } from "firebase/firestore";
 import {
   collection,
   doc,
+  limit,
   onSnapshot,
   query,
   where,
@@ -155,21 +156,25 @@ export function useChatsInbox() {
     const byParticipantes = query(
       collection(db, "chats"),
       where("participantes", "array-contains", uid),
+      limit(50),
     );
 
     const byOwner = query(
       collection(db, "chats"),
       where("anonOwnerUid", "==", uid),
+      limit(50),
     );
 
     const byReceptor = query(
       collection(db, "chats"),
       where("receptorUid", "==", uid),
+      limit(50),
     );
 
     const byTarget = query(
       collection(db, "chats"),
       where("targetUid", "==", uid),
+      limit(50),
     );
 
     const unsubA = onSnapshot(byParticipantes, mergeQuery("participantes"), (error) => {

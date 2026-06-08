@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
@@ -46,6 +46,7 @@ export function useFollowingProfiles() {
   const [uid, setUid] = useState("");
   const [profiles, setProfiles] = useState<FollowingProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const profileCacheRef = useRef(new Map<string, FollowingProfile>());
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -73,8 +74,20 @@ export function useFollowingProfiles() {
           .map((entry) => String(entry.data().seguidoUid || entry.id || ""))
           .filter(Boolean);
 
-        const loaded = await Promise.all(targetUids.map((targetUid) => loadFollowingProfile(targetUid)));
-        setProfiles(loaded.filter((profile): profile is FollowingProfile => Boolean(profile)));
+        const missing = targetUids.filter((targetUid) => !profileCacheRef.current.has(targetUid));
+
+        if (missing.length > 0) {
+          const loaded = await Promise.all(missing.map((targetUid) => loadFollowingProfile(targetUid)));
+          for (const profile of loaded) {
+            if (profile) profileCacheRef.current.set(profile.uid, profile);
+          }
+        }
+
+        const next = targetUids
+          .map((targetUid) => profileCacheRef.current.get(targetUid))
+          .filter((profile): profile is FollowingProfile => Boolean(profile));
+
+        setProfiles(next);
         setLoading(false);
       },
       (error) => {

@@ -183,7 +183,7 @@ export default function AnonDirectChatWindow() {
     const q = query(
       collection(db, "chats_anonimos", chatId, "mensajes"),
       orderBy("createdAt", "asc"),
-      limitToLast(80),
+      limitToLast(50),
     );
 
     const unsub = onSnapshot(q, (snap) => {

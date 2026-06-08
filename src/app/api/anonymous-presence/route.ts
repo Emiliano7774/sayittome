@@ -6,7 +6,7 @@ export const revalidate = 0;
 const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
 const PROJECT_ID = "sayittome-app";
 const DATABASE = "(default)";
-const ACTIVE_FOR_MS = 45 * 1000;
+const ACTIVE_FOR_MS = 90 * 1000;
 
 function safeId(value: unknown) {
   const raw = String(value || "").trim();

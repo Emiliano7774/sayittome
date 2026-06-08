@@ -7,8 +7,8 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let inFlight = false;
 let lastWriteAt = 0;
 
-const HEARTBEAT_MS = 15000;
-const MIN_WRITE_GAP_MS = 8000;
+const HEARTBEAT_MS = 90_000;
+const MIN_WRITE_GAP_MS = 60_000;
 
 async function writeAnonymousPresence(force = false) {
   if (typeof window === "undefined") return;
