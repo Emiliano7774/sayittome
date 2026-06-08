@@ -61,12 +61,15 @@ function StoryAvatarButton({
   }, [ownerUid, username, status.hasActive, status.storyCount]);
 
   function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
-    const openStories = status.hasActive && status.hasUnseen && status.storyPath;
+    const storyPath =
+      status.hasActive && status.hasUnseen && status.storyPath
+        ? status.storyPath
+        : null;
 
-    if (openStories && !preferProfile) {
+    if (storyPath && !preferProfile) {
       event.preventDefault();
       event.stopPropagation();
-      router.push(status.storyPath);
+      router.push(storyPath);
       return;
     }
 
