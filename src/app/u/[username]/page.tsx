@@ -30,7 +30,6 @@ import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
-import { resolveStoryViewerId } from "@/lib/stories/storyAuthor";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
