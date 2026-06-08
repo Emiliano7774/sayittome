@@ -13,6 +13,16 @@ body {
   min-height: 100dvh;
   -webkit-tap-highlight-color: transparent;
   text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+body.sayittome-has-bottom-nav {
+  padding-bottom: var(--sayittome-bottom-ui);
+  --sayittome-bottom-ui: calc(
+    var(--sayittome-nav-height) + var(--sayittome-admob-banner-height) +
+      var(--sayittome-vignette-height) + env(safe-area-inset-bottom, 0px) +
+      var(--sayittome-browser-chrome-bottom, 0px)
+  );
 }
 
 html.sayittome-native-shell,
@@ -32,7 +42,10 @@ body.sayittome-native-shell .sayittome-page-shell {
 body.sayittome-native-shell.sayittome-admob-banner-visible .sayittome-bottom-nav,
 body.sayittome-native-shell.sayittome-admob-banner-visible nav.fixed.bottom-0,
 body.sayittome-native-shell.sayittome-admob-banner-visible .fixed.inset-x-0.bottom-0 {
-  bottom: calc(60px + var(--sayittome-browser-chrome-bottom));
+  bottom: 0;
+  padding-bottom: calc(
+    60px + env(safe-area-inset-bottom, 0px) + var(--sayittome-browser-chrome-bottom, 0px)
+  );
 }
 
 :root {
@@ -44,31 +57,24 @@ body.sayittome-native-shell.sayittome-admob-banner-visible .fixed.inset-x-0.bott
 }
 
 .sayittome-bottom-nav {
-  bottom: var(--sayittome-browser-chrome-bottom);
+  bottom: 0;
+  padding-bottom: calc(
+    env(safe-area-inset-bottom, 0px) + var(--sayittome-browser-chrome-bottom, 0px)
+  );
+  background: #171717;
 }
 
-.sayittome-bottom-nav::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  height: var(--sayittome-browser-chrome-bottom);
-  background: inherit;
-  border-top: inherit;
-  pointer-events: none;
+.sayittome-bottom-nav-inner {
+  height: var(--sayittome-nav-height);
 }
 
 .sayittome-fixed-bottom {
-  bottom: var(--sayittome-browser-chrome-bottom);
-}
-
-body.sayittome-has-bottom-nav {
-  --sayittome-bottom-ui: calc(
-    var(--sayittome-nav-height) + var(--sayittome-admob-banner-height) +
-      var(--sayittome-vignette-height) + env(safe-area-inset-bottom, 0px)
+  bottom: 0;
+  padding-bottom: calc(
+    env(safe-area-inset-bottom, 0px) + var(--sayittome-browser-chrome-bottom, 0px)
   );
 }
+
 
 body.sayittome-native-shell.sayittome-admob-banner-visible {
   --sayittome-admob-banner-height: 60px;
@@ -88,7 +94,8 @@ body.sayittome-shuffle-route.sayittome-admob-banner-visible {
 
 body.sayittome-shuffle-route.sayittome-has-bottom-nav {
   --sayittome-bottom-ui: calc(
-    var(--sayittome-nav-height) + env(safe-area-inset-bottom, 0px)
+    var(--sayittome-nav-height) + env(safe-area-inset-bottom, 0px) +
+      var(--sayittome-browser-chrome-bottom, 0px)
   );
 }
 
@@ -124,6 +131,7 @@ body.sayittome-chat-open .fixed.inset-x-0.bottom-0 {
 
 body.sayittome-chat-open {
   overflow-x: hidden;
+  padding-bottom: 0 !important;
 }
 
 body.sayittome-filters-open nav.fixed.bottom-0,

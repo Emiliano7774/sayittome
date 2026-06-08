@@ -177,17 +177,17 @@ export default function ModernPublicProfile({
               ) : null}
             </div>
 
-            <div className="relative z-10 -mt-16 px-6 pb-8">
+            <div className="relative z-10 -mt-[4.75rem] px-6 pb-8">
               <div className="flex items-start justify-between gap-3">
                 <button
                   type="button"
                   onClick={openPrimary}
                   className={[
-                    "h-28 w-28 shrink-0 overflow-hidden rounded-full border-4 border-black bg-gradient-to-br from-white to-zinc-500",
+                    "h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-800",
                     story.hasUnseen
-                      ? "ring-2 ring-fuchsia-400"
+                      ? "ring-2 ring-fuchsia-400 ring-offset-0"
                       : story.hasActive
-                        ? "ring-2 ring-zinc-600"
+                        ? "ring-2 ring-zinc-600 ring-offset-0"
                         : "",
                   ].join(" ")}
                 >
@@ -286,13 +286,13 @@ export default function ModernPublicProfile({
             </div>
           </section>
         </div>
-
-        {profile.createdAtLabel ? (
-          <ProfileCreatedFooter
-            label={t("settings_profile_created", { date: profile.createdAtLabel })}
-          />
-        ) : null}
       </div>
+
+      {profile.createdAtLabel ? (
+        <ProfileCreatedFooter
+          label={t("settings_profile_created", { date: profile.createdAtLabel })}
+        />
+      ) : null}
 
       {viewerOpen && gallery.length > 0 ? (
         <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95">

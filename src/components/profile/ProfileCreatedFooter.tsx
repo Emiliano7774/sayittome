@@ -7,7 +7,7 @@ type Props = {
   label: string;
 };
 
-/** Viewport-fixed footer; rendered on document.body to avoid scroll/transform containing blocks. */
+/** Always pinned above the app bottom nav, independent of page scroll. */
 export default function ProfileCreatedFooter({ label }: Props) {
   const [mounted, setMounted] = useState(false);
 
@@ -20,12 +20,15 @@ export default function ProfileCreatedFooter({ label }: Props) {
   }
 
   return createPortal(
-    <p
-      className="pointer-events-none fixed inset-x-0 z-[25] px-6 text-center text-sm italic text-white/35 md:text-base"
-      style={{ bottom: "calc(var(--sayittome-bottom-ui, 0px) + 0.75rem)" }}
+    <div
+      className="sayittome-profile-created-footer pointer-events-none fixed inset-x-0 z-[9990] px-6 text-center text-sm italic text-white/35 md:text-base"
+      style={{
+        bottom: "calc(var(--sayittome-bottom-ui, 74px) + 0.5rem)",
+        transform: "translateZ(0)",
+      }}
     >
       {label}
-    </p>,
+    </div>,
     document.body,
   );
 }
