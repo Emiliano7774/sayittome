@@ -39,6 +39,7 @@ export default function ModernEditProfilePage() {
   const [videoPortada, setVideoPortada] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadText, setUploadText] = useState("");
+  const [uploadError, setUploadError] = useState("");
   const [saveError, setSaveError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
@@ -89,7 +90,9 @@ export default function ModernEditProfilePage() {
     if (!user) return "";
 
     const ext = file.name.split(".").pop() || "file";
-    const path = `usuarios/${user.uid}/perfil/${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const prefix =
+      folder === "avatar" ? "avatar" : folder === "cover" ? "cover" : "cover_video";
+    const path = `usuarios/${user.uid}/perfil/${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const storageRef = ref(storage, path);
 
     return new Promise<string>((resolve, reject) => {
@@ -112,32 +115,39 @@ export default function ModernEditProfilePage() {
     if (!batch.length) return;
 
     setUploading(true);
+    setUploadError("");
 
     const uploaded: MediaItem[] = [];
 
-    for (let i = 0; i < batch.length; i++) {
-      const file = batch[i];
-      setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
+    try {
+      for (let i = 0; i < batch.length; i++) {
+        const file = batch[i];
+        setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
 
-      const ext = file.name.split(".").pop() || "file";
-      const kind = file.type.startsWith("video/") ? "video" : "image";
-      const path = `usuarios/${user.uid}/perfil/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const storageRef = ref(storage, path);
+        const ext = file.name.split(".").pop() || "file";
+        const kind = file.type.startsWith("video/") ? "video" : "image";
+        const path = `usuarios/${user.uid}/perfil/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const storageRef = ref(storage, path);
 
-      await new Promise<void>((resolve, reject) => {
-        const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
-        task.on("state_changed", undefined, reject, async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
-          uploaded.push({ url, type: kind, path });
-          resolve();
+        await new Promise<void>((resolve, reject) => {
+          const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
+          task.on("state_changed", undefined, reject, async () => {
+            const url = await getDownloadURL(task.snapshot.ref);
+            void persistProfileMediaScan(user.uid, url, await scanUploadFile(file)).catch(() => {});
+            uploaded.push({ url, type: kind, path });
+            resolve();
+          });
         });
-      });
-    }
+      }
 
-    setMedia((prev) => [...prev, ...uploaded].slice(0, 100));
-    setUploading(false);
-    setUploadText("");
+      setMedia((prev) => [...prev, ...uploaded].slice(0, 100));
+    } catch (error) {
+      console.error(error);
+      setUploadError(t("edit_upload_fail"));
+    } finally {
+      setUploading(false);
+      setUploadText("");
+    }
   }
 
   function move(index: number, direction: -1 | 1) {
@@ -289,14 +299,21 @@ export default function ModernEditProfilePage() {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 setUploading(true);
-                const url = await uploadSingleFile(file, "avatar");
-                if (url) {
-                  const imageItem = { url, type: "image" as const };
-                  setMedia((prev) => [imageItem, ...prev].slice(0, 100));
-                  setPrincipalIndex(0);
+                setUploadError("");
+                try {
+                  const url = await uploadSingleFile(file, "avatar");
+                  if (url) {
+                    const imageItem = { url, type: "image" as const };
+                    setMedia((prev) => [imageItem, ...prev].slice(0, 100));
+                    setPrincipalIndex(0);
+                  }
+                } catch (error) {
+                  console.error(error);
+                  setUploadError(t("edit_upload_fail"));
+                } finally {
+                  setUploading(false);
+                  e.target.value = "";
                 }
-                setUploading(false);
-                e.target.value = "";
               }}
             />
             <input
@@ -308,10 +325,17 @@ export default function ModernEditProfilePage() {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 setUploading(true);
-                const url = await uploadSingleFile(file, "cover");
-                if (url) setFotoPortada(url);
-                setUploading(false);
-                e.target.value = "";
+                setUploadError("");
+                try {
+                  const url = await uploadSingleFile(file, "cover");
+                  if (url) setFotoPortada(url);
+                } catch (error) {
+                  console.error(error);
+                  setUploadError(t("edit_upload_fail"));
+                } finally {
+                  setUploading(false);
+                  e.target.value = "";
+                }
               }}
             />
             <input
@@ -323,10 +347,17 @@ export default function ModernEditProfilePage() {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 setUploading(true);
-                const url = await uploadSingleFile(file, "cover-video");
-                if (url) setVideoPortada(url);
-                setUploading(false);
-                e.target.value = "";
+                setUploadError("");
+                try {
+                  const url = await uploadSingleFile(file, "cover-video");
+                  if (url) setVideoPortada(url);
+                } catch (error) {
+                  console.error(error);
+                  setUploadError(t("edit_upload_fail"));
+                } finally {
+                  setUploading(false);
+                  e.target.value = "";
+                }
               }}
             />
             <input
@@ -350,6 +381,7 @@ export default function ModernEditProfilePage() {
             </p>
 
             {uploading && <p className="mt-3 text-violet-300 font-bold">{uploadText}</p>}
+            {uploadError ? <p className="mt-3 text-sm font-semibold text-red-400">{uploadError}</p> : null}
           </div>
 
           <div className="space-y-8">

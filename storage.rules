@@ -1,0 +1,40 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /usuarios/{userId}/perfil/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && request.resource.size < 120 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|video/.*');
+    }
+
+    match /historias/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && request.resource.size < 120 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|video/.*');
+    }
+
+    match /historias/anon/{sessionId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+        && request.resource.size < 120 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|video/.*');
+    }
+
+    match /chats/{chatId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+        && request.resource.size < 120 * 1024 * 1024;
+    }
+  }
+}

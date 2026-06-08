@@ -11,6 +11,7 @@ import { isAdminEmail } from "@/lib/admin/isAdmin";
 import ProfileEntryGate from "@/components/profile/ProfileEntryGate";
 import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
+import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
@@ -265,9 +266,9 @@ export default function SettingsPage() {
       </section>
 
       {createdAtLabel && (
-        <div className="fixed bottom-28 right-10 z-20 text-white/25 italic text-lg text-right pointer-events-none">
-          {t("settings_profile_created", { date: createdAtLabel })}
-        </div>
+        <ProfileCreatedFooter
+          label={t("settings_profile_created", { date: createdAtLabel })}
+        />
       )}
 
       {selected && (

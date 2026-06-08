@@ -18,6 +18,7 @@ import {
 
 import { useT } from "@/contexts/LocaleContext";
 import { auth, db, storage } from "@/lib/firebase";
+import { ensureStorageAuth } from "@/lib/auth/ensureStorageAuth";
 import { resolveStoryAuthor } from "@/lib/stories/anonStories";
 import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
 
@@ -61,6 +62,7 @@ export default function NewStoryPage() {
     }
 
     try {
+      await ensureStorageAuth();
       const author = await resolveStoryAuthor(auth.currentUser);
       setUploading(true);
       setUploadProgress(0);

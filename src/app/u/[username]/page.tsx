@@ -18,6 +18,7 @@ import { auth } from "@/lib/firebase";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
+import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { formatLastSeen, isActiveWithinWindow } from "@/lib/presence";
@@ -353,9 +354,9 @@ export default function PublicProfilePage() {
       </section>
 
       {profile.createdAtLabel && (
-        <p className="fixed bottom-[calc(var(--sayittome-bottom-ui,0px)+1rem)] right-6 md:right-10 z-[25] italic text-white/45 text-sm md:text-lg pointer-events-none text-right">
-          Perfil creado el {profile.createdAtLabel}
-        </p>
+        <ProfileCreatedFooter
+          label={`Perfil creado el ${profile.createdAtLabel}`}
+        />
       )}
 
       {gallery.length > 1 && (

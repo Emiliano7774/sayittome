@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, BadgeCheck, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
+import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import FollowButton from "@/components/FollowButton";
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import HeaderControls from "@/components/HeaderControls";
@@ -124,12 +125,12 @@ export default function ModernPublicProfile({
         <div className="relative mx-auto w-full">
           <div className="absolute -inset-8 rounded-[3rem] bg-fuchsia-500/20 blur-3xl" />
           <section className="relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40">
-            <div className="relative h-80 overflow-hidden">
+            <div className="relative z-0 h-80 overflow-hidden">
               <button
                 type="button"
                 onClick={() => openViewer(0)}
                 disabled={gallery.length === 0}
-                className="absolute inset-0 z-[2] disabled:cursor-default"
+                className="absolute inset-0 z-[1] disabled:cursor-default"
                 aria-label="Ver fotos del perfil"
               />
               {profile.videoPortada ? (
@@ -176,35 +177,47 @@ export default function ModernPublicProfile({
               ) : null}
             </div>
 
-            <div className="-mt-16 px-6 pb-8">
-              <button
-                type="button"
-                onClick={openPrimary}
-                className={[
-                  "h-28 w-28 overflow-hidden rounded-full border-4 border-black bg-gradient-to-br from-white to-zinc-500",
-                  story.hasUnseen
-                    ? "ring-2 ring-fuchsia-400"
-                    : story.hasActive
-                      ? "ring-2 ring-zinc-600"
-                      : "",
-                ].join(" ")}
-              >
-                {profile.fotoPrincipal ? (
-                  <SensitiveMediaShell
-                    url={profile.fotoPrincipal}
-                    staticRequiresBlur={blurPhoto}
-                    profile={profile}
-                    className="h-full w-full"
-                    overlayLabel={t("profile_photo_moderated")}
-                  >
-                    <img
-                      src={profile.fotoPrincipal}
-                      alt=""
-                      className="h-full w-full object-cover"
+            <div className="relative z-10 -mt-16 px-6 pb-8">
+              <div className="flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={openPrimary}
+                  className={[
+                    "h-28 w-28 shrink-0 overflow-hidden rounded-full border-4 border-black bg-gradient-to-br from-white to-zinc-500",
+                    story.hasUnseen
+                      ? "ring-2 ring-fuchsia-400"
+                      : story.hasActive
+                        ? "ring-2 ring-zinc-600"
+                        : "",
+                  ].join(" ")}
+                >
+                  {profile.fotoPrincipal ? (
+                    <SensitiveMediaShell
+                      url={profile.fotoPrincipal}
+                      staticRequiresBlur={blurPhoto}
+                      profile={profile}
+                      className="h-full w-full"
+                      overlayLabel={t("profile_photo_moderated")}
+                    >
+                      <img
+                        src={profile.fotoPrincipal}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    </SensitiveMediaShell>
+                  ) : null}
+                </button>
+
+                {isOwner ? (
+                  <div className="pt-2">
+                    <VerifiedLinkBubble
+                      username={profile.username}
+                      profileUid={profile.uid}
+                      variant="modern"
                     />
-                  </SensitiveMediaShell>
+                  </div>
                 ) : null}
-              </button>
+              </div>
 
               <h1 className="mt-5 truncate text-3xl font-semibold">
                 @{profile.username}
@@ -271,25 +284,13 @@ export default function ModernPublicProfile({
                 ) : null}
               </div>
             </div>
-
-            {isOwner ? (
-              <div className="pointer-events-none absolute right-4 top-8 z-20">
-                <div className="pointer-events-auto">
-                  <VerifiedLinkBubble
-                    username={profile.username}
-                    profileUid={profile.uid}
-                    variant="modern"
-                  />
-                </div>
-              </div>
-            ) : null}
           </section>
         </div>
 
         {profile.createdAtLabel ? (
-          <p className="fixed bottom-[calc(var(--sayittome-bottom-ui,0px)+1rem)] right-6 md:right-10 z-[25] text-right text-sm italic text-white/35 pointer-events-none">
-            {t("settings_profile_created", { date: profile.createdAtLabel })}
-          </p>
+          <ProfileCreatedFooter
+            label={t("settings_profile_created", { date: profile.createdAtLabel })}
+          />
         ) : null}
       </div>
 

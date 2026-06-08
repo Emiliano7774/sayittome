@@ -27,7 +27,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[9999] h-[74px] border-t border-white/[0.04] bg-[#171717]/96 backdrop-blur-2xl">
+    <div className="sayittome-bottom-nav fixed left-0 right-0 z-[9999] h-[74px] border-t border-white/[0.04] bg-[#171717]/96 backdrop-blur-2xl">
       <div className="flex h-full w-full items-center justify-around px-[max(22px,4vw)]">
         {items.map((item) => {
           const Icon = item.icon;

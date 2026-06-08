@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 import SayItToMeVisualPolish from "@/components/SayItToMeVisualPolish";
+import VisualViewportInset from "@/components/layout/VisualViewportInset";
 import Providers from "@/components/providers/Providers";
 import AppNavigation from "@/components/navigation/AppNavigation";
 
@@ -36,6 +37,7 @@ export default function RootLayout({
     <html lang="es">
       <body>
         <SayItToMeVisualPolish />
+        <VisualViewportInset />
         <Providers>
           {children}
           <AppNavigation />

@@ -12,7 +12,7 @@
     "copy:apk": "node scripts/copy-apk.mjs",
     "build:apk": "node scripts/bump-apk-version.mjs && node scripts/sync-android-version.mjs && npm run generate:icons && npm run cap:sync && cd android && gradlew.bat assembleRelease && cd .. && node scripts/sign-apk.mjs && npm run copy:apk",
     "publish:apk": "npm run build:apk",
-    "deploy:all": "npm run build && npm run publish:apk && firebase deploy --only hosting",
+    "deploy:all": "npm run build && npm run publish:apk && firebase deploy --only hosting,storage",
     "generate:icons": "node scripts/generate-app-icons.mjs",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",

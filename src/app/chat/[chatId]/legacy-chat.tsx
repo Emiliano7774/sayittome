@@ -675,7 +675,7 @@ if (uxMode === "classic") {
           </div>
         </section>
 
-        <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-black/95 backdrop-blur">
+        <div className="sayittome-fixed-bottom fixed left-0 right-0 border-t border-white/10 bg-black/95 backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-4">
             <input
               value={text}
