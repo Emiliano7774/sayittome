@@ -49,7 +49,6 @@ export default function StoriesTray({ groups, showAdd = true }: Props) {
                   src={group.ownerPhoto}
                   alt={group.ownerUsername}
                   fill
-                  sizes="66px"
                   className="object-cover"
                 />
               ) : (

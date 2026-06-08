@@ -68,7 +68,6 @@ function StoryTile({
               src={story.mediaUrl}
               alt=""
               fill
-              sizes="(max-width: 640px) 50vw, 20vw"
               className="object-cover"
             />
           </div>

@@ -47,7 +47,6 @@ function ShuffleProfileRow({ profile, slot }: Props) {
                   src={profile.photo}
                   alt={username}
                   fill
-                  sizes="112px"
                   className="object-cover"
                 />
               </SensitiveMediaShell>
