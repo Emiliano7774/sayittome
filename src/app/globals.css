@@ -130,6 +130,17 @@ body.sayittome-shuffle-route:not(.sayittome-has-bottom-nav) {
   --sayittome-bottom-ui: env(safe-area-inset-bottom, 0px);
 }
 
+body.sayittome-boost-route.sayittome-has-bottom-nav {
+  --sayittome-bottom-ui: calc(
+    var(--sayittome-nav-height) + env(safe-area-inset-bottom, 0px) +
+      var(--sayittome-browser-chrome-bottom, 0px)
+  );
+}
+
+body.sayittome-boost-route:not(.sayittome-has-bottom-nav) {
+  --sayittome-bottom-ui: env(safe-area-inset-bottom, 0px);
+}
+
 .sayittome-shuffle-toolbar {
   bottom: var(--sayittome-bottom-ui);
 }
@@ -139,20 +150,24 @@ main[data-scroll-root].sayittome-shuffle-scroll {
 }
 
 main[data-scroll-root].sayittome-boost-page {
-  padding-bottom: calc(var(--sayittome-bottom-ui, 74px) + 11.5rem);
+  padding-bottom: calc(var(--sayittome-bottom-ui, 74px) + 13.5rem);
 }
 
-.sayittome-boost-sticky-cta {
+.sayittome-boost-sticky-shell {
   position: fixed;
-  inset-inline: 0;
+  left: 0;
+  right: 0;
   bottom: var(--sayittome-bottom-ui, calc(74px + env(safe-area-inset-bottom, 0px)));
   z-index: 9998;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.96);
-  padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transform: translateZ(0);
+  background: #171717;
+  padding: 0.85rem 1.25rem 1rem;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.sayittome-boost-sticky-shell-inner {
+  width: 100%;
+  max-width: 32rem;
+  margin-inline: auto;
 }
 
 main[data-scroll-root].sayittome-shuffle-scroll-classic {

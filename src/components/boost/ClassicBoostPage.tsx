@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   CheckCircle2,
   Copy,
@@ -12,9 +13,10 @@ import {
 import BoostAccessGate from "@/components/boost/BoostAccessGate";
 import BoostMinutesPicker from "@/components/boost/BoostMinutesPicker";
 import BoostRocketHero from "@/components/boost/BoostRocketHero";
+import BoostStickyCtaBar from "@/components/boost/BoostStickyCtaBar";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useLocale } from "@/contexts/LocaleContext";
-import { useBoostActions, formatBoostRemaining, BoostStickyPortal } from "@/hooks/useBoostActions";
+import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
 import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_ACTIVATION, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
 
 export default function ClassicBoostPage() {
@@ -42,6 +44,13 @@ export default function ClassicBoostPage() {
     selectedMinutes <= credits &&
     !isActive &&
     !activating;
+
+  useEffect(() => {
+    document.body.classList.add("sayittome-boost-route");
+    return () => {
+      document.body.classList.remove("sayittome-boost-route");
+    };
+  }, []);
 
   return (
     <main data-scroll-root className="sayittome-boost-page min-h-screen bg-black text-white">
@@ -215,10 +224,10 @@ export default function ClassicBoostPage() {
         )}
       </div>
 
-      <BoostStickyPortal open={canUseBoost}>
-        <div className="sayittome-boost-sticky-cta mx-auto max-w-lg">
+      {canUseBoost ? (
+        <BoostStickyCtaBar>
           {credits >= BOOST_MIN_MINUTES ? (
-            <div className="mb-4 lg:hidden">
+            <div className="mb-3 lg:hidden">
               <BoostMinutesPicker
                 credits={credits}
                 value={selectedMinutes}
@@ -244,15 +253,15 @@ export default function ClassicBoostPage() {
             type="button"
             disabled={!canActivate}
             onClick={() => void handleActivate()}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 py-4 text-lg font-black text-black shadow-[0_12px_32px_rgba(249,115,22,0.35)] disabled:opacity-45"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 py-4 text-lg font-black text-black shadow-[0_8px_24px_rgba(249,115,22,0.28)] disabled:opacity-45"
           >
             <Rocket size={20} strokeWidth={2.2} />
             {activating
               ? t("common_preparing")
               : t("boost_activate_cta", { minutes: String(selectedMinutes) })}
           </button>
-        </div>
-      </BoostStickyPortal>
+        </BoostStickyCtaBar>
+      ) : null}
     </main>
   );
 }

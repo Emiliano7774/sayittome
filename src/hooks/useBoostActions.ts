@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useState } from "react";
 
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostEligibility } from "@/hooks/useBoostEligibility";
@@ -102,21 +101,4 @@ export function useBoostActions(enabled = true) {
     handleActivate,
     handleCopy,
   };
-}
-
-type BoostStickyPortalProps = {
-  open: boolean;
-  children: ReactNode;
-};
-
-export function BoostStickyPortal({ open, children }: BoostStickyPortalProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!open || !mounted) return null;
-
-  return createPortal(children, document.body);
 }
