@@ -14,54 +14,41 @@ export default function BoostRocketHero({ variant = "classic" }: Props) {
 
   return (
     <div
-      className={`relative h-[min(44vh,340px)] w-full overflow-hidden bg-gradient-to-b ${skyClass}`}
+      className={`relative h-[min(40vh,300px)] w-full overflow-hidden bg-gradient-to-b ${skyClass}`}
       aria-hidden
     >
       <div className="pointer-events-none absolute inset-0">
         {[
-          { top: "12%", left: "18%", size: 3 },
-          { top: "22%", left: "72%", size: 2 },
-          { top: "8%", left: "55%", size: 2.5 },
-          { top: "30%", left: "40%", size: 2 },
-          { top: "16%", left: "85%", size: 2 },
+          { top: "10%", left: "14%", size: 3 },
+          { top: "18%", left: "68%", size: 2 },
+          { top: "6%", left: "48%", size: 2.5 },
+          { top: "26%", left: "36%", size: 2 },
+          { top: "12%", left: "82%", size: 2 },
         ].map((star, index) => (
           <Sparkles
             key={index}
             size={star.size * 4}
-            className="absolute text-white/35"
+            className="absolute text-white/30"
             style={{ top: star.top, left: star.left }}
           />
         ))}
       </div>
 
-      <Cloud
-        size={72}
-        strokeWidth={1.5}
-        className="absolute bottom-[38%] left-[8%] text-white/25"
-      />
-      <Cloud
-        size={96}
-        strokeWidth={1.5}
-        className="absolute bottom-[42%] right-[6%] text-white/20"
-      />
-      <Cloud
-        size={56}
-        strokeWidth={1.5}
-        className="absolute bottom-[48%] left-[38%] text-white/15"
-      />
+      <Cloud size={68} strokeWidth={1.5} className="absolute bottom-[36%] left-[6%] text-white/20" />
+      <Cloud size={88} strokeWidth={1.5} className="absolute bottom-[40%] right-[4%] text-white/15" />
 
-      <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pb-2">
-        <div className="relative mb-[-12px] flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-white via-orange-100 to-orange-200 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pb-1">
+        <div className="relative mb-[-10px] flex h-[104px] w-[104px] items-center justify-center rounded-full bg-gradient-to-br from-white via-orange-50 to-orange-200 shadow-[0_20px_48px_rgba(0,0,0,0.4)] ring-4 ring-orange-300/30">
           <Rocket
-            size={52}
-            strokeWidth={1.75}
+            size={48}
+            strokeWidth={1.85}
             className="-rotate-45 text-orange-600 drop-shadow-sm"
           />
         </div>
-        <div className="h-16 w-[88%] max-w-sm rounded-[100%] bg-black/55 blur-2xl" />
+        <div className="h-14 w-[78%] max-w-xs rounded-[100%] bg-black/60 blur-2xl" />
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black via-black/80 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black via-black/85 to-transparent" />
     </div>
   );
 }

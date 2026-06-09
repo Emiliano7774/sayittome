@@ -39,7 +39,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "missing_uid" }, { status: 400 });
     }
 
-    const result = await activateBoost(uid);
+    const minutes = Math.floor(Number(body?.minutes ?? body?.minutesRequested ?? 0));
+
+    const result = await activateBoost(uid, minutes > 0 ? minutes : undefined);
     if (!result.ok) {
       return NextResponse.json({ ok: false, reason: result.reason, ts: Date.now() }, { status: 200 });
     }

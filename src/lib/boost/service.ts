@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 
 import {
+  BOOST_MIN_MINUTES,
   BOOST_MINUTES_PER_ACTIVATION,
   BOOST_MINUTES_PER_REFERRAL,
   MAX_ACTIVE_BOOSTS_QUERY,
@@ -251,14 +252,20 @@ export async function getBoostStatus(uid: string, siteOrigin: string): Promise<B
   };
 }
 
-export async function activateBoost(uid: string) {
+export async function activateBoost(uid: string, minutesRequested?: number) {
   const user = await getFirestoreDoc("usuarios", uid);
   if (!user || !isPublicProfile(user)) {
     return { ok: false as const, reason: "no_profile" as const };
   }
 
   const credits = Number(user.boostCreditsMinutes || 0);
-  if (credits < BOOST_MINUTES_PER_ACTIVATION) {
+  const minutes = Math.floor(Number(minutesRequested ?? BOOST_MINUTES_PER_ACTIVATION));
+
+  if (!Number.isFinite(minutes) || minutes < BOOST_MIN_MINUTES) {
+    return { ok: false as const, reason: "invalid_minutes" as const };
+  }
+
+  if (credits < minutes) {
     return { ok: false as const, reason: "insufficient_credits" as const };
   }
 
@@ -269,11 +276,11 @@ export async function activateBoost(uid: string) {
   }
 
   const now = Date.now();
-  const expiresAt = new Date(now + BOOST_MINUTES_PER_ACTIVATION * 60_000).toISOString();
+  const expiresAt = new Date(now + minutes * 60_000).toISOString();
   const username = String(user.username || user.nombre || "");
 
   await patchFirestoreDoc("usuarios", uid, {
-    boostCreditsMinutes: credits - BOOST_MINUTES_PER_ACTIVATION,
+    boostCreditsMinutes: credits - minutes,
   });
 
   await patchFirestoreDoc("shuffle_boosts", uid, {
@@ -289,7 +296,7 @@ export async function activateBoost(uid: string) {
   return {
     ok: true as const,
     expiresAt: Date.parse(expiresAt),
-    minutesUsed: BOOST_MINUTES_PER_ACTIVATION,
+    minutesUsed: minutes,
   };
 }
 

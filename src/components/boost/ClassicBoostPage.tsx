@@ -1,14 +1,21 @@
 "use client";
 
-import Link from "next/link";
-import { Copy, Gauge, Gift, Sparkles, Wallet } from "lucide-react";
+import {
+  CheckCircle2,
+  Copy,
+  Rocket,
+  Share2,
+  Sparkles,
+  Users,
+} from "lucide-react";
 
 import BoostAccessGate from "@/components/boost/BoostAccessGate";
+import BoostMinutesPicker from "@/components/boost/BoostMinutesPicker";
 import BoostRocketHero from "@/components/boost/BoostRocketHero";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useLocale } from "@/contexts/LocaleContext";
-import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
-import { BOOST_MINUTES_PER_ACTIVATION, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
+import { useBoostActions, formatBoostRemaining, BoostStickyPortal } from "@/hooks/useBoostActions";
+import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_ACTIVATION, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
 
 export default function ClassicBoostPage() {
   const { t } = useLocale();
@@ -23,187 +30,301 @@ export default function ClassicBoostPage() {
     credits,
     activeUntil,
     isActive,
+    selectedMinutes,
+    setSelectedMinutes,
     handleActivate,
     handleCopy,
   } = useBoostActions(true);
 
+  const canActivate =
+    credits >= BOOST_MIN_MINUTES &&
+    selectedMinutes >= BOOST_MIN_MINUTES &&
+    selectedMinutes <= credits &&
+    !isActive &&
+    !activating;
+
   return (
-    <main data-scroll-root className="min-h-screen bg-black pb-36 text-white">
+    <main data-scroll-root className="sayittome-boost-page min-h-screen bg-black text-white">
       <BoostRocketHero variant="classic" />
 
-      <div className="relative z-[1] -mt-6 px-5">
-        <ClassicUxModeBar className="mb-5" />
+      <div className="relative z-[1] -mt-8 px-5">
+        <ClassicUxModeBar className="mb-4" />
 
-        <h1 className="text-[2rem] font-black leading-tight tracking-[-0.03em] md:text-5xl">
+        <p className="text-xs font-black uppercase tracking-[0.28em] text-orange-400">
+          {t("boost_classic_badge")}
+        </p>
+        <h1 className="mt-2 text-[2.15rem] font-black leading-[1.05] tracking-[-0.03em] md:text-5xl">
           {t("boost_classic_headline")}
         </h1>
-        <p className="mt-3 max-w-xl text-lg font-bold leading-7 text-white/55">
+        <p className="mt-4 max-w-xl text-base font-semibold leading-7 text-white/55 md:text-lg">
           {t("boost_classic_subheadline")}
         </p>
 
         {!canUseBoost ? (
           <BoostAccessGate state={accessState} />
         ) : (
-          <>
-            <div className="mt-6 overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-4 shadow-[0_12px_30px_rgba(249,115,22,0.28)]">
-              <p className="text-lg font-black text-white">{t("boost_classic_promo_title")}</p>
-              <p className="mt-1 text-sm font-semibold leading-6 text-white/90">
-                {t("boost_classic_promo_body", { minutes: String(BOOST_MINUTES_PER_REFERRAL) })}
+          <div className="mt-8 space-y-6">
+            <section className="overflow-hidden rounded-[1.35rem] border border-orange-500/30 bg-gradient-to-br from-orange-500/15 via-[#140a04] to-black p-5 shadow-[0_16px_40px_rgba(249,115,22,0.12)]">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300/80">
+                {t("boost_classic_status_title")}
               </p>
-            </div>
 
-            <div className="mt-8 grid grid-cols-3 gap-3">
-              <BoostPlanCard
-                label={t("boost_card_wallet")}
-                value={loading && !status ? "…" : `${credits}`}
-                suffix={t("boost_minutes_short")}
-                icon={Wallet}
-                muted
-              />
-              <BoostPlanCard
-                label={t("boost_card_activate")}
-                value={String(BOOST_MINUTES_PER_ACTIVATION)}
-                suffix={t("boost_minutes_short")}
-                icon={Gauge}
-                badge={t("boost_card_recommended")}
-                selected
-              />
-              <BoostPlanCard
-                label={t("boost_card_referral")}
-                value={`+${BOOST_MINUTES_PER_REFERRAL}`}
-                suffix={t("boost_minutes_short")}
-                icon={Gift}
-                muted
-              />
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-xs font-black uppercase tracking-wide text-white/40">
-                  {t("boost_active_label")}
-                </p>
-                <p className="mt-2 text-xl font-black text-orange-300">
-                  {isActive && activeUntil
-                    ? formatBoostRemaining(activeUntil)
-                    : t("boost_inactive")}
-                </p>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-bold text-white/45">{t("boost_credits_label")}</p>
+                  <p className="mt-1 text-4xl font-black tabular-nums text-white">
+                    {loading && !status ? "…" : credits}
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-orange-200/80">
+                    {t("boost_minutes_short")}
+                  </p>
+                </div>
+                <div className="border-l border-white/10 pl-4">
+                  <p className="text-sm font-bold text-white/45">{t("boost_active_label")}</p>
+                  <p className="mt-1 text-2xl font-black leading-tight text-orange-300">
+                    {isActive && activeUntil
+                      ? formatBoostRemaining(activeUntil)
+                      : t("boost_inactive")}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-white/40">
+                    {isActive
+                      ? t("boost_classic_active_hint")
+                      : t("boost_classic_inactive_hint")}
+                  </p>
+                </div>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-xs font-black uppercase tracking-wide text-white/40">
-                  {t("boost_referrals_stats", {
-                    qualified: String(status?.referralsQualified ?? 0),
-                    pending: String(status?.referralsPending ?? 0),
+
+              <p className="mt-4 rounded-xl bg-black/35 px-4 py-3 text-sm font-semibold leading-6 text-white/65">
+                {t("boost_classic_cost_note_flexible")}
+              </p>
+            </section>
+
+            {credits >= BOOST_MIN_MINUTES ? (
+              <section className="hidden rounded-[1.35rem] border border-orange-500/20 bg-orange-500/5 p-5 lg:block">
+                <BoostMinutesPicker
+                  credits={credits}
+                  value={selectedMinutes}
+                  onChange={setSelectedMinutes}
+                  disabled={isActive || activating}
+                />
+              </section>
+            ) : null}
+
+            <section>
+              <h2 className="text-xl font-black text-white">{t("boost_classic_steps_title")}</h2>
+              <p className="mt-1 text-sm font-semibold leading-6 text-white/45">
+                {t("boost_classic_steps_subtitle")}
+              </p>
+
+              <ol className="mt-4 space-y-3">
+                <StepCard
+                  step="1"
+                  icon={Share2}
+                  title={t("boost_classic_step1_title")}
+                  body={t("boost_classic_step1_body", {
+                    minutes: String(BOOST_MINUTES_PER_REFERRAL),
                   })}
-                </p>
-                <p className="mt-2 text-sm font-bold leading-6 text-white/55">
-                  {t("boost_security_note_short")}
-                </p>
-              </div>
-            </div>
+                />
+                <StepCard
+                  step="2"
+                  icon={Rocket}
+                  title={t("boost_classic_step2_title", {
+                    minutes: String(BOOST_MINUTES_PER_ACTIVATION),
+                  })}
+                  body={t("boost_classic_step2_body")}
+                />
+                <StepCard
+                  step="3"
+                  icon={Users}
+                  title={t("boost_classic_step3_title")}
+                  body={t("boost_classic_step3_body")}
+                />
+              </ol>
+            </section>
 
-            {status?.referralLink ? (
-              <div className="mt-6 rounded-2xl border border-orange-500/25 bg-orange-500/10 p-4">
-                <p className="text-xs font-black uppercase tracking-wide text-orange-200/80">
-                  {t("boost_referral_link")}
-                </p>
-                <div className="mt-3 flex items-center gap-2">
-                  <p className="min-w-0 flex-1 truncate text-sm font-bold text-white/85">
+            <section className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-300">
+                  <GiftIcon />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-white">{t("boost_classic_invite_title")}</h2>
+                  <p className="mt-2 text-sm font-semibold leading-7 text-white/60">
+                    {t("boost_classic_invite_body", {
+                      minutes: String(BOOST_MINUTES_PER_REFERRAL),
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {status?.referralLink ? (
+                <div className="mt-5 rounded-2xl border border-orange-500/20 bg-black/40 p-4">
+                  <p className="text-xs font-black uppercase tracking-wide text-orange-200/75">
+                    {t("boost_referral_link")}
+                  </p>
+                  <p className="mt-2 break-all text-sm font-bold leading-6 text-white/85">
                     {status.referralLink}
                   </p>
                   <button
                     type="button"
                     onClick={() => void handleCopy()}
-                    className="flex shrink-0 items-center gap-1.5 rounded-full bg-orange-500 px-4 py-2 text-xs font-black text-black"
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 py-3 text-sm font-black text-black"
                   >
-                    <Copy size={14} />
-                    {copied ? t("boost_copied") : t("boost_copy")}
+                    <Copy size={16} />
+                    {copied ? t("boost_copied") : t("boost_copy_link")}
                   </button>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            <section className="mt-8 space-y-3 rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-              <p className="flex items-center gap-2 text-base font-black text-orange-200">
-                <Sparkles size={18} />
-                {t("boost_how_title")}
-              </p>
-              <p className="text-sm font-semibold leading-7 text-white/60">
-                {t("boost_how_body", { minutes: String(BOOST_MINUTES_PER_ACTIVATION) })}
-              </p>
-              <p className="text-sm font-semibold leading-7 text-white/60">
-                {t("boost_referral_body", { minutes: String(BOOST_MINUTES_PER_REFERRAL) })}
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <StatPill
+                  label={t("boost_classic_referrals_qualified")}
+                  value={String(status?.referralsQualified ?? 0)}
+                  tone="green"
+                />
+                <StatPill
+                  label={t("boost_classic_referrals_pending")}
+                  value={String(status?.referralsPending ?? 0)}
+                  tone="amber"
+                />
+              </div>
+              <p className="mt-3 text-xs font-semibold leading-5 text-white/40">
+                {t("boost_classic_referrals_pending_hint")}
               </p>
             </section>
 
-            {feedback ? (
-              <p className="mt-5 text-center text-base font-black text-orange-300">{feedback}</p>
-            ) : null}
+            <section className="rounded-[1.35rem] border border-white/8 bg-white/[0.02] p-5">
+              <p className="flex items-center gap-2 text-base font-black text-orange-200">
+                <Sparkles size={18} />
+                {t("boost_classic_rules_title")}
+              </p>
+              <ul className="mt-4 space-y-3">
+                <RuleItem text={t("boost_classic_rule1_flexible")} />
+                <RuleItem text={t("boost_classic_rule2", { minutes: String(BOOST_MINUTES_PER_REFERRAL) })} />
+                <RuleItem text={t("boost_classic_rule3")} />
+                <RuleItem text={t("boost_classic_rule4")} />
+              </ul>
+            </section>
 
-            <p className="mt-8 pb-4 text-center text-[11px] leading-5 text-white/35">
-              {t("boost_fine_print")}
-            </p>
-          </>
+            {feedback ? (
+              <p className="rounded-2xl border border-orange-400/30 bg-orange-500/10 px-4 py-3 text-center text-sm font-black text-orange-200">
+                {feedback}
+              </p>
+            ) : null}
+          </div>
         )}
       </div>
 
-      {canUseBoost ? (
-        <div className="fixed inset-x-0 bottom-[88px] z-20 px-5">
+      <BoostStickyPortal open={canUseBoost}>
+        <div className="sayittome-boost-sticky-cta mx-auto max-w-lg">
+          {credits >= BOOST_MIN_MINUTES ? (
+            <div className="mb-4 lg:hidden">
+              <BoostMinutesPicker
+                credits={credits}
+                value={selectedMinutes}
+                onChange={setSelectedMinutes}
+                disabled={isActive || activating}
+              />
+            </div>
+          ) : null}
+
+          {!canActivate && !activating ? (
+            <p className="mb-3 text-center text-xs font-semibold leading-5 text-white/45">
+              {isActive
+                ? t("boost_classic_cta_active", {
+                    time: activeUntil ? formatBoostRemaining(activeUntil) : "",
+                  })
+                : credits < BOOST_MIN_MINUTES
+                  ? t("boost_classic_cta_no_minutes")
+                  : null}
+            </p>
+          ) : null}
+
           <button
             type="button"
-            disabled={activating || isActive || credits < BOOST_MINUTES_PER_ACTIVATION}
+            disabled={!canActivate}
             onClick={() => void handleActivate()}
-            className="w-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 py-4 text-lg font-black text-black shadow-[0_12px_32px_rgba(249,115,22,0.35)] disabled:opacity-45"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 py-4 text-lg font-black text-black shadow-[0_12px_32px_rgba(249,115,22,0.35)] disabled:opacity-45"
           >
+            <Rocket size={20} strokeWidth={2.2} />
             {activating
               ? t("common_preparing")
-              : t("boost_activate_cta", { minutes: String(BOOST_MINUTES_PER_ACTIVATION) })}
+              : t("boost_activate_cta", { minutes: String(selectedMinutes) })}
           </button>
         </div>
-      ) : null}
+      </BoostStickyPortal>
     </main>
   );
 }
 
-function BoostPlanCard({
+function StepCard({
+  step,
+  icon: Icon,
+  title,
+  body,
+}: {
+  step: string;
+  icon: typeof Rocket;
+  title: string;
+  body: string;
+}) {
+  return (
+    <li className="flex gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500 text-sm font-black text-black">
+        {step}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Icon size={16} className="shrink-0 text-orange-300" />
+          <p className="font-black text-white">{title}</p>
+        </div>
+        <p className="mt-2 text-sm font-semibold leading-6 text-white/55">{body}</p>
+      </div>
+    </li>
+  );
+}
+
+function StatPill({
   label,
   value,
-  suffix,
-  icon: Icon,
-  badge,
-  selected = false,
-  muted = false,
+  tone,
 }: {
   label: string;
   value: string;
-  suffix: string;
-  icon: typeof Wallet;
-  badge?: string;
-  selected?: boolean;
-  muted?: boolean;
+  tone: "green" | "amber";
 }) {
+  const toneClass =
+    tone === "green"
+      ? "border-green-500/25 bg-green-500/10 text-green-300"
+      : "border-amber-500/25 bg-amber-500/10 text-amber-300";
+
   return (
-    <div
-      className={[
-        "relative flex min-h-[148px] flex-col rounded-2xl border px-3 py-4",
-        selected
-          ? "border-orange-400 bg-orange-500/10 shadow-[0_0_0_1px_rgba(251,146,60,0.35)]"
-          : "border-white/12 bg-white/[0.03]",
-        muted ? "opacity-90" : "",
-      ].join(" ")}
-    >
-      {badge ? (
-        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-orange-500 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-black">
-          {badge}
-        </span>
-      ) : null}
-      <p className="mt-1 text-center text-[11px] font-black uppercase tracking-wide text-white/45">
-        {label}
-      </p>
-      <p className="mt-2 text-center text-2xl font-black leading-none text-white">{value}</p>
-      <p className="text-center text-xs font-bold text-white/45">{suffix}</p>
-      <div className="mt-auto flex justify-center pt-3 text-orange-300/80">
-        <Icon size={22} strokeWidth={1.75} />
-      </div>
+    <div className={`rounded-2xl border px-4 py-3 ${toneClass}`}>
+      <p className="text-[11px] font-black uppercase tracking-wide opacity-80">{label}</p>
+      <p className="mt-1 text-2xl font-black tabular-nums">{value}</p>
     </div>
+  );
+}
+
+function RuleItem({ text }: { text: string }) {
+  return (
+    <li className="flex items-start gap-3 text-sm font-semibold leading-6 text-white/55">
+      <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-orange-400" />
+      {text}
+    </li>
+  );
+}
+
+function GiftIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8M4 7h16M12 22V7M12 7H7.5a2.5 2.5 0 1 1 0-5C10 2 12 7 12 7Zm0 0h4.5a2.5 2.5 0 0 0 0-5C14 2 12 7 12 7ZM4 12h16M4 7v5M20 7v5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

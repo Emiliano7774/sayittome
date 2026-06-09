@@ -138,9 +138,27 @@ main[data-scroll-root].sayittome-shuffle-scroll {
   padding-bottom: calc(var(--sayittome-bottom-ui) + 5.75rem);
 }
 
+main[data-scroll-root].sayittome-boost-page {
+  padding-bottom: calc(var(--sayittome-bottom-ui, 74px) + 11.5rem);
+}
+
+.sayittome-boost-sticky-cta {
+  position: fixed;
+  inset-inline: 0;
+  bottom: var(--sayittome-bottom-ui, calc(74px + env(safe-area-inset-bottom, 0px)));
+  z-index: 9998;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.96);
+  padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transform: translateZ(0);
+}
+
 main[data-scroll-root].sayittome-shuffle-scroll-classic {
   padding-bottom: calc(var(--sayittome-bottom-ui) + 1.5rem);
 }
+
 
 .sayittome-shuffle-header {
   -webkit-text-size-adjust: 100%;

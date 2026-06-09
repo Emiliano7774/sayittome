@@ -1,5 +1,7 @@
 export const BOOST_MINUTES_PER_ACTIVATION = 20;
 export const BOOST_MINUTES_PER_REFERRAL = 20;
+/** Minimum minutes a user can spend per boost activation. */
+export const BOOST_MIN_MINUTES = 1;
 export const REFERRAL_QUALIFY_DELAY_MS = 24 * 60 * 60 * 1000;
 /** Invitee must have been active within this window when credit is awarded. */
 export const REFERRAL_ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;

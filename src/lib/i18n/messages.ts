@@ -305,6 +305,7 @@ const es = {
   boost_error_already_active: "Ya tenés un boost activo.",
   boost_error_not_authenticated: "Iniciá sesión para continuar.",
   boost_error_no_profile: "Completá tu perfil primero.",
+  boost_error_invalid_minutes: "Elegí una cantidad válida de minutos.",
   boost_error_unknown: "No pudimos activar el boost. Probá de nuevo.",
   boost_announce_badge: "Nuevo",
   boost_announce_title: "Destacate en el Shuffle",
@@ -316,9 +317,52 @@ const es = {
   boost_announce_cta: "Ver Destacarse",
   boost_announce_later: "Después",
 
-  boost_classic_headline: "Destacá tu perfil con Power-Up",
+  boost_classic_headline: "Destacá tu perfil en el Shuffle",
   boost_classic_subheadline:
-    "Aparecé arriba del shuffle, recibí más mensajes y ganá minutos invitando amigos.",
+    "Usá minutos para aparecer arriba de todos y que más gente te vea. También podés ganar minutos invitando amigos.",
+  boost_classic_badge: "Power-Up",
+  boost_classic_status_title: "Tu estado",
+  boost_classic_active_hint: "Tu perfil está destacado en el shuffle.",
+  boost_classic_inactive_hint: "La duración depende de los minutos que elijas.",
+  boost_classic_cost_note:
+    "Cada vez que activás el boost se descuentan {minutes} minutos de tu banco. Sin minutos no podés activar.",
+  boost_classic_cost_note_flexible:
+    "Elegí cuántos minutos querés usar (de 1 hasta tu saldo). Esos minutos se descuentan al activar.",
+  boost_classic_steps_title: "¿Cómo funciona?",
+  boost_classic_steps_subtitle: "Tres pasos simples, sin pagos ni compras.",
+  boost_classic_step1_title: "Sumá minutos",
+  boost_classic_step1_body:
+    "Compartí tu link de invitación. Por cada persona que cree su perfil con ese link, ganás {minutes} minutos.",
+  boost_classic_step2_title: "Activá el boost",
+  boost_classic_step2_body:
+    "Elegí cuántos minutos querés usar y tocá el botón de abajo. Aparecés arriba del shuffle durante ese tiempo.",
+  boost_classic_step3_title: "Recibí más visitas",
+  boost_classic_step3_body:
+    "Mientras el boost está activo, más personas ven tu perfil y pueden escribirte.",
+  boost_classic_invite_title: "Ganá minutos invitando",
+  boost_classic_invite_body:
+    "Copiá tu link y compartilo. Cuando alguien se registre con él, sumás {minutes} minutos a tu banco.",
+  boost_classic_referrals_qualified: "Invitados acreditados",
+  boost_classic_referrals_pending: "En revisión (24 h)",
+  boost_classic_referrals_pending_hint:
+    "Los minutos por invitado se acreditan 24 horas después del registro, si el perfil sigue activo.",
+  boost_classic_rules_title: "Reglas importantes",
+  boost_classic_rule1: "Activar el boost cuesta {minutes} minutos de tu banco.",
+  boost_classic_rule1_flexible:
+    "Vos elegís cuántos minutos activar: cualquier número entero entre 1 y tu saldo disponible.",
+  boost_classic_rule2: "Cada invitado válido suma {minutes} minutos (acumulables).",
+  boost_classic_rule3: "El crédito por invitado se valida a las 24 h si el perfil sigue activo.",
+  boost_classic_rule4: "Máximo 15 invitaciones válidas por día. No cuenta el mismo dispositivo ni emails desechables.",
+  boost_classic_cta_need_minutes:
+    "Te faltan {needed} min para activar. Invitá amigos con tu link para sumar minutos.",
+  boost_classic_cta_active: "Boost activo — te quedan {time}.",
+  boost_classic_cta_no_minutes: "No tenés minutos. Invitá amigos con tu link para sumar.",
+  boost_minutes_picker_label: "Minutos a usar",
+  boost_minutes_picker_hint: "Elegí un número entero entre 1 y tu saldo.",
+  boost_minutes_picker_all: "Usar {minutes} min (todo)",
+  boost_copy_link: "Copiar link de invitación",
+  boost_guest_note:
+    "El modo anónimo no incluye esta función. Necesitás un perfil con email verificado.",
   boost_classic_promo_title: "Oferta por invitación",
   boost_classic_promo_body:
     "Por cada persona que cree su perfil con tu link, sumás {minutes} minutos extra. ¡No te quedes afuera!",
@@ -822,6 +866,7 @@ const en: Record<keyof typeof es, string> = {
   boost_error_already_active: "You already have an active boost.",
   boost_error_not_authenticated: "Sign in to continue.",
   boost_error_no_profile: "Complete your profile first.",
+  boost_error_invalid_minutes: "Choose a valid number of minutes.",
   boost_error_unknown: "Could not activate boost. Try again.",
   boost_announce_badge: "New",
   boost_announce_title: "Boost in Shuffle",
@@ -833,9 +878,52 @@ const en: Record<keyof typeof es, string> = {
   boost_announce_cta: "Open Boost",
   boost_announce_later: "Later",
 
-  boost_classic_headline: "Highlight your profile with Power-Up",
+  boost_classic_headline: "Highlight your profile in Shuffle",
   boost_classic_subheadline:
-    "Appear at the top of shuffle, get more messages, and earn minutes by inviting friends.",
+    "Use minutes to appear at the top and get seen by more people. You can also earn minutes by inviting friends.",
+  boost_classic_badge: "Power-Up",
+  boost_classic_status_title: "Your status",
+  boost_classic_active_hint: "Your profile is featured in shuffle.",
+  boost_classic_inactive_hint: "Duration depends on how many minutes you choose.",
+  boost_classic_cost_note:
+    "Each boost activation uses {minutes} minutes from your bank. You cannot activate without enough minutes.",
+  boost_classic_cost_note_flexible:
+    "Choose how many minutes to use (from 1 up to your balance). They are deducted when you activate.",
+  boost_classic_steps_title: "How it works",
+  boost_classic_steps_subtitle: "Three simple steps — no payments or purchases.",
+  boost_classic_step1_title: "Earn minutes",
+  boost_classic_step1_body:
+    "Share your invite link. For each person who creates a profile with it, you earn {minutes} minutes.",
+  boost_classic_step2_title: "Activate boost",
+  boost_classic_step2_body:
+    "Choose how many minutes to use and tap the button below. You appear at the top of shuffle for that duration.",
+  boost_classic_step3_title: "Get more visits",
+  boost_classic_step3_body:
+    "While boost is active, more people see your profile and can message you.",
+  boost_classic_invite_title: "Earn minutes by inviting",
+  boost_classic_invite_body:
+    "Copy your link and share it. When someone registers with it, you add {minutes} minutes to your bank.",
+  boost_classic_referrals_qualified: "Credited invites",
+  boost_classic_referrals_pending: "Pending review (24 h)",
+  boost_classic_referrals_pending_hint:
+    "Invite minutes are credited 24 hours after signup if the profile is still active.",
+  boost_classic_rules_title: "Important rules",
+  boost_classic_rule1: "Activating boost costs {minutes} minutes from your bank.",
+  boost_classic_rule1_flexible:
+    "You choose how many minutes to activate: any whole number from 1 to your available balance.",
+  boost_classic_rule2: "Each valid invite adds {minutes} minutes (stackable).",
+  boost_classic_rule3: "Invite credit is validated after 24 h if the profile stays active.",
+  boost_classic_rule4: "Max 15 valid invites per day. Same device and disposable emails do not count.",
+  boost_classic_cta_need_minutes:
+    "You need {needed} more min to activate. Invite friends with your link to earn minutes.",
+  boost_classic_cta_active: "Boost active — {time} remaining.",
+  boost_classic_cta_no_minutes: "You have no minutes. Invite friends with your link to earn more.",
+  boost_minutes_picker_label: "Minutes to use",
+  boost_minutes_picker_hint: "Pick any whole number from 1 to your balance.",
+  boost_minutes_picker_all: "Use all {minutes} min",
+  boost_copy_link: "Copy invite link",
+  boost_guest_note:
+    "Anonymous mode does not include this feature. You need a profile with verified email.",
   boost_classic_promo_title: "Invite offer",
   boost_classic_promo_body:
     "For each person who creates a profile with your link, you earn {minutes} extra minutes. Don't miss out!",

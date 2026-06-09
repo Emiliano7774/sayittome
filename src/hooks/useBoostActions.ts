@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostEligibility } from "@/hooks/useBoostEligibility";
 import { useBoostStatus } from "@/hooks/useBoostStatus";
+import { clampBoostMinutes } from "@/components/boost/BoostMinutesPicker";
+import { BOOST_MIN_MINUTES } from "@/lib/boost/constants";
 
 export function formatBoostRemaining(untilMs: number) {
   const diff = Math.max(0, untilMs - Date.now());
@@ -24,10 +27,17 @@ export function useBoostActions(enabled = true) {
   const [activating, setActivating] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [copied, setCopied] = useState(false);
+  const [selectedMinutes, setSelectedMinutes] = useState(BOOST_MIN_MINUTES);
 
   const credits = status?.boostCreditsMinutes ?? 0;
   const activeUntil = status?.activeBoostUntil ?? null;
   const isActive = activeUntil != null && activeUntil > Date.now();
+
+  useEffect(() => {
+    if (credits >= BOOST_MIN_MINUTES) {
+      setSelectedMinutes((prev) => clampBoostMinutes(credits, prev));
+    }
+  }, [credits]);
 
   const handleActivate = useCallback(async () => {
     if (!canUseBoost) {
@@ -37,7 +47,7 @@ export function useBoostActions(enabled = true) {
 
     setActivating(true);
     setFeedback("");
-    const result = await activate();
+    const result = await activate(selectedMinutes);
     setActivating(false);
 
     if (result.ok) {
@@ -50,13 +60,14 @@ export function useBoostActions(enabled = true) {
       reason === "insufficient_credits" ||
       reason === "already_active" ||
       reason === "not_authenticated" ||
-      reason === "no_profile"
+      reason === "no_profile" ||
+      reason === "invalid_minutes"
     ) {
       setFeedback(t(`boost_error_${reason}` as "boost_error_insufficient_credits"));
     } else {
       setFeedback(t("boost_error_unknown"));
     }
-  }, [activate, canUseBoost, isGuest, t]);
+  }, [activate, canUseBoost, isGuest, selectedMinutes, t]);
 
   const handleCopy = useCallback(async () => {
     if (!canUseBoost) return;
@@ -86,7 +97,26 @@ export function useBoostActions(enabled = true) {
     credits,
     activeUntil,
     isActive,
+    selectedMinutes,
+    setSelectedMinutes,
     handleActivate,
     handleCopy,
   };
+}
+
+type BoostStickyPortalProps = {
+  open: boolean;
+  children: ReactNode;
+};
+
+export function BoostStickyPortal({ open, children }: BoostStickyPortalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(children, document.body);
 }

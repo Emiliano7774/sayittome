@@ -77,7 +77,7 @@ export function useBoostStatus(enabled = true) {
     };
   }, [canUseBoost, refresh]);
 
-  const activate = useCallback(async () => {
+  const activate = useCallback(async (minutes: number) => {
     const uid = firebaseUser?.uid;
     if (!uid || !canUseBoost) {
       return { ok: false as const, reason: "not_authenticated" as const };
@@ -86,7 +86,7 @@ export function useBoostStatus(enabled = true) {
     const res = await fetch("/api/boost", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid }),
+      body: JSON.stringify({ uid, minutes }),
     });
     const json = await res.json();
     if (json.ok) {
