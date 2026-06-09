@@ -29,17 +29,17 @@ export function chatUnreadCount(
 
   if (wasChatReadLocally(chat, viewerId)) return 0;
 
+  const stored = chat.unreadCounts?.[viewerId];
+  if (typeof stored === "number" && stored > 0) {
+    return stored;
+  }
+
   if (chat.readBy?.[viewerId] === true) return 0;
 
   const sender = String(chat.lastMessageSender || "");
   const preview = String(chat.lastMessage || "").trim();
   if (!preview || !sender) return 0;
   if (isOwnChatSender(sender, viewerId, options.firebaseUid || "")) return 0;
-
-  const stored = chat.unreadCounts?.[viewerId];
-  if (typeof stored === "number" && stored > 0) {
-    return stored;
-  }
 
   return 1;
 }

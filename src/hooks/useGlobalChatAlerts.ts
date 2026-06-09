@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,17 +25,14 @@ import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 export function useGlobalChatAlerts() {
   const pathname = usePathname();
   const { firebaseUser } = useAuth();
-  const [tabVisible, setTabVisible] = useState(
-    () => typeof document === "undefined" || !document.hidden,
-  );
 
   const inboxQueriesEnabled = useMemo(
-    () => tabVisible && shouldEnableInboxListeners(pathname),
-    [pathname, tabVisible],
+    () => shouldEnableInboxListeners(pathname),
+    [pathname],
   );
   const chatAlertsEnabled = useMemo(
-    () => tabVisible && shouldEnableChatAlerts(pathname),
-    [pathname, tabVisible],
+    () => shouldEnableChatAlerts(pathname),
+    [pathname],
   );
 
   const { sortedChats, uid, loading, isAnonymousSession } = useChatsInbox({
@@ -60,12 +57,6 @@ export function useGlobalChatAlerts() {
 
   pathnameRef.current = pathname;
   sortedChatsRef.current = sortedChats;
-
-  useEffect(() => {
-    const onVisibility = () => setTabVisible(!document.hidden);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, []);
 
   useEffect(() => bindWhipSoundUnlock(), []);
 

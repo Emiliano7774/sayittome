@@ -95,7 +95,12 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     updatedAt: serverTimestamp(),
     [`readBy.${messageAuthorId}`]: true,
     [`typing.${messageAuthorId}`]: false,
-    ...(recipientUid ? { [`unreadCounts.${recipientUid}`]: increment(1) } : {}),
+    ...(recipientUid
+      ? {
+          [`unreadCounts.${recipientUid}`]: increment(1),
+          [`readBy.${recipientUid}`]: false,
+        }
+      : {}),
   };
 
   registerSessionChat(chatId);

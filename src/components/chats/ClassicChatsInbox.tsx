@@ -77,8 +77,14 @@ function ClassicChatRow({
       />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[17px] font-bold tracking-[-0.02em] text-white">{title}</p>
-        <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-white/38">
+        <p
+          className={`truncate text-[17px] tracking-[-0.02em] ${
+            unread > 0 ? "font-black text-white" : "font-bold text-white"
+          }`}
+        >
+          {title}
+        </p>
+        <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm">
           {mine ? (
             readByOther ? (
               <CheckCheck size={14} className="shrink-0 text-white/28" strokeWidth={2} />
@@ -86,7 +92,13 @@ function ClassicChatRow({
               <Check size={14} className="shrink-0 text-white/28" strokeWidth={2} />
             )
           ) : null}
-          <span className="truncate">{chat.lastMessage || t("chats_no_messages")}</span>
+          <span
+            className={`truncate ${
+              unread > 0 ? "font-bold text-white" : "text-white/38"
+            }`}
+          >
+            {chat.lastMessage || t("chats_no_messages")}
+          </span>
         </p>
       </div>
 

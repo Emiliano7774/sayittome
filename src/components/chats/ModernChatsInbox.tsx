@@ -133,8 +133,14 @@ export default function ModernChatsInbox({
                   />
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-lg font-black">{title}</p>
-                    <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-sm font-bold text-white/35">
+                    <p
+                      className={`truncate text-lg ${
+                        unread > 0 ? "font-black text-white" : "font-black text-white/90"
+                      }`}
+                    >
+                      {title}
+                    </p>
+                    <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-sm">
                       {mine ? (
                         readByOther ? (
                           <CheckCheck size={14} className="shrink-0 text-violet-400/80" strokeWidth={2} />
@@ -142,7 +148,13 @@ export default function ModernChatsInbox({
                           <Check size={14} className="shrink-0 text-white/28" strokeWidth={2} />
                         )
                       ) : null}
-                      <span className="truncate">{chat.lastMessage || t("chats_no_messages")}</span>
+                      <span
+                        className={`truncate ${
+                          unread > 0 ? "font-black text-white" : "font-bold text-white/35"
+                        }`}
+                      >
+                        {chat.lastMessage || t("chats_no_messages")}
+                      </span>
                     </p>
                   </div>
 
