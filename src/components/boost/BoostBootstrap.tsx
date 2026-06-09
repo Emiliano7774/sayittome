@@ -3,14 +3,17 @@
 import { useEffect, useState } from "react";
 
 import ShuffleBoostAnnouncementModal from "@/components/boost/ShuffleBoostAnnouncementModal";
+import { useAuth } from "@/contexts/AuthContext";
 import { captureReferralCodeFromUrl } from "@/lib/boost/referralClientStorage";
 import {
-  hasSeenFeatureAnnouncement,
-  markFeatureAnnouncementSeen,
+  hasSeenFeatureAnnouncementForUser,
+  persistFeatureAnnouncementSeen,
 } from "@/lib/features/featureAnnouncements";
 import { useBoostEligibility } from "@/hooks/useBoostEligibility";
 
 export default function BoostBootstrap() {
+  const { firebaseUser } = useAuth();
+  const uid = firebaseUser?.uid ?? "";
   const { canUseBoost, authLoading } = useBoostEligibility();
   const [showAnnouncement, setShowAnnouncement] = useState(false);
 
@@ -19,17 +22,32 @@ export default function BoostBootstrap() {
   }, []);
 
   useEffect(() => {
-    if (authLoading || !canUseBoost || hasSeenFeatureAnnouncement()) return;
+    if (authLoading || !canUseBoost || !uid) return;
 
-    const timer = window.setTimeout(() => {
-      setShowAnnouncement(true);
-    }, 1200);
+    let cancelled = false;
+    let timer: number | undefined;
 
-    return () => window.clearTimeout(timer);
-  }, [authLoading, canUseBoost]);
+    void (async () => {
+      const seen = await hasSeenFeatureAnnouncementForUser(uid);
+      if (cancelled || seen) return;
+
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        void persistFeatureAnnouncementSeen(uid);
+        setShowAnnouncement(true);
+      }, 1200);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [authLoading, canUseBoost, uid]);
 
   function dismissAnnouncement() {
-    markFeatureAnnouncementSeen();
+    if (uid) {
+      void persistFeatureAnnouncementSeen(uid);
+    }
     setShowAnnouncement(false);
   }
 
