@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Search, Shuffle, SlidersHorizontal } from "lucide-react";
+import { Search, Rocket, Shuffle, SlidersHorizontal } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
@@ -23,9 +23,11 @@ import {
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import { useT } from "@/contexts/LocaleContext";
+import { useBoostModal } from "@/contexts/BoostModalContext";
 
 export default function ModernShuffleClient() {
   const t = useT();
+  const { openBoostModal } = useBoostModal();
   const pool = useShufflePool();
 
   useEffect(() => {
@@ -136,6 +138,12 @@ export default function ModernShuffleClient() {
                 <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-violet-500" />
               ) : null
             }
+          />
+          <ShuffleToolbarButton
+            onClick={openBoostModal}
+            ariaLabel={t("boost_nav_label")}
+            icon={Rocket}
+            iconClassName="text-amber-400"
           />
           <ShuffleToolbarButton
             onClick={pool.handleShuffleClick}

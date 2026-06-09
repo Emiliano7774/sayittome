@@ -24,4 +24,6 @@ export type ShuffleProfile = {
   /** Precomputado al cargar el pool — no recalcular en cada render de fila. */
   showOnline: boolean;
   blurPhoto: boolean;
+  /** Perfil destacado con boost activo (prioridad en ventana shuffle). */
+  shuffleFeatured?: boolean;
 };

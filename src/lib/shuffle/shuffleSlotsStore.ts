@@ -72,6 +72,44 @@ export function setShuffleSlots(
   scheduleFlush();
 }
 
+export function setShuffleSlotsWithFeatured(
+  featured: ShuffleProfile[],
+  pool: ShuffleProfile[],
+  indices: Int32Array,
+  count: number,
+) {
+  const featuredCount = Math.min(featured.length, SHUFFLE_WINDOW_SIZE);
+  const regularCount = Math.min(count, SHUFFLE_WINDOW_SIZE - featuredCount);
+
+  for (let slot = 0; slot < featuredCount; slot++) {
+    const next = featured[slot] ?? null;
+    const prev = slots[slot];
+    if (prev?.uid !== next?.uid || prev?.username !== next?.username) {
+      slots[slot] = next;
+      dirtySlots.add(slot);
+    }
+  }
+
+  for (let slot = 0; slot < regularCount; slot++) {
+    const targetSlot = featuredCount + slot;
+    const next = pool[indices[slot]] ?? null;
+    const prev = slots[targetSlot];
+    if (prev?.uid !== next?.uid || prev?.username !== next?.username) {
+      slots[targetSlot] = next;
+      dirtySlots.add(targetSlot);
+    }
+  }
+
+  for (let slot = featuredCount + regularCount; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    if (slots[slot] !== null) {
+      slots[slot] = null;
+      dirtySlots.add(slot);
+    }
+  }
+
+  scheduleFlush();
+}
+
 export function getShuffleSlotProfile(slot: number) {
   return slots[slot];
 }

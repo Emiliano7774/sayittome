@@ -67,7 +67,14 @@ function ShuffleProfileRow({ profile, slot }: Props) {
           className="min-w-0 flex-1 text-left active:scale-[0.99] transition"
           aria-label={`Abrir chat con ${username}`}
         >
-          <h2 className="text-3xl md:text-4xl font-black truncate">{username}</h2>
+          <h2 className="text-3xl md:text-4xl font-black truncate">
+            {username}
+            {profile.shuffleFeatured ? (
+              <span className="ml-2 inline-flex align-middle rounded-full bg-orange-500/20 px-2 py-0.5 text-xs font-black uppercase tracking-wide text-orange-300">
+                ★
+              </span>
+            ) : null}
+          </h2>
           <p className="mt-2 text-xl md:text-2xl text-white/50 font-bold line-clamp-2">
             {bio}
           </p>
@@ -91,7 +98,8 @@ function propsEqual(prev: Props, next: Props) {
     a.presenceAt === b.presenceAt &&
     a.lastActive === b.lastActive &&
     a.adminBlurProfilePhoto === b.adminBlurProfilePhoto &&
-    a.adminBlurFotosPerfil === b.adminBlurFotosPerfil
+    a.adminBlurFotosPerfil === b.adminBlurFotosPerfil &&
+    a.shuffleFeatured === b.shuffleFeatured
   );
 }
 

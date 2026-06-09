@@ -15,6 +15,7 @@ import {
   normalizeUsername,
 } from "@/lib/profile/username";
 import { useT } from "@/contexts/LocaleContext";
+import { trackPendingReferralAfterSignup } from "@/lib/boost/trackPendingReferral";
 
 export default function ModernProfileSetup() {
   const router = useRouter();
@@ -111,6 +112,11 @@ export default function ModernProfileSetup() {
         },
         { merge: true },
       );
+
+      await trackPendingReferralAfterSignup({
+        inviteeUid: user.uid,
+        inviteeEmail: user.email,
+      });
 
       router.replace("/settings/edit");
     } catch {

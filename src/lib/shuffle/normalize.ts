@@ -66,6 +66,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
           adminBlurFotosPerfil,
           adminBlurGallery,
         }),
+        shuffleFeatured: item?.shuffleFeatured === true,
       };
     })
     .filter((p) => p.username && p.username !== "undefined");

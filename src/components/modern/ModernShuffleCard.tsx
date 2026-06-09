@@ -44,6 +44,12 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
 
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
 
+          {profile.shuffleFeatured ? (
+            <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full border border-orange-400/40 bg-black/60 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-300 backdrop-blur-sm">
+              ★ Destacado
+            </span>
+          ) : null}
+
           {profile.showOnline ? (
             <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-green-400/30 bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-green-300 backdrop-blur-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
@@ -104,5 +110,6 @@ export default memo(
     a.profile.uid === b.profile.uid &&
     a.profile.username === b.profile.username &&
     a.profile.photo === b.profile.photo &&
-    a.profile.showOnline === b.profile.showOnline,
+    a.profile.showOnline === b.profile.showOnline &&
+    a.profile.shuffleFeatured === b.profile.shuffleFeatured,
 );

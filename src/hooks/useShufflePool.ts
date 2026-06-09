@@ -30,7 +30,7 @@ import {
   shuffleMark,
   shuffleMeasure,
 } from "@/lib/shuffle/shuffleProfiler";
-import { setShuffleSlots } from "@/lib/shuffle/shuffleSlotsStore";
+import { setShuffleSlotsWithFeatured } from "@/lib/shuffle/shuffleSlotsStore";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import {
@@ -74,6 +74,7 @@ export function useShufflePool() {
   const scratchIndicesRef = useRef<number[]>([]);
   const windowIndicesRef = useRef(new Int32Array(SHUFFLE_WINDOW_SIZE));
   const windowCountRef = useRef(0);
+  const featuredRef = useRef<ShuffleProfile[]>([]);
   const shuffleClickCountRef = useRef(0);
   const mountedRef = useRef(false);
 
@@ -92,24 +93,32 @@ export function useShufflePool() {
   }, [search]);
 
   const applyWindowFromPool = useCallback((pool: ShuffleProfile[]) => {
-    const len = pool.length;
-    if (len === 0) {
+    const featured = featuredRef.current;
+    const featuredUids = new Set(featured.map((profile) => profile.uid));
+    const eligiblePool = pool.filter((profile) => !featuredUids.has(profile.uid));
+    const len = eligiblePool.length;
+    const featuredCount = featured.length;
+
+    if (len === 0 && featuredCount === 0) {
       windowCountRef.current = 0;
-      setShuffleSlots([], windowIndicesRef.current, 0);
+      setShuffleSlotsWithFeatured([], [], windowIndicesRef.current, 0);
       setListReady(false);
       return;
     }
 
-    windowCountRef.current = pickRandomWindowIndices(
-      len,
-      scratchIndicesRef.current,
-      windowIndicesRef.current,
-    );
+    const remainingSlots = Math.max(0, SHUFFLE_WINDOW_SIZE - featuredCount);
+    const regularCount =
+      len > 0
+        ? pickRandomWindowIndices(len, scratchIndicesRef.current, windowIndicesRef.current, remainingSlots)
+        : 0;
 
-    setShuffleSlots(
-      refreshPoolPresence(pool),
+    windowCountRef.current = featuredCount + regularCount;
+
+    setShuffleSlotsWithFeatured(
+      featured,
+      eligiblePool,
       windowIndicesRef.current,
-      windowCountRef.current,
+      regularCount,
     );
     setListReady(true);
   }, []);
@@ -138,6 +147,14 @@ export function useShufflePool() {
 
       const filtered = refreshPoolPresence(
         poolRef.current.filter((profile) => {
+          if (!profileMatchesShuffleSearch(profile, q)) return false;
+          return profileMatchesShuffleFilters(profile, nextFilters, { storyOwnerUids, now });
+        }),
+        now,
+      );
+
+      featuredRef.current = refreshPoolPresence(
+        featuredRef.current.filter((profile) => {
           if (!profileMatchesShuffleSearch(profile, q)) return false;
           return profileMatchesShuffleFilters(profile, nextFilters, { storyOwnerUids, now });
         }),
@@ -197,6 +214,8 @@ export function useShufflePool() {
         if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
 
         const nextProfiles = normalizeShuffleProfiles(json?.profiles);
+        const nextFeatured = normalizeShuffleProfiles(json?.featuredProfiles);
+        featuredRef.current = nextFeatured;
         const profilesCreated = Number(json?.profilesCreated ?? 0);
         const anonymousOnline = Number(json?.anonymousOnline ?? 0);
         const total =
@@ -257,18 +276,8 @@ export function useShufflePool() {
     event?.stopPropagation?.();
 
     const pool = activePoolRef.current;
-    if (pool.length > 0) {
-      const len = pool.length;
-      windowCountRef.current = pickRandomWindowIndices(
-        len,
-        scratchIndicesRef.current,
-        windowIndicesRef.current,
-      );
-      setShuffleSlots(
-        refreshPoolPresence(pool),
-        windowIndicesRef.current,
-        windowCountRef.current,
-      );
+    if (pool.length > 0 || featuredRef.current.length > 0) {
+      applyWindowFromPool(refreshPoolPresence(pool));
     }
 
     shuffleClickCountRef.current += 1;

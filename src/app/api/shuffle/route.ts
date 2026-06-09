@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getActiveBoostProfiles } from "@/lib/boost/service";
+import { BOOST_TOP_SLOTS } from "@/lib/boost/constants";
 import { readPublicStats, writePublicStats } from "@/lib/firestore/publicStats";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
@@ -440,9 +442,21 @@ export async function GET(req: Request) {
     const ordered = shouldShuffle && !q ? shuffleArray(filtered) : filtered;
     const selected = ordered.slice(0, limit).map((profile) => withPresenceBadge(profile));
 
+    const activeBoosts = await getActiveBoostProfiles();
+    const boostUidOrder = activeBoosts
+      .slice(0, BOOST_TOP_SLOTS)
+      .map((row) => String(row.uid || ""))
+      .filter(Boolean);
+
+    const featuredProfiles = boostUidOrder
+      .map((uid) => filteredByDiscovery.find((profile) => profile.uid === uid))
+      .filter(Boolean)
+      .map((profile) => ({ ...withPresenceBadge(profile!), shuffleFeatured: true }));
+
     return NextResponse.json({
       ok: true,
       profiles: selected,
+      featuredProfiles,
       profilesCreated,
       anonymousOnline,
       totalLive,

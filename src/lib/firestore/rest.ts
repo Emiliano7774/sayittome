@@ -191,6 +191,18 @@ export async function runCollectionQueryAll(
   return all;
 }
 
+export async function getFirestoreDoc(collection: string, id: string) {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collection}/${encodeURIComponent(id)}?key=${FIRESTORE_API_KEY}`;
+
+  const res = await fetch(url, { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`get ${collection}/${id} ${res.status}`);
+  }
+
+  return parseFirestoreDoc(await res.json());
+}
+
 export async function patchFirestoreDoc(
   collection: string,
   id: string,

@@ -34,7 +34,14 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
           className="min-w-0 flex-1 text-left transition active:scale-[0.99]"
           aria-label={`Abrir chat con ${username}`}
         >
-          <h2 className={`truncate ${tokens.nameClass}`}>{username}</h2>
+          <h2 className={`truncate ${tokens.nameClass}`}>
+            {username}
+            {profile.shuffleFeatured ? (
+              <span className="ml-2 inline-flex align-middle rounded-full bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-orange-300">
+                ★
+              </span>
+            ) : null}
+          </h2>
           <p className={`mt-0.5 ${tokens.bioClass}`}>{bio}</p>
         </button>
       </div>
