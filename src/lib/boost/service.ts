@@ -11,6 +11,7 @@ import {
 import { isDisposableEmail } from "@/lib/boost/disposableEmailDomains";
 import { generateReferralCode } from "@/lib/boost/referralCode";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
+import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import {
   createFirestoreDoc,
   getFirestoreDoc,
@@ -230,7 +231,7 @@ export async function getBoostStatus(uid: string, siteOrigin: string): Promise<B
   await processPendingReferrals(uid);
 
   const user = await getFirestoreDoc("usuarios", uid);
-  if (!user) return null;
+  if (!user || !isPublicProfile(user)) return null;
 
   const referralCode = (await ensureUserReferralCode(uid)) || "";
   const boostDoc = await getFirestoreDoc("shuffle_boosts", uid);
@@ -252,7 +253,9 @@ export async function getBoostStatus(uid: string, siteOrigin: string): Promise<B
 
 export async function activateBoost(uid: string) {
   const user = await getFirestoreDoc("usuarios", uid);
-  if (!user) return { ok: false as const, reason: "no_profile" as const };
+  if (!user || !isPublicProfile(user)) {
+    return { ok: false as const, reason: "no_profile" as const };
+  }
 
   const credits = Number(user.boostCreditsMinutes || 0);
   if (credits < BOOST_MINUTES_PER_ACTIVATION) {

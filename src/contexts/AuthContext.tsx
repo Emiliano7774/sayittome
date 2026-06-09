@@ -34,6 +34,8 @@ type AuthUserData = {
   bio?: string;
 
   provincia?: string;
+
+  profileSetupComplete?: boolean;
 };
 
 type AuthContextType = {
@@ -128,6 +130,9 @@ export function AuthProvider({
                 provincia:
                   data.provincia ||
                   "",
+
+                profileSetupComplete:
+                  data.profileSetupComplete === true,
               });
             } else {
               setProfile({
@@ -147,6 +152,8 @@ export function AuthProvider({
 
                 provincia:
                   "",
+
+                profileSetupComplete: false,
               });
             }
           } catch (e) {

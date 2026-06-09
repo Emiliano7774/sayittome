@@ -23,11 +23,9 @@ import {
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import { useT } from "@/contexts/LocaleContext";
-import { useBoostModal } from "@/contexts/BoostModalContext";
 
 export default function ModernShuffleClient() {
   const t = useT();
-  const { openBoostModal } = useBoostModal();
   const pool = useShufflePool();
 
   useEffect(() => {
@@ -139,12 +137,13 @@ export default function ModernShuffleClient() {
               ) : null
             }
           />
-          <ShuffleToolbarButton
-            onClick={openBoostModal}
-            ariaLabel={t("boost_nav_label")}
-            icon={Rocket}
-            iconClassName="text-amber-400"
-          />
+          <Link
+            href="/boost"
+            aria-label={t("boost_nav_label")}
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-amber-400 active:scale-95"
+          >
+            <Rocket size={18} strokeWidth={2.35} />
+          </Link>
           <ShuffleToolbarButton
             onClick={pool.handleShuffleClick}
             ariaLabel={t("shuffle_title")}

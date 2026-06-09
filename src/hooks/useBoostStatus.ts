@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { boostCacheKey } from "@/lib/boost/boostEligibility";
 import { readClientCache, writeClientCache } from "@/lib/cache/clientCache";
+import { useBoostEligibility } from "@/hooks/useBoostEligibility";
 
 export type BoostStatus = {
   ok: boolean;
@@ -15,24 +17,26 @@ export type BoostStatus = {
   referralsPending: number;
 };
 
-const CACHE_KEY = "boost_status_v1";
 const CACHE_TTL_MS = 45_000;
 
 export function useBoostStatus(enabled = true) {
   const { firebaseUser } = useAuth();
+  const { canUseBoost } = useBoostEligibility();
   const [status, setStatus] = useState<BoostStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
 
   const refresh = useCallback(async (force = false) => {
     const uid = firebaseUser?.uid;
-    if (!uid || !enabled) {
+    if (!uid || !enabled || !canUseBoost) {
       setStatus(null);
       return null;
     }
 
+    const cacheKey = boostCacheKey(uid);
+
     if (!force) {
-      const cached = readClientCache<BoostStatus>(CACHE_KEY, CACHE_TTL_MS);
+      const cached = readClientCache<BoostStatus>(cacheKey, CACHE_TTL_MS);
       if (cached?.ok) {
         setStatus(cached);
         return cached;
@@ -46,28 +50,38 @@ export function useBoostStatus(enabled = true) {
       if (!mountedRef.current) return null;
       if (json.ok) {
         setStatus(json);
-        writeClientCache(CACHE_KEY, json);
+        writeClientCache(cacheKey, json);
         return json;
       }
+      setStatus(null);
       return null;
     } catch {
+      setStatus(null);
       return null;
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [enabled, firebaseUser?.uid]);
+  }, [canUseBoost, enabled, firebaseUser?.uid]);
 
   useEffect(() => {
     mountedRef.current = true;
+    if (!canUseBoost) {
+      setStatus(null);
+      return () => {
+        mountedRef.current = false;
+      };
+    }
     void refresh();
     return () => {
       mountedRef.current = false;
     };
-  }, [refresh]);
+  }, [canUseBoost, refresh]);
 
   const activate = useCallback(async () => {
     const uid = firebaseUser?.uid;
-    if (!uid) return { ok: false as const, reason: "not_authenticated" };
+    if (!uid || !canUseBoost) {
+      return { ok: false as const, reason: "not_authenticated" as const };
+    }
 
     const res = await fetch("/api/boost", {
       method: "POST",
@@ -79,7 +93,7 @@ export function useBoostStatus(enabled = true) {
       await refresh(true);
     }
     return json;
-  }, [firebaseUser?.uid, refresh]);
+  }, [canUseBoost, firebaseUser?.uid, refresh]);
 
-  return { status, loading, refresh, activate };
+  return { status, loading, refresh, activate, canUseBoost };
 }

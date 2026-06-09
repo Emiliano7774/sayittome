@@ -5,7 +5,6 @@ import { AnonMatchProvider } from "@/contexts/AnonMatchContext";
 import { ChatAlertsProvider } from "@/contexts/ChatAlertsContext";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { UxModeProvider } from "@/contexts/UxModeContext";
-import { BoostModalProvider } from "@/contexts/BoostModalContext";
 import AnonymousPresenceBootstrap from "@/components/AnonymousPresenceBootstrap";
 import AnonSessionLifecycle from "@/components/AnonSessionLifecycle";
 import BoostBootstrap from "@/components/boost/BoostBootstrap";
@@ -28,7 +27,6 @@ export default function Providers({
       <AuthProvider>
         <AnonMatchProvider>
         <UxModeProvider>
-          <BoostModalProvider>
           <ChatAlertsProvider>
           <PresenceBootstrap />
           <AnonymousPresenceBootstrap />
@@ -43,7 +41,6 @@ export default function Providers({
           <BoostBootstrap />
           {children}
           </ChatAlertsProvider>
-          </BoostModalProvider>
         </UxModeProvider>
         </AnonMatchProvider>
       </AuthProvider>

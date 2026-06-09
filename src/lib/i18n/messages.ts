@@ -316,6 +316,28 @@ const es = {
   boost_announce_cta: "Ver Destacarse",
   boost_announce_later: "Después",
 
+  boost_classic_headline: "Destacá tu perfil con Power-Up",
+  boost_classic_subheadline:
+    "Aparecé arriba del shuffle, recibí más mensajes y ganá minutos invitando amigos.",
+  boost_classic_promo_title: "Oferta por invitación",
+  boost_classic_promo_body:
+    "Por cada persona que cree su perfil con tu link, sumás {minutes} minutos extra. ¡No te quedes afuera!",
+  boost_card_wallet: "Tu banco",
+  boost_card_activate: "Activar",
+  boost_card_referral: "Invitá",
+  boost_card_recommended: "Recomendado",
+  boost_minutes_short: "minutos",
+  boost_security_note_short: "Crédito a las 24 h si el perfil sigue activo.",
+  boost_fine_print:
+    "El boost usa minutos de tu banco. Los créditos por invitación se validan 24 horas después del registro si el perfil permanece activo. Máximo 15 invitaciones válidas por día.",
+  boost_guest_title: "Iniciá sesión para Destacarte",
+  boost_guest_body:
+    "Destacarse en Shuffle solo está disponible con tu perfil registrado. Si entraste en modo anónimo, creá tu cuenta o iniciá sesión para activar el boost y compartir tu link.",
+  boost_profile_required_title: "Completá tu perfil",
+  boost_profile_required_body:
+    "Ya iniciaste sesión, pero todavía tenés que terminar de configurar tu perfil para usar Destacarse.",
+  boost_profile_required_cta: "Completar perfil",
+
   setup_username_invalid: "El usuario debe tener entre 3 y 24 caracteres (letras, números, . _ -).",
   setup_province_required: "Seleccioná tu provincia.",
   setup_username_taken: "Ese nombre de usuario ya está en uso.",
@@ -810,6 +832,28 @@ const en: Record<keyof typeof es, string> = {
   boost_announce_point_security: "Credits are validated after 24 h if the profile stays active.",
   boost_announce_cta: "Open Boost",
   boost_announce_later: "Later",
+
+  boost_classic_headline: "Highlight your profile with Power-Up",
+  boost_classic_subheadline:
+    "Appear at the top of shuffle, get more messages, and earn minutes by inviting friends.",
+  boost_classic_promo_title: "Invite offer",
+  boost_classic_promo_body:
+    "For each person who creates a profile with your link, you earn {minutes} extra minutes. Don't miss out!",
+  boost_card_wallet: "Your bank",
+  boost_card_activate: "Activate",
+  boost_card_referral: "Invite",
+  boost_card_recommended: "Recommended",
+  boost_minutes_short: "minutes",
+  boost_security_note_short: "Credit after 24 h if the profile stays active.",
+  boost_fine_print:
+    "Boost uses minutes from your bank. Invite credits are validated 24 hours after signup if the profile remains active. Max 15 valid invites per day.",
+  boost_guest_title: "Sign in to Boost",
+  boost_guest_body:
+    "Boost in Shuffle is only available with a registered profile. If you entered in anonymous mode, create an account or sign in to activate boost and share your link.",
+  boost_profile_required_title: "Complete your profile",
+  boost_profile_required_body:
+    "You are signed in, but you still need to finish setting up your profile before using Boost.",
+  boost_profile_required_cta: "Complete profile",
 
   setup_username_invalid: "Username must be 3–24 characters (letters, numbers, . _ -).",
   setup_province_required: "Select your province.",

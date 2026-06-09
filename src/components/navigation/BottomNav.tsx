@@ -4,12 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
-import { useBoostModal } from "@/contexts/BoostModalContext";
 import { useT } from "@/contexts/LocaleContext";
 
 type NavItem =
   | { id: string; kind: "link"; href: string; icon: typeof Circle; badge?: number }
-  | { id: string; kind: "boost"; icon: typeof Rocket }
+  | { id: string; kind: "boost"; href: string; icon: typeof Rocket }
   | { id: string; kind: "shuffle"; href: string; icon: typeof Shuffle };
 
 type Props = {
@@ -19,13 +18,12 @@ type Props = {
 export default function BottomNav({ unreadCount = 0 }: Props) {
   const pathname = usePathname();
   const t = useT();
-  const { openBoostModal } = useBoostModal();
 
   const items: NavItem[] = [
     { id: "stories", kind: "link", href: "/stories", icon: Circle },
     { id: "chats", kind: "link", href: "/chats", icon: MessageSquare, badge: unreadCount },
     { id: "shuffle", kind: "shuffle", href: "/shuffle", icon: Shuffle },
-    { id: "boost", kind: "boost", icon: Rocket },
+    { id: "boost", kind: "boost", href: "/boost", icon: Rocket },
     { id: "settings", kind: "link", href: "/settings", icon: User },
   ];
 
@@ -40,16 +38,21 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
           const Icon = item.icon;
 
           if (item.kind === "boost") {
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+
             return (
-              <button
+              <Link
                 key={item.id}
-                type="button"
-                onClick={openBoostModal}
-                className="relative flex h-full flex-1 items-center justify-center border-0 bg-transparent p-0"
+                href={item.href}
+                className="relative flex h-full flex-1 items-center justify-center"
                 aria-label={t("boost_nav_label")}
               >
-                <Icon size={31} strokeWidth={2.4} className="text-[#f59e0b]" />
-              </button>
+                <Icon
+                  size={31}
+                  strokeWidth={2.4}
+                  className={active ? "text-[#f59e0b]" : "text-[#777]"}
+                />
+              </Link>
             );
           }
 

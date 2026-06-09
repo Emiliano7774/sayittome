@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Rocket, Sparkles } from "lucide-react";
 
-import { useBoostModal } from "@/contexts/BoostModalContext";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useUxMode } from "@/contexts/UxModeContext";
 import { BOOST_MINUTES_PER_ACTIVATION, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
 
 type Props = {
@@ -12,11 +13,12 @@ type Props = {
 
 export default function ShuffleBoostAnnouncementModal({ onDismiss }: Props) {
   const { t } = useLocale();
-  const { openBoostModal } = useBoostModal();
+  const { uxMode } = useUxMode();
+  const router = useRouter();
 
   function handleOpenBoost() {
     onDismiss();
-    openBoostModal();
+    router.push("/boost");
   }
 
   return (
@@ -26,7 +28,12 @@ export default function ShuffleBoostAnnouncementModal({ onDismiss }: Props) {
       aria-modal="true"
       aria-labelledby="boost-announce-title"
     >
-      <div className="w-full max-w-md overflow-hidden rounded-[1.75rem] border border-orange-400/35 bg-[#07070B] p-6 shadow-[0_16px_34px_rgba(249,115,22,0.25)]">
+      <div
+        className={[
+          "w-full max-w-md overflow-hidden rounded-[1.75rem] border border-orange-400/35 bg-[#07070B] p-6 shadow-[0_16px_34px_rgba(249,115,22,0.25)]",
+          uxMode === "classic" ? "max-h-[90vh] overflow-y-auto" : "",
+        ].join(" ")}
+      >
         <div className="relative overflow-hidden rounded-[1.25rem] border border-orange-400/20 bg-gradient-to-br from-orange-500/20 via-[#120810] to-black p-5">
           <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-orange-400/20 blur-2xl" />
           <div className="flex items-center gap-3">
