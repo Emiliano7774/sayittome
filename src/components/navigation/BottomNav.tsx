@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
 import { useT } from "@/contexts/LocaleContext";
+import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 
 type NavItem =
   | { id: string; kind: "link"; href: string; icon: typeof Circle; badge?: number }
@@ -87,9 +88,12 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
                 className={active ? "text-[#7b5cff]" : "text-[#777]"}
               />
               {badge > 0 && item.id === "chats" ? (
-                <span className="absolute right-[calc(50%-24px)] top-[14px] min-w-[18px] rounded-full border border-orange-300/40 bg-gradient-to-br from-orange-500 to-amber-600 px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow-[0_0_18px_rgba(249,115,22,0.55)]">
-                  {badge > 99 ? "99+" : badge}
-                </span>
+                <>
+                  <ChatPendingIndicator className="right-[calc(50%-20px)] top-[12px]" />
+                  <span className="absolute right-[calc(50%-30px)] top-[10px] min-w-[16px] rounded-full border border-orange-300/35 bg-gradient-to-br from-orange-500 to-amber-600 px-1 py-0.5 text-[9px] font-black leading-none text-white shadow-[0_0_14px_rgba(249,115,22,0.5)]">
+                    {badge > 99 ? "99+" : badge}
+                  </span>
+                </>
               ) : null}
             </Link>
           );

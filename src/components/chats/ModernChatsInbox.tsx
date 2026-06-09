@@ -114,7 +114,9 @@ export default function ModernChatsInbox({
                 "group relative z-10 flex items-center gap-4 rounded-2xl border p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition active:scale-[0.99] " +
                 (selected
                   ? "border-violet-500/40 bg-violet-500/10"
-                  : "border-white/8 bg-[#0c0c0c]/90 hover:border-violet-500/25 hover:bg-[#121212]");
+                  : unread > 0
+                    ? "border-orange-500/25 bg-[#141414] hover:border-orange-500/35"
+                    : "border-white/8 bg-[#0c0c0c]/90 hover:border-violet-500/25 hover:bg-[#121212]");
 
               const inner = (
                 <>
@@ -135,7 +137,7 @@ export default function ModernChatsInbox({
                   <div className="min-w-0 flex-1">
                     <p
                       className={`truncate text-lg ${
-                        unread > 0 ? "font-black text-white" : "font-black text-white/90"
+                        unread > 0 ? "font-black text-white" : "font-bold text-white/45"
                       }`}
                     >
                       {title}
@@ -150,7 +152,7 @@ export default function ModernChatsInbox({
                       ) : null}
                       <span
                         className={`truncate ${
-                          unread > 0 ? "font-black text-white" : "font-bold text-white/35"
+                          unread > 0 ? "font-black text-white" : "font-semibold text-white/30"
                         }`}
                       >
                         {chat.lastMessage || t("chats_no_messages")}
@@ -165,7 +167,7 @@ export default function ModernChatsInbox({
                       </span>
                     ) : null}
                     {unread > 0 && !selection.selectionMode ? (
-                      <span className="min-w-[26px] rounded-full bg-violet-600 px-2.5 py-1 text-center text-xs font-black shadow-[0_0_16px_rgba(139,92,246,0.45)]">
+                      <span className="min-w-[26px] rounded-full border border-orange-400/30 bg-gradient-to-br from-orange-500 to-amber-600 px-2.5 py-1 text-center text-xs font-black shadow-[0_0_16px_rgba(249,115,22,0.45)]">
                         {unread > 99 ? "99+" : unread}
                       </span>
                     ) : null}

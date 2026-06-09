@@ -15,6 +15,10 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
+import {
+  buildOutgoingChatMetaPatch,
+  resolveChatRecipientIds,
+} from "@/lib/chat/outgoingChatMeta";
 
 function NewChatContent() {
   const params = useSearchParams();
@@ -89,13 +93,15 @@ function NewChatContent() {
         },
       });
 
-      await updateDoc(doc(db, "chats", chatId), {
-        lastMessage: clean,
-        lastMessageSender: currentUser.uid,
-        updatedAt: serverTimestamp(),
-        ["readBy." + currentUser.uid]: true,
-        ["typing." + currentUser.uid]: false,
-      });
+      await updateDoc(
+        doc(db, "chats", chatId),
+        buildOutgoingChatMetaPatch(currentUser.uid, resolveChatRecipientIds(currentUser.uid, {
+          participantes: [currentUser.uid, to],
+        }), {
+          lastMessage: clean,
+          lastMessageSender: currentUser.uid,
+        }),
+      );
 
       setText("");
 

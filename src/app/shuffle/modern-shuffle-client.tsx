@@ -8,7 +8,9 @@ import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import ModernShuffleGrid from "@/components/modern/ModernShuffleGrid";
 import ModernStoriesBar from "@/components/modern/ModernStoriesBar";
 import ModernAnonConnectCard from "@/components/anonMatch/ModernAnonConnectCard";
+import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
+import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ShuffleToolbarButton from "@/components/shuffle/ShuffleToolbarButton";
 import { useShufflePool } from "@/hooks/useShufflePool";
@@ -27,6 +29,7 @@ import { useT } from "@/contexts/LocaleContext";
 export default function ModernShuffleClient() {
   const t = useT();
   const pool = useShufflePool();
+  const { totalUnread } = useChatAlerts();
 
   useEffect(() => {
     document.body.classList.add("sayittome-shuffle-route");
@@ -61,9 +64,12 @@ export default function ModernShuffleClient() {
               </Link>
               <Link
                 href="/chats"
-                className="rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-black"
+                className="relative rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-black"
               >
                 {t("chats_title")}
+                {totalUnread > 0 ? (
+                  <ChatPendingIndicator className="-right-0.5 -top-0.5" />
+                ) : null}
               </Link>
             </>
           }

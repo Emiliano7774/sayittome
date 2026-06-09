@@ -60,7 +60,8 @@ function ClassicChatRow({
   );
 
   const rowClass =
-    "flex items-center gap-3.5 border-b border-white/10 px-4 py-3.5 transition active:bg-white/[0.03]";
+    "flex items-center gap-3.5 border-b border-white/10 px-4 py-3.5 transition active:bg-white/[0.03] " +
+    (unread > 0 ? "bg-white/[0.07]" : "");
 
   const content = (
     <>
@@ -79,7 +80,7 @@ function ClassicChatRow({
       <div className="min-w-0 flex-1">
         <p
           className={`truncate text-[17px] tracking-[-0.02em] ${
-            unread > 0 ? "font-black text-white" : "font-bold text-white"
+            unread > 0 ? "font-black text-white" : "font-semibold text-white/45"
           }`}
         >
           {title}
@@ -94,7 +95,7 @@ function ClassicChatRow({
           ) : null}
           <span
             className={`truncate ${
-              unread > 0 ? "font-bold text-white" : "text-white/38"
+              unread > 0 ? "font-black text-white" : "font-medium text-white/32"
             }`}
           >
             {chat.lastMessage || t("chats_no_messages")}
@@ -107,7 +108,7 @@ function ClassicChatRow({
           <span className="whitespace-nowrap text-[11px] font-medium text-white/32">{timeLabel}</span>
         ) : null}
         {unread > 0 ? (
-          <span className="min-w-[24px] rounded-full bg-violet-600 px-2 py-1 text-center text-[11px] font-black leading-none shadow-[0_0_14px_rgba(139,92,246,0.45)]">
+          <span className="min-w-[24px] rounded-full border border-orange-400/30 bg-gradient-to-br from-orange-500 to-amber-600 px-2 py-1 text-center text-[11px] font-black leading-none shadow-[0_0_14px_rgba(249,115,22,0.45)]">
             {unread > 99 ? "99+" : unread}
           </span>
         ) : null}

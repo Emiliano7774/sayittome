@@ -1,6 +1,6 @@
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
+import { isIncomingChatActivity } from "@/lib/chat/incomingChatActivity";
 import { resolveChatViewerId } from "@/lib/chat/inboxPeerTitle";
 import { wasChatReadLocally } from "@/lib/chat/localChatRead";
 
@@ -27,6 +27,8 @@ export function chatUnreadCount(
   if (!viewerId) return 0;
   if (isExcludedChat(chat, options.excludeChatId)) return 0;
 
+  if (!isIncomingChatActivity(chat, viewerId, options.firebaseUid || "")) return 0;
+
   if (wasChatReadLocally(chat, viewerId)) return 0;
 
   const stored = chat.unreadCounts?.[viewerId];
@@ -34,13 +36,9 @@ export function chatUnreadCount(
     return stored;
   }
 
-  if (chat.readBy?.[viewerId] === true) return 0;
+  if (chat.readBy?.[viewerId] === false) return 1;
 
-  const sender = String(chat.lastMessageSender || "");
-  const preview = String(chat.lastMessage || "").trim();
-  if (!preview || !sender) return 0;
-  if (isOwnChatSender(sender, viewerId, options.firebaseUid || "")) return 0;
-
+  // Incoming and not opened since this activity (legacy chats may leave stale readBy).
   return 1;
 }
 

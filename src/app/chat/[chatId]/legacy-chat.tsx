@@ -27,6 +27,10 @@ import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import { markChatAsRead } from "@/lib/chat/unread";
+import {
+  buildOutgoingChatMetaPatch,
+  resolveChatRecipientIds,
+} from "@/lib/chat/outgoingChatMeta";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 
@@ -55,6 +59,7 @@ type MessageData = {
 type ChatData = {
   typing?: Record<string, boolean>;
   readBy?: Record<string, boolean>;
+  participantes?: string[];
   participants?: string[];
   lastMessage?: string;
   lastMessageSender?: string;
@@ -229,7 +234,16 @@ export default function LegacyChatPage() {
         });
 
         try {
-          await markChatAsRead(chatId, user.uid);
+          const lastDoc = docs[docs.length - 1];
+          await markChatAsRead(chatId, user.uid, {
+            id: chatId,
+            canonicalChatId: chatId,
+            participantes: chat?.participantes || chat?.participants,
+            targetUid: chat?.targetUid,
+            receptorUid: chat?.receptorUid,
+            lastMessage: String(lastDoc.texto || mediaLabel(lastDoc.mediaType) || ""),
+            lastMessageSender: String(lastDoc.fromUid || user.uid),
+          });
           await updateDoc(doc(db, "chats", chatId), {
             ["typing." + user.uid]: false,
           });
@@ -408,13 +422,17 @@ export default function LegacyChatPage() {
         ...replyPayload,
       });
 
-      await updateDoc(doc(db, "chats", chatId), {
-        lastMessage: mediaLabel(mediaType),
-        lastMessageSender: user.uid,
-        updatedAt: serverTimestamp(),
-        ["typing." + user.uid]: false,
-        ["readBy." + user.uid]: true,
-      });
+      await updateDoc(
+        doc(db, "chats", chatId),
+        buildOutgoingChatMetaPatch(
+          user.uid,
+          resolveChatRecipientIds(user.uid, chat),
+          {
+            lastMessage: mediaLabel(mediaType),
+            lastMessageSender: user.uid,
+          },
+        ),
+      );
 
       notifyModerationActivity({
         lastMessage: mediaLabel(mediaType),
@@ -478,13 +496,17 @@ export default function LegacyChatPage() {
         ...replyPayload,
       });
 
-      await updateDoc(doc(db, "chats", chatId), {
-        lastMessage: clean,
-        lastMessageSender: user.uid,
-        updatedAt: serverTimestamp(),
-        ["typing." + user.uid]: false,
-        ["readBy." + user.uid]: true,
-      });
+      await updateDoc(
+        doc(db, "chats", chatId),
+        buildOutgoingChatMetaPatch(
+          user.uid,
+          resolveChatRecipientIds(user.uid, chat),
+          {
+            lastMessage: clean,
+            lastMessageSender: user.uid,
+          },
+        ),
+      );
 
       notifyModerationActivity({
         lastMessage: clean,
