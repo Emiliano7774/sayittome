@@ -39,6 +39,10 @@ import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
+import {
+  resolveProfileCoverPhoto,
+  resolveProfileCoverVideo,
+} from "@/lib/profile/resolveProfileCover";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
 type Profile = {
@@ -257,8 +261,8 @@ export default function PublicProfilePage() {
           provincia: profile.provincia,
           mostrarProvincia: profile.mostrarProvincia,
           fotoPrincipal: profile.fotoPrincipal,
-          fotoPortada: profile.fotoPortada,
-          videoPortada: profile.videoPortada,
+          fotoPortada: resolveProfileCoverPhoto(profile),
+          videoPortada: resolveProfileCoverVideo(profile),
           fotos: profile.fotos,
           likes: profile.likes,
           conversaciones: profile.conversaciones,

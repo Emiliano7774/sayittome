@@ -40,6 +40,7 @@ export default function ProfilePreviewVideo({
   return (
     <div className={className}>
       <video
+        key={src}
         ref={videoRef}
         src={src}
         className={videoClassName}

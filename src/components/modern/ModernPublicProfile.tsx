@@ -20,6 +20,10 @@ import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
+import {
+  resolveProfileCoverPhoto,
+  resolveProfileCoverVideo,
+} from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -85,8 +89,10 @@ export default function ModernPublicProfile({
   const [videoViewerUrl, setVideoViewerUrl] = useState<string | null>(null);
 
   const principalIsVideo = isVideoMediaUrl(profile.fotoPrincipal);
+  const coverVideoUrl = resolveProfileCoverVideo(profile);
+  const coverPhotoUrl = resolveProfileCoverPhoto(profile);
 
-  const coverImage = profile.fotoPortada || profile.fotoPrincipal;
+  const coverImage = coverPhotoUrl || profile.fotoPrincipal;
   const gallery = useMemo(() => {
     const photos = Array.isArray(profile.fotos) ? profile.fotos.filter(Boolean) : [];
     const merged = [profile.fotoPrincipal, ...photos].filter(Boolean);
@@ -117,8 +123,8 @@ export default function ModernPublicProfile({
   }
 
   function openHero() {
-    if (profile.videoPortada) {
-      openVideo(profile.videoPortada);
+    if (coverVideoUrl) {
+      openVideo(coverVideoUrl);
       return;
     }
     openViewer(heroIndex);
@@ -145,7 +151,7 @@ export default function ModernPublicProfile({
   }, [gallery.length]);
 
   const heroSwipe = useHorizontalSwipe({
-    enabled: gallery.length > 1 && !profile.videoPortada,
+    enabled: gallery.length > 1 && !coverVideoUrl,
     onSwipeLeft: nextHero,
     onSwipeRight: prevHero,
   });
@@ -225,9 +231,9 @@ export default function ModernPublicProfile({
                 className={`absolute inset-0 z-[2] ${heroSwipe.touchActionClass} disabled:cursor-default`}
                 aria-label="Ver fotos del perfil"
               />
-              {profile.videoPortada ? (
+              {coverVideoUrl ? (
                 <SensitiveMediaShell
-                  url={profile.videoPortada}
+                  url={coverVideoUrl}
                   mediaType="video"
                   staticRequiresBlur={blurPhoto}
                   profile={profile}
@@ -236,7 +242,8 @@ export default function ModernPublicProfile({
                   blockVideoAutoplay={false}
                 >
                   <ProfileMediaSurface
-                    url={profile.videoPortada}
+                    key={coverVideoUrl}
+                    url={coverVideoUrl}
                     videoClassName="h-full w-full object-cover"
                   />
                 </SensitiveMediaShell>

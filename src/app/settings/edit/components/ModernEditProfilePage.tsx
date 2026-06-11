@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { deleteField, doc, getDoc, getDocFromServer, setDoc, serverTimestamp } from "firebase/firestore";
 import { ArrowLeft, Camera, Film, GripVertical, ImagePlus, Star, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -15,6 +15,10 @@ import {
 } from "@/lib/media/uploadFileToStorage";
 import { persistProfileMediaScan } from "@/lib/moderation/persistMediaScan";
 import { scanUploadFile } from "@/lib/moderation/scanMedia";
+import {
+  resolveProfileCoverPhoto,
+  resolveProfileCoverVideo,
+} from "@/lib/profile/resolveProfileCover";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -101,8 +105,8 @@ export default function ModernEditProfilePage() {
         : -1;
       setPrincipalIndex(principalIdx >= 0 ? principalIdx : 0);
 
-      setFotoPortada(String(data.fotoPortada || data.coverPhoto || data.portada || ""));
-      setVideoPortada(String(data.videoPortada || data.coverVideo || ""));
+      setFotoPortada(resolveProfileCoverPhoto(data));
+      setVideoPortada(resolveProfileCoverVideo(data));
       setLoading(false);
     });
   }, []);
@@ -218,16 +222,16 @@ export default function ModernEditProfilePage() {
         ? {
             videoPortada: url,
             coverVideo: url,
-            fotoPortada: null,
-            coverPhoto: null,
-            portada: null,
+            fotoPortada: deleteField(),
+            coverPhoto: deleteField(),
+            portada: deleteField(),
           }
         : {
             fotoPortada: url,
             coverPhoto: url,
             portada: url,
-            videoPortada: null,
-            coverVideo: null,
+            videoPortada: deleteField(),
+            coverVideo: deleteField(),
           };
 
     await setDoc(
@@ -267,6 +271,17 @@ export default function ModernEditProfilePage() {
       }
 
       await persistCoverMedia(url, kind);
+
+      try {
+        const snap = await getDocFromServer(doc(db, "usuarios", user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setFotoPortada(resolveProfileCoverPhoto(data));
+          setVideoPortada(resolveProfileCoverVideo(data));
+        }
+      } catch (refreshError) {
+        console.error("cover_refresh", refreshError);
+      }
     } catch (error) {
       console.error(error);
       setUploadError(t(profileUploadErrorKey(error)));
@@ -304,11 +319,12 @@ export default function ModernEditProfilePage() {
           fotos,
           videos,
           fotoPrincipal,
-          fotoPortada: fotoPortada || null,
-          coverPhoto: fotoPortada || null,
-          portada: fotoPortada || null,
-          videoPortada: videoPortada || null,
-          coverVideo: videoPortada || null,
+          ...(fotoPortada
+            ? { fotoPortada, coverPhoto: fotoPortada, portada: fotoPortada }
+            : { fotoPortada: deleteField(), coverPhoto: deleteField(), portada: deleteField() }),
+          ...(videoPortada
+            ? { videoPortada, coverVideo: videoPortada }
+            : { videoPortada: deleteField(), coverVideo: deleteField() }),
           perfilCompleto: Boolean(username.trim() && (fotoPrincipal || fotoPortada || videoPortada)),
           profileSetupComplete: Boolean(username.trim() && provincia.trim()),
           updatedAt: serverTimestamp(),
@@ -316,7 +332,7 @@ export default function ModernEditProfilePage() {
         { merge: true },
       );
 
-      router.push("/settings");
+      router.push("/settings?cover=updated");
     } catch (error) {
       console.error(error);
       setSaveError(t("setup_save_fail"));

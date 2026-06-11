@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { BookOpen, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, getDocFromServer } from "firebase/firestore";
 import { logoutAndResetAnon } from "@/lib/auth/logout";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
@@ -23,6 +23,10 @@ import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
 import { useLocaleDateFormatter } from "@/hooks/useLocaleFormatters";
+import {
+  resolveProfileCoverPhoto,
+  resolveProfileCoverVideo,
+} from "@/lib/profile/resolveProfileCover";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
 type MediaItem = {
@@ -32,6 +36,7 @@ type MediaItem = {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { uxMode } = useUxMode();
   const t = useT();
   const formatDate = useLocaleDateFormatter();
@@ -45,13 +50,26 @@ export default function SettingsPage() {
   const { density } = useClassicShuffleDensity();
   const profileUi = getClassicProfileUiTokens(density);
 
-  useEffect(() => {
-    async function loadProfile(user: { uid: string }) {
-      const snap = await getDoc(doc(db, "usuarios", user.uid));
+  const loadProfile = useCallback(async (user: { uid: string }) => {
+    const ref = doc(db, "usuarios", user.uid);
+
+    try {
+      const snap = await getDocFromServer(ref);
       setProfile(snap.exists() ? { uid: user.uid, ...snap.data() } : { uid: user.uid });
+    } catch (error) {
+      console.error("settings_profile_load", error);
+      try {
+        const snap = await getDoc(ref);
+        setProfile(snap.exists() ? { uid: user.uid, ...snap.data() } : { uid: user.uid });
+      } catch (fallbackError) {
+        console.error("settings_profile_load_fallback", fallbackError);
+      }
+    } finally {
       setLoading(false);
     }
+  }, []);
 
+  useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         setShowAnonGate(true);
@@ -92,7 +110,17 @@ export default function SettingsPage() {
       window.removeEventListener("focus", refreshProfileOnFocus);
       document.removeEventListener("visibilitychange", refreshProfileOnFocus);
     };
-  }, [router]);
+  }, [loadProfile, router]);
+
+  useEffect(() => {
+    if (pathname !== "/settings") return;
+
+    const user = auth.currentUser;
+    if (!user?.emailVerified) return;
+
+    setLoading(true);
+    void loadProfile(user);
+  }, [loadProfile, pathname]);
 
   const username = profile?.username || profile?.nombre || t("settings_no_username");
   const bio = profile?.bio || profile?.descripcion || t("settings_bio_empty");
@@ -238,8 +266,8 @@ export default function SettingsPage() {
           mostrarProvincia: profile.mostrarProvincia !== false,
           mostrarUltimaVez: profile.mostrarUltimaVez !== false,
           fotoPrincipal: String(profile.fotoPrincipal || coverPhoto || coverVideo || ""),
-          fotoPortada: profile.fotoPortada,
-          videoPortada: profile.videoPortada,
+          fotoPortada: resolveProfileCoverPhoto(profile),
+          videoPortada: resolveProfileCoverVideo(profile),
           fotos: profile.fotos,
           likes: Number(profile.likesCount || profile.likes || 0),
           conversaciones: Number(profile.conversacionesCount || profile.conversaciones || 0),
