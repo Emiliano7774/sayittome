@@ -6,14 +6,15 @@ import { useEffect, useRef } from "react";
 
 import { useAdminApi } from "@/components/admin/AdminShell";
 import { useSpectatorChatMessages } from "@/hooks/useSpectatorTheater";
+import { resolveModerationParticipants } from "@/lib/moderation/chatReview";
+import { chatActivityMs } from "@/lib/moderation/classicFeed";
 import {
   formatMessageTime,
   formatRelativeActivity,
-  getSpectatorPeerLabel,
   messageDisplayText,
   resolveSpectatorMessageSide,
+  spectatorMessageSenderLabel,
 } from "@/lib/moderation/spectator";
-import { chatActivityMs, getConversationType } from "@/lib/moderation/classicFeed";
 import type { ModerationChatRow } from "@/lib/moderation/types";
 
 type Props = {
@@ -56,7 +57,7 @@ export default function SpectatorTheater({
     );
   }
 
-  const peer = getSpectatorPeerLabel(chat, profileUsername);
+  const participants = resolveModerationParticipants(chat, profileUsername);
   const activityMs = chatActivityMs(chat);
 
   return (
@@ -81,14 +82,9 @@ export default function SpectatorTheater({
               </p>
             </div>
 
-            <p className="mt-2 truncate text-lg font-bold md:text-xl">
-              {profileUsername}
-              <span className="mx-2 text-white/25">↔</span>
-              {peer}
-            </p>
+            <p className="mt-2 text-lg font-bold md:text-xl">{participants.headline}</p>
             <p className="mt-1 text-xs font-bold text-white/40">
-              {getConversationType(chat, profileUsername)} ·{" "}
-              {formatRelativeActivity(activityMs)}
+              {participants.directionHint} · {formatRelativeActivity(activityMs)}
             </p>
           </div>
 
@@ -141,6 +137,12 @@ export default function SpectatorTheater({
                 profileUid,
               );
               const isProfile = side === "profile";
+              const senderLabel = spectatorMessageSenderLabel(
+                msg,
+                chat,
+                profileUsername,
+                profileUid,
+              );
 
               return (
                 <motion.div
@@ -163,7 +165,8 @@ export default function SpectatorTheater({
                     ].join(" ")}
                   >
                     <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-white/45">
-                      {isProfile ? profileUsername : peer}
+                      {senderLabel}
+                      {isProfile ? " · perfil" : participants.peerIsAnon ? " · visitante" : ""}
                     </p>
                     <p className="whitespace-pre-wrap text-sm font-bold leading-relaxed md:text-[15px]">
                       {messageDisplayText(msg)}

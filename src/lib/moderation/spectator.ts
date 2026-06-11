@@ -1,8 +1,17 @@
 import type { Timestamp } from "firebase/firestore";
 
-import { profileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
+import { isProfileAnonChatId } from "@/lib/chat/anonChatId";
+import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
+import {
+  isProfileReplyAuthorId,
+  profileReplyAuthorId,
+} from "@/lib/chat/profileAnonMessageAuthor";
 import { formatTimeAgo } from "@/lib/time";
 
+import {
+  getModerationChatPeerLabel,
+  resolveModerationParticipants,
+} from "./chatReview";
 import type { ModerationChatRow } from "./types";
 
 export type SpectatorMessage = {
@@ -49,17 +58,7 @@ export function getSpectatorPeerLabel(
   chat: ModerationChatRow,
   profileUsername: string,
 ) {
-  const profile = profileUsername.toLowerCase();
-  const target = String(chat.targetUsername || "").toLowerCase();
-  const receptor = String(chat.receptorUsername || "").toLowerCase();
-
-  if (target === profile) {
-    return chat.receptorUsername || (chat.anon ? "Anónimo" : "Interlocutor");
-  }
-  if (receptor === profile) {
-    return chat.targetUsername || (chat.anon ? "Anónimo" : "Interlocutor");
-  }
-  return chat.targetUsername || chat.receptorUsername || "Conversación";
+  return resolveModerationParticipants(chat, profileUsername).peerLabel;
 }
 
 function messageAuthorId(msg: SpectatorMessage) {
@@ -115,6 +114,30 @@ export function resolveSpectatorMessageSide(
   const profileIds = profileUidsForChat(chat, profileUsername, profileUid);
   const peerIds = peerUidsForChat(chat, profileUsername);
 
+  const anonThread =
+    isProfileAnonChatId(chat.id) ||
+    chat.anon ||
+    chat.senderIsAnonymous ||
+    (String(chat.targetUsername || "").toLowerCase() === profileLower &&
+      String(chat.targetUsername || "").toLowerCase() ===
+        String(chat.receptorUsername || "").toLowerCase());
+
+  if (anonThread) {
+    const anonId = getProfileChatAnonSenderId(chat.id, chat.anonSessionId);
+
+    if (msg.senderKind === "profile") return "profile";
+    if (msg.senderKind === "anon" || msg.senderKind === "anonimo") return "peer";
+
+    if (from && (from === anonId || from.startsWith("anon_"))) return "peer";
+    if (from && (profileIds.has(from) || isProfileReplyAuthorId(from))) {
+      return "profile";
+    }
+    if (msg.senderIsAnonymous) return "peer";
+
+    const senderName = String(msg.senderUsername || "").trim().toLowerCase();
+    if (senderName && senderName === profileLower) return "profile";
+  }
+
   if (from && profileIds.has(from)) return "profile";
   if (from && peerIds.has(from)) return "peer";
 
@@ -122,19 +145,30 @@ export function resolveSpectatorMessageSide(
   if (senderName && senderName === profileLower) return "profile";
 
   if (msg.senderIsAnonymous || msg.senderKind === "anonimo") {
-    const profileIsTarget =
-      String(chat.targetUsername || "").toLowerCase() === profileLower;
-    if (profileIsTarget && (chat.anon || chat.senderIsAnonymous)) return "peer";
-    return "profile";
+    return "peer";
   }
 
   const lastSender = String(chat.lastMessageSender || "").trim();
   if (from && lastSender && from === lastSender) {
-    if (profileIds.has(lastSender)) return "profile";
+    if (profileIds.has(lastSender) || isProfileReplyAuthorId(lastSender)) {
+      return "profile";
+    }
     if (peerIds.has(lastSender)) return "peer";
   }
 
   return "peer";
+}
+
+export function spectatorMessageSenderLabel(
+  msg: SpectatorMessage,
+  chat: ModerationChatRow,
+  profileUsername: string,
+  profileUid?: string,
+) {
+  const side = resolveSpectatorMessageSide(msg, chat, profileUsername, profileUid);
+  if (side === "profile") return profileUsername;
+
+  return getModerationChatPeerLabel(chat, profileUsername);
 }
 
 export function formatMessageTime(msg: SpectatorMessage) {

@@ -154,27 +154,24 @@ export function mergeModerationFeed(
 }
 
 export function getConversationType(chat: ModerationChatRow, profileUsername: string) {
-  const profile = profileUsername.toLowerCase();
-  const target = String(chat.targetUsername || chat.receptorUsername || "").toLowerCase();
-  const senderIsProfileTarget = target === profile;
+  const profile = profileUsername.trim();
+  const target = String(chat.targetUsername || "").trim();
+  const receptor = String(chat.receptorUsername || "").trim();
+  const sameBothSides =
+    target &&
+    receptor &&
+    target.toLowerCase() === receptor.toLowerCase() &&
+    target.toLowerCase() === profile.toLowerCase();
 
-  if (!chat.anon && !chat.senderIsAnonymous) {
-    return "Conversación real";
+  if (chat.anon || chat.senderIsAnonymous || sameBothSides) {
+    return `Anónimo → ${profile}`;
   }
 
-  if (senderIsProfileTarget && chat.senderIsAnonymous !== false) {
-    return "Recibió anónimo";
+  if (target && receptor && target.toLowerCase() !== receptor.toLowerCase()) {
+    return `${target} ↔ ${receptor}`;
   }
 
-  if (chat.initiatorUid || chat.anonOwnerUid) {
-    return "Actividad anónima vinculada";
-  }
-
-  if (chat.anon) {
-    return "Chat anónimo";
-  }
-
-  return "Conversación";
+  return target || receptor || profile || "Conversación";
 }
 
 function startOfDay(date: Date) {
