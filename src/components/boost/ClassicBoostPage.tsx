@@ -12,17 +12,18 @@ import {
 
 import BoostAccessGate from "@/components/boost/BoostAccessGate";
 import BoostMinutesPicker from "@/components/boost/BoostMinutesPicker";
+import BoostReferralPromoCard from "@/components/boost/BoostReferralPromoCard";
 import BoostRocketHero from "@/components/boost/BoostRocketHero";
 import BoostStickyCtaBar from "@/components/boost/BoostStickyCtaBar";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
-import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_ACTIVATION, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
-import { formatBoostMinutesReward } from "@/lib/boost/format";
+import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_ACTIVATION } from "@/lib/boost/constants";
+import { getReferralRewardLabel } from "@/lib/boost/format";
 
 export default function ClassicBoostPage() {
   const { t, locale } = useLocale();
-  const referralReward = formatBoostMinutesReward(BOOST_MINUTES_PER_REFERRAL, locale);
+  const referralReward = getReferralRewardLabel(locale);
   const {
     accessState,
     canUseBoost,
@@ -68,7 +69,7 @@ export default function ClassicBoostPage() {
           {t("boost_classic_headline")}
         </h1>
         <p className="mt-4 max-w-xl text-base font-semibold leading-7 text-white/55 md:text-lg">
-          {t("boost_classic_subheadline")}
+          {t("boost_classic_subheadline", { reward: referralReward })}
         </p>
 
         {!canUseBoost ? (
@@ -109,6 +110,8 @@ export default function ClassicBoostPage() {
                 {t("boost_classic_cost_note_flexible")}
               </p>
             </section>
+
+            <BoostReferralPromoCard />
 
             {credits >= BOOST_MIN_MINUTES ? (
               <section className="hidden rounded-[1.35rem] border border-orange-500/20 bg-orange-500/5 p-5 lg:block">
@@ -159,7 +162,9 @@ export default function ClassicBoostPage() {
                   <GiftIcon />
                 </div>
                 <div>
-                  <h2 className="text-lg font-black text-white">{t("boost_classic_invite_title")}</h2>
+                  <h2 className="text-lg font-black text-white">
+                    {t("boost_classic_invite_title", { reward: referralReward })}
+                  </h2>
                   <p className="mt-2 text-sm font-semibold leading-7 text-white/60">
                     {t("boost_classic_invite_body", {
                       reward: referralReward,

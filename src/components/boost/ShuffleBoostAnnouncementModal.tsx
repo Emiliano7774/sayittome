@@ -5,8 +5,7 @@ import { Rocket, Sparkles } from "lucide-react";
 
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUxMode } from "@/contexts/UxModeContext";
-import { BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
-import { formatBoostMinutesReward } from "@/lib/boost/format";
+import { getReferralRewardLabel } from "@/lib/boost/format";
 
 type Props = {
   onDismiss: () => void;
@@ -16,7 +15,7 @@ export default function ShuffleBoostAnnouncementModal({ onDismiss }: Props) {
   const { t, locale } = useLocale();
   const { uxMode } = useUxMode();
   const router = useRouter();
-  const referralReward = formatBoostMinutesReward(BOOST_MINUTES_PER_REFERRAL, locale);
+  const referralReward = getReferralRewardLabel(locale);
 
   function handleOpenBoost() {
     onDismiss();

@@ -285,7 +285,7 @@ const es = {
 
   boost_nav_label: "Destacarse en Shuffle",
   boost_title: "Destacarse en Shuffle",
-  boost_subtitle: "Aparecé arriba del shuffle y ganá minutos invitando amigos.",
+  boost_subtitle: "Aparecé arriba del shuffle y ganá {reward} por cada invitado válido.",
   boost_login_required: "Creá tu perfil para activar el boost y compartir tu link de invitación.",
   boost_credits_label: "Minutos disponibles",
   boost_active_label: "Boost activo",
@@ -323,7 +323,7 @@ const es = {
 
   boost_classic_headline: "Destacá tu perfil en el Shuffle",
   boost_classic_subheadline:
-    "Usá minutos para aparecer arriba de todos y que más gente te vea. También podés ganar minutos invitando amigos.",
+    "Usá minutos para aparecer arriba de todos y que más gente te vea. Invitando amigos ganás {reward} por persona.",
   boost_classic_badge: "Power-Up",
   boost_classic_status_title: "Tu estado",
   boost_classic_active_hint: "Tu perfil está destacado en el shuffle.",
@@ -343,7 +343,7 @@ const es = {
   boost_classic_step3_title: "Recibí más visitas",
   boost_classic_step3_body:
     "Mientras el boost está activo, más personas ven tu perfil y pueden escribirte.",
-  boost_classic_invite_title: "Ganá minutos invitando",
+  boost_classic_invite_title: "Ganá {reward} invitando",
   boost_classic_invite_body:
     "Copiá tu link y compartilo. Cuando alguien se registre con él, sumás {reward} a tu banco de boost.",
   boost_classic_referrals_qualified: "Invitados acreditados",
@@ -370,6 +370,14 @@ const es = {
   boost_classic_promo_title: "Oferta por invitación",
   boost_classic_promo_body:
     "Por cada persona que cree su perfil con tu link, sumás {reward} extra. ¡No te quedes afuera!",
+  boost_referral_promo_badge: "Beneficio actualizado",
+  boost_referral_promo_per_invite: "por cada invitado válido",
+  boost_referral_promo_benefit_bank:
+    "Los minutos se acumulan en tu banco y no vencen.",
+  boost_referral_promo_benefit_shuffle:
+    "Los usás para activar el boost y aparecer arriba en el shuffle.",
+  boost_referral_promo_benefit_compare:
+    "Ahora cada invitación suma {reward} (antes eran 20 min).",
   boost_card_wallet: "Tu banco",
   boost_card_activate: "Activar",
   boost_card_referral: "Invitá",
@@ -867,7 +875,7 @@ const en: Record<keyof typeof es, string> = {
 
   boost_nav_label: "Boost in Shuffle",
   boost_title: "Boost in Shuffle",
-  boost_subtitle: "Show up at the top of shuffle and earn minutes by inviting friends.",
+  boost_subtitle: "Show up at the top of shuffle and earn {reward} for each valid invite.",
   boost_login_required: "Create your profile to activate boost and share your invite link.",
   boost_credits_label: "Available minutes",
   boost_active_label: "Active boost",
@@ -905,7 +913,7 @@ const en: Record<keyof typeof es, string> = {
 
   boost_classic_headline: "Highlight your profile in Shuffle",
   boost_classic_subheadline:
-    "Use minutes to appear at the top and get seen by more people. You can also earn minutes by inviting friends.",
+    "Use minutes to appear at the top and get seen by more people. Inviting friends earns you {reward} per person.",
   boost_classic_badge: "Power-Up",
   boost_classic_status_title: "Your status",
   boost_classic_active_hint: "Your profile is featured in shuffle.",
@@ -925,7 +933,7 @@ const en: Record<keyof typeof es, string> = {
   boost_classic_step3_title: "Get more visits",
   boost_classic_step3_body:
     "While boost is active, more people see your profile and can message you.",
-  boost_classic_invite_title: "Earn minutes by inviting",
+  boost_classic_invite_title: "Earn {reward} by inviting",
   boost_classic_invite_body:
     "Copy your link and share it. When someone registers with it, you add {reward} to your boost bank.",
   boost_classic_referrals_qualified: "Credited invites",
@@ -952,6 +960,14 @@ const en: Record<keyof typeof es, string> = {
   boost_classic_promo_title: "Invite offer",
   boost_classic_promo_body:
     "For each person who creates a profile with your link, you earn {reward} extra. Don't miss out!",
+  boost_referral_promo_badge: "Updated reward",
+  boost_referral_promo_per_invite: "per valid invite",
+  boost_referral_promo_benefit_bank:
+    "Minutes stack in your bank and do not expire.",
+  boost_referral_promo_benefit_shuffle:
+    "Spend them to activate boost and appear at the top of shuffle.",
+  boost_referral_promo_benefit_compare:
+    "Each invite now adds {reward} (previously 20 min).",
   boost_card_wallet: "Your bank",
   boost_card_activate: "Activate",
   boost_card_referral: "Invite",

@@ -1,3 +1,4 @@
+import { BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
 import type { AppLocale } from "@/lib/i18n/types";
 
 export function formatBoostMinutesReward(minutes: number, locale: AppLocale = "es"): string {
@@ -15,4 +16,8 @@ export function formatBoostMinutesReward(minutes: number, locale: AppLocale = "e
   if (hours > 0 && mins === 0) return hours === 1 ? "1 hour" : `${hours} hours`;
   if (hours > 0 && mins > 0) return `${hours} h ${mins} min`;
   return `${minutes} min`;
+}
+
+export function getReferralRewardLabel(locale: AppLocale = "es"): string {
+  return formatBoostMinutesReward(BOOST_MINUTES_PER_REFERRAL, locale);
 }

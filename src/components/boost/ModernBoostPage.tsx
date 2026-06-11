@@ -4,16 +4,17 @@ import { Copy, Sparkles } from "lucide-react";
 
 import BoostAccessGate from "@/components/boost/BoostAccessGate";
 import BoostMinutesPicker from "@/components/boost/BoostMinutesPicker";
+import BoostReferralPromoCard from "@/components/boost/BoostReferralPromoCard";
 import BoostRocketHero from "@/components/boost/BoostRocketHero";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
-import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
-import { formatBoostMinutesReward } from "@/lib/boost/format";
+import { BOOST_MIN_MINUTES } from "@/lib/boost/constants";
+import { getReferralRewardLabel } from "@/lib/boost/format";
 
 export default function ModernBoostPage() {
   const { t, locale } = useLocale();
-  const referralReward = formatBoostMinutesReward(BOOST_MINUTES_PER_REFERRAL, locale);
+  const referralReward = getReferralRewardLabel(locale);
   const {
     accessState,
     canUseBoost,
@@ -43,7 +44,10 @@ export default function ModernBoostPage() {
       <BoostRocketHero variant="modern" />
 
       <div className="relative z-[1] -mt-8 mx-auto w-full max-w-[1400px] px-4 md:px-8">
-        <ModernPageHeader title={t("boost_title")} subtitle={t("boost_subtitle")} />
+        <ModernPageHeader
+          title={t("boost_title")}
+          subtitle={t("boost_subtitle", { reward: referralReward })}
+        />
 
         {!canUseBoost ? (
           <BoostAccessGate state={accessState} />
@@ -63,6 +67,8 @@ export default function ModernBoostPage() {
               />
             </div>
 
+            <BoostReferralPromoCard />
+
             {credits >= BOOST_MIN_MINUTES ? (
               <div className="rounded-[1.75rem] border border-orange-500/25 bg-orange-500/10 p-5">
                 <BoostMinutesPicker
@@ -75,7 +81,9 @@ export default function ModernBoostPage() {
             ) : null}
 
             <div className="rounded-[1.75rem] border border-orange-500/25 bg-orange-500/10 p-5">
-              <p className="font-black text-orange-200">{t("boost_classic_invite_title")}</p>
+              <p className="font-black text-orange-200">
+                {t("boost_classic_invite_title", { reward: referralReward })}
+              </p>
               <p className="mt-2 text-sm leading-7 text-white/65">
                 {t("boost_classic_invite_body", { reward: referralReward })}
               </p>
