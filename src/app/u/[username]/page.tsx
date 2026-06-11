@@ -35,6 +35,7 @@ import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
+import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
 type Profile = {
@@ -58,6 +59,7 @@ type Profile = {
   presenceAt?: string;
   online?: boolean;
   showOnline?: boolean;
+  mostrarUltimaVez?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;
 };
@@ -151,7 +153,10 @@ export default function PublicProfilePage() {
   const isOnline = profile
     ? isActiveWithinWindow(profile.presenceAt, profile.lastActive)
     : false;
-  const lastSeenLabel = profile ? formatLastSeen(heartbeat, isOnline) : "";
+  const lastSeenLabel =
+    profile && canShowLastSeenToViewer(profile, isOwner)
+      ? formatLastSeen(heartbeat, isOnline)
+      : "";
 
   function openViewer(index = 0) {
     if (gallery.length === 0) return;
@@ -259,6 +264,7 @@ export default function PublicProfilePage() {
           presenceAt: profile.presenceAt,
           online: profile.online,
           showOnline: profile.showOnline,
+          mostrarUltimaVez: profile.mostrarUltimaVez,
           adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
           adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
         }}

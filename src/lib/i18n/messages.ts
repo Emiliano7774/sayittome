@@ -133,6 +133,11 @@ const es = {
   province_show: "Mostrar en el perfil",
   province_visible: "Visible",
   province_hidden: "Oculta",
+  last_seen_privacy_label: "Última conexión",
+  last_seen_privacy_hint:
+    "Si lo ocultás, otros no verán cuándo estuviste en línea ni el indicador verde en el shuffle.",
+  last_seen_visible: "Visible",
+  last_seen_hidden: "Oculta",
 
   chats_title: "Chats",
   chats_subtitle: "Mensajes en tiempo real con la misma lógica de siempre.",
@@ -724,6 +729,11 @@ const en: Record<keyof typeof es, string> = {
   province_show: "Show on profile",
   province_visible: "Visible",
   province_hidden: "Hidden",
+  last_seen_privacy_label: "Last seen",
+  last_seen_privacy_hint:
+    "If hidden, others won't see when you were online or the green indicator in shuffle.",
+  last_seen_visible: "Visible",
+  last_seen_hidden: "Hidden",
 
   chats_title: "Chats",
   chats_subtitle: "Real-time messages with the same logic as always.",
@@ -1306,6 +1316,11 @@ const it: Record<keyof typeof es, string> = {
   province_show: "Mostra nel profilo",
   province_visible: "Visibile",
   province_hidden: "Nascosta",
+  last_seen_privacy_label: "Ultima connessione",
+  last_seen_privacy_hint:
+    "Se nascosto, gli altri non vedranno quando eri online né l'indicatore verde nello shuffle.",
+  last_seen_visible: "Visibile",
+  last_seen_hidden: "Nascosta",
 
   chats_title: "Chat",
   chats_subtitle: "Messaggi in tempo reale con la stessa logica di sempre.",
@@ -1481,6 +1496,11 @@ const de: Record<keyof typeof es, string> = {
   province_show: "Im Profil anzeigen",
   province_visible: "Sichtbar",
   province_hidden: "Versteckt",
+  last_seen_privacy_label: "Zuletzt online",
+  last_seen_privacy_hint:
+    "Wenn ausgeblendet, sehen andere nicht, wann du online warst, und kein grüner Indikator im Shuffle.",
+  last_seen_visible: "Sichtbar",
+  last_seen_hidden: "Versteckt",
 
   chats_title: "Chats",
   chats_subtitle: "Echtzeit-Nachrichten mit derselben Logik wie immer.",

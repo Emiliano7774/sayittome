@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVisibility";
 import { isActiveWithinWindow, isRecentlyActive } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
@@ -109,7 +110,12 @@ export async function GET(
   const fotoPrincipal =
     str(fields, "fotoPrincipal") || str(fields, "photoURL") || fotos[0] || "";
 
-  const profile = {
+  const mostrarUltimaVez = isLastSeenPublic({
+    mostrarUltimaVez: fields?.mostrarUltimaVez?.booleanValue,
+  });
+
+  const profile = stripPublicPresence(
+    {
     uid: str(fields, "uid") || String(found.document.name || "").split("/").pop() || "",
     email: str(fields, "email"),
     username: str(fields, "username") || str(fields, "usernameLower") || username,
@@ -119,6 +125,7 @@ export async function GET(
       fields?.mostrarProvincia?.booleanValue !== false &&
       fields?.ubicacionVisible?.booleanValue !== false &&
       fields?.geoVisible?.booleanValue !== false,
+    mostrarUltimaVez,
     fotoPrincipal,
     photo: fotoPrincipal,
     photoURL: fotoPrincipal,
@@ -149,7 +156,9 @@ export async function GET(
     adminBlurStories: fields?.adminBlurStories?.booleanValue === true,
     adminBlurGallery: fields?.adminBlurGallery?.booleanValue === true,
     adminBlurReason: str(fields, "adminBlurReason"),
-  };
+  },
+    mostrarUltimaVez,
+  );
 
   return NextResponse.json({ ok: true, profile });
 }

@@ -202,6 +202,7 @@ export default function SettingsPage() {
           bio: String(profile.bio || profile.descripcion || ""),
           provincia: profile.provincia,
           mostrarProvincia: profile.mostrarProvincia !== false,
+          mostrarUltimaVez: profile.mostrarUltimaVez !== false,
           fotoPrincipal: String(profile.fotoPrincipal || portada || ""),
           fotoPortada: profile.fotoPortada,
           videoPortada: profile.videoPortada,

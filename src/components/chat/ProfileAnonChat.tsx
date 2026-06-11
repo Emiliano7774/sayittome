@@ -118,6 +118,7 @@ export default function ProfileAnonChat({
   const [targetBlurPhoto, setTargetBlurPhoto] = useState(false);
   const [targetLastActive, setTargetLastActive] = useState("");
   const [targetOnline, setTargetOnline] = useState(false);
+  const [targetShowsLastSeen, setTargetShowsLastSeen] = useState(true);
   const [blockedByAbuse, setBlockedByAbuse] = useState(false);
   const [chatAnonSessionId, setChatAnonSessionId] = useState("");
   const [recording, setRecording] = useState(false);
@@ -281,6 +282,7 @@ export default function ProfileAnonChat({
         setTargetBlurPhoto(profile?.adminBlurProfilePhoto === true);
         setTargetLastActive(String(profile?.lastActive || ""));
         setTargetOnline(profile?.online === true);
+        setTargetShowsLastSeen(profile?.mostrarUltimaVez !== false);
 
         setCachedProfile(username, {
           uid,
@@ -311,9 +313,12 @@ export default function ProfileAnonChat({
     };
   }, [username, chatId]);
 
-  const presenceLabel = formatLastSeen(targetLastActive, targetOnline);
   const isClassic = uxMode === "classic";
   const isOwnerViewing = Boolean(currentUid && targetUid && currentUid === targetUid);
+  const presenceLabel =
+    targetShowsLastSeen && !isOwnerViewing
+      ? formatLastSeen(targetLastActive, targetOnline)
+      : "";
   const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
   const viewerId =
     currentUid && targetUid && currentUid === targetUid ? currentUid : anonSenderId;

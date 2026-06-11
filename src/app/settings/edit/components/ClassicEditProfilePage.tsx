@@ -81,6 +81,7 @@ export default function ClassicEditProfilePage() {
   const [tags, setTags] = useState("");
   const [provincia, setProvincia] = useState("");
   const [mostrarProvincia, setMostrarProvincia] = useState(true);
+  const [mostrarUltimaVez, setMostrarUltimaVez] = useState(true);
   const [createdAtLabel, setCreatedAtLabel] = useState("");
 
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -118,6 +119,7 @@ export default function ClassicEditProfilePage() {
       setBio(String(data.bio || data.descripcion || ""));
       setProvincia(String(data.provincia || ""));
       setMostrarProvincia(data.mostrarProvincia !== false);
+      setMostrarUltimaVez(data.mostrarUltimaVez !== false);
 
       const createdAtValue = data.createdAt?.toDate ? data.createdAt.toDate() : null;
       setCreatedAtLabel(
@@ -288,6 +290,7 @@ export default function ClassicEditProfilePage() {
           intereses: tagArray,
           provincia,
           mostrarProvincia,
+          mostrarUltimaVez,
           fotos,
           videos,
           fotoPrincipal,
@@ -553,6 +556,26 @@ export default function ClassicEditProfilePage() {
                   </button>
                 </div>
               </label>
+            </div>
+
+            <div className="border-b border-white/18 pb-8 mb-8">
+              <p className="text-white/55 text-sm font-black uppercase tracking-wide mb-4">
+                {t("last_seen_privacy_label")}
+              </p>
+              <p className="text-white/35">{t("last_seen_privacy_hint")}</p>
+              <div className="mt-5 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => setMostrarUltimaVez((prev) => !prev)}
+                  className={`px-5 py-3 rounded-full font-black ${
+                    mostrarUltimaVez
+                      ? "bg-white text-black"
+                      : "bg-white/10 text-white/45"
+                  }`}
+                >
+                  {mostrarUltimaVez ? t("last_seen_visible") : t("last_seen_hidden")}
+                </button>
+              </div>
             </div>
           </section>
         </div>

@@ -1,3 +1,4 @@
+import { isLastSeenPublic } from "@/lib/profile/lastSeenVisibility";
 import { isActiveWithinWindow } from "@/lib/presence";
 import { galleryRequiresBlur } from "@/lib/moderation/blur";
 import { normalizeUsername } from "@/lib/profile/username";
@@ -12,6 +13,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
       const presenceAt = item?.presenceAt ? String(item.presenceAt) : undefined;
       const lastActive = item?.lastActive ? String(item.lastActive) : undefined;
       const online = item?.online === true;
+      const mostrarUltimaVez = item?.mostrarUltimaVez !== false;
       const adminBlurProfilePhoto = item?.adminBlurProfilePhoto === true;
       const adminBlurFotosPerfil = item?.adminBlurFotosPerfil === true;
       const adminBlurGallery = item?.adminBlurGallery === true;
@@ -59,10 +61,12 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         ),
         hasActiveStories:
           item?.hasActiveStories === true || item?.tieneHistoriasActivas === true,
-        showOnline:
-          typeof item?.showOnline === "boolean"
+        mostrarUltimaVez,
+        showOnline: mostrarUltimaVez
+          ? typeof item?.showOnline === "boolean"
             ? item.showOnline
-            : isActiveWithinWindow(presenceAt, lastActive),
+            : isActiveWithinWindow(presenceAt, lastActive)
+          : false,
         blurPhoto: galleryRequiresBlur({
           adminBlurProfilePhoto,
           adminBlurFotosPerfil,

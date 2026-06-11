@@ -36,6 +36,7 @@ export default function ModernEditProfilePage() {
   const [bio, setBio] = useState("");
   const [provincia, setProvincia] = useState("");
   const [mostrarProvincia, setMostrarProvincia] = useState(false);
+  const [mostrarUltimaVez, setMostrarUltimaVez] = useState(true);
   const [intereses, setIntereses] = useState("");
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [principalIndex, setPrincipalIndex] = useState(0);
@@ -69,6 +70,7 @@ export default function ModernEditProfilePage() {
       setBio(String(data.bio || data.descripcion || ""));
       setProvincia(String(data.provincia || ""));
       setMostrarProvincia(data.mostrarProvincia === true);
+      setMostrarUltimaVez(data.mostrarUltimaVez !== false);
       setIntereses(Array.isArray(data.intereses) ? data.intereses.join(", ") : String(data.intereses || ""));
 
       const fotos = Array.isArray(data.fotos) ? data.fotos.map((url: string) => ({ url, type: "image" as const })) : [];
@@ -213,6 +215,7 @@ export default function ModernEditProfilePage() {
           descripcion: bio.trim(),
           provincia,
           mostrarProvincia,
+          mostrarUltimaVez,
           intereses: interesesArray,
           fotos,
           videos,
@@ -447,6 +450,22 @@ export default function ModernEditProfilePage() {
                   }`}
                 >
                   {mostrarProvincia ? t("province_visible") : t("province_hidden")}
+                </button>
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="text-4xl font-black">{t("last_seen_privacy_label")}</span>
+              <div className="mt-4 flex items-center justify-between gap-4 rounded-[28px] border border-white/10 bg-zinc-950 px-7 py-5">
+                <p className="text-lg text-zinc-400">{t("last_seen_privacy_hint")}</p>
+                <button
+                  type="button"
+                  onClick={() => setMostrarUltimaVez((prev) => !prev)}
+                  className={`shrink-0 rounded-full px-5 py-3 font-black ${
+                    mostrarUltimaVez ? "bg-violet-500 text-white" : "bg-white/10 text-white/45"
+                  }`}
+                >
+                  {mostrarUltimaVez ? t("last_seen_visible") : t("last_seen_hidden")}
                 </button>
               </div>
             </label>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
 import { formatLastSeen } from "@/lib/presence";
 import {
   Heart,
@@ -22,6 +23,7 @@ export type ClassicProfileData = {
   registeredAt?: string;
   lastActive?: string;
   online?: boolean;
+  mostrarUltimaVez?: boolean;
   conversations?: number;
   likes?: number;
   followers?: number;
@@ -72,7 +74,9 @@ export default function ClassicProfileLayout({
   ownProfile?: boolean;
 }) {
   const photo = profile.photo || "";
-  const lastSeenLabel = formatLastSeen(profile.lastActive, profile.online);
+  const lastSeenLabel = canShowLastSeenToViewer(profile, ownProfile)
+    ? formatLastSeen(profile.lastActive, profile.online)
+    : "";
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-black text-white">
@@ -127,9 +131,11 @@ export default function ClassicProfileLayout({
               {profile.username}
             </h1>
 
-            <div className="mt-4 text-[clamp(24px,3vw,34px)] font-black leading-none text-white/95 drop-shadow-xl">
-              {lastSeenLabel}
-            </div>
+            {lastSeenLabel ? (
+              <div className="mt-4 text-[clamp(24px,3vw,34px)] font-black leading-none text-white/95 drop-shadow-xl">
+                {lastSeenLabel}
+              </div>
+            ) : null}
           </div>
         </div>
 

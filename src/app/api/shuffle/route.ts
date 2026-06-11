@@ -5,6 +5,7 @@ import { BOOST_TOP_SLOTS } from "@/lib/boost/constants";
 import { readPublicStats, writePublicStats } from "@/lib/firestore/publicStats";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
+import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVisibility";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { resolveProfileCountryCode } from "@/lib/geo/countries";
 import { normalizeUsername } from "@/lib/profile/username";
@@ -37,6 +38,7 @@ type ApiProfile = {
   presenceAt?: string;
   online?: boolean;
   showOnline?: boolean;
+  mostrarUltimaVez?: boolean;
   provincia?: string;
   ciudad?: string;
   pais?: string;
@@ -104,10 +106,13 @@ function isProfileOnlineForBadge(profile: ApiProfile, now = Date.now()) {
 }
 
 function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
-  return {
+  const visible = isLastSeenPublic(profile);
+  const withBadge = {
     ...profile,
-    showOnline: isProfileOnlineForBadge(profile, now),
+    mostrarUltimaVez: visible,
+    showOnline: visible && isProfileOnlineForBadge(profile, now),
   };
+  return stripPublicPresence(withBadge, visible);
 }
 
 function isAnonymousDocActive(doc: any, now = Date.now()) {
@@ -279,6 +284,7 @@ function docToProfile(doc: any): ApiProfile {
       fieldBool(fields, "banned") ||
       fieldBool(fields, "suspendido") ||
       fieldString(fields, "estado") === "bloqueado",
+    mostrarUltimaVez: fields?.mostrarUltimaVez?.booleanValue !== false,
   };
 
   return withPresenceBadge(profile);

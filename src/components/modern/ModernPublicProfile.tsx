@@ -16,6 +16,7 @@ import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
+import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -40,6 +41,7 @@ export type ModernProfileData = {
   presenceAt?: string;
   online?: boolean;
   showOnline?: boolean;
+  mostrarUltimaVez?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;
 };
@@ -69,7 +71,8 @@ export default function ModernPublicProfile({
   const blurPhoto = profilePhotoRequiresBlur(profile);
   const heartbeat = profile.presenceAt || profile.lastActive;
   const isOnline = isPresenceOnline(heartbeat, profile.online);
-  const lastSeen = formatLastSeen(heartbeat, isOnline);
+  const showLastSeen = canShowLastSeenToViewer(profile, isOwner);
+  const lastSeen = showLastSeen ? formatLastSeen(heartbeat, isOnline) : "";
   const historiasCount = story.hasActive
     ? story.storyCount
     : Number(profile.historias || profile.stories || 0);
