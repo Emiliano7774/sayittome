@@ -119,8 +119,6 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   --classic-bar-r-6: 8;
   --classic-bar-g-6: 8;
   --classic-bar-b-6: 10;
-  --classic-bar-emery-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-  --classic-bar-emery-fine: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.35' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23f)'/%3E%3C/svg%3E");
 }
 
 .sayittome-glass-bar-classic {
@@ -129,9 +127,9 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   right: 0;
   width: 100%;
   border-top: none;
-  background: rgba(5, 5, 8, 0.66);
-  backdrop-filter: blur(18px) saturate(175%) brightness(0.76);
-  -webkit-backdrop-filter: blur(18px) saturate(175%) brightness(0.76);
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(10px) brightness(0.55) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) brightness(0.55) saturate(130%);
   box-shadow: none;
 }
 
@@ -141,7 +139,21 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: rgba(4, 4, 6, 0.42);
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.sayittome-glass-bar-classic::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.45) 58%,
+    rgba(0, 0, 0, 0.9) 100%
+  );
 }
 
 .sayittome-glass-bar-classic-glow {
@@ -149,100 +161,64 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 1;
+  opacity: 0.92;
   -webkit-mask-image: linear-gradient(
     90deg,
     transparent 0%,
-    #000 6%,
-    #000 94%,
+    #000 7%,
+    #000 93%,
     transparent 100%
   );
   mask-image: linear-gradient(
     90deg,
     transparent 0%,
-    #000 6%,
-    #000 94%,
+    #000 7%,
+    #000 93%,
     transparent 100%
   );
   background:
     radial-gradient(
-      ellipse 320% 68% at var(--classic-bar-glow-x-0) 72%,
-      rgb(var(--classic-bar-r-0) var(--classic-bar-g-0) var(--classic-bar-b-0) / calc(var(--classic-bar-glow-0) * 0.54)) 0%,
-      transparent 80%
+      ellipse 300% 62% at var(--classic-bar-glow-x-0) 74%,
+      rgb(var(--classic-bar-r-0) var(--classic-bar-g-0) var(--classic-bar-b-0) / calc(var(--classic-bar-glow-0) * 0.38)) 0%,
+      transparent 78%
     ),
     radial-gradient(
-      ellipse 320% 68% at var(--classic-bar-glow-x-1) 72%,
-      rgb(var(--classic-bar-r-1) var(--classic-bar-g-1) var(--classic-bar-b-1) / calc(var(--classic-bar-glow-1) * 0.54)) 0%,
-      transparent 80%
+      ellipse 300% 62% at var(--classic-bar-glow-x-1) 74%,
+      rgb(var(--classic-bar-r-1) var(--classic-bar-g-1) var(--classic-bar-b-1) / calc(var(--classic-bar-glow-1) * 0.38)) 0%,
+      transparent 78%
     ),
     radial-gradient(
-      ellipse 320% 68% at var(--classic-bar-glow-x-2) 72%,
-      rgb(var(--classic-bar-r-2) var(--classic-bar-g-2) var(--classic-bar-b-2) / calc(var(--classic-bar-glow-2) * 0.54)) 0%,
-      transparent 80%
+      ellipse 300% 62% at var(--classic-bar-glow-x-2) 74%,
+      rgb(var(--classic-bar-r-2) var(--classic-bar-g-2) var(--classic-bar-b-2) / calc(var(--classic-bar-glow-2) * 0.38)) 0%,
+      transparent 78%
     ),
     radial-gradient(
-      ellipse 320% 68% at var(--classic-bar-glow-x-3) 72%,
-      rgb(var(--classic-bar-r-3) var(--classic-bar-g-3) var(--classic-bar-b-3) / calc(var(--classic-bar-glow-3) * 0.54)) 0%,
-      transparent 80%
+      ellipse 300% 62% at var(--classic-bar-glow-x-3) 74%,
+      rgb(var(--classic-bar-r-3) var(--classic-bar-g-3) var(--classic-bar-b-3) / calc(var(--classic-bar-glow-3) * 0.38)) 0%,
+      transparent 78%
     ),
     radial-gradient(
-      ellipse 320% 68% at var(--classic-bar-glow-x-4) 72%,
-      rgb(var(--classic-bar-r-4) var(--classic-bar-g-4) var(--classic-bar-b-4) / calc(var(--classic-bar-glow-4) * 0.54)) 0%,
-      transparent 80%
+      ellipse 300% 62% at var(--classic-bar-glow-x-4) 74%,
+      rgb(var(--classic-bar-r-4) var(--classic-bar-g-4) var(--classic-bar-b-4) / calc(var(--classic-bar-glow-4) * 0.38)) 0%,
+      transparent 78%
     ),
     radial-gradient(
-      ellipse 320% 68% at var(--classic-bar-glow-x-5) 72%,
-      rgb(var(--classic-bar-r-5) var(--classic-bar-g-5) var(--classic-bar-b-5) / calc(var(--classic-bar-glow-5) * 0.54)) 0%,
-      transparent 80%
+      ellipse 300% 62% at var(--classic-bar-glow-x-5) 74%,
+      rgb(var(--classic-bar-r-5) var(--classic-bar-g-5) var(--classic-bar-b-5) / calc(var(--classic-bar-glow-5) * 0.38)) 0%,
+      transparent 78%
     ),
     radial-gradient(
-      ellipse 320% 68% at var(--classic-bar-glow-x-6) 72%,
-      rgb(var(--classic-bar-r-6) var(--classic-bar-g-6) var(--classic-bar-b-6) / calc(var(--classic-bar-glow-6) * 0.54)) 0%,
-      transparent 80%
+      ellipse 300% 62% at var(--classic-bar-glow-x-6) 74%,
+      rgb(var(--classic-bar-r-6) var(--classic-bar-g-6) var(--classic-bar-b-6) / calc(var(--classic-bar-glow-6) * 0.38)) 0%,
+      transparent 78%
     );
-  mix-blend-mode: plus-lighter;
-  filter: blur(0.8px) saturate(155%);
-}
-
-.sayittome-glass-bar-classic-emery {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0.48;
-  background-image:
-    var(--classic-bar-emery-fine),
-    var(--classic-bar-emery-noise),
-    linear-gradient(
-      118deg,
-      rgba(255, 255, 255, 0.09) 0%,
-      rgba(255, 255, 255, 0) 24%,
-      rgba(255, 255, 255, 0.05) 48%,
-      rgba(255, 255, 255, 0) 72%,
-      rgba(255, 255, 255, 0.07) 100%
-    );
-  background-size: 72px 72px, 128px 128px, 100% 100%;
-  background-blend-mode: overlay, soft-light, normal;
-  mix-blend-mode: overlay;
-  filter: contrast(1.18) brightness(1.08);
-}
-
-.sayittome-glass-bar-classic::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0.22;
-  background-image: var(--classic-bar-emery-noise);
-  background-size: 112px 112px;
   mix-blend-mode: soft-light;
-  filter: contrast(1.35);
+  filter: blur(1.2px) saturate(145%);
 }
 
 .sayittome-glass-bar-classic .sayittome-bottom-nav-inner {
   position: relative;
-  z-index: 3;
+  z-index: 2;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -251,11 +227,11 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   }
 
   .sayittome-glass-bar-classic {
-    background: rgba(5, 5, 8, 0.9);
+    background: rgba(0, 0, 0, 0.96);
   }
 
   .sayittome-glass-bar-classic::before {
-    background: rgba(4, 4, 6, 0.55);
+    display: none;
   }
 }
 

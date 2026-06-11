@@ -59,16 +59,19 @@ export default function ModernProfileEditPreview({
             type="button"
             onClick={onCoverClick}
             aria-label={t("edit_change_cover")}
-            className="absolute inset-0 z-[2] cursor-pointer appearance-none border-0 bg-transparent p-0"
+            className="absolute inset-x-0 top-0 bottom-[5.5rem] z-[1] cursor-pointer appearance-none border-0 bg-transparent p-0"
           />
         </div>
 
-        <div className="relative z-10 -mt-[4.75rem] px-6 pb-8">
+        <div className="relative z-20 -mt-[4.75rem] px-6 pb-8">
           <button
             type="button"
-            onClick={onAvatarClick}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAvatarClick();
+            }}
             aria-label={t("edit_change_photo")}
-            className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-800 ring-2 ring-fuchsia-400/70"
+            className="relative z-30 h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-800 ring-2 ring-fuchsia-400/70"
           >
             {fotoPrincipal ? (
               <ProfileMediaSurface
