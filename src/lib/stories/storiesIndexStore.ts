@@ -2,7 +2,9 @@ import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
 import { preloadStoryGroup } from "@/lib/stories/preload";
 import {
   applyViewedCacheToStory,
+  isOwnerGroupSnapshotComplete,
   isStoryViewedInCache,
+  markOwnerGroupSnapshotInCache,
   markStoryViewedInCache,
 } from "@/lib/stories/storyViewedCache";
 import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
@@ -16,8 +18,14 @@ function storyUnseenForViewer(story: StoryItem, viewerId: string) {
   return !story.viewedBy?.[viewerId];
 }
 
-function groupHasUnseen(stories: StoryItem[], viewerId: string) {
+function groupHasUnseen(stories: StoryItem[], viewerId: string, ownerUid?: string) {
   if (!viewerId) return true;
+
+  const storyIds = stories.map((story) => story.id);
+  if (ownerUid && isOwnerGroupSnapshotComplete(viewerId, ownerUid, storyIds)) {
+    return false;
+  }
+
   return stories.some((story) => storyUnseenForViewer(story, viewerId));
 }
 
@@ -38,7 +46,7 @@ function mergeViewerSeenState(groups: StoryUserGroup[], viewerId: string) {
     for (const story of group.stories) {
       applyViewedCacheToStory(story, viewerId);
     }
-    group.hasUnseen = groupHasUnseen(group.stories, viewerId);
+    group.hasUnseen = groupHasUnseen(group.stories, viewerId, group.ownerUid);
   }
 }
 
@@ -51,6 +59,16 @@ function preserveViewerSeenState(
 
   for (const group of nextGroups) {
     const previous = previousByUid.get(group.ownerUid);
+    const previousStoryIds = new Set(previous?.stories.map((item) => item.id) || []);
+
+    if (previous && !previous.hasUnseen) {
+      for (const story of group.stories) {
+        if (!previousStoryIds.has(story.id)) continue;
+
+        markStoryViewedInCache(viewerId, story.id);
+        applyViewerSeenState(story, viewerId, true);
+      }
+    }
 
     for (const story of group.stories) {
       applyViewedCacheToStory(story, viewerId);
@@ -67,7 +85,15 @@ function preserveViewerSeenState(
       }
     }
 
-    group.hasUnseen = groupHasUnseen(group.stories, viewerId);
+    group.hasUnseen = groupHasUnseen(group.stories, viewerId, group.ownerUid);
+
+    if (!group.hasUnseen) {
+      markOwnerGroupSnapshotInCache(
+        viewerId,
+        group.ownerUid,
+        group.stories.map((story) => story.id),
+      );
+    }
   }
 }
 
@@ -104,8 +130,9 @@ function indexGroups(groups: StoryUserGroup[]) {
 export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = false) {
   if (loading) return;
 
+  const viewerChanged = String(nextViewerUid) !== String(viewerUid);
   const now = Date.now();
-  if (!force && now - lastFetch < TTL_MS && byUid.size > 0) {
+  if (!force && !viewerChanged && now - lastFetch < TTL_MS && byUid.size > 0) {
     return;
   }
 
@@ -177,7 +204,14 @@ export function markStoryViewedLocally(
     const story = byName.stories.find((item) => item.id === storyId);
     if (!story) return;
     applyViewerSeenState(story, viewerId, true);
-    byName.hasUnseen = groupHasUnseen(byName.stories, viewerId);
+    byName.hasUnseen = groupHasUnseen(byName.stories, viewerId, ownerUid);
+    if (!byName.hasUnseen) {
+      markOwnerGroupSnapshotInCache(
+        viewerId,
+        ownerUid,
+        byName.stories.map((item) => item.id),
+      );
+    }
     notify();
     return;
   }
@@ -186,7 +220,14 @@ export function markStoryViewedLocally(
   if (!story) return;
 
   applyViewerSeenState(story, viewerId, true);
-  group.hasUnseen = groupHasUnseen(group.stories, viewerId);
+  group.hasUnseen = groupHasUnseen(group.stories, viewerId, ownerUid);
+  if (!group.hasUnseen) {
+    markOwnerGroupSnapshotInCache(
+      viewerId,
+      ownerUid,
+      group.stories.map((item) => item.id),
+    );
+  }
   notify();
 }
 

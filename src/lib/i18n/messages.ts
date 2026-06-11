@@ -192,6 +192,10 @@ const es = {
 
   shuffle_no_profiles: "No hay perfiles para mostrar.",
   shuffle_no_profiles_filters: "Ningún perfil coincide con tus filtros.",
+  shuffle_filters_empty_online_note:
+    "Recordá: si alguien desactivó mostrar su última conexión, puede estar online ahora mismo pero no aparece en el filtro «Solo online».",
+  shuffle_filters_empty_keep_trying:
+    "¡Seguí intentando! Cada shuffle puede mostrarte gente nueva.",
   anon_match_card_title:
     "¿No encontraste a nadie interesante? Probá hablar con visitantes anónimos, sin perfil en la app, que están en modo incógnito ahora.",
   anon_match_card_title_anon:
@@ -788,6 +792,10 @@ const en: Record<keyof typeof es, string> = {
 
   shuffle_no_profiles: "No profiles to show.",
   shuffle_no_profiles_filters: "No profiles match your filters.",
+  shuffle_filters_empty_online_note:
+    "Remember: if someone turned off showing their last connection, they may be online right now but won't appear in the «Online only» filter.",
+  shuffle_filters_empty_keep_trying:
+    "Keep trying! Each shuffle can surface someone new.",
   anon_match_card_title:
     "Didn't find anyone interesting? Try talking to anonymous visitors with no profile in the app who are in incognito mode right now.",
   anon_match_card_title_anon:

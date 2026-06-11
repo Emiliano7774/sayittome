@@ -1,16 +1,42 @@
-const STORAGE_KEY = "sayittome_story_viewed_v1";
+const STORAGE_KEY = "sayittome_story_viewed_v2";
+const LEGACY_SESSION_KEY = "sayittome_story_viewed_v1";
 
-type ViewedMap = Record<string, true>;
+type ViewedMap = Record<string, true | string>;
 
 function cacheKey(viewerId: string, storyId: string) {
   return `${viewerId}:${storyId}`;
 }
 
+function ownerSnapshotKey(viewerId: string, ownerUid: string) {
+  return `${viewerId}:owner:${ownerUid}`;
+}
+
+let migrated = false;
+
+function migrateLegacyCache() {
+  if (migrated || typeof window === "undefined") return;
+  migrated = true;
+
+  try {
+    if (localStorage.getItem(STORAGE_KEY)) return;
+
+    const legacy = sessionStorage.getItem(LEGACY_SESSION_KEY);
+    if (legacy) {
+      localStorage.setItem(STORAGE_KEY, legacy);
+      sessionStorage.removeItem(LEGACY_SESSION_KEY);
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
 function readMap(): ViewedMap {
   if (typeof window === "undefined") return {};
 
+  migrateLegacyCache();
+
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
@@ -21,8 +47,10 @@ function readMap(): ViewedMap {
 function writeMap(map: ViewedMap) {
   if (typeof window === "undefined") return;
 
+  migrateLegacyCache();
+
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
   } catch {
     // Ignore quota errors.
   }
@@ -39,6 +67,37 @@ export function markStoryViewedInCache(viewerId: string, storyId: string) {
 export function isStoryViewedInCache(viewerId: string, storyId: string) {
   if (!viewerId || !storyId) return false;
   return readMap()[cacheKey(viewerId, storyId)] === true;
+}
+
+export function markOwnerGroupSnapshotInCache(
+  viewerId: string,
+  ownerUid: string,
+  storyIds: string[],
+) {
+  if (!viewerId || !ownerUid || storyIds.length === 0) return;
+
+  const map = readMap();
+  for (const storyId of storyIds) {
+    map[cacheKey(viewerId, storyId)] = true;
+  }
+  map[ownerSnapshotKey(viewerId, ownerUid)] = storyIds.slice().sort().join(",");
+  writeMap(map);
+}
+
+export function isOwnerGroupSnapshotComplete(
+  viewerId: string,
+  ownerUid: string,
+  storyIds: string[],
+) {
+  if (!viewerId || !ownerUid || storyIds.length === 0) return false;
+
+  const snapshot = readMap()[ownerSnapshotKey(viewerId, ownerUid)];
+  if (typeof snapshot !== "string") {
+    return storyIds.every((storyId) => isStoryViewedInCache(viewerId, storyId));
+  }
+
+  const seenSet = new Set(snapshot.split(","));
+  return storyIds.every((storyId) => seenSet.has(storyId));
 }
 
 export function applyViewedCacheToStory(

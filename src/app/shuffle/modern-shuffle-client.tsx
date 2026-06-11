@@ -11,6 +11,7 @@ import ModernAnonConnectCard from "@/components/anonMatch/ModernAnonConnectCard"
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
+import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptyState";
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ShuffleToolbarButton from "@/components/shuffle/ShuffleToolbarButton";
 import { useShufflePool } from "@/hooks/useShufflePool";
@@ -100,23 +101,22 @@ export default function ModernShuffleClient() {
             <p className="text-2xl font-black text-white/35">{t("common_loading")}</p>
           </div>
         ) : !pool.listReady && visible.length === 0 ? (
-          <div className="flex h-[50vh] flex-col items-center justify-center text-center">
-            <p className="text-2xl font-black text-white/35">
-              {filtersBlockResults ? t("shuffle_no_profiles_filters") : t("shuffle_no_profiles")}
-            </p>
-            {filtersBlockResults ? (
-              <button
-                type="button"
-                onClick={pool.clearFilters}
-                className="mt-5 rounded-full border border-violet-500/30 bg-violet-500/10 px-5 py-2.5 text-sm font-black text-violet-200"
-              >
-                {t("shuffle_filters_clear")}
-              </button>
-            ) : null}
-            {pool.errorText ? (
-              <p className="mt-3 font-bold text-white/40">{pool.errorText}</p>
-            ) : null}
-          </div>
+          filtersBlockResults ? (
+            <ShuffleFiltersEmptyState
+              variant="modern"
+              soloOnline={pool.filters.soloOnline}
+              onClearFilters={pool.clearFilters}
+              onKeepTrying={pool.handleShuffleClick}
+              errorText={pool.errorText}
+            />
+          ) : (
+            <div className="flex h-[50vh] flex-col items-center justify-center text-center">
+              <p className="text-2xl font-black text-white/35">{t("shuffle_no_profiles")}</p>
+              {pool.errorText ? (
+                <p className="mt-3 font-bold text-white/40">{pool.errorText}</p>
+              ) : null}
+            </div>
+          )
         ) : (
           <div className="mt-5" onClick={pool.handleListClick}>
             <ModernShuffleGrid />

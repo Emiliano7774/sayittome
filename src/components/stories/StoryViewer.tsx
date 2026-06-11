@@ -208,12 +208,19 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     setReplyText("");
 
     if (index >= localStories.length - 1) {
+      const viewerId = resolveStoryViewerId(auth.currentUser);
+      const owner = resolvedOwnerUid;
+      if (viewerId && owner) {
+        for (const story of localStories) {
+          markStoryViewedLocally(owner, story.id, viewerId);
+        }
+      }
       router.back();
       return;
     }
 
     setIndex((i) => i + 1);
-  }, [current, index, localStories, router]);
+  }, [current, index, localStories, resolvedOwnerUid, router]);
 
   const goPrev = useCallback(() => {
     const prevIndex = Math.max(0, index - 1);

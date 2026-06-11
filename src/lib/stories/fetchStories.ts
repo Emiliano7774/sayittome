@@ -7,6 +7,7 @@ import {
 } from "@/lib/stories/storyAuthor";
 import {
   applyViewedCacheToStory,
+  isOwnerGroupSnapshotComplete,
   isStoryViewedInCache,
 } from "@/lib/stories/storyViewedCache";
 
@@ -64,6 +65,30 @@ function parseStoryDoc(docSnap: { id: string; data: () => Record<string, unknown
   return item;
 }
 
+function storyUnseenForViewer(story: StoryItem, viewerUid: string) {
+  if (!viewerUid) return true;
+  if (isStoryViewedInCache(viewerUid, story.id)) return false;
+  if (viewerUid.startsWith("anon_")) {
+    return !story.viewedByAnon?.[viewerUid];
+  }
+  return !story.viewedBy?.[viewerUid];
+}
+
+function computeGroupHasUnseen(
+  stories: StoryItem[],
+  viewerUid: string,
+  ownerUid: string,
+) {
+  if (!viewerUid) return true;
+
+  const storyIds = stories.map((story) => story.id);
+  if (isOwnerGroupSnapshotComplete(viewerUid, ownerUid, storyIds)) {
+    return false;
+  }
+
+  return stories.some((story) => storyUnseenForViewer(story, viewerUid));
+}
+
 function groupStories(stories: StoryItem[], viewerUid: string) {
   const byOwner = new Map<string, StoryItem[]>();
 
@@ -82,15 +107,7 @@ function groupStories(stories: StoryItem[], viewerUid: string) {
       applyViewedCacheToStory(story, viewerUid);
     }
 
-    const hasUnseen = viewerUid
-      ? ownerStories.some((story) => {
-          if (isStoryViewedInCache(viewerUid, story.id)) return false;
-          if (viewerUid.startsWith("anon_")) {
-            return !story.viewedByAnon?.[viewerUid];
-          }
-          return !story.viewedBy?.[viewerUid];
-        })
-      : true;
+    const hasUnseen = computeGroupHasUnseen(ownerStories, viewerUid, ownerUid);
 
     groups.push({
       ownerUid,
@@ -108,10 +125,10 @@ function groupStories(stories: StoryItem[], viewerUid: string) {
     return bMax - aMax;
   });
 
-  return mergeGroupsByUsername(groups);
+  return mergeGroupsByUsername(groups, viewerUid);
 }
 
-function mergeGroupsByUsername(groups: StoryUserGroup[]) {
+function mergeGroupsByUsername(groups: StoryUserGroup[], viewerUid: string) {
   const merged = new Map<string, StoryUserGroup>();
 
   for (const group of groups) {
@@ -134,13 +151,15 @@ function mergeGroupsByUsername(groups: StoryUserGroup[]) {
       (a, b) => a.createdAtMs - b.createdAtMs,
     );
 
+    const ownerUid = existing.ownerUid || group.ownerUid;
+
     merged.set(key, {
-      ownerUid: existing.ownerUid || group.ownerUid,
+      ownerUid,
       ownerUsername: existing.ownerUsername || group.ownerUsername,
       ownerPhoto: existing.ownerPhoto || group.ownerPhoto,
       isAnonymousStory: existing.isAnonymousStory || group.isAnonymousStory,
       stories,
-      hasUnseen: existing.hasUnseen || group.hasUnseen,
+      hasUnseen: computeGroupHasUnseen(stories, viewerUid, ownerUid),
     });
   }
 
