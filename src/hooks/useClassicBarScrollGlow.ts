@@ -37,7 +37,7 @@ function luminance(r: number, g: number, b: number) {
 }
 
 function glowFromLum(lum: number) {
-  return Math.max(0, Math.min(1, (lum - 0.14) * 1.55));
+  return Math.max(0, Math.min(1, (lum - 0.06) * 1.35));
 }
 
 function sampleImageColorAt(img: HTMLImageElement, x: number, y: number): SampleColor | null {
