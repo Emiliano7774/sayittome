@@ -122,16 +122,19 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
 }
 
 .sayittome-glass-bar-classic {
+  position: absolute;
   left: 0;
   right: 0;
-  width: 100%;
+  top: 0;
+  height: var(--sayittome-nav-height);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(5, 5, 10, 0.38);
-  backdrop-filter: blur(18px) saturate(160%) brightness(115%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%) brightness(115%);
+  background: rgba(8, 8, 14, 0.3);
+  backdrop-filter: blur(22px) saturate(180%) brightness(118%) contrast(105%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%) brightness(118%) contrast(105%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 -12px 40px rgba(120, 80, 255, 0.1);
+    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
+    0 -18px 45px rgba(120, 90, 255, 0.08);
 }
 
 .sayittome-glass-bar-classic::before {
@@ -140,19 +143,61 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.45;
-  background: linear-gradient(
-    to top,
-    rgba(255, 255, 255, 0.06),
-    rgba(255, 255, 255, 0.02),
-    transparent
-  );
+  opacity: 0.28;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.08),
+      rgba(255, 255, 255, 0.015) 45%,
+      rgba(0, 0, 0, 0.06)
+    ),
+    radial-gradient(circle at 50% 0%, rgba(160, 120, 255, 0.1), transparent 55%);
   mix-blend-mode: screen;
 }
 
-.sayittome-glass-bar-classic .sayittome-bottom-nav-inner {
-  position: relative;
+.sayittome-glass-bar-classic-tint {
+  position: absolute;
+  inset: 0;
   z-index: 1;
+  pointer-events: none;
+  opacity: 0.42;
+  background:
+    radial-gradient(
+      ellipse 260% 65% at var(--classic-bar-glow-x-0) 88%,
+      rgb(var(--classic-bar-r-0) var(--classic-bar-g-0) var(--classic-bar-b-0) / calc(var(--classic-bar-glow-0) * 0.18)) 0%,
+      transparent 84%
+    ),
+    radial-gradient(
+      ellipse 260% 65% at var(--classic-bar-glow-x-1) 88%,
+      rgb(var(--classic-bar-r-1) var(--classic-bar-g-1) var(--classic-bar-b-1) / calc(var(--classic-bar-glow-1) * 0.18)) 0%,
+      transparent 84%
+    ),
+    radial-gradient(
+      ellipse 260% 65% at var(--classic-bar-glow-x-2) 88%,
+      rgb(var(--classic-bar-r-2) var(--classic-bar-g-2) var(--classic-bar-b-2) / calc(var(--classic-bar-glow-2) * 0.18)) 0%,
+      transparent 84%
+    ),
+    radial-gradient(
+      ellipse 260% 65% at var(--classic-bar-glow-x-3) 88%,
+      rgb(var(--classic-bar-r-3) var(--classic-bar-g-3) var(--classic-bar-b-3) / calc(var(--classic-bar-glow-3) * 0.18)) 0%,
+      transparent 84%
+    ),
+    radial-gradient(
+      ellipse 260% 65% at var(--classic-bar-glow-x-4) 88%,
+      rgb(var(--classic-bar-r-4) var(--classic-bar-g-4) var(--classic-bar-b-4) / calc(var(--classic-bar-glow-4) * 0.18)) 0%,
+      transparent 84%
+    ),
+    radial-gradient(
+      ellipse 260% 65% at var(--classic-bar-glow-x-5) 88%,
+      rgb(var(--classic-bar-r-5) var(--classic-bar-g-5) var(--classic-bar-b-5) / calc(var(--classic-bar-glow-5) * 0.18)) 0%,
+      transparent 84%
+    ),
+    radial-gradient(
+      ellipse 260% 65% at var(--classic-bar-glow-x-6) 88%,
+      rgb(var(--classic-bar-r-6) var(--classic-bar-g-6) var(--classic-bar-b-6) / calc(var(--classic-bar-glow-6) * 0.18)) 0%,
+      transparent 84%
+    );
+  mix-blend-mode: soft-light;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -161,17 +206,18 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   }
 
   .sayittome-glass-bar-classic {
-    background: rgba(10, 10, 18, 0.48);
+    background: rgba(12, 12, 20, 0.34);
   }
 
   .sayittome-glass-bar-classic::before {
-    opacity: 0.4;
+    opacity: 0.22;
     mix-blend-mode: normal;
   }
 }
 
 .sayittome-bottom-nav {
   bottom: 0;
+  background: transparent;
   padding-bottom: calc(
     env(safe-area-inset-bottom, 0px) + var(--sayittome-browser-chrome-bottom, 0px)
   );
