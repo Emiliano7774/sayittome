@@ -37,6 +37,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
   return (
     <div className="sayittome-bottom-nav sayittome-glass-bar-classic fixed inset-x-0 bottom-0 z-[9999]">
       <span aria-hidden className="sayittome-glass-bar-classic-glow" />
+      <span aria-hidden className="sayittome-glass-bar-classic-emery" />
       <div className="sayittome-bottom-nav-inner flex w-full items-center justify-around px-[max(22px,4vw)]">
         {items.map((item) => {
           const Icon = item.icon;
