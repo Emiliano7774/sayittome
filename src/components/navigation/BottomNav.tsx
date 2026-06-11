@@ -33,7 +33,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
   }
 
   return (
-    <div className="sayittome-bottom-nav fixed inset-x-0 bottom-0 z-[9999] border-t border-white/[0.04] backdrop-blur-2xl">
+    <div className="sayittome-bottom-nav sayittome-glass-bar fixed inset-x-0 bottom-0 z-[9999]">
       <div className="sayittome-bottom-nav-inner flex w-full items-center justify-around px-[max(22px,4vw)]">
         {items.map((item) => {
           const Icon = item.icon;

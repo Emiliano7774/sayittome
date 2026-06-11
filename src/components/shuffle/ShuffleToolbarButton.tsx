@@ -8,7 +8,7 @@ type Props = {
   ariaLabel: string;
   icon: LucideIcon;
   tone?: "neutral" | "primary";
-  variant?: "solid" | "glass";
+  variant?: "solid" | "nav";
   badge?: ReactNode;
   iconClassName?: string;
 };
@@ -23,25 +23,27 @@ export default function ShuffleToolbarButton({
   iconClassName = "",
 }: Props) {
   const toneClass =
-    variant === "glass"
+    variant === "nav"
       ? tone === "primary"
-        ? "sayittome-shuffle-glass-chip sayittome-shuffle-glass-chip-primary text-white"
-        : "sayittome-shuffle-glass-chip text-white"
+        ? "text-[#7b5cff]"
+        : "text-[#777]"
       : tone === "primary"
         ? "bg-violet-600 text-white"
         : "border border-white/10 bg-white/5 text-white";
+
+  const size = variant === "nav" && tone === "primary" ? 34 : variant === "nav" ? 22 : 18;
 
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={ariaLabel}
-      className={`relative z-[1] flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:scale-95 ${toneClass}`}
+      className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:scale-95 ${toneClass}`}
     >
       <span className="flex h-5 w-5 items-center justify-center">
         <Icon
-          size={18}
-          strokeWidth={2.35}
+          size={size}
+          strokeWidth={2.4}
           className={`block shrink-0 ${iconClassName}`.trim()}
         />
       </span>

@@ -18,7 +18,7 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
   const subtext = profile.bio?.trim() || "Perfil SayItToMe";
 
   return (
-    <Link href={href} className="relative block w-full" data-shuffle-card>
+    <Link href={href} className="relative block w-full">
       <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
       <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
         <div className="relative aspect-[3/4] w-full overflow-hidden">
