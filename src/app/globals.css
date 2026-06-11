@@ -83,9 +83,71 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   -webkit-backdrop-filter: blur(40px);
 }
 
+.sayittome-glass-bar-classic {
+  isolation: isolate;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.05) 24%,
+    rgba(18, 18, 22, 0.52) 58%,
+    rgba(0, 0, 0, 0.82) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 -10px 36px rgba(0, 0, 0, 0.28);
+}
+
+.sayittome-glass-bar-classic::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  backdrop-filter: blur(32px) saturate(165%) brightness(0.92);
+  -webkit-backdrop-filter: blur(32px) saturate(165%) brightness(0.92);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.02) 36%,
+    rgba(0, 0, 0, 0.18) 100%
+  );
+}
+
+.sayittome-glass-bar-classic::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    118deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.04) 32%,
+    transparent 54%,
+    rgba(0, 0, 0, 0.28) 100%
+  );
+  mix-blend-mode: soft-light;
+  opacity: 0.9;
+}
+
+.sayittome-glass-bar-classic .sayittome-bottom-nav-inner {
+  position: relative;
+  z-index: 1;
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .sayittome-glass-bar {
     background: rgba(23, 23, 23, 0.94);
+  }
+
+  .sayittome-glass-bar-classic {
+    background: linear-gradient(90deg, #2c2c31 0%, #17171b 42%, #09090b 100%);
+  }
+
+  .sayittome-glass-bar-classic::before,
+  .sayittome-glass-bar-classic::after {
+    display: none;
   }
 }
 
