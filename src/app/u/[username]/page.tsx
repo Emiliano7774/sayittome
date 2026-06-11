@@ -431,7 +431,7 @@ export default function PublicProfilePage() {
             icon={<BookOpen size={profileUi.statIcon} />}
             ui={profileUi}
             onClick={
-              storyStatus.hasActive && storyStatus.hasUnseen && storyStatus.storyPath
+              storyStatus.hasActive && storyStatus.storyPath
                 ? () => router.push(storyStatus.storyPath!)
                 : undefined
             }

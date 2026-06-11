@@ -540,20 +540,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
           />
         ) : null}
 
-        {current.mediaUrl && current.mediaSource ? (
-          <div
-            className={[
-              "absolute bottom-[calc(max(7.5rem,env(safe-area-inset-bottom))+5.5rem)] left-0 right-0 z-40 flex justify-center transition-opacity duration-150",
-              bottomChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
-            ].join(" ")}
-            data-story-chrome
-          >
-            <StoryMediaSourceBadge
-              source={current.mediaSource}
-              mediaType={current.mediaType}
-            />
-          </div>
-        ) : null}
       </div>
 
       <div
@@ -569,7 +555,7 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
           </p>
         ) : null}
 
-        <div className="flex items-end justify-between gap-4">
+        <div className="flex items-end gap-2">
           {canOpenProfile ? (
             <button
               type="button"
@@ -590,10 +576,19 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
               )}
             </button>
           ) : (
-            <div />
+            <span className="block h-14 w-14 shrink-0" aria-hidden />
           )}
 
-          <div className="mb-1 flex items-center justify-end gap-4">
+          <div className="flex min-h-[2.75rem] min-w-0 flex-1 items-end justify-center px-2 pb-1">
+            {current.mediaUrl && current.mediaSource ? (
+              <StoryMediaSourceBadge
+                source={current.mediaSource}
+                mediaType={current.mediaType}
+              />
+            ) : null}
+          </div>
+
+          <div className="mb-1 flex shrink-0 items-center justify-end gap-4">
             {!anonymousStory ? (
               <button
                 type="button"

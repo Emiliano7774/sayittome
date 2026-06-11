@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { ArrowLeft, BadgeCheck, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
+import {
+  ArrowLeft,
+  BadgeCheck,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Heart,
+  MessageCircle,
+  Users,
+  X,
+} from "lucide-react";
 
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
@@ -110,8 +120,14 @@ export default function ModernPublicProfile({
     setVideoViewerUrl(url);
   }
 
+  function openStories() {
+    if (story.hasActive && story.storyPath) {
+      router.push(story.storyPath);
+    }
+  }
+
   function openPrimary() {
-    if (story.hasActive && story.hasUnseen && story.storyPath) {
+    if (story.hasActive && story.storyPath) {
       router.push(story.storyPath);
       return;
     }
@@ -342,7 +358,7 @@ export default function ModernPublicProfile({
                 </p>
               ) : null}
 
-              <div className="mt-5 grid grid-cols-3 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">
+              <div className="mt-5 grid grid-cols-4 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">
                 <StatItem icon={<Heart size={18} />} value={profile.likes || 0} label={t("profile_likes")} />
                 <StatItem
                   icon={<MessageCircle size={18} />}
@@ -353,6 +369,14 @@ export default function ModernPublicProfile({
                   icon={<Users size={18} />}
                   value={profile.seguidores || 0}
                   label={t("settings_followers")}
+                />
+                <StatItem
+                  icon={<BookOpen size={18} />}
+                  value={historiasCount}
+                  label={t("settings_stories_stat")}
+                  onClick={story.hasActive && story.storyPath ? openStories : undefined}
+                  highlight={story.hasActive && story.hasUnseen}
+                  seen={story.hasActive && !story.hasUnseen}
                 />
               </div>
 
@@ -365,7 +389,7 @@ export default function ModernPublicProfile({
                   {t("profile_open_chat")}
                 </Link>
                 {!isOwner ? <FollowButton targetUid={profile.uid} /> : null}
-                {story.hasActive && story.hasUnseen && story.storyPath ? (
+                {story.hasActive && story.storyPath ? (
                   <Link
                     href={story.storyPath}
                     className="flex-1 rounded-full bg-fuchsia-500/30 px-6 py-3.5 text-center text-sm font-normal"
@@ -475,18 +499,45 @@ function StatItem({
   icon,
   value,
   label,
+  onClick,
+  highlight,
+  seen,
 }: {
   icon: React.ReactNode;
   value: number;
   label: string;
+  onClick?: () => void;
+  highlight?: boolean;
+  seen?: boolean;
 }) {
-  return (
-    <div className="text-center">
-      <div className="mx-auto mb-1 flex h-8 w-8 items-center justify-center text-white/70">
+  const content = (
+    <>
+      <div
+        className={[
+          "mx-auto mb-1 flex h-8 w-8 items-center justify-center text-white/70",
+          highlight ? "rounded-full ring-2 ring-violet-400/70" : "",
+          seen ? "rounded-full ring-2 ring-zinc-600/80" : "",
+        ].join(" ")}
+      >
         {icon}
       </div>
       <p className="text-xl font-black">{value}</p>
       <p className="text-[11px] font-bold text-white/45">{label}</p>
-    </div>
+    </>
+  );
+
+  if (!onClick) {
+    return <div className="text-center">{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-center transition active:scale-95"
+      aria-label={label}
+    >
+      {content}
+    </button>
   );
 }
