@@ -28,7 +28,7 @@ export default function AdminChatReviewView({
   showBack = false,
 }: Props) {
   const phoneShell = usePhoneShell();
-  const { chats, uid, loading } = useUserModerationChats(username);
+  const { chats, uid, loading, errorText, total } = useUserModerationChats(username);
   const [selectedChatId, setSelectedChatId] = useState("");
   const markedSeenRef = useRef(false);
 
@@ -71,7 +71,11 @@ export default function AdminChatReviewView({
   }
 
   if (loading) {
-    return <p className="text-lg font-bold text-white/35">Cargando historial...</p>;
+    return <p className="text-lg font-bold text-white/35">Cargando historial completo...</p>;
+  }
+
+  if (errorText) {
+    return <p className="text-lg font-bold text-red-300/80">{errorText}</p>;
   }
 
   return (
@@ -98,6 +102,11 @@ export default function AdminChatReviewView({
             phoneShell ? "max-h-[42vh] shrink-0 border-b" : "h-full border-r",
           ].join(" ")}
         >
+          {!loading && total > 0 ? (
+            <p className="border-b border-white/10 bg-[#0a0a0a] px-4 py-2 text-[11px] font-bold text-white/40">
+              {total} conversaciones recuperadas del historial
+            </p>
+          ) : null}
           <AdminChatHistoryList
             chats={chats}
             profileUsername={username}

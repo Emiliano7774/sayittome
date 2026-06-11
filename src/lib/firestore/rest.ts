@@ -191,6 +191,81 @@ export async function runCollectionQueryAll(
   return all;
 }
 
+export async function runFilteredCollectionQueryAll(
+  collectionId: string,
+  fieldPath: string,
+  value: string,
+  orderField?: string,
+  direction: "ASCENDING" | "DESCENDING" = "DESCENDING",
+  pageSize = 300,
+  maxPages = 40,
+) {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIRESTORE_API_KEY}`;
+  const all: Record<string, unknown>[] = [];
+  let cursorDoc: Record<string, unknown> | null = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const structuredQuery: Record<string, unknown> = {
+      from: [{ collectionId }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath },
+          op: "EQUAL",
+          value: { stringValue: value },
+        },
+      },
+      limit: pageSize,
+    };
+
+    if (orderField) {
+      structuredQuery.orderBy = [{ field: { fieldPath: orderField }, direction }];
+    }
+
+    if (cursorDoc && orderField) {
+      structuredQuery.startAt = {
+        values: [
+          buildOrderCursorValue(cursorDoc, orderField),
+          {
+            referenceValue: `projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collectionId}/${encodeURIComponent(String(cursorDoc.id || ""))}`,
+          },
+        ],
+        before: false,
+      };
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ structuredQuery }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Firestore runFilteredQueryAll ${collectionId} ${res.status}`);
+    }
+
+    const json = (await res.json()) as FirestoreRunQueryRow[];
+    if (!Array.isArray(json)) break;
+
+    const docs = json
+      .map((row) => row.document)
+      .filter(Boolean)
+      .map(parseFirestoreDoc);
+
+    if (docs.length === 0) break;
+
+    const startIndex = cursorDoc ? 1 : 0;
+    for (let i = startIndex; i < docs.length; i += 1) {
+      all.push(docs[i]);
+    }
+
+    if (docs.length < pageSize) break;
+    cursorDoc = docs[docs.length - 1];
+  }
+
+  return all;
+}
+
 export async function getFirestoreDoc(collection: string, id: string) {
   const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collection}/${encodeURIComponent(id)}?key=${FIRESTORE_API_KEY}`;
 

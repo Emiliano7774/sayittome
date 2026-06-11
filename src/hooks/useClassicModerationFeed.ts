@@ -8,16 +8,16 @@ import {
   onSnapshot,
   orderBy,
   query,
-  where,
 } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import {
   aggregateChatsToUserFeed,
   chatActivityMs,
   mergeModerationFeed,
 } from "@/lib/moderation/classicFeed";
+import { normalizeModerationChatRow } from "@/lib/moderation/chatHistory";
 import { subscribeModerationSeen } from "@/lib/moderation/markSeen";
 import type {
   ModerationChatRow,
@@ -169,57 +169,58 @@ export function useUserModerationChats(username: string) {
   const [chats, setChats] = useState<ModerationChatRow[]>([]);
   const [uid, setUid] = useState("");
   const [loading, setLoading] = useState(true);
+  const [errorText, setErrorText] = useState("");
 
   useEffect(() => {
+    if (!username) return;
+
     let cancelled = false;
-    resolveUidForUsername(username).then((nextUid) => {
-      if (!cancelled) setUid(nextUid);
-    });
+    setLoading(true);
+    setErrorText("");
+
+    async function loadHistory() {
+      try {
+        const email = auth.currentUser?.email || "";
+        const res = await fetch(
+          `/api/admin/user-chats?username=${encodeURIComponent(username)}`,
+          {
+            cache: "no-store",
+            headers: email ? { "x-admin-email": email } : {},
+          },
+        );
+        const json = await res.json();
+
+        if (cancelled) return;
+
+        if (!json?.ok) {
+          setErrorText(String(json?.error || "No se pudo cargar el historial"));
+          setChats([]);
+          setUid("");
+          return;
+        }
+
+        setUid(String(json.uid || ""));
+        setChats(
+          Array.isArray(json.chats)
+            ? json.chats.map((row: Record<string, unknown>) => normalizeModerationChatRow(row))
+            : [],
+        );
+      } catch (error) {
+        if (!cancelled) {
+          setErrorText((error as Error)?.message || "Error cargando historial");
+          setChats([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadHistory();
+
     return () => {
       cancelled = true;
     };
   }, [username]);
 
-  useEffect(() => {
-    if (!username) return;
-
-    const merged = new Map<string, ModerationChatRow>();
-    const unsubs: Array<() => void> = [];
-
-    function attach(q: ReturnType<typeof query>) {
-      const unsub = onSnapshot(q, (snap) => {
-        for (const row of snap.docs) {
-          merged.set(row.id, {
-            id: row.id,
-            ...(row.data() as Omit<ModerationChatRow, "id">),
-          });
-        }
-        const sorted = [...merged.values()].sort(
-          (a, b) => chatActivityMs(b) - chatActivityMs(a),
-        );
-        setChats(sorted);
-        setLoading(false);
-      });
-      unsubs.push(unsub);
-    }
-
-    attach(
-      query(collection(db, "chats"), where("targetUsername", "==", username), limit(120)),
-    );
-    attach(
-      query(collection(db, "chats"), where("receptorUsername", "==", username), limit(120)),
-    );
-
-    if (uid) {
-      for (const field of ["receptorUid", "targetUid", "initiatorUid", "anonOwnerUid"] as const) {
-        attach(query(collection(db, "chats"), where(field, "==", uid), limit(80)));
-      }
-    }
-
-    return () => {
-      unsubs.forEach((unsub) => unsub());
-    };
-  }, [username, uid]);
-
-  return { chats, uid, loading };
+  return { chats, uid, loading, errorText, total: chats.length };
 }

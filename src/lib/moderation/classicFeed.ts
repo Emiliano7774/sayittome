@@ -1,3 +1,5 @@
+import { groupChatsByCalendarDay, timestampMs } from "@/lib/moderation/chatHistory";
+
 import type {
   ModerationChatRow,
   ModerationProfileRow,
@@ -14,11 +16,11 @@ export function safeProfileKey(value: string) {
 }
 
 export function chatActivityMs(chat: ModerationChatRow) {
-  return chat.updatedAt?.toMillis?.() ?? chat.createdAt?.toMillis?.() ?? 0;
+  return timestampMs(chat.updatedAt) || timestampMs(chat.createdAt) || 0;
 }
 
 export function chatReviewedMs(chat: ModerationChatRow) {
-  return chat.moderationReviewedAt?.toMillis?.() ?? 0;
+  return timestampMs(chat.moderationReviewedAt) || 0;
 }
 
 export function isChatUnseen(chat: ModerationChatRow) {
@@ -174,62 +176,12 @@ export function getConversationType(chat: ModerationChatRow, profileUsername: st
   return target || receptor || profile || "Conversación";
 }
 
-function startOfDay(date: Date) {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy.getTime();
-}
-
+/** @deprecated Use groupChatsByCalendarDay — kept for imports. */
 export function groupChatsByTemporal(
   chats: ModerationChatRow[],
-  profileUsername: string,
+  _profileUsername?: string,
 ): TemporalChatSection[] {
-  const sorted = [...chats].sort((a, b) => chatActivityMs(b) - chatActivityMs(a));
-  if (sorted.length === 0) return [];
-
-  const now = new Date();
-  const todayStart = startOfDay(now);
-  const yesterdayStart = todayStart - 86_400_000;
-  const weekStart = todayStart - 6 * 86_400_000;
-
-  const active = sorted[0] ? [sorted[0]] : [];
-  const activeId = active[0]?.id;
-  const rest = sorted.filter((chat) => chat.id !== activeId);
-
-  const today: ModerationChatRow[] = [];
-  const yesterday: ModerationChatRow[] = [];
-  const recent: ModerationChatRow[] = [];
-  const older: ModerationChatRow[] = [];
-
-  for (const chat of rest) {
-    const ms = chatActivityMs(chat);
-    if (ms >= todayStart) today.push(chat);
-    else if (ms >= yesterdayStart) yesterday.push(chat);
-    else if (ms >= weekStart) recent.push(chat);
-    else older.push(chat);
-  }
-
-  const sections: TemporalChatSection[] = [];
-
-  if (active.length) {
-    sections.push({ id: "active", label: "Conversación activa / más reciente", chats: active });
-  }
-  if (today.length) sections.push({ id: "today", label: "Conversaciones de hoy", chats: today });
-  if (yesterday.length) {
-    sections.push({ id: "yesterday", label: "Conversaciones de ayer", chats: yesterday });
-  }
-  if (recent.length) {
-    sections.push({ id: "recent", label: "Conversaciones anteriores", chats: recent });
-  }
-  if (older.length) sections.push({ id: "older", label: "Chats viejos", chats: older });
-
-  return sections.map((section) => ({
-    ...section,
-    chats: section.chats.map((chat) => ({
-      ...chat,
-      lastMessage: chat.lastMessage || "Sin mensajes",
-    })),
-  }));
+  return groupChatsByCalendarDay(chats);
 }
 
 export function formatActivityTime(ms: number) {
