@@ -15,13 +15,22 @@ export async function resolvePostAuthPath(
     username?: string;
     nombre?: string;
     provincia?: string;
+    fotoPrincipal?: string;
+    photoURL?: string;
+    perfilCompleto?: boolean;
     profileSetupComplete?: boolean;
   };
 
   const username = String(data.username || data.nombre || "").trim();
   const provincia = String(data.provincia || "").trim();
+  const hasPrincipalPhoto = Boolean(data.fotoPrincipal || data.photoURL);
 
-  if (!username || !provincia || data.profileSetupComplete !== true) {
+  const setupComplete =
+    data.profileSetupComplete === true ||
+    data.perfilCompleto === true ||
+    Boolean(username && provincia && hasPrincipalPhoto);
+
+  if (!username || !provincia || !setupComplete) {
     return "/register/setup";
   }
 

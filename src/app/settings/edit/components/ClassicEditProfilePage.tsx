@@ -310,6 +310,7 @@ export default function ClassicEditProfilePage() {
           mostrarConversaciones: visibleBadges.conversations,
           mostrarSeguidores: visibleBadges.followers,
           perfilCompleto: Boolean(username.trim() && fotoPrincipal),
+          profileSetupComplete: Boolean(username.trim() && provincia.trim()),
           updatedAt: serverTimestamp(),
         },
         { merge: true },

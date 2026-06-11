@@ -49,7 +49,6 @@ export default function ModernEditProfilePage() {
   const [saveError, setSaveError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
-  const coverVideoInputRef = useRef<HTMLInputElement | null>(null);
 
   const fotoPrincipal = useMemo(() => {
     const principal = media[principalIndex];
@@ -93,8 +92,15 @@ export default function ModernEditProfilePage() {
         });
       }
 
-      setMedia(loaded.slice(0, 100));
-      setPrincipalIndex(0);
+      const nextMedia = loaded.slice(0, 100);
+      setMedia(nextMedia);
+
+      const principalUrl = String(data.fotoPrincipal || "");
+      const principalIdx = principalUrl
+        ? nextMedia.findIndex((item) => item.url === principalUrl)
+        : -1;
+      setPrincipalIndex(principalIdx >= 0 ? principalIdx : 0);
+
       setFotoPortada(String(data.fotoPortada || data.coverPhoto || data.portada || ""));
       setVideoPortada(String(data.videoPortada || data.coverVideo || ""));
       setLoading(false);
@@ -204,6 +210,72 @@ export default function ModernEditProfilePage() {
     if (principalIndex >= index) setPrincipalIndex(Math.max(0, principalIndex - 1));
   }
 
+  async function persistCoverMedia(url: string, kind: "image" | "video") {
+    if (!user) return;
+
+    const payload =
+      kind === "video"
+        ? {
+            videoPortada: url,
+            coverVideo: url,
+            fotoPortada: null,
+            coverPhoto: null,
+            portada: null,
+          }
+        : {
+            fotoPortada: url,
+            coverPhoto: url,
+            portada: url,
+            videoPortada: null,
+            coverVideo: null,
+          };
+
+    await setDoc(
+      doc(db, "usuarios", user.uid),
+      {
+        ...payload,
+        profileSetupComplete: true,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  }
+
+  async function handleCoverUpload(file: File) {
+    if (!user) return;
+
+    const kind = guessMediaFileKind(file);
+    if (!kind) {
+      setUploadError(t("edit_upload_unsupported"));
+      return;
+    }
+
+    setUploading(true);
+    setUploadError("");
+    setUploadText(t("edit_uploading", { current: "1", total: "1" }));
+
+    try {
+      const url = await uploadSingleFile(file, kind === "video" ? "cover-video" : "cover");
+      if (!url) return;
+
+      if (kind === "video") {
+        setVideoPortada(url);
+        setFotoPortada("");
+      } else {
+        setFotoPortada(url);
+        setVideoPortada("");
+      }
+
+      await persistCoverMedia(url, kind);
+    } catch (error) {
+      console.error(error);
+      setUploadError(t(profileUploadErrorKey(error)));
+    } finally {
+      setUploading(false);
+      setUploadText("");
+    }
+  }
+
   async function saveProfile() {
     if (!user) return;
 
@@ -237,7 +309,8 @@ export default function ModernEditProfilePage() {
           portada: fotoPortada || null,
           videoPortada: videoPortada || null,
           coverVideo: videoPortada || null,
-          perfilCompleto: Boolean(username.trim() && fotoPrincipal),
+          perfilCompleto: Boolean(username.trim() && (fotoPrincipal || fotoPortada || videoPortada)),
+          profileSetupComplete: Boolean(username.trim() && provincia.trim()),
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -283,6 +356,36 @@ export default function ModernEditProfilePage() {
           <p className="mb-6 text-sm font-semibold text-red-400">{saveError}</p>
         ) : null}
 
+        <div className="mb-10 overflow-hidden rounded-[32px] border border-white/10 bg-zinc-950">
+          <button
+            type="button"
+            onClick={() => coverInputRef.current?.click()}
+            className="group relative block h-44 w-full overflow-hidden text-left md:h-52"
+          >
+            {videoPortada ? (
+              <ProfileMediaSurface
+                url={videoPortada}
+                videoClassName="h-full w-full object-cover opacity-90 transition group-active:scale-[1.02]"
+              />
+            ) : fotoPortada ? (
+              <img
+                src={fotoPortada}
+                alt=""
+                className="h-full w-full object-cover opacity-90 transition group-active:scale-[1.02]"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-950 via-zinc-950 to-black text-sm font-bold text-white/40">
+                {t("edit_cover_media")}
+              </div>
+            )}
+            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-5 py-4 text-sm font-black text-white">
+              {videoPortada || fotoPortada
+                ? t("edit_cover_replace_hint")
+                : t("edit_cover_media")}
+            </span>
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-10">
           <div>
             <div className="w-64 h-64 rounded-[44px] border-4 border-violet-400/80 bg-zinc-950 overflow-hidden shadow-[0_0_55px_rgba(139,92,246,.35)] flex items-center justify-center">
@@ -310,14 +413,7 @@ export default function ModernEditProfilePage() {
                 onClick={() => coverInputRef.current?.click()}
                 className="h-14 rounded-full border border-violet-400 font-black flex items-center justify-center gap-2"
               >
-                <ImagePlus size={18} /> {t("edit_cover_photo")}
-              </button>
-              <button
-                type="button"
-                onClick={() => coverVideoInputRef.current?.click()}
-                className="h-14 rounded-full border border-white/20 font-black flex items-center justify-center gap-2"
-              >
-                <Film size={18} /> {t("edit_cover_video")}
+                <ImagePlus size={18} /> {t("edit_cover_media")}
               </button>
               <button
                 type="button"
@@ -358,45 +454,13 @@ export default function ModernEditProfilePage() {
             <input
               ref={coverInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               className="hidden"
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                setUploading(true);
-                setUploadError("");
-                try {
-                  const url = await uploadSingleFile(file, "cover");
-                  if (url) setFotoPortada(url);
-                } catch (error) {
-                  console.error(error);
-                  setUploadError(t(profileUploadErrorKey(error)));
-                } finally {
-                  setUploading(false);
-                  e.target.value = "";
-                }
-              }}
-            />
-            <input
-              ref={coverVideoInputRef}
-              type="file"
-              accept="video/*"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setUploading(true);
-                setUploadError("");
-                try {
-                  const url = await uploadSingleFile(file, "cover-video");
-                  if (url) setVideoPortada(url);
-                } catch (error) {
-                  console.error(error);
-                  setUploadError(t(profileUploadErrorKey(error)));
-                } finally {
-                  setUploading(false);
-                  e.target.value = "";
-                }
+                await handleCoverUpload(file);
+                e.target.value = "";
               }}
             />
             <input
@@ -408,11 +472,10 @@ export default function ModernEditProfilePage() {
               onChange={(e) => uploadFiles(e.target.files)}
             />
 
-            {fotoPortada ? (
-              <p className="mt-3 text-sm font-bold text-violet-300">{t("edit_cover_loaded")}</p>
-            ) : null}
-            {videoPortada ? (
-              <p className="text-sm font-bold text-violet-300">{t("edit_cover_video_loaded")}</p>
+            {fotoPortada || videoPortada ? (
+              <p className="mt-3 text-sm font-bold text-violet-300">
+                {videoPortada ? t("edit_cover_video_loaded") : t("edit_cover_loaded")}
+              </p>
             ) : null}
 
             <p className="mt-4 text-white/55 text-lg">

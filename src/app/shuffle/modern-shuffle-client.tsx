@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Search, Rocket, Shuffle, SlidersHorizontal } from "lucide-react";
+import { Search, Rocket, Shuffle, SlidersHorizontal, UserRound } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
@@ -143,6 +143,13 @@ export default function ModernShuffleClient() {
               ) : null
             }
           />
+          <Link
+            href="/settings"
+            aria-label={t("nav_profile_label")}
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-violet-300 active:scale-95"
+          >
+            <UserRound size={18} strokeWidth={2.35} />
+          </Link>
           <Link
             href="/boost"
             aria-label={t("boost_nav_label")}
