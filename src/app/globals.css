@@ -142,64 +142,211 @@ body.sayittome-boost-route:not(.sayittome-has-bottom-nav) {
 
 :root {
   --shuffle-glass-shift: 220;
+  --shuffle-glass-light-x: 42%;
+  --shuffle-glass-light-y: 52%;
+  --shuffle-glass-glow: 0.55;
 }
 
 .sayittome-shuffle-toolbar-glass {
   isolation: isolate;
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
-  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.36);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.24) 0%,
+    rgba(255, 255, 255, 0.12) 36%,
+    rgba(18, 18, 28, 0.72) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 -22px 56px rgba(0, 0, 0, 0.34);
+}
+
+.sayittome-shuffle-toolbar-glass-backlights {
+  position: absolute;
+  inset: -110px -8% 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.sayittome-shuffle-toolbar-glass-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(42px) saturate(190%);
+  mix-blend-mode: screen;
+  opacity: calc(0.55 + var(--shuffle-glass-glow) * 0.45);
+}
+
+.sayittome-shuffle-toolbar-glass-blob-a {
+  width: min(58vw, 320px);
+  height: min(58vw, 320px);
+  left: var(--shuffle-glass-light-x);
+  top: calc(var(--shuffle-glass-light-y) - 18%);
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    hsla(var(--shuffle-glass-shift), 100%, 74%, 0.95) 0%,
+    hsla(calc(var(--shuffle-glass-shift) + 70), 98%, 68%, 0.45) 42%,
+    transparent 72%
+  );
+}
+
+.sayittome-shuffle-toolbar-glass-blob-b {
+  width: min(46vw, 260px);
+  height: min(46vw, 260px);
+  right: calc(100% - var(--shuffle-glass-light-x));
+  top: 18%;
+  transform: translate(50%, -50%);
+  background: radial-gradient(
+    circle,
+    hsla(calc(var(--shuffle-glass-shift) + 165), 100%, 72%, 0.88) 0%,
+    hsla(calc(var(--shuffle-glass-shift) + 230), 96%, 66%, 0.38) 46%,
+    transparent 74%
+  );
+}
+
+.sayittome-shuffle-toolbar-glass-blob-c {
+  width: min(38vw, 220px);
+  height: min(38vw, 220px);
+  left: 50%;
+  bottom: -12%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    circle,
+    hsla(calc(var(--shuffle-glass-shift) + 310), 100%, 76%, 0.72) 0%,
+    transparent 70%
+  );
 }
 
 .sayittome-shuffle-toolbar-glass::before {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 1;
   pointer-events: none;
-  background: rgba(8, 8, 12, 0.22);
-  backdrop-filter: blur(28px) saturate(185%);
-  -webkit-backdrop-filter: blur(28px) saturate(185%);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.34) 0%,
+      rgba(255, 255, 255, 0.16) 48%,
+      rgba(255, 255, 255, 0.08) 100%
+    ),
+    rgba(244, 247, 255, 0.14);
+  backdrop-filter: blur(52px) saturate(220%) brightness(1.16) contrast(1.06);
+  -webkit-backdrop-filter: blur(52px) saturate(220%) brightness(1.16) contrast(1.06);
 }
 
 .sayittome-shuffle-toolbar-glass::after {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 2;
   pointer-events: none;
-  opacity: 0.92;
+  opacity: calc(0.72 + var(--shuffle-glass-glow) * 0.28);
   background:
-    linear-gradient(
-      118deg,
-      hsla(var(--shuffle-glass-shift), 88%, 68%, 0.22) 0%,
-      hsla(calc(var(--shuffle-glass-shift) + 72), 92%, 62%, 0.14) 34%,
-      hsla(calc(var(--shuffle-glass-shift) + 148), 85%, 66%, 0.18) 62%,
-      hsla(calc(var(--shuffle-glass-shift) + 228), 90%, 64%, 0.16) 100%
+    radial-gradient(
+      130% 100% at var(--shuffle-glass-light-x) var(--shuffle-glass-light-y),
+      hsla(var(--shuffle-glass-shift), 98%, 76%, 0.58) 0%,
+      hsla(calc(var(--shuffle-glass-shift) + 90), 94%, 70%, 0.24) 36%,
+      transparent 74%
     ),
     radial-gradient(
-      120% 180% at 12% -40%,
-      rgba(255, 255, 255, 0.28) 0%,
-      transparent 55%
+      95% 125% at calc(100% - var(--shuffle-glass-light-x)) calc(100% - var(--shuffle-glass-light-y)),
+      hsla(calc(var(--shuffle-glass-shift) + 200), 98%, 72%, 0.46) 0%,
+      transparent 70%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.34) 0%,
+      rgba(255, 255, 255, 0.1) 40%,
+      rgba(255, 255, 255, 0.03) 100%
+    ),
+    repeating-linear-gradient(
+      118deg,
+      rgba(255, 255, 255, 0.03) 0 1px,
+      transparent 1px 3px
     );
   mix-blend-mode: screen;
 }
 
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sayittome-shuffle-toolbar-glass::before {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.46) 0%,
+      rgba(255, 255, 255, 0.28) 52%,
+      rgba(24, 24, 36, 0.82) 100%
+    );
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .sayittome-shuffle-toolbar-pill {
+    background: linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.38) 0%,
+      rgba(255, 255, 255, 0.2) 48%,
+      rgba(255, 255, 255, 0.12) 100%
+    );
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .sayittome-shuffle-glass-chip {
+    background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.34) 0%,
+      rgba(255, 255, 255, 0.18) 100%
+    );
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 .sayittome-shuffle-toolbar-glass-outer {
   position: relative;
-  z-index: 1;
+  z-index: 3;
 }
 
 .sayittome-shuffle-toolbar-pill {
   overflow: hidden;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.34) 0%,
+    rgba(255, 255, 255, 0.18) 42%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 34px rgba(0, 0, 0, 0.38);
-  backdrop-filter: blur(22px) saturate(170%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
+    inset 0 1px 1px rgba(255, 255, 255, 0.55),
+    inset 0 -10px 22px rgba(255, 255, 255, 0.05),
+    0 14px 38px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(36px) saturate(195%) brightness(1.1);
+  -webkit-backdrop-filter: blur(36px) saturate(195%) brightness(1.1);
+}
+
+.sayittome-shuffle-toolbar-pill-lights {
+  position: absolute;
+  inset: -35% -12%;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 0;
+  background:
+    radial-gradient(
+      55% 80% at var(--shuffle-glass-light-x) var(--shuffle-glass-light-y),
+      hsla(var(--shuffle-glass-shift), 100%, 74%, 0.55) 0%,
+      hsla(calc(var(--shuffle-glass-shift) + 60), 98%, 68%, 0.28) 38%,
+      transparent 72%
+    ),
+    radial-gradient(
+      48% 70% at calc(100% - var(--shuffle-glass-light-x)) 58%,
+      hsla(calc(var(--shuffle-glass-shift) + 180), 100%, 72%, 0.42) 0%,
+      transparent 70%
+    );
+  filter: blur(16px) saturate(180%);
+  mix-blend-mode: screen;
+  opacity: 0.9;
 }
 
 .sayittome-shuffle-toolbar-pill::before {
@@ -208,55 +355,63 @@ body.sayittome-boost-route:not(.sayittome-has-bottom-nav) {
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
+  z-index: 0;
   background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.34) 0%,
-    rgba(255, 255, 255, 0.05) 28%,
-    transparent 52%,
-    rgba(255, 255, 255, 0.1) 78%,
-    rgba(255, 255, 255, 0.22) 100%
+    128deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(255, 255, 255, 0.12) 24%,
+    transparent 46%,
+    rgba(255, 255, 255, 0.08) 72%,
+    rgba(255, 255, 255, 0.28) 100%
   );
-  opacity: 0.75;
+  opacity: 0.82;
 }
 
 .sayittome-shuffle-toolbar-pill::after {
   content: "";
   position: absolute;
-  inset: -20% -8%;
+  inset: 1px;
   pointer-events: none;
   border-radius: inherit;
-  background: conic-gradient(
-    from calc(var(--shuffle-glass-shift) * 1deg) at 50% 50%,
-    rgba(167, 139, 250, 0.2),
-    rgba(56, 189, 248, 0.16),
-    rgba(244, 114, 182, 0.18),
-    rgba(250, 204, 21, 0.14),
-    rgba(167, 139, 250, 0.2)
+  z-index: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    transparent 38%,
+    rgba(0, 0, 0, 0.08) 100%
   );
-  filter: blur(18px);
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .sayittome-shuffle-glass-chip {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 4px 14px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(14px) saturate(160%);
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 6px 16px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(22px) saturate(180%) brightness(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(180%) brightness(1.08);
 }
 
 .sayittome-shuffle-glass-chip-primary {
-  border-color: rgba(196, 181, 253, 0.45);
-  background: rgba(124, 58, 237, 0.34);
+  border-color: rgba(221, 214, 254, 0.55);
+  background: linear-gradient(
+    160deg,
+    rgba(167, 139, 250, 0.48) 0%,
+    rgba(124, 58, 237, 0.32) 100%
+  );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    0 0 22px rgba(124, 58, 237, 0.35);
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 26px rgba(124, 58, 237, 0.42);
 }
 
 main[data-scroll-root].sayittome-shuffle-scroll {
-  padding-bottom: calc(var(--sayittome-bottom-ui) + 5.75rem);
+  padding-bottom: calc(var(--sayittome-bottom-ui) + 4.25rem);
 }
 
 main[data-scroll-root].sayittome-boost-page {

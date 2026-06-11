@@ -28,8 +28,14 @@ export default function ModernShuffleGlassToolbar({ pool }: Props) {
       className="sayittome-shuffle-toolbar sayittome-shuffle-toolbar-glass fixed inset-x-0 z-40 px-4 py-3"
       style={{ ["--shuffle-glass-shift" as string]: String(glassShift) }}
     >
+      <div aria-hidden className="sayittome-shuffle-toolbar-glass-backlights">
+        <span className="sayittome-shuffle-toolbar-glass-blob sayittome-shuffle-toolbar-glass-blob-a" />
+        <span className="sayittome-shuffle-toolbar-glass-blob sayittome-shuffle-toolbar-glass-blob-b" />
+        <span className="sayittome-shuffle-toolbar-glass-blob sayittome-shuffle-toolbar-glass-blob-c" />
+      </div>
       <div className="sayittome-shuffle-toolbar-glass-outer mx-auto w-full max-w-[1400px]">
         <div className="sayittome-shuffle-toolbar-pill relative flex items-center gap-3 px-4 py-2.5">
+          <span aria-hidden className="sayittome-shuffle-toolbar-pill-lights" />
           <Search size={20} className="relative z-[1] shrink-0 text-white/50" />
           <input
             value={pool.search}

@@ -48,6 +48,7 @@ export default function ModernShuffleClient() {
     pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery;
 
   return (
+    <>
     <main data-scroll-root className="sayittome-shuffle-scroll min-h-screen bg-black text-white">
       <ShuffleAdsBootstrap />
       <div className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-8">
@@ -122,9 +123,10 @@ export default function ModernShuffleClient() {
           </div>
         )}
       </div>
-
-      <ModernShuffleGlassToolbar pool={pool} />
     </main>
+
+    <ModernShuffleGlassToolbar pool={pool} />
+    </>
   );
 }
 
