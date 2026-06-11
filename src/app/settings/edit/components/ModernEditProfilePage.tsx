@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { deleteField, doc, getDoc, getDocFromServer, setDoc, serverTimestamp } from "firebase/firestore";
-import { ArrowLeft, Camera, Film, GripVertical, ImagePlus, Star, Trash2 } from "lucide-react";
+import { deleteField, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
+import ModernEditMediaSheet, {
+  type EditMediaItem,
+} from "@/components/modern/ModernEditMediaSheet";
+import ModernProfileEditPreview from "@/components/modern/ModernProfileEditPreview";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
 import {
@@ -22,11 +25,7 @@ import {
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
 import { useT } from "@/contexts/LocaleContext";
 
-type MediaItem = {
-  url: string;
-  type: "image" | "video";
-  path?: string;
-};
+type MediaSheetMode = "cover" | "principal" | "gallery";
 
 export default function ModernEditProfilePage() {
   const router = useRouter();
@@ -43,7 +42,7 @@ export default function ModernEditProfilePage() {
   const [mostrarProvincia, setMostrarProvincia] = useState(false);
   const [mostrarUltimaVez, setMostrarUltimaVez] = useState(true);
   const [intereses, setIntereses] = useState("");
-  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [media, setMedia] = useState<EditMediaItem[]>([]);
   const [principalIndex, setPrincipalIndex] = useState(0);
   const [fotoPortada, setFotoPortada] = useState("");
   const [videoPortada, setVideoPortada] = useState("");
@@ -51,8 +50,9 @@ export default function ModernEditProfilePage() {
   const [uploadText, setUploadText] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [saveError, setSaveError] = useState("");
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
-  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetMode, setSheetMode] = useState<MediaSheetMode>("gallery");
 
   const fotoPrincipal = useMemo(() => {
     const principal = media[principalIndex];
@@ -124,16 +124,22 @@ export default function ModernEditProfilePage() {
 
   async function uploadSingleFile(
     file: File,
-    folder: "avatar" | "cover" | "cover-video",
-  ): Promise<string> {
-    if (!user) return "";
+    folder: "avatar" | "cover" | "cover-video" | "gallery",
+  ): Promise<EditMediaItem | null> {
+    if (!user) return null;
 
     const kind = guessMediaFileKind(file);
     if (!kind) throw new Error("unsupported_media_type");
 
     const ext = file.name.split(".").pop() || (kind === "video" ? "mp4" : "jpg");
     const prefix =
-      folder === "avatar" ? "avatar" : folder === "cover" ? "cover" : "cover_video";
+      folder === "avatar"
+        ? "avatar"
+        : folder === "cover"
+          ? "cover"
+          : folder === "cover-video"
+            ? "cover_video"
+            : "gallery";
     const path = `usuarios/${user.uid}/fotos/${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
     const url = await uploadFileToStorage({
@@ -143,10 +149,26 @@ export default function ModernEditProfilePage() {
       requireRegisteredUser: true,
     });
     scheduleProfileMediaScan(user.uid, url, file);
-    return url;
+    return { url, type: kind, path };
   }
 
-  async function uploadFiles(files: FileList | null) {
+  function openSheet(mode: MediaSheetMode) {
+    setSheetMode(mode);
+    setSheetOpen(true);
+  }
+
+  function applyCover(item: EditMediaItem) {
+    if (item.type === "video") {
+      setVideoPortada(item.url);
+      setFotoPortada("");
+    } else {
+      setFotoPortada(item.url);
+      setVideoPortada("");
+    }
+    setSheetOpen(false);
+  }
+
+  async function uploadFiles(files: FileList | null, target: MediaSheetMode = "gallery") {
     if (!user || !files?.length) return;
 
     const selected = Array.from(files).filter(isMediaFile);
@@ -161,7 +183,7 @@ export default function ModernEditProfilePage() {
     setUploading(true);
     setUploadError("");
 
-    const uploaded: MediaItem[] = [];
+    const uploaded: EditMediaItem[] = [];
 
     try {
       for (let i = 0; i < batch.length; i++) {
@@ -171,19 +193,42 @@ export default function ModernEditProfilePage() {
 
         setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
 
-        const ext = file.name.split(".").pop() || (kind === "video" ? "mp4" : "jpg");
-        const path = `usuarios/${user.uid}/fotos/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-        const url = await uploadFileToStorage({
-          path,
-          file,
-          kind,
-          requireRegisteredUser: true,
-        });
-        scheduleProfileMediaScan(user.uid, url, file);
-        uploaded.push({ url, type: kind, path });
+        const folder =
+          target === "cover"
+            ? kind === "video"
+              ? "cover-video"
+              : "cover"
+            : target === "principal"
+              ? "avatar"
+              : "gallery";
+
+        const item = await uploadSingleFile(file, folder);
+        if (item) uploaded.push(item);
       }
 
-      setMedia((prev) => [...prev, ...uploaded].slice(0, 100));
+      if (uploaded.length === 0) return;
+
+      if (target === "cover" && uploaded[0]) {
+        applyCover(uploaded[0]);
+        setMedia((prev) => {
+          const exists = prev.some((item) => item.url === uploaded[0].url);
+          const next = exists ? prev : [uploaded[0], ...prev].slice(0, 100);
+          if (prev.length === 0) setPrincipalIndex(0);
+          return next;
+        });
+        return;
+      }
+
+      setMedia((prev) => {
+        const next = [...prev, ...uploaded].slice(0, 100);
+        const newPrincipalIndex = next.findIndex((item) => item.url === uploaded[0]?.url);
+        if (target === "principal" && newPrincipalIndex >= 0) {
+          setPrincipalIndex(newPrincipalIndex);
+        } else if (prev.length === 0 && next.length > 0) {
+          setPrincipalIndex(0);
+        }
+        return next;
+      });
     } catch (error) {
       console.error(error);
       setUploadError(t(profileUploadErrorKey(error)));
@@ -210,85 +255,11 @@ export default function ModernEditProfilePage() {
   }
 
   function remove(index: number) {
+    const removed = media[index];
     setMedia((prev) => prev.filter((_, i) => i !== index));
     if (principalIndex >= index) setPrincipalIndex(Math.max(0, principalIndex - 1));
-  }
-
-  async function persistCoverMedia(url: string, kind: "image" | "video") {
-    if (!user) return;
-
-    const payload =
-      kind === "video"
-        ? {
-            videoPortada: url,
-            coverVideo: url,
-            fotoPortada: deleteField(),
-            coverPhoto: deleteField(),
-            portada: deleteField(),
-          }
-        : {
-            fotoPortada: url,
-            coverPhoto: url,
-            portada: url,
-            videoPortada: deleteField(),
-            coverVideo: deleteField(),
-          };
-
-    await setDoc(
-      doc(db, "usuarios", user.uid),
-      {
-        ...payload,
-        profileSetupComplete: true,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-  }
-
-  async function handleCoverUpload(file: File) {
-    if (!user) return;
-
-    const kind = guessMediaFileKind(file);
-    if (!kind) {
-      setUploadError(t("edit_upload_unsupported"));
-      return;
-    }
-
-    setUploading(true);
-    setUploadError("");
-    setUploadText(t("edit_uploading", { current: "1", total: "1" }));
-
-    try {
-      const url = await uploadSingleFile(file, kind === "video" ? "cover-video" : "cover");
-      if (!url) return;
-
-      if (kind === "video") {
-        setVideoPortada(url);
-        setFotoPortada("");
-      } else {
-        setFotoPortada(url);
-        setVideoPortada("");
-      }
-
-      await persistCoverMedia(url, kind);
-
-      try {
-        const snap = await getDocFromServer(doc(db, "usuarios", user.uid));
-        if (snap.exists()) {
-          const data = snap.data();
-          setFotoPortada(resolveProfileCoverPhoto(data));
-          setVideoPortada(resolveProfileCoverVideo(data));
-        }
-      } catch (refreshError) {
-        console.error("cover_refresh", refreshError);
-      }
-    } catch (error) {
-      console.error(error);
-      setUploadError(t(profileUploadErrorKey(error)));
-    } finally {
-      setUploading(false);
-      setUploadText("");
-    }
+    if (removed?.url === fotoPortada) setFotoPortada("");
+    if (removed?.url === videoPortada) setVideoPortada("");
   }
 
   async function saveProfile() {
@@ -326,7 +297,7 @@ export default function ModernEditProfilePage() {
             ? { videoPortada, coverVideo: videoPortada }
             : { videoPortada: deleteField(), coverVideo: deleteField() }),
           perfilCompleto: Boolean(username.trim() && (fotoPrincipal || fotoPortada || videoPortada)),
-          profileSetupComplete: Boolean(username.trim() && provincia.trim()),
+          profileSetupComplete: true,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -350,270 +321,153 @@ export default function ModernEditProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white px-6 py-7 pb-28">
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_50%_0%,rgba(139,92,246,.20),transparent_35%)]" />
+    <main className="min-h-screen bg-black text-white px-4 py-6 pb-28">
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_50%_0%,rgba(139,92,246,.16),transparent_35%)]" />
 
-      <section className="relative z-10 max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-10">
-          <button onClick={() => router.back()} className="w-16 h-16 rounded-full border border-white/70 flex items-center justify-center">
-            <ArrowLeft size={30} />
+      <section className="relative z-10 mx-auto max-w-3xl">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="flex h-14 w-14 items-center justify-center rounded-full border border-white/20"
+          >
+            <ArrowLeft size={24} />
           </button>
 
           <button
+            type="button"
             onClick={saveProfile}
             disabled={saving}
-            className="px-9 h-16 rounded-full border border-violet-400 text-white font-black text-2xl shadow-[0_0_35px_rgba(139,92,246,.35)] disabled:opacity-50"
+            className="rounded-full border border-violet-400 px-7 py-3 font-black text-lg shadow-[0_0_28px_rgba(139,92,246,.28)] disabled:opacity-50"
           >
             {saving ? t("setup_saving") : t("edit_save")}
           </button>
         </div>
 
-        {saveError ? (
-          <p className="mb-6 text-sm font-semibold text-red-400">{saveError}</p>
+        {saveError ? <p className="mb-4 text-sm font-semibold text-red-400">{saveError}</p> : null}
+        {uploadError ? <p className="mb-4 text-sm font-semibold text-red-400">{uploadError}</p> : null}
+
+        <ModernProfileEditPreview
+          username={username}
+          bio={bio}
+          provincia={provincia}
+          mostrarProvincia={mostrarProvincia}
+          fotoPrincipal={fotoPrincipal}
+          fotoPortada={fotoPortada}
+          videoPortada={videoPortada}
+          onUsernameChange={setUsername}
+          onBioChange={setBio}
+          onCoverClick={() => openSheet("cover")}
+          onAvatarClick={() => openSheet("principal")}
+          onGalleryClick={() => openSheet("gallery")}
+        />
+
+        {uploading ? (
+          <p className="mt-4 text-center text-sm font-bold text-violet-300">{uploadText}</p>
         ) : null}
 
-        <div className="mb-10 overflow-hidden rounded-[32px] border border-white/10 bg-zinc-950">
+        <div className="mt-8 overflow-hidden rounded-[1.75rem] border border-white/10 bg-zinc-950/80">
           <button
             type="button"
-            onClick={() => coverInputRef.current?.click()}
-            className="group relative block h-44 w-full overflow-hidden text-left md:h-52"
+            onClick={() => setSettingsOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between px-5 py-4 text-left"
           >
-            {videoPortada ? (
-              <ProfileMediaSurface
-                url={videoPortada}
-                videoClassName="h-full w-full object-cover opacity-90 transition group-active:scale-[1.02]"
-              />
-            ) : fotoPortada ? (
-              <img
-                src={fotoPortada}
-                alt=""
-                className="h-full w-full object-cover opacity-90 transition group-active:scale-[1.02]"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-950 via-zinc-950 to-black text-sm font-bold text-white/40">
-                {t("edit_cover_media")}
-              </div>
-            )}
-            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-5 py-4 text-sm font-black text-white">
-              {videoPortada || fotoPortada
-                ? t("edit_cover_replace_hint")
-                : t("edit_cover_media")}
-            </span>
+            <span className="text-lg font-black">{t("edit_settings_section")}</span>
+            <ChevronDown
+              size={20}
+              className={`transition ${settingsOpen ? "rotate-180" : ""}`}
+            />
           </button>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-10">
-          <div>
-            <div className="w-64 h-64 rounded-[44px] border-4 border-violet-400/80 bg-zinc-950 overflow-hidden shadow-[0_0_55px_rgba(139,92,246,.35)] flex items-center justify-center">
-              {fotoPrincipal ? (
-                <ProfileMediaSurface
-                  url={fotoPrincipal}
-                  imageClassName="w-full h-full object-cover"
-                  videoClassName="w-full h-full object-cover"
+          {settingsOpen ? (
+            <div className="space-y-6 border-t border-white/10 px-5 py-5">
+              <label className="block">
+                <span className="text-sm font-black text-white/70">{t("province_label")}</span>
+                <select
+                  value={provincia}
+                  onChange={(e) => setProvincia(e.target.value)}
+                  className="mt-3 w-full rounded-[1.25rem] border border-white/10 bg-black px-4 py-4 text-base outline-none focus:border-violet-400"
+                >
+                  <option value="">{t("edit_select")}</option>
+                  {ARGENTINA_PROVINCIAS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-[1.25rem] border border-white/10 bg-black px-4 py-3">
+                  <p className="text-sm text-zinc-400">{t("edit_province_hint_short")}</p>
+                  <button
+                    type="button"
+                    onClick={() => setMostrarProvincia((prev) => !prev)}
+                    className={`shrink-0 rounded-full px-4 py-2 text-sm font-black ${
+                      mostrarProvincia ? "bg-violet-500 text-white" : "bg-white/10 text-white/45"
+                    }`}
+                  >
+                    {mostrarProvincia ? t("province_visible") : t("province_hidden")}
+                  </button>
+                </div>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-black text-white/70">{t("last_seen_privacy_label")}</span>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-[1.25rem] border border-white/10 bg-black px-4 py-3">
+                  <p className="text-sm text-zinc-400">{t("last_seen_privacy_hint")}</p>
+                  <button
+                    type="button"
+                    onClick={() => setMostrarUltimaVez((prev) => !prev)}
+                    className={`shrink-0 rounded-full px-4 py-2 text-sm font-black ${
+                      mostrarUltimaVez ? "bg-violet-500 text-white" : "bg-white/10 text-white/45"
+                    }`}
+                  >
+                    {mostrarUltimaVez ? t("last_seen_visible") : t("last_seen_hidden")}
+                  </button>
+                </div>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-black text-white/70">{t("edit_interests")}</span>
+                <input
+                  value={intereses}
+                  onChange={(e) => setIntereses(e.target.value)}
+                  placeholder={t("edit_interests_placeholder")}
+                  className="mt-3 w-full rounded-[1.25rem] border border-white/10 bg-black px-4 py-4 text-base outline-none focus:border-violet-400"
                 />
-              ) : (
-                <div className="w-28 h-28 rounded-full bg-gradient-to-br from-white via-slate-300 to-slate-600 shadow-[inset_0_8px_20px_rgba(255,255,255,.35),0_0_35px_rgba(255,255,255,.18)]" />
-              )}
+              </label>
             </div>
-
-            <div className="mt-6 flex flex-col gap-3 w-64">
-              <button
-                type="button"
-                onClick={() => avatarInputRef.current?.click()}
-                className="h-14 rounded-full bg-violet-500 font-black flex items-center justify-center gap-2"
-              >
-                <Camera size={18} /> {t("edit_profile_photo")}
-              </button>
-              <button
-                type="button"
-                onClick={() => coverInputRef.current?.click()}
-                className="h-14 rounded-full border border-violet-400 font-black flex items-center justify-center gap-2"
-              >
-                <ImagePlus size={18} /> {t("edit_cover_media")}
-              </button>
-              <button
-                type="button"
-                onClick={() => inputRef.current?.click()}
-                className="h-14 rounded-full border border-white/15 font-black flex items-center justify-center gap-2"
-              >
-                <ImagePlus size={18} /> {t("edit_gallery")}
-              </button>
-            </div>
-
-            <input
-              ref={avatarInputRef}
-              type="file"
-              accept="image/*,video/*"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setUploading(true);
-                setUploadError("");
-                try {
-                  const url = await uploadSingleFile(file, "avatar");
-                  if (url) {
-                    const kind = guessMediaFileKind(file) || "image";
-                    const item = { url, type: kind as "image" | "video" };
-                    setMedia((prev) => [item, ...prev].slice(0, 100));
-                    setPrincipalIndex(0);
-                  }
-                } catch (error) {
-                  console.error(error);
-                  setUploadError(t(profileUploadErrorKey(error)));
-                } finally {
-                  setUploading(false);
-                  e.target.value = "";
-                }
-              }}
-            />
-            <input
-              ref={coverInputRef}
-              type="file"
-              accept="image/*,video/*"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                await handleCoverUpload(file);
-                e.target.value = "";
-              }}
-            />
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              className="hidden"
-              onChange={(e) => uploadFiles(e.target.files)}
-            />
-
-            {fotoPortada || videoPortada ? (
-              <p className="mt-3 text-sm font-bold text-violet-300">
-                {videoPortada ? t("edit_cover_video_loaded") : t("edit_cover_loaded")}
-              </p>
-            ) : null}
-
-            <p className="mt-4 text-white/55 text-lg">
-              {t("edit_files_count", { count: String(media.length) })}
-            </p>
-
-            {uploading && <p className="mt-3 text-violet-300 font-bold">{uploadText}</p>}
-            {uploadError ? <p className="mt-3 text-sm font-semibold text-red-400">{uploadError}</p> : null}
-          </div>
-
-          <div className="space-y-8">
-            <label className="block">
-              <span className="text-4xl font-black">{t("setup_username")}</span>
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={t("setup_username_placeholder")}
-                className="mt-4 w-full rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-3xl font-black outline-none focus:border-violet-400"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-4xl font-black">{t("edit_bio_label")}</span>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder={t("edit_bio_placeholder")}
-                className="mt-4 w-full min-h-44 rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-2xl outline-none focus:border-violet-400 resize-none"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-4xl font-black">{t("province_label")}</span>
-              <select
-                value={provincia}
-                onChange={(e) => setProvincia(e.target.value)}
-                className="mt-4 w-full rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-2xl outline-none focus:border-violet-400"
-              >
-                <option value="">{t("edit_select")}</option>
-                {ARGENTINA_PROVINCIAS.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-
-              <div className="mt-4 flex items-center justify-between gap-4 rounded-[28px] border border-white/10 bg-zinc-950 px-7 py-5">
-                <p className="text-lg text-zinc-400">
-                  {t("edit_province_hint_short")}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setMostrarProvincia((prev) => !prev)}
-                  className={`shrink-0 rounded-full px-5 py-3 font-black ${
-                    mostrarProvincia ? "bg-violet-500 text-white" : "bg-white/10 text-white/45"
-                  }`}
-                >
-                  {mostrarProvincia ? t("province_visible") : t("province_hidden")}
-                </button>
-              </div>
-            </label>
-
-            <label className="block">
-              <span className="text-4xl font-black">{t("last_seen_privacy_label")}</span>
-              <div className="mt-4 flex items-center justify-between gap-4 rounded-[28px] border border-white/10 bg-zinc-950 px-7 py-5">
-                <p className="text-lg text-zinc-400">{t("last_seen_privacy_hint")}</p>
-                <button
-                  type="button"
-                  onClick={() => setMostrarUltimaVez((prev) => !prev)}
-                  className={`shrink-0 rounded-full px-5 py-3 font-black ${
-                    mostrarUltimaVez ? "bg-violet-500 text-white" : "bg-white/10 text-white/45"
-                  }`}
-                >
-                  {mostrarUltimaVez ? t("last_seen_visible") : t("last_seen_hidden")}
-                </button>
-              </div>
-            </label>
-
-            <label className="block">
-              <span className="text-4xl font-black">{t("edit_interests")}</span>
-              <input
-                value={intereses}
-                onChange={(e) => setIntereses(e.target.value)}
-                placeholder={t("edit_interests_placeholder")}
-                className="mt-4 w-full rounded-[28px] bg-zinc-950 border border-white/10 px-7 py-6 text-2xl outline-none focus:border-violet-400"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="mt-14">
-          <h2 className="text-5xl font-black mb-6">{t("edit_mosaic_title")}</h2>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-5">
-            {media.map((item, index) => (
-              <div key={`${item.url}-${index}`} className="relative rounded-[28px] overflow-hidden bg-zinc-950 border border-white/10 aspect-square group">
-                {item.type === "image" ? (
-                  <img src={item.url} className="w-full h-full object-cover" />
-                ) : (
-                  <video src={item.url} className="w-full h-full object-cover" muted playsInline />
-                )}
-
-                <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black via-black/60 to-transparent flex items-center justify-between gap-2">
-                  <button onClick={() => move(index, -1)} className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
-                    <GripVertical size={18} />
-                  </button>
-
-                  <button onClick={() => setPrincipalIndex(index)} className={`w-10 h-10 rounded-full flex items-center justify-center ${principalIndex === index ? "bg-violet-500" : "bg-white/15"}`}>
-                    <Star size={18} fill={principalIndex === index ? "white" : "none"} />
-                  </button>
-
-                  <button onClick={() => remove(index)} className="w-10 h-10 rounded-full bg-red-500/80 flex items-center justify-center">
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-
-                <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-black/70 text-xs font-black flex items-center gap-1">
-                  {item.type === "image" ? <Camera size={14} /> : <Film size={14} />}
-                  {index + 1}
-                </div>
-              </div>
-            ))}
-          </div>
+          ) : null}
         </div>
       </section>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple={sheetMode !== "cover"}
+        className="hidden"
+        onChange={(e) => {
+          void uploadFiles(e.target.files, sheetMode);
+          e.target.value = "";
+        }}
+      />
+
+      <ModernEditMediaSheet
+        open={sheetOpen}
+        mode={sheetMode}
+        media={media}
+        principalIndex={principalIndex}
+        coverPhoto={fotoPortada}
+        coverVideo={videoPortada}
+        uploading={uploading}
+        uploadText={uploadText}
+        onClose={() => setSheetOpen(false)}
+        onUpload={() => inputRef.current?.click()}
+        onSelectCover={applyCover}
+        onSelectPrincipal={setPrincipalIndex}
+        onMove={move}
+        onRemove={remove}
+      />
     </main>
   );
 }
-

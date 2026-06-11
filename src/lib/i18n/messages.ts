@@ -512,6 +512,11 @@ const es = {
   edit_interests_placeholder: "música, gym, series...",
   edit_province_hint_short: "Se usa siempre para conectarte con gente cercana. Podés ocultarla en el perfil.",
   edit_mosaic_title: "Mosaico de fotos y videos",
+  edit_change_cover: "Cambiar portada",
+  edit_change_photo: "Cambiar foto",
+  edit_use_as_cover: "Usar como portada",
+  edit_live_preview_hint: "Vista previa en vivo: lo que ves acá es cómo quedará tu perfil.",
+  edit_settings_section: "Privacidad y detalles",
   edit_select: "Seleccionar",
 
   stories_title: "Historias",
@@ -1114,6 +1119,11 @@ const en: Record<keyof typeof es, string> = {
   edit_interests_placeholder: "music, gym, series...",
   edit_province_hint_short: "Always used to connect you with nearby people. You can hide it on your profile.",
   edit_mosaic_title: "Photo and video mosaic",
+  edit_change_cover: "Change cover",
+  edit_change_photo: "Change photo",
+  edit_use_as_cover: "Use as cover",
+  edit_live_preview_hint: "Live preview: what you see here is how your profile will look.",
+  edit_settings_section: "Privacy and details",
   edit_select: "Select",
 
   stories_title: "Stories",
