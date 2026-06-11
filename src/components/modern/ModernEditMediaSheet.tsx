@@ -55,6 +55,13 @@ export default function ModernEditMediaSheet({
         ? t("edit_profile_photo")
         : t("edit_mosaic_title");
 
+  const uploadLabel =
+    mode === "cover"
+      ? t("edit_cover_media")
+      : mode === "principal"
+        ? t("edit_change_photo")
+        : t("edit_gallery");
+
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/80 px-0 pb-0 backdrop-blur-sm">
       <button
@@ -89,7 +96,7 @@ export default function ModernEditMediaSheet({
             className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-violet-500 font-black disabled:opacity-50"
           >
             <ImagePlus size={18} />
-            {uploading ? uploadText || t("common_loading") : t("edit_gallery")}
+            {uploading ? uploadText || t("common_loading") : uploadLabel}
           </button>
         </div>
 
@@ -106,36 +113,59 @@ export default function ModernEditMediaSheet({
                   (item.type === "image" && coverPhoto === item.url) ||
                   (item.type === "video" && coverVideo === item.url);
 
+                const tileClassName = [
+                  "relative aspect-square overflow-hidden rounded-[1.35rem] border bg-zinc-950",
+                  mode === "cover" && isCover
+                    ? "border-fuchsia-400 ring-2 ring-fuchsia-400/60"
+                    : mode === "principal" && isPrincipal
+                      ? "border-violet-400 ring-2 ring-violet-400/60"
+                      : "border-white/10",
+                ].join(" ");
+
                 return (
-                  <div
-                    key={`${item.url}-${index}`}
-                    className="relative aspect-square overflow-hidden rounded-[1.35rem] border border-white/10 bg-zinc-950"
-                  >
+                  <div key={`${item.url}-${index}`} className={tileClassName}>
+                    {mode === "cover" ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelectCover(item)}
+                        className="absolute inset-0 z-[1] appearance-none border-0 bg-transparent p-0"
+                        aria-label={isCover ? t("edit_cover_loaded") : t("edit_use_as_cover")}
+                      />
+                    ) : mode === "principal" ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelectPrincipal(index)}
+                        className="absolute inset-0 z-[1] appearance-none border-0 bg-transparent p-0"
+                        aria-label={t("edit_profile_photo")}
+                      />
+                    ) : null}
+
                     <ProfileMediaSurface
                       url={item.url}
                       imageClassName="h-full w-full object-cover"
                       videoClassName="h-full w-full object-cover"
                     />
 
-                    <div className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-black">
+                    <div className="pointer-events-none absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-black">
                       {item.type === "image" ? <Camera size={12} className="inline" /> : <Film size={12} className="inline" />}
                       {" "}
                       {index + 1}
                     </div>
 
-                    {mode === "cover" ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelectCover(item)}
-                        className={[
-                          "absolute inset-x-2 bottom-2 rounded-full px-3 py-2 text-[11px] font-black",
-                          isCover ? "bg-fuchsia-500 text-white" : "bg-black/75 text-white/85",
-                        ].join(" ")}
-                      >
-                        {isCover ? t("edit_cover_loaded") : t("edit_use_as_cover")}
-                      </button>
-                    ) : (
-                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black via-black/70 to-transparent p-2">
+                    {mode === "cover" && isCover ? (
+                      <span className="pointer-events-none absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-fuchsia-500 text-sm font-black text-white">
+                        *
+                      </span>
+                    ) : null}
+
+                    {mode === "principal" && isPrincipal ? (
+                      <span className="pointer-events-none absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-violet-500 text-sm font-black text-white">
+                        ★
+                      </span>
+                    ) : null}
+
+                    {mode === "gallery" ? (
+                      <div className="absolute inset-x-0 bottom-0 z-[2] flex items-center justify-between gap-1 bg-gradient-to-t from-black via-black/70 to-transparent p-2">
                         <button
                           type="button"
                           onClick={() => onMove(index, -1)}
@@ -161,12 +191,18 @@ export default function ModernEditMediaSheet({
                           <Trash2 size={16} />
                         </button>
                       </div>
-                    )}
+                    ) : null}
 
-                    {mode === "principal" && isPrincipal ? (
-                      <span className="absolute top-2 right-2 rounded-full bg-violet-500 px-2 py-1 text-[10px] font-black">
-                        ★
-                      </span>
+                    {mode === "principal" ? (
+                      <div className="absolute inset-x-0 bottom-0 z-[2] flex items-center justify-end gap-1 bg-gradient-to-t from-black via-black/70 to-transparent p-2">
+                        <button
+                          type="button"
+                          onClick={() => onRemove(index)}
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500/80"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                 );

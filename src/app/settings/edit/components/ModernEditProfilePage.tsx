@@ -359,7 +359,6 @@ export default function ModernEditProfilePage() {
           onBioChange={setBio}
           onCoverClick={() => openSheet("cover")}
           onAvatarClick={() => openSheet("principal")}
-          onGalleryClick={() => openSheet("gallery")}
         />
 
         {uploading ? (
@@ -464,7 +463,10 @@ export default function ModernEditProfilePage() {
         onClose={() => setSheetOpen(false)}
         onUpload={() => inputRef.current?.click()}
         onSelectCover={applyCover}
-        onSelectPrincipal={setPrincipalIndex}
+        onSelectPrincipal={(index) => {
+          setPrincipalIndex(index);
+          setSheetOpen(false);
+        }}
         onMove={move}
         onRemove={remove}
       />

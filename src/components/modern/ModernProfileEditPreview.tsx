@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, UserRound } from "lucide-react";
+import { UserRound } from "lucide-react";
 
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import { useT } from "@/contexts/LocaleContext";
@@ -17,7 +17,6 @@ type Props = {
   onBioChange: (value: string) => void;
   onCoverClick: () => void;
   onAvatarClick: () => void;
-  onGalleryClick: () => void;
 };
 
 export default function ModernProfileEditPreview({
@@ -32,7 +31,6 @@ export default function ModernProfileEditPreview({
   onBioChange,
   onCoverClick,
   onAvatarClick,
-  onGalleryClick,
 }: Props) {
   const t = useT();
 
@@ -59,46 +57,30 @@ export default function ModernProfileEditPreview({
           <button
             type="button"
             onClick={onCoverClick}
-            className="absolute inset-0 z-[2] flex items-end justify-center bg-gradient-to-t from-black/70 via-black/10 to-transparent p-5"
-          >
-            <span className="rounded-full border border-white/20 bg-black/55 px-5 py-2.5 text-sm font-black text-white backdrop-blur-sm">
-              {t("edit_change_cover")}
-            </span>
-          </button>
+            aria-label={t("edit_change_cover")}
+            className="absolute inset-0 z-[2] cursor-pointer appearance-none border-0 bg-transparent p-0"
+          />
         </div>
 
         <div className="relative z-10 -mt-[4.75rem] px-6 pb-8">
-          <div className="flex items-start justify-between gap-3">
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="group relative h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-800 ring-2 ring-fuchsia-400/70"
-            >
-              {fotoPrincipal ? (
-                <ProfileMediaSurface
-                  url={fotoPrincipal}
-                  imageClassName="h-full w-full object-cover"
-                  videoClassName="h-full w-full object-cover"
-                />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center text-white/35">
-                  <UserRound size={42} strokeWidth={1.5} />
-                </span>
-              )}
-              <span className="absolute inset-x-0 bottom-0 bg-black/65 py-1 text-[10px] font-black text-white">
-                {t("edit_change_photo")}
+          <button
+            type="button"
+            onClick={onAvatarClick}
+            aria-label={t("edit_change_photo")}
+            className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-800 ring-2 ring-fuchsia-400/70"
+          >
+            {fotoPrincipal ? (
+              <ProfileMediaSurface
+                url={fotoPrincipal}
+                imageClassName="h-full w-full object-cover"
+                videoClassName="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center text-white/35">
+                <UserRound size={42} strokeWidth={1.5} />
               </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onGalleryClick}
-              className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-white/70"
-            >
-              <ImagePlus size={14} />
-              {t("edit_gallery")}
-            </button>
-          </div>
+            )}
+          </button>
 
           <label className="mt-5 block">
             <span className="sr-only">{t("setup_username")}</span>
