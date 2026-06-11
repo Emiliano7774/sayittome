@@ -1,9 +1,15 @@
 import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
 import { preloadStoryGroup } from "@/lib/stories/preload";
+import {
+  applyViewedCacheToStory,
+  isStoryViewedInCache,
+  markStoryViewedInCache,
+} from "@/lib/stories/storyViewedCache";
 import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
 
 function storyUnseenForViewer(story: StoryItem, viewerId: string) {
   if (!viewerId) return true;
+  if (isStoryViewedInCache(viewerId, story.id)) return false;
   if (viewerId.startsWith("anon_")) {
     return !story.viewedByAnon?.[viewerId];
   }
@@ -13,6 +19,56 @@ function storyUnseenForViewer(story: StoryItem, viewerId: string) {
 function groupHasUnseen(stories: StoryItem[], viewerId: string) {
   if (!viewerId) return true;
   return stories.some((story) => storyUnseenForViewer(story, viewerId));
+}
+
+function applyViewerSeenState(story: StoryItem, viewerId: string, seen: boolean) {
+  if (!viewerId || !seen) return;
+
+  if (viewerId.startsWith("anon_")) {
+    story.viewedByAnon = { ...(story.viewedByAnon || {}), [viewerId]: true };
+  } else {
+    story.viewedBy = { ...(story.viewedBy || {}), [viewerId]: true };
+  }
+}
+
+function mergeViewerSeenState(groups: StoryUserGroup[], viewerId: string) {
+  if (!viewerId) return;
+
+  for (const group of groups) {
+    for (const story of group.stories) {
+      applyViewedCacheToStory(story, viewerId);
+    }
+    group.hasUnseen = groupHasUnseen(group.stories, viewerId);
+  }
+}
+
+function preserveViewerSeenState(
+  nextGroups: StoryUserGroup[],
+  previousByUid: Map<string, StoryUserGroup>,
+  viewerId: string,
+) {
+  if (!viewerId) return;
+
+  for (const group of nextGroups) {
+    const previous = previousByUid.get(group.ownerUid);
+
+    for (const story of group.stories) {
+      applyViewedCacheToStory(story, viewerId);
+
+      const previousStory = previous?.stories.find((item) => item.id === story.id);
+      if (!previousStory) continue;
+
+      if (viewerId.startsWith("anon_")) {
+        if (previousStory.viewedByAnon?.[viewerId]) {
+          applyViewerSeenState(story, viewerId, true);
+        }
+      } else if (previousStory.viewedBy?.[viewerId]) {
+        applyViewerSeenState(story, viewerId, true);
+      }
+    }
+
+    group.hasUnseen = groupHasUnseen(group.stories, viewerId);
+  }
 }
 
 const TTL_MS = 10 * 60_000;
@@ -55,9 +111,11 @@ export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = fal
 
   loading = true;
   viewerUid = nextViewerUid;
+  const previousByUid = new Map(byUid);
 
   try {
     const groups = await fetchActiveStoriesGrouped(viewerUid);
+    preserveViewerSeenState(groups, previousByUid, viewerUid);
     cachedGroups = groups;
     indexGroups(groups);
     lastFetch = Date.now();
@@ -70,12 +128,15 @@ export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = fal
 }
 
 export function getStoryGroup(ownerUid?: string, username?: string) {
-  if (ownerUid && byUid.has(ownerUid)) {
-    return byUid.get(ownerUid) || null;
+  const usernameKey = String(username || "").trim().toLowerCase();
+
+  if (usernameKey && byUsername.has(usernameKey)) {
+    return byUsername.get(usernameKey) || null;
   }
 
-  if (username) {
-    return byUsername.get(username.toLowerCase()) || null;
+  const uid = String(ownerUid || "").trim();
+  if (uid && byUid.has(uid)) {
+    return byUid.get(uid) || null;
   }
 
   return null;
@@ -107,18 +168,28 @@ export function markStoryViewedLocally(
 ) {
   if (!ownerUid || !storyId || !viewerId) return;
 
+  markStoryViewedInCache(viewerId, storyId);
+
   const group = byUid.get(ownerUid);
-  if (!group) return;
+  if (!group) {
+    const byName = [...byUsername.values()].find((row) => row.ownerUid === ownerUid);
+    if (!byName) return;
+    const story = byName.stories.find((item) => item.id === storyId);
+    if (!story) return;
+    applyViewerSeenState(story, viewerId, true);
+    byName.hasUnseen = groupHasUnseen(byName.stories, viewerId);
+    notify();
+    return;
+  }
 
   const story = group.stories.find((item) => item.id === storyId);
   if (!story) return;
 
-  if (viewerId.startsWith("anon_")) {
-    story.viewedByAnon = { ...(story.viewedByAnon || {}), [viewerId]: true };
-  } else {
-    story.viewedBy = { ...(story.viewedBy || {}), [viewerId]: true };
-  }
-
+  applyViewerSeenState(story, viewerId, true);
   group.hasUnseen = groupHasUnseen(group.stories, viewerId);
   notify();
+}
+
+export function syncStoryGroupsForViewer(groups: StoryUserGroup[], viewerId: string) {
+  mergeViewerSeenState(groups, viewerId);
 }

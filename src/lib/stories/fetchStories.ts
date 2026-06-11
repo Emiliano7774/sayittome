@@ -5,6 +5,10 @@ import {
   fetchProfileStoryIdentity,
   isInvalidPublicStoryUsername,
 } from "@/lib/stories/storyAuthor";
+import {
+  applyViewedCacheToStory,
+  isStoryViewedInCache,
+} from "@/lib/stories/storyViewedCache";
 
 import type { StoryItem, StoryUserGroup } from "./types";
 
@@ -74,8 +78,13 @@ function groupStories(stories: StoryItem[], viewerUid: string) {
   byOwner.forEach((ownerStories, ownerUid) => {
     ownerStories.sort((a, b) => a.createdAtMs - b.createdAtMs);
 
+    for (const story of ownerStories) {
+      applyViewedCacheToStory(story, viewerUid);
+    }
+
     const hasUnseen = viewerUid
       ? ownerStories.some((story) => {
+          if (isStoryViewedInCache(viewerUid, story.id)) return false;
           if (viewerUid.startsWith("anon_")) {
             return !story.viewedByAnon?.[viewerUid];
           }
