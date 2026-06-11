@@ -210,6 +210,21 @@ body.sayittome-filters-open .fixed.bottom-0.left-0.right-0 {
   transition: transform 0.22s ease, opacity 0.22s ease;
 }
 
+.sayittome-shuffle-filters-sheet select,
+.sayittome-shuffle-filters-sheet input {
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+}
+
+.sayittome-shuffle-filters-sheet select option {
+  background-color: #111;
+  color: #fff;
+}
+
+.sayittome-shuffle-filters-sheet input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
 /* Entry legal gate: hide app chrome so Android 3-button nav does not stack over accept. */
 body.sayittome-entry-legal-open {
   overflow: hidden !important;

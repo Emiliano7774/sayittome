@@ -52,7 +52,7 @@ function ToggleRow({
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-black text-white">{title}</p>
-          <p className="mt-1 text-[12px] font-bold leading-snug text-white/48">{subtitle}</p>
+          <p className="mt-1 text-[12px] font-bold leading-snug text-white/60">{subtitle}</p>
         </div>
         <button
           type="button"
@@ -166,17 +166,19 @@ export default function ShuffleFiltersSheet({
   }
 
   const fieldClass = isModern
-    ? "w-full rounded-2xl border border-white/10 bg-[#111] px-4 py-3.5 text-sm font-bold text-white outline-none focus:border-violet-500/50"
-    : "w-full rounded-2xl border border-white/10 bg-[#141414] px-4 py-3.5 text-sm font-bold text-white outline-none focus:border-[#8C84FF]/50";
+    ? "w-full rounded-2xl border border-white/10 bg-[#111] px-4 py-3.5 text-sm font-bold text-white outline-none placeholder:text-white/35 focus:border-violet-500/50 disabled:text-white/45"
+    : "w-full rounded-2xl border border-white/10 bg-[#141414] px-4 py-3.5 text-sm font-bold text-white outline-none placeholder:text-white/35 focus:border-[#8C84FF]/50 disabled:text-white/45";
 
-  const labelClass = "mb-2 block text-xs font-black tracking-wide text-white/45";
+  const optionClass = "bg-[#111] text-white";
+
+  const labelClass = "mb-2 block text-xs font-black tracking-wide text-white/55";
 
   return (
     <div className="fixed inset-0 z-[10050] flex items-end justify-center bg-black/70 p-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:items-center">
       <button type="button" className="absolute inset-0" aria-label={t("common_cancel")} onClick={onClose} />
 
       <section
-        className={`relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden border border-white/10 bg-[#070707] shadow-[0_18px_36px_rgba(0,0,0,0.55)] ${
+        className={`sayittome-shuffle-filters-sheet relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden border border-white/10 bg-[#070707] text-white shadow-[0_18px_36px_rgba(0,0,0,0.55)] [color-scheme:dark] ${
           isModern ? "rounded-[28px]" : "rounded-[30px]"
         }`}
       >
@@ -213,7 +215,7 @@ export default function ShuffleFiltersSheet({
             className={`rounded-[18px] border px-3.5 py-3 text-[12.6px] font-bold leading-relaxed ${
               isModern
                 ? "border-violet-500/25 bg-violet-500/10 text-violet-100/80"
-                : "border-[#8C84FF]/26 bg-[#111111] text-white/68"
+                : "border-[#8C84FF]/26 bg-[#111111] text-white/80"
             }`}
           >
             {summary || t("shuffle_filters_empty_hint")}
@@ -233,7 +235,7 @@ export default function ShuffleFiltersSheet({
                 className={fieldClass}
               >
                 {SHUFFLE_GENDER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value} className="bg-[#111]">
+                  <option key={option.value} value={option.value} className={optionClass}>
                     {t(option.labelKey)}
                   </option>
                 ))}
@@ -282,11 +284,11 @@ export default function ShuffleFiltersSheet({
                 }
                 className={fieldClass}
               >
-                <option value="" className="bg-[#111]">
+                <option value="" className={optionClass}>
                   {t("shuffle_filters_all_countries")}
                 </option>
                 {SHUFFLE_COUNTRIES.map((country) => (
-                  <option key={country.code} value={country.code} className="bg-[#111]">
+                  <option key={country.code} value={country.code} className={optionClass}>
                     {country.name}
                   </option>
                 ))}
@@ -303,11 +305,11 @@ export default function ShuffleFiltersSheet({
                 disabled={!draft.pais}
                 className={fieldClass}
               >
-                <option value="" className="bg-[#111]">
+                <option value="" className={optionClass}>
                   {t("shuffle_filters_all_provinces")}
                 </option>
                 {subdivisions.map((item) => (
-                  <option key={item} value={item} className="bg-[#111]">
+                  <option key={item} value={item} className={optionClass}>
                     {item}
                   </option>
                 ))}
@@ -350,7 +352,7 @@ export default function ShuffleFiltersSheet({
           </div>
 
           <div className="mt-2">
-            <p className="mb-2.5 text-[15px] font-black text-white/82">{t("shuffle_filters_interests")}</p>
+            <p className="mb-2.5 text-[15px] font-black text-white">{t("shuffle_filters_interests")}</p>
             <div className="flex flex-wrap gap-2">
               {SHUFFLE_INTEREST_OPTIONS.map((interest) => {
                 const active = draft.intereses.some(
@@ -366,7 +368,7 @@ export default function ShuffleFiltersSheet({
                         ? isModern
                           ? "border-white/40 bg-violet-600 text-white"
                           : "border-white/40 bg-[#8C84FF] text-white"
-                        : "border-white/10 bg-white/[0.055] text-white/70"
+                        : "border-white/10 bg-white/[0.055] text-white/85"
                     }`}
                   >
                     {interest}
