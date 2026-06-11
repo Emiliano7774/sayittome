@@ -204,6 +204,7 @@ export function profileMatchesShuffleFilters(
       lastActive: profile.lastActive,
       online: profile.online,
       showOnline: profile.showOnline,
+      mostrarUltimaVez: profile.mostrarUltimaVez,
       historiasActivasCount: profile.historiasActivasCount,
       hasActiveStories: profile.hasActiveStories,
     },

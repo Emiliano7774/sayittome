@@ -1,4 +1,7 @@
-import { isLastSeenPublic } from "@/lib/profile/lastSeenVisibility";
+import {
+  isLastSeenPublic,
+  stripPublicPresence,
+} from "@/lib/profile/lastSeenVisibility";
 import { isShuffleProfileOnline } from "@/lib/presence";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -7,7 +10,7 @@ export function refreshProfilePresence(
   now = Date.now(),
 ): ShuffleProfile {
   if (!isLastSeenPublic(profile)) {
-    return { ...profile, showOnline: false };
+    return stripPublicPresence({ ...profile, showOnline: false }, false);
   }
   return {
     ...profile,

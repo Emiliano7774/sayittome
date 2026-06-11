@@ -9,6 +9,7 @@ import {
   shuffleProfileIdentityKey,
 } from "@/lib/shuffle/dedupeProfiles";
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
+import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
 import { isShuffleProfileOnline } from "@/lib/presence";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
@@ -184,7 +185,9 @@ export function useShufflePool() {
       activePoolRef.current = filtered;
       setFilteredCount(filtered.length);
       setFilteredOnlineCount(
-        filtered.filter((profile) => isShuffleProfileOnline(profile, now)).length,
+        filtered.filter((profile) =>
+          isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
+        ).length,
       );
       applyWindowFromPool(filtered);
     },
