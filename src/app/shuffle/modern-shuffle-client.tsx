@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { Search, Rocket, Shuffle, SlidersHorizontal, UserRound } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
@@ -13,7 +12,7 @@ import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptyState";
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
-import ShuffleToolbarButton from "@/components/shuffle/ShuffleToolbarButton";
+import ModernShuffleGlassToolbar from "@/components/shuffle/ModernShuffleGlassToolbar";
 import { useShufflePool } from "@/hooks/useShufflePool";
 import {
   getShuffleSlotsVersion,
@@ -124,48 +123,7 @@ export default function ModernShuffleClient() {
         )}
       </div>
 
-      <div className="sayittome-shuffle-toolbar fixed inset-x-0 z-40 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-[1400px] items-center gap-3 rounded-full border border-white/10 bg-[#111] px-4 py-2.5">
-          <Search size={20} className="shrink-0 text-white/35" />
-          <input
-            value={pool.search}
-            onChange={(e) => pool.handleSearchChange(e.target.value)}
-            placeholder={t("shuffle_search")}
-            className="min-w-0 flex-1 bg-transparent text-base font-bold outline-none placeholder:text-white/30"
-          />
-          <ShuffleToolbarButton
-            onClick={pool.openFilters}
-            ariaLabel={t("shuffle_filters_title")}
-            icon={SlidersHorizontal}
-            badge={
-              pool.filtersActiveCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-violet-500" />
-              ) : null
-            }
-          />
-          <Link
-            href="/settings"
-            aria-label={t("nav_profile_label")}
-            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-violet-300 active:scale-95"
-          >
-            <UserRound size={18} strokeWidth={2.35} />
-          </Link>
-          <Link
-            href="/boost"
-            aria-label={t("boost_nav_label")}
-            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-amber-400 active:scale-95"
-          >
-            <Rocket size={18} strokeWidth={2.35} />
-          </Link>
-          <ShuffleToolbarButton
-            onClick={pool.handleShuffleClick}
-            ariaLabel={t("shuffle_title")}
-            icon={Shuffle}
-            tone="primary"
-            iconClassName="translate-x-px -translate-y-px"
-          />
-        </div>
-      </div>
+      <ModernShuffleGlassToolbar pool={pool} />
     </main>
   );
 }
