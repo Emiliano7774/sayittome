@@ -1,3 +1,4 @@
+import { logMonetag } from "@/lib/monetization/monetagDev";
 import { MONETAG_SHUFFLE_INLINE } from "@/lib/monetization/monetagZones";
 
 const mountedSlots = new Set<string>();
@@ -50,6 +51,7 @@ export function mountMonetagShuffleInlineAd(container: HTMLElement, slotId: stri
   frame.srcdoc = buildShuffleInlineFrameHtml(slotId);
 
   container.appendChild(frame);
+  logMonetag("shuffle-inline-mounted", { slotId, zone: MONETAG_SHUFFLE_INLINE.zoneId });
 }
 
 export function unmountMonetagShuffleInlineAd(slotId: string) {

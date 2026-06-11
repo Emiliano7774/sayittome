@@ -6,6 +6,7 @@ import {
   mountMonetagShuffleInlineAd,
   unmountMonetagShuffleInlineAd,
 } from "@/lib/monetization/monetagShuffleInline";
+import { logMonetag } from "@/lib/monetization/monetagDev";
 
 export function useMonetagShuffleInlineAd(slotId: string, enabled: boolean) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -32,6 +33,7 @@ export function useMonetagShuffleInlineAd(slotId: string, enabled: boolean) {
 
         didMount = true;
         mountMonetagShuffleInlineAd(node, slotId);
+        logMonetag("shuffle-inline-visible", { slotId });
         setMounted(true);
       },
       { threshold: [0.35, 0.65] },

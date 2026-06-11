@@ -9,8 +9,7 @@ import AnonymousPresenceBootstrap from "@/components/AnonymousPresenceBootstrap"
 import AnonSessionLifecycle from "@/components/AnonSessionLifecycle";
 import BoostBootstrap from "@/components/boost/BoostBootstrap";
 import NativeAppBootstrap from "@/components/app/NativeAppBootstrap";
-import NativeAdMobBootstrap from "@/components/monetization/NativeAdMobBootstrap";
-import NativeAdsRouteCleanup from "@/components/monetization/NativeAdsRouteCleanup";
+import AdsBootstrap from "@/components/monetization/AdsBootstrap";
 import MonetagScripts from "@/components/monetization/MonetagScripts";
 import PresenceBootstrap from "@/components/PresenceBootstrap";
 import StoriesBootstrap from "@/components/stories/StoriesBootstrap";
@@ -32,8 +31,7 @@ export default function Providers({
           <AnonymousPresenceBootstrap />
           <AnonSessionLifecycle />
           <NativeAppBootstrap />
-          <NativeAdMobBootstrap />
-          <NativeAdsRouteCleanup />
+          <AdsBootstrap />
           <MonetagScripts />
           <StoriesBootstrap />
           <SensitiveConsentBootstrap />

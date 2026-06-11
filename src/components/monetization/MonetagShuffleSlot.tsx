@@ -1,7 +1,15 @@
 "use client";
 
-import { isNativeAppShell } from "@/lib/app/nativeShell";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+
 import { useMonetagShuffleInlineAd } from "@/hooks/useMonetagShuffleInlineAd";
+import {
+  isMonetagBodyBlocked,
+  shouldLoadMonetagShuffleInline,
+} from "@/lib/monetization/adSurfaces";
+import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
+import { logMonetag } from "@/lib/monetization/monetagDev";
 
 type Props = {
   slotId: string;
@@ -9,8 +17,30 @@ type Props = {
 };
 
 export default function MonetagShuffleSlot({ slotId, variant }: Props) {
-  const enabled = !isNativeAppShell();
+  const pathname = usePathname();
+  const [uiBlocked, setUiBlocked] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setUiBlocked(isMonetagBodyBlocked());
+
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const routeAllowed = shouldLoadMonetagShuffleInline(pathname);
+  const enabled = isMonetagWebEnabled() && routeAllowed && !uiBlocked;
   const { ref, mounted } = useMonetagShuffleInlineAd(slotId, enabled);
+
+  useEffect(() => {
+    if (!enabled) return;
+    logMonetag("shuffle-slot-ready", { slotId, pathname, mounted });
+  }, [enabled, slotId, pathname, mounted]);
 
   if (!enabled) {
     return null;
