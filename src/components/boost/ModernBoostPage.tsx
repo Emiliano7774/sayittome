@@ -9,9 +9,11 @@ import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
 import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
+import { formatBoostMinutesReward } from "@/lib/boost/format";
 
 export default function ModernBoostPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const referralReward = formatBoostMinutesReward(BOOST_MINUTES_PER_REFERRAL, locale);
   const {
     accessState,
     canUseBoost,
@@ -75,7 +77,7 @@ export default function ModernBoostPage() {
             <div className="rounded-[1.75rem] border border-orange-500/25 bg-orange-500/10 p-5">
               <p className="font-black text-orange-200">{t("boost_classic_invite_title")}</p>
               <p className="mt-2 text-sm leading-7 text-white/65">
-                {t("boost_classic_invite_body", { minutes: String(BOOST_MINUTES_PER_REFERRAL) })}
+                {t("boost_classic_invite_body", { reward: referralReward })}
               </p>
             </div>
 

@@ -5,16 +5,18 @@ import { Rocket, Sparkles } from "lucide-react";
 
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUxMode } from "@/contexts/UxModeContext";
-import { BOOST_MINUTES_PER_ACTIVATION, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
+import { BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
+import { formatBoostMinutesReward } from "@/lib/boost/format";
 
 type Props = {
   onDismiss: () => void;
 };
 
 export default function ShuffleBoostAnnouncementModal({ onDismiss }: Props) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { uxMode } = useUxMode();
   const router = useRouter();
+  const referralReward = formatBoostMinutesReward(BOOST_MINUTES_PER_REFERRAL, locale);
 
   function handleOpenBoost() {
     onDismiss();
@@ -53,11 +55,15 @@ export default function ShuffleBoostAnnouncementModal({ onDismiss }: Props) {
           <ul className="mt-4 space-y-2 text-sm text-white/70">
             <li className="flex items-start gap-2">
               <Sparkles size={16} className="mt-0.5 shrink-0 text-orange-300" />
-              {t("boost_announce_point_top", { minutes: String(BOOST_MINUTES_PER_ACTIVATION) })}
+              {t("boost_announce_point_top")}
             </li>
             <li className="flex items-start gap-2">
               <Sparkles size={16} className="mt-0.5 shrink-0 text-orange-300" />
-              {t("boost_announce_point_referral", { minutes: String(BOOST_MINUTES_PER_REFERRAL) })}
+              {t("boost_announce_point_referral", { reward: referralReward })}
+            </li>
+            <li className="flex items-start gap-2">
+              <Sparkles size={16} className="mt-0.5 shrink-0 text-orange-300" />
+              {t("boost_announce_point_benefit")}
             </li>
             <li className="flex items-start gap-2">
               <Sparkles size={16} className="mt-0.5 shrink-0 text-orange-300" />

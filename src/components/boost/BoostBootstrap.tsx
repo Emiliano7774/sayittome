@@ -33,7 +33,6 @@ export default function BoostBootstrap() {
 
       timer = window.setTimeout(() => {
         if (cancelled) return;
-        void persistFeatureAnnouncementSeen(uid);
         setShowAnnouncement(true);
       }, 1200);
     })();

@@ -18,9 +18,11 @@ import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
 import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_ACTIVATION, BOOST_MINUTES_PER_REFERRAL } from "@/lib/boost/constants";
+import { formatBoostMinutesReward } from "@/lib/boost/format";
 
 export default function ClassicBoostPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const referralReward = formatBoostMinutesReward(BOOST_MINUTES_PER_REFERRAL, locale);
   const {
     accessState,
     canUseBoost,
@@ -131,7 +133,7 @@ export default function ClassicBoostPage() {
                   icon={Share2}
                   title={t("boost_classic_step1_title")}
                   body={t("boost_classic_step1_body", {
-                    minutes: String(BOOST_MINUTES_PER_REFERRAL),
+                    reward: referralReward,
                   })}
                 />
                 <StepCard
@@ -160,7 +162,7 @@ export default function ClassicBoostPage() {
                   <h2 className="text-lg font-black text-white">{t("boost_classic_invite_title")}</h2>
                   <p className="mt-2 text-sm font-semibold leading-7 text-white/60">
                     {t("boost_classic_invite_body", {
-                      minutes: String(BOOST_MINUTES_PER_REFERRAL),
+                      reward: referralReward,
                     })}
                   </p>
                 </div>
@@ -209,7 +211,7 @@ export default function ClassicBoostPage() {
               </p>
               <ul className="mt-4 space-y-3">
                 <RuleItem text={t("boost_classic_rule1_flexible")} />
-                <RuleItem text={t("boost_classic_rule2", { minutes: String(BOOST_MINUTES_PER_REFERRAL) })} />
+                <RuleItem text={t("boost_classic_rule2", { reward: referralReward })} />
                 <RuleItem text={t("boost_classic_rule3")} />
                 <RuleItem text={t("boost_classic_rule4")} />
               </ul>
