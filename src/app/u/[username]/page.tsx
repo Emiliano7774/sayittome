@@ -23,6 +23,9 @@ import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
+import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
+import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
+import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
@@ -48,6 +51,7 @@ type Profile = {
   fotoPrincipal: string;
   fotoPortada?: string;
   videoPortada?: string;
+  videos?: string[];
   fotos?: string[];
   likes: number;
   conversaciones: number;
@@ -85,6 +89,7 @@ export default function PublicProfilePage() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [videoViewerUrl, setVideoViewerUrl] = useState<string | null>(null);
   const { density } = useClassicShuffleDensity();
   const profileUi = getClassicProfileUiTokens(density);
   const formatLastSeen = useFormatLastSeen();
@@ -128,6 +133,7 @@ export default function PublicProfilePage() {
     const all = [
       profile.fotoPrincipal,
       ...(Array.isArray(profile.fotos) ? profile.fotos : []),
+      ...(Array.isArray(profile.videos) ? profile.videos : []),
     ]
       .filter(Boolean)
       .map((item) => String(item));
@@ -276,6 +282,15 @@ export default function PublicProfilePage() {
   }
 
   const heroPhoto = gallery[heroIndex] || profile.fotoPrincipal || "";
+  const heroIsVideo = isVideoMediaUrl(heroPhoto);
+
+  function openHero() {
+    if (heroIsVideo && heroPhoto) {
+      setVideoViewerUrl(heroPhoto);
+      return;
+    }
+    if (gallery.length > 0) openViewer(heroIndex);
+  }
 
   return (
     <main className="relative min-h-screen overflow-x-hidden bg-black pb-32 text-white">
@@ -287,7 +302,7 @@ export default function PublicProfilePage() {
           role="presentation"
           onClick={() => {
             if (heroSwipe.consumeSwipe()) return;
-            if (gallery.length > 0) openViewer(heroIndex);
+            openHero();
           }}
           onTouchStart={heroSwipe.onTouchStart}
           onTouchMove={heroSwipe.onTouchMove}
@@ -297,16 +312,18 @@ export default function PublicProfilePage() {
           {heroPhoto ? (
             <SensitiveMediaShell
               url={heroPhoto}
+              mediaType={heroIsVideo ? "video" : "image"}
               staticRequiresBlur={blurPhoto}
               profile={profile}
               className="relative h-full w-full bg-black"
               overlayLabel="Foto moderada"
+              blockVideoAutoplay={false}
             >
-              <img
-                src={heroPhoto}
+              <ProfileMediaSurface
+                url={heroPhoto}
                 alt={profile.username}
-                className="h-full w-full scale-[1.03] object-cover object-center"
-                draggable={false}
+                imageClassName="h-full w-full scale-[1.03] object-cover object-center"
+                videoClassName="h-full w-full scale-[1.03] object-cover object-center"
               />
             </SensitiveMediaShell>
           ) : (
@@ -475,6 +492,12 @@ export default function PublicProfilePage() {
           style={{ fontSize: profileUi.createdText }}
         />
       ) : null}
+
+      <ProfileVideoViewer
+        url={videoViewerUrl || ""}
+        open={Boolean(videoViewerUrl)}
+        onClose={() => setVideoViewerUrl(null)}
+      />
 
       {viewerOpen && gallery.length > 0 && (
         <div

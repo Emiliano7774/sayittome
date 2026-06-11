@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { ArrowLeft, BadgeCheck, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 
+import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
+import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import FollowButton from "@/components/FollowButton";
@@ -17,6 +19,7 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
+import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -79,6 +82,9 @@ export default function ModernPublicProfile({
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [videoViewerUrl, setVideoViewerUrl] = useState<string | null>(null);
+
+  const principalIsVideo = isVideoMediaUrl(profile.fotoPrincipal);
 
   const coverImage = profile.fotoPortada || profile.fotoPrincipal;
   const gallery = useMemo(() => {
@@ -94,9 +100,25 @@ export default function ModernPublicProfile({
     setViewerOpen(true);
   }
 
+  function openVideo(url: string) {
+    setVideoViewerUrl(url);
+  }
+
   function openPrimary() {
     if (story.hasActive && story.hasUnseen && story.storyPath) {
       router.push(story.storyPath);
+      return;
+    }
+    if (principalIsVideo && profile.fotoPrincipal) {
+      openVideo(profile.fotoPrincipal);
+      return;
+    }
+    openViewer(heroIndex);
+  }
+
+  function openHero() {
+    if (profile.videoPortada) {
+      openVideo(profile.videoPortada);
       return;
     }
     openViewer(heroIndex);
@@ -194,7 +216,7 @@ export default function ModernPublicProfile({
                 type="button"
                 onClick={() => {
                   if (heroSwipe.consumeSwipe()) return;
-                  openViewer(heroIndex);
+                  openHero();
                 }}
                 disabled={gallery.length === 0}
                 onTouchStart={heroSwipe.onTouchStart}
@@ -211,14 +233,11 @@ export default function ModernPublicProfile({
                   profile={profile}
                   className="h-full w-full"
                   overlayLabel={t("profile_cover_moderated")}
+                  blockVideoAutoplay={false}
                 >
-                  <video
-                    src={profile.videoPortada}
-                    className="h-full w-full object-cover"
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
+                  <ProfileMediaSurface
+                    url={profile.videoPortada}
+                    videoClassName="h-full w-full object-cover"
                   />
                 </SensitiveMediaShell>
               ) : heroPhoto ? (
@@ -264,15 +283,17 @@ export default function ModernPublicProfile({
                   {profile.fotoPrincipal ? (
                     <SensitiveMediaShell
                       url={profile.fotoPrincipal}
+                      mediaType={principalIsVideo ? "video" : "image"}
                       staticRequiresBlur={blurPhoto}
                       profile={profile}
                       className="h-full w-full"
                       overlayLabel={t("profile_photo_moderated")}
+                      blockVideoAutoplay={false}
                     >
-                      <img
-                        src={profile.fotoPrincipal}
-                        alt=""
-                        className="h-full w-full object-cover"
+                      <ProfileMediaSurface
+                        url={profile.fotoPrincipal}
+                        imageClassName="h-full w-full object-cover"
+                        videoClassName="h-full w-full object-cover"
                       />
                     </SensitiveMediaShell>
                   ) : null}
@@ -375,6 +396,12 @@ export default function ModernPublicProfile({
           />
         ) : null}
       </div>
+
+      <ProfileVideoViewer
+        url={videoViewerUrl || ""}
+        open={Boolean(videoViewerUrl)}
+        onClose={() => setVideoViewerUrl(null)}
+      />
 
       {viewerOpen && gallery.length > 0 ? (
         <div

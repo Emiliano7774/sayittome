@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ArrowLeft, Camera, Film, GripVertical, ImagePlus, Star, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
 import {
@@ -51,8 +52,13 @@ export default function ModernEditProfilePage() {
   const coverVideoInputRef = useRef<HTMLInputElement | null>(null);
 
   const fotoPrincipal = useMemo(() => {
-    const firstImage = media.find((m) => m.type === "image");
-    return media[principalIndex]?.type === "image" ? media[principalIndex].url : firstImage?.url || "";
+    const principal = media[principalIndex];
+    if (principal?.url) return principal.url;
+    return (
+      media.find((item) => item.type === "image")?.url ||
+      media.find((item) => item.type === "video")?.url ||
+      ""
+    );
   }, [media, principalIndex]);
 
   useEffect(() => {
@@ -78,7 +84,13 @@ export default function ModernEditProfilePage() {
       const loaded = [...fotos, ...videos];
 
       if (loaded.length === 0 && data.fotoPrincipal) {
-        loaded.push({ url: String(data.fotoPrincipal), type: "image" });
+        const principalUrl = String(data.fotoPrincipal);
+        loaded.push({
+          url: principalUrl,
+          type: principalUrl.toLowerCase().match(/\.(mp4|mov|webm|mkv|3gp|m4v)(\?|$)/)
+            ? "video"
+            : "image",
+        });
       }
 
       setMedia(loaded.slice(0, 100));
@@ -275,7 +287,11 @@ export default function ModernEditProfilePage() {
           <div>
             <div className="w-64 h-64 rounded-[44px] border-4 border-violet-400/80 bg-zinc-950 overflow-hidden shadow-[0_0_55px_rgba(139,92,246,.35)] flex items-center justify-center">
               {fotoPrincipal ? (
-                <img src={fotoPrincipal} className="w-full h-full object-cover" />
+                <ProfileMediaSurface
+                  url={fotoPrincipal}
+                  imageClassName="w-full h-full object-cover"
+                  videoClassName="w-full h-full object-cover"
+                />
               ) : (
                 <div className="w-28 h-28 rounded-full bg-gradient-to-br from-white via-slate-300 to-slate-600 shadow-[inset_0_8px_20px_rgba(255,255,255,.35),0_0_35px_rgba(255,255,255,.18)]" />
               )}
@@ -315,7 +331,7 @@ export default function ModernEditProfilePage() {
             <input
               ref={avatarInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               className="hidden"
               onChange={async (e) => {
                 const file = e.target.files?.[0];
@@ -325,8 +341,9 @@ export default function ModernEditProfilePage() {
                 try {
                   const url = await uploadSingleFile(file, "avatar");
                   if (url) {
-                    const imageItem = { url, type: "image" as const };
-                    setMedia((prev) => [imageItem, ...prev].slice(0, 100));
+                    const kind = guessMediaFileKind(file) || "image";
+                    const item = { url, type: kind as "image" | "video" };
+                    setMedia((prev) => [item, ...prev].slice(0, 100));
                     setPrincipalIndex(0);
                   }
                 } catch (error) {

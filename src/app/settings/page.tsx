@@ -16,7 +16,10 @@ import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
+import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
+import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
+import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
 import { useLocaleDateFormatter } from "@/hooks/useLocaleFormatters";
@@ -38,6 +41,7 @@ export default function SettingsPage() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [showAnonGate, setShowAnonGate] = useState(false);
   const [coverIndex, setCoverIndex] = useState(0);
+  const [videoViewerUrl, setVideoViewerUrl] = useState<string | null>(null);
   const { density } = useClassicShuffleDensity();
   const profileUi = getClassicProfileUiTokens(density);
 
@@ -103,20 +107,45 @@ export default function SettingsPage() {
       ? profile.videos.map((url: string) => ({ url, type: "video" as const }))
       : [];
 
-    const merged = [...fotos, ...videos];
+    let merged = [...fotos, ...videos];
 
     if (merged.length === 0 && profile?.fotoPrincipal) {
-      merged.push({ url: profile.fotoPrincipal, type: "image" });
+      merged.push({
+        url: profile.fotoPrincipal,
+        type: isVideoMediaUrl(profile.fotoPrincipal) ? "video" : "image",
+      });
+    }
+
+    const principalUrl = String(profile?.fotoPrincipal || "").trim();
+    if (principalUrl) {
+      const withoutPrincipal = merged.filter((item) => item.url !== principalUrl);
+      merged = [
+        {
+          url: principalUrl,
+          type: isVideoMediaUrl(principalUrl) ? "video" : "image",
+        },
+        ...withoutPrincipal,
+      ];
     }
 
     return merged;
   }, [profile]);
 
-  const portada = profile?.fotoPrincipal || media.find((m) => m.type === "image")?.url || "";
+  const coverMedia = media.length > 0 ? media[Math.min(coverIndex, media.length - 1)] : null;
   const coverPhoto =
-    (media[coverIndex]?.type === "image" ? media[coverIndex]?.url : null) ||
-    portada ||
-    "";
+    coverMedia?.type === "image"
+      ? coverMedia.url
+      : media.find((item) => item.type === "image")?.url ||
+        (profile?.fotoPrincipal && !isVideoMediaUrl(profile.fotoPrincipal)
+          ? profile.fotoPrincipal
+          : "") ||
+        "";
+  const coverVideo =
+    coverMedia?.type === "video"
+      ? coverMedia.url
+      : isVideoMediaUrl(profile?.fotoPrincipal)
+        ? String(profile.fotoPrincipal)
+        : "";
   const selected = selectedIndex === null ? null : media[selectedIndex] || null;
 
   const previousMedia = useCallback(() => {
@@ -169,6 +198,11 @@ export default function SettingsPage() {
   function openCover() {
     if (!media.length) return;
     const index = Math.max(0, coverIndex);
+    const item = media[index];
+    if (item?.type === "video") {
+      setVideoViewerUrl(item.url);
+      return;
+    }
     setSelectedIndex(index);
   }
 
@@ -203,7 +237,7 @@ export default function SettingsPage() {
           provincia: profile.provincia,
           mostrarProvincia: profile.mostrarProvincia !== false,
           mostrarUltimaVez: profile.mostrarUltimaVez !== false,
-          fotoPrincipal: String(profile.fotoPrincipal || portada || ""),
+          fotoPrincipal: String(profile.fotoPrincipal || coverPhoto || coverVideo || ""),
           fotoPortada: profile.fotoPortada,
           videoPortada: profile.videoPortada,
           fotos: profile.fotos,
@@ -225,7 +259,7 @@ export default function SettingsPage() {
   return (
     <main className="min-h-screen bg-black text-white pb-28">
       <section className="relative min-h-screen overflow-hidden px-6 sm:px-10 lg:px-16 py-10">
-        {coverPhoto && (
+        {(coverPhoto || coverVideo) && (
           <div
             role="presentation"
             onClick={() => {
@@ -237,7 +271,19 @@ export default function SettingsPage() {
             onTouchEnd={coverSwipe.onTouchEnd}
             className={`absolute inset-0 w-full h-full ${coverSwipe.touchActionClass}`}
           >
-            <img src={coverPhoto} alt={username} className="w-full h-full object-cover opacity-45 blur-[1px] transition-opacity duration-200" />
+            {coverVideo ? (
+              <ProfileMediaSurface
+                url={coverVideo}
+                alt={username}
+                videoClassName="w-full h-full object-cover opacity-45 blur-[1px] transition-opacity duration-200"
+              />
+            ) : (
+              <img
+                src={coverPhoto}
+                alt={username}
+                className="w-full h-full object-cover opacity-45 blur-[1px] transition-opacity duration-200"
+              />
+            )}
           </div>
         )}
 
@@ -373,6 +419,12 @@ export default function SettingsPage() {
           ) : null}
         </div>
       </section>
+
+      <ProfileVideoViewer
+        url={videoViewerUrl || ""}
+        open={Boolean(videoViewerUrl)}
+        onClose={() => setVideoViewerUrl(null)}
+      />
 
       {selected && (
         <div

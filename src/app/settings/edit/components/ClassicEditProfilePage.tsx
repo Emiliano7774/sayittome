@@ -19,6 +19,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
 import {
   profileUploadErrorKey,
@@ -99,9 +100,10 @@ export default function ClassicEditProfilePage() {
   });
 
   const fotoPrincipal =
-    media[principalIndex]?.type === "image"
-      ? media[principalIndex].url
-      : media.find((item) => item.type === "image")?.url || "";
+    media[principalIndex]?.url ||
+    media.find((item) => item.type === "image")?.url ||
+    media.find((item) => item.type === "video")?.url ||
+    "";
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -150,14 +152,23 @@ export default function ClassicEditProfilePage() {
       const loadedMedia = [...fotos, ...videos];
 
       if (loadedMedia.length === 0 && data.fotoPrincipal) {
+        const principalUrl = String(data.fotoPrincipal);
         loadedMedia.push({
-          url: String(data.fotoPrincipal),
-          type: "image",
+          url: principalUrl,
+          type: principalUrl.toLowerCase().match(/\.(mp4|mov|webm|mkv|3gp|m4v)(\?|$)/)
+            ? "video"
+            : "image",
         });
       }
 
-      setMedia(loadedMedia.slice(0, 100));
-      setPrincipalIndex(0);
+      const nextMedia = loadedMedia.slice(0, 100);
+      setMedia(nextMedia);
+
+      const principalUrl = String(data.fotoPrincipal || "");
+      const principalIdx = principalUrl
+        ? nextMedia.findIndex((item) => item.url === principalUrl)
+        : -1;
+      setPrincipalIndex(principalIdx >= 0 ? principalIdx : 0);
 
       setVisibleBadges({
         superMessages: data.mostrarSuperMessages !== false,
@@ -355,10 +366,11 @@ export default function ClassicEditProfilePage() {
               <div className="flex flex-col sm:flex-row xl:flex-col gap-6">
                 <div className="w-full sm:w-[260px] xl:w-full aspect-square rounded-[34px] border-2 border-white/25 bg-zinc-950 overflow-hidden flex items-center justify-center">
                   {fotoPrincipal ? (
-                    <img
-                      src={fotoPrincipal}
-                      className="w-full h-full object-cover"
+                    <ProfileMediaSurface
+                      url={fotoPrincipal}
                       alt="Foto principal"
+                      imageClassName="w-full h-full object-cover"
+                      videoClassName="w-full h-full object-cover"
                     />
                   ) : (
                     <div className="w-28 h-28 rounded-full bg-gradient-to-br from-white via-slate-300 to-slate-600 shadow-[0_0_40px_rgba(255,255,255,.16)]" />

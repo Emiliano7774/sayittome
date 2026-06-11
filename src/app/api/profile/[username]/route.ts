@@ -99,6 +99,11 @@ export async function GET(
       ?.map((v: any) => v.stringValue)
       ?.filter(Boolean) || [];
 
+  const videos =
+    fields?.videos?.arrayValue?.values
+      ?.map((v: any) => v.stringValue)
+      ?.filter(Boolean) || [];
+
   const presenceAt =
     ts(fields, "lastActiveAt") ||
     ts(fields, "lastSeenAt") ||
@@ -137,6 +142,7 @@ export async function GET(
       "",
     videoPortada: str(fields, "videoPortada") || str(fields, "coverVideo") || "",
     fotos: fotos,
+    videos: videos,
     likes:
       int(fields, "likesPerfilCount") ||
       int(fields, "likesCount") ||
