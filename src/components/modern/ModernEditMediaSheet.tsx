@@ -1,8 +1,9 @@
 "use client";
 
-import { Camera, Film, GripVertical, ImagePlus, Star, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ImagePlus, Star, X } from "lucide-react";
 
-import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
+import MosaicMediaTile from "@/components/modern/MosaicMediaTile";
 import { useT } from "@/contexts/LocaleContext";
 
 export type EditMediaItem = {
@@ -10,6 +11,8 @@ export type EditMediaItem = {
   type: "image" | "video";
   path?: string;
 };
+
+type SheetView = "pick" | "gallery";
 
 type Props = {
   open: boolean;
@@ -22,8 +25,8 @@ type Props = {
   uploadText: string;
   onClose: () => void;
   onUpload: () => void;
-  onSelectCover: (item: EditMediaItem) => void;
-  onSelectPrincipal: (index: number) => void;
+  onSelectCover: (item: EditMediaItem, closeSheet?: boolean) => void;
+  onSelectPrincipal: (index: number, closeSheet?: boolean) => void;
   onMove: (index: number, direction: -1 | 1) => void;
   onRemove: (index: number) => void;
 };
@@ -45,14 +48,28 @@ export default function ModernEditMediaSheet({
   onRemove,
 }: Props) {
   const t = useT();
+  const [view, setView] = useState<SheetView>("pick");
+
+  useEffect(() => {
+    if (open) {
+      setView(mode === "gallery" ? "gallery" : "pick");
+    }
+  }, [open, mode]);
 
   if (!open) return null;
 
+  const isGalleryView = mode === "gallery" || view === "gallery";
+  const tapToSelect = !isGalleryView;
+
   const title =
     mode === "cover"
-      ? t("edit_cover_media")
+      ? isGalleryView
+        ? t("edit_gallery")
+        : t("edit_cover_media")
       : mode === "principal"
-        ? t("edit_profile_photo")
+        ? isGalleryView
+          ? t("edit_gallery")
+          : t("edit_profile_photo")
         : t("edit_mosaic_title");
 
   const uploadLabel =
@@ -61,6 +78,13 @@ export default function ModernEditMediaSheet({
       : mode === "principal"
         ? t("edit_change_photo")
         : t("edit_gallery");
+
+  const hint =
+    mode === "cover" && !isGalleryView
+      ? t("edit_cover_pick_hint")
+      : mode === "principal" && !isGalleryView
+        ? t("edit_principal_pick_hint")
+        : t("edit_gallery_manage_hint");
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/80 px-0 pb-0 backdrop-blur-sm">
@@ -88,6 +112,31 @@ export default function ModernEditMediaSheet({
           </button>
         </div>
 
+        {mode !== "gallery" ? (
+          <div className="flex gap-2 border-b border-white/10 px-5 py-3">
+            <button
+              type="button"
+              onClick={() => setView("pick")}
+              className={[
+                "rounded-full px-4 py-2 text-xs font-black",
+                view === "pick" ? "bg-violet-500 text-white" : "bg-white/10 text-white/55",
+              ].join(" ")}
+            >
+              {mode === "cover" ? t("edit_cover_media") : t("edit_profile_photo")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("gallery")}
+              className={[
+                "rounded-full px-4 py-2 text-xs font-black",
+                view === "gallery" ? "bg-violet-500 text-white" : "bg-white/10 text-white/55",
+              ].join(" ")}
+            >
+              {t("edit_gallery")}
+            </button>
+          </div>
+        ) : null}
+
         <div className="border-b border-white/10 px-5 py-4">
           <button
             type="button"
@@ -98,6 +147,7 @@ export default function ModernEditMediaSheet({
             <ImagePlus size={18} />
             {uploading ? uploadText || t("common_loading") : uploadLabel}
           </button>
+          <p className="mt-3 text-center text-[11px] font-semibold text-white/35">{hint}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
@@ -113,94 +163,52 @@ export default function ModernEditMediaSheet({
                   (item.type === "image" && coverPhoto === item.url) ||
                   (item.type === "video" && coverVideo === item.url);
 
-                const tileClassName = [
-                  "relative aspect-square overflow-hidden rounded-[1.35rem] border bg-zinc-950",
-                  mode === "cover" && isCover
-                    ? "border-fuchsia-400 ring-2 ring-fuchsia-400/60"
-                    : mode === "principal" && isPrincipal
-                      ? "border-violet-400 ring-2 ring-violet-400/60"
-                      : "border-white/10",
-                ].join(" ");
-
                 return (
-                  <div key={`${item.url}-${index}`} className={tileClassName}>
-                    {mode === "cover" ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelectCover(item)}
-                        className="absolute inset-0 z-[1] appearance-none border-0 bg-transparent p-0"
-                        aria-label={isCover ? t("edit_cover_loaded") : t("edit_use_as_cover")}
-                      />
-                    ) : mode === "principal" ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelectPrincipal(index)}
-                        className="absolute inset-0 z-[1] appearance-none border-0 bg-transparent p-0"
-                        aria-label={t("edit_profile_photo")}
-                      />
-                    ) : null}
-
-                    <ProfileMediaSurface
-                      url={item.url}
-                      imageClassName="h-full w-full object-cover"
-                      videoClassName="h-full w-full object-cover"
+                  <div key={`${item.url}-${index}`} className="relative">
+                    <MosaicMediaTile
+                      item={item}
+                      index={index}
+                      total={media.length}
+                      isCover={isCover}
+                      isPrincipal={isPrincipal}
+                      showCoverBadge={mode === "cover" || isGalleryView}
+                      showPrincipalBadge={mode === "principal" || isGalleryView}
+                      tapToSelect={tapToSelect}
+                      onTap={
+                        tapToSelect
+                          ? mode === "cover"
+                            ? () => onSelectCover(item, true)
+                            : () => onSelectPrincipal(index, true)
+                          : undefined
+                      }
+                      onMove={onMove}
+                      onRemove={onRemove}
                     />
 
-                    <div className="pointer-events-none absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-black">
-                      {item.type === "image" ? <Camera size={12} className="inline" /> : <Film size={12} className="inline" />}
-                      {" "}
-                      {index + 1}
-                    </div>
-
-                    {mode === "cover" && isCover ? (
-                      <span className="pointer-events-none absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-fuchsia-500 text-sm font-black text-white">
-                        *
-                      </span>
-                    ) : null}
-
-                    {mode === "principal" && isPrincipal ? (
-                      <span className="pointer-events-none absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-violet-500 text-sm font-black text-white">
-                        ★
-                      </span>
-                    ) : null}
-
-                    {mode === "gallery" ? (
-                      <div className="absolute inset-x-0 bottom-0 z-[2] flex items-center justify-between gap-1 bg-gradient-to-t from-black via-black/70 to-transparent p-2">
+                    {isGalleryView ? (
+                      <div className="mt-2 flex items-center justify-center gap-2">
+                        {mode === "cover" || mode === "gallery" ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectCover(item, false)}
+                            className={[
+                              "rounded-full px-3 py-1.5 text-[10px] font-black",
+                              isCover ? "bg-fuchsia-500 text-white" : "bg-white/10 text-white/70",
+                            ].join(" ")}
+                          >
+                            {isCover ? "*" : t("edit_use_as_cover")}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
-                          onClick={() => onMove(index, -1)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15"
-                        >
-                          <GripVertical size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onSelectPrincipal(index)}
+                          onClick={() => onSelectPrincipal(index, false)}
                           className={[
-                            "flex h-9 w-9 items-center justify-center rounded-full",
-                            isPrincipal ? "bg-violet-500" : "bg-white/15",
+                            "flex h-8 w-8 items-center justify-center rounded-full",
+                            isPrincipal ? "bg-violet-500" : "bg-white/10",
                           ].join(" ")}
+                          aria-label={t("edit_profile_photo")}
                         >
-                          <Star size={16} fill={isPrincipal ? "white" : "none"} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemove(index)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500/80"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {mode === "principal" ? (
-                      <div className="absolute inset-x-0 bottom-0 z-[2] flex items-center justify-end gap-1 bg-gradient-to-t from-black via-black/70 to-transparent p-2">
-                        <button
-                          type="button"
-                          onClick={() => onRemove(index)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500/80"
-                        >
-                          <Trash2 size={16} />
+                          <Star size={14} fill={isPrincipal ? "white" : "none"} />
                         </button>
                       </div>
                     ) : null}

@@ -12,6 +12,7 @@ import ModernEditMediaSheet, {
 import ModernProfileEditPreview from "@/components/modern/ModernProfileEditPreview";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
+import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import {
   profileUploadErrorKey,
   uploadFileToStorage,
@@ -96,7 +97,19 @@ export default function ModernEditProfilePage() {
         });
       }
 
-      const nextMedia = loaded.slice(0, 100);
+      const coverPhoto = resolveProfileCoverPhoto(data);
+      const coverVideo = resolveProfileCoverVideo(data);
+      const mergedMedia = [...loaded];
+
+      for (const url of [coverPhoto, coverVideo]) {
+        if (!url || mergedMedia.some((item) => item.url === url)) continue;
+        mergedMedia.unshift({
+          url,
+          type: isVideoMediaUrl(url) ? "video" : "image",
+        });
+      }
+
+      const nextMedia = mergedMedia.slice(0, 100);
       setMedia(nextMedia);
 
       const principalUrl = String(data.fotoPrincipal || "");
@@ -105,8 +118,8 @@ export default function ModernEditProfilePage() {
         : -1;
       setPrincipalIndex(principalIdx >= 0 ? principalIdx : 0);
 
-      setFotoPortada(resolveProfileCoverPhoto(data));
-      setVideoPortada(resolveProfileCoverVideo(data));
+      setFotoPortada(coverPhoto);
+      setVideoPortada(coverVideo);
       setLoading(false);
     });
   }, []);
@@ -157,7 +170,7 @@ export default function ModernEditProfilePage() {
     setSheetOpen(true);
   }
 
-  function applyCover(item: EditMediaItem) {
+  function setCover(item: EditMediaItem, closeSheet = true) {
     if (item.type === "video") {
       setVideoPortada(item.url);
       setFotoPortada("");
@@ -165,7 +178,11 @@ export default function ModernEditProfilePage() {
       setFotoPortada(item.url);
       setVideoPortada("");
     }
-    setSheetOpen(false);
+    if (closeSheet) setSheetOpen(false);
+  }
+
+  function applyCover(item: EditMediaItem, closeSheet = true) {
+    setCover(item, closeSheet);
   }
 
   async function uploadFiles(files: FileList | null, target: MediaSheetMode = "gallery") {
@@ -194,41 +211,41 @@ export default function ModernEditProfilePage() {
         setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
 
         const folder =
-          target === "cover"
-            ? kind === "video"
-              ? "cover-video"
-              : "cover"
-            : target === "principal"
-              ? "avatar"
-              : "gallery";
+          target === "principal"
+            ? "avatar"
+            : "gallery";
 
         const item = await uploadSingleFile(file, folder);
         if (item) uploaded.push(item);
       }
 
-      if (uploaded.length === 0) return;
-
-      if (target === "cover" && uploaded[0]) {
-        applyCover(uploaded[0]);
-        setMedia((prev) => {
-          const exists = prev.some((item) => item.url === uploaded[0].url);
-          const next = exists ? prev : [uploaded[0], ...prev].slice(0, 100);
-          if (prev.length === 0) setPrincipalIndex(0);
-          return next;
-        });
+      if (uploaded.length === 0) {
+        setUploadError(t("edit_upload_fail"));
         return;
       }
 
       setMedia((prev) => {
-        const next = [...prev, ...uploaded].slice(0, 100);
-        const newPrincipalIndex = next.findIndex((item) => item.url === uploaded[0]?.url);
-        if (target === "principal" && newPrincipalIndex >= 0) {
-          setPrincipalIndex(newPrincipalIndex);
-        } else if (prev.length === 0 && next.length > 0) {
+        const next = [...prev];
+        for (const item of uploaded) {
+          if (!next.some((entry) => entry.url === item.url)) {
+            next.push(item);
+          }
+        }
+        const trimmed = next.slice(0, 100);
+        const firstUploadedIndex = trimmed.findIndex((item) => item.url === uploaded[0]?.url);
+
+        if (target === "principal" && firstUploadedIndex >= 0) {
+          setPrincipalIndex(firstUploadedIndex);
+        } else if (prev.length === 0 && trimmed.length > 0) {
           setPrincipalIndex(0);
         }
-        return next;
+
+        return trimmed;
       });
+
+      if (target === "cover" && uploaded[0]) {
+        setCover(uploaded[0], false);
+      }
     } catch (error) {
       console.error(error);
       setUploadError(t(profileUploadErrorKey(error)));
@@ -257,7 +274,13 @@ export default function ModernEditProfilePage() {
   function remove(index: number) {
     const removed = media[index];
     setMedia((prev) => prev.filter((_, i) => i !== index));
-    if (principalIndex >= index) setPrincipalIndex(Math.max(0, principalIndex - 1));
+
+    if (principalIndex === index) {
+      setPrincipalIndex(0);
+    } else if (principalIndex > index) {
+      setPrincipalIndex((prev) => Math.max(0, prev - 1));
+    }
+
     if (removed?.url === fotoPortada) setFotoPortada("");
     if (removed?.url === videoPortada) setVideoPortada("");
   }
@@ -270,6 +293,13 @@ export default function ModernEditProfilePage() {
 
     const fotos = media.filter((m) => m.type === "image").map((m) => m.url);
     const videos = media.filter((m) => m.type === "video").map((m) => m.url);
+
+    if (fotoPortada && !fotos.includes(fotoPortada)) {
+      fotos.unshift(fotoPortada);
+    }
+    if (videoPortada && !videos.includes(videoPortada)) {
+      videos.unshift(videoPortada);
+    }
     const interesesArray = intereses.split(",").map((x) => x.trim()).filter(Boolean);
 
     try {
@@ -443,7 +473,7 @@ export default function ModernEditProfilePage() {
         ref={inputRef}
         type="file"
         accept="image/*,video/*"
-        multiple={sheetMode !== "cover"}
+        multiple
         className="hidden"
         onChange={(e) => {
           void uploadFiles(e.target.files, sheetMode);
@@ -463,9 +493,9 @@ export default function ModernEditProfilePage() {
         onClose={() => setSheetOpen(false)}
         onUpload={() => inputRef.current?.click()}
         onSelectCover={applyCover}
-        onSelectPrincipal={(index) => {
+        onSelectPrincipal={(index, closeSheet = false) => {
           setPrincipalIndex(index);
-          setSheetOpen(false);
+          if (closeSheet) setSheetOpen(false);
         }}
         onMove={move}
         onRemove={remove}

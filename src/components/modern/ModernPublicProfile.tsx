@@ -105,9 +105,9 @@ export default function ModernPublicProfile({
   const coverImage = coverPhotoUrl || profile.fotoPrincipal;
   const gallery = useMemo(() => {
     const photos = Array.isArray(profile.fotos) ? profile.fotos.filter(Boolean) : [];
-    const merged = [profile.fotoPrincipal, ...photos].filter(Boolean);
+    const merged = [coverPhotoUrl, profile.fotoPrincipal, ...photos].filter(Boolean);
     return Array.from(new Set(merged));
-  }, [profile.fotoPrincipal, profile.fotos]);
+  }, [coverPhotoUrl, profile.fotoPrincipal, profile.fotos]);
   const profileChatHref = `/u/${encodeURIComponent(profile.username)}/chat`;
 
   function openViewer(index = 0) {
@@ -178,7 +178,7 @@ export default function ModernPublicProfile({
     onSwipeRight: prevPhoto,
   });
 
-  const heroPhoto = gallery[heroIndex] || coverImage;
+  const heroPhoto = coverPhotoUrl || gallery[heroIndex] || coverImage;
 
   const closeViewer = useCallback(() => {
     setViewerOpen(false);

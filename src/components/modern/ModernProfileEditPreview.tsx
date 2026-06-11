@@ -44,6 +44,7 @@ export default function ModernProfileEditPreview({
         <div className="relative h-80 overflow-hidden">
           {coverUrl ? (
             <ProfileMediaSurface
+              key={coverUrl}
               url={coverUrl}
               imageClassName="h-full w-full object-cover"
               videoClassName="h-full w-full object-cover"
