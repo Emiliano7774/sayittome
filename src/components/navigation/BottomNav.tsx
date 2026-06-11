@@ -98,7 +98,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
         })}
       </div>
 
-      <div className="pointer-events-none absolute bottom-[6px] left-1/2 h-[4px] w-[118px] -translate-x-1/2 rounded-full bg-white/70" />
+      <div className="pointer-events-none absolute bottom-[7px] left-1/2 h-[3px] w-[128px] -translate-x-1/2 rounded-full bg-white/10" />
     </div>
   );
 }

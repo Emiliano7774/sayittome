@@ -2,18 +2,25 @@
 
 import { useEffect } from "react";
 
-const SEGMENTS = 5;
-const SAMPLE_Y_OFFSET = 48;
+const SEGMENTS = 7;
+const SAMPLE_Y_OFFSET = 52;
 
 let sampleCanvas: HTMLCanvasElement | null = null;
 let sampleCtx: CanvasRenderingContext2D | null = null;
+
+type SampleColor = {
+  r: number;
+  g: number;
+  b: number;
+  glow: number;
+};
 
 function getSampleCtx() {
   if (typeof document === "undefined") return null;
   if (!sampleCanvas) {
     sampleCanvas = document.createElement("canvas");
-    sampleCanvas.width = 6;
-    sampleCanvas.height = 6;
+    sampleCanvas.width = 8;
+    sampleCanvas.height = 8;
     sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true });
   }
   return sampleCtx;
@@ -29,65 +36,115 @@ function luminance(r: number, g: number, b: number) {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
-function sampleImageAt(img: HTMLImageElement, x: number, y: number) {
+function glowFromLum(lum: number) {
+  return Math.max(0, Math.min(1, (lum - 0.14) * 1.55));
+}
+
+function sampleImageColorAt(img: HTMLImageElement, x: number, y: number): SampleColor | null {
   const ctx = getSampleCtx();
-  if (!ctx || !img.complete || !img.naturalWidth) return 0;
+  if (!ctx || !img.complete || !img.naturalWidth) return null;
 
   const rect = img.getBoundingClientRect();
-  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return 0;
+  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
 
   const sx = ((x - rect.left) / rect.width) * img.naturalWidth;
   const sy = ((y - rect.top) / rect.height) * img.naturalHeight;
 
   try {
-    ctx.clearRect(0, 0, 6, 6);
-    ctx.drawImage(img, sx - 3, sy - 3, 6, 6, 0, 0, 6, 6);
-    const data = ctx.getImageData(0, 0, 6, 6).data;
-    let sum = 0;
+    ctx.clearRect(0, 0, 8, 8);
+    ctx.drawImage(img, sx - 4, sy - 4, 8, 8, 0, 0, 8, 8);
+    const data = ctx.getImageData(0, 0, 8, 8).data;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let lum = 0;
+    const count = data.length / 4;
+
     for (let i = 0; i < data.length; i += 4) {
-      sum += luminance(data[i], data[i + 1], data[i + 2]);
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      lum += luminance(data[i], data[i + 1], data[i + 2]);
     }
-    return sum / (data.length / 4);
+
+    r = Math.round(r / count);
+    g = Math.round(g / count);
+    b = Math.round(b / count);
+    lum = lum / count;
+
+    return { r, g, b, glow: glowFromLum(lum) };
   } catch {
-    return 0.28;
+    return { r: 120, g: 120, b: 130, glow: 0.22 };
   }
 }
 
-function brightnessAt(x: number, y: number) {
+function colorAt(x: number, y: number): SampleColor {
   const stack = document.elementsFromPoint(x, y);
-  let best = 0;
+  let best: SampleColor = { r: 8, g: 8, b: 10, glow: 0 };
 
   for (const el of stack) {
     if (el.closest(".sayittome-glass-bar-classic")) continue;
 
     if (el instanceof HTMLImageElement) {
-      best = Math.max(best, sampleImageAt(el, x, y));
-      if (best > 0.55) return best;
+      const sampled = sampleImageColorAt(el, x, y);
+      if (sampled && sampled.glow > best.glow) best = sampled;
+      if (best.glow > 0.6) return best;
       continue;
     }
 
     if (el instanceof HTMLVideoElement) {
-      best = Math.max(best, 0.42);
+      const candidate = { r: 150, g: 150, b: 165, glow: 0.38 };
+      if (candidate.glow > best.glow) best = candidate;
       continue;
     }
 
     const bg = getComputedStyle(el).backgroundColor;
     const rgb = parseRgb(bg);
     if (rgb) {
-      const lum = luminance(rgb[0], rgb[1], rgb[2]);
-      if (lum > 0.04) best = Math.max(best, lum);
+      const glow = glowFromLum(luminance(rgb[0], rgb[1], rgb[2]));
+      if (glow > best.glow) {
+        best = { r: rgb[0], g: rgb[1], b: rgb[2], glow };
+      }
     }
   }
 
   return best;
 }
 
-function readScrollY() {
-  const root = document.querySelector<HTMLElement>("[data-scroll-root]");
-  if (root && root.scrollHeight > root.clientHeight + 1) {
-    return root.scrollTop;
+function blendNeighbor(
+  target: SampleColor,
+  source: SampleColor,
+  bleed: number,
+  colorWeight: number,
+) {
+  if (target.glow >= bleed) return;
+
+  target.glow = bleed;
+  target.r = Math.round(target.r * (1 - colorWeight) + source.r * colorWeight);
+  target.g = Math.round(target.g * (1 - colorWeight) + source.g * colorWeight);
+  target.b = Math.round(target.b * (1 - colorWeight) + source.b * colorWeight);
+}
+
+function spreadSegmentGlow(samples: SampleColor[]) {
+  const spread = samples.map((sample) => ({ ...sample }));
+
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < spread.length; i++) {
+      if (spread[i].glow < 0.06) continue;
+
+      const bleedNear = spread[i].glow * (pass === 0 ? 0.5 : 0.28);
+      const bleedFar = spread[i].glow * (pass === 0 ? 0.24 : 0.14);
+      const nearWeight = pass === 0 ? 0.48 : 0.34;
+      const farWeight = pass === 0 ? 0.3 : 0.22;
+
+      if (i > 0) blendNeighbor(spread[i - 1], spread[i], bleedNear, nearWeight);
+      if (i < spread.length - 1) blendNeighbor(spread[i + 1], spread[i], bleedNear, nearWeight);
+      if (i > 1) blendNeighbor(spread[i - 2], spread[i], bleedFar, farWeight);
+      if (i < spread.length - 2) blendNeighbor(spread[i + 2], spread[i], bleedFar, farWeight);
+    }
   }
-  return window.scrollY || document.documentElement.scrollTop || 0;
+
+  return spread;
 }
 
 function updateClassicBarGlow() {
@@ -98,17 +155,24 @@ function updateClassicBarGlow() {
   const sampleY = Math.max(0, rect.top - SAMPLE_Y_OFFSET);
   const width = window.innerWidth;
 
+  const raw: SampleColor[] = [];
   for (let i = 0; i < SEGMENTS; i++) {
     const x = ((i + 0.5) / SEGMENTS) * width;
-    const raw = brightnessAt(x, sampleY);
-    const glow = Math.max(0, Math.min(1, (raw - 0.12) * 1.35));
-    const xPct = ((i + 0.5) / SEGMENTS) * 100;
-
-    document.documentElement.style.setProperty(`--classic-bar-glow-${i}`, String(glow));
-    document.documentElement.style.setProperty(`--classic-bar-glow-x-${i}`, `${xPct}%`);
+    raw.push(colorAt(x, sampleY));
   }
 
-  document.documentElement.style.setProperty("--classic-bar-glow-shift", String(readScrollY()));
+  const samples = spreadSegmentGlow(raw);
+
+  for (let i = 0; i < SEGMENTS; i++) {
+    const sample = samples[i];
+    const xPct = ((i + 0.5) / SEGMENTS) * 100;
+
+    document.documentElement.style.setProperty(`--classic-bar-glow-${i}`, String(sample.glow));
+    document.documentElement.style.setProperty(`--classic-bar-glow-x-${i}`, `${xPct}%`);
+    document.documentElement.style.setProperty(`--classic-bar-r-${i}`, String(sample.r));
+    document.documentElement.style.setProperty(`--classic-bar-g-${i}`, String(sample.g));
+    document.documentElement.style.setProperty(`--classic-bar-b-${i}`, String(sample.b));
+  }
 }
 
 export function useClassicBarScrollGlow(enabled = true) {
@@ -128,6 +192,9 @@ export function useClassicBarScrollGlow(enabled = true) {
     for (let i = 0; i < SEGMENTS; i++) {
       document.documentElement.style.setProperty(`--classic-bar-glow-${i}`, "0");
       document.documentElement.style.setProperty(`--classic-bar-glow-x-${i}`, `${((i + 0.5) / SEGMENTS) * 100}%`);
+      document.documentElement.style.setProperty(`--classic-bar-r-${i}`, "8");
+      document.documentElement.style.setProperty(`--classic-bar-g-${i}`, "8");
+      document.documentElement.style.setProperty(`--classic-bar-b-${i}`, "10");
     }
 
     schedule();
@@ -156,8 +223,10 @@ export function useClassicBarScrollGlow(enabled = true) {
       for (let i = 0; i < SEGMENTS; i++) {
         document.documentElement.style.removeProperty(`--classic-bar-glow-${i}`);
         document.documentElement.style.removeProperty(`--classic-bar-glow-x-${i}`);
+        document.documentElement.style.removeProperty(`--classic-bar-r-${i}`);
+        document.documentElement.style.removeProperty(`--classic-bar-g-${i}`);
+        document.documentElement.style.removeProperty(`--classic-bar-b-${i}`);
       }
-      document.documentElement.style.removeProperty("--classic-bar-glow-shift");
     };
   }, [enabled]);
 }
