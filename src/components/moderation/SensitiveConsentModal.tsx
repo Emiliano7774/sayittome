@@ -2,6 +2,7 @@
 
 import { useT } from "@/contexts/LocaleContext";
 import { useUxMode } from "@/contexts/UxModeContext";
+import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 
 type Props = {
   open: boolean;
@@ -13,11 +14,22 @@ export default function SensitiveConsentModal({ open, onConfirm, onCancel }: Pro
   const t = useT();
   const { uxMode } = useUxMode();
 
+  useOverlayBackClose(
+    open,
+    onCancel,
+    "sayittome-sensitive-consent-open",
+    "sayittome:close-sensitive-consent",
+  );
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[99990] flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-[99990] flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm"
+      onClick={onCancel}
+    >
       <div
+        onClick={(event) => event.stopPropagation()}
         className={[
           "w-full max-w-md border bg-[#0d0d12] p-6 shadow-2xl",
           uxMode === "classic"

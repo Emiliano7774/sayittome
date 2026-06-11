@@ -29,6 +29,7 @@ import { markStoryViewedLocally } from "@/lib/stories/storiesIndexStore";
 import { preloadStoryMedia } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
+import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import type { StoryItem } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -77,6 +78,12 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
       document.body.classList.remove("sayittome-story-viewer-open");
     };
   }, []);
+
+  useEffect(() => {
+    const onBack = () => router.back();
+    window.addEventListener("sayittome:close-story", onBack);
+    return () => window.removeEventListener("sayittome:close-story", onBack);
+  }, [router]);
 
   const current = localStories[index];
   const resolvedOwnerUid = ownerUid || current?.ownerUid || "";
@@ -524,6 +531,21 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
             mediaKey={current.mediaUrl}
             onReveal={() => setBlurLocked(false)}
           />
+        ) : null}
+
+        {current.mediaUrl && current.mediaSource ? (
+          <div
+            className={[
+              "absolute bottom-[calc(max(7.5rem,env(safe-area-inset-bottom))+5.5rem)] left-0 right-0 z-40 flex justify-center transition-opacity duration-150",
+              bottomChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+            ].join(" ")}
+            data-story-chrome
+          >
+            <StoryMediaSourceBadge
+              source={current.mediaSource}
+              mediaType={current.mediaType}
+            />
+          </div>
         ) : null}
       </div>
 

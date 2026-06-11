@@ -17,6 +17,10 @@ import { useT } from "@/contexts/LocaleContext";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { persistAnonDirectMessage } from "@/lib/anonMatch/persistDirectMessage";
+import {
+  notifyIncomingChatMessage,
+  playIncomingWhipSound,
+} from "@/lib/chat/whipSound";
 import { db } from "@/lib/firebase";
 
 type ChatMessage = {
@@ -134,6 +138,8 @@ export default function AnonDirectChatWindow() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const sendInFlightRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const whipBootstrappedRef = useRef(false);
+  const lastWhipMessageIdRef = useRef<string | null>(null);
 
   const openChat = match?.openChat;
   const chatId = openChat?.chatId || "";
@@ -150,6 +156,8 @@ export default function AnonDirectChatWindow() {
     setSending(false);
     sendInFlightRef.current = false;
     setMessages([]);
+    whipBootstrappedRef.current = false;
+    lastWhipMessageIdRef.current = null;
   }, [chatId]);
 
   const handleSend = useCallback(async () => {
@@ -197,6 +205,32 @@ export default function AnonDirectChatWindow() {
         };
       });
       setMessages(next);
+
+      const latest = snap.docs[snap.docs.length - 1];
+      if (!latest) return;
+
+      const data = latest.data();
+      const from = String(data.senderId || "");
+      const isIncoming = from !== senderId;
+      const messageId = latest.id;
+      const body = String(data.texto || data.text || "").trim();
+
+      if (!whipBootstrappedRef.current) {
+        whipBootstrappedRef.current = true;
+        lastWhipMessageIdRef.current = messageId;
+        return;
+      }
+
+      if (isIncoming && messageId !== lastWhipMessageIdRef.current) {
+        lastWhipMessageIdRef.current = messageId;
+        playIncomingWhipSound();
+        notifyIncomingChatMessage({
+          title: "Chat anónimo",
+          body,
+        });
+      } else if (messageId !== lastWhipMessageIdRef.current) {
+        lastWhipMessageIdRef.current = messageId;
+      }
     });
 
     return () => unsub();
@@ -220,6 +254,13 @@ export default function AnonDirectChatWindow() {
   }, [openChat?.closedReason, t]);
 
   useEffect(() => {
+    document.body.classList.toggle("sayittome-anon-chat-open", Boolean(openChat && chatId));
+    return () => {
+      document.body.classList.remove("sayittome-anon-chat-open");
+    };
+  }, [chatId, openChat]);
+
+  useEffect(() => {
     if (chatView === "expanded") {
       document.body.classList.add("sayittome-chat-open");
       return () => document.body.classList.remove("sayittome-chat-open");
@@ -227,6 +268,29 @@ export default function AnonDirectChatWindow() {
     document.body.classList.remove("sayittome-chat-open");
     return undefined;
   }, [chatView]);
+
+  useEffect(() => {
+    if (!match || !openChat || !chatId) return;
+
+    const onBack = () => {
+      if (reportConfirmOpen) {
+        setReportConfirmOpen(false);
+        return;
+      }
+      if (closeConfirmOpen) {
+        setCloseConfirmOpen(false);
+        return;
+      }
+      if (chatView === "expanded") {
+        match.minimizeChat();
+        return;
+      }
+      match.closeChatWindow();
+    };
+
+    window.addEventListener("sayittome:close-anon-chat", onBack);
+    return () => window.removeEventListener("sayittome:close-anon-chat", onBack);
+  }, [chatView, closeConfirmOpen, chatId, match, openChat, reportConfirmOpen]);
 
   if (!match || !openChat || !chatId) return null;
 

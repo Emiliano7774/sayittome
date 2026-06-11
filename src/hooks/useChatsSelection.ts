@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { hardDeleteChats } from "@/lib/chat/deleteChats";
 import type { InboxChat } from "@/hooks/useChatsInbox";
@@ -54,6 +54,32 @@ export function useChatsSelection(chats: InboxChat[]) {
     if (selectedIds.size === 0) return;
     setConfirmOpen(true);
   }, [selectedIds.size]);
+
+  useEffect(() => {
+    document.body.classList.toggle(
+      "sayittome-chats-selection-open",
+      selectionMode || confirmOpen,
+    );
+
+    return () => {
+      document.body.classList.remove("sayittome-chats-selection-open");
+    };
+  }, [confirmOpen, selectionMode]);
+
+  useEffect(() => {
+    const onBack = () => {
+      if (confirmOpen) {
+        setConfirmOpen(false);
+        return;
+      }
+      if (selectionMode) {
+        exitSelectionMode();
+      }
+    };
+
+    window.addEventListener("sayittome:exit-chats-selection", onBack);
+    return () => window.removeEventListener("sayittome:exit-chats-selection", onBack);
+  }, [confirmOpen, exitSelectionMode, selectionMode]);
 
   const confirmDeleteSelected = useCallback(async () => {
     if (selectedIds.size === 0 || deleting) return;

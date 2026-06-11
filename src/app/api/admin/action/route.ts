@@ -174,6 +174,12 @@ export async function POST(req: Request) {
         dryRun: body?.dryRun === true,
       });
       return NextResponse.json({ ok: true, ...result });
+    } else if (action === "cleanup_duplicate_profiles") {
+      const { cleanupDuplicateProfiles } = await import("@/lib/profile/cleanupDuplicates");
+      const result = await cleanupDuplicateProfiles(adminEmail, {
+        dryRun: body?.dryRun === true,
+      });
+      return NextResponse.json({ ok: true, ...result });
     } else {
       return NextResponse.json({ ok: false, error: "unknown action" }, { status: 400 });
     }

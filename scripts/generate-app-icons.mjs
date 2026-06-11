@@ -29,12 +29,25 @@ if (!SOURCE) {
 }
 
 const CANVAS = 1024;
-const LAUNCHER_CONTENT_SCALE = 0.76;
-const ADAPTIVE_CONTENT_SCALE = 0.58;
-const MASKABLE_CONTENT_SCALE = 0.52;
+const LAUNCHER_CONTENT_SCALE = 0.88;
+const ADAPTIVE_CONTENT_SCALE = 0.68;
+const MASKABLE_CONTENT_SCALE = 0.62;
+
+async function stripBrandingText(input) {
+  const trimmed = await sharp(input).trim({ threshold: 8 }).png().toBuffer();
+  const meta = await sharp(trimmed).metadata();
+  const width = meta.width || CANVAS;
+  const height = meta.height || CANVAS;
+  const square = Math.min(width, height);
+
+  return sharp(trimmed)
+    .extract({ left: 0, top: 0, width: square, height: square })
+    .png()
+    .toBuffer();
+}
 
 async function buildCenteredSquareIcon(input, contentScale) {
-  const trimmed = await sharp(input).trim({ threshold: 8 }).png().toBuffer();
+  const trimmed = await stripBrandingText(input);
   const meta = await sharp(trimmed).metadata();
   const width = meta.width || CANVAS;
   const height = meta.height || CANVAS;

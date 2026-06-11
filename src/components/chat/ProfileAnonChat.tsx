@@ -36,7 +36,8 @@ import {
   profileReplyAuthorId,
   resolveProfileAnonMessageMine,
 } from "@/lib/chat/profileAnonMessageAuthor";
-import { markChatAsRead } from "@/lib/chat/unread";
+import type { InboxChat } from "@/hooks/useChatsInbox";
+import { inboxChatFromFirestore, markChatAsRead } from "@/lib/chat/unread";
 import {
   formatAnonSessionLabel,
 } from "@/lib/chat/inboxPeerTitle";
@@ -136,6 +137,46 @@ export default function ProfileAnonChat({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
+  const chatMetaRef = useRef<InboxChat | null>(null);
+  const markReadContextRef = useRef({
+    chatId: "",
+    authReady: false,
+    currentUid: "",
+    targetUid: "",
+    chatAnonSessionId: "",
+    username: "",
+  });
+
+  function markOpenChatAsRead() {
+    const ctx = markReadContextRef.current;
+    const chat = chatMetaRef.current;
+    if (!ctx.chatId || !ctx.authReady || !chat) return;
+
+    const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
+    const messageViewerId =
+      ctx.currentUid && ctx.targetUid && ctx.currentUid === ctx.targetUid
+        ? ctx.currentUid
+        : senderId;
+
+    if (!messageViewerId) return;
+
+    void markChatAsRead(ctx.chatId, messageViewerId, chat, ctx.currentUid).catch(
+      () => undefined,
+    );
+  }
+
+  useEffect(() => {
+    document.body.classList.toggle("sayittome-chat-fullscreen-open", Boolean(fullscreenUrl));
+    return () => {
+      document.body.classList.remove("sayittome-chat-fullscreen-open");
+    };
+  }, [fullscreenUrl]);
+
+  useEffect(() => {
+    const onBack = () => setFullscreenUrl("");
+    window.addEventListener("sayittome:close-chat-fullscreen", onBack);
+    return () => window.removeEventListener("sayittome:close-chat-fullscreen", onBack);
+  }, []);
 
   useEffect(() => {
     setAnonSession(getAnonSessionId());
@@ -193,8 +234,12 @@ export default function ProfileAnonChat({
     if (!chatId) return;
 
     const unsub = onSnapshot(doc(db, "chats", chatId), (snap) => {
-      const data = snap.data() as { anonSessionId?: string } | undefined;
+      if (!snap.exists()) return;
+
+      const data = snap.data() as Record<string, unknown> | undefined;
       setChatAnonSessionId(String(data?.anonSessionId || ""));
+      chatMetaRef.current = inboxChatFromFirestore(chatId, data, username);
+      markOpenChatAsRead();
     });
 
     return () => {
@@ -202,9 +247,10 @@ export default function ProfileAnonChat({
         clearTimeout(readMarkTimerRef.current);
         readMarkTimerRef.current = null;
       }
+      markOpenChatAsRead();
       unsub();
     };
-  }, [chatId]);
+  }, [chatId, username]);
 
   useEffect(() => {
     let cancelled = false;
@@ -290,16 +336,17 @@ export default function ProfileAnonChat({
     blurPhoto: isOwnerViewing ? false : targetBlurPhoto,
   };
 
+  markReadContextRef.current = {
+    chatId,
+    authReady,
+    currentUid,
+    targetUid,
+    chatAnonSessionId,
+    username,
+  };
+
   useEffect(() => {
-    if (!chatId || !authReady) return;
-
-    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
-    const messageViewerId =
-      currentUid && targetUid && currentUid === targetUid ? currentUid : senderId;
-
-    if (!messageViewerId) return;
-
-    void markChatAsRead(chatId, messageViewerId).catch(() => undefined);
+    markOpenChatAsRead();
   }, [chatId, authReady, currentUid, targetUid, chatAnonSessionId]);
 
   useEffect(() => {
@@ -420,27 +467,7 @@ export default function ProfileAnonChat({
           }
         }, 900);
 
-        if (snapshot.docs.length === 0) return;
-
-        const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-        const lastData = lastDoc.data() as {
-          texto?: string;
-          text?: string;
-          fromUid?: string;
-          ownerId?: string;
-          senderUid?: string;
-        };
-
-        void markChatAsRead(chatId, messageViewerId, {
-          id: chatId,
-          canonicalChatId: chatId,
-          targetUsername: username,
-          receptorUsername: username,
-          lastMessage: String(lastData.text || lastData.texto || ""),
-          lastMessageSender: String(
-            lastData.fromUid || lastData.ownerId || lastData.senderUid || "",
-          ),
-        });
+        markOpenChatAsRead();
       },
       (error) => {
         console.error(error);
@@ -907,6 +934,7 @@ export default function ProfileAnonChat({
                 mine: message.mine,
                 readBy: message.readBy,
                 senderId: receiptSenderId,
+                firebaseUid: currentUid,
                 isSending: message.status === "sending",
                 hasError: message.status === "error",
               });

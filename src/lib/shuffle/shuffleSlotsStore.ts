@@ -1,3 +1,4 @@
+import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { SHUFFLE_WINDOW_SIZE } from "@/lib/shuffle/pickWindow";
 import { shuffleCount, shuffleMark, shuffleMeasure } from "@/lib/shuffle/shuffleProfiler";
@@ -134,10 +135,17 @@ export function subscribeAllShuffleSlots(listener: () => void) {
 
 export function getVisibleShuffleProfiles() {
   const visible: ShuffleProfile[] = [];
+  const seen = new Set<string>();
 
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
-    if (profile) visible.push(profile);
+    if (!profile) continue;
+
+    const key = shuffleProfileIdentityKey(profile);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+
+    visible.push(profile);
   }
 
   return visible;

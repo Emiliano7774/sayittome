@@ -4,13 +4,14 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { useDocumentHidden } from "@/hooks/useDocumentHidden";
 import { useChatsInbox } from "@/hooks/useChatsInbox";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { chatPeerTitle } from "@/lib/chat/inboxPeerTitle";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
   shouldEnableChatAlerts,
-  shouldEnableInboxListeners,
+  shouldEnableFullInboxListeners,
 } from "@/lib/chat/inboxListenerRoutes";
 import {
   getLocalChatReadVersion,
@@ -24,19 +25,22 @@ import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 
 export function useGlobalChatAlerts() {
   const pathname = usePathname();
+  const documentHidden = useDocumentHidden();
   const { firebaseUser } = useAuth();
 
-  const inboxQueriesEnabled = useMemo(
-    () => shouldEnableInboxListeners(pathname),
+  const inboxRouteEnabled = useMemo(
+    () => shouldEnableFullInboxListeners(pathname),
     [pathname],
   );
-  const chatAlertsEnabled = useMemo(
+  const chatAlertsRouteEnabled = useMemo(
     () => shouldEnableChatAlerts(pathname),
     [pathname],
   );
+  const liveFirestoreEnabled = inboxRouteEnabled && !documentHidden;
+  const liveChatAlertsEnabled = chatAlertsRouteEnabled && !documentHidden;
 
   const { sortedChats, uid, loading, isAnonymousSession } = useChatsInbox({
-    enableInboxQueries: inboxQueriesEnabled,
+    enableInboxQueries: liveFirestoreEnabled,
   });
 
   const viewerId = resolveInboxViewerId(uid);
@@ -78,8 +82,14 @@ export function useGlobalChatAlerts() {
   }, [viewerId, firebaseUid]);
 
   useEffect(() => {
-    if (loading || !chatAlertsEnabled) {
+    globalChatWhipManager.setPaused(!liveChatAlertsEnabled || loading);
+
+    if (loading || !chatAlertsRouteEnabled) {
       globalChatWhipManager.syncInboxChatIds([]);
+      return;
+    }
+
+    if (!liveChatAlertsEnabled) {
       return;
     }
 
@@ -87,7 +97,12 @@ export function useGlobalChatAlerts() {
     globalChatWhipManager.syncInboxChatIds(
       sortedChats.map((chat) => chat.canonicalChatId || chat.id),
     );
-  }, [chatAlertsEnabled, loading, sortedChats]);
+  }, [
+    chatAlertsRouteEnabled,
+    liveChatAlertsEnabled,
+    loading,
+    sortedChats,
+  ]);
 
   return {
     totalUnread,
@@ -96,6 +111,6 @@ export function useGlobalChatAlerts() {
     uid,
     loading,
     isAnonymousSession,
-    inboxQueriesEnabled,
+    inboxQueriesEnabled: inboxRouteEnabled,
   };
 }

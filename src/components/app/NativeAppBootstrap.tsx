@@ -1,17 +1,111 @@
 "use client";
 
-import { useEffect } from "react";
+import { App } from "@capacitor/app";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
 
+import NativeBackHint from "@/components/app/NativeBackHint";
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { unlockWhipSound } from "@/lib/chat/whipSound";
+import {
+  readNativePathname,
+  resetNativeBackExitTimer,
+  resolveNativeBackNavigation,
+} from "@/lib/navigation/handleNativeBack";
+import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
+import { recordNativeNavPath, seedNativeNavStack } from "@/lib/navigation/nativeNavStack";
+import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
+
+const HARDWARE_BACK_EVENT = "sayittomeHardwareBack";
+
+let backHandlerInstalled = false;
+
+function runNativeBackNavigation(
+  router: ReturnType<typeof useRouter>,
+  pathnameRef: React.MutableRefObject<string>,
+) {
+  const currentPath = readNativePathname();
+  pathnameRef.current = currentPath;
+
+  const action = resolveNativeBackNavigation(currentPath);
+  if (!action) return;
+
+  if (action.navigateTo) {
+    pathnameRef.current = action.navigateTo;
+    runNativeViewTransition(() => {
+      router.replace(action.navigateTo!);
+    });
+    return;
+  }
+
+  if (action.exitApp) {
+    void App.exitApp();
+    return;
+  }
+
+  if (action.hintKey) {
+    window.dispatchEvent(
+      new CustomEvent("sayittome:native-back-hint", {
+        detail: { key: action.hintKey },
+      }),
+    );
+  }
+}
+
+function installNativeBackHandler(
+  router: ReturnType<typeof useRouter>,
+  pathnameRef: React.MutableRefObject<string>,
+) {
+  if (backHandlerInstalled || typeof window === "undefined") return;
+  backHandlerInstalled = true;
+
+  const onHardwareBack = () => {
+    runNativeBackNavigation(router, pathnameRef);
+  };
+
+  window.addEventListener(HARDWARE_BACK_EVENT, onHardwareBack);
+
+  void (async () => {
+    try {
+      await App.toggleBackButtonHandler({ enabled: false });
+    } catch {
+      // Plugin option may be unavailable on older shells.
+    }
+
+    try {
+      await App.addListener("backButton", () => {
+        onHardwareBack();
+      });
+    } catch {
+      // Hardware event from MainActivity remains as fallback.
+    }
+  })();
+}
 
 export default function NativeAppBootstrap() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const pathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    pathnameRef.current = pathname;
+    resetNativeBackExitTimer();
+    seedNativeNavStack(pathname);
+    recordNativeNavPath(pathname);
+
+    if (!pathname.startsWith("/chat/")) {
+      stripNativeChatFullscreen();
+    }
+  }, [pathname]);
+
   useEffect(() => {
     if (!isNativeAppShell()) return;
 
     document.documentElement.classList.add("sayittome-native-shell");
     document.body.classList.add("sayittome-native-shell");
+
+    installNativeBackHandler(router, pathnameRef);
 
     void (async () => {
       try {
@@ -22,14 +116,6 @@ export default function NativeAppBootstrap() {
       }
 
       try {
-        const { App } = await import("@capacitor/app");
-        await App.addListener("backButton", ({ canGoBack }) => {
-          if (canGoBack) {
-            window.history.back();
-            return;
-          }
-          void App.exitApp();
-        });
         await App.addListener("appStateChange", ({ isActive }) => {
           if (isActive) {
             globalChatWhipManager.refresh();
@@ -45,7 +131,9 @@ export default function NativeAppBootstrap() {
       document.documentElement.classList.remove("sayittome-native-shell");
       document.body.classList.remove("sayittome-native-shell");
     };
-  }, []);
+  }, [router]);
 
-  return null;
+  if (!isNativeAppShell()) return null;
+
+  return <NativeBackHint />;
 }

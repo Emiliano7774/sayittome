@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Camera, ImageIcon } from "lucide-react";
 
 import {
   addDoc,
@@ -10,6 +11,9 @@ import {
   Timestamp,
 } from "firebase/firestore";
 
+import StoryLiveCamera from "@/components/stories/StoryLiveCamera";
+import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
+import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind } from "@/lib/media/fileKind";
@@ -18,6 +22,7 @@ import {
   uploadFileToStorage,
 } from "@/lib/media/uploadFileToStorage";
 import { resolveStoryAuthor } from "@/lib/stories/anonStories";
+import type { StoryMediaSource } from "@/lib/stories/types";
 import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
 
 type PreviewData = {
@@ -28,9 +33,14 @@ type PreviewData = {
 export default function NewStoryPage() {
   const router = useRouter();
   const t = useT();
+  const { uxMode } = useUxMode();
+  const modern = uxMode === "modern";
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [texto, setTexto] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [mediaSource, setMediaSource] = useState<StoryMediaSource | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -54,6 +64,34 @@ export default function NewStoryPage() {
     };
   }, [preview?.url]);
 
+  function clearMedia() {
+    setFile(null);
+    setMediaSource(null);
+    setUploadProgress(0);
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
+  }
+
+  function handleGalleryPick(selected: File | null) {
+    if (!selected) return;
+
+    const kind = guessMediaFileKind(selected);
+    if (!kind) {
+      window.alert(t("story_new_alert_type"));
+      return;
+    }
+
+    setFile(selected);
+    setMediaSource("gallery");
+    setUploadProgress(0);
+  }
+
+  function handleCameraCapture(captured: File, kind: "image" | "video") {
+    setFile(captured);
+    setMediaSource("camera");
+    setCameraOpen(false);
+    setUploadProgress(0);
+  }
+
   const publishStory = async () => {
     if (!texto.trim() && !file) {
       window.alert(t("story_new_alert_empty"));
@@ -70,6 +108,7 @@ export default function NewStoryPage() {
       let mediaType = "text";
       let mediaName = "";
       let mediaSize = 0;
+      let storedMediaSource: StoryMediaSource | null = null;
 
       if (file) {
         const kind = guessMediaFileKind(file);
@@ -108,6 +147,7 @@ export default function NewStoryPage() {
         mediaType = kind;
         mediaName = file.name;
         mediaSize = file.size;
+        storedMediaSource = mediaSource;
       }
 
       const now = new Date();
@@ -131,6 +171,7 @@ export default function NewStoryPage() {
         texto: texto.trim(),
         mediaUrl,
         mediaType,
+        mediaSource: storedMediaSource,
         mediaName,
         mediaSize,
         createdAt: serverTimestamp(),
@@ -165,27 +206,40 @@ export default function NewStoryPage() {
     setUploading(false);
   };
 
+  const accentClass = modern ? "text-violet-300" : "text-fuchsia-300";
+  const shellClass = modern
+    ? "rounded-[2rem] border border-white/10 bg-[#0c0c0c] shadow-[0_0_60px_rgba(124,58,237,0.12)]"
+    : "rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl shadow-fuchsia-950/30";
+  const primaryBtnClass = modern
+    ? "bg-violet-600 text-white"
+    : "bg-white text-black";
+
   return (
     <main className="min-h-screen bg-black px-4 py-8 text-white">
+      <StoryLiveCamera
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={handleCameraCapture}
+      />
+
       <section className="mx-auto max-w-2xl">
         <button
           onClick={() => router.back()}
-          className="mb-6 text-sm font-bold text-fuchsia-300"
+          className={`mb-6 text-sm font-bold ${accentClass}`}
         >
           ← {t("common_back")}
         </button>
 
-        <div className="rounded-[2rem] border border-white/10 bg-zinc-950 p-6 shadow-2xl shadow-fuchsia-950/30">
-          <p className="text-xs uppercase tracking-[0.4em] text-fuchsia-300">
+        <div className={`${shellClass} p-6`}>
+          <p className={`text-xs uppercase tracking-[0.4em] ${accentClass}`}>
             SAYITTOME
           </p>
 
           <h1 className="mt-3 text-4xl font-black">{t("story_new_title")}</h1>
-
           <p className="mt-3 text-sm text-zinc-500">{t("story_new_expires")}</p>
 
           {preview && (
-            <div className="mt-6 overflow-hidden rounded-[2rem] border border-white/10 bg-black">
+            <div className="relative mt-6 overflow-hidden rounded-[2rem] border border-white/10 bg-black">
               {preview.type === "image" ? (
                 <img
                   src={preview.url}
@@ -199,6 +253,12 @@ export default function NewStoryPage() {
                   className="max-h-[520px] w-full object-cover"
                 />
               )}
+
+              {mediaSource ? (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                  <StoryMediaSourceBadge source={mediaSource} mediaType={preview.type} />
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -209,25 +269,53 @@ export default function NewStoryPage() {
             className="mt-6 h-40 w-full resize-none rounded-3xl border border-white/10 bg-black p-5 text-sm outline-none focus:border-fuchsia-500"
           />
 
-          <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-white/15 bg-black p-8 text-center transition hover:border-fuchsia-500">
-            <span className="text-sm font-black">
-              {file ? file.name : t("story_new_pick_media")}
-            </span>
+          {!file ? (
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => setCameraOpen(true)}
+                className="flex flex-col items-center justify-center rounded-3xl border border-white/12 bg-black px-5 py-8 text-center transition hover:border-fuchsia-500/60 disabled:opacity-50"
+              >
+                <Camera size={28} className="text-white/70" />
+                <span className="mt-3 text-sm font-black">{t("story_new_source_camera")}</span>
+                <span className="mt-2 text-xs text-zinc-500">{t("story_new_source_camera_hint")}</span>
+              </button>
 
-            <span className="mt-2 text-xs text-zinc-500">{t("story_new_pick_hint")}</span>
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => galleryInputRef.current?.click()}
+                className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/15 bg-black px-5 py-8 text-center transition hover:border-fuchsia-500/60 disabled:opacity-50"
+              >
+                <ImageIcon size={28} className="text-white/70" />
+                <span className="mt-3 text-sm font-black">{t("story_new_source_gallery")}</span>
+                <span className="mt-2 text-xs text-zinc-500">{t("story_new_source_gallery_hint")}</span>
+              </button>
 
-            <input
-              type="file"
-              accept="image/*,video/*"
-              className="hidden"
-              disabled={uploading}
-              onChange={(e) => {
-                const selected = e.target.files?.[0] || null;
-                setFile(selected);
-                setUploadProgress(0);
-              }}
-            />
-          </label>
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => {
+                  handleGalleryPick(e.target.files?.[0] || null);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={clearMedia}
+                className="rounded-full border border-white/15 px-4 py-2 text-xs font-black text-white/70"
+              >
+                {t("story_new_change_media")}
+              </button>
+            </div>
+          )}
 
           {uploading && (
             <div className="mt-5 rounded-3xl border border-white/10 bg-black p-4">
@@ -238,7 +326,7 @@ export default function NewStoryPage() {
 
               <div className="h-2 overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full bg-fuchsia-500 transition-all"
+                  className={`h-full transition-all ${modern ? "bg-violet-500" : "bg-fuchsia-500"}`}
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -248,7 +336,7 @@ export default function NewStoryPage() {
           <button
             onClick={publishStory}
             disabled={uploading}
-            className="mt-6 w-full rounded-full bg-white px-6 py-4 text-sm font-black text-black transition hover:scale-[1.01] disabled:opacity-50"
+            className={`mt-6 w-full rounded-full px-6 py-4 text-sm font-black transition hover:scale-[1.01] disabled:opacity-50 ${primaryBtnClass}`}
           >
             {uploading ? t("story_new_uploading_btn") : t("story_new_publish")}
           </button>

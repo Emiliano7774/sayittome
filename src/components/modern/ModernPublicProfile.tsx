@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { ArrowLeft, BadgeCheck, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -13,6 +13,7 @@ import HeaderControls from "@/components/HeaderControls";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
+import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
@@ -48,6 +49,7 @@ type Props = {
   isOwner: boolean;
   verifiedVisit: boolean;
   onEdit?: () => void;
+  onLogout?: () => void;
   /** When false, hides the shuffle back link (e.g. own /settings view). */
   showShuffleBack?: boolean;
 };
@@ -57,6 +59,7 @@ export default function ModernPublicProfile({
   isOwner,
   verifiedVisit,
   onEdit,
+  onLogout,
   showShuffleBack = true,
 }: Props) {
   const router = useRouter();
@@ -129,6 +132,28 @@ export default function ModernPublicProfile({
   });
 
   const heroPhoto = gallery[heroIndex] || coverImage;
+
+  const closeViewer = useCallback(() => {
+    setViewerOpen(false);
+  }, []);
+
+  useOverlayBackClose(
+    viewerOpen,
+    closeViewer,
+    "sayittome-profile-viewer-open",
+    "sayittome:close-profile-viewer",
+  );
+
+  useEffect(() => {
+    if (!viewerOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeViewer();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [closeViewer, viewerOpen]);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
@@ -326,6 +351,15 @@ export default function ModernPublicProfile({
                     {t("profile_edit_short")}
                   </button>
                 ) : null}
+                {isOwner && onLogout ? (
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="rounded-full border border-white/15 bg-white/5 px-5 py-3.5 text-sm font-normal text-white/75"
+                  >
+                    {t("settings_logout")}
+                  </button>
+                ) : null}
               </div>
             </div>
           </section>
@@ -342,13 +376,17 @@ export default function ModernPublicProfile({
       {viewerOpen && gallery.length > 0 ? (
         <div
           className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95"
+          onClick={(event) => {
+            if (viewerSwipe.consumeSwipe()) return;
+            if (event.target === event.currentTarget) closeViewer();
+          }}
           onTouchStart={viewerSwipe.onTouchStart}
           onTouchMove={viewerSwipe.onTouchMove}
           onTouchEnd={viewerSwipe.onTouchEnd}
         >
           <button
             type="button"
-            onClick={() => setViewerOpen(false)}
+            onClick={closeViewer}
             className="absolute right-6 top-6 z-[10] flex h-14 w-14 items-center justify-center rounded-full bg-white/10"
             aria-label="Cerrar"
           >

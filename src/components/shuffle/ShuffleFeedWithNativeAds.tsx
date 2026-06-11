@@ -25,7 +25,7 @@ type Props = {
   renderProfile: (profile: ShuffleProfile, feedIndex: number) => ReactNode;
 };
 
-/** One ad after every 5 profiles — AdMob in APK, Monetag on web — modern and classic. */
+/** Feed ad insertion every N profiles — slots render when ADS_ENABLED is true. */
 export default function ShuffleFeedWithNativeAds({
   mode,
   variant,

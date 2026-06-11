@@ -7,6 +7,8 @@ import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { resolveProfileCountryCode } from "@/lib/geo/countries";
+import { normalizeUsername } from "@/lib/profile/username";
+import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 import {
   parseShuffleFiltersFromSearchParams,
   profileMatchesShuffleServerFilters,
@@ -225,10 +227,12 @@ function docToProfile(doc: any): ApiProfile {
       String(doc.name || "").split("/").pop() ||
       "",
     username:
-      fieldString(fields, "username") ||
-      fieldString(fields, "usernameLower") ||
-      fieldString(fields, "nombre") ||
-      "usuario",
+      normalizeUsername(
+        fieldString(fields, "username") ||
+          fieldString(fields, "usernameLower") ||
+          fieldString(fields, "nombre") ||
+          "usuario",
+      ) || "usuario",
     bio:
       fieldString(fields, "bio") ||
       fieldString(fields, "descripcion") ||
@@ -324,11 +328,15 @@ async function getProfilesCached(force = false) {
     docs = await runQuery("usuarios", { limit: SHUFFLE_POOL_LIMIT });
   }
 
-  const profiles = docs
-    .map((doc: any) => ({ doc, raw: parseFirestoreDoc(doc) }))
-    .filter(({ raw }) => isPublicProfile(raw))
-    .map(({ doc }) => withResolvedCountry(docToProfile(doc)))
-    .filter((p: ApiProfile) => !p.banned && !!p.username && p.username.toLowerCase() !== "usuario");
+  const profiles = dedupeShuffleProfiles(
+    docs
+      .map((doc: any) => ({ doc, raw: parseFirestoreDoc(doc) }))
+      .filter(({ raw }) => isPublicProfile(raw))
+      .map(({ doc }) => withResolvedCountry(docToProfile(doc)))
+      .filter(
+        (p: ApiProfile) => !p.banned && !!p.username && p.username.toLowerCase() !== "usuario",
+      ),
+  );
 
   cachedProfiles = profiles;
   cachedProfilesAt = now;

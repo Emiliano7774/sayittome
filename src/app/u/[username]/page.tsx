@@ -21,6 +21,7 @@ import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
+import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
@@ -158,9 +159,16 @@ export default function PublicProfilePage() {
     setViewerOpen(true);
   }
 
-  function closeViewer() {
+  const closeViewer = useCallback(() => {
     setViewerOpen(false);
-  }
+  }, []);
+
+  useOverlayBackClose(
+    viewerOpen,
+    closeViewer,
+    "sayittome-profile-viewer-open",
+    "sayittome:close-profile-viewer",
+  );
 
   function prevPhoto() {
     if (gallery.length === 0) return;
@@ -465,6 +473,10 @@ export default function PublicProfilePage() {
       {viewerOpen && gallery.length > 0 && (
         <div
           className="fixed inset-0 z-[999999] bg-black/95 flex items-center justify-center"
+          onClick={(event) => {
+            if (viewerSwipe.consumeSwipe()) return;
+            if (event.target === event.currentTarget) closeViewer();
+          }}
           onTouchStart={viewerSwipe.onTouchStart}
           onTouchMove={viewerSwipe.onTouchMove}
           onTouchEnd={viewerSwipe.onTouchEnd}

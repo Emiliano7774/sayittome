@@ -88,12 +88,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
                 className={active ? "text-[#7b5cff]" : "text-[#777]"}
               />
               {badge > 0 && item.id === "chats" ? (
-                <>
-                  <ChatPendingIndicator className="right-[calc(50%-20px)] top-[12px]" />
-                  <span className="absolute right-[calc(50%-30px)] top-[10px] min-w-[16px] rounded-full border border-orange-300/35 bg-gradient-to-br from-orange-500 to-amber-600 px-1 py-0.5 text-[9px] font-black leading-none text-white shadow-[0_0_14px_rgba(249,115,22,0.5)]">
-                    {badge > 99 ? "99+" : badge}
-                  </span>
-                </>
+                <ChatPendingIndicator className="right-[calc(50%-18px)] top-[11px]" />
               ) : null}
             </Link>
           );

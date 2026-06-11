@@ -27,7 +27,9 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [busyUid, setBusyUid] = useState("");
   const [orphanCount, setOrphanCount] = useState(0);
+  const [duplicateCount, setDuplicateCount] = useState(0);
   const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [duplicateCleanupBusy, setDuplicateCleanupBusy] = useState(false);
 
   async function load() {
     const email = auth.currentUser?.email || admin.email;
@@ -44,6 +46,15 @@ export default function AdminUsersPage() {
     });
     const orphanJson = await orphanRes.json();
     if (orphanJson?.ok) setOrphanCount(Number(orphanJson.count || 0));
+
+    const duplicateRes = await fetch("/api/admin/duplicate-profiles", {
+      cache: "no-store",
+      headers: { "x-admin-email": email },
+    });
+    const duplicateJson = await duplicateRes.json();
+    if (duplicateJson?.ok) {
+      setDuplicateCount(Number(duplicateJson.duplicateCount || 0));
+    }
   }
 
   useEffect(() => {
@@ -69,9 +80,41 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function cleanupDuplicates() {
+    if (!window.confirm(`¿Eliminar ${duplicateCount} perfiles duplicados?`)) return;
+
+    setDuplicateCleanupBusy(true);
+    try {
+      await admin.postAction({ action: "cleanup_duplicate_profiles" });
+      await load();
+    } finally {
+      setDuplicateCleanupBusy(false);
+    }
+  }
+
   return (
     <AdminShell title="Usuarios">
       <AdminRegistrationsPanel adminEmail={admin.email} defaultOpen />
+      {duplicateCount > 0 ? (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-4">
+          <div>
+            <p className="text-sm font-black text-rose-200">
+              {duplicateCount} perfiles duplicados detectados
+            </p>
+            <p className="mt-1 text-xs font-bold text-white/45">
+              Mismo username en varios documentos de Firestore. Se conserva el perfil más completo.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={duplicateCleanupBusy}
+            onClick={cleanupDuplicates}
+            className="rounded-xl bg-rose-500 px-4 py-2 text-xs font-black text-white disabled:opacity-50"
+          >
+            {duplicateCleanupBusy ? "Limpiando..." : "Eliminar duplicados"}
+          </button>
+        </div>
+      ) : null}
       {orphanCount > 0 ? (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-4">
           <div>

@@ -9,9 +9,11 @@ import {
   ShieldCheck,
   CircleAlert,
 } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
+import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import type { MessageKey } from "@/lib/i18n/getMessage";
 
 type Props = {
@@ -45,6 +47,13 @@ export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: P
   const t = useT();
   const [accepted, setAccepted] = useState(false);
 
+  useOverlayBackClose(
+    open,
+    onCancel,
+    "sayittome-entry-legal-open",
+    "sayittome:close-entry-legal",
+  );
+
   useEffect(() => {
     if (open) setAccepted(false);
   }, [open]);
@@ -56,11 +65,9 @@ export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: P
       if (event.key === "Escape") onCancel();
     };
 
-    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
-      document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onCancel]);
@@ -69,28 +76,36 @@ export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: P
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
+      className="sayittome-entry-legal-modal fixed inset-0 z-[100500] flex min-h-[100dvh] flex-col bg-[#050508]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="anon-legal-title"
     >
-      <div className="relative w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-violet-500/35 bg-[#07070B] shadow-[0_16px_34px_rgba(108,99,255,0.22)]">
-        <div className="max-h-[min(86vh,760px)] overflow-y-auto p-[18px] pb-3.5">
-          <div className="flex items-start gap-3">
-            <div className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5D5FEF] to-[#8C84FF] shadow-[0_0_8px_rgba(108,99,255,0.35)]">
-              <ShieldCheck size={21} className="text-white" />
+      <div className="sayittome-entry-legal-scroll flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="mx-auto w-full max-w-lg">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#5D5FEF] to-[#8C84FF] shadow-[0_0_8px_rgba(108,99,255,0.35)]">
+                <ShieldCheck size={21} className="text-white" />
+              </div>
+              <h2
+                id="anon-legal-title"
+                className="pt-1 text-[22px] font-black leading-tight tracking-[-0.035em] text-white"
+              >
+                {t("legal_title")}
+              </h2>
             </div>
-            <h2
-              id="anon-legal-title"
-              className="pt-1 text-[22px] font-black leading-tight tracking-[-0.035em] text-white"
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70"
+              aria-label={t("common_cancel")}
             >
-              {t("legal_title")}
-            </h2>
+              <X size={22} />
+            </button>
           </div>
 
-          <p className="mt-3 text-[13.5px] font-bold leading-[1.38] text-white/78">
-            {t("legal_intro")}
-          </p>
+          <p className="text-[13.5px] font-bold leading-[1.38] text-white/78">{t("legal_intro")}</p>
 
           <div className="mt-3 space-y-3">
             {(Object.keys(BULLET_KEYS) as Array<keyof typeof BULLET_KEYS>).map((id) => {
@@ -115,7 +130,7 @@ export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: P
             type="button"
             onClick={() => setAccepted((value) => !value)}
             className={[
-              "mt-3 flex w-full items-start gap-2.5 rounded-[18px] border px-[13px] py-3 text-left transition",
+              "mt-4 flex w-full items-start gap-2.5 rounded-[18px] border px-[13px] py-3 text-left transition",
               accepted
                 ? "border-[#9D96FF] bg-[#6C63FF]/18"
                 : "border-white/10 bg-white/[0.055]",
@@ -140,27 +155,29 @@ export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: P
               {t("legal_declaration")}
             </span>
           </button>
+        </div>
+      </div>
 
-          <div className="mt-3 flex gap-2.5">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex-1 rounded-[18px] py-3.5 text-sm font-extrabold text-white/62"
-            >
-              {t("common_cancel")}
-            </button>
-            <button
-              type="button"
-              disabled={!accepted}
-              onClick={onAccept}
-              className={[
-                "flex-1 rounded-[18px] py-3.5 text-sm font-black text-white transition",
-                accepted ? "bg-[#6C63FF]" : "cursor-not-allowed bg-white/12 text-white/35",
-              ].join(" ")}
-            >
-              {t("legal_accept")}
-            </button>
-          </div>
+      <div className="sayittome-entry-legal-actions shrink-0 border-t border-white/10 bg-[#07070B]/98 px-4 py-3 backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-lg gap-2.5">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-[18px] border border-white/10 py-3.5 text-sm font-extrabold text-white/62"
+          >
+            {t("common_cancel")}
+          </button>
+          <button
+            type="button"
+            disabled={!accepted}
+            onClick={onAccept}
+            className={[
+              "flex-1 rounded-[18px] py-3.5 text-sm font-black text-white transition",
+              accepted ? "bg-[#6C63FF]" : "cursor-not-allowed bg-white/12 text-white/35",
+            ].join(" ")}
+          >
+            {t("legal_accept")}
+          </button>
         </div>
       </div>
     </div>

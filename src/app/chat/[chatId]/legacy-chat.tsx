@@ -26,7 +26,7 @@ import { auth, db, storage } from "@/lib/firebase";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
-import { markChatAsRead } from "@/lib/chat/unread";
+import { inboxChatFromFirestore, markChatAsRead } from "@/lib/chat/unread";
 import {
   buildOutgoingChatMetaPatch,
   resolveChatRecipientIds,
@@ -59,6 +59,8 @@ type MessageData = {
 type ChatData = {
   typing?: Record<string, boolean>;
   readBy?: Record<string, boolean>;
+  unreadCounts?: Record<string, number>;
+  updatedAt?: { toMillis?: () => number };
   participantes?: string[];
   participants?: string[];
   lastMessage?: string;
@@ -117,6 +119,7 @@ export default function LegacyChatPage() {
 
   const firstMessagesLoadRef = useRef(true);
   const lastIncomingMessageIdRef = useRef<string | null>(null);
+  const chatMetaRef = useRef<ChatData | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -153,10 +156,34 @@ export default function LegacyChatPage() {
 
     const unsub = onSnapshot(doc(db, "chats", chatId), (snapshot) => {
       if (!snapshot.exists()) return;
-      setChat(snapshot.data() as ChatData);
+      const data = snapshot.data() as ChatData;
+      chatMetaRef.current = data;
+      setChat(data);
+
+      const user = auth.currentUser;
+      if (user) {
+        void markChatAsRead(
+          chatId,
+          user.uid,
+          inboxChatFromFirestore(chatId, data as Record<string, unknown>),
+          user.uid,
+        ).catch(() => undefined);
+      }
     });
 
-    return () => unsub();
+    return () => {
+      const user = auth.currentUser;
+      const data = chatMetaRef.current;
+      if (user && data) {
+        void markChatAsRead(
+          chatId,
+          user.uid,
+          inboxChatFromFirestore(chatId, data as Record<string, unknown>),
+          user.uid,
+        ).catch(() => undefined);
+      }
+      unsub();
+    };
   }, [chatId]);
 
   useEffect(() => {
@@ -234,16 +261,15 @@ export default function LegacyChatPage() {
         });
 
         try {
-          const lastDoc = docs[docs.length - 1];
-          await markChatAsRead(chatId, user.uid, {
-            id: chatId,
-            canonicalChatId: chatId,
-            participantes: chat?.participantes || chat?.participants,
-            targetUid: chat?.targetUid,
-            receptorUid: chat?.receptorUid,
-            lastMessage: String(lastDoc.texto || mediaLabel(lastDoc.mediaType) || ""),
-            lastMessageSender: String(lastDoc.fromUid || user.uid),
-          });
+          await markChatAsRead(
+            chatId,
+            user.uid,
+            inboxChatFromFirestore(
+              chatId,
+              (chatMetaRef.current || {}) as Record<string, unknown>,
+            ),
+            user.uid,
+          );
           await updateDoc(doc(db, "chats", chatId), {
             ["typing." + user.uid]: false,
           });

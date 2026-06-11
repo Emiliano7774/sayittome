@@ -1,7 +1,9 @@
 "use client";
 
 import { Globe2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -48,8 +50,19 @@ export default function ModernAnonConnectCard() {
     ? t("anon_match_incognito_section")
     : t("anon_match_connect_section");
 
-  function handleConfirmSearch() {
+  const closeDisclaimer = useCallback(() => {
     setDisclaimerOpen(false);
+  }, []);
+
+  useOverlayBackClose(
+    disclaimerOpen,
+    closeDisclaimer,
+    "sayittome-anon-disclaimer-open",
+    "sayittome:close-anon-disclaimer",
+  );
+
+  function handleConfirmSearch() {
+    closeDisclaimer();
     void match?.startSearchSession();
   }
 
@@ -107,8 +120,12 @@ export default function ModernAnonConnectCard() {
       </section>
 
       {disclaimerOpen ? (
-        <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/85 px-5 backdrop-blur-md">
+        <div
+          className="fixed inset-0 z-[115] flex items-center justify-center bg-black/85 px-5 backdrop-blur-md"
+          onClick={closeDisclaimer}
+        >
           <div
+            onClick={(event) => event.stopPropagation()}
             className="w-full max-w-sm rounded-[28px] border border-violet-500/15 bg-[#080808] p-6 shadow-[0_0_80px_rgba(124,58,237,0.22)]"
             role="dialog"
             aria-modal="true"
@@ -127,7 +144,7 @@ export default function ModernAnonConnectCard() {
             <div className="mt-6 grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setDisclaimerOpen(false)}
+                onClick={closeDisclaimer}
                 className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3.5 text-sm font-black text-white/65"
               >
                 {t("anon_match_disclaimer_cancel")}

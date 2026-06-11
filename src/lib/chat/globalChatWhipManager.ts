@@ -46,6 +46,7 @@ class GlobalChatWhipManager {
   private lastMessageId = new Map<string, string>();
   private bootstrapped = false;
   private sessionListenerAttached = false;
+  private paused = false;
 
   setContext(context: WhipContext) {
     this.context = context;
@@ -60,11 +61,22 @@ class GlobalChatWhipManager {
 
   stop() {
     this.bootstrapped = false;
+    this.paused = false;
     this.detachSessionListener();
     this.clearMessageListeners();
     this.inboxIds.clear();
     this.sessionIds.clear();
     this.lastMessageId.clear();
+  }
+
+  setPaused(paused: boolean) {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    if (paused) {
+      this.clearMessageListeners();
+      return;
+    }
+    this.rebuildMessageListeners();
   }
 
   /** Reuse inbox chat ids from useChatsInbox instead of duplicating Firestore listeners. */
@@ -105,6 +117,8 @@ class GlobalChatWhipManager {
   }
 
   private rebuildMessageListeners() {
+    if (this.paused) return;
+
     const nextIds = [...this.watchedChatIds()].slice(0, MAX_WHIP_CHAT_LISTENERS);
     const nextSet = new Set(nextIds);
 

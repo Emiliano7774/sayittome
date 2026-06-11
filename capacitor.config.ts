@@ -24,6 +24,9 @@ const config: CapacitorConfig = {
     backgroundColor: "#000000",
   },
   plugins: {
+    App: {
+      disableBackButtonHandler: true,
+    },
     SplashScreen: {
       launchShowDuration: 0,
       launchAutoHide: true,

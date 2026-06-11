@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BookOpen, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
+import { logoutAndResetAnon } from "@/lib/auth/logout";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
@@ -13,6 +14,7 @@ import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
+import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { useUxMode } from "@/contexts/UxModeContext";
@@ -153,10 +155,26 @@ export default function SettingsPage() {
     onSwipeRight: previousMedia,
   });
 
+  const closeMediaViewer = useCallback(() => {
+    setSelectedIndex(null);
+  }, []);
+
+  useOverlayBackClose(
+    selectedIndex !== null,
+    closeMediaViewer,
+    "sayittome-profile-viewer-open",
+    "sayittome:close-profile-viewer",
+  );
+
   function openCover() {
     if (!media.length) return;
     const index = Math.max(0, coverIndex);
     setSelectedIndex(index);
+  }
+
+  async function handleLogout() {
+    await logoutAndResetAnon();
+    window.location.href = "/";
   }
 
   if (loading) {
@@ -198,6 +216,7 @@ export default function SettingsPage() {
         verifiedVisit={false}
         showShuffleBack={false}
         onEdit={() => router.push("/settings/edit")}
+        onLogout={() => void handleLogout()}
       />
     );
   }
@@ -239,6 +258,13 @@ export default function SettingsPage() {
               className="rounded-full bg-white text-black px-9 py-4 font-black shadow-[0_0_30px_rgba(255,255,255,.18)]"
             >
               {t("profile_edit")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="rounded-full border border-white/20 bg-white/5 px-9 py-4 font-black text-white/80"
+            >
+              {t("settings_logout")}
             </button>
             {profile?.username || profile?.nombre ? (
               <VerifiedLinkBubble
@@ -349,7 +375,10 @@ export default function SettingsPage() {
 
       {selected && (
         <div
-          onClick={() => setSelectedIndex(null)}
+          onClick={() => {
+            if (viewerSwipe.consumeSwipe()) return;
+            setSelectedIndex(null);
+          }}
           onTouchStart={viewerSwipe.onTouchStart}
           onTouchMove={viewerSwipe.onTouchMove}
           onTouchEnd={viewerSwipe.onTouchEnd}

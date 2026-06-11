@@ -6,6 +6,7 @@ import { Check, CheckCheck, MessageSquare } from "lucide-react";
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
 } from "@/components/chats/ChatsSelectionToolbar";
+import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import ChatPeerAvatar from "@/components/chat/ChatPeerAvatar";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import { formatClassicInboxTime } from "@/lib/chat/inboxTime";
@@ -13,6 +14,7 @@ import { chatHref, type InboxChat } from "@/hooks/useChatsInbox";
 import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
 import { chatPeerTitle, resolveChatViewerId, shouldHidePeerProfilePhoto, shouldShowAnonPeerInbox } from "@/lib/chat/inboxPeerTitle";
 import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
+import { isMessageSeenByOther } from "@/lib/chat/messageReceipt";
 import { getLocalChatReadVersion, subscribeLocalChatRead } from "@/lib/chat/localChatRead";
 import { inboxChatBlur, inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
 import type { useChatsSelection } from "@/hooks/useChatsSelection";
@@ -105,11 +107,11 @@ export default function ModernChatsInbox({
                 : inboxChatPhoto(chat, photos);
               const isAnonPeer = shouldShowAnonPeerInbox(chat, uid);
               const blurPhoto = inboxChatBlur(chat, blurPhotos);
-              const timeLabel = formatClassicInboxTime(chat, chatViewerId, t);
-              const mine = isOwnChatSender(String(chat.lastMessageSender || ""), chatViewerId, uid);
-              const readByOther = Object.entries(chat.readBy || {}).some(
-                ([key, value]) => key !== chatViewerId && value === true,
-              );
+              const lastSender = String(chat.lastMessageSender || "").trim();
+              const timeLabel = formatClassicInboxTime(chat, chatViewerId, t, uid);
+              const mine = isOwnChatSender(lastSender, chatViewerId, uid);
+              const readByOther =
+                mine && isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, uid);
               const cardClass =
                 "group relative z-10 flex items-center gap-4 rounded-2xl border p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition active:scale-[0.99] " +
                 (selected
@@ -167,9 +169,7 @@ export default function ModernChatsInbox({
                       </span>
                     ) : null}
                     {unread > 0 && !selection.selectionMode ? (
-                      <span className="min-w-[26px] rounded-full border border-orange-400/30 bg-gradient-to-br from-orange-500 to-amber-600 px-2.5 py-1 text-center text-xs font-black shadow-[0_0_16px_rgba(249,115,22,0.45)]">
-                        {unread > 99 ? "99+" : unread}
-                      </span>
+                      <ChatPendingIndicator className="relative" />
                     ) : null}
                   </div>
                 </>

@@ -1,11 +1,13 @@
 import { isActiveWithinWindow } from "@/lib/presence";
 import { galleryRequiresBlur } from "@/lib/moderation/blur";
+import { normalizeUsername } from "@/lib/profile/username";
+import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
   if (!Array.isArray(raw)) return [];
 
-  return raw
+  const mapped = raw
     .map((item: any, index: number) => {
       const presenceAt = item?.presenceAt ? String(item.presenceAt) : undefined;
       const lastActive = item?.lastActive ? String(item.lastActive) : undefined;
@@ -26,7 +28,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
 
       return {
         uid: String(item?.uid || item?.id || item?.username || `profile-${index}`),
-        username: String(item?.username || "usuario"),
+        username: normalizeUsername(String(item?.username || "usuario")) || "usuario",
         bio: String(item?.bio || "Sin descripcion."),
         photo: String(item?.photo || item?.fotoPrincipal || item?.photoURL || ""),
         coverPhoto: String(
@@ -70,4 +72,6 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
       };
     })
     .filter((p) => p.username && p.username !== "undefined");
+
+  return dedupeShuffleProfiles(mapped);
 }

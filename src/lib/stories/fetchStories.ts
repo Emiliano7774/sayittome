@@ -38,6 +38,10 @@ function parseStoryDoc(docSnap: { id: string; data: () => Record<string, unknown
     texto: String(data.texto || ""),
     mediaUrl: String(data.mediaUrl || ""),
     mediaType: (data.mediaType as StoryItem["mediaType"]) || "text",
+    mediaSource:
+      data.mediaSource === "camera" || data.mediaSource === "gallery"
+        ? data.mediaSource
+        : undefined,
     createdAtMs: tsToMs(data.createdAt),
     expiresAtMs,
     likeCount: Number(data.likeCount || 0),
@@ -95,7 +99,47 @@ function groupStories(stories: StoryItem[], viewerUid: string) {
     return bMax - aMax;
   });
 
-  return groups;
+  return mergeGroupsByUsername(groups);
+}
+
+function mergeGroupsByUsername(groups: StoryUserGroup[]) {
+  const merged = new Map<string, StoryUserGroup>();
+
+  for (const group of groups) {
+    const key = group.isAnonymousStory
+      ? `anon:${group.ownerUid}`
+      : String(group.ownerUsername || group.ownerUid).trim().toLowerCase();
+
+    if (!key) continue;
+
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, {
+        ...group,
+        stories: [...group.stories].sort((a, b) => a.createdAtMs - b.createdAtMs),
+      });
+      continue;
+    }
+
+    const stories = [...existing.stories, ...group.stories].sort(
+      (a, b) => a.createdAtMs - b.createdAtMs,
+    );
+
+    merged.set(key, {
+      ownerUid: existing.ownerUid || group.ownerUid,
+      ownerUsername: existing.ownerUsername || group.ownerUsername,
+      ownerPhoto: existing.ownerPhoto || group.ownerPhoto,
+      isAnonymousStory: existing.isAnonymousStory || group.isAnonymousStory,
+      stories,
+      hasUnseen: existing.hasUnseen || group.hasUnseen,
+    });
+  }
+
+  return [...merged.values()].sort((a, b) => {
+    const aMax = a.stories[a.stories.length - 1]?.createdAtMs || 0;
+    const bMax = b.stories[b.stories.length - 1]?.createdAtMs || 0;
+    return bMax - aMax;
+  });
 }
 
 const STORIES_QUERY_LIMIT = 120;

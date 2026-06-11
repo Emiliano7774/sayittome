@@ -18,9 +18,7 @@ import {
   getDoc,
   getDocs,
   limit,
-  limitToLast,
   onSnapshot,
-  orderBy,
   query,
   where,
 } from "firebase/firestore";
@@ -780,53 +778,6 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       unsubs.forEach((unsub) => unsub());
     };
   }, [firebaseUser?.uid, hydrated]);
-
-  useEffect(() => {
-    if (!openChat?.chatId || openChat.closedReason) return;
-
-    const senderId =
-      openChat.role === "perfil"
-        ? firebaseUser?.uid || ""
-        : getAnonSessionId();
-
-    if (!senderId) return;
-
-    let bootstrapped = false;
-    let lastMessageId: string | null = null;
-
-    const q = query(
-      collection(db, "chats_anonimos", openChat.chatId, "mensajes"),
-      orderBy("createdAt", "asc"),
-      limitToLast(1),
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const docSnap = snap.docs[snap.docs.length - 1];
-      if (!docSnap) return;
-
-      const from = String(docSnap.data().senderId || "");
-      const isIncoming = from !== senderId;
-      const messageId = docSnap.id;
-      const body = String(docSnap.data().texto || docSnap.data().text || "").trim();
-
-      if (!bootstrapped) {
-        bootstrapped = true;
-        lastMessageId = messageId;
-        return;
-      }
-
-      if (isIncoming && messageId !== lastMessageId) {
-        lastMessageId = messageId;
-        playIncomingWhipSound();
-        notifyIncomingChatMessage({
-          title: "Chat anónimo",
-          body,
-        });
-      }
-    });
-
-    return () => unsub();
-  }, [firebaseUser?.uid, openChat?.chatId, openChat?.closedReason, openChat?.role]);
 
   useEffect(() => {
     if (!openChat?.chatId) return;

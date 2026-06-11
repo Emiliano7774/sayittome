@@ -1,0 +1,147 @@
+import type { Timestamp } from "firebase/firestore";
+
+import { profileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
+import { formatTimeAgo } from "@/lib/time";
+
+import type { ModerationChatRow } from "./types";
+
+export type SpectatorMessage = {
+  id: string;
+  text?: string;
+  texto?: string;
+  type?: string;
+  fromUid?: string;
+  ownerId?: string;
+  senderUid?: string;
+  senderId?: string;
+  senderUsername?: string;
+  senderIsAnonymous?: boolean;
+  senderKind?: string;
+  createdAt?: Timestamp;
+};
+
+export type SpectatorMessageSide = "profile" | "peer";
+
+export function formatRelativeActivity(ms: number) {
+  if (!ms) return "—";
+  return formatTimeAgo(new Date(ms));
+}
+
+export function messageDisplayText(msg: SpectatorMessage) {
+  const text = String(msg.text || msg.texto || "").trim();
+  if (text) return text;
+  const type = String(msg.type || "text").trim();
+  if (type === "image" || type === "photo") return "📷 Foto";
+  if (type === "audio" || type === "voice") return "🎤 Audio";
+  return `[${type}]`;
+}
+
+export function messagesChronological(messages: SpectatorMessage[]) {
+  return [...messages].sort((a, b) => {
+    const left = a.createdAt?.toMillis?.() ?? 0;
+    const right = b.createdAt?.toMillis?.() ?? 0;
+    if (left !== right) return left - right;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+export function getSpectatorPeerLabel(
+  chat: ModerationChatRow,
+  profileUsername: string,
+) {
+  const profile = profileUsername.toLowerCase();
+  const target = String(chat.targetUsername || "").toLowerCase();
+  const receptor = String(chat.receptorUsername || "").toLowerCase();
+
+  if (target === profile) {
+    return chat.receptorUsername || (chat.anon ? "Anónimo" : "Interlocutor");
+  }
+  if (receptor === profile) {
+    return chat.targetUsername || (chat.anon ? "Anónimo" : "Interlocutor");
+  }
+  return chat.targetUsername || chat.receptorUsername || "Conversación";
+}
+
+function messageAuthorId(msg: SpectatorMessage) {
+  return String(
+    msg.fromUid || msg.ownerId || msg.senderUid || msg.senderId || "",
+  ).trim();
+}
+
+function profileUidsForChat(
+  chat: ModerationChatRow,
+  profileUsername: string,
+  profileUid?: string,
+) {
+  const profile = profileUsername.toLowerCase();
+  const isTarget = String(chat.targetUsername || "").toLowerCase() === profile;
+  const isReceptor =
+    String(chat.receptorUsername || "").toLowerCase() === profile;
+
+  const ids = new Set<string>();
+  if (profileUid) ids.add(profileUid);
+  if (isTarget && chat.targetUid) ids.add(chat.targetUid);
+  if (isReceptor && chat.receptorUid) ids.add(chat.receptorUid);
+  if (profileUid) ids.add(profileReplyAuthorId(profileUid));
+  return ids;
+}
+
+function peerUidsForChat(chat: ModerationChatRow, profileUsername: string) {
+  const profile = profileUsername.toLowerCase();
+  const isTarget = String(chat.targetUsername || "").toLowerCase() === profile;
+  const ids = new Set<string>();
+
+  if (isTarget) {
+    if (chat.receptorUid) ids.add(chat.receptorUid);
+    if (chat.initiatorUid) ids.add(chat.initiatorUid);
+    if (chat.anonOwnerUid) ids.add(chat.anonOwnerUid);
+  } else {
+    if (chat.targetUid) ids.add(chat.targetUid);
+    if (chat.initiatorUid) ids.add(chat.initiatorUid);
+    if (chat.anonOwnerUid) ids.add(chat.anonOwnerUid);
+  }
+
+  return ids;
+}
+
+export function resolveSpectatorMessageSide(
+  msg: SpectatorMessage,
+  chat: ModerationChatRow,
+  profileUsername: string,
+  profileUid?: string,
+): SpectatorMessageSide {
+  const from = messageAuthorId(msg);
+  const profileLower = profileUsername.toLowerCase();
+  const profileIds = profileUidsForChat(chat, profileUsername, profileUid);
+  const peerIds = peerUidsForChat(chat, profileUsername);
+
+  if (from && profileIds.has(from)) return "profile";
+  if (from && peerIds.has(from)) return "peer";
+
+  const senderName = String(msg.senderUsername || "").trim().toLowerCase();
+  if (senderName && senderName === profileLower) return "profile";
+
+  if (msg.senderIsAnonymous || msg.senderKind === "anonimo") {
+    const profileIsTarget =
+      String(chat.targetUsername || "").toLowerCase() === profileLower;
+    if (profileIsTarget && (chat.anon || chat.senderIsAnonymous)) return "peer";
+    return "profile";
+  }
+
+  const lastSender = String(chat.lastMessageSender || "").trim();
+  if (from && lastSender && from === lastSender) {
+    if (profileIds.has(lastSender)) return "profile";
+    if (peerIds.has(lastSender)) return "peer";
+  }
+
+  return "peer";
+}
+
+export function formatMessageTime(msg: SpectatorMessage) {
+  const ms = msg.createdAt?.toMillis?.() ?? 0;
+  if (!ms) return "";
+  return new Date(ms).toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

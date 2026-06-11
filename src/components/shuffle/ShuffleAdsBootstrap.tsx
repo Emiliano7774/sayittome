@@ -3,22 +3,17 @@
 import { useEffect } from "react";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
-import { removeAdMobBanner } from "@/lib/monetization/admobService";
+import { adsProvider } from "@/lib/monetization/ads";
 
-/** Keeps the fixed AdMob banner off shuffle so it does not cover the toolbar. */
+/** Keeps the fixed bottom banner off shuffle routes when ads are enabled. */
 export default function ShuffleAdsBootstrap() {
   useEffect(() => {
     if (!isNativeAppShell()) return;
 
     document.body.classList.add("sayittome-shuffle-route");
-
-    void removeAdMobBanner();
-    const timer = window.setInterval(() => {
-      void removeAdMobBanner();
-    }, 1000);
+    void adsProvider.removeBanner();
 
     return () => {
-      window.clearInterval(timer);
       document.body.classList.remove("sayittome-shuffle-route");
     };
   }, []);

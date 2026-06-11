@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 
+import {
+  dedupeShuffleProfiles,
+  shuffleProfileIdentityKey,
+} from "@/lib/shuffle/dedupeProfiles";
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
 import { isShuffleProfileOnline } from "@/lib/presence";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
@@ -20,7 +24,7 @@ import {
 } from "@/lib/shuffle/filters";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
 import {
-  pickRandomWindowIndices,
+  pickRandomUniqueWindowIndices,
   SHUFFLE_WINDOW_SIZE,
 } from "@/lib/shuffle/pickWindow";
 import {
@@ -81,6 +85,12 @@ export function useShufflePool() {
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
 
   useEffect(() => {
+    const closeFilters = () => setFiltersOpen(false);
+    window.addEventListener("sayittome:close-filters", closeFilters);
+    return () => window.removeEventListener("sayittome:close-filters", closeFilters);
+  }, []);
+
+  useEffect(() => {
     storyOwnerUidsRef.current = new Set(getCachedStoryGroups().map((group) => group.ownerUid));
   });
 
@@ -94,8 +104,13 @@ export function useShufflePool() {
 
   const applyWindowFromPool = useCallback((pool: ShuffleProfile[]) => {
     const featured = featuredRef.current;
-    const featuredUids = new Set(featured.map((profile) => profile.uid));
-    const eligiblePool = pool.filter((profile) => !featuredUids.has(profile.uid));
+    const featuredKeys = new Set(
+      featured.map((profile) => shuffleProfileIdentityKey(profile)).filter(Boolean),
+    );
+    const eligiblePool = pool.filter((profile) => {
+      const key = shuffleProfileIdentityKey(profile);
+      return key ? !featuredKeys.has(key) : true;
+    });
     const len = eligiblePool.length;
     const featuredCount = featured.length;
 
@@ -109,7 +124,12 @@ export function useShufflePool() {
     const remainingSlots = Math.max(0, SHUFFLE_WINDOW_SIZE - featuredCount);
     const regularCount =
       len > 0
-        ? pickRandomWindowIndices(len, scratchIndicesRef.current, windowIndicesRef.current, remainingSlots)
+        ? pickRandomUniqueWindowIndices(
+            eligiblePool,
+            scratchIndicesRef.current,
+            windowIndicesRef.current,
+            remainingSlots,
+          )
         : 0;
 
     windowCountRef.current = featuredCount + regularCount;
@@ -127,7 +147,7 @@ export function useShufflePool() {
     (profiles: ShuffleProfile[], total: number) => {
       if (profiles.length === 0) return;
 
-      poolRef.current = profiles;
+      poolRef.current = dedupeShuffleProfiles(profiles);
 
       if (total > 0) totalLiveRef.current = total;
 
@@ -214,7 +234,9 @@ export function useShufflePool() {
         if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
 
         const nextProfiles = normalizeShuffleProfiles(json?.profiles);
-        const nextFeatured = normalizeShuffleProfiles(json?.featuredProfiles);
+        const nextFeatured = dedupeShuffleProfiles(
+          normalizeShuffleProfiles(json?.featuredProfiles),
+        );
         featuredRef.current = nextFeatured;
         const profilesCreated = Number(json?.profilesCreated ?? 0);
         const anonymousOnline = Number(json?.anonymousOnline ?? 0);
@@ -289,21 +311,47 @@ export function useShufflePool() {
     shuffleMeasure("shuffle-click", "shuffle-click-start", "shuffle-click-end");
   }, []);
 
+  const reloadDefaultShuffle = useCallback(async () => {
+    await loadProfiles({ q: "", force: true });
+    const pool = activePoolRef.current;
+    if (pool.length > 0 || featuredRef.current.length > 0) {
+      applyWindowFromPool(refreshPoolPresence(pool));
+    }
+  }, [applyWindowFromPool, loadProfiles]);
+
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearch(value);
-      filterActivePool(value, filtersRef.current);
 
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
 
       const q = value.trim();
-      if (!q) return;
+
+      if (!q) {
+        const cachedProfiles = readCachedShufflePool();
+        const cachedStats = readCachedShuffleStats();
+
+        if (cachedProfiles?.length) {
+          applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
+          filterActivePool("", filtersRef.current);
+          applyWindowFromPool(activePoolRef.current);
+        } else {
+          filterActivePool("", filtersRef.current);
+        }
+
+        searchTimerRef.current = window.setTimeout(() => {
+          void reloadDefaultShuffle();
+        }, 200);
+        return;
+      }
+
+      filterActivePool(value, filtersRef.current);
 
       searchTimerRef.current = window.setTimeout(() => {
-        loadProfiles({ q, force: true });
+        void loadProfiles({ q, force: true });
       }, 550);
     },
-    [filterActivePool, loadProfiles],
+    [applyPool, applyWindowFromPool, filterActivePool, loadProfiles, reloadDefaultShuffle],
   );
 
   const openFilters = useCallback(() => {

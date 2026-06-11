@@ -4,20 +4,26 @@ import android.os.Bundle;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
+import androidx.activity.OnBackPressedCallback;
+
+import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
-import com.google.android.gms.ads.MobileAds;
 
 public class MainActivity extends BridgeActivity {
 
-    private final AppOpenAdManager appOpenAdManager = new AppOpenAdManager();
-
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        registerPlugin(SayittomeNativeAdsPlugin.class);
-
-        MobileAds.initialize(this, initializationStatus -> {});
-
         super.onCreate(savedInstanceState);
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                Bridge bridge = getBridge();
+                if (bridge != null) {
+                    bridge.triggerWindowJSEvent("sayittomeHardwareBack", "{}");
+                }
+            }
+        });
 
         WebView webView = getBridge().getWebView();
         if (webView == null) return;
@@ -34,13 +40,5 @@ public class MainActivity extends BridgeActivity {
 
         webView.setVerticalScrollBarEnabled(true);
         webView.setHorizontalScrollBarEnabled(false);
-
-        appOpenAdManager.loadAd(this);
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        appOpenAdManager.showAdIfAvailable(this);
     }
 }

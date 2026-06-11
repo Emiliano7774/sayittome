@@ -120,7 +120,6 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
     if (loading) return;
 
     if (!enableInboxQueries || !uid) {
-      setChats([]);
       return;
     }
 
@@ -202,6 +201,10 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
   useEffect(() => {
     if (loading) return;
 
+    if (!enableInboxQueries) {
+      return;
+    }
+
     if (sessionChatIds.length === 0) {
       setSessionChats([]);
       return;
@@ -225,7 +228,7 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [loading, sessionChatIds]);
+  }, [enableInboxQueries, loading, sessionChatIds]);
 
   const sortedChats = useMemo(() => {
     return dedupeChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);

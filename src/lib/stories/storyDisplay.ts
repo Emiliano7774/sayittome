@@ -10,6 +10,11 @@ export function isAnonymousStory(
   return item.isAnonymousStory === true || String(item.ownerUid || "").startsWith("anon_");
 }
 
+export function latestStoryInGroup(group: StoryUserGroup) {
+  if (group.stories.length === 0) return null;
+  return group.stories[group.stories.length - 1];
+}
+
 export function storyDisplayName(
   item: Pick<StoryItem, "ownerUsername" | "isAnonymousStory" | "ownerUid">,
   t: Translator,

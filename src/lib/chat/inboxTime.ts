@@ -1,5 +1,7 @@
 import type { MessageKey } from "@/lib/i18n/getMessage";
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
+import { isMessageSeenByOther } from "@/lib/chat/messageReceipt";
 
 type Translator = (key: MessageKey, values?: Record<string, string>) => string;
 
@@ -30,19 +32,16 @@ export function formatClassicInboxTime(
   chat: InboxChat,
   viewerId: string,
   t: Translator,
+  firebaseUid = "",
 ) {
   const ms = chat.updatedAt?.toMillis?.() ?? 0;
   if (!ms) return "";
 
   const time = formatRelativeInboxTime(ms, t);
-  const sender = chat.lastMessageSender || "";
-  const readBy = chat.readBy || {};
+  const sender = String(chat.lastMessageSender || "").trim();
 
-  if (sender && sender === viewerId) {
-    const otherRead = Object.entries(readBy).some(
-      ([key, value]) => key !== viewerId && value === true,
-    );
-
+  if (sender && isOwnChatSender(sender, viewerId, firebaseUid)) {
+    const otherRead = isMessageSeenByOther(chat.readBy, sender, firebaseUid);
     return otherRead ? t("chats_inbox_seen", { time }) : t("chats_inbox_sent", { time });
   }
 

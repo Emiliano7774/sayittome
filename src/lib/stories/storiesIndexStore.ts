@@ -15,7 +15,7 @@ function groupHasUnseen(stories: StoryItem[], viewerId: string) {
   return stories.some((story) => storyUnseenForViewer(story, viewerId));
 }
 
-const TTL_MS = 5 * 60_000;
+const TTL_MS = 10 * 60_000;
 
 let version = 0;
 let loading = false;

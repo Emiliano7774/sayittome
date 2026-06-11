@@ -5,18 +5,11 @@ import { useEffect, useRef } from "react";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
-  ADMOB_INTERSTITIAL_COOLDOWN_MS,
-  initializeAdMob,
-  prepareAdMobInterstitial,
-  removeAdMobBanner,
-  scheduleAdMobBannerSync,
-  showAdMobBanner,
-  showAdMobInterstitial,
-} from "@/lib/monetization/admobService";
-import {
-  shouldLoadAdMobInterstitials,
-  shouldShowAdMobBanner,
-} from "@/lib/monetization/adSurfaces";
+  adsProvider,
+  INTERSTITIAL_COOLDOWN_MS,
+  shouldShowBanner,
+  shouldShowInterstitial,
+} from "@/lib/monetization/ads";
 
 const NAV_LAYOUT_CLASSES = [
   "sayittome-has-bottom-nav",
@@ -38,15 +31,20 @@ function shouldSyncBannerForMutation(mutation: MutationRecord) {
   );
 }
 
-export default function NativeAdMobBootstrap() {
+/**
+ * Global ads lifecycle — currently no-ops because ADS_ENABLED = false.
+ *
+ * INSERTION POINTS wired here:
+ * - Bottom banner on allowed routes
+ * - Interstitial cooldown timer + prepare on boot
+ * - Banner position sync on nav/layout changes
+ */
+export default function AdsBootstrap() {
   const pathname = usePathname();
-  const lastInterstitialAtRef = useRef(0);
-  const interstitialReadyRef = useRef(false);
-  const showingInterstitialRef = useRef(false);
   const bootedRef = useRef(false);
 
   useEffect(() => {
-    if (!isNativeAppShell()) return;
+    if (!isNativeAppShell() || !adsProvider.enabled) return;
 
     let disposed = false;
     let interstitialTimer: number | null = null;
@@ -54,55 +52,24 @@ export default function NativeAdMobBootstrap() {
     let layoutTimer: number | null = null;
 
     const canShowBanner = () =>
-      !disposed && shouldShowAdMobBanner(window.location.pathname);
-    const canShowAds = () =>
-      !disposed && shouldLoadAdMobInterstitials(window.location.pathname);
+      !disposed && shouldShowBanner(window.location.pathname);
+    const canShowInterstitial = () =>
+      !disposed && shouldShowInterstitial(window.location.pathname);
 
     const syncBanner = async () => {
       if (canShowBanner()) {
-        await showAdMobBanner();
-        scheduleAdMobBannerSync(250);
+        await adsProvider.showBanner();
+        adsProvider.scheduleBannerSync(250);
         return;
       }
-      await removeAdMobBanner();
-    };
-
-    const prepareInterstitial = async () => {
-      if (!canShowAds() || interstitialReadyRef.current || showingInterstitialRef.current) {
-        return;
-      }
-
-      interstitialReadyRef.current = await prepareAdMobInterstitial();
-    };
-
-    const tryShowInterstitial = async () => {
-      if (!canShowAds() || showingInterstitialRef.current) return;
-
-      const now = Date.now();
-      if (now - lastInterstitialAtRef.current < ADMOB_INTERSTITIAL_COOLDOWN_MS) return;
-
-      if (!interstitialReadyRef.current) {
-        await prepareInterstitial();
-        if (!interstitialReadyRef.current) return;
-      }
-
-      showingInterstitialRef.current = true;
-
-      try {
-        const shown = await showAdMobInterstitial();
-        if (shown) lastInterstitialAtRef.current = Date.now();
-      } finally {
-        showingInterstitialRef.current = false;
-        interstitialReadyRef.current = false;
-        void prepareInterstitial();
-      }
+      await adsProvider.removeBanner();
     };
 
     const boot = async () => {
       if (bootedRef.current) return;
       bootedRef.current = true;
 
-      const ready = await initializeAdMob();
+      const ready = await adsProvider.initialize();
       if (!ready || disposed) return;
 
       layoutTimer = window.setTimeout(() => {
@@ -110,15 +77,15 @@ export default function NativeAdMobBootstrap() {
         void syncBanner();
       }, 600);
 
-      if (canShowAds()) {
+      if (canShowInterstitial()) {
         window.setTimeout(() => {
-          if (!disposed) void prepareInterstitial();
+          if (!disposed) void adsProvider.prepareInterstitial();
         }, 1200);
       }
 
       interstitialTimer = window.setInterval(() => {
-        void tryShowInterstitial();
-      }, ADMOB_INTERSTITIAL_COOLDOWN_MS);
+        void adsProvider.showInterstitial();
+      }, INTERSTITIAL_COOLDOWN_MS);
 
       try {
         const { App } = await import("@capacitor/app");
@@ -127,7 +94,7 @@ export default function NativeAdMobBootstrap() {
           void syncBanner();
         });
       } catch {
-        // Ignore when not running inside Capacitor.
+        // Not running inside Capacitor.
       }
     };
 
@@ -136,26 +103,24 @@ export default function NativeAdMobBootstrap() {
     return () => {
       disposed = true;
       bootedRef.current = false;
-
       if (layoutTimer) window.clearTimeout(layoutTimer);
       if (interstitialTimer) clearInterval(interstitialTimer);
       resumeListener?.remove();
-      void removeAdMobBanner();
+      void adsProvider.removeBanner();
     };
   }, []);
 
   useEffect(() => {
-    if (!isNativeAppShell()) return;
+    if (!isNativeAppShell() || !adsProvider.enabled) return;
 
     const timer = window.setTimeout(() => {
       void (async () => {
-        if (shouldShowAdMobBanner(pathname)) {
-          await showAdMobBanner();
-          scheduleAdMobBannerSync(250);
+        if (shouldShowBanner(pathname)) {
+          await adsProvider.showBanner();
+          adsProvider.scheduleBannerSync(250);
           return;
         }
-
-        await removeAdMobBanner();
+        await adsProvider.removeBanner();
       })();
     }, 300);
 
@@ -163,12 +128,12 @@ export default function NativeAdMobBootstrap() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!isNativeAppShell()) return;
+    if (!isNativeAppShell() || !adsProvider.enabled) return;
 
     const observer = new MutationObserver((mutations) => {
-      if (!shouldShowAdMobBanner(window.location.pathname)) return;
+      if (!shouldShowBanner(window.location.pathname)) return;
       if (!mutations.some(shouldSyncBannerForMutation)) return;
-      scheduleAdMobBannerSync();
+      adsProvider.scheduleBannerSync();
     });
 
     observer.observe(document.body, {
@@ -177,7 +142,7 @@ export default function NativeAdMobBootstrap() {
       attributeOldValue: true,
     });
 
-    const onViewportChange = () => scheduleAdMobBannerSync();
+    const onViewportChange = () => adsProvider.scheduleBannerSync();
     window.addEventListener("resize", onViewportChange);
     window.visualViewport?.addEventListener("resize", onViewportChange);
     window.addEventListener("orientationchange", onViewportChange);
@@ -189,6 +154,14 @@ export default function NativeAdMobBootstrap() {
       window.removeEventListener("orientationchange", onViewportChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isNativeAppShell()) return;
+
+    return () => {
+      void adsProvider.destroyFeedAds();
+    };
+  }, [pathname]);
 
   return null;
 }
