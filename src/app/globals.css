@@ -127,7 +127,7 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   right: 0;
   width: 100%;
   border-top: none;
-  background: rgba(0, 0, 0, 0.9);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(10px) brightness(0.55) saturate(130%);
   -webkit-backdrop-filter: blur(10px) brightness(0.55) saturate(130%);
   box-shadow: none;
@@ -139,7 +139,7 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.9);
+  background: rgba(0, 0, 0, 0.7);
 }
 
 .sayittome-glass-bar-classic::after {
