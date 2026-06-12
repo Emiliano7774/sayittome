@@ -3,8 +3,6 @@
 import { useEffect } from "react";
 
 const SEGMENTS = 7;
-/** Sample inside the glass band so elementsFromPoint skips the bar and reads feed behind it. */
-const SAMPLE_Y_RATIO = 0.42;
 
 let sampleCanvas: HTMLCanvasElement | null = null;
 let sampleCtx: CanvasRenderingContext2D | null = null;
@@ -112,11 +110,10 @@ function colorAt(x: number, y: number): SampleColor {
   return best;
 }
 
-/* Smoothed state so the reflection drifts instead of flickering between frames. */
-let currentR = 140;
-let currentG = 95;
+let currentR = 255;
+let currentG = 255;
 let currentB = 255;
-let currentAlpha = 0.12;
+let currentAlpha = 0.14;
 let currentX = 50;
 
 function lerp(from: number, to: number, t: number) {
@@ -132,40 +129,72 @@ function updateClassicBarReflection() {
     Number.parseFloat(
       getComputedStyle(document.documentElement).getPropertyValue("--sayittome-nav-height"),
     ) || 74;
-  const sampleY = Math.max(0, rect.top + navHeight * SAMPLE_Y_RATIO);
+
+  /* Sample the lower band where the original reflection pool lives. */
+  const sampleY = Math.max(0, rect.top + navHeight * 0.72);
   const width = window.innerWidth;
 
   let best: SampleColor = { r: 8, g: 8, b: 10, glow: 0 };
   let bestX = 50;
+  let weightedX = 0;
+  let weightSum = 0;
 
   for (let i = 0; i < SEGMENTS; i++) {
     const xPct = ((i + 0.5) / SEGMENTS) * 100;
     const sample = colorAt((xPct / 100) * width, sampleY);
+    const weight = 0.35 + sample.glow * 1.4;
+    weightedX += xPct * weight;
+    weightSum += weight;
+
     if (sample.glow > best.glow) {
       best = sample;
       bestX = xPct;
     }
   }
 
-  /* Dark content -> faint neutral reflection. Bright/colored content -> soft tinted
-     reflection. Alpha stays low so the base never reads as transparent. */
-  const targetAlpha = best.glow < 0.08 ? 0.1 : 0.12 + best.glow * 0.21;
-  const targetR = best.glow < 0.08 ? 140 : best.r;
-  const targetG = best.glow < 0.08 ? 95 : best.g;
-  const targetB = best.glow < 0.08 ? 255 : best.b;
+  const dominantX = weightSum > 0 ? weightedX / weightSum : bestX;
 
-  currentR = lerp(currentR, targetR, 0.35);
-  currentG = lerp(currentG, targetG, 0.35);
-  currentB = lerp(currentB, targetB, 0.35);
-  currentAlpha = lerp(currentAlpha, targetAlpha, 0.35);
-  currentX = lerp(currentX, bestX, 0.3);
+  /* Bright content -> whitish stain. Violet shuffle zone -> soft violet tint.
+     Dark feed -> faint neutral pool. Never lowers base opacity. */
+  let targetR: number;
+  let targetG: number;
+  let targetB: number;
+  let targetAlpha: number;
+
+  if (best.glow < 0.08) {
+    targetR = 255;
+    targetG = 255;
+    targetB = 255;
+    targetAlpha = 0.1;
+  } else if (best.b > best.r + 18 && best.b > best.g + 8) {
+    targetR = 140;
+    targetG = 95;
+    targetB = 255;
+    targetAlpha = 0.14 + best.glow * 0.12;
+  } else if (best.glow > 0.45) {
+    targetR = 255;
+    targetG = 255;
+    targetB = 255;
+    targetAlpha = 0.14 + best.glow * 0.1;
+  } else {
+    targetR = best.r;
+    targetG = best.g;
+    targetB = best.b;
+    targetAlpha = 0.12 + best.glow * 0.14;
+  }
+
+  currentR = lerp(currentR, targetR, 0.32);
+  currentG = lerp(currentG, targetG, 0.32);
+  currentB = lerp(currentB, targetB, 0.32);
+  currentAlpha = lerp(currentAlpha, targetAlpha, 0.32);
+  currentX = lerp(currentX, dominantX, 0.28);
 
   const root = document.documentElement.style;
   root.setProperty(
     "--nav-reflect-color",
     `rgba(${Math.round(currentR)}, ${Math.round(currentG)}, ${Math.round(currentB)}, ${currentAlpha.toFixed(3)})`,
   );
-  root.setProperty("--nav-glow-x", `${currentX.toFixed(1)}%`);
+  root.setProperty("--nav-reflect-x", `${currentX.toFixed(1)}%`);
 }
 
 export function useClassicBarScrollGlow(enabled = true) {
@@ -206,7 +235,7 @@ export function useClassicBarScrollGlow(enabled = true) {
       observer?.disconnect();
 
       document.documentElement.style.removeProperty("--nav-reflect-color");
-      document.documentElement.style.removeProperty("--nav-glow-x");
+      document.documentElement.style.removeProperty("--nav-reflect-x");
     };
   }, [enabled]);
 }
