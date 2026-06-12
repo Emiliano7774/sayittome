@@ -112,43 +112,18 @@ function colorAt(x: number, y: number): SampleColor {
   return best;
 }
 
-function blendNeighbor(
-  target: SampleColor,
-  source: SampleColor,
-  bleed: number,
-  colorWeight: number,
-) {
-  if (target.glow >= bleed) return;
+/* Smoothed state so the reflection drifts instead of flickering between frames. */
+let currentR = 140;
+let currentG = 95;
+let currentB = 255;
+let currentAlpha = 0.12;
+let currentX = 50;
 
-  target.glow = bleed;
-  target.r = Math.round(target.r * (1 - colorWeight) + source.r * colorWeight);
-  target.g = Math.round(target.g * (1 - colorWeight) + source.g * colorWeight);
-  target.b = Math.round(target.b * (1 - colorWeight) + source.b * colorWeight);
+function lerp(from: number, to: number, t: number) {
+  return from + (to - from) * t;
 }
 
-function spreadSegmentGlow(samples: SampleColor[]) {
-  const spread = samples.map((sample) => ({ ...sample }));
-
-  for (let pass = 0; pass < 2; pass++) {
-    for (let i = 0; i < spread.length; i++) {
-      if (spread[i].glow < 0.06) continue;
-
-      const bleedNear = spread[i].glow * (pass === 0 ? 0.5 : 0.28);
-      const bleedFar = spread[i].glow * (pass === 0 ? 0.24 : 0.14);
-      const nearWeight = pass === 0 ? 0.48 : 0.34;
-      const farWeight = pass === 0 ? 0.3 : 0.22;
-
-      if (i > 0) blendNeighbor(spread[i - 1], spread[i], bleedNear, nearWeight);
-      if (i < spread.length - 1) blendNeighbor(spread[i + 1], spread[i], bleedNear, nearWeight);
-      if (i > 1) blendNeighbor(spread[i - 2], spread[i], bleedFar, farWeight);
-      if (i < spread.length - 2) blendNeighbor(spread[i + 2], spread[i], bleedFar, farWeight);
-    }
-  }
-
-  return spread;
-}
-
-function updateClassicBarGlow() {
+function updateClassicBarReflection() {
   const bar = document.querySelector<HTMLElement>(".sayittome-glass-bar-classic");
   if (!bar) return;
 
@@ -160,24 +135,37 @@ function updateClassicBarGlow() {
   const sampleY = Math.max(0, rect.top + navHeight * SAMPLE_Y_RATIO);
   const width = window.innerWidth;
 
-  const raw: SampleColor[] = [];
-  for (let i = 0; i < SEGMENTS; i++) {
-    const x = ((i + 0.5) / SEGMENTS) * width;
-    raw.push(colorAt(x, sampleY));
-  }
-
-  const samples = spreadSegmentGlow(raw);
+  let best: SampleColor = { r: 8, g: 8, b: 10, glow: 0 };
+  let bestX = 50;
 
   for (let i = 0; i < SEGMENTS; i++) {
-    const sample = samples[i];
     const xPct = ((i + 0.5) / SEGMENTS) * 100;
-
-    document.documentElement.style.setProperty(`--classic-bar-glow-${i}`, String(sample.glow));
-    document.documentElement.style.setProperty(`--classic-bar-glow-x-${i}`, `${xPct}%`);
-    document.documentElement.style.setProperty(`--classic-bar-r-${i}`, String(sample.r));
-    document.documentElement.style.setProperty(`--classic-bar-g-${i}`, String(sample.g));
-    document.documentElement.style.setProperty(`--classic-bar-b-${i}`, String(sample.b));
+    const sample = colorAt((xPct / 100) * width, sampleY);
+    if (sample.glow > best.glow) {
+      best = sample;
+      bestX = xPct;
+    }
   }
+
+  /* Dark content -> faint neutral reflection. Bright/colored content -> soft tinted
+     reflection. Alpha stays low so the base never reads as transparent. */
+  const targetAlpha = best.glow < 0.08 ? 0.1 : 0.1 + best.glow * 0.16;
+  const targetR = best.glow < 0.08 ? 140 : best.r;
+  const targetG = best.glow < 0.08 ? 95 : best.g;
+  const targetB = best.glow < 0.08 ? 255 : best.b;
+
+  currentR = lerp(currentR, targetR, 0.35);
+  currentG = lerp(currentG, targetG, 0.35);
+  currentB = lerp(currentB, targetB, 0.35);
+  currentAlpha = lerp(currentAlpha, targetAlpha, 0.35);
+  currentX = lerp(currentX, bestX, 0.3);
+
+  const root = document.documentElement.style;
+  root.setProperty(
+    "--nav-reflect-color",
+    `rgba(${Math.round(currentR)}, ${Math.round(currentG)}, ${Math.round(currentB)}, ${currentAlpha.toFixed(3)})`,
+  );
+  root.setProperty("--nav-glow-x", `${currentX.toFixed(1)}%`);
 }
 
 export function useClassicBarScrollGlow(enabled = true) {
@@ -190,16 +178,8 @@ export function useClassicBarScrollGlow(enabled = true) {
       if (frame) return;
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        updateClassicBarGlow();
+        updateClassicBarReflection();
       });
-    }
-
-    for (let i = 0; i < SEGMENTS; i++) {
-      document.documentElement.style.setProperty(`--classic-bar-glow-${i}`, "0");
-      document.documentElement.style.setProperty(`--classic-bar-glow-x-${i}`, `${((i + 0.5) / SEGMENTS) * 100}%`);
-      document.documentElement.style.setProperty(`--classic-bar-r-${i}`, "8");
-      document.documentElement.style.setProperty(`--classic-bar-g-${i}`, "8");
-      document.documentElement.style.setProperty(`--classic-bar-b-${i}`, "10");
     }
 
     schedule();
@@ -225,13 +205,8 @@ export function useClassicBarScrollGlow(enabled = true) {
       if (list) list.removeEventListener("load", schedule, true);
       observer?.disconnect();
 
-      for (let i = 0; i < SEGMENTS; i++) {
-        document.documentElement.style.removeProperty(`--classic-bar-glow-${i}`);
-        document.documentElement.style.removeProperty(`--classic-bar-glow-x-${i}`);
-        document.documentElement.style.removeProperty(`--classic-bar-r-${i}`);
-        document.documentElement.style.removeProperty(`--classic-bar-g-${i}`);
-        document.documentElement.style.removeProperty(`--classic-bar-b-${i}`);
-      }
+      document.documentElement.style.removeProperty("--nav-reflect-color");
+      document.documentElement.style.removeProperty("--nav-glow-x");
     };
   }, [enabled]);
 }
