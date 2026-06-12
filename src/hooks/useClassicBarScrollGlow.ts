@@ -149,7 +149,7 @@ function updateClassicBarReflection() {
 
   /* Dark content -> faint neutral reflection. Bright/colored content -> soft tinted
      reflection. Alpha stays low so the base never reads as transparent. */
-  const targetAlpha = best.glow < 0.08 ? 0.1 : 0.1 + best.glow * 0.16;
+  const targetAlpha = best.glow < 0.08 ? 0.1 : 0.12 + best.glow * 0.21;
   const targetR = best.glow < 0.08 ? 140 : best.r;
   const targetG = best.glow < 0.08 ? 95 : best.g;
   const targetB = best.glow < 0.08 ? 255 : best.b;
