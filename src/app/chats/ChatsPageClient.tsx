@@ -1,0 +1,53 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import ChatsInboxErrorBoundary from "@/components/chats/ChatsInboxErrorBoundary";
+import ClassicChatsInbox from "@/components/chats/ClassicChatsInbox";
+import ModernChatsInbox from "@/components/chats/ModernChatsInbox";
+import { useUxMode } from "@/contexts/UxModeContext";
+import { useChatAlerts } from "@/contexts/ChatAlertsContext";
+import { useChatsSelection } from "@/hooks/useChatsSelection";
+
+function ChatsPageSkeleton() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-black text-white/35">
+      <p className="text-sm font-bold">Cargando chats...</p>
+    </main>
+  );
+}
+
+export default function ChatsPageClient() {
+  const [mounted, setMounted] = useState(false);
+  const { uxMode } = useUxMode();
+  const inbox = useChatAlerts();
+  const selection = useChatsSelection(inbox.sortedChats);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || inbox.loading) {
+    return <ChatsPageSkeleton />;
+  }
+
+  return (
+    <ChatsInboxErrorBoundary>
+      {uxMode === "modern" ? (
+        <ModernChatsInbox
+          sortedChats={inbox.sortedChats}
+          uid={inbox.uid}
+          isAnonymousSession={inbox.isAnonymousSession}
+          selection={selection}
+        />
+      ) : (
+        <ClassicChatsInbox
+          sortedChats={inbox.sortedChats}
+          uid={inbox.uid}
+          isAnonymousSession={inbox.isAnonymousSession}
+          selection={selection}
+        />
+      )}
+    </ChatsInboxErrorBoundary>
+  );
+}

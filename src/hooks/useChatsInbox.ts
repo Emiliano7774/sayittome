@@ -16,6 +16,7 @@ import { auth, db } from "@/lib/firebase";
 import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { inboxPeerDedupeKey } from "@/lib/chat/inboxPeerTitle";
 import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
+import { normalizeInboxChat } from "@/lib/chat/normalizeInboxChat";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 
 export type InboxChat = {
@@ -144,10 +145,11 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
     const mergeQuery = (key: string) => (snap: QuerySnapshot) => {
       const map = new Map<string, InboxChat>();
       for (const docSnap of snap.docs) {
-        map.set(docSnap.id, {
+        const normalized = normalizeInboxChat({
           id: docSnap.id,
           ...(docSnap.data() as Omit<InboxChat, "id">),
         });
+        if (normalized) map.set(docSnap.id, normalized);
       }
       queryMapsRef.current[key] = map;
       rebuild();
@@ -217,10 +219,14 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
           return;
         }
 
-        const data = snap.data() as Omit<InboxChat, "id">;
+        const normalized = normalizeInboxChat({
+          id: snap.id,
+          ...(snap.data() as Omit<InboxChat, "id">),
+        });
         setSessionChats((prev) => {
           const next = prev.filter((c) => c.id !== chatId);
-          return [...next, { id: snap.id, ...data }];
+          if (!normalized) return next;
+          return [...next, normalized];
         });
       }),
     );

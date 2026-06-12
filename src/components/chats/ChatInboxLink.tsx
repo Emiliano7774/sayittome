@@ -8,10 +8,9 @@ type Props = {
   href: string;
   className?: string;
   children: React.ReactNode;
-  "aria-label"?: string;
 };
 
-export default function BottomNavLink({ href, className, children, ...rest }: Props) {
+export default function ChatInboxLink({ href, className, children }: Props) {
   if (shouldHardNavigate()) {
     return (
       <a
@@ -21,7 +20,6 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
           event.preventDefault();
           hardNavigate(href);
         }}
-        {...rest}
       >
         {children}
       </a>
@@ -29,7 +27,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
   }
 
   return (
-    <Link href={href} className={className} prefetch {...rest}>
+    <Link href={href} prefetch className={className}>
       {children}
     </Link>
   );

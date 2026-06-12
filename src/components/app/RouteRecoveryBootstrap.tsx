@@ -12,6 +12,7 @@ function isRecoverableRouteError(message: string) {
 
 export default function RouteRecoveryBootstrap() {
   useEffect(() => {
+    sessionStorage.removeItem(RECOVERY_KEY);
     function maybeRecover(message: string) {
       if (!isRecoverableRouteError(message)) return;
       if (sessionStorage.getItem(RECOVERY_KEY) === "1") return;

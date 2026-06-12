@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Check, CheckCheck, MessageSquare } from "lucide-react";
 
+import ChatInboxLink from "@/components/chats/ChatInboxLink";
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
 } from "@/components/chats/ChatsSelectionToolbar";
@@ -134,6 +135,7 @@ export default function ModernChatsInbox({
                     variant="modern"
                     anonAvatar={isAnonPeer}
                     anonKey={chat.anonSessionId || chat.id}
+                    enablePhotoScan={false}
                   />
 
                   <div className="min-w-0 flex-1">
@@ -189,9 +191,9 @@ export default function ModernChatsInbox({
               }
 
               return (
-                <Link key={chat.id} href={chatHref(chat)} prefetch className={cardClass}>
+                <ChatInboxLink key={chat.id} href={chatHref(chat)} className={cardClass}>
                   {inner}
-                </Link>
+                </ChatInboxLink>
               );
             })}
           </div>

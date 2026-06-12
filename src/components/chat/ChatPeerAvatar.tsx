@@ -15,6 +15,7 @@ type Props = {
   variant?: "classic" | "modern";
   anonAvatar?: boolean;
   anonKey?: string;
+  enablePhotoScan?: boolean;
 };
 
 const SIZE_CLASS = {
@@ -94,6 +95,7 @@ export default function ChatPeerAvatar({
   variant = "modern",
   anonAvatar = false,
   anonKey = "",
+  enablePhotoScan = true,
 }: Props) {
   const showAnonAvatar = anonAvatar && !photo;
   const resolvedAnonKey = anonKey || username || "anon";
@@ -108,6 +110,7 @@ export default function ChatPeerAvatar({
         <SensitiveMediaShell
           url={photo}
           staticRequiresBlur={blurPhoto}
+          enableRuntimeScan={enablePhotoScan}
           className="h-full w-full"
         >
           <img

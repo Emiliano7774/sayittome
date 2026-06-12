@@ -1,33 +1,16 @@
 "use client";
 
-import { useUxMode } from "@/contexts/UxModeContext";
-import { useChatAlerts } from "@/contexts/ChatAlertsContext";
-import ClassicChatsInbox from "@/components/chats/ClassicChatsInbox";
-import ModernChatsInbox from "@/components/chats/ModernChatsInbox";
-import { useChatsSelection } from "@/hooks/useChatsSelection";
+import dynamic from "next/dynamic";
+
+const ChatsPageClient = dynamic(() => import("./ChatsPageClient"), {
+  ssr: false,
+  loading: () => (
+    <main className="flex min-h-screen items-center justify-center bg-black text-white/35">
+      <p className="text-sm font-bold">Cargando chats...</p>
+    </main>
+  ),
+});
 
 export default function ChatsPage() {
-  const { uxMode } = useUxMode();
-  const inbox = useChatAlerts();
-  const selection = useChatsSelection(inbox.sortedChats);
-
-  if (uxMode === "modern") {
-    return (
-      <ModernChatsInbox
-        sortedChats={inbox.sortedChats}
-        uid={inbox.uid}
-        isAnonymousSession={inbox.isAnonymousSession}
-        selection={selection}
-      />
-    );
-  }
-
-  return (
-    <ClassicChatsInbox
-      sortedChats={inbox.sortedChats}
-      uid={inbox.uid}
-      isAnonymousSession={inbox.isAnonymousSession}
-      selection={selection}
-    />
-  );
+  return <ChatsPageClient />;
 }

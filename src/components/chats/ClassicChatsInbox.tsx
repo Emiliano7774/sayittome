@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { Check, CheckCheck } from "lucide-react";
 
+import ChatInboxLink from "@/components/chats/ChatInboxLink";
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
 } from "@/components/chats/ChatsSelectionToolbar";
@@ -77,6 +77,7 @@ function ClassicChatRow({
         variant="classic"
         anonAvatar={isAnonPeer}
         anonKey={anonKey}
+        enablePhotoScan={false}
       />
 
       <div className="min-w-0 flex-1">
@@ -125,9 +126,9 @@ function ClassicChatRow({
   }
 
   return (
-    <Link href={chatHref(chat)} prefetch className={rowClass}>
+    <ChatInboxLink href={chatHref(chat)} className={rowClass}>
       {content}
-    </Link>
+    </ChatInboxLink>
   );
 }
 

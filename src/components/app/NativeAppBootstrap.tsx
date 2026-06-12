@@ -15,7 +15,7 @@ import {
 } from "@/lib/navigation/handleNativeBack";
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 import { recordNativeNavPath, seedNativeNavStack } from "@/lib/navigation/nativeNavStack";
-import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
+import { hardNavigate } from "@/lib/navigation/hardNavigate";
 
 const HARDWARE_BACK_EVENT = "sayittomeHardwareBack";
 
@@ -33,9 +33,7 @@ function runNativeBackNavigation(
 
   if (action.navigateTo) {
     pathnameRef.current = action.navigateTo;
-    runNativeViewTransition(() => {
-      router.replace(action.navigateTo!);
-    });
+    hardNavigate(action.navigateTo);
     return;
   }
 
