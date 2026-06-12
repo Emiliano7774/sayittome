@@ -93,9 +93,6 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
     background: rgba(23, 23, 23, 0.94);
   }
 
-  .sayittome-bottom-nav {
-    background: rgba(23, 23, 23, 0.96);
-  }
 }
 
 .sayittome-nav-scroll-spacer {
@@ -107,7 +104,6 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
 
 .sayittome-bottom-nav {
   bottom: 0;
-  background: rgba(23, 23, 23, 0.96);
   padding-bottom: calc(
     env(safe-area-inset-bottom, 0px) + var(--sayittome-browser-chrome-bottom, 0px)
   );
