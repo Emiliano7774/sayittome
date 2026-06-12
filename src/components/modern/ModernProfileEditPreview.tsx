@@ -34,7 +34,7 @@ export default function ModernProfileEditPreview({
 }: Props) {
   const t = useT();
 
-  const coverUrl = videoPortada || fotoPortada || fotoPrincipal;
+  const coverUrl = videoPortada || fotoPortada;
 
   return (
     <div className="relative mx-auto w-full max-w-3xl">

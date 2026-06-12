@@ -21,7 +21,7 @@ type Props = {
   open: boolean;
   mode: "cover" | "principal" | "gallery";
   media: EditMediaItem[];
-  principalIndex: number;
+  principalPhoto: string;
   coverPhoto: string;
   coverVideo: string;
   uploading: boolean;
@@ -39,7 +39,7 @@ export default function ModernEditMediaSheet({
   open,
   mode,
   media,
-  principalIndex,
+  principalPhoto,
   coverPhoto,
   coverVideo,
   uploading,
@@ -182,7 +182,7 @@ export default function ModernEditMediaSheet({
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               {media.map((item, index) => {
-                const isPrincipal = principalIndex === index;
+                const isPrincipal = Boolean(principalPhoto) && item.url === principalPhoto;
                 const isCover =
                   (item.type === "image" && coverPhoto === item.url) ||
                   (item.type === "video" && coverVideo === item.url);

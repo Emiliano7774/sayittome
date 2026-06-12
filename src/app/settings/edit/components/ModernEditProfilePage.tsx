@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { deleteField, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ArrowLeft, ChevronDown } from "lucide-react";
@@ -50,7 +50,8 @@ export default function ModernEditProfilePage() {
   const [mostrarUltimaVez, setMostrarUltimaVez] = useState(true);
   const [intereses, setIntereses] = useState("");
   const [media, setMedia] = useState<EditMediaItem[]>([]);
-  const [principalIndex, setPrincipalIndex] = useState(0);
+  const [principalIndex, setPrincipalIndex] = useState(-1);
+  const [fotoPrincipalUrl, setFotoPrincipalUrl] = useState("");
   const [fotoPortada, setFotoPortada] = useState("");
   const [videoPortada, setVideoPortada] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -60,16 +61,6 @@ export default function ModernEditProfilePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetMode, setSheetMode] = useState<MediaSheetMode>("gallery");
-
-  const fotoPrincipal = useMemo(() => {
-    const principal = media[principalIndex];
-    if (principal?.url) return principal.url;
-    return (
-      media.find((item) => item.type === "image")?.url ||
-      media.find((item) => item.type === "video")?.url ||
-      ""
-    );
-  }, [media, principalIndex]);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (u) => {
@@ -132,7 +123,8 @@ export default function ModernEditProfilePage() {
       const principalIdx = principalUrl
         ? nextMedia.findIndex((item) => item.url === principalUrl)
         : -1;
-      setPrincipalIndex(principalIdx >= 0 ? principalIdx : 0);
+      setFotoPrincipalUrl(principalUrl);
+      setPrincipalIndex(principalIdx);
 
       setFotoPortada(coverPhoto);
       setVideoPortada(coverVideo);
@@ -198,6 +190,25 @@ export default function ModernEditProfilePage() {
     if (closeSheet) setSheetOpen(false);
   }
 
+  function setPrincipal(index: number, closeSheet = true) {
+    const item = media[index];
+    if (!item) return;
+
+    setFotoPrincipalUrl(item.url);
+    setPrincipalIndex(index);
+    if (closeSheet) setSheetOpen(false);
+  }
+
+  function pickNextPrincipalUrl(nextMedia: EditMediaItem[], removedUrl: string) {
+    const coverUrls = new Set(
+      [fotoPortada, videoPortada].filter(Boolean),
+    );
+    const candidate = nextMedia.find(
+      (item) => item.url !== removedUrl && !coverUrls.has(item.url) && item.type === "image",
+    );
+    return candidate?.url || nextMedia.find((item) => item.url !== removedUrl && !coverUrls.has(item.url))?.url || "";
+  }
+
   function applyCover(item: EditMediaItem, closeSheet = true) {
     setCover(item, closeSheet);
   }
@@ -234,7 +245,11 @@ export default function ModernEditProfilePage() {
         const folder =
           target === "principal"
             ? "avatar"
-            : "gallery";
+            : target === "cover"
+              ? kind === "video"
+                ? "cover-video"
+                : "cover"
+              : "gallery";
 
         const item = await uploadSingleFile(file, folder, source);
         if (item) uploaded.push(item);
@@ -257,8 +272,7 @@ export default function ModernEditProfilePage() {
 
         if (target === "principal" && firstUploadedIndex >= 0) {
           setPrincipalIndex(firstUploadedIndex);
-        } else if (prev.length === 0 && trimmed.length > 0) {
-          setPrincipalIndex(0);
+          setFotoPrincipalUrl(uploaded[0]?.url || "");
         }
 
         return trimmed;
@@ -294,12 +308,19 @@ export default function ModernEditProfilePage() {
 
   function remove(index: number) {
     const removed = media[index];
-    setMedia((prev) => prev.filter((_, i) => i !== index));
+    const nextMedia = media.filter((_, i) => i !== index);
+    setMedia(nextMedia);
 
-    if (principalIndex === index) {
-      setPrincipalIndex(0);
+    if (removed?.url === fotoPrincipalUrl) {
+      const nextPrincipalUrl = pickNextPrincipalUrl(nextMedia, removed.url);
+      setFotoPrincipalUrl(nextPrincipalUrl);
+      setPrincipalIndex(
+        nextPrincipalUrl ? nextMedia.findIndex((item) => item.url === nextPrincipalUrl) : -1,
+      );
+    } else if (principalIndex === index) {
+      setPrincipalIndex(-1);
     } else if (principalIndex > index) {
-      setPrincipalIndex((prev) => Math.max(0, prev - 1));
+      setPrincipalIndex((prev) => (prev > 0 ? prev - 1 : -1));
     }
 
     if (removed?.url === fotoPortada) setFotoPortada("");
@@ -345,14 +366,14 @@ export default function ModernEditProfilePage() {
           fotos,
           videos,
           fotoMediaSources,
-          fotoPrincipal,
+          fotoPrincipal: fotoPrincipalUrl,
           ...(fotoPortada
             ? { fotoPortada, coverPhoto: fotoPortada, portada: fotoPortada }
             : { fotoPortada: deleteField(), coverPhoto: deleteField(), portada: deleteField() }),
           ...(videoPortada
             ? { videoPortada, coverVideo: videoPortada }
             : { videoPortada: deleteField(), coverVideo: deleteField() }),
-          perfilCompleto: Boolean(username.trim() && (fotoPrincipal || fotoPortada || videoPortada)),
+          perfilCompleto: Boolean(username.trim() && (fotoPrincipalUrl || fotoPortada || videoPortada)),
           profileSetupComplete: true,
           updatedAt: serverTimestamp(),
         },
@@ -408,7 +429,7 @@ export default function ModernEditProfilePage() {
           bio={bio}
           provincia={provincia}
           mostrarProvincia={mostrarProvincia}
-          fotoPrincipal={fotoPrincipal}
+          fotoPrincipal={fotoPrincipalUrl}
           fotoPortada={fotoPortada}
           videoPortada={videoPortada}
           onUsernameChange={setUsername}
@@ -522,7 +543,7 @@ export default function ModernEditProfilePage() {
         open={sheetOpen}
         mode={sheetMode}
         media={media}
-        principalIndex={principalIndex}
+        principalPhoto={fotoPrincipalUrl}
         coverPhoto={fotoPortada}
         coverVideo={videoPortada}
         uploading={uploading}
@@ -535,8 +556,7 @@ export default function ModernEditProfilePage() {
         }}
         onSelectCover={applyCover}
         onSelectPrincipal={(index, closeSheet = false) => {
-          setPrincipalIndex(index);
-          if (closeSheet) setSheetOpen(false);
+          setPrincipal(index, closeSheet);
         }}
         onMove={move}
         onRemove={remove}
