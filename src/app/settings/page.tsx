@@ -124,7 +124,7 @@ export default function SettingsPage() {
 
   const username = profile?.username || profile?.nombre || t("settings_no_username");
   const bio = profile?.bio || profile?.descripcion || t("settings_bio_empty");
-  const createdAtLabel = formatDate(profile?.createdAt);
+  const createdAtLabel = formatDate(profile?.originalCreatedAt || profile?.createdAt);
 
   const media = useMemo<MediaItem[]>(() => {
     const fotos = Array.isArray(profile?.fotos)

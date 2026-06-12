@@ -30,6 +30,9 @@ export default function AdminUsersPage() {
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [duplicateCleanupBusy, setDuplicateCleanupBusy] = useState(false);
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [repairBusy, setRepairBusy] = useState(false);
+  const [auditSummary, setAuditSummary] = useState("");
 
   async function load() {
     const email = auth.currentUser?.email || admin.email;
@@ -92,9 +95,92 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function auditCreatedAt(dryRun: boolean) {
+    setAuditBusy(true);
+    setAuditSummary("");
+    try {
+      const json = await admin.postAction({
+        action: "audit_profile_created_at",
+        dryRun,
+      });
+      if (json?.ok) {
+        setAuditSummary(
+          dryRun
+            ? `${json.needsPatch || 0} perfiles necesitan corrección de fecha`
+            : `Fechas corregidas en ${json.patchedCount || 0} perfiles`,
+        );
+      }
+      if (!dryRun) await load();
+    } finally {
+      setAuditBusy(false);
+    }
+  }
+
+  async function repairProfileData() {
+    if (
+      !window.confirm(
+        "¿Corregir fechas de creación, eliminar duplicados y limpiar perfiles huérfanos?",
+      )
+    ) {
+      return;
+    }
+
+    setRepairBusy(true);
+    setAuditSummary("");
+    try {
+      const json = await admin.postAction({ action: "repair_profile_data" });
+      if (json?.ok) {
+        setAuditSummary(
+          `Reparación completa: ${json.audit?.patchedCount || 0} fechas, ${json.duplicates?.duplicateCount || 0} duplicados, ${json.orphans?.count || 0} huérfanos`,
+        );
+      }
+      await load();
+    } finally {
+      setRepairBusy(false);
+    }
+  }
+
   return (
     <AdminShell title="Usuarios">
       <AdminRegistrationsPanel adminEmail={admin.email} defaultOpen />
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-4">
+        <div>
+          <p className="text-sm font-black text-sky-200">Auditoría de fechas de creación</p>
+          <p className="mt-1 text-xs font-bold text-white/45">
+            Restaura la fecha real usando el primer documento en Firestore (incluye perfiles de la
+            era Flutter). Corrige el panel de registros diarios.
+          </p>
+          {auditSummary ? (
+            <p className="mt-2 text-xs font-black text-emerald-300">{auditSummary}</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={auditBusy || repairBusy}
+            onClick={() => void auditCreatedAt(true)}
+            className="rounded-xl border border-white/15 px-4 py-2 text-xs font-black disabled:opacity-50"
+          >
+            {auditBusy ? "Auditando..." : "Simular auditoría"}
+          </button>
+          <button
+            type="button"
+            disabled={auditBusy || repairBusy}
+            onClick={() => void auditCreatedAt(false)}
+            className="rounded-xl bg-sky-500 px-4 py-2 text-xs font-black text-white disabled:opacity-50"
+          >
+            Corregir fechas
+          </button>
+          <button
+            type="button"
+            disabled={auditBusy || repairBusy}
+            onClick={() => void repairProfileData()}
+            className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-black text-black disabled:opacity-50"
+          >
+            {repairBusy ? "Reparando..." : "Reparar todo"}
+          </button>
+        </div>
+      </div>
       {duplicateCount > 0 ? (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-4">
           <div>

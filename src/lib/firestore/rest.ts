@@ -11,6 +11,11 @@ type FirestoreValue =
   | { timestampValue: string }
   | { nullValue: null };
 
+function isTimestampField(key: string, value: string) {
+  if (!value || Number.isNaN(Date.parse(value))) return false;
+  return /(?:At|Date|On)$/i.test(key) || key === "fechaCreacion" || key === "fechaRegistro";
+}
+
 export function toFirestoreFields(
   data: Record<string, unknown>,
 ): Record<string, FirestoreValue> {
@@ -26,6 +31,10 @@ export function toFirestoreFields(
       fields[key] = Number.isInteger(value)
         ? { integerValue: String(value) }
         : { doubleValue: value };
+    } else if (value instanceof Date) {
+      fields[key] = { timestampValue: value.toISOString() };
+    } else if (typeof value === "string" && isTimestampField(key, value)) {
+      fields[key] = { timestampValue: new Date(value).toISOString() };
     } else {
       fields[key] = { stringValue: String(value) };
     }
@@ -61,6 +70,9 @@ export function parseFirestoreValue(field: any): unknown {
 export function parseFirestoreDoc(doc: any) {
   const fields = doc?.fields || {};
   const parsed: Record<string, unknown> = { id: String(doc.name || "").split("/").pop() || "" };
+
+  if (doc?.createTime) parsed._firestoreCreateTime = doc.createTime;
+  if (doc?.updateTime) parsed._firestoreUpdateTime = doc.updateTime;
 
   for (const [key, value] of Object.entries(fields)) {
     parsed[key] = parseFirestoreValue(value);

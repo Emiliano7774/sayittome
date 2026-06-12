@@ -92,26 +92,32 @@ export default function ModernProfileSetup() {
     setSaving(true);
 
     try {
-      await setDoc(
-        doc(db, "usuarios", user.uid),
-        {
-          uid: user.uid,
-          email: user.email || "",
-          username: cleanUsername,
-          usernameLower: cleanUsername.toLowerCase(),
-          nombre: cleanUsername,
-          bio: bio.trim(),
-          descripcion: bio.trim(),
-          provincia,
-          pais,
-          mostrarProvincia,
-          profileSetupComplete: true,
-          perfilCompleto: false,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+      const profileRef = doc(db, "usuarios", user.uid);
+      const existingSnap = await getDoc(profileRef);
+      const existing = existingSnap.exists() ? existingSnap.data() : null;
+
+      const payload: Record<string, unknown> = {
+        uid: user.uid,
+        email: user.email || "",
+        username: cleanUsername,
+        usernameLower: cleanUsername.toLowerCase(),
+        nombre: cleanUsername,
+        bio: bio.trim(),
+        descripcion: bio.trim(),
+        provincia,
+        pais,
+        mostrarProvincia,
+        profileSetupComplete: true,
+        perfilCompleto: false,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (!existing?.createdAt && !existing?.originalCreatedAt) {
+        payload.createdAt = serverTimestamp();
+        payload.originalCreatedAt = serverTimestamp();
+      }
+
+      await setDoc(profileRef, payload, { merge: true });
 
       await trackPendingReferralAfterSignup({
         inviteeUid: user.uid,

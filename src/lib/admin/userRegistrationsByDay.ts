@@ -1,3 +1,6 @@
+import { isPublicProfile } from "@/lib/profile/isPublicProfile";
+import { resolveProfileCreatedAt } from "@/lib/profile/resolveProfileCreatedAt";
+
 const ADMIN_TZ = "America/Argentina/Buenos_Aires";
 
 export type RegistrationUser = {
@@ -19,6 +22,22 @@ function parseCreatedAt(raw: unknown): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function pickBestProfileRow(rows: Record<string, unknown>[]) {
+  return [...rows].sort((a, b) => {
+    const aPublic = isPublicProfile(a) ? 1 : 0;
+    const bPublic = isPublicProfile(b) ? 1 : 0;
+    if (aPublic !== bPublic) return bPublic - aPublic;
+
+    const aDocMatchesUid = String(a.id || "") === String(a.uid || a.id || "") ? 1 : 0;
+    const bDocMatchesUid = String(b.id || "") === String(b.uid || b.id || "") ? 1 : 0;
+    if (aDocMatchesUid !== bDocMatchesUid) return bDocMatchesUid - aDocMatchesUid;
+
+    const aCreated = resolveProfileCreatedAt(a)?.getTime() || 0;
+    const bCreated = resolveProfileCreatedAt(b)?.getTime() || 0;
+    return aCreated - bCreated;
+  })[0];
 }
 
 export function toAdminDayKey(date: Date): string {
@@ -57,13 +76,21 @@ export function buildUserRegistrationsByDay(
 ): RegistrationDayRow[] {
   const todayKey = toAdminDayKey(now);
   const buckets = new Map<string, RegistrationUser[]>();
+  const byUid = new Map<string, Record<string, unknown>[]>();
 
   for (const user of rawUsers) {
-    const createdAt =
-      parseCreatedAt(user.createdAt) ||
-      parseCreatedAt(user.updatedAt) ||
-      parseCreatedAt(user.lastActiveAt);
+    const uid = String(user.uid || user.id || "").trim();
+    if (!uid) continue;
+    const group = byUid.get(uid) || [];
+    group.push(user);
+    byUid.set(uid, group);
+  }
 
+  for (const group of byUid.values()) {
+    const user = pickBestProfileRow(group);
+    if (!isPublicProfile(user)) continue;
+
+    const createdAt = resolveProfileCreatedAt(user);
     if (!createdAt) continue;
 
     const dateKey = toAdminDayKey(createdAt);

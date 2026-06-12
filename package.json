@@ -19,7 +19,9 @@
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
     "cleanup:orphans": "node scripts/cleanup-orphan-profiles.mjs",
-    "cleanup:orphans:dry": "node scripts/cleanup-orphan-profiles.mjs --dry-run"
+    "cleanup:orphans:dry": "node scripts/cleanup-orphan-profiles.mjs --dry-run",
+    "audit:profile-dates": "node scripts/audit-profile-created-at.mjs --dry-run",
+    "audit:profile-dates:apply": "node scripts/audit-profile-created-at.mjs --apply"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

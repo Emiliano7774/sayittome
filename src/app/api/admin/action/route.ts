@@ -180,6 +180,27 @@ export async function POST(req: Request) {
         dryRun: body?.dryRun === true,
       });
       return NextResponse.json({ ok: true, ...result });
+    } else if (action === "audit_profile_created_at") {
+      const { runProfileCreatedAtAudit } = await import("@/lib/profile/auditProfileCreatedAt");
+      const result = await runProfileCreatedAtAudit(adminEmail, {
+        dryRun: body?.dryRun === true,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    } else if (action === "repair_profile_data") {
+      const { runProfileCreatedAtAudit } = await import("@/lib/profile/auditProfileCreatedAt");
+      const { cleanupDuplicateProfiles } = await import("@/lib/profile/cleanupDuplicates");
+      const { cleanupOrphanProfiles } = await import("@/lib/profile/cleanupOrphans");
+
+      const audit = await runProfileCreatedAtAudit(adminEmail, { dryRun: false });
+      const duplicates = await cleanupDuplicateProfiles(adminEmail, { dryRun: false });
+      const orphans = await cleanupOrphanProfiles(adminEmail, { dryRun: false });
+
+      return NextResponse.json({
+        ok: true,
+        audit,
+        duplicates,
+        orphans,
+      });
     } else {
       return NextResponse.json({ ok: false, error: "unknown action" }, { status: 400 });
     }

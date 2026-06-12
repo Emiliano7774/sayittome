@@ -162,7 +162,12 @@ export async function GET(
       int(fields, "likes"),
     conversaciones: int(fields, "conversacionesCount"),
     seguidores: int(fields, "seguidoresCount") || int(fields, "followersCount"),
-    createdAtLabel: formatDate(ts(fields, "createdAt")),
+    createdAtLabel: formatDate(
+      ts(fields, "originalCreatedAt") ||
+        ts(fields, "createdAt") ||
+        ts(fields, "fechaCreacion") ||
+        ts(fields, "fechaRegistro"),
+    ),
     presenceAt,
     lastActive:
       presenceAt ||

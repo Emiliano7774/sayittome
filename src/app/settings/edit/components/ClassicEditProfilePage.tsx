@@ -17,7 +17,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc, getDocFromServer, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
@@ -142,7 +142,11 @@ export default function ClassicEditProfilePage() {
       setMostrarProvincia(data.mostrarProvincia !== false);
       setMostrarUltimaVez(data.mostrarUltimaVez !== false);
 
-      const createdAtValue = data.createdAt?.toDate ? data.createdAt.toDate() : null;
+      const createdAtValue = data.originalCreatedAt?.toDate
+        ? data.originalCreatedAt.toDate()
+        : data.createdAt?.toDate
+          ? data.createdAt.toDate()
+          : null;
       setCreatedAtLabel(
         createdAtValue
           ? createdAtValue.toLocaleDateString("es-AR", {
@@ -349,6 +353,7 @@ export default function ClassicEditProfilePage() {
       await setDoc(
         doc(db, "usuarios", uid),
         {
+          uid,
           username: username.trim(),
           usernameLower: username.trim().toLowerCase(),
           nombre: username.trim(),
@@ -373,7 +378,8 @@ export default function ClassicEditProfilePage() {
         { merge: true },
       );
 
-      router.push("/settings");
+      await getDocFromServer(doc(db, "usuarios", uid));
+      router.replace("/settings");
     } catch (error) {
       console.error(error);
       setSaveError("No se pudo guardar tu perfil. Probá de nuevo.");

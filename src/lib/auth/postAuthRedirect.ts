@@ -1,6 +1,15 @@
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, getDocFromServer } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
+
+async function loadUserDoc(uid: string) {
+  try {
+    return await getDocFromServer(doc(db, "usuarios", uid));
+  } catch {
+    return getDoc(doc(db, "usuarios", uid));
+  }
+}
 
 export async function resolvePostAuthPath(
   uid: string,
@@ -8,7 +17,7 @@ export async function resolvePostAuthPath(
 ): Promise<string> {
   if (!emailVerified) return "/register/verify-email";
 
-  const snap = await getDoc(doc(db, "usuarios", uid));
+  const snap = await loadUserDoc(uid);
   if (!snap.exists()) return "/register/setup";
 
   const data = snap.data() as {
@@ -21,18 +30,21 @@ export async function resolvePostAuthPath(
     profileSetupComplete?: boolean;
   };
 
-  const username = String(data.username || data.nombre || "").trim();
+  const username = normalizeUsername(String(data.username || data.nombre || ""));
   const provincia = String(data.provincia || "").trim();
   const hasPrincipalPhoto = Boolean(data.fotoPrincipal || data.photoURL);
 
-  const setupComplete =
-    data.profileSetupComplete === true ||
-    data.perfilCompleto === true ||
-    Boolean(username && provincia && hasPrincipalPhoto);
-
-  if (!username || !provincia || !setupComplete) {
+  if (!username || !isValidUsername(username)) {
     return "/register/setup";
   }
 
-  return "/settings";
+  if (data.profileSetupComplete === true || data.perfilCompleto === true) {
+    return "/settings";
+  }
+
+  if (provincia || hasPrincipalPhoto) {
+    return "/settings";
+  }
+
+  return "/register/setup";
 }
