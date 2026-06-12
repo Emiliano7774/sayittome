@@ -6,7 +6,6 @@ import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import { useT } from "@/contexts/LocaleContext";
-import { useClassicBarScrollGlow } from "@/hooks/useClassicBarScrollGlow";
 
 type NavItem =
   | { id: string; kind: "link"; href: string; icon: typeof Circle; badge?: number }
@@ -20,7 +19,6 @@ type Props = {
 export default function BottomNav({ unreadCount = 0 }: Props) {
   const pathname = usePathname();
   const t = useT();
-  useClassicBarScrollGlow(true);
 
   const items: NavItem[] = [
     { id: "stories", kind: "link", href: "/stories", icon: Circle },
@@ -35,8 +33,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
   }
 
   return (
-    <div className="sayittome-bottom-nav sayittome-glass-bar-classic fixed inset-x-0 bottom-0 z-[9999]">
-      <span aria-hidden className="sayittome-glass-bar-classic-glow" />
+    <div className="sayittome-bottom-nav fixed inset-x-0 bottom-0 z-[9999] border-t border-white/[0.04] backdrop-blur-2xl">
       <div className="sayittome-bottom-nav-inner flex w-full items-center justify-around px-[max(22px,4vw)]">
         {items.map((item) => {
           const Icon = item.icon;
@@ -98,10 +95,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
         })}
       </div>
 
-      <div
-        aria-hidden
-        className="pointer-events-none absolute bottom-[7px] left-1/2 h-[3px] w-[128px] -translate-x-1/2 rounded-full bg-white/10"
-      />
+      <div className="pointer-events-none absolute bottom-[6px] left-1/2 h-[4px] w-[118px] -translate-x-1/2 rounded-full bg-white/70" />
     </div>
   );
 }
