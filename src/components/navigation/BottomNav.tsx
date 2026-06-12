@@ -20,7 +20,7 @@ type Props = {
 export default function BottomNav({ unreadCount = 0 }: Props) {
   const pathname = usePathname();
   const t = useT();
-  useClassicBarScrollGlow();
+  useClassicBarScrollGlow(true);
 
   const items: NavItem[] = [
     { id: "stories", kind: "link", href: "/stories", icon: Circle },
@@ -36,7 +36,8 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
 
   return (
     <div className="sayittome-bottom-nav sayittome-glass-bar-classic fixed inset-x-0 bottom-0 z-[9999]">
-      <div className="sayittome-bottom-nav-inner relative z-[1] flex w-full items-center justify-around px-[max(22px,4vw)]">
+      <span aria-hidden className="sayittome-glass-bar-classic-glow" />
+      <div className="sayittome-bottom-nav-inner flex w-full items-center justify-around px-[max(22px,4vw)]">
         {items.map((item) => {
           const Icon = item.icon;
 
@@ -96,6 +97,11 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
           );
         })}
       </div>
+
+      <div
+        aria-hidden
+        className="pointer-events-none absolute bottom-[7px] left-1/2 h-[3px] w-[128px] -translate-x-1/2 rounded-full bg-white/10"
+      />
     </div>
   );
 }
