@@ -29,12 +29,14 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
-import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
+import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
+import type { ProfileMediaSource } from "@/lib/profile/mediaSource";
 import { useT } from "@/contexts/LocaleContext";
 
 export type ModernProfileData = {
@@ -48,6 +50,7 @@ export type ModernProfileData = {
   fotoPortada?: string;
   videoPortada?: string;
   fotos?: string[];
+  fotoMediaSources?: Record<string, ProfileMediaSource>;
   likes: number;
   conversaciones: number;
   seguidores: number;
@@ -97,6 +100,11 @@ export default function ModernPublicProfile({
   const [viewerIndex, setViewerIndex] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
   const [videoViewerUrl, setVideoViewerUrl] = useState<string | null>(null);
+  const [videoViewerSource, setVideoViewerSource] = useState<ProfileMediaSource | undefined>();
+
+  function mediaSourceForUrl(url: string) {
+    return profile.fotoMediaSources?.[url];
+  }
 
   const principalIsVideo = isVideoMediaUrl(profile.fotoPrincipal);
   const coverVideoUrl = resolveProfileCoverVideo(profile);
@@ -117,6 +125,7 @@ export default function ModernPublicProfile({
   }
 
   function openVideo(url: string) {
+    setVideoViewerSource(mediaSourceForUrl(url));
     setVideoViewerUrl(url);
   }
 
@@ -431,7 +440,11 @@ export default function ModernPublicProfile({
       <ProfileVideoViewer
         url={videoViewerUrl || ""}
         open={Boolean(videoViewerUrl)}
-        onClose={() => setVideoViewerUrl(null)}
+        source={videoViewerSource}
+        onClose={() => {
+          setVideoViewerUrl(null);
+          setVideoViewerSource(undefined);
+        }}
       />
 
       {viewerOpen && gallery.length > 0 ? (
@@ -453,6 +466,15 @@ export default function ModernPublicProfile({
           >
             <X size={30} />
           </button>
+
+          {mediaSourceForUrl(gallery[viewerIndex]) ? (
+            <div className="absolute left-1/2 top-6 z-[10] -translate-x-1/2">
+              <StoryMediaSourceBadge
+                source={mediaSourceForUrl(gallery[viewerIndex])}
+                mediaType={isVideoMediaUrl(gallery[viewerIndex]) ? "video" : "image"}
+              />
+            </div>
+          ) : null}
 
           {gallery.length > 1 ? (
             <button

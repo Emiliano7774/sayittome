@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ImagePlus, Star, X } from "lucide-react";
+import { Camera, ImagePlus, Star, X } from "lucide-react";
 
 import MosaicMediaTile from "@/components/modern/MosaicMediaTile";
+import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { useT } from "@/contexts/LocaleContext";
+import type { ProfileMediaSource } from "@/lib/profile/mediaSource";
 
 export type EditMediaItem = {
   url: string;
   type: "image" | "video";
   path?: string;
+  source?: ProfileMediaSource;
 };
 
 type SheetView = "pick" | "gallery";
@@ -24,7 +27,8 @@ type Props = {
   uploading: boolean;
   uploadText: string;
   onClose: () => void;
-  onUpload: () => void;
+  onUploadCamera: () => void;
+  onUploadGallery: () => void;
   onSelectCover: (item: EditMediaItem, closeSheet?: boolean) => void;
   onSelectPrincipal: (index: number, closeSheet?: boolean) => void;
   onMove: (index: number, direction: -1 | 1) => void;
@@ -41,7 +45,8 @@ export default function ModernEditMediaSheet({
   uploading,
   uploadText,
   onClose,
-  onUpload,
+  onUploadCamera,
+  onUploadGallery,
   onSelectCover,
   onSelectPrincipal,
   onMove,
@@ -55,6 +60,13 @@ export default function ModernEditMediaSheet({
       setView(mode === "gallery" ? "gallery" : "pick");
     }
   }, [open, mode]);
+
+  useOverlayBackClose(
+    open,
+    onClose,
+    "sayittome-profile-media-sheet-open",
+    "sayittome:close-profile-media-sheet",
+  );
 
   if (!open) return null;
 
@@ -87,7 +99,7 @@ export default function ModernEditMediaSheet({
         : t("edit_gallery_manage_hint");
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/80 px-0 pb-0 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10050] flex items-end justify-center bg-black/80 px-0 pb-0 backdrop-blur-sm">
       <button
         type="button"
         className="absolute inset-0"
@@ -138,19 +150,31 @@ export default function ModernEditMediaSheet({
         ) : null}
 
         <div className="border-b border-white/10 px-5 py-4">
-          <button
-            type="button"
-            onClick={onUpload}
-            disabled={uploading}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-violet-500 font-black disabled:opacity-50"
-          >
-            <ImagePlus size={18} />
-            {uploading ? uploadText || t("common_loading") : uploadLabel}
-          </button>
-          <p className="mt-3 text-center text-[11px] font-semibold text-white/35">{hint}</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={onUploadCamera}
+              disabled={uploading}
+              className="flex h-12 items-center justify-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/15 font-black disabled:opacity-50"
+            >
+              <Camera size={18} />
+              {uploading ? uploadText || t("common_loading") : t("story_new_source_camera")}
+            </button>
+            <button
+              type="button"
+              onClick={onUploadGallery}
+              disabled={uploading}
+              className="flex h-12 items-center justify-center gap-2 rounded-full bg-violet-500 font-black disabled:opacity-50"
+            >
+              <ImagePlus size={18} />
+              {uploading ? uploadText || t("common_loading") : t("story_new_source_gallery")}
+            </button>
+          </div>
+          <p className="mt-2 text-center text-[10px] font-semibold text-white/30">{uploadLabel}</p>
+          <p className="mt-2 text-center text-[11px] font-semibold text-white/35">{hint}</p>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="flex-1 overflow-y-auto px-5 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           {media.length === 0 ? (
             <p className="py-10 text-center text-sm font-bold text-white/35">
               {t("edit_gallery")}

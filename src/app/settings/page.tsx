@@ -269,6 +269,7 @@ export default function SettingsPage() {
           fotoPortada: resolveProfileCoverPhoto(profile),
           videoPortada: resolveProfileCoverVideo(profile),
           fotos: profile.fotos,
+          fotoMediaSources: profile.fotoMediaSources,
           likes: Number(profile.likesCount || profile.likes || 0),
           conversaciones: Number(profile.conversacionesCount || profile.conversaciones || 0),
           seguidores: Number(profile.seguidoresCount || profile.seguidores || 0),

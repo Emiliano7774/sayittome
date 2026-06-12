@@ -58,6 +58,31 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   padding-bottom: 0 !important;
 }
 
+body.sayittome-profile-media-sheet-open .sayittome-bottom-nav,
+body.sayittome-profile-media-sheet-open .sayittome-shuffle-toolbar,
+body.sayittome-profile-media-sheet-open nav.fixed.bottom-0,
+body.sayittome-profile-media-sheet-open .fixed.inset-x-0.bottom-0 {
+  display: none !important;
+}
+
+body.sayittome-profile-media-sheet-open.sayittome-has-bottom-nav {
+  padding-bottom: 0 !important;
+}
+
+body.sayittome-profile-viewer-open .sayittome-bottom-nav,
+body.sayittome-profile-viewer-open .sayittome-shuffle-toolbar,
+body.sayittome-profile-viewer-open nav.fixed.bottom-0,
+body.sayittome-profile-viewer-open .fixed.inset-x-0.bottom-0 {
+  display: none !important;
+}
+
+body.sayittome-profile-video-open .sayittome-bottom-nav,
+body.sayittome-profile-video-open .sayittome-shuffle-toolbar,
+body.sayittome-profile-video-open nav.fixed.bottom-0,
+body.sayittome-profile-video-open .fixed.inset-x-0.bottom-0 {
+  display: none !important;
+}
+
 @keyframes sayittomeStoryProgress {
   from {
     width: 0%;

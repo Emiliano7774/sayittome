@@ -4,6 +4,7 @@ import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVis
 import { isActiveWithinWindow, isRecentlyActive } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
+import { normalizeProfileMediaSources } from "@/lib/profile/mediaSource";
 
 const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
 const PROJECT_ID = "sayittome-app";
@@ -23,6 +24,17 @@ function int(fields: any, key: string) {
 
 function ts(fields: any, key: string) {
   return fields?.[key]?.timestampValue || "";
+}
+
+function mapStr(fields: any, key: string) {
+  const map = fields?.[key]?.mapValue?.fields;
+  if (!map || typeof map !== "object") return {};
+
+  const out: Record<string, string> = {};
+  for (const [entryKey, entryValue] of Object.entries(map)) {
+    out[entryKey] = String((entryValue as { stringValue?: string })?.stringValue || "");
+  }
+  return out;
 }
 
 function formatDate(v: string) {
@@ -143,6 +155,7 @@ export async function GET(
     videoPortada: str(fields, "videoPortada") || str(fields, "coverVideo") || "",
     fotos: fotos,
     videos: videos,
+    fotoMediaSources: normalizeProfileMediaSources(mapStr(fields, "fotoMediaSources")),
     likes:
       int(fields, "likesPerfilCount") ||
       int(fields, "likesCount") ||

@@ -57,6 +57,7 @@ type Profile = {
   videoPortada?: string;
   videos?: string[];
   fotos?: string[];
+  fotoMediaSources?: Record<string, "camera" | "gallery">;
   likes: number;
   conversaciones: number;
   seguidores: number;
@@ -264,6 +265,7 @@ export default function PublicProfilePage() {
           fotoPortada: resolveProfileCoverPhoto(profile),
           videoPortada: resolveProfileCoverVideo(profile),
           fotos: profile.fotos,
+          fotoMediaSources: profile.fotoMediaSources,
           likes: profile.likes,
           conversaciones: profile.conversaciones,
           seguidores: profile.seguidores,

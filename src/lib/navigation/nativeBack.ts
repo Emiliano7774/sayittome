@@ -52,8 +52,18 @@ export function tryCloseNativeOverlays(): boolean {
     return true;
   }
 
+  if (body.classList.contains("sayittome-profile-media-sheet-open")) {
+    window.dispatchEvent(new Event("sayittome:close-profile-media-sheet"));
+    return true;
+  }
+
   if (body.classList.contains("sayittome-profile-viewer-open")) {
     window.dispatchEvent(new Event("sayittome:close-profile-viewer"));
+    return true;
+  }
+
+  if (body.classList.contains("sayittome-profile-video-open")) {
+    window.dispatchEvent(new Event("sayittome:close-profile-video"));
     return true;
   }
 

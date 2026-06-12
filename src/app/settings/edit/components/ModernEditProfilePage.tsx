@@ -24,6 +24,10 @@ import {
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
+import {
+  normalizeProfileMediaSources,
+  type ProfileMediaSource,
+} from "@/lib/profile/mediaSource";
 import { useT } from "@/contexts/LocaleContext";
 
 type MediaSheetMode = "cover" | "principal" | "gallery";
@@ -31,7 +35,9 @@ type MediaSheetMode = "cover" | "principal" | "gallery";
 export default function ModernEditProfilePage() {
   const router = useRouter();
   const t = useT();
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingUploadSourceRef = useRef<ProfileMediaSource>("gallery");
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,18 +89,31 @@ export default function ModernEditProfilePage() {
       setMostrarUltimaVez(data.mostrarUltimaVez !== false);
       setIntereses(Array.isArray(data.intereses) ? data.intereses.join(", ") : String(data.intereses || ""));
 
-      const fotos = Array.isArray(data.fotos) ? data.fotos.map((url: string) => ({ url, type: "image" as const })) : [];
-      const videos = Array.isArray(data.videos) ? data.videos.map((url: string) => ({ url, type: "video" as const })) : [];
+      const mediaSources = normalizeProfileMediaSources(data.fotoMediaSources);
+      const withSource = (url: string, type: "image" | "video") => ({
+        url,
+        type,
+        source: mediaSources[url],
+      });
+
+      const fotos = Array.isArray(data.fotos)
+        ? data.fotos.map((url: string) => withSource(url, "image"))
+        : [];
+      const videos = Array.isArray(data.videos)
+        ? data.videos.map((url: string) => withSource(url, "video"))
+        : [];
       const loaded = [...fotos, ...videos];
 
       if (loaded.length === 0 && data.fotoPrincipal) {
         const principalUrl = String(data.fotoPrincipal);
-        loaded.push({
-          url: principalUrl,
-          type: principalUrl.toLowerCase().match(/\.(mp4|mov|webm|mkv|3gp|m4v)(\?|$)/)
-            ? "video"
-            : "image",
-        });
+        loaded.push(
+          withSource(
+            principalUrl,
+            principalUrl.toLowerCase().match(/\.(mp4|mov|webm|mkv|3gp|m4v)(\?|$)/)
+              ? "video"
+              : "image",
+          ),
+        );
       }
 
       const coverPhoto = resolveProfileCoverPhoto(data);
@@ -103,10 +122,7 @@ export default function ModernEditProfilePage() {
 
       for (const url of [coverPhoto, coverVideo]) {
         if (!url || mergedMedia.some((item) => item.url === url)) continue;
-        mergedMedia.unshift({
-          url,
-          type: isVideoMediaUrl(url) ? "video" : "image",
-        });
+        mergedMedia.unshift(withSource(url, isVideoMediaUrl(url) ? "video" : "image"));
       }
 
       const nextMedia = mergedMedia.slice(0, 100);
@@ -138,6 +154,7 @@ export default function ModernEditProfilePage() {
   async function uploadSingleFile(
     file: File,
     folder: "avatar" | "cover" | "cover-video" | "gallery",
+    source: ProfileMediaSource,
   ): Promise<EditMediaItem | null> {
     if (!user) return null;
 
@@ -162,7 +179,7 @@ export default function ModernEditProfilePage() {
       requireRegisteredUser: true,
     });
     scheduleProfileMediaScan(user.uid, url, file);
-    return { url, type: kind, path };
+    return { url, type: kind, path, source };
   }
 
   function openSheet(mode: MediaSheetMode) {
@@ -185,7 +202,11 @@ export default function ModernEditProfilePage() {
     setCover(item, closeSheet);
   }
 
-  async function uploadFiles(files: FileList | null, target: MediaSheetMode = "gallery") {
+  async function uploadFiles(
+    files: FileList | null,
+    target: MediaSheetMode = "gallery",
+    source: ProfileMediaSource = "gallery",
+  ) {
     if (!user || !files?.length) return;
 
     const selected = Array.from(files).filter(isMediaFile);
@@ -215,7 +236,7 @@ export default function ModernEditProfilePage() {
             ? "avatar"
             : "gallery";
 
-        const item = await uploadSingleFile(file, folder);
+        const item = await uploadSingleFile(file, folder, source);
         if (item) uploaded.push(item);
       }
 
@@ -301,6 +322,10 @@ export default function ModernEditProfilePage() {
       videos.unshift(videoPortada);
     }
     const interesesArray = intereses.split(",").map((x) => x.trim()).filter(Boolean);
+    const fotoMediaSources = media.reduce<Record<string, ProfileMediaSource>>((acc, item) => {
+      if (item.source) acc[item.url] = item.source;
+      return acc;
+    }, {});
 
     try {
       await setDoc(
@@ -319,6 +344,7 @@ export default function ModernEditProfilePage() {
           intereses: interesesArray,
           fotos,
           videos,
+          fotoMediaSources,
           fotoPrincipal,
           ...(fotoPortada
             ? { fotoPortada, coverPhoto: fotoPortada, portada: fotoPortada }
@@ -470,13 +496,24 @@ export default function ModernEditProfilePage() {
       </section>
 
       <input
-        ref={inputRef}
+        ref={galleryInputRef}
         type="file"
         accept="image/*,video/*"
         multiple
         className="hidden"
         onChange={(e) => {
-          void uploadFiles(e.target.files, sheetMode);
+          void uploadFiles(e.target.files, sheetMode, pendingUploadSourceRef.current);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*,video/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          void uploadFiles(e.target.files, sheetMode, "camera");
           e.target.value = "";
         }}
       />
@@ -491,7 +528,11 @@ export default function ModernEditProfilePage() {
         uploading={uploading}
         uploadText={uploadText}
         onClose={() => setSheetOpen(false)}
-        onUpload={() => inputRef.current?.click()}
+        onUploadCamera={() => cameraInputRef.current?.click()}
+        onUploadGallery={() => {
+          pendingUploadSourceRef.current = "gallery";
+          galleryInputRef.current?.click();
+        }}
         onSelectCover={applyCover}
         onSelectPrincipal={(index, closeSheet = false) => {
           setPrincipalIndex(index);

@@ -14,6 +14,9 @@ import {
 const NAV_LAYOUT_CLASSES = [
   "sayittome-has-bottom-nav",
   "sayittome-story-viewer-open",
+  "sayittome-profile-media-sheet-open",
+  "sayittome-profile-viewer-open",
+  "sayittome-profile-video-open",
   "sayittome-chat-open",
   "sayittome-filters-open",
 ];

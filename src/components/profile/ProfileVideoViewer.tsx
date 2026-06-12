@@ -3,15 +3,18 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 
+import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
+import type { ProfileMediaSource } from "@/lib/profile/mediaSource";
 
 type Props = {
   url: string;
   open: boolean;
+  source?: ProfileMediaSource;
   onClose: () => void;
 };
 
-export default function ProfileVideoViewer({ url, open, onClose }: Props) {
+export default function ProfileVideoViewer({ url, open, source, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useOverlayBackClose(
@@ -46,6 +49,12 @@ export default function ProfileVideoViewer({ url, open, onClose }: Props) {
       >
         <X size={30} />
       </button>
+
+      {source ? (
+        <div className="absolute left-1/2 top-6 z-[10] -translate-x-1/2">
+          <StoryMediaSourceBadge source={source} mediaType="video" />
+        </div>
+      ) : null}
 
       <video
         ref={videoRef}
