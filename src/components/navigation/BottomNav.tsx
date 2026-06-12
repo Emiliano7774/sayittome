@@ -6,7 +6,6 @@ import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import { useT } from "@/contexts/LocaleContext";
-import { useClassicBarScrollGlow } from "@/hooks/useClassicBarScrollGlow";
 
 type NavItem =
   | { id: string; kind: "link"; href: string; icon: typeof Circle; badge?: number }
@@ -20,7 +19,6 @@ type Props = {
 export default function BottomNav({ unreadCount = 0 }: Props) {
   const pathname = usePathname();
   const t = useT();
-  useClassicBarScrollGlow();
 
   const items: NavItem[] = [
     { id: "stories", kind: "link", href: "/stories", icon: Circle },
