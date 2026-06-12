@@ -446,6 +446,7 @@ export default function SettingsPage() {
             />
           ) : null}
         </div>
+        <div aria-hidden className="sayittome-nav-scroll-spacer" />
       </section>
 
       <ProfileVideoViewer

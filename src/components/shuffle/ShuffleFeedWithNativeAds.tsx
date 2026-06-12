@@ -60,6 +60,7 @@ export default function ShuffleFeedWithNativeAds({
 
         return renderProfile(profile, index);
       })}
+      <div aria-hidden className="sayittome-nav-scroll-spacer" />
     </div>
   );
 }

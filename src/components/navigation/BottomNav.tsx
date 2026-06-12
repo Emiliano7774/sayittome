@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
-import { useClassicBarScrollGlow } from "@/hooks/useClassicBarScrollGlow";
 import { useT } from "@/contexts/LocaleContext";
 
 type NavItem =
@@ -20,7 +19,6 @@ type Props = {
 export default function BottomNav({ unreadCount = 0 }: Props) {
   const pathname = usePathname();
   const t = useT();
-  useClassicBarScrollGlow(true);
 
   const items: NavItem[] = [
     { id: "stories", kind: "link", href: "/stories", icon: Circle },
@@ -35,10 +33,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
   }
 
   return (
-    <div className="sayittome-bottom-nav fixed inset-x-0 bottom-0 z-[9999]">
-      <div aria-hidden className="sayittome-glass-bar-classic">
-        <span className="sayittome-glass-bar-classic-tint" />
-      </div>
+    <div className="sayittome-bottom-nav sayittome-glass-bar-classic fixed inset-x-0 bottom-0 z-[9999]">
       <div className="sayittome-bottom-nav-inner relative z-[1] flex w-full items-center justify-around px-[max(22px,4vw)]">
         {items.map((item) => {
           const Icon = item.icon;
