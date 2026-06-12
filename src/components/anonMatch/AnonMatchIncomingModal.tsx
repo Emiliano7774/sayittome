@@ -19,14 +19,12 @@ export default function AnonMatchIncomingModal() {
   }, [incomingRequest?.solicitudId]);
 
   const handleRespond = useCallback(
-    async (accept: boolean) => {
+    (accept: boolean) => {
       if (!match || responding) return;
       setResponding(true);
-      try {
-        await match.respondIncoming(accept);
-      } finally {
+      void match.respondIncoming(accept).finally(() => {
         setResponding(false);
-      }
+      });
     },
     [match, responding],
   );

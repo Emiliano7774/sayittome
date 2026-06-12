@@ -24,6 +24,15 @@ import {
 } from "firebase/firestore";
 
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  forgetDismissedRequestId,
+  isDismissedRequestId,
+  isRejectedSolicitanteKey,
+  loadDismissedRequestIds,
+  rememberDismissedRequestId,
+  rememberRejectedSolicitanteKey,
+  resolveSolicitanteKey,
+} from "@/lib/anonMatch/dismissedIncoming";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import {
   bindWhipSoundUnlock,
@@ -42,7 +51,7 @@ import {
   saveAnonDirectSearchSession,
 } from "@/lib/anonMatch/directSearchSession";
 import { ANON_MATCH_REQUEST_MS } from "@/lib/anonMatch/types";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import type { AnonMatchRequestState } from "@/lib/anonMatch/types";
 
 export type AnonMatchConnectPhase =
@@ -87,7 +96,6 @@ const RETRY_DELAY_MS = 30_000;
 const AnonMatchContext = createContext<AnonMatchContextValue | null>(null);
 
 const alertedRequestIds = new Set<string>();
-const dismissedRequestIds = new Set<string>();
 
 function persistOpenChat(
   openChat: OpenChat | null,
@@ -696,6 +704,10 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       if (solicitanteAnonId && solicitanteAnonId === targetAnonId) return null;
       if (solicitanteAnonId === anonId) return null;
       if (uid && solicitanteUid === uid) return null;
+      if (isRejectedSolicitanteKey(resolveSolicitanteKey({ solicitanteUid, solicitanteAnonId }))) {
+        return null;
+      }
+      if (isDismissedRequestId(item.id)) return null;
       if (destinatarioTipo === "perfil" && destinatarioUid !== uid) return null;
       if (destinatarioTipo === "anonimo" && targetAnonId !== anonId) return null;
 
@@ -711,7 +723,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     function publishIncoming() {
       const allDocs = [...profileDocs, ...anonDocs];
       const pending = allDocs
-        .filter((row) => !dismissedRequestIds.has(row.solicitudId))
+        .filter((row) => !isDismissedRequestId(row.solicitudId))
         .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
       const next = pending[0] || null;
       setIncomingRequest(next);
@@ -732,9 +744,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       }
 
       // Only forget a dismissed id once Firestore no longer returns it as pending.
-      for (const id of [...dismissedRequestIds]) {
+      for (const id of loadDismissedRequestIds()) {
         if (!allDocs.some((row) => row.solicitudId === id)) {
-          dismissedRequestIds.delete(id);
+          forgetDismissedRequestId(id);
         }
       }
     }
@@ -816,7 +828,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       const solicitudId = incomingRequest.solicitudId;
       const receiverRole =
         incomingRequest.destinatarioTipo === "perfil" ? "perfil" : "anonimo";
-      const responderUid = firebaseUser?.uid || "";
+      const responderUid = firebaseUser?.uid || auth.currentUser?.uid || "";
       const responderAnonId = getAnonSessionId();
 
       const buildRespondBody = (accepted: boolean) => {
@@ -828,7 +840,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
       if (!accept) {
         respondingIncomingRef.current = true;
-        dismissedRequestIds.add(solicitudId);
+        rememberDismissedRequestId(solicitudId);
+        rememberRejectedSolicitanteKey(
+          resolveSolicitanteKey({
+            solicitanteUid: incomingRequest.solicitanteUid,
+            solicitanteAnonId: incomingRequest.solicitanteAnonId,
+          }),
+        );
         setIncomingRequest(null);
 
         try {

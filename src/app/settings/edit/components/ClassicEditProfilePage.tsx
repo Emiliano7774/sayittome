@@ -118,6 +118,13 @@ export default function ClassicEditProfilePage() {
   }
 
   useEffect(() => {
+    document.body.classList.add("sayittome-profile-edit-open");
+    return () => {
+      document.body.classList.remove("sayittome-profile-edit-open");
+    };
+  }, []);
+
+  useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         router.replace("/login");
@@ -646,7 +653,7 @@ export default function ClassicEditProfilePage() {
           </section>
         </div>
 
-        <div className="mt-8 border-t border-white/18 pt-8">
+        <div className="mt-8 border-t border-white/18 pt-8 pb-6">
           <div className="flex items-end justify-between gap-5 mb-5">
             <div>
               <p className="text-white/55 text-sm font-black uppercase tracking-wide">

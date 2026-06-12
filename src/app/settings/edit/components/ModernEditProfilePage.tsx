@@ -63,6 +63,13 @@ export default function ModernEditProfilePage() {
   const [sheetMode, setSheetMode] = useState<MediaSheetMode>("gallery");
 
   useEffect(() => {
+    document.body.classList.add("sayittome-profile-edit-open");
+    return () => {
+      document.body.classList.remove("sayittome-profile-edit-open");
+    };
+  }, []);
+
+  useEffect(() => {
     return onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (!u) {
