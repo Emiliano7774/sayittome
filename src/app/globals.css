@@ -128,6 +128,7 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
 
 .sayittome-bottom-nav.sayittome-glass-bar-classic {
   opacity: 1;
+  border-top: 1px solid rgba(255, 255, 255, 0.11);
   background:
     linear-gradient(
       to bottom,
@@ -136,9 +137,11 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
       rgba(0, 0, 0, 0.16)
     ),
     rgba(8, 8, 14, 0.58);
+  background-repeat: no-repeat;
+  background-size: 100% var(--sayittome-nav-height);
+  background-position: top;
   backdrop-filter: blur(26px) saturate(175%) brightness(105%) contrast(108%);
   -webkit-backdrop-filter: blur(26px) saturate(175%) brightness(105%) contrast(108%);
-  border-top: 1px solid rgba(255, 255, 255, 0.11);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     inset 0 -1px 0 rgba(255, 255, 255, 0.035),
@@ -186,13 +189,7 @@ body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   }
 
   .sayittome-bottom-nav.sayittome-glass-bar-classic {
-    background:
-      linear-gradient(
-        to bottom,
-        rgba(255, 255, 255, 0.04),
-        rgba(0, 0, 0, 0.18)
-      ),
-      rgba(8, 8, 14, 0.82);
+    background: rgba(8, 8, 14, 0.88);
   }
 
   .sayittome-bottom-nav.sayittome-glass-bar-classic::before {
