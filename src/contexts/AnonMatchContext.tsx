@@ -709,7 +709,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     }
 
     function publishIncoming() {
-      const pending = [...profileDocs, ...anonDocs]
+      const allDocs = [...profileDocs, ...anonDocs];
+      const pending = allDocs
         .filter((row) => !dismissedRequestIds.has(row.solicitudId))
         .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
       const next = pending[0] || null;
@@ -730,8 +731,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // Only forget a dismissed id once Firestore no longer returns it as pending.
       for (const id of [...dismissedRequestIds]) {
-        if (!pending.some((row) => row.solicitudId === id)) {
+        if (!allDocs.some((row) => row.solicitudId === id)) {
           dismissedRequestIds.delete(id);
         }
       }

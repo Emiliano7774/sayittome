@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
+
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
@@ -9,8 +11,27 @@ export default function AnonMatchIncomingModal() {
   const { uxMode } = useUxMode();
   const t = useT();
   const modern = uxMode === "modern";
+  const [responding, setResponding] = useState(false);
+  const incomingRequest = match?.incomingRequest;
 
-  if (!match?.incomingRequest) return null;
+  useEffect(() => {
+    setResponding(false);
+  }, [incomingRequest?.solicitudId]);
+
+  const handleRespond = useCallback(
+    async (accept: boolean) => {
+      if (!match || responding) return;
+      setResponding(true);
+      try {
+        await match.respondIncoming(accept);
+      } finally {
+        setResponding(false);
+      }
+    },
+    [match, responding],
+  );
+
+  if (!incomingRequest) return null;
 
   return (
     <div
@@ -44,7 +65,8 @@ export default function AnonMatchIncomingModal() {
         <div className="mt-8 grid grid-cols-2 gap-3">
           <button
             type="button"
-            onClick={() => void match.respondIncoming(false)}
+            disabled={responding}
+            onClick={() => void handleRespond(false)}
             className={
               modern
                 ? "rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-base font-black text-white/70"
@@ -55,7 +77,8 @@ export default function AnonMatchIncomingModal() {
           </button>
           <button
             type="button"
-            onClick={() => void match.respondIncoming(true)}
+            disabled={responding}
+            onClick={() => void handleRespond(true)}
             className={
               modern
                 ? "rounded-2xl bg-violet-600 px-4 py-4 text-base font-black text-white shadow-[0_0_20px_rgba(124,58,237,0.35)]"
