@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 
 const SEGMENTS = 7;
-const SAMPLE_Y_OFFSET = 52;
+/** Sample inside the glass band so elementsFromPoint skips the bar and reads feed behind it. */
+const SAMPLE_Y_RATIO = 0.42;
 
 let sampleCanvas: HTMLCanvasElement | null = null;
 let sampleCtx: CanvasRenderingContext2D | null = null;
@@ -152,7 +153,11 @@ function updateClassicBarGlow() {
   if (!bar) return;
 
   const rect = bar.getBoundingClientRect();
-  const sampleY = Math.max(0, rect.top - SAMPLE_Y_OFFSET);
+  const navHeight =
+    Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--sayittome-nav-height"),
+    ) || 74;
+  const sampleY = Math.max(0, rect.top + navHeight * SAMPLE_Y_RATIO);
   const width = window.innerWidth;
 
   const raw: SampleColor[] = [];
