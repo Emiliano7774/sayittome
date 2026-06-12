@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
+import BottomNavLink from "@/components/navigation/BottomNavLink";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -42,7 +42,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (
-              <Link
+              <BottomNavLink
                 key={item.id}
                 href={item.href}
                 className="relative flex h-full flex-1 items-center justify-center"
@@ -53,7 +53,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
                   strokeWidth={2.4}
                   className={active ? "text-[#f59e0b]" : "text-[#777]"}
                 />
-              </Link>
+              </BottomNavLink>
             );
           }
 
@@ -77,7 +77,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
           const badge = item.kind === "link" ? item.badge || 0 : 0;
 
           return (
-            <Link
+            <BottomNavLink
               key={item.id}
               href={item.href}
               className="relative flex h-full flex-1 items-center justify-center"
@@ -90,7 +90,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
               {badge > 0 && item.id === "chats" ? (
                 <ChatPendingIndicator className="right-[calc(50%-18px)] top-[11px]" />
               ) : null}
-            </Link>
+            </BottomNavLink>
           );
         })}
       </div>

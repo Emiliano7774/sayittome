@@ -9,6 +9,7 @@ import AnonymousPresenceBootstrap from "@/components/AnonymousPresenceBootstrap"
 import AnonSessionLifecycle from "@/components/AnonSessionLifecycle";
 import BoostBootstrap from "@/components/boost/BoostBootstrap";
 import NativeAppBootstrap from "@/components/app/NativeAppBootstrap";
+import RouteRecoveryBootstrap from "@/components/app/RouteRecoveryBootstrap";
 import AdsBootstrap from "@/components/monetization/AdsBootstrap";
 import MonetagScripts from "@/components/monetization/MonetagScripts";
 import PresenceBootstrap from "@/components/PresenceBootstrap";
@@ -31,6 +32,7 @@ export default function Providers({
           <AnonymousPresenceBootstrap />
           <AnonSessionLifecycle />
           <NativeAppBootstrap />
+          <RouteRecoveryBootstrap />
           <AdsBootstrap />
           <MonetagScripts />
           <StoriesBootstrap />

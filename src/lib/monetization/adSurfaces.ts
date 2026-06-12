@@ -2,7 +2,11 @@ import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
 
 /** Routes where third-party ad scripts must not load (chat, auth, admin). */
-const BLOCKED_PREFIXES = ["/login", "/register", "/admin", "/chat"];
+const BLOCKED_PREFIXES = ["/login", "/register", "/admin"];
+
+function isChatSurfaceRoute(path: string) {
+  return path === "/chats" || path.startsWith("/chat/");
+}
 
 /** Body classes that block Monetag (chats, sensitive media, consent overlays). */
 const BLOCKED_BODY_CLASSES = [
@@ -33,7 +37,7 @@ function isBaseMonetagAllowed(pathname: string) {
     return false;
   }
 
-  if (/\/chat\/?$/.test(path)) {
+  if (isChatSurfaceRoute(path)) {
     return false;
   }
 
