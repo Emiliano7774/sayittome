@@ -8,7 +8,7 @@ import BottomNav from "@/components/navigation/BottomNav";
 import ModernBottomNav from "@/components/navigation/ModernBottomNav";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 
-const HIDE_PREFIXES = ["/admin", "/login", "/register", "/privacy"];
+const HIDE_PREFIXES = ["/admin", "/login", "/register", "/privacy", "/settings/edit"];
 
 export default function AppNavigation() {
   const { uxMode } = useUxMode();

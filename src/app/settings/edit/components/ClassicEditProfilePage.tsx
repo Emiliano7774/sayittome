@@ -87,6 +87,7 @@ export default function ClassicEditProfilePage() {
 
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [principalIndex, setPrincipalIndex] = useState(0);
+  const [fotoPrincipalUrl, setFotoPrincipalUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadText, setUploadText] = useState("");
   const [uploadError, setUploadError] = useState("");
@@ -99,11 +100,22 @@ export default function ClassicEditProfilePage() {
     followers: true,
   });
 
-  const fotoPrincipal =
-    media[principalIndex]?.url ||
-    media.find((item) => item.type === "image")?.url ||
-    media.find((item) => item.type === "video")?.url ||
-    "";
+  function pickNextPrincipalUrl(nextMedia: MediaItem[], removedUrl: string) {
+    if (fotoPrincipalUrl && fotoPrincipalUrl !== removedUrl) {
+      return fotoPrincipalUrl;
+    }
+
+    const image = nextMedia.find((item) => item.type === "image");
+    if (image) return image.url;
+
+    return nextMedia[0]?.url || "";
+  }
+
+  function setPrincipal(index: number) {
+    const url = media[index]?.url || "";
+    setPrincipalIndex(index);
+    setFotoPrincipalUrl(url);
+  }
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -168,6 +180,7 @@ export default function ClassicEditProfilePage() {
       const principalIdx = principalUrl
         ? nextMedia.findIndex((item) => item.url === principalUrl)
         : -1;
+      setFotoPrincipalUrl(principalUrl);
       setPrincipalIndex(principalIdx >= 0 ? principalIdx : 0);
 
       setVisibleBadges({
@@ -234,7 +247,22 @@ export default function ClassicEditProfilePage() {
         });
       }
 
-      setMedia((prev) => [...prev, ...uploaded].slice(0, 100));
+      setMedia((prev) => {
+        const next = [...prev, ...uploaded].slice(0, 100);
+
+        if (!fotoPrincipalUrl && uploaded.length > 0) {
+          const firstPrincipal =
+            uploaded.find((item) => item.type === "image") || uploaded[0];
+          const principalIdx = next.findIndex((item) => item.url === firstPrincipal.url);
+
+          if (principalIdx >= 0) {
+            setPrincipalIndex(principalIdx);
+            setFotoPrincipalUrl(firstPrincipal.url);
+          }
+        }
+
+        return next;
+      });
     } catch (error) {
       console.error(error);
       setUploadError(t(profileUploadErrorKey(error)));
@@ -265,9 +293,19 @@ export default function ClassicEditProfilePage() {
   }
 
   function removeMedia(index: number) {
-    setMedia((prev) => prev.filter((_, i) => i !== index));
+    const removed = media[index];
+    const nextMedia = media.filter((_, i) => i !== index);
+    setMedia(nextMedia);
 
-    if (principalIndex === index) {
+    if (removed?.url === fotoPrincipalUrl) {
+      const nextPrincipalUrl = pickNextPrincipalUrl(nextMedia, removed.url);
+      setFotoPrincipalUrl(nextPrincipalUrl);
+      setPrincipalIndex(
+        nextPrincipalUrl
+          ? nextMedia.findIndex((item) => item.url === nextPrincipalUrl)
+          : 0,
+      );
+    } else if (principalIndex === index) {
       setPrincipalIndex(0);
     } else if (principalIndex > index) {
       setPrincipalIndex((prev) => Math.max(0, prev - 1));
@@ -287,6 +325,18 @@ export default function ClassicEditProfilePage() {
 
     const fotos = media.filter((item) => item.type === "image").map((item) => item.url);
     const videos = media.filter((item) => item.type === "video").map((item) => item.url);
+    const principalPhoto =
+      fotoPrincipalUrl ||
+      media[principalIndex]?.url ||
+      fotos[0] ||
+      videos[0] ||
+      "";
+
+    let provinciaToSave = provincia.trim();
+    if (!provinciaToSave) {
+      const snap = await getDoc(doc(db, "usuarios", uid));
+      provinciaToSave = String(snap.data()?.provincia || "").trim();
+    }
 
     try {
       await setDoc(
@@ -299,18 +349,18 @@ export default function ClassicEditProfilePage() {
           descripcion: bio.trim(),
           etiquetas: tagArray,
           intereses: tagArray,
-          provincia,
+          provincia: provinciaToSave,
           mostrarProvincia,
           mostrarUltimaVez,
           fotos,
           videos,
-          fotoPrincipal,
+          fotoPrincipal: principalPhoto,
           mostrarSuperMessages: visibleBadges.superMessages,
           mostrarLikes: visibleBadges.likes,
           mostrarConversaciones: visibleBadges.conversations,
           mostrarSeguidores: visibleBadges.followers,
-          perfilCompleto: Boolean(username.trim() && fotoPrincipal),
-          profileSetupComplete: Boolean(username.trim() && provincia.trim()),
+          perfilCompleto: Boolean(username.trim() && principalPhoto),
+          profileSetupComplete: true,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -334,7 +384,7 @@ export default function ClassicEditProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white px-5 sm:px-8 lg:px-12 py-6 pb-28">
+    <main className="min-h-screen bg-black text-white px-5 sm:px-8 lg:px-12 py-6 pb-10">
       <section className="w-full max-w-[1480px] mx-auto">
         <div className="flex items-center justify-between mb-10">
           <button
@@ -366,9 +416,9 @@ export default function ClassicEditProfilePage() {
 
               <div className="flex flex-col sm:flex-row xl:flex-col gap-6">
                 <div className="w-full sm:w-[260px] xl:w-full aspect-square rounded-[34px] border-2 border-white/25 bg-zinc-950 overflow-hidden flex items-center justify-center">
-                  {fotoPrincipal ? (
+                  {fotoPrincipalUrl ? (
                     <ProfileMediaSurface
-                      url={fotoPrincipal}
+                      url={fotoPrincipalUrl}
                       alt="Foto principal"
                       imageClassName="w-full h-full object-cover"
                       videoClassName="w-full h-full object-cover"
@@ -394,7 +444,10 @@ export default function ClassicEditProfilePage() {
                     accept="image/*,video/*"
                     multiple
                     className="hidden"
-                    onChange={(e) => uploadFiles(e.target.files)}
+                    onChange={(e) => {
+                      void uploadFiles(e.target.files);
+                      e.target.value = "";
+                    }}
                   />
 
                   <p className="text-white/45 mt-4 text-lg">
@@ -644,7 +697,7 @@ export default function ClassicEditProfilePage() {
                     {index + 1}
                   </div>
 
-                  <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black via-black/70 to-transparent flex justify-between gap-1">
+                  <div className="absolute inset-x-0 bottom-0 z-10 p-2 bg-gradient-to-t from-black via-black/70 to-transparent flex justify-between gap-1">
                     <button
                       type="button"
                       onClick={() => moveMedia(index, -1)}
@@ -656,7 +709,7 @@ export default function ClassicEditProfilePage() {
 
                     <button
                       type="button"
-                      onClick={() => setPrincipalIndex(index)}
+                      onClick={() => setPrincipal(index)}
                       className={`w-9 h-9 rounded-full flex items-center justify-center ${
                         principalIndex === index ? "bg-violet-500" : "bg-white/15"
                       }`}
