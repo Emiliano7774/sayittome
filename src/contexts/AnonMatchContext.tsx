@@ -87,6 +87,7 @@ const RETRY_DELAY_MS = 30_000;
 const AnonMatchContext = createContext<AnonMatchContextValue | null>(null);
 
 const alertedRequestIds = new Set<string>();
+const dismissedRequestIds = new Set<string>();
 
 function persistOpenChat(
   openChat: OpenChat | null,
@@ -158,6 +159,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const lastPathRef = useRef(pathname);
   const openChatRef = useRef(openChat);
   const chatViewRef = useRef(chatView);
+  const respondingIncomingRef = useRef(false);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -707,9 +709,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     }
 
     function publishIncoming() {
-      const pending = [...profileDocs, ...anonDocs].sort((a, b) =>
-        a.expiresAt.localeCompare(b.expiresAt),
-      );
+      const pending = [...profileDocs, ...anonDocs]
+        .filter((row) => !dismissedRequestIds.has(row.solicitudId))
+        .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
       const next = pending[0] || null;
       setIncomingRequest(next);
 
@@ -722,11 +724,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      if (!next) {
-        for (const id of [...alertedRequestIds]) {
-          if (!pending.some((row) => row.solicitudId === id)) {
-            alertedRequestIds.delete(id);
-          }
+      for (const id of [...alertedRequestIds]) {
+        if (!pending.some((row) => row.solicitudId === id)) {
+          alertedRequestIds.delete(id);
+        }
+      }
+
+      for (const id of [...dismissedRequestIds]) {
+        if (!pending.some((row) => row.solicitudId === id)) {
+          dismissedRequestIds.delete(id);
         }
       }
     }
@@ -803,7 +809,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   const respondIncoming = useCallback(
     async (accept: boolean) => {
-      if (!incomingRequest) return;
+      if (!incomingRequest || respondingIncomingRef.current) return;
 
       const solicitudId = incomingRequest.solicitudId;
       const receiverRole =
@@ -819,6 +825,10 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       };
 
       if (!accept) {
+        respondingIncomingRef.current = true;
+        dismissedRequestIds.add(solicitudId);
+        setIncomingRequest(null);
+
         try {
           await fetch("/api/anon-match/respond", {
             method: "POST",
@@ -826,11 +836,14 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
             body: JSON.stringify(buildRespondBody(false)),
           });
         } catch {
-          // Ignore reject errors; incoming listener will refresh.
+          // Keep dismissed locally even if the network call fails.
+        } finally {
+          respondingIncomingRef.current = false;
         }
-        setIncomingRequest(null);
         return;
       }
+
+      respondingIncomingRef.current = true;
 
       const openAcceptedChat = (chatId: string) => {
         openDirectChat(chatId, receiverRole);
@@ -873,6 +886,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         } catch {
           // Keep modal open so the user can retry.
         }
+      } finally {
+        respondingIncomingRef.current = false;
       }
     },
     [firebaseUser?.uid, incomingRequest, openDirectChat],
