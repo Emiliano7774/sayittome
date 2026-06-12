@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 
-import { hardNavigate, shouldHardNavigate } from "@/lib/navigation/hardNavigate";
-
 type Props = {
   href: string;
   className?: string;
@@ -12,22 +10,6 @@ type Props = {
 };
 
 export default function BottomNavLink({ href, className, children, ...rest }: Props) {
-  if (shouldHardNavigate()) {
-    return (
-      <a
-        href={href}
-        className={className}
-        onClick={(event) => {
-          event.preventDefault();
-          hardNavigate(href);
-        }}
-        {...rest}
-      >
-        {children}
-      </a>
-    );
-  }
-
   return (
     <Link href={href} className={className} prefetch {...rest}>
       {children}

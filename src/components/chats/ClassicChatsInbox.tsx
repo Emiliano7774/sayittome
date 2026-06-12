@@ -6,8 +6,8 @@ import ChatInboxLink from "@/components/chats/ChatInboxLink";
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
 } from "@/components/chats/ChatsSelectionToolbar";
+import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
-import ChatPeerAvatar from "@/components/chat/ChatPeerAvatar";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { formatClassicInboxTime } from "@/lib/chat/inboxTime";
 import { chatHref, type InboxChat } from "@/hooks/useChatsInbox";
@@ -69,7 +69,7 @@ function ClassicChatRow({
     <>
       {selectionMode ? <ChatSelectionCheckbox checked={selected} variant="classic" /> : null}
 
-      <ChatPeerAvatar
+      <ChatInboxAvatar
         photo={shouldHidePeerProfilePhoto(chat, uid) ? "" : photo}
         username={title}
         size="md"
@@ -77,7 +77,6 @@ function ClassicChatRow({
         variant="classic"
         anonAvatar={isAnonPeer}
         anonKey={anonKey}
-        enablePhotoScan={false}
       />
 
       <div className="min-w-0 flex-1">

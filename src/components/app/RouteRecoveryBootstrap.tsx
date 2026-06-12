@@ -10,14 +10,24 @@ function isRecoverableRouteError(message: string) {
   );
 }
 
+function recoveryAttempts() {
+  if (typeof window === "undefined") return 0;
+  return Number(sessionStorage.getItem(RECOVERY_KEY) || "0");
+}
+
+function markRecoveryAttempt() {
+  sessionStorage.setItem(RECOVERY_KEY, String(recoveryAttempts() + 1));
+}
+
 export default function RouteRecoveryBootstrap() {
   useEffect(() => {
-    sessionStorage.removeItem(RECOVERY_KEY);
     function maybeRecover(message: string) {
       if (!isRecoverableRouteError(message)) return;
-      if (sessionStorage.getItem(RECOVERY_KEY) === "1") return;
-      sessionStorage.setItem(RECOVERY_KEY, "1");
-      window.location.reload();
+      if (recoveryAttempts() >= 2) return;
+      markRecoveryAttempt();
+      const url = new URL(window.location.href);
+      url.searchParams.set("_recover", String(Date.now()));
+      window.location.replace(url.toString());
     }
 
     const onError = (event: ErrorEvent) => {
