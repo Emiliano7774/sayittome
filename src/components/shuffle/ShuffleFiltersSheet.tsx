@@ -47,12 +47,19 @@ function ToggleRow({
         ? "bg-[#8C84FF]"
         : "bg-white/15";
 
+  const titleClass =
+    variant === "modern" ? "text-sm font-black text-white" : "text-sm font-normal text-white/80";
+  const subtitleClass =
+    variant === "modern"
+      ? "mt-1 text-[12px] font-bold leading-snug text-white/60"
+      : "mt-1 text-[12px] font-normal leading-snug text-white/45";
+
   return (
     <div className="mb-2.5 rounded-[18px] border border-white/[0.075] bg-white/[0.045] px-3.5 py-3">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-black text-white">{title}</p>
-          <p className="mt-1 text-[12px] font-bold leading-snug text-white/60">{subtitle}</p>
+          <p className={titleClass}>{title}</p>
+          <p className={subtitleClass}>{subtitle}</p>
         </div>
         <button
           type="button"
@@ -167,11 +174,13 @@ export default function ShuffleFiltersSheet({
 
   const fieldClass = isModern
     ? "w-full rounded-2xl border border-white/10 bg-[#111] px-4 py-3.5 text-sm font-bold text-white outline-none placeholder:text-white/35 focus:border-violet-500/50 disabled:text-white/45"
-    : "w-full rounded-2xl border border-white/10 bg-[#141414] px-4 py-3.5 text-sm font-bold text-white outline-none placeholder:text-white/35 focus:border-[#8C84FF]/50 disabled:text-white/45";
+    : "w-full rounded-2xl border border-white/10 bg-[#141414] px-4 py-3.5 text-sm font-normal text-white/80 outline-none placeholder:text-white/30 focus:border-[#8C84FF]/50 disabled:text-white/40";
 
   const optionClass = "bg-[#111] text-white";
 
-  const labelClass = "mb-2 block text-xs font-black tracking-wide text-white/55";
+  const labelClass = isModern
+    ? "mb-2 block text-xs font-black tracking-wide text-white/55"
+    : "mb-2 block text-xs font-normal tracking-wide text-white/45";
 
   return (
     <div className="fixed inset-0 z-[10050] flex items-end justify-center bg-black/70 p-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:items-center">
@@ -194,10 +203,24 @@ export default function ShuffleFiltersSheet({
           </div>
 
           <div className="min-w-0 flex-1">
-            <h2 className="text-[22px] font-black tracking-[-0.03em] text-white">
+            <h2
+              className={
+                isModern
+                  ? "text-[22px] font-black tracking-[-0.03em] text-white"
+                  : "text-[22px] font-normal tracking-[-0.03em] text-white/85"
+              }
+            >
               {t("shuffle_filters_title")}
             </h2>
-            <p className="text-[12.5px] font-bold text-white/55">{t("shuffle_filters_subtitle")}</p>
+            <p
+              className={
+                isModern
+                  ? "text-[12.5px] font-bold text-white/55"
+                  : "text-[12.5px] font-normal text-white/45"
+              }
+            >
+              {t("shuffle_filters_subtitle")}
+            </p>
           </div>
 
           <button
@@ -212,10 +235,10 @@ export default function ShuffleFiltersSheet({
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <div
-            className={`rounded-[18px] border px-3.5 py-3 text-[12.6px] font-bold leading-relaxed ${
+            className={`rounded-[18px] border px-3.5 py-3 text-[12.6px] leading-relaxed ${
               isModern
-                ? "border-violet-500/25 bg-violet-500/10 text-violet-100/80"
-                : "border-[#8C84FF]/26 bg-[#111111] text-white/80"
+                ? "border-violet-500/25 bg-violet-500/10 font-bold text-violet-100/80"
+                : "border-[#8C84FF]/26 bg-[#111111] font-normal text-white/55"
             }`}
           >
             {summary || t("shuffle_filters_empty_hint")}
@@ -352,7 +375,15 @@ export default function ShuffleFiltersSheet({
           </div>
 
           <div className="mt-2">
-            <p className="mb-2.5 text-[15px] font-black text-white">{t("shuffle_filters_interests")}</p>
+            <p
+              className={
+                isModern
+                  ? "mb-2.5 text-[15px] font-black text-white"
+                  : "mb-2.5 text-[15px] font-normal text-white/80"
+              }
+            >
+              {t("shuffle_filters_interests")}
+            </p>
             <div className="flex flex-wrap gap-2">
               {SHUFFLE_INTEREST_OPTIONS.map((interest) => {
                 const active = draft.intereses.some(
@@ -363,12 +394,16 @@ export default function ShuffleFiltersSheet({
                     key={interest}
                     type="button"
                     onClick={() => toggleInterest(interest)}
-                    className={`rounded-full border px-3 py-2 text-[12.5px] font-black transition ${
+                    className={`rounded-full border px-3 py-2 text-[12.5px] transition ${
+                      isModern ? "font-black" : "font-normal"
+                    } ${
                       active
                         ? isModern
                           ? "border-white/40 bg-violet-600 text-white"
                           : "border-white/40 bg-[#8C84FF] text-white"
-                        : "border-white/10 bg-white/[0.055] text-white/85"
+                        : isModern
+                          ? "border-white/10 bg-white/[0.055] text-white/85"
+                          : "border-white/10 bg-white/[0.055] text-white/55"
                     }`}
                   >
                     {interest}
