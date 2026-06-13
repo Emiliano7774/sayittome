@@ -127,7 +127,7 @@ export default function PublicProfilePage() {
 
       try {
         if (!cached) setLoading(true);
-        const next = (await fetchProfileByUsername(usernameParam)) as Profile | null;
+        const next = (await fetchProfileByUsername(usernameParam, true)) as Profile | null;
         setProfile(next);
       } catch {
         if (!cached) setProfile(null);
@@ -430,19 +430,16 @@ export default function PublicProfilePage() {
             </p>
           )}
 
-        </div>
+          {lastSeenLabel ? (
+            <p
+              className="mt-4 font-black text-white/70 md:mt-5"
+              style={{ fontSize: profileUi.lastSeenSizeMd }}
+            >
+              {lastSeenLabel}
+            </p>
+          ) : null}
 
-        {lastSeenLabel ? (
-          <p
-            className="pointer-events-none absolute right-8 md:right-24 z-[22] max-w-[min(92vw,420px)] text-right font-black text-white/70"
-            style={{
-              bottom: profile.bio ? "14vh" : "8vh",
-              fontSize: profileUi.lastSeenSizeMd,
-            }}
-          >
-            {lastSeenLabel}
-          </p>
-        ) : null}
+        </div>
 
         <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-none">
           <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={profileUi.statIcon} fill="white" />} ui={profileUi} />
@@ -483,6 +480,14 @@ export default function PublicProfilePage() {
             {profile.bio}
           </p>
         )}
+
+        {createdSignature ? (
+          <ProfileCreatedFooter
+            label={t("settings_profile_created", { date: createdSignature })}
+            className="absolute right-8 md:right-24 bottom-[5vh] z-[21] pointer-events-none px-0 pb-0 pt-0"
+            style={{ fontSize: profileUi.createdText }}
+          />
+        ) : null}
       </section>
 
       {gallery.length > 1 && (
@@ -519,14 +524,6 @@ export default function PublicProfilePage() {
           </div>
         </section>
       )}
-
-      {createdSignature ? (
-        <ProfileCreatedFooter
-          label={t("settings_profile_created", { date: createdSignature })}
-          className="relative z-[6] bg-black"
-          style={{ fontSize: profileUi.createdText }}
-        />
-      ) : null}
 
       <ProfileVideoViewer
         url={videoViewerUrl || ""}

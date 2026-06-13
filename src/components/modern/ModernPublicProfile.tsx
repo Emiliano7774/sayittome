@@ -373,12 +373,14 @@ export default function ModernPublicProfile({
                 </p>
               ) : null}
 
-              <p className="mt-3 text-sm leading-6 text-zinc-400">
-                {profile.bio || t("profile_default_bio")}
-              </p>
-
               {profile.mostrarProvincia && profile.provincia ? (
                 <p className="mt-2 text-sm font-normal text-zinc-500">{profile.provincia}</p>
+              ) : null}
+
+              {lastSeen ? (
+                <p className="mt-4 text-base font-semibold text-zinc-400 md:mt-5 md:text-lg">
+                  {lastSeen}
+                </p>
               ) : null}
 
               <div className="mt-5 grid grid-cols-4 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">
@@ -402,6 +404,10 @@ export default function ModernPublicProfile({
                   seen={story.hasActive && !story.hasUnseen}
                 />
               </div>
+
+              <p className="mt-5 text-sm leading-6 text-zinc-400">
+                {profile.bio || t("profile_default_bio")}
+              </p>
 
               <div className="mt-5 flex flex-wrap gap-3">
                 <Link
@@ -440,22 +446,15 @@ export default function ModernPublicProfile({
                 ) : null}
               </div>
             </div>
-          </section>
-        </div>
 
-        {(lastSeen || createdSignature) ? (
-          <div className="max-w-3xl mx-auto px-4 text-right">
-            {lastSeen ? (
-              <p className="pb-2 text-base font-semibold text-zinc-400 md:text-lg">{lastSeen}</p>
-            ) : null}
             {createdSignature ? (
               <ProfileCreatedFooter
                 label={t("settings_profile_created", { date: createdSignature })}
-                className="px-0 pb-8"
+                className="absolute right-6 bottom-6 z-[21] pointer-events-none w-auto px-0 pb-0 pt-0 md:right-8"
               />
             ) : null}
-          </div>
-        ) : null}
+          </section>
+        </div>
       </div>
 
       <ProfileVideoViewer

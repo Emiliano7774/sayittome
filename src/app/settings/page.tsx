@@ -395,6 +395,15 @@ export default function SettingsPage() {
             >
               {username}
             </h1>
+
+            {lastSeenLabel ? (
+              <p
+                className="mt-5 font-black text-white/70"
+                style={{ fontSize: profileUi.lastSeenSizeMd }}
+              >
+                {lastSeenLabel}
+              </p>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mt-20">
@@ -477,18 +486,10 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {lastSeenLabel ? (
-            <p
-              className="mt-10 text-right font-black text-white/70"
-              style={{ fontSize: profileUi.lastSeenSizeMd }}
-            >
-              {lastSeenLabel}
-            </p>
-          ) : null}
-
           {createdAtLabel ? (
             <ProfileCreatedFooter
               label={t("settings_profile_created", { date: createdAtLabel })}
+              className="absolute right-6 sm:right-10 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[21] pointer-events-none px-0 pb-0 pt-0"
               style={{ fontSize: profileUi.createdText }}
             />
           ) : null}
