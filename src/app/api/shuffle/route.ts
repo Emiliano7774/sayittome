@@ -23,7 +23,7 @@ const PROJECT_ID = "sayittome-app";
 const PROFILE_CACHE_MS = 8 * 60_000;
 const ANON_CACHE_MS = 5 * 60_000;
 const STATS_REFRESH_MS = 10 * 60_000;
-const SHUFFLE_POOL_LIMIT = 50;
+const SHUFFLE_POOL_LIMIT = 80;
 const ANON_SCAN_LIMIT = 40;
 const ANON_ACTIVE_MS = 90 * 1000;
 

@@ -18,6 +18,21 @@ function normalizedUsername(profile: { username?: string }) {
   return username;
 }
 
+export function normalizeShufflePhotoKey(photo?: string) {
+  const raw = String(photo || "").trim().toLowerCase();
+  if (!raw) return "";
+
+  const withoutQuery = raw.split("?")[0]?.split("#")[0] || "";
+
+  try {
+    const url = new URL(withoutQuery);
+    const path = url.pathname.replace(/\/+$/, "");
+    return path.length > 8 ? path : withoutQuery;
+  } catch {
+    return withoutQuery;
+  }
+}
+
 export function shuffleProfileIdentityKey(profile: {
   uid?: string;
   username?: string;
@@ -71,15 +86,18 @@ export function shuffleProfileDedupeKeys(profile: {
   uid?: string;
   username?: string;
   email?: string;
+  photo?: string;
 }) {
   const keys = new Set<string>();
   const identityKey = shuffleProfileIdentityKey(profile);
   const uid = String(profile.uid || "").trim();
   const email = String(profile.email || "").trim().toLowerCase();
+  const photoKey = normalizeShufflePhotoKey(profile.photo);
 
   if (identityKey) keys.add(identityKey);
   if (uid) keys.add(`id:${uid}`);
   if (email.includes("@")) keys.add(`e:${email}`);
+  if (photoKey) keys.add(`p:${photoKey}`);
 
   return [...keys];
 }

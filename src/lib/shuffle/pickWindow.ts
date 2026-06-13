@@ -35,12 +35,37 @@ export function pickRandomWindowIndices(
   return n;
 }
 
-/** Like pickRandomWindowIndices but never returns two indices for the same username/uid. */
+function pickUniqueIndicesFromPool(
+  pool: Array<{ uid: string; username: string; photo?: string }>,
+  order: number[],
+  out: Int32Array,
+  size: number,
+  excludeKeys?: ReadonlySet<string>,
+) {
+  const used = new Set<string>();
+  let count = 0;
+
+  for (let i = 0; i < order.length && count < size; i++) {
+    const idx = order[i];
+    const keys = shuffleProfileDedupeKeys(pool[idx]);
+    if (keys.length === 0 || keys.some((key) => used.has(key))) continue;
+    if (excludeKeys && keys.some((key) => excludeKeys.has(key))) continue;
+
+    for (const key of keys) used.add(key);
+    out[count] = idx;
+    count += 1;
+  }
+
+  return count;
+}
+
+/** Like pickRandomWindowIndices but never returns two indices for the same identity. */
 export function pickRandomUniqueWindowIndices(
-  pool: Array<{ uid: string; username: string }>,
+  pool: Array<{ uid: string; username: string; photo?: string }>,
   scratch: number[],
   out: Int32Array,
   size = SHUFFLE_WINDOW_SIZE,
+  excludeKeys?: ReadonlySet<string>,
 ): number {
   const poolLength = pool.length;
   if (poolLength <= 0) return 0;
@@ -60,16 +85,11 @@ export function pickRandomUniqueWindowIndices(
     scratch[j] = tmp;
   }
 
-  const used = new Set<string>();
-  let count = 0;
+  const target = Math.min(size, poolLength);
+  let count = pickUniqueIndicesFromPool(pool, scratch, out, target, excludeKeys);
 
-  for (let i = 0; i < poolLength && count < size; i++) {
-    const idx = scratch[i];
-    const keys = shuffleProfileDedupeKeys(pool[idx]);
-    if (keys.length === 0 || keys.some((key) => used.has(key))) continue;
-    for (const key of keys) used.add(key);
-    out[count] = idx;
-    count += 1;
+  if (count < target) {
+    count = pickUniqueIndicesFromPool(pool, scratch, out, target);
   }
 
   return count;

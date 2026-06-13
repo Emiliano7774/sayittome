@@ -39,6 +39,7 @@ import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
+import { useAdaptiveUsernameFontSize } from "@/lib/profile/adaptiveUsernameSize";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
 import {
@@ -190,6 +191,11 @@ export default function PublicProfilePage() {
   const createdSignature = profile
     ? resolvePublicProfileCreatedLabel(profile, localeTag)
     : "";
+  const usernameFontSize = useAdaptiveUsernameFontSize(
+    profile?.username || usernameParam,
+    Number.parseInt(profileUi.usernameSize, 10) || 64,
+    72,
+  );
 
   function openViewer(index = 0) {
     if (gallery.length === 0) return;
@@ -406,10 +412,10 @@ export default function PublicProfilePage() {
           </div>
         </div>
 
-        <div className="absolute left-8 md:left-24 top-[27%] md:top-[31%] -translate-y-1/2 max-w-[900px] z-[12]">
+        <div className="absolute left-8 right-8 md:left-24 md:right-24 top-[27%] md:top-[31%] -translate-y-1/2 z-[12]">
           <h1
-            className="leading-none font-black tracking-tight drop-shadow-2xl"
-            style={{ fontSize: profileUi.usernameSize }}
+            className="max-w-full break-words leading-none font-black tracking-tight drop-shadow-2xl"
+            style={{ fontSize: usernameFontSize }}
           >
             {profile.username}
           </h1>
@@ -472,22 +478,24 @@ export default function PublicProfilePage() {
           />
         </div>
 
-        {profile.bio && (
-          <p
-            className="absolute left-8 md:left-24 bottom-[5vh] z-[21] max-w-[760px] text-white font-medium leading-tight line-clamp-2 md:line-clamp-none overflow-hidden text-ellipsis pr-2"
-            style={{ fontSize: profileUi.bioSize }}
-          >
-            {profile.bio}
-          </p>
-        )}
+        <div className="absolute left-8 right-8 md:left-24 md:right-24 bottom-[5vh] z-[21] flex flex-col gap-2 pointer-events-none">
+          {profile.bio ? (
+            <p
+              className="max-w-[min(760px,calc(100vw-4rem))] text-white font-medium leading-tight line-clamp-3 md:line-clamp-none overflow-hidden text-ellipsis"
+              style={{ fontSize: profileUi.bioSize }}
+            >
+              {profile.bio}
+            </p>
+          ) : null}
 
-        {createdSignature ? (
-          <ProfileCreatedFooter
-            label={t("settings_profile_created", { date: createdSignature })}
-            className="absolute right-8 md:right-24 bottom-[5vh] z-[21] pointer-events-none px-0 pb-0 pt-0"
-            style={{ fontSize: profileUi.createdText }}
-          />
-        ) : null}
+          {createdSignature ? (
+            <ProfileCreatedFooter
+              label={t("settings_profile_created", { date: createdSignature })}
+              className="self-end w-auto px-0 pb-0 pt-0"
+              style={{ fontSize: profileUi.createdText }}
+            />
+          ) : null}
+        </div>
       </section>
 
       {gallery.length > 1 && (

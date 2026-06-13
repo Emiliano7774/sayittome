@@ -79,11 +79,33 @@ export function setShuffleSlotsWithFeatured(
   indices: Int32Array,
   count: number,
 ) {
-  const featuredCount = Math.min(featured.length, SHUFFLE_WINDOW_SIZE);
-  const regularCount = Math.min(count, SHUFFLE_WINDOW_SIZE - featuredCount);
+  const used = new Set<string>();
+  const uniqueFeatured: ShuffleProfile[] = [];
+
+  for (const profile of featured) {
+    const keys = shuffleProfileDedupeKeys(profile);
+    if (keys.length > 0 && keys.some((key) => used.has(key))) continue;
+    for (const key of keys) used.add(key);
+    uniqueFeatured.push(profile);
+  }
+
+  const featuredCount = Math.min(uniqueFeatured.length, SHUFFLE_WINDOW_SIZE);
+  const regularSlots: Array<{ slot: number; profile: ShuffleProfile }> = [];
+
+  for (let slot = 0; slot < count && featuredCount + regularSlots.length < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = pool[indices[slot]];
+    if (!profile) continue;
+
+    const keys = shuffleProfileDedupeKeys(profile);
+    if (keys.length > 0 && keys.some((key) => used.has(key))) continue;
+    for (const key of keys) used.add(key);
+    regularSlots.push({ slot, profile });
+  }
+
+  const regularCount = regularSlots.length;
 
   for (let slot = 0; slot < featuredCount; slot++) {
-    const next = featured[slot] ?? null;
+    const next = uniqueFeatured[slot] ?? null;
     const prev = slots[slot];
     if (prev?.uid !== next?.uid || prev?.username !== next?.username) {
       slots[slot] = next;
@@ -93,7 +115,7 @@ export function setShuffleSlotsWithFeatured(
 
   for (let slot = 0; slot < regularCount; slot++) {
     const targetSlot = featuredCount + slot;
-    const next = pool[indices[slot]] ?? null;
+    const next = regularSlots[slot]?.profile ?? null;
     const prev = slots[targetSlot];
     if (prev?.uid !== next?.uid || prev?.username !== next?.username) {
       slots[targetSlot] = next;

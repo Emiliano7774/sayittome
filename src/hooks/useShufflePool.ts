@@ -81,7 +81,28 @@ export function useShufflePool() {
   const windowCountRef = useRef(0);
   const featuredRef = useRef<ShuffleProfile[]>([]);
   const shuffleClickCountRef = useRef(0);
+  const recentlyShownKeysRef = useRef<string[]>([]);
   const mountedRef = useRef(false);
+
+  const RECENTLY_SHOWN_CAP = 90;
+
+  function rememberShownProfiles(profiles: ShuffleProfile[]) {
+    const queue = recentlyShownKeysRef.current;
+
+    for (const profile of profiles) {
+      for (const key of shuffleProfileDedupeKeys(profile)) {
+        if (!queue.includes(key)) queue.push(key);
+      }
+    }
+
+    while (queue.length > RECENTLY_SHOWN_CAP) {
+      queue.shift();
+    }
+  }
+
+  function recentExcludeKeys() {
+    return new Set(recentlyShownKeysRef.current);
+  }
 
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
 
@@ -136,10 +157,18 @@ export function useShufflePool() {
             scratchIndicesRef.current,
             windowIndicesRef.current,
             remainingSlots,
+            recentExcludeKeys(),
           )
         : 0;
 
     windowCountRef.current = featuredCount + regularCount;
+
+    const shownProfiles = [
+      ...featured,
+      ...Array.from({ length: regularCount }, (_, slot) => eligiblePool[windowIndicesRef.current[slot]]),
+    ].filter(Boolean) as ShuffleProfile[];
+
+    rememberShownProfiles(shownProfiles);
 
     setShuffleSlotsWithFeatured(
       featured,
@@ -230,7 +259,7 @@ export function useShufflePool() {
 
       try {
         const params = new URLSearchParams({
-          limit: "50",
+          limit: "80",
           shuffle: "0",
         });
         if (q) params.set("q", q);
