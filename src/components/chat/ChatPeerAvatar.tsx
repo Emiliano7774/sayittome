@@ -102,9 +102,7 @@ export default function ChatPeerAvatar({
 
   return (
     <div
-      className={`relative shrink-0 overflow-hidden rounded-full ${SIZE_CLASS[size]} ${
-        showAnonAvatar && variant === "modern" ? "bg-black" : "bg-[#141414]"
-      } ${className}`}
+      className={`relative shrink-0 overflow-hidden rounded-full ${SIZE_CLASS[size]} bg-[#141414] ${className}`}
     >
       {photo ? (
         <SensitiveMediaShell
@@ -122,7 +120,7 @@ export default function ChatPeerAvatar({
           />
         </SensitiveMediaShell>
       ) : showAnonAvatar ? (
-        <AnonPlaceholder size={size} variant={variant} anonKey={resolvedAnonKey} />
+        <AnonPlaceholder size={size} variant="classic" anonKey={resolvedAnonKey} />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-white/30">
           <UserRound size={ICON_SIZE[size]} strokeWidth={1.75} />

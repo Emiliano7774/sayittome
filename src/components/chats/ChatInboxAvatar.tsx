@@ -55,10 +55,7 @@ export default function ChatInboxAvatar({
       ) : showAnonAvatar ? (
         <div
           className="flex h-full w-full items-center justify-center"
-          style={{
-            backgroundColor:
-              variant === "classic" ? classicAnonAvatarColor(resolvedAnonKey) : "#111",
-          }}
+          style={{ backgroundColor: classicAnonAvatarColor(resolvedAnonKey) }}
         >
           <UserRound size={ICON_SIZE[size]} strokeWidth={1.85} className="text-white/92" />
         </div>

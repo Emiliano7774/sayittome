@@ -9,7 +9,7 @@ import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVis
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { resolveProfileCountryCode } from "@/lib/geo/countries";
 import { normalizeUsername } from "@/lib/profile/username";
-import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
+import { dedupeShuffleProfiles, shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
 import {
   parseShuffleFiltersFromSearchParams,
   profileMatchesShuffleServerFilters,
@@ -456,7 +456,6 @@ export async function GET(req: Request) {
     }
 
     const ordered = shouldShuffle && !q ? shuffleArray(filtered) : filtered;
-    const selected = ordered.slice(0, limit).map((profile) => withPresenceBadge(profile));
 
     const activeBoosts = await getActiveBoostProfiles();
     const boostUidOrder = activeBoosts
@@ -469,6 +468,23 @@ export async function GET(req: Request) {
         .map((uid) => filteredByDiscovery.find((profile) => profile.uid === uid))
         .filter(Boolean)
         .map((profile) => ({ ...withPresenceBadge(profile!), shuffleFeatured: true })),
+    );
+
+    const featuredKeys = new Set<string>();
+    for (const profile of featuredProfiles) {
+      for (const key of shuffleProfileDedupeKeys(profile)) {
+        featuredKeys.add(key);
+      }
+    }
+
+    const selected = dedupeShuffleProfiles(
+      ordered
+        .filter((profile) => {
+          const keys = shuffleProfileDedupeKeys(profile);
+          return keys.length === 0 || !keys.some((key) => featuredKeys.has(key));
+        })
+        .slice(0, limit)
+        .map((profile) => withPresenceBadge(profile)),
     );
 
     return NextResponse.json({

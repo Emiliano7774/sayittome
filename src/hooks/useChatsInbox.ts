@@ -73,9 +73,12 @@ function dedupeChats(chats: InboxChat[], viewerUid = "") {
     const existing = map.get(key);
     const chatMs = chat.updatedAt?.toMillis?.() ?? 0;
     const existingMs = existing?.updatedAt?.toMillis?.() ?? 0;
+    const mergedPhoto = chat.targetPhoto || existing?.targetPhoto;
 
     if (!existing || chatMs >= existingMs) {
-      map.set(key, chat);
+      map.set(key, mergedPhoto ? { ...chat, targetPhoto: mergedPhoto } : chat);
+    } else if (mergedPhoto && !existing.targetPhoto) {
+      map.set(key, { ...existing, targetPhoto: mergedPhoto });
     }
   }
 

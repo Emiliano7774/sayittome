@@ -336,6 +336,8 @@ export default function ProfileAnonChat({
     ownerUid: isOwnerViewing ? "" : targetUid,
     username: displayPeerName,
     photo: isOwnerViewing ? "" : targetPhoto,
+    anonAvatar: isOwnerViewing,
+    anonKey: anonSenderId || chatAnonSessionId || chatId,
     mode: (isOwnerViewing ? "delegate" : "navigate") as "delegate" | "navigate",
     preferProfile: !isOwnerViewing,
     blurPhoto: isOwnerViewing ? false : targetBlurPhoto,

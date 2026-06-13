@@ -40,6 +40,7 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
         );
         if (cachedChat?.targetPhoto) {
           next[username] = cachedChat.targetPhoto;
+          photoCache[username] = cachedChat.targetPhoto;
           return false;
         }
 
@@ -47,6 +48,8 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
         if (profileCache?.photo) {
           next[username] = profileCache.photo;
           nextBlur[username] = profileCache.blurPhoto;
+          photoCache[username] = profileCache.photo;
+          blurCache[username] = profileCache.blurPhoto;
           return false;
         }
 
@@ -64,7 +67,7 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
       await Promise.all(
         missing.map(async (username) => {
           try {
-            const profile = await fetchProfileByUsername(username);
+            const profile = await fetchProfileByUsername(username, true);
             const photo = resolveProfilePhoto(profile);
             if (!photo) return;
 
@@ -114,7 +117,13 @@ export function inboxChatPhoto(
   chat: InboxChat,
   photos: Record<string, string>,
 ) {
-  return chat.targetPhoto || photos[resolveChatUsername(chat)] || photos[chatTitle(chat)] || "";
+  const username = resolveChatUsername(chat);
+  return (
+    String(chat.targetPhoto || "").trim() ||
+    String(photos[username] || "").trim() ||
+    String(photos[chatTitle(chat)] || "").trim() ||
+    ""
+  );
 }
 
 export function inboxChatBlur(

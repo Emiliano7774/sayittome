@@ -6,6 +6,7 @@ import { UserRound } from "lucide-react";
 
 import StoryRing from "@/components/stories/StoryRing";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { classicAnonAvatarColor } from "@/lib/chat/anonAvatarStyle";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 
 type Size = "2xs" | "xs" | "sm" | "md" | "lg" | "xl" | "hero";
@@ -58,6 +59,9 @@ type Props = {
   iconSize?: number;
   /** En chat/perfil: abrir perfil aunque haya historias activas. */
   preferProfile?: boolean;
+  /** Colored anon placeholder when the peer has no profile photo. */
+  anonAvatar?: boolean;
+  anonKey?: string;
   onOpenProfile?: () => void;
   children?: ReactNode;
 };
@@ -73,11 +77,15 @@ function StoryAvatarButton({
   className = "",
   iconSize = 64,
   preferProfile = false,
+  anonAvatar = false,
+  anonKey = "",
   onOpenProfile,
   children,
 }: Props) {
   const router = useRouter();
   const status = useStoryStatus(ownerUid, username);
+  const showAnonAvatar = anonAvatar && !photo;
+  const resolvedAnonKey = anonKey || username || "anon";
 
   useEffect(() => {
     if (status.hasActive) {
@@ -132,6 +140,13 @@ function StoryAvatarButton({
             blurPhoto ? "blur-2xl scale-110" : "",
           ].join(" ")}
         />
+      ) : showAnonAvatar ? (
+        <div
+          className="flex h-full w-full items-center justify-center"
+          style={{ backgroundColor: classicAnonAvatarColor(resolvedAnonKey) }}
+        >
+          <UserRound size={iconSize} strokeWidth={1.85} className="text-white/92" />
+        </div>
       ) : children ? (
         children
       ) : (
