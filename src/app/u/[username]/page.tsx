@@ -28,6 +28,7 @@ import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
+import { useLocale } from "@/contexts/LocaleContext";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { isActiveWithinWindow } from "@/lib/presence";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
@@ -39,6 +40,7 @@ import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { canShowLastSeenToViewer, resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
+import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -64,6 +66,12 @@ type Profile = {
   historias?: number;
   stories?: number;
   createdAtLabel: string;
+  originalCreatedAt?: string;
+  createdAt?: string;
+  fechaCreacion?: string;
+  fechaRegistro?: string;
+  registrationDate?: string;
+  _firestoreCreateTime?: string;
   lastActive?: string;
   presenceAt?: string;
   online?: boolean;
@@ -75,6 +83,7 @@ type Profile = {
 
 export default function PublicProfilePage() {
   const { uxMode } = useUxMode();
+  const { locale } = useLocale();
   const params = useParams();
   const router = useRouter();
   const [verifiedVisit, setVerifiedVisit] = useState(false);
@@ -170,6 +179,17 @@ export default function PublicProfilePage() {
       : profile && isOwner
         ? formatLastSeen(undefined, false)
         : "";
+  const localeTag =
+    locale === "es"
+      ? "es-AR"
+      : locale === "en"
+        ? "en-US"
+        : locale === "it"
+          ? "it-IT"
+          : "de-DE";
+  const createdSignature = profile
+    ? resolvePublicProfileCreatedLabel(profile, localeTag)
+    : "";
 
   function openViewer(index = 0) {
     if (gallery.length === 0) return;
@@ -493,9 +513,9 @@ export default function PublicProfilePage() {
         </section>
       )}
 
-      {profile.createdAtLabel ? (
+      {createdSignature ? (
         <ProfileCreatedFooter
-          label={`Perfil creado el ${profile.createdAtLabel}`}
+          label={`Perfil creado el ${createdSignature}`}
           className="relative z-[6] bg-black"
           style={{ fontSize: profileUi.createdText }}
         />

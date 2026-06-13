@@ -38,3 +38,17 @@ export function resolveProfileCreatedAtIso(user: Record<string, unknown>): strin
   const date = resolveProfileCreatedAt(user);
   return date ? date.toISOString() : "";
 }
+
+export function formatProfileCreatedAtLabel(
+  user: Record<string, unknown>,
+  localeTag = "es-AR",
+): string {
+  const date = resolveProfileCreatedAt(user);
+  if (!date) return "";
+
+  return date.toLocaleDateString(localeTag, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}

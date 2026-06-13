@@ -29,6 +29,7 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { canShowLastSeenToViewer, resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
+import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -37,7 +38,7 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import type { ProfileMediaSource } from "@/lib/profile/mediaSource";
-import { useT } from "@/contexts/LocaleContext";
+import { useLocale, useT } from "@/contexts/LocaleContext";
 
 export type ModernProfileData = {
   uid: string;
@@ -57,6 +58,12 @@ export type ModernProfileData = {
   historias?: number;
   stories?: number;
   createdAtLabel?: string;
+  originalCreatedAt?: string;
+  createdAt?: string;
+  fechaCreacion?: string;
+  fechaRegistro?: string;
+  registrationDate?: string;
+  _firestoreCreateTime?: string;
   lastActive?: string;
   presenceAt?: string;
   online?: boolean;
@@ -85,8 +92,18 @@ export default function ModernPublicProfile({
   showShuffleBack = true,
 }: Props) {
   const router = useRouter();
+  const { locale } = useLocale();
   const t = useT();
   const formatLastSeen = useFormatLastSeen();
+  const localeTag =
+    locale === "es"
+      ? "es-AR"
+      : locale === "en"
+        ? "en-US"
+        : locale === "it"
+          ? "it-IT"
+          : "de-DE";
+  const createdSignature = resolvePublicProfileCreatedLabel(profile, localeTag);
   const story = useStoryStatus(profile.uid, profile.username);
   const blurPhoto = profilePhotoRequiresBlur(profile);
   const heartbeat = resolveProfileHeartbeat(profile);
@@ -434,9 +451,9 @@ export default function ModernPublicProfile({
           </section>
         </div>
 
-        {profile.createdAtLabel ? (
+        {createdSignature ? (
           <ProfileCreatedFooter
-            label={t("settings_profile_created", { date: profile.createdAtLabel })}
+            label={t("settings_profile_created", { date: createdSignature })}
             className="max-w-3xl mx-auto"
           />
         ) : null}

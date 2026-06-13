@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isLastSeenPublic } from "@/lib/profile/lastSeenVisibility";
+import { formatProfileCreatedAtLabel } from "@/lib/profile/resolveProfileCreatedAt";
 import { isActiveWithinWindow, isRecentlyActive } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
@@ -37,16 +38,6 @@ function mapStr(fields: any, key: string) {
   return out;
 }
 
-function formatDate(v: string) {
-  if (!v) return "";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("es-AR", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
 
 export async function GET(
   _req: Request,
@@ -161,12 +152,14 @@ export async function GET(
       int(fields, "likes"),
     conversaciones: int(fields, "conversacionesCount"),
     seguidores: int(fields, "seguidoresCount") || int(fields, "followersCount"),
-    createdAtLabel: formatDate(
-      ts(fields, "originalCreatedAt") ||
-        ts(fields, "createdAt") ||
-        ts(fields, "fechaCreacion") ||
-        ts(fields, "fechaRegistro"),
-    ),
+    createdAtLabel: formatProfileCreatedAtLabel(rawProfile),
+    originalCreatedAt:
+      ts(fields, "originalCreatedAt") || ts(fields, "createdAt") || undefined,
+    createdAt: ts(fields, "createdAt") || undefined,
+    fechaCreacion: ts(fields, "fechaCreacion") || undefined,
+    fechaRegistro: ts(fields, "fechaRegistro") || undefined,
+    registrationDate: ts(fields, "registrationDate") || undefined,
+    _firestoreCreateTime: String(rawProfile._firestoreCreateTime || ""),
     presenceAt,
     lastActive: presenceAt,
     online,

@@ -21,8 +21,8 @@ import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useUxMode } from "@/contexts/UxModeContext";
-import { useT } from "@/contexts/LocaleContext";
-import { useLocaleDateFormatter } from "@/hooks/useLocaleFormatters";
+import { useLocale, useT } from "@/contexts/LocaleContext";
+import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -38,8 +38,8 @@ export default function SettingsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const { uxMode } = useUxMode();
+  const { locale } = useLocale();
   const t = useT();
-  const formatDate = useLocaleDateFormatter();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
@@ -52,6 +52,17 @@ export default function SettingsPage() {
 
   const loadProfile = useCallback(async (user: { uid: string }) => {
     const ref = doc(db, "usuarios", user.uid);
+
+    try {
+      const cached = await getDoc(ref);
+      if (cached.exists()) {
+        setProfile({ uid: user.uid, ...cached.data() });
+        setLoading(false);
+        return;
+      }
+    } catch (error) {
+      console.error("settings_profile_load_cache", error);
+    }
 
     try {
       const snap = await getDocFromServer(ref);
@@ -122,9 +133,17 @@ export default function SettingsPage() {
     void loadProfile(user);
   }, [loadProfile, pathname]);
 
+  const localeTag =
+    locale === "es"
+      ? "es-AR"
+      : locale === "en"
+        ? "en-US"
+        : locale === "it"
+          ? "it-IT"
+          : "de-DE";
   const username = profile?.username || profile?.nombre || t("settings_no_username");
   const bio = profile?.bio || profile?.descripcion || t("settings_bio_empty");
-  const createdAtLabel = formatDate(profile?.originalCreatedAt || profile?.createdAt);
+  const createdAtLabel = resolvePublicProfileCreatedLabel(profile, localeTag);
 
   const media = useMemo<MediaItem[]>(() => {
     const fotos = Array.isArray(profile?.fotos)
@@ -253,7 +272,6 @@ export default function SettingsPage() {
 
   if (uxMode === "modern" && profile) {
     const username = String(profile.username || profile.nombre || "usuario");
-    const createdAtLabel = formatDate(profile.createdAt);
 
     return (
       <ModernPublicProfile
@@ -275,6 +293,11 @@ export default function SettingsPage() {
           seguidores: Number(profile.seguidoresCount || profile.seguidores || 0),
           historias: Number(profile.historiasCount || profile.historias || 0),
           createdAtLabel,
+          originalCreatedAt: profile.originalCreatedAt,
+          createdAt: profile.createdAt,
+          fechaCreacion: profile.fechaCreacion,
+          fechaRegistro: profile.fechaRegistro,
+          registrationDate: profile.registrationDate,
           lastActive: String(profile.lastActiveAt || profile.lastSeenAt || profile.lastActive || ""),
           presenceAt: String(profile.lastActiveAt || profile.lastSeenAt || profile.presenceAt || ""),
           online: profile.online === true,
