@@ -26,6 +26,11 @@ import {
   uploadFileToStorage,
 } from "@/lib/media/uploadFileToStorage";
 import { ARGENTINA_PROVINCIAS } from "@/lib/profile/provincias";
+import {
+  normalizeProfileMediaSources,
+  type ProfileMediaSource,
+} from "@/lib/profile/mediaSource";
+import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { useT } from "@/contexts/LocaleContext";
 
 type BadgeKey = "superMessages" | "likes" | "conversations" | "followers";
@@ -34,6 +39,7 @@ type MediaItem = {
   url: string;
   type: "image" | "video";
   path?: string;
+  source?: ProfileMediaSource;
 };
 
 const badgeItems: Array<{
@@ -71,7 +77,9 @@ const badgeItems: Array<{
 export default function ClassicEditProfilePage() {
   const router = useRouter();
   const t = useT();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingUploadSourceRef = useRef<ProfileMediaSource>("gallery");
 
   const [uid, setUid] = useState("");
   const [loading, setLoading] = useState(true);
@@ -164,24 +172,33 @@ export default function ClassicEditProfilePage() {
             : ""
       );
 
+      const mediaSources = normalizeProfileMediaSources(data.fotoMediaSources);
+      const withSource = (url: string, type: "image" | "video") => ({
+        url,
+        type,
+        source: mediaSources[url],
+      });
+
       const fotos = Array.isArray(data.fotos)
-        ? data.fotos.map((url: string) => ({ url, type: "image" as const }))
+        ? data.fotos.map((url: string) => withSource(url, "image"))
         : [];
 
       const videos = Array.isArray(data.videos)
-        ? data.videos.map((url: string) => ({ url, type: "video" as const }))
+        ? data.videos.map((url: string) => withSource(url, "video"))
         : [];
 
       const loadedMedia = [...fotos, ...videos];
 
       if (loadedMedia.length === 0 && data.fotoPrincipal) {
         const principalUrl = String(data.fotoPrincipal);
-        loadedMedia.push({
-          url: principalUrl,
-          type: principalUrl.toLowerCase().match(/\.(mp4|mov|webm|mkv|3gp|m4v)(\?|$)/)
-            ? "video"
-            : "image",
-        });
+        loadedMedia.push(
+          withSource(
+            principalUrl,
+            principalUrl.toLowerCase().match(/\.(mp4|mov|webm|mkv|3gp|m4v)(\?|$)/)
+              ? "video"
+              : "image",
+          ),
+        );
       }
 
       const nextMedia = loadedMedia.slice(0, 100);
@@ -214,7 +231,7 @@ export default function ClassicEditProfilePage() {
     }));
   }
 
-  async function uploadFiles(files: FileList | null) {
+  async function uploadFiles(files: FileList | null, source: ProfileMediaSource = "gallery") {
     if (!uid || !files?.length) return;
 
     const selected = Array.from(files).filter(isMediaFile);
@@ -255,6 +272,7 @@ export default function ClassicEditProfilePage() {
           url,
           type: kind,
           path,
+          source,
         });
       }
 
@@ -349,6 +367,11 @@ export default function ClassicEditProfilePage() {
       provinciaToSave = String(snap.data()?.provincia || "").trim();
     }
 
+    const fotoMediaSources = media.reduce<Record<string, ProfileMediaSource>>((acc, item) => {
+      if (item.source) acc[item.url] = item.source;
+      return acc;
+    }, {});
+
     try {
       await setDoc(
         doc(db, "usuarios", uid),
@@ -367,6 +390,7 @@ export default function ClassicEditProfilePage() {
           fotos,
           videos,
           fotoPrincipal: principalPhoto,
+          fotoMediaSources,
           mostrarSuperMessages: visibleBadges.superMessages,
           mostrarLikes: visibleBadges.likes,
           mostrarConversaciones: visibleBadges.conversations,
@@ -442,23 +466,49 @@ export default function ClassicEditProfilePage() {
                 </div>
 
                 <div className="flex-1">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full min-h-14 rounded-2xl bg-violet-500 text-white font-black text-xl flex items-center justify-center gap-3"
-                  >
-                    <ImagePlus size={25} />
-                    Subir fotos/videos
-                  </button>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex h-14 items-center justify-center gap-2 rounded-2xl border border-violet-500/30 bg-violet-500/15 font-black disabled:opacity-50"
+                    >
+                      <Camera size={22} />
+                      {uploading ? uploadText || t("common_loading") : t("story_new_source_camera")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        pendingUploadSourceRef.current = "gallery";
+                        galleryInputRef.current?.click();
+                      }}
+                      disabled={uploading}
+                      className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-violet-500 font-black disabled:opacity-50"
+                    >
+                      <ImagePlus size={22} />
+                      {uploading ? uploadText || t("common_loading") : t("story_new_source_gallery")}
+                    </button>
+                  </div>
 
                   <input
-                    ref={fileInputRef}
+                    ref={galleryInputRef}
                     type="file"
                     accept="image/*,video/*"
                     multiple
                     className="hidden"
                     onChange={(e) => {
-                      void uploadFiles(e.target.files);
+                      void uploadFiles(e.target.files, pendingUploadSourceRef.current);
+                      e.target.value = "";
+                    }}
+                  />
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => {
+                      void uploadFiles(e.target.files, "camera");
                       e.target.value = "";
                     }}
                   />
@@ -678,10 +728,10 @@ export default function ClassicEditProfilePage() {
           {media.length === 0 ? (
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => galleryInputRef.current?.click()}
               className="w-full min-h-[220px] border border-dashed border-white/25 rounded-[28px] text-white/45 text-2xl font-black flex items-center justify-center"
             >
-              SubÃ­ fotos o videos para ver el mosaico
+              Subí fotos o videos para ver el mosaico
             </button>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-7 gap-4">
@@ -709,6 +759,16 @@ export default function ClassicEditProfilePage() {
                     {item.type === "image" ? <Camera size={13} /> : <Film size={13} />}
                     {index + 1}
                   </div>
+
+                  {item.source ? (
+                    <div className="absolute top-2 right-2 z-[5]">
+                      <StoryMediaSourceBadge
+                        source={item.source}
+                        mediaType={item.type}
+                        className="px-2 py-1 text-[9px] tracking-[0.12em]"
+                      />
+                    </div>
+                  ) : null}
 
                   <div className="absolute inset-x-0 bottom-0 z-10 p-2 bg-gradient-to-t from-black via-black/70 to-transparent flex justify-between gap-1">
                     <button

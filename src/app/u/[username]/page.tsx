@@ -25,6 +25,7 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
+import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
@@ -41,6 +42,7 @@ import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { useAdaptiveUsernameFontSize } from "@/lib/profile/adaptiveUsernameSize";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
+import { resolveProfileMediaSourceForUrl } from "@/lib/profile/mediaSource";
 import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
 import {
   resolveProfileCoverPhoto,
@@ -105,6 +107,7 @@ export default function PublicProfilePage() {
   const [viewerIndex, setViewerIndex] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
   const [videoViewerUrl, setVideoViewerUrl] = useState<string | null>(null);
+  const [videoViewerSource, setVideoViewerSource] = useState<"camera" | "gallery" | undefined>();
   const { density } = useClassicShuffleDensity();
   const profileUi = getClassicProfileUiTokens(density);
   const formatLastSeen = useFormatLastSeen();
@@ -146,7 +149,11 @@ export default function PublicProfilePage() {
   const gallery = useMemo(() => {
     if (!profile) return [];
 
+    const coverPhoto = resolveProfileCoverPhoto(profile);
+    const coverVideo = resolveProfileCoverVideo(profile);
+
     const all = [
+      coverVideo || coverPhoto,
       profile.fotoPrincipal,
       ...(Array.isArray(profile.fotos) ? profile.fotos : []),
       ...(Array.isArray(profile.videos) ? profile.videos : []),
@@ -156,6 +163,10 @@ export default function PublicProfilePage() {
 
     return Array.from(new Set(all));
   }, [profile]);
+
+  function mediaSourceForUrl(url: string) {
+    return resolveProfileMediaSourceForUrl(profile?.fotoMediaSources, url);
+  }
 
   const historiasCount = Number(profile?.historias || profile?.stories || 0);
   const blurPhoto = profile ? profilePhotoRequiresBlur(profile) : false;
@@ -326,6 +337,7 @@ export default function PublicProfilePage() {
 
   function openHero() {
     if (heroIsVideo && heroPhoto) {
+      setVideoViewerSource(mediaSourceForUrl(heroPhoto));
       setVideoViewerUrl(heroPhoto);
       return;
     }
@@ -447,6 +459,15 @@ export default function PublicProfilePage() {
 
         </div>
 
+        {heroPhoto && mediaSourceForUrl(heroPhoto) ? (
+          <div className="absolute left-1/2 bottom-[17vh] z-[14] -translate-x-1/2 md:bottom-[20vh]">
+            <StoryMediaSourceBadge
+              source={mediaSourceForUrl(heroPhoto)}
+              mediaType={heroIsVideo ? "video" : "image"}
+            />
+          </div>
+        ) : null}
+
         <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-none">
           <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={profileUi.statIcon} fill="white" />} ui={profileUi} />
           <StatBubble
@@ -536,7 +557,11 @@ export default function PublicProfilePage() {
       <ProfileVideoViewer
         url={videoViewerUrl || ""}
         open={Boolean(videoViewerUrl)}
-        onClose={() => setVideoViewerUrl(null)}
+        source={videoViewerSource}
+        onClose={() => {
+          setVideoViewerUrl(null);
+          setVideoViewerSource(undefined);
+        }}
       />
 
       {viewerOpen && gallery.length > 0 && (
@@ -597,8 +622,17 @@ export default function PublicProfilePage() {
             </button>
           )}
 
+          {mediaSourceForUrl(gallery[viewerIndex]) ? (
+            <div className="absolute bottom-8 left-1/2 z-[10] -translate-x-1/2">
+              <StoryMediaSourceBadge
+                source={mediaSourceForUrl(gallery[viewerIndex])}
+                mediaType={isVideoMediaUrl(gallery[viewerIndex]) ? "video" : "image"}
+              />
+            </div>
+          ) : null}
+
           {gallery.length > 1 && (
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-5 py-2 text-white/75 font-black">
+            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-5 py-2 text-white/75 font-black">
               {viewerIndex + 1} / {gallery.length}
             </div>
           )}

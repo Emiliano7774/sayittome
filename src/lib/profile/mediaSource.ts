@@ -34,3 +34,27 @@ export function normalizeProfileMediaSources(
   }
   return out;
 }
+
+function normalizeMediaUrlKey(url: string) {
+  return String(url || "").trim().split("?")[0]?.split("#")[0] || "";
+}
+
+/** Resolve camera/gallery source even when URL query strings differ. */
+export function resolveProfileMediaSourceForUrl(
+  sources: Record<string, ProfileMediaSource> | undefined,
+  url: string,
+): ProfileMediaSource | undefined {
+  if (!sources || !url) return undefined;
+  if (sources[url]) return sources[url];
+
+  const wanted = normalizeMediaUrlKey(url);
+  if (!wanted) return undefined;
+
+  for (const [storedUrl, source] of Object.entries(sources)) {
+    if (normalizeMediaUrlKey(storedUrl) === wanted) {
+      return source;
+    }
+  }
+
+  return undefined;
+}

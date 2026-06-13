@@ -29,6 +29,7 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
+import { resolveProfileMediaSourceForUrl } from "@/lib/profile/mediaSource";
 import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
 import {
   resolveProfileCoverPhoto,
@@ -123,7 +124,7 @@ export default function ModernPublicProfile({
   const [videoViewerSource, setVideoViewerSource] = useState<ProfileMediaSource | undefined>();
 
   function mediaSourceForUrl(url: string) {
-    return profile.fotoMediaSources?.[url];
+    return resolveProfileMediaSourceForUrl(profile.fotoMediaSources, url);
   }
 
   const principalIsVideo = isVideoMediaUrl(profile.fotoPrincipal);
@@ -316,6 +317,15 @@ export default function ModernPublicProfile({
                   {t("profile_online")}
                 </span>
               ) : null}
+
+              {mediaSourceForUrl(coverVideoUrl || heroPhoto) ? (
+                <div className="absolute bottom-4 left-1/2 z-[3] -translate-x-1/2">
+                  <StoryMediaSourceBadge
+                    source={mediaSourceForUrl(coverVideoUrl || heroPhoto)}
+                    mediaType={coverVideoUrl || isVideoMediaUrl(heroPhoto) ? "video" : "image"}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="relative z-10 -mt-[4.75rem] px-6 pb-8">
@@ -488,7 +498,7 @@ export default function ModernPublicProfile({
           </button>
 
           {mediaSourceForUrl(gallery[viewerIndex]) ? (
-            <div className="absolute left-1/2 top-6 z-[10] -translate-x-1/2">
+            <div className="absolute bottom-8 left-1/2 z-[10] -translate-x-1/2">
               <StoryMediaSourceBadge
                 source={mediaSourceForUrl(gallery[viewerIndex])}
                 mediaType={isVideoMediaUrl(gallery[viewerIndex]) ? "video" : "image"}

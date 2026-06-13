@@ -3,6 +3,7 @@
 import { Camera, ChevronLeft, ChevronRight, Film, Trash2 } from "lucide-react";
 
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
+import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -103,6 +104,16 @@ export default function MosaicMediaTile({
         >
           *
         </span>
+      ) : null}
+
+      {item.source ? (
+        <div className="pointer-events-none absolute bottom-14 left-1/2 z-[3] -translate-x-1/2">
+          <StoryMediaSourceBadge
+            source={item.source}
+            mediaType={item.type}
+            className="px-2 py-1 text-[9px] tracking-[0.12em]"
+          />
+        </div>
       ) : null}
 
       <div className="absolute inset-x-0 bottom-0 z-[2] flex items-center justify-between gap-1 bg-gradient-to-t from-black via-black/75 to-transparent p-2">
