@@ -30,6 +30,7 @@ export default function AdminChatReviewView({
   const phoneShell = usePhoneShell();
   const { chats, uid, loading, errorText, total } = useUserModerationChats(username);
   const [selectedChatId, setSelectedChatId] = useState("");
+  const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
   const markedSeenRef = useRef(false);
 
   const selectedChat = useMemo(
@@ -40,6 +41,7 @@ export default function AdminChatReviewView({
   useEffect(() => {
     markedSeenRef.current = false;
     setSelectedChatId("");
+    setMobilePane("list");
   }, [username]);
 
   useEffect(() => {
@@ -68,6 +70,7 @@ export default function AdminChatReviewView({
 
   function openChat(chat: ModerationChatRow) {
     setSelectedChatId(chat.id);
+    if (phoneShell) setMobilePane("chat");
   }
 
   if (loading) {
@@ -76,6 +79,30 @@ export default function AdminChatReviewView({
 
   if (errorText) {
     return <p className="text-lg font-bold text-red-300/80">{errorText}</p>;
+  }
+
+  if (phoneShell && mobilePane === "chat" && selectedChat) {
+    return (
+      <div className="flex min-h-[min(78dvh,760px)] flex-col">
+        <button
+          type="button"
+          onClick={() => setMobilePane("list")}
+          className="mb-3 self-start rounded-full border border-white/15 bg-[#111] px-4 py-2 text-sm font-bold"
+        >
+          ← Conversaciones
+        </button>
+
+        <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-[#080808]">
+          <AdminChatMirror
+            profileUsername={username}
+            profileUid={uid}
+            chat={selectedChat}
+            fullHeight
+            lite
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -99,7 +126,7 @@ export default function AdminChatReviewView({
         <div
           className={[
             "min-h-0 border-white/10",
-            phoneShell ? "max-h-[42vh] shrink-0 border-b" : "h-full border-r",
+            phoneShell ? "h-full" : "h-full border-r",
           ].join(" ")}
         >
           {!loading && total > 0 ? (
@@ -112,18 +139,20 @@ export default function AdminChatReviewView({
             profileUsername={username}
             selectedChatId={selectedChatId}
             onSelect={openChat}
-            fullHeight={!phoneShell}
-          />
-        </div>
-
-        <div className="min-h-0 flex-1">
-          <AdminChatMirror
-            profileUsername={username}
-            profileUid={uid}
-            chat={selectedChat}
             fullHeight
           />
         </div>
+
+        {!phoneShell ? (
+          <div className="min-h-0 flex-1">
+            <AdminChatMirror
+              profileUsername={username}
+              profileUid={uid}
+              chat={selectedChat}
+              fullHeight
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

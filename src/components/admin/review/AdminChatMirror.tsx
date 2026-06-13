@@ -22,6 +22,7 @@ type Props = {
   profileUid?: string;
   chat: ModerationChatRow | null;
   fullHeight?: boolean;
+  lite?: boolean;
 };
 
 export default function AdminChatMirror({
@@ -29,10 +30,14 @@ export default function AdminChatMirror({
   profileUid,
   chat,
   fullHeight = false,
+  lite = false,
 }: Props) {
   const admin = useAdminApi();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { chronological, loading } = useSpectatorChatMessages(chat?.id || "", 300);
+  const messageLimit = lite ? 120 : 300;
+  const { chronological, loading } = useSpectatorChatMessages(chat?.id || "", messageLimit, {
+    live: !lite,
+  });
 
   useEffect(() => {
     const node = scrollRef.current;

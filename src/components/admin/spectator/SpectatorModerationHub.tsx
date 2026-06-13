@@ -10,6 +10,8 @@ import type { ModerationUserFeedEntry } from "@/lib/moderation/types";
 
 export default function SpectatorModerationHub() {
   const phoneShell = usePhoneShell();
+  const feedLimit = phoneShell ? 80 : 250;
+  const { feed, loading } = useClassicModerationFeed(feedLimit);
   const [selectedEntry, setSelectedEntry] = useState<ModerationUserFeedEntry | null>(
     null,
   );
@@ -26,8 +28,6 @@ export default function SpectatorModerationHub() {
       />
     );
   }
-
-  const { feed, loading } = useClassicModerationFeed();
 
   return (
     <div

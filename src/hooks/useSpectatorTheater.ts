@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { db } from "@/lib/firebase";
@@ -9,7 +9,12 @@ import {
   type SpectatorMessage,
 } from "@/lib/moderation/spectator";
 
-export function useSpectatorChatMessages(chatId: string, limitCount = 300) {
+export function useSpectatorChatMessages(
+  chatId: string,
+  limitCount = 300,
+  options?: { live?: boolean },
+) {
+  const live = options?.live !== false;
   const [messages, setMessages] = useState<SpectatorMessage[]>([]);
   const [loading, setLoading] = useState(Boolean(chatId));
   const lastCountRef = useRef(0);
@@ -31,6 +36,31 @@ export function useSpectatorChatMessages(chatId: string, limitCount = 300) {
       limit(limitCount),
     );
 
+    let cancelled = false;
+
+    if (!live) {
+      void getDocs(q)
+        .then((snap) => {
+          if (cancelled) return;
+          const rows = snap.docs.map((row) => ({
+            id: row.id,
+            ...(row.data() as Omit<SpectatorMessage, "id">),
+          }));
+          setMessages(rows);
+          setLoading(false);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setMessages([]);
+            setLoading(false);
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -48,7 +78,7 @@ export function useSpectatorChatMessages(chatId: string, limitCount = 300) {
     );
 
     return () => unsub();
-  }, [chatId, limitCount]);
+  }, [chatId, limitCount, live]);
 
   const chronological = useMemo(
     () => messagesChronological(messages),
