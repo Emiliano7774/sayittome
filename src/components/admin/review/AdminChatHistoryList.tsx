@@ -2,10 +2,15 @@
 
 import { useMemo, useState } from "react";
 
+import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
+import { useModerationProfilePhotos } from "@/hooks/useModerationProfilePhotos";
+import type { ModerationPhotoTarget } from "@/hooks/useModerationProfilePhotos";
 import { chatActivityMs, isChatUnseen } from "@/lib/moderation/classicFeed";
 import {
   formatModerationChatListSubtitle,
   formatModerationChatListTitle,
+  getModerationChatPeerLabel,
+  resolveModerationParticipants,
 } from "@/lib/moderation/chatReview";
 import {
   filterChatsByDayKey,
@@ -19,6 +24,7 @@ import type { ModerationChatRow } from "@/lib/moderation/types";
 type Props = {
   chats: ModerationChatRow[];
   profileUsername: string;
+  profileUid?: string;
   selectedChatId: string;
   onSelect: (chat: ModerationChatRow) => void;
   loading?: boolean;
@@ -28,12 +34,36 @@ type Props = {
 export default function AdminChatHistoryList({
   chats,
   profileUsername,
+  profileUid,
   selectedChatId,
   onSelect,
   loading = false,
   fullHeight = false,
 }: Props) {
   const [filterDay, setFilterDay] = useState("");
+
+  const photoTargets = useMemo(() => {
+    const targets: ModerationPhotoTarget[] = [
+      { username: profileUsername, uid: profileUid },
+    ];
+    const seen = new Set<string>([profileUsername.toLowerCase()]);
+
+    for (const chat of chats) {
+      const participants = resolveModerationParticipants(chat, profileUsername);
+      if (participants.peerIsAnon) continue;
+
+      const peer = getModerationChatPeerLabel(chat, profileUsername);
+      const key = peer.toLowerCase();
+      if (!peer || seen.has(key)) continue;
+      seen.add(key);
+      targets.push({ username: peer });
+    }
+
+    return targets;
+  }, [chats, profileUsername, profileUid]);
+
+  const photos = useModerationProfilePhotos(photoTargets);
+  const profilePhoto = photos[profileUsername.toLowerCase()] || "";
 
   const availableDays = useMemo(() => listAvailableChatDayKeys(chats), [chats]);
 
@@ -64,10 +94,20 @@ export default function AdminChatHistoryList({
   return (
     <section className="flex h-full min-h-0 flex-col bg-[#0d0d0d]">
       <div className="shrink-0 border-b border-white/10 px-4 py-3">
-        <p className="text-sm font-bold text-white/85">Historial de {profileUsername}</p>
-        <p className="mt-1 text-xs font-bold text-white/40">
-          {chats.length} conversaciones en total · ordenadas por última actividad
-        </p>
+        <div className="flex items-center gap-3">
+          <ChatInboxAvatar
+            photo={profilePhoto}
+            username={profileUsername}
+            size="sm"
+            variant="classic"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-white/85">Historial de {profileUsername}</p>
+            <p className="mt-1 text-xs font-bold text-white/40">
+              {chats.length} conversaciones en total · ordenadas por última actividad
+            </p>
+          </div>
+        </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-[10px] font-bold uppercase tracking-wide text-white/35">
@@ -130,6 +170,10 @@ export default function AdminChatHistoryList({
                   const title = formatModerationChatListTitle(chat, profileUsername);
                   const subtitle = formatModerationChatListSubtitle(chat, profileUsername);
                   const stoppedAt = formatChatStoppedAt(chatActivityMs(chat));
+                  const participants = resolveModerationParticipants(chat, profileUsername);
+                  const peerPhoto = participants.peerIsAnon
+                    ? ""
+                    : photos[getModerationChatPeerLabel(chat, profileUsername).toLowerCase()] || "";
 
                   return (
                     <li key={chat.id} className="border-b border-white/5 last:border-b-0">
@@ -143,24 +187,36 @@ export default function AdminChatHistoryList({
                             : "hover:bg-white/5",
                         ].join(" ")}
                       >
-                        <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-3">
+                          <ChatInboxAvatar
+                            photo={peerPhoto}
+                            username={participants.peerLabel}
+                            size="sm"
+                            variant="classic"
+                            anonAvatar={participants.peerIsAnon}
+                            anonKey={chat.id}
+                          />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-bold text-white/90">{title}</p>
-                            <p className="mt-0.5 truncate text-[11px] font-bold text-white/35">
-                              {subtitle}
-                            </p>
-                            <p className="mt-1 line-clamp-2 text-xs font-bold text-white/50">
-                              {chat.lastMessage || "Sin mensajes"}
-                            </p>
-                            <p className="mt-1 text-[10px] font-bold text-white/30">
-                              Última actividad · {stoppedAt}
-                            </p>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-bold text-white/90">{title}</p>
+                                <p className="mt-0.5 truncate text-[11px] font-bold text-white/35">
+                                  {subtitle}
+                                </p>
+                                <p className="mt-1 line-clamp-2 text-xs font-bold text-white/50">
+                                  {chat.lastMessage || "Sin mensajes"}
+                                </p>
+                                <p className="mt-1 text-[10px] font-bold text-white/30">
+                                  Última actividad · {stoppedAt}
+                                </p>
+                              </div>
+                              {unseen ? (
+                                <span className="mt-0.5 shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold uppercase text-black">
+                                  Nuevo
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
-                          {unseen ? (
-                            <span className="mt-0.5 shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold uppercase text-black">
-                              Nuevo
-                            </span>
-                          ) : null}
                         </div>
                       </button>
                     </li>

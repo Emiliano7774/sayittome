@@ -7,7 +7,7 @@ import { classicAnonAvatarColor } from "@/lib/chat/anonAvatarStyle";
 type Props = {
   photo?: string;
   username?: string;
-  size?: "md" | "lg";
+  size?: "sm" | "md" | "lg";
   blurPhoto?: boolean;
   variant?: "classic" | "modern";
   anonAvatar?: boolean;
@@ -15,11 +15,13 @@ type Props = {
 };
 
 const SIZE_CLASS = {
+  sm: "h-10 w-10",
   md: "h-12 w-12",
   lg: "h-14 w-14",
 } as const;
 
 const ICON_SIZE = {
+  sm: 18,
   md: 22,
   lg: 26,
 } as const;

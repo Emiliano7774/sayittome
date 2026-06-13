@@ -19,6 +19,8 @@ import {
 } from "@/lib/moderation/classicFeed";
 import { normalizeModerationChatRow } from "@/lib/moderation/chatHistory";
 import { subscribeModerationSeen } from "@/lib/moderation/markSeen";
+import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
+import { useModerationProfilePhotos } from "@/hooks/useModerationProfilePhotos";
 import type {
   ModerationChatRow,
   ModerationProfileRow,
@@ -42,6 +44,7 @@ export function useClassicModerationFeed(limitCount = 250) {
   const [chats, setChats] = useState<ModerationChatRow[]>([]);
   const [seenByUsername, setSeenByUsername] = useState<Record<string, number>>({});
   const [uidToUsername, setUidToUsername] = useState<Record<string, string>>({});
+  const [photoByUsername, setPhotoByUsername] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const resolvedUidsRef = useRef<Set<string>>(new Set());
 
@@ -132,11 +135,25 @@ export function useClassicModerationFeed(limitCount = 250) {
         try {
           const snap = await getDoc(doc(db, "usuarios", uid));
           if (!snap.exists()) continue;
-          const data = snap.data() as { username?: string; nombre?: string };
+          const data = snap.data() as {
+            username?: string;
+            nombre?: string;
+            fotoPrincipal?: string;
+            photoURL?: string;
+            photo?: string;
+            fotos?: unknown;
+          };
           const username = String(data.username || data.nombre || "").trim();
           if (username) {
             next[uid] = username;
             resolvedUidsRef.current.add(uid);
+            const photo = resolveProfilePhoto(data);
+            if (photo) {
+              setPhotoByUsername((prev) => ({
+                ...prev,
+                [username.toLowerCase()]: photo,
+              }));
+            }
           }
         } catch {
           // ignore
@@ -162,7 +179,27 @@ export function useClassicModerationFeed(limitCount = 250) {
     [profiles, chatFeed, seenByUsername],
   );
 
-  return { feed, loading, chats };
+  const photoTargets = useMemo(
+    () => feed.map((entry) => ({ username: entry.username, uid: entry.uid })),
+    [feed],
+  );
+  const fetchedPhotos = useModerationProfilePhotos(photoTargets);
+
+  const feedWithPhotos: ModerationUserFeedEntry[] = useMemo(
+    () =>
+      feed.map((entry) => {
+        const key = entry.username.toLowerCase();
+        const photoUrl =
+          entry.photoUrl ||
+          photoByUsername[key] ||
+          fetchedPhotos[key] ||
+          undefined;
+        return photoUrl ? { ...entry, photoUrl } : entry;
+      }),
+    [feed, photoByUsername, fetchedPhotos],
+  );
+
+  return { feed: feedWithPhotos, loading, chats };
 }
 
 export function useUserModerationChats(username: string) {

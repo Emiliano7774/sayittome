@@ -33,6 +33,7 @@ export type ModerationProfileRow = {
 export type ModerationUserFeedEntry = {
   username: string;
   uid?: string;
+  photoUrl?: string;
   lastActivityMs: number;
   lastMessage: string;
   lastChatId: string;

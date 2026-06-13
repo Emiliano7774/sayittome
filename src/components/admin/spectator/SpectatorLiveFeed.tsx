@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
 import { formatRelativeActivity } from "@/lib/moderation/spectator";
 import type { ModerationUserFeedEntry } from "@/lib/moderation/types";
 
@@ -13,11 +14,6 @@ type Props = {
   compact?: boolean;
 };
 
-function initials(username: string) {
-  const clean = String(username || "?").trim();
-  return clean.slice(0, 2).toUpperCase();
-}
-
 function FeedCardBody({
   entry,
   index,
@@ -27,16 +23,12 @@ function FeedCardBody({
 }) {
   return (
     <div className="flex items-start gap-3">
-      <div
-        className={[
-          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold md:h-12 md:w-12",
-          entry.unseen
-            ? "bg-gradient-to-br from-amber-400/30 to-orange-500/10 text-amber-100"
-            : "bg-white/8 text-white/70",
-        ].join(" ")}
-      >
-        {initials(entry.username)}
-      </div>
+      <ChatInboxAvatar
+        photo={entry.photoUrl}
+        username={entry.username}
+        size="md"
+        variant="classic"
+      />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">

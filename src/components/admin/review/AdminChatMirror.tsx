@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { useAdminApi } from "@/components/admin/AdminShell";
+import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
 import { useSpectatorChatMessages } from "@/hooks/useSpectatorTheater";
+import { useModerationProfilePhotos } from "@/hooks/useModerationProfilePhotos";
 import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import { chatActivityMs } from "@/lib/moderation/classicFeed";
 import { resolveModerationParticipants } from "@/lib/moderation/chatReview";
@@ -45,7 +47,24 @@ export default function AdminChatMirror({
     node.scrollTop = node.scrollHeight;
   }, [chat?.id, loading, chronological.length]);
 
-  if (!chat) {
+  const participants = chat
+    ? resolveModerationParticipants(chat, profileUsername)
+    : null;
+  const photoTargets = useMemo(
+    () =>
+      chat && participants
+        ? [
+            { username: profileUsername, uid: profileUid },
+            ...(participants.peerIsAnon
+              ? []
+              : [{ username: participants.peerLabel }]),
+          ]
+        : [],
+    [chat, participants, profileUid, profileUsername],
+  );
+  const photos = useModerationProfilePhotos(photoTargets);
+
+  if (!chat || !participants) {
     return (
       <section
         className={[
@@ -60,7 +79,10 @@ export default function AdminChatMirror({
     );
   }
 
-  const participants = resolveModerationParticipants(chat, profileUsername);
+  const profilePhoto = photos[profileUsername.toLowerCase()] || "";
+  const peerPhoto = participants.peerIsAnon
+    ? ""
+    : photos[participants.peerLabel.toLowerCase()] || "";
 
   return (
     <section
@@ -73,7 +95,26 @@ export default function AdminChatMirror({
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300/80">
           Lectura del chat
         </p>
-        <p className="mt-1.5 text-base font-bold md:text-lg">{participants.headline}</p>
+        <div className="mt-2 flex items-center gap-3">
+          <ChatInboxAvatar
+            photo={peerPhoto}
+            username={participants.peerLabel}
+            size="sm"
+            variant="classic"
+            anonAvatar={participants.peerIsAnon}
+            anonKey={chat.id}
+          />
+          <span className="text-xs font-bold text-white/35">↔</span>
+          <ChatInboxAvatar
+            photo={profilePhoto}
+            username={profileUsername}
+            size="sm"
+            variant="classic"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-bold md:text-lg">{participants.headline}</p>
+          </div>
+        </div>
         <p className="mt-1 text-xs font-bold text-white/40">{participants.directionHint}</p>
         <p className="mt-1 text-[11px] font-bold text-white/30">
           Última actividad · {formatRelativeActivity(chatActivityMs(chat))}

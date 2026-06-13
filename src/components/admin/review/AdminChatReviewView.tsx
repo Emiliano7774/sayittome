@@ -137,6 +137,7 @@ export default function AdminChatReviewView({
           <AdminChatHistoryList
             chats={chats}
             profileUsername={username}
+            profileUid={uid}
             selectedChatId={selectedChatId}
             onSelect={openChat}
             fullHeight
