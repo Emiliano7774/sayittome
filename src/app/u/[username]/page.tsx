@@ -400,7 +400,7 @@ export default function PublicProfilePage() {
           </div>
         </div>
 
-        <div className="absolute left-8 md:left-24 top-[31%] md:top-[31%] -translate-y-1/2 max-w-[900px] z-[12]">
+        <div className="absolute left-8 md:left-24 top-[27%] md:top-[31%] -translate-y-1/2 max-w-[900px] z-[12]">
           <h1
             className="leading-none font-black tracking-tight drop-shadow-2xl"
             style={{ fontSize: profileUi.usernameSize }}
@@ -423,19 +423,16 @@ export default function PublicProfilePage() {
               {profile.provincia}
             </p>
           )}
-        </div>
 
-        {lastSeenLabel ? (
-          <p
-            className="pointer-events-none absolute left-8 md:left-24 z-[18] max-w-[900px] font-black text-white/70"
-            style={{
-              top: "42%",
-              fontSize: profileUi.lastSeenSizeMd,
-            }}
-          >
-            {lastSeenLabel}
-          </p>
-        ) : null}
+          {lastSeenLabel ? (
+            <p
+              className="mt-4 font-black text-white/70 md:mt-5"
+              style={{ fontSize: profileUi.lastSeenSizeMd }}
+            >
+              {lastSeenLabel}
+            </p>
+          ) : null}
+        </div>
 
         <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-none">
           <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={profileUi.statIcon} fill="white" />} ui={profileUi} />

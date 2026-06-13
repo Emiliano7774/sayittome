@@ -384,7 +384,7 @@ export default function ModernPublicProfile({
               ) : null}
 
               {lastSeen ? (
-                <p className="mt-4 text-center text-base font-semibold text-zinc-400">
+                <p className="mt-3 text-center text-base font-semibold text-zinc-400 md:mt-4">
                   {lastSeen}
                 </p>
               ) : null}
