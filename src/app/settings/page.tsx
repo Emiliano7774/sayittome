@@ -275,6 +275,10 @@ export default function SettingsPage() {
           seguidores: Number(profile.seguidoresCount || profile.seguidores || 0),
           historias: Number(profile.historiasCount || profile.historias || 0),
           createdAtLabel,
+          lastActive: String(profile.lastActiveAt || profile.lastSeenAt || profile.lastActive || ""),
+          presenceAt: String(profile.lastActiveAt || profile.lastSeenAt || profile.presenceAt || ""),
+          online: profile.online === true,
+          showOnline: profile.online === true,
         }}
         isOwner
         verifiedVisit={false}

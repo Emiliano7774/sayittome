@@ -92,7 +92,12 @@ export default function ModernPublicProfile({
   const heartbeat = profile.presenceAt || profile.lastActive;
   const isOnline = isPresenceOnline(heartbeat, profile.online);
   const showLastSeen = canShowLastSeenToViewer(profile, isOwner);
-  const lastSeen = showLastSeen ? formatLastSeen(heartbeat, isOnline) : "";
+  const lastSeen = showLastSeen
+    ? formatLastSeen(heartbeat, isOnline) ||
+      (profile.createdAtLabel
+        ? t("settings_profile_created", { date: profile.createdAtLabel })
+        : "")
+    : "";
   const historiasCount = story.hasActive
     ? story.storyCount
     : Number(profile.historias || profile.stories || 0);

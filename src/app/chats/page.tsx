@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import ChatsInboxErrorBoundary from "@/components/chats/ChatsInboxErrorBoundary";
 import ClassicChatsInbox from "@/components/chats/ClassicChatsInbox";
 import ModernChatsInbox from "@/components/chats/ModernChatsInbox";
+import NativeChatsInboxLite from "@/components/chats/NativeChatsInboxLite";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import { useChatsSelection } from "@/hooks/useChatsSelection";
@@ -17,7 +19,7 @@ function ChatsPageSkeleton() {
   );
 }
 
-export default function ChatsPage() {
+function WebChatsPage() {
   const [mounted, setMounted] = useState(false);
   const { uxMode } = useUxMode();
   const inbox = useChatAlerts();
@@ -27,11 +29,7 @@ export default function ChatsPage() {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
-    return <ChatsPageSkeleton />;
-  }
-
-  if (inbox.loading) {
+  if (!mounted || inbox.loading) {
     return <ChatsPageSkeleton />;
   }
 
@@ -54,4 +52,18 @@ export default function ChatsPage() {
       )}
     </ChatsInboxErrorBoundary>
   );
+}
+
+export default function ChatsPage() {
+  const [nativeShell, setNativeShell] = useState(false);
+
+  useEffect(() => {
+    setNativeShell(isNativeAppShell());
+  }, []);
+
+  if (nativeShell) {
+    return <NativeChatsInboxLite />;
+  }
+
+  return <WebChatsPage />;
 }

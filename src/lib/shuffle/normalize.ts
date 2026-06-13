@@ -31,6 +31,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
       return {
         uid: String(item?.uid || item?.id || item?.username || `profile-${index}`),
         username: normalizeUsername(String(item?.username || "usuario")) || "usuario",
+        email: String(item?.email || ""),
         bio: String(item?.bio || "Sin descripcion."),
         photo: String(item?.photo || item?.fotoPrincipal || item?.photoURL || ""),
         coverPhoto: String(

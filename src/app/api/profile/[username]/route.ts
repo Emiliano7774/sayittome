@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVisibility";
+import { isLastSeenPublic } from "@/lib/profile/lastSeenVisibility";
 import { isActiveWithinWindow, isRecentlyActive } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
@@ -131,8 +131,7 @@ export async function GET(
     mostrarUltimaVez: fields?.mostrarUltimaVez?.booleanValue,
   });
 
-  const profile = stripPublicPresence(
-    {
+  const profile = {
     uid: str(fields, "uid") || String(found.document.name || "").split("/").pop() || "",
     email: str(fields, "email"),
     username: str(fields, "username") || str(fields, "usernameLower") || username,
@@ -180,9 +179,7 @@ export async function GET(
     adminBlurStories: fields?.adminBlurStories?.booleanValue === true,
     adminBlurGallery: fields?.adminBlurGallery?.booleanValue === true,
     adminBlurReason: str(fields, "adminBlurReason"),
-  },
-    mostrarUltimaVez,
-  );
+  };
 
   return NextResponse.json({ ok: true, profile });
 }

@@ -166,7 +166,8 @@ export default function PublicProfilePage() {
     : false;
   const lastSeenLabel =
     profile && canShowLastSeenToViewer(profile, isOwner)
-      ? formatLastSeen(heartbeat, isOnline)
+      ? formatLastSeen(heartbeat, isOnline) ||
+        (profile.createdAtLabel ? `Miembro desde ${profile.createdAtLabel}` : "")
       : "";
 
   function openViewer(index = 0) {

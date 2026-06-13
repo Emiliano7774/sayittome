@@ -62,24 +62,67 @@ function toDuplicateRow(user: Record<string, unknown>): DuplicateProfileRow {
 export async function listDuplicateProfileGroups() {
   const users = await runCollectionQueryAll("usuarios", "createdAt", "DESCENDING", 500, 20);
   const byUsername = new Map<string, Record<string, unknown>[]>();
+  const byEmail = new Map<string, Record<string, unknown>[]>();
+  const byUid = new Map<string, Record<string, unknown>[]>();
 
   for (const user of users) {
     const usernameLower = String(user.usernameLower || user.username || "")
       .trim()
       .toLowerCase();
 
-    if (!usernameLower || usernameLower === "usuario") continue;
+    if (usernameLower && usernameLower !== "usuario") {
+      const group = byUsername.get(usernameLower) || [];
+      group.push(user);
+      byUsername.set(usernameLower, group);
+    }
 
-    const group = byUsername.get(usernameLower) || [];
-    group.push(user);
-    byUsername.set(usernameLower, group);
+    const email = String(user.email || "").trim().toLowerCase();
+    if (email.includes("@")) {
+      const group = byEmail.get(email) || [];
+      group.push(user);
+      byEmail.set(email, group);
+    }
+
+    const uid = String(user.uid || user.id || "").trim();
+    if (uid) {
+      const group = byUid.get(uid) || [];
+      group.push(user);
+      byUid.set(uid, group);
+    }
+  }
+
+  const mergedGroups = new Map<string, Record<string, unknown>[]>();
+
+  function absorbGroup(key: string, rows: Record<string, unknown>[]) {
+    if (rows.length < 2) return;
+    const existing = mergedGroups.get(key) || [];
+    const seen = new Set(existing.map((row) => String(row.id || row.uid || "")));
+    for (const row of rows) {
+      const id = String(row.id || row.uid || "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      existing.push(row);
+    }
+    if (existing.length > 1) {
+      mergedGroups.set(key, existing);
+    }
+  }
+
+  for (const [usernameLower, rows] of byUsername) {
+    absorbGroup(`username:${usernameLower}`, rows);
+  }
+
+  for (const [email, rows] of byEmail) {
+    absorbGroup(`email:${email}`, rows);
+  }
+
+  for (const [uid, rows] of byUid) {
+    absorbGroup(`uid:${uid}`, rows);
   }
 
   const groups: DuplicateProfileGroup[] = [];
 
-  for (const [usernameLower, rows] of byUsername) {
-    if (rows.length < 2) continue;
-
+  for (const [, rows] of mergedGroups) {
     const sorted = [...rows].sort((a, b) => profileRank(b) - profileRank(a));
     const keepUid = String(sorted[0].id || sorted[0].uid || "");
     const removeUids = sorted
@@ -90,7 +133,7 @@ export async function listDuplicateProfileGroups() {
     if (!keepUid || removeUids.length === 0) continue;
 
     groups.push({
-      usernameLower,
+      usernameLower: String(sorted[0].usernameLower || sorted[0].username || "").toLowerCase(),
       keepUid,
       removeUids,
       profiles: sorted.map(toDuplicateRow),
@@ -106,6 +149,7 @@ export async function cleanupDuplicateProfiles(
 ) {
   const groups = await listDuplicateProfileGroups();
   const deleted: Array<{ usernameLower: string; uid: string }> = [];
+  const removed = new Set<string>();
 
   if (options.dryRun) {
     return {
@@ -119,6 +163,8 @@ export async function cleanupDuplicateProfiles(
 
   for (const group of groups) {
     for (const uid of group.removeUids) {
+      if (removed.has(uid)) continue;
+      removed.add(uid);
       await deleteOrphanProfile(uid, adminEmail);
       deleted.push({ usernameLower: group.usernameLower, uid });
     }

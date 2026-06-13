@@ -30,6 +30,7 @@ const ANON_ACTIVE_MS = 90 * 1000;
 type ApiProfile = {
   uid: string;
   username: string;
+  email?: string;
   bio: string;
   photo: string;
   coverPhoto?: string;
@@ -260,6 +261,7 @@ function docToProfile(doc: any): ApiProfile {
     lastActive,
     presenceAt: presenceAt || undefined,
     online: fieldBool(fields, "online"),
+    email: fieldString(fields, "email"),
     provincia: fieldString(fields, "provincia") || fieldString(fields, "region"),
     ciudad: fieldString(fields, "ciudad"),
     pais:

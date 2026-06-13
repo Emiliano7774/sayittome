@@ -3,6 +3,7 @@ import { normalizeUsername } from "@/lib/profile/username";
 type DedupeableProfile = {
   uid: string;
   username: string;
+  email?: string;
   photo?: string;
   presenceAt?: string;
   lastActive?: string;
@@ -20,9 +21,13 @@ function normalizedUsername(profile: { username?: string }) {
 export function shuffleProfileIdentityKey(profile: {
   uid?: string;
   username?: string;
+  email?: string;
 }) {
   const username = normalizedUsername(profile);
   if (username) return `u:${username}`;
+
+  const email = String(profile.email || "").trim().toLowerCase();
+  if (email.includes("@")) return `e:${email}`;
 
   const uid = String(profile.uid || "").trim();
   return uid ? `id:${uid}` : "";
@@ -62,41 +67,40 @@ function pickBetterProfile<T extends DedupeableProfile>(a: T, b: T) {
   return pickNewerProfile(a, b);
 }
 
-/** Collapse duplicate shuffle rows that share username or uid. */
+function dedupeKeysForProfile(profile: DedupeableProfile) {
+  const keys = new Set<string>();
+  const identityKey = shuffleProfileIdentityKey(profile);
+  const uid = String(profile.uid || "").trim();
+
+  if (identityKey) keys.add(identityKey);
+  if (uid) keys.add(`id:${uid}`);
+
+  return [...keys];
+}
+
+/** Collapse duplicate shuffle rows that share username, email, or uid. */
 export function dedupeShuffleProfiles<T extends DedupeableProfile>(
   profiles: T[],
 ): T[] {
-  const byIdentity = new Map<string, T>();
-
-  for (const profile of profiles) {
-    const identityKey = shuffleProfileIdentityKey(profile);
-    if (!identityKey) continue;
-
-    const existing = byIdentity.get(identityKey);
-    byIdentity.set(identityKey, existing ? pickBetterProfile(existing, profile) : profile);
-  }
-
-  const byUid = new Map<string, T>();
-  for (const profile of profiles) {
-    const uid = String(profile.uid || "").trim();
-    if (!uid) continue;
-
-    const existing = byUid.get(uid);
-    byUid.set(uid, existing ? pickBetterProfile(existing, profile) : profile);
-  }
-
+  const canonicalByKey = new Map<string, string>();
   const merged = new Map<string, T>();
 
-  for (const [key, profile] of byIdentity) {
-    merged.set(key, profile);
-  }
+  for (const profile of profiles) {
+    const keys = dedupeKeysForProfile(profile);
+    if (keys.length === 0) continue;
 
-  for (const profile of byUid.values()) {
-    const identityKey = shuffleProfileIdentityKey(profile);
-    if (!identityKey) continue;
+    const existingCanonical = keys
+      .map((key) => canonicalByKey.get(key))
+      .find(Boolean);
 
-    const existing = merged.get(identityKey);
-    merged.set(identityKey, existing ? pickBetterProfile(existing, profile) : profile);
+    const canonicalKey = existingCanonical || keys[0];
+    const existing = merged.get(canonicalKey);
+    const next = existing ? pickBetterProfile(existing, profile) : profile;
+
+    merged.set(canonicalKey, next);
+    for (const key of keys) {
+      canonicalByKey.set(key, canonicalKey);
+    }
   }
 
   return [...merged.values()];
