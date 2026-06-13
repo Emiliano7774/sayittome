@@ -28,7 +28,7 @@ import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
-import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
+import { canShowLastSeenToViewer, resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -89,15 +89,15 @@ export default function ModernPublicProfile({
   const formatLastSeen = useFormatLastSeen();
   const story = useStoryStatus(profile.uid, profile.username);
   const blurPhoto = profilePhotoRequiresBlur(profile);
-  const heartbeat = profile.presenceAt || profile.lastActive;
+  const heartbeat = resolveProfileHeartbeat(profile);
   const isOnline = isPresenceOnline(heartbeat, profile.online);
   const showLastSeen = canShowLastSeenToViewer(profile, isOwner);
-  const lastSeen = showLastSeen
-    ? formatLastSeen(heartbeat, isOnline) ||
-      (profile.createdAtLabel
-        ? t("settings_profile_created", { date: profile.createdAtLabel })
-        : "")
-    : "";
+  const lastSeen =
+    showLastSeen && heartbeat
+      ? formatLastSeen(heartbeat, isOnline)
+      : showLastSeen && isOwner
+        ? formatLastSeen(undefined, false)
+        : "";
   const historiasCount = story.hasActive
     ? story.storyCount
     : Number(profile.historias || profile.stories || 0);

@@ -168,12 +168,9 @@ export async function GET(
         ts(fields, "fechaRegistro"),
     ),
     presenceAt,
-    lastActive:
-      presenceAt ||
-      ts(fields, "updatedAt") ||
-      ts(fields, "createdAt"),
+    lastActive: presenceAt,
     online,
-    showOnline: isActiveWithinWindow(presenceAt, presenceAt || ts(fields, "updatedAt") || ts(fields, "createdAt")),
+    showOnline: presenceAt ? isActiveWithinWindow(presenceAt, presenceAt) : online,
     adminBlurProfilePhoto: fields?.adminBlurProfilePhoto?.booleanValue === true,
     adminBlurFotosPerfil: fields?.adminBlurFotosPerfil?.booleanValue === true,
     adminBlurStories: fields?.adminBlurStories?.booleanValue === true,

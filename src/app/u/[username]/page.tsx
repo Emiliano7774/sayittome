@@ -38,7 +38,7 @@ import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
-import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
+import { canShowLastSeenToViewer, resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -160,15 +160,16 @@ export default function PublicProfilePage() {
     prefetchOwnerStories(profile.uid, profile.username);
   }, [profile?.uid, profile?.username, currentUid]);
 
-  const heartbeat = profile?.presenceAt || profile?.lastActive;
+  const heartbeat = profile ? resolveProfileHeartbeat(profile) : undefined;
   const isOnline = profile
     ? isActiveWithinWindow(profile.presenceAt, profile.lastActive)
     : false;
   const lastSeenLabel =
-    profile && canShowLastSeenToViewer(profile, isOwner)
-      ? formatLastSeen(heartbeat, isOnline) ||
-        (profile.createdAtLabel ? `Miembro desde ${profile.createdAtLabel}` : "")
-      : "";
+    profile && canShowLastSeenToViewer(profile, isOwner) && heartbeat
+      ? formatLastSeen(heartbeat, isOnline)
+      : profile && isOwner
+        ? formatLastSeen(undefined, false)
+        : "";
 
   function openViewer(index = 0) {
     if (gallery.length === 0) return;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { canShowLastSeenToViewer } from "@/lib/profile/lastSeenVisibility";
+import { canShowLastSeenToViewer, resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
 import { formatLastSeen } from "@/lib/presence";
 import {
   Heart,
@@ -74,8 +74,13 @@ export default function ClassicProfileLayout({
   ownProfile?: boolean;
 }) {
   const photo = profile.photo || "";
+  const heartbeat = resolveProfileHeartbeat(profile);
   const lastSeenLabel = canShowLastSeenToViewer(profile, ownProfile)
-    ? formatLastSeen(profile.lastActive, profile.online)
+    ? heartbeat
+      ? formatLastSeen(heartbeat, profile.online)
+      : ownProfile
+        ? formatLastSeen(undefined, profile.online)
+        : ""
     : "";
 
   return (

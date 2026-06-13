@@ -7,21 +7,27 @@ export function isLastSeenPublic(profile?: LastSeenPrivacy | null) {
   return profile?.mostrarUltimaVez !== false;
 }
 
-/** Profile owners always see their own status; public profiles show last activity to everyone. */
+/** Last activity timestamp only — never registration or profile update dates. */
+export function resolveProfileHeartbeat(
+  profile?: {
+    presenceAt?: string | null;
+    lastActive?: string | null;
+  } | null,
+) {
+  const stamp = String(profile?.presenceAt || profile?.lastActive || "").trim();
+  return stamp || undefined;
+}
+
+/** Profile owners always see their own status; visitors see real last activity only. */
 export function canShowLastSeenToViewer(
   profile?: (LastSeenPrivacy & {
     lastActive?: string | null;
     presenceAt?: string | null;
-    createdAtLabel?: string;
   }) | null,
   isOwner = false,
 ) {
   if (isOwner) return true;
-  return Boolean(
-    profile?.presenceAt ||
-      profile?.lastActive ||
-      profile?.createdAtLabel,
-  );
+  return Boolean(resolveProfileHeartbeat(profile));
 }
 
 export function stripPublicPresence<T extends {
