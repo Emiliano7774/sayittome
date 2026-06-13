@@ -22,7 +22,10 @@ import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useLocale, useT } from "@/contexts/LocaleContext";
+import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
+import { isActiveWithinWindow } from "@/lib/presence";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
+import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -49,6 +52,7 @@ export default function SettingsPage() {
   const [videoViewerUrl, setVideoViewerUrl] = useState<string | null>(null);
   const { density } = useClassicShuffleDensity();
   const profileUi = getClassicProfileUiTokens(density);
+  const formatLastSeen = useFormatLastSeen();
 
   const loadProfile = useCallback(async (user: { uid: string }) => {
     const ref = doc(db, "usuarios", user.uid);
@@ -144,6 +148,12 @@ export default function SettingsPage() {
   const username = profile?.username || profile?.nombre || t("settings_no_username");
   const bio = profile?.bio || profile?.descripcion || t("settings_bio_empty");
   const createdAtLabel = resolvePublicProfileCreatedLabel(profile, localeTag);
+  const lastSeenLabel = resolveProfileLastSeenLabel(
+    profile,
+    true,
+    formatLastSeen,
+    profile ? isActiveWithinWindow(profile.presenceAt, profile.lastActiveAt || profile.lastActive) : false,
+  );
 
   const media = useMemo<MediaItem[]>(() => {
     const fotos = Array.isArray(profile?.fotos)
@@ -466,6 +476,15 @@ export default function SettingsPage() {
               </p>
             )}
           </div>
+
+          {lastSeenLabel ? (
+            <p
+              className="mt-10 text-right font-black text-white/70"
+              style={{ fontSize: profileUi.lastSeenSizeMd }}
+            >
+              {lastSeenLabel}
+            </p>
+          ) : null}
 
           {createdAtLabel ? (
             <ProfileCreatedFooter

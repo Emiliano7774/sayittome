@@ -12,13 +12,21 @@ export function resolveProfileHeartbeat(
   profile?: {
     presenceAt?: string | null;
     lastActive?: string | null;
+    lastActiveAt?: string | null;
+    lastSeenAt?: string | null;
   } | null,
 ) {
-  const stamp = String(profile?.presenceAt || profile?.lastActive || "").trim();
+  const stamp = String(
+    profile?.presenceAt ||
+      profile?.lastActive ||
+      profile?.lastActiveAt ||
+      profile?.lastSeenAt ||
+      "",
+  ).trim();
   return stamp || undefined;
 }
 
-/** Profile owners always see their own status; visitors see real last activity only. */
+/** Profile owners always see their own status; visitors need public opt-in and real activity. */
 export function canShowLastSeenToViewer(
   profile?: (LastSeenPrivacy & {
     lastActive?: string | null;
@@ -26,7 +34,9 @@ export function canShowLastSeenToViewer(
   }) | null,
   isOwner = false,
 ) {
+  if (!profile) return false;
   if (isOwner) return true;
+  if (!isLastSeenPublic(profile)) return false;
   return Boolean(resolveProfileHeartbeat(profile));
 }
 

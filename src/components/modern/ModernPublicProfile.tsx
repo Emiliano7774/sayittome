@@ -28,8 +28,8 @@ import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
-import { canShowLastSeenToViewer, resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
+import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -106,15 +106,13 @@ export default function ModernPublicProfile({
   const createdSignature = resolvePublicProfileCreatedLabel(profile, localeTag);
   const story = useStoryStatus(profile.uid, profile.username);
   const blurPhoto = profilePhotoRequiresBlur(profile);
-  const heartbeat = resolveProfileHeartbeat(profile);
-  const isOnline = isPresenceOnline(heartbeat, profile.online);
-  const showLastSeen = canShowLastSeenToViewer(profile, isOwner);
-  const lastSeen =
-    showLastSeen && heartbeat
-      ? formatLastSeen(heartbeat, isOnline)
-      : showLastSeen && isOwner
-        ? formatLastSeen(undefined, false)
-        : "";
+  const isOnline = isPresenceOnline(profile.presenceAt || profile.lastActive, profile.online);
+  const lastSeen = resolveProfileLastSeenLabel(
+    profile,
+    isOwner,
+    formatLastSeen,
+    isOnline,
+  );
   const historiasCount = story.hasActive
     ? story.storyCount
     : Number(profile.historias || profile.stories || 0);
@@ -383,12 +381,6 @@ export default function ModernPublicProfile({
                 <p className="mt-2 text-sm font-normal text-zinc-500">{profile.provincia}</p>
               ) : null}
 
-              {lastSeen ? (
-                <p className="mt-3 text-center text-base font-semibold text-zinc-400 md:mt-4">
-                  {lastSeen}
-                </p>
-              ) : null}
-
               <div className="mt-5 grid grid-cols-4 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">
                 <StatItem icon={<Heart size={18} />} value={profile.likes || 0} label={t("profile_likes")} />
                 <StatItem
@@ -451,11 +443,18 @@ export default function ModernPublicProfile({
           </section>
         </div>
 
-        {createdSignature ? (
-          <ProfileCreatedFooter
-            label={t("settings_profile_created", { date: createdSignature })}
-            className="max-w-3xl mx-auto"
-          />
+        {(lastSeen || createdSignature) ? (
+          <div className="max-w-3xl mx-auto px-4 text-right">
+            {lastSeen ? (
+              <p className="pb-2 text-base font-semibold text-zinc-400 md:text-lg">{lastSeen}</p>
+            ) : null}
+            {createdSignature ? (
+              <ProfileCreatedFooter
+                label={t("settings_profile_created", { date: createdSignature })}
+                className="px-0 pb-8"
+              />
+            ) : null}
+          </div>
         ) : null}
       </div>
 

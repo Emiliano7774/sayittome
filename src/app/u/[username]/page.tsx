@@ -28,7 +28,7 @@ import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
-import { useLocale } from "@/contexts/LocaleContext";
+import { useLocale, useT } from "@/contexts/LocaleContext";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { isActiveWithinWindow } from "@/lib/presence";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
@@ -39,8 +39,8 @@ import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
-import { canShowLastSeenToViewer, resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
+import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -107,6 +107,7 @@ export default function PublicProfilePage() {
   const { density } = useClassicShuffleDensity();
   const profileUi = getClassicProfileUiTokens(density);
   const formatLastSeen = useFormatLastSeen();
+  const t = useT();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -169,16 +170,15 @@ export default function PublicProfilePage() {
     prefetchOwnerStories(profile.uid, profile.username);
   }, [profile?.uid, profile?.username, currentUid]);
 
-  const heartbeat = profile ? resolveProfileHeartbeat(profile) : undefined;
   const isOnline = profile
     ? isActiveWithinWindow(profile.presenceAt, profile.lastActive)
     : false;
-  const lastSeenLabel =
-    profile && canShowLastSeenToViewer(profile, isOwner) && heartbeat
-      ? formatLastSeen(heartbeat, isOnline)
-      : profile && isOwner
-        ? formatLastSeen(undefined, false)
-        : "";
+  const lastSeenLabel = resolveProfileLastSeenLabel(
+    profile,
+    isOwner,
+    formatLastSeen,
+    isOnline,
+  );
   const localeTag =
     locale === "es"
       ? "es-AR"
@@ -294,6 +294,12 @@ export default function PublicProfilePage() {
           historias: profile.historias,
           stories: profile.stories,
           createdAtLabel: profile.createdAtLabel,
+          originalCreatedAt: profile.originalCreatedAt,
+          createdAt: profile.createdAt,
+          fechaCreacion: profile.fechaCreacion,
+          fechaRegistro: profile.fechaRegistro,
+          registrationDate: profile.registrationDate,
+          _firestoreCreateTime: profile._firestoreCreateTime,
           lastActive: profile.lastActive,
           presenceAt: profile.presenceAt,
           online: profile.online,
@@ -424,15 +430,19 @@ export default function PublicProfilePage() {
             </p>
           )}
 
-          {lastSeenLabel ? (
-            <p
-              className="mt-4 font-black text-white/70 md:mt-5"
-              style={{ fontSize: profileUi.lastSeenSizeMd }}
-            >
-              {lastSeenLabel}
-            </p>
-          ) : null}
         </div>
+
+        {lastSeenLabel ? (
+          <p
+            className="pointer-events-none absolute right-8 md:right-24 z-[22] max-w-[min(92vw,420px)] text-right font-black text-white/70"
+            style={{
+              bottom: profile.bio ? "14vh" : "8vh",
+              fontSize: profileUi.lastSeenSizeMd,
+            }}
+          >
+            {lastSeenLabel}
+          </p>
+        ) : null}
 
         <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-none">
           <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={profileUi.statIcon} fill="white" />} ui={profileUi} />
@@ -512,7 +522,7 @@ export default function PublicProfilePage() {
 
       {createdSignature ? (
         <ProfileCreatedFooter
-          label={`Perfil creado el ${createdSignature}`}
+          label={t("settings_profile_created", { date: createdSignature })}
           className="relative z-[6] bg-black"
           style={{ fontSize: profileUi.createdText }}
         />
