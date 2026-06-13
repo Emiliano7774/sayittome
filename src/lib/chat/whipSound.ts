@@ -26,11 +26,10 @@ function getPooledAudio() {
 
 function requestNotificationPermission() {
   if (notificationPermissionRequested || typeof window === "undefined") return;
-  if (!("Notification" in window)) return;
-  if (Notification.permission !== "default") return;
-
   notificationPermissionRequested = true;
-  void Notification.requestPermission().catch(() => undefined);
+  void import("@/lib/chat/chatNotifications")
+    .then(({ requestChatNotificationPermission }) => requestChatNotificationPermission())
+    .catch(() => undefined);
 }
 
 export function unlockWhipSound() {
@@ -82,24 +81,11 @@ export function playIncomingWhipSound() {
 export function notifyIncomingChatMessage(input: {
   title: string;
   body: string;
+  chatId?: string;
 }) {
-  if (typeof window === "undefined") return;
-  if (!("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
-  if (!document.hidden) return;
-
-  const body = String(input.body || "").trim();
-  if (!body) return;
-
-  try {
-    new Notification(input.title || "Nuevo mensaje", {
-      body: body.slice(0, 180),
-      tag: "sayittome-chat",
-      silent: false,
-    });
-  } catch {
-    // Sin permiso o bloqueado.
-  }
+  void import("@/lib/chat/chatNotifications")
+    .then(({ showChatNotification }) => showChatNotification(input))
+    .catch(() => undefined);
 }
 
 export function bindWhipSoundUnlock() {

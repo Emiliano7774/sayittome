@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import NativeBackHint from "@/components/app/NativeBackHint";
-import { isNativeAppShell } from "@/lib/app/nativeShell";
+import { isNativeAppShell, setNativeAppActive } from "@/lib/app/nativeShell";
+import { initChatNotifications } from "@/lib/chat/chatNotifications";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { unlockWhipSound } from "@/lib/chat/whipSound";
 import {
@@ -108,6 +109,8 @@ export default function NativeAppBootstrap() {
     installNativeBackHandler(router, pathnameRef);
 
     void (async () => {
+      await initChatNotifications();
+
       try {
         const { SplashScreen } = await import("@capacitor/splash-screen");
         await SplashScreen.hide();
@@ -117,6 +120,7 @@ export default function NativeAppBootstrap() {
 
       try {
         await App.addListener("appStateChange", ({ isActive }) => {
+          setNativeAppActive(isActive);
           if (isActive) {
             globalChatWhipManager.refresh();
             unlockWhipSound();

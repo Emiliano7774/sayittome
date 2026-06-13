@@ -21,6 +21,7 @@ import {
   resolveInboxViewerId,
   totalUnreadCount,
 } from "@/lib/chat/inboxUnread";
+import { initChatNotifications, requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 
 export function useGlobalChatAlerts() {
@@ -37,7 +38,7 @@ export function useGlobalChatAlerts() {
     [pathname],
   );
   const liveFirestoreEnabled = inboxRouteEnabled && !documentHidden;
-  const liveChatAlertsEnabled = chatAlertsRouteEnabled && !documentHidden;
+  const liveChatAlertsEnabled = chatAlertsRouteEnabled;
 
   const { sortedChats, uid, loading, isAnonymousSession } = useChatsInbox({
     enableInboxQueries: liveFirestoreEnabled,
@@ -62,7 +63,15 @@ export function useGlobalChatAlerts() {
   pathnameRef.current = pathname;
   sortedChatsRef.current = sortedChats;
 
-  useEffect(() => bindWhipSoundUnlock(), []);
+  useEffect(() => {
+    void initChatNotifications();
+    return bindWhipSoundUnlock();
+  }, []);
+
+  useEffect(() => {
+    if (!chatAlertsRouteEnabled || loading) return;
+    void requestChatNotificationPermission();
+  }, [chatAlertsRouteEnabled, loading]);
 
   useEffect(() => {
     globalChatWhipManager.setContext({

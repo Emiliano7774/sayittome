@@ -1,5 +1,15 @@
 "use client";
 
+let nativeAppActive = true;
+
+export function setNativeAppActive(active: boolean) {
+  nativeAppActive = active;
+}
+
+export function isNativeAppActive() {
+  return nativeAppActive;
+}
+
 export function isCapacitorNative() {
   if (typeof window === "undefined") return false;
 

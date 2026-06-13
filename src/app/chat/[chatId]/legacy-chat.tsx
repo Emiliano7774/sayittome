@@ -25,6 +25,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, db, storage } from "@/lib/firebase";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
+import { ensureChatCameraStreamPermission, openNativeGalleryFilePicker } from "@/lib/media/chatMediaCapture";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import { inboxChatFromFirestore, markChatAsRead } from "@/lib/chat/unread";
 import {
@@ -555,8 +556,11 @@ export default function LegacyChatPage() {
     }
   };
 
-  const handlePickMedia = () => {
-    fileInputRef.current?.click();
+  const handlePickMedia = async () => {
+    const opened = await openNativeGalleryFilePicker(fileInputRef.current);
+    if (!opened) {
+      alert("No se pudo abrir la galería. Revisá los permisos del navegador o la app.");
+    }
   };
 
   const handleMediaSelected = async (
@@ -594,6 +598,12 @@ export default function LegacyChatPage() {
 
   const startRecording = async () => {
     if (recording) return;
+
+    const allowed = await ensureChatCameraStreamPermission(true);
+    if (!allowed) {
+      alert("No se pudo acceder al micrófono. Revisá los permisos del navegador o la app.");
+      return;
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

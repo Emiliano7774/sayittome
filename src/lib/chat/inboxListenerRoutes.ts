@@ -33,9 +33,12 @@ export function shouldEnableInboxListeners(pathname: string) {
   return shouldEnableFullInboxListeners(pathname);
 }
 
-/** Whip / session chat alerts follow the same routes as full inbox. */
+/** Whip / session chat alerts on most in-app routes (not only inbox screens). */
 export function shouldEnableChatAlerts(pathname: string) {
-  return shouldEnableFullInboxListeners(pathname);
+  if (!pathname || pathname === "/") return false;
+  if (isBlockedRoute(pathname)) return false;
+  if (isNativeChatsRoute(pathname)) return false;
+  return true;
 }
 
 /** Stories index polling only on routes that render story UI. */

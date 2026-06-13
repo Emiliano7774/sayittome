@@ -19,6 +19,12 @@ import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import AudioWave from "@/components/chat/media/AudioWave";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import { uploadMedia } from "@/lib/media/upload";
+import {
+  captureChatPhotoFromCamera,
+  ensureChatCameraStreamPermission,
+  openNativeGalleryFilePicker,
+  pickChatPhotoFromGallery,
+} from "@/lib/media/chatMediaCapture";
 import { canOpenViewOnce, markOpened } from "@/lib/media/viewOnce";
 import AbuseProtectionMenu from "@/components/chat/AbuseProtectionMenu";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
@@ -495,6 +501,20 @@ export default function ProfileAnonChat({
   }, [messages.length, messages[messages.length - 1]?.id]);
 
   async function openRealCamera(mode: "photo" | "video") {
+    if (mode === "photo") {
+      const nativePhoto = await captureChatPhotoFromCamera();
+      if (nativePhoto) {
+        handleFile(nativePhoto.file, nativePhoto.source);
+        return;
+      }
+    }
+
+    const allowed = await ensureChatCameraStreamPermission(mode === "video");
+    if (!allowed) {
+      alert(t("chat_camera_fail"));
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -621,7 +641,26 @@ export default function ProfileAnonChat({
     setVideoPreview(isVideo ? url : "");
   }
 
+  async function openGalleryPicker() {
+    const nativePhoto = await pickChatPhotoFromGallery();
+    if (nativePhoto) {
+      handleFile(nativePhoto.file, nativePhoto.source);
+      return;
+    }
+
+    const opened = await openNativeGalleryFilePicker(galleryRef.current);
+    if (!opened) {
+      alert(t("chat_camera_fail"));
+    }
+  }
+
   async function startAudioRecording() {
+    const allowed = await ensureChatCameraStreamPermission(true);
+    if (!allowed) {
+      alert(t("chat_camera_fail"));
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -1253,7 +1292,7 @@ export default function ProfileAnonChat({
 
             <button
               type="button"
-              onClick={() => galleryRef.current?.click()}
+              onClick={() => void openGalleryPicker()}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80"
               title="Galeria"
             >

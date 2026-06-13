@@ -15,10 +15,8 @@ import {
   SESSION_CHATS_CHANGED_EVENT,
 } from "@/lib/chat/sessionChats";
 import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
-import {
-  notifyIncomingChatMessage,
-  playIncomingWhipSound,
-} from "@/lib/chat/whipSound";
+import { showChatNotification } from "@/lib/chat/chatNotifications";
+import { playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { db } from "@/lib/firebase";
 
 type WhipContext = {
@@ -169,7 +167,7 @@ class GlobalChatWhipManager {
           ctx.firebaseUid,
         );
         const activeChatId = ctx.getActiveChatId();
-        const suppress = activeChatId === chatId && !document.hidden;
+        const viewingActiveChat = activeChatId === chatId && !document.hidden;
         const isNewMessage = Boolean(previousId && previousId !== messageId);
 
         this.lastMessageId.set(chatId, messageId);
@@ -189,12 +187,15 @@ class GlobalChatWhipManager {
           chatId,
           messageId,
           incoming,
-          suppress,
+          suppress: viewingActiveChat,
           onAlert: () => {
-            playIncomingWhipSound();
-            notifyIncomingChatMessage({
+            if (!viewingActiveChat) {
+              playIncomingWhipSound();
+            }
+            void showChatNotification({
               title: ctx.getChatLabel(chatId) || "Nuevo mensaje",
               body,
+              chatId,
             });
           },
         });
