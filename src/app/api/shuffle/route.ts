@@ -464,10 +464,12 @@ export async function GET(req: Request) {
       .map((row) => String(row.uid || ""))
       .filter(Boolean);
 
-    const featuredProfiles = boostUidOrder
-      .map((uid) => filteredByDiscovery.find((profile) => profile.uid === uid))
-      .filter(Boolean)
-      .map((profile) => ({ ...withPresenceBadge(profile!), shuffleFeatured: true }));
+    const featuredProfiles = dedupeShuffleProfiles(
+      boostUidOrder
+        .map((uid) => filteredByDiscovery.find((profile) => profile.uid === uid))
+        .filter(Boolean)
+        .map((profile) => ({ ...withPresenceBadge(profile!), shuffleFeatured: true })),
+    );
 
     return NextResponse.json({
       ok: true,

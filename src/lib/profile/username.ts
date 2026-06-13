@@ -1,5 +1,9 @@
 export function normalizeUsername(value: string) {
-  return value.trim().replace(/\s+/g, "");
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/\s+/g, "");
 }
 
 export function isValidUsername(value: string) {

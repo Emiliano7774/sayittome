@@ -6,7 +6,7 @@ import { useSyncExternalStore } from "react";
 
 import {
   dedupeShuffleProfiles,
-  shuffleProfileIdentityKey,
+  shuffleProfileDedupeKeys,
 } from "@/lib/shuffle/dedupeProfiles";
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
 import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
@@ -104,14 +104,20 @@ export function useShufflePool() {
   }, [search]);
 
   const applyWindowFromPool = useCallback((pool: ShuffleProfile[]) => {
-    const featured = featuredRef.current;
-    const featuredKeys = new Set(
-      featured.map((profile) => shuffleProfileIdentityKey(profile)).filter(Boolean),
+    const featured = dedupeShuffleProfiles(featuredRef.current);
+    featuredRef.current = featured;
+    const featuredKeys = new Set<string>();
+    for (const profile of featured) {
+      for (const key of shuffleProfileDedupeKeys(profile)) {
+        featuredKeys.add(key);
+      }
+    }
+    const eligiblePool = dedupeShuffleProfiles(
+      pool.filter((profile) => {
+        const keys = shuffleProfileDedupeKeys(profile);
+        return keys.length === 0 || !keys.some((key) => featuredKeys.has(key));
+      }),
     );
-    const eligiblePool = pool.filter((profile) => {
-      const key = shuffleProfileIdentityKey(profile);
-      return key ? !featuredKeys.has(key) : true;
-    });
     const len = eligiblePool.length;
     const featuredCount = featured.length;
 
@@ -174,22 +180,24 @@ export function useShufflePool() {
         now,
       );
 
-      featuredRef.current = refreshPoolPresence(
-        featuredRef.current.filter((profile) => {
-          if (!profileMatchesShuffleSearch(profile, q)) return false;
-          return profileMatchesShuffleFilters(profile, nextFilters, { storyOwnerUids, now });
-        }),
-        now,
+      featuredRef.current = dedupeShuffleProfiles(
+        refreshPoolPresence(
+          featuredRef.current.filter((profile) => {
+            if (!profileMatchesShuffleSearch(profile, q)) return false;
+            return profileMatchesShuffleFilters(profile, nextFilters, { storyOwnerUids, now });
+          }),
+          now,
+        ),
       );
 
-      activePoolRef.current = filtered;
-      setFilteredCount(filtered.length);
+      activePoolRef.current = dedupeShuffleProfiles(filtered);
+      setFilteredCount(activePoolRef.current.length);
       setFilteredOnlineCount(
-        filtered.filter((profile) =>
+        activePoolRef.current.filter((profile) =>
           isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
         ).length,
       );
-      applyWindowFromPool(filtered);
+      applyWindowFromPool(activePoolRef.current);
     },
     [applyWindowFromPool],
   );

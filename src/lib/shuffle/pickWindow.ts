@@ -1,4 +1,4 @@
-import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
+import { shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
 
 export const SHUFFLE_WINDOW_SIZE = 35;
 
@@ -65,9 +65,9 @@ export function pickRandomUniqueWindowIndices(
 
   for (let i = 0; i < poolLength && count < size; i++) {
     const idx = scratch[i];
-    const key = shuffleProfileIdentityKey(pool[idx]);
-    if (!key || used.has(key)) continue;
-    used.add(key);
+    const keys = shuffleProfileDedupeKeys(pool[idx]);
+    if (keys.length === 0 || keys.some((key) => used.has(key))) continue;
+    for (const key of keys) used.add(key);
     out[count] = idx;
     count += 1;
   }

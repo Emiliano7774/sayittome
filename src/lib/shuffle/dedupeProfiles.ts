@@ -67,15 +67,33 @@ function pickBetterProfile<T extends DedupeableProfile>(a: T, b: T) {
   return pickNewerProfile(a, b);
 }
 
-function dedupeKeysForProfile(profile: DedupeableProfile) {
+export function shuffleProfileDedupeKeys(profile: {
+  uid?: string;
+  username?: string;
+  email?: string;
+}) {
   const keys = new Set<string>();
   const identityKey = shuffleProfileIdentityKey(profile);
   const uid = String(profile.uid || "").trim();
+  const email = String(profile.email || "").trim().toLowerCase();
 
   if (identityKey) keys.add(identityKey);
   if (uid) keys.add(`id:${uid}`);
+  if (email.includes("@")) keys.add(`e:${email}`);
 
   return [...keys];
+}
+
+function dedupeKeysForProfile(profile: DedupeableProfile) {
+  return shuffleProfileDedupeKeys(profile);
+}
+
+export function shuffleProfilesShareIdentity(
+  left: { uid?: string; username?: string; email?: string },
+  right: { uid?: string; username?: string; email?: string },
+) {
+  const rightKeys = new Set(shuffleProfileDedupeKeys(right));
+  return shuffleProfileDedupeKeys(left).some((key) => rightKeys.has(key));
 }
 
 /** Collapse duplicate shuffle rows that share username, email, or uid. */
