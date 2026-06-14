@@ -425,6 +425,13 @@ const es = {
 
   profile_online: "En línea",
   profile_verified_link: "Perfil abierto desde link oficial",
+  profile_username_changed_title: "Este usuario cambió de nombre",
+  profile_username_changed_body:
+    "El link que tenés usa @{username}, pero esa persona ya no usa ese nombre. Pedile que te pase su link verificado actualizado.",
+  profile_username_changed_verified_body:
+    "Abriste un link verificado con @{username}, pero esa persona ya cambió su usuario. Pedile que te copie y pase el link verificado nuevo.",
+  profile_username_changed_current: "Ahora usa @{username}.",
+  profile_username_changed_back: "Volver al inicio",
   profile_default_bio: "Perfil SayItToMe en la nueva web React.",
   profile_likes: "Likes",
   profile_view_stories: "Ver historias ({count})",
@@ -1038,6 +1045,13 @@ const en: Record<keyof typeof es, string> = {
 
   profile_online: "Online",
   profile_verified_link: "Profile opened from official link",
+  profile_username_changed_title: "This user changed their username",
+  profile_username_changed_body:
+    "The link you have uses @{username}, but that person no longer uses that name. Ask them to send you their updated verified link.",
+  profile_username_changed_verified_body:
+    "You opened a verified link for @{username}, but that person already changed their username. Ask them to copy and send the new verified link.",
+  profile_username_changed_current: "They now use @{username}.",
+  profile_username_changed_back: "Back to home",
   profile_default_bio: "SayItToMe profile on the new React web.",
   profile_likes: "Likes",
   profile_view_stories: "View stories ({count})",

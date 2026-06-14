@@ -1,15 +1,25 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import UsernameChangedNotice from "@/components/profile/UsernameChangedNotice";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
+import { isProfileUsernameChangedError } from "@/lib/profile/usernameHistory";
+import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
+import { useRouter } from "next/navigation";
 
 export default function UserChatRedirectPage() {
   const params = useParams<{ username: string }>();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const username = String(params.username || "usuario");
   const [errorText, setErrorText] = useState("");
+  const [usernameChanged, setUsernameChanged] = useState<{
+    requestedUsername: string;
+    currentUsername: string;
+  } | null>(null);
+  const verifiedLink = isVerifiedProfileLink(searchParams);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,9 +35,17 @@ export default function UserChatRedirectPage() {
         );
       } catch (e) {
         console.error(e);
-        if (!cancelled) {
-          setErrorText("No se pudo abrir el chat.");
+        if (cancelled) return;
+
+        if (isProfileUsernameChangedError(e)) {
+          setUsernameChanged({
+            requestedUsername: e.requestedUsername,
+            currentUsername: e.currentUsername,
+          });
+          return;
         }
+
+        setErrorText("No se pudo abrir el chat.");
       }
     })();
 
@@ -35,6 +53,16 @@ export default function UserChatRedirectPage() {
       cancelled = true;
     };
   }, [username, router]);
+
+  if (usernameChanged) {
+    return (
+      <UsernameChangedNotice
+        requestedUsername={usernameChanged.requestedUsername}
+        currentUsername={usernameChanged.currentUsername}
+        verifiedLink={verifiedLink}
+      />
+    );
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-black text-white">

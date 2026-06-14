@@ -19,6 +19,7 @@ import { resolveStoryViewerId } from "@/lib/stories/storyAuthor";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
+import UsernameChangedNotice from "@/components/profile/UsernameChangedNotice";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
@@ -37,7 +38,7 @@ import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
-import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
+import { lookupProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile } from "@/lib/profile/profileCache";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { useAdaptiveUsernameFontSize } from "@/lib/profile/adaptiveUsernameSize";
@@ -90,6 +91,10 @@ export default function PublicProfilePage() {
   const params = useParams();
   const router = useRouter();
   const [verifiedVisit, setVerifiedVisit] = useState(false);
+  const [usernameChanged, setUsernameChanged] = useState<{
+    requestedUsername: string;
+    currentUsername: string;
+  } | null>(null);
 
   const usernameParam =
     typeof params?.username === "string" ? params.username : "";
@@ -131,8 +136,18 @@ export default function PublicProfilePage() {
 
       try {
         if (!cached) setLoading(true);
-        const next = (await fetchProfileByUsername(usernameParam, true)) as Profile | null;
-        setProfile(next);
+        const lookup = await lookupProfileByUsername(usernameParam, true);
+        if (lookup.usernameChanged) {
+          setUsernameChanged({
+            requestedUsername: lookup.requestedUsername,
+            currentUsername: lookup.currentUsername,
+          });
+          setProfile(null);
+          return;
+        }
+
+        setUsernameChanged(null);
+        setProfile((lookup.profile as Profile | null) || null);
       } catch {
         if (!cached) setProfile(null);
       } finally {
@@ -283,6 +298,16 @@ export default function PublicProfilePage() {
   }
 
   if (!profile) {
+    if (usernameChanged) {
+      return (
+        <UsernameChangedNotice
+          requestedUsername={usernameChanged.requestedUsername}
+          currentUsername={usernameChanged.currentUsername}
+          verifiedLink={verifiedVisit}
+        />
+      );
+    }
+
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center pb-28">
         <p className="text-4xl font-black text-white/35">Perfil no encontrado</p>

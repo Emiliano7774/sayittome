@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { deleteField, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { deleteField, arrayUnion, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -29,6 +29,8 @@ import {
   type ProfileMediaSource,
 } from "@/lib/profile/mediaSource";
 import { useT } from "@/contexts/LocaleContext";
+import { previousUsernameToRemember } from "@/lib/profile/usernameHistory";
+import { isUsernameAvailable, isValidUsername, normalizeUsername } from "@/lib/profile/username";
 
 type MediaSheetMode = "cover" | "principal" | "gallery";
 
@@ -44,6 +46,7 @@ export default function ModernEditProfilePage() {
   const [saving, setSaving] = useState(false);
 
   const [username, setUsername] = useState("");
+  const [savedUsername, setSavedUsername] = useState("");
   const [bio, setBio] = useState("");
   const [provincia, setProvincia] = useState("");
   const [mostrarProvincia, setMostrarProvincia] = useState(false);
@@ -81,6 +84,7 @@ export default function ModernEditProfilePage() {
       const data = snap.exists() ? snap.data() : {};
 
       setUsername(String(data.username || data.nombre || ""));
+      setSavedUsername(String(data.username || data.nombre || ""));
       setBio(String(data.bio || data.descripcion || ""));
       setProvincia(String(data.provincia || ""));
       setMostrarProvincia(data.mostrarProvincia === true);
@@ -340,6 +344,22 @@ export default function ModernEditProfilePage() {
     setSaving(true);
     setSaveError("");
 
+    const cleanUsername = normalizeUsername(username);
+    if (!isValidUsername(cleanUsername)) {
+      setSaveError(t("setup_username_invalid"));
+      setSaving(false);
+      return;
+    }
+
+    const available = await isUsernameAvailable(cleanUsername, user.uid);
+    if (!available) {
+      setSaveError(t("setup_username_taken"));
+      setSaving(false);
+      return;
+    }
+
+    const rememberedPrevious = previousUsernameToRemember(savedUsername, cleanUsername);
+
     const fotos = media.filter((m) => m.type === "image").map((m) => m.url);
     const videos = media.filter((m) => m.type === "video").map((m) => m.url);
 
@@ -361,9 +381,9 @@ export default function ModernEditProfilePage() {
         {
           uid: user.uid,
           email: user.email || "",
-          username: username.trim(),
-          usernameLower: username.trim().toLowerCase(),
-          nombre: username.trim(),
+          username: cleanUsername,
+          usernameLower: cleanUsername.toLowerCase(),
+          nombre: cleanUsername,
           bio: bio.trim(),
           descripcion: bio.trim(),
           provincia,
@@ -374,13 +394,16 @@ export default function ModernEditProfilePage() {
           videos,
           fotoMediaSources,
           fotoPrincipal: fotoPrincipalUrl,
+          ...(rememberedPrevious
+            ? { previousUsernames: arrayUnion(rememberedPrevious) }
+            : {}),
           ...(fotoPortada
             ? { fotoPortada, coverPhoto: fotoPortada, portada: fotoPortada }
             : { fotoPortada: deleteField(), coverPhoto: deleteField(), portada: deleteField() }),
           ...(videoPortada
             ? { videoPortada, coverVideo: videoPortada }
             : { videoPortada: deleteField(), coverVideo: deleteField() }),
-          perfilCompleto: Boolean(username.trim() && (fotoPrincipalUrl || fotoPortada || videoPortada)),
+          perfilCompleto: Boolean(cleanUsername && (fotoPrincipalUrl || fotoPortada || videoPortada)),
           profileSetupComplete: true,
           updatedAt: serverTimestamp(),
         },

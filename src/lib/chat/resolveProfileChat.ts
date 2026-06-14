@@ -12,6 +12,67 @@ import {
   getCachedFullProfile,
   setCachedFullProfile,
 } from "@/lib/profile/profileCache";
+import { ProfileUsernameChangedError } from "@/lib/profile/usernameHistory";
+
+export type ProfileLookupResult = {
+  profile: Record<string, unknown> | null;
+  usernameChanged: boolean;
+  requestedUsername: string;
+  currentUsername: string;
+};
+
+export async function lookupProfileByUsername(
+  username: string,
+  force = false,
+): Promise<ProfileLookupResult> {
+  const key = username.trim().toLowerCase();
+  if (!force) {
+    const cached = getCachedFullProfile(key);
+    if (cached) {
+      return {
+        profile: cached as Record<string, unknown>,
+        usernameChanged: false,
+        requestedUsername: username,
+        currentUsername: String((cached as { username?: string }).username || username),
+      };
+    }
+  }
+
+  const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
+    cache: "no-store",
+  });
+  const json = await res.json();
+
+  if (json?.reason === "username_changed") {
+    return {
+      profile: null,
+      usernameChanged: true,
+      requestedUsername: String(json.requestedUsername || username),
+      currentUsername: String(json.currentUsername || ""),
+    };
+  }
+
+  const profile = json?.profile || null;
+  if (profile) setCachedFullProfile(key, profile);
+
+  return {
+    profile,
+    usernameChanged: false,
+    requestedUsername: username,
+    currentUsername: String(profile?.username || username),
+  };
+}
+
+export async function fetchProfileByUsername(username: string, force = false) {
+  const result = await lookupProfileByUsername(username, force);
+  if (result.usernameChanged) {
+    throw new ProfileUsernameChangedError(
+      result.requestedUsername,
+      result.currentUsername,
+    );
+  }
+  return result.profile;
+}
 
 export type ResolvedProfileChat = {
   chatId: string;
@@ -21,20 +82,6 @@ export type ResolvedProfileChat = {
   targetPhoto: string;
   isLoggedIn: boolean;
 };
-
-export async function fetchProfileByUsername(username: string, force = false) {
-  const key = username.trim().toLowerCase();
-  if (!force) {
-    const cached = getCachedFullProfile(key);
-    if (cached) return cached;
-  }
-
-  const res = await fetch(`/api/profile/${encodeURIComponent(username)}`);
-  const json = await res.json();
-  const profile = json?.profile || null;
-  if (profile) setCachedFullProfile(key, profile);
-  return profile;
-}
 
 const profileChatCache = new Map<string, Promise<ResolvedProfileChat>>();
 
@@ -57,16 +104,24 @@ export async function resolveProfileChat(username: string): Promise<ResolvedProf
 }
 
 async function resolveProfileChatUncached(username: string): Promise<ResolvedProfileChat> {
-  const profile = await fetchProfileByUsername(username);
+  const lookup = await lookupProfileByUsername(username);
+  if (lookup.usernameChanged) {
+    throw new ProfileUsernameChangedError(
+      lookup.requestedUsername,
+      lookup.currentUsername,
+    );
+  }
+
+  const profile = lookup.profile;
   const targetUid = String(profile?.uid || "");
   const firebaseUid = auth.currentUser?.uid || "";
   const senderId = getChatAnonSenderId();
   const isLoggedIn = Boolean(firebaseUid);
 
-  let chatId = buildProfileAnonChatId(senderId, username);
+  let chatId = buildProfileAnonChatId(senderId, lookup.currentUsername);
 
   if (firebaseUid && targetUid && firebaseUid === targetUid) {
-    const incoming = await findOwnerIncomingChat(firebaseUid, username);
+    const incoming = await findOwnerIncomingChat(firebaseUid, lookup.currentUsername);
     if (incoming?.id) {
       chatId = incoming.id;
     }
@@ -76,12 +131,12 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
     ? parseProfileAnonChatId(chatId).senderId
     : senderId;
   const legacyIds = [
-    ...buildLegacyProfileChatIds(effectiveSender, username, targetUid),
+    ...buildLegacyProfileChatIds(effectiveSender, lookup.currentUsername, targetUid),
     ...(firebaseUid
-      ? buildLegacyProfileChatIds(firebaseUid, username, targetUid)
+      ? buildLegacyProfileChatIds(firebaseUid, lookup.currentUsername, targetUid)
       : []),
     ...(effectiveSender !== senderId
-      ? buildLegacyProfileChatIds(senderId, username, targetUid)
+      ? buildLegacyProfileChatIds(senderId, lookup.currentUsername, targetUid)
       : []),
   ];
 
@@ -96,8 +151,8 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
   const migrationMeta = {
     id: chatId,
     canonicalChatId: chatId,
-    targetUsername: username,
-    receptorUsername: username,
+    targetUsername: lookup.currentUsername,
+    receptorUsername: lookup.currentUsername,
     receptorUid: targetUid || null,
     targetUid: targetUid || null,
     initiatorUid: firebaseUid || null,
@@ -116,7 +171,7 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
   return {
     chatId,
     senderId: effectiveSender,
-    username,
+    username: lookup.currentUsername,
     targetUid,
     targetPhoto: targetPhoto || "",
     isLoggedIn,

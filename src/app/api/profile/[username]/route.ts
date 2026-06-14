@@ -38,44 +38,9 @@ function mapStr(fields: any, key: string) {
   return out;
 }
 
-
-export async function GET(
-  _req: Request,
-  ctx: { params: Promise<{ username: string }> }
-) {
-  const { username } = await ctx.params;
-  const wanted = decodeURIComponent(username || "").toLowerCase();
-
+async function runProfileQuery(body: Record<string, unknown>) {
   const url =
     `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents:runQuery?key=${API_KEY}`;
-
-  const body = {
-    structuredQuery: {
-      from: [{ collectionId: "usuarios" }],
-      where: {
-        compositeFilter: {
-          op: "OR",
-          filters: [
-            {
-              fieldFilter: {
-                field: { fieldPath: "usernameLower" },
-                op: "EQUAL",
-                value: { stringValue: wanted },
-              },
-            },
-            {
-              fieldFilter: {
-                field: { fieldPath: "username" },
-                op: "EQUAL",
-                value: { stringValue: username },
-              },
-            },
-          ],
-        },
-      },
-      limit: 1,
-    },
-  };
 
   const res = await fetch(url, {
     method: "POST",
@@ -85,15 +50,13 @@ export async function GET(
   });
 
   const json = await res.json();
-  const found = Array.isArray(json) ? json.find((x: any) => x.document) : null;
+  return Array.isArray(json) ? json.find((x: any) => x.document) : null;
+}
 
-  if (!found?.document) {
-    return NextResponse.json({ ok: false, profile: null });
-  }
-
+function buildProfilePayload(found: any, fallbackUsername: string) {
   const rawProfile = parseFirestoreDoc(found.document);
   if (!isPublicProfile(rawProfile)) {
-    return NextResponse.json({ ok: false, profile: null, reason: "invalid_profile" });
+    return { ok: false as const, profile: null, reason: "invalid_profile" as const };
   }
 
   const fields = found.document.fields || {};
@@ -125,7 +88,7 @@ export async function GET(
   const profile = {
     uid: str(fields, "uid") || String(found.document.name || "").split("/").pop() || "",
     email: str(fields, "email"),
-    username: str(fields, "username") || str(fields, "usernameLower") || username,
+    username: str(fields, "username") || str(fields, "usernameLower") || fallbackUsername,
     bio: str(fields, "bio") || str(fields, "descripcion") || "",
     provincia: str(fields, "provincia"),
     mostrarProvincia:
@@ -171,6 +134,79 @@ export async function GET(
     adminBlurReason: str(fields, "adminBlurReason"),
   };
 
-  return NextResponse.json({ ok: true, profile });
+  return { ok: true as const, profile };
 }
 
+export async function GET(
+  _req: Request,
+  ctx: { params: Promise<{ username: string }> }
+) {
+  const { username } = await ctx.params;
+  const wanted = decodeURIComponent(username || "").toLowerCase();
+
+  const currentMatch = await runProfileQuery({
+    structuredQuery: {
+      from: [{ collectionId: "usuarios" }],
+      where: {
+        compositeFilter: {
+          op: "OR",
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: "usernameLower" },
+                op: "EQUAL",
+                value: { stringValue: wanted },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "username" },
+                op: "EQUAL",
+                value: { stringValue: username },
+              },
+            },
+          ],
+        },
+      },
+      limit: 1,
+    },
+  });
+
+  if (currentMatch?.document) {
+    const payload = buildProfilePayload(currentMatch, username);
+    if (!payload.ok) {
+      return NextResponse.json({ ok: false, profile: null, reason: payload.reason });
+    }
+    return NextResponse.json({ ok: true, profile: payload.profile });
+  }
+
+  const aliasMatch = await runProfileQuery({
+    structuredQuery: {
+      from: [{ collectionId: "usuarios" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "previousUsernames" },
+          op: "ARRAY_CONTAINS",
+          value: { stringValue: wanted },
+        },
+      },
+      limit: 1,
+    },
+  });
+
+  if (aliasMatch?.document) {
+    const fields = aliasMatch.document.fields || {};
+    const currentUsername =
+      str(fields, "username") || str(fields, "usernameLower") || "";
+
+    return NextResponse.json({
+      ok: false,
+      profile: null,
+      reason: "username_changed",
+      requestedUsername: username,
+      currentUsername,
+    });
+  }
+
+  return NextResponse.json({ ok: false, profile: null });
+}

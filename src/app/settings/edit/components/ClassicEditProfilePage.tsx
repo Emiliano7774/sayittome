@@ -17,7 +17,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, getDocFromServer, serverTimestamp, setDoc } from "firebase/firestore";
+import { arrayUnion, doc, getDoc, getDocFromServer, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
@@ -30,6 +30,8 @@ import {
   normalizeProfileMediaSources,
   type ProfileMediaSource,
 } from "@/lib/profile/mediaSource";
+import { previousUsernameToRemember } from "@/lib/profile/usernameHistory";
+import { isUsernameAvailable, isValidUsername, normalizeUsername } from "@/lib/profile/username";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -86,6 +88,7 @@ export default function ClassicEditProfilePage() {
   const [saving, setSaving] = useState(false);
 
   const [username, setUsername] = useState("");
+  const [savedUsername, setSavedUsername] = useState("");
   const [bio, setBio] = useState("");
   const [tags, setTags] = useState("");
   const [provincia, setProvincia] = useState("");
@@ -145,6 +148,7 @@ export default function ClassicEditProfilePage() {
       const data = snap.exists() ? snap.data() : {};
 
       setUsername(String(data.username || data.nombre || ""));
+      setSavedUsername(String(data.username || data.nombre || ""));
       setBio(String(data.bio || data.descripcion || ""));
       setProvincia(String(data.provincia || ""));
       setMostrarProvincia(data.mostrarProvincia !== false);
@@ -347,6 +351,22 @@ export default function ClassicEditProfilePage() {
     setSaving(true);
     setSaveError("");
 
+    const cleanUsername = normalizeUsername(username);
+    if (!isValidUsername(cleanUsername)) {
+      setSaveError("El usuario debe tener entre 3 y 24 caracteres (letras, números, . _ -).");
+      setSaving(false);
+      return;
+    }
+
+    const available = await isUsernameAvailable(cleanUsername, uid);
+    if (!available) {
+      setSaveError("Ese nombre de usuario ya está en uso.");
+      setSaving(false);
+      return;
+    }
+
+    const rememberedPrevious = previousUsernameToRemember(savedUsername, cleanUsername);
+
     const tagArray = tags
       .split(",")
       .map((x) => x.trim())
@@ -377,9 +397,9 @@ export default function ClassicEditProfilePage() {
         doc(db, "usuarios", uid),
         {
           uid,
-          username: username.trim(),
-          usernameLower: username.trim().toLowerCase(),
-          nombre: username.trim(),
+          username: cleanUsername,
+          usernameLower: cleanUsername.toLowerCase(),
+          nombre: cleanUsername,
           bio: bio.trim(),
           descripcion: bio.trim(),
           etiquetas: tagArray,
@@ -391,11 +411,14 @@ export default function ClassicEditProfilePage() {
           videos,
           fotoPrincipal: principalPhoto,
           fotoMediaSources,
+          ...(rememberedPrevious
+            ? { previousUsernames: arrayUnion(rememberedPrevious) }
+            : {}),
           mostrarSuperMessages: visibleBadges.superMessages,
           mostrarLikes: visibleBadges.likes,
           mostrarConversaciones: visibleBadges.conversations,
           mostrarSeguidores: visibleBadges.followers,
-          perfilCompleto: Boolean(username.trim() && principalPhoto),
+          perfilCompleto: Boolean(cleanUsername && principalPhoto),
           profileSetupComplete: true,
           updatedAt: serverTimestamp(),
         },
