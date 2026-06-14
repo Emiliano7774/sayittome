@@ -591,14 +591,12 @@ export default function PublicProfilePage() {
 
       {viewerOpen && gallery.length > 0 && (
         <div
-          className="fixed inset-0 z-[999999] bg-black/95 flex items-center justify-center"
+          className={`fixed inset-0 z-[999999] bg-black/95 flex items-center justify-center ${viewerSwipe.touchActionClass}`}
           onClick={(event) => {
             if (viewerSwipe.consumeSwipe()) return;
             if (event.target === event.currentTarget) closeViewer();
           }}
-          onTouchStart={viewerSwipe.onTouchStart}
-          onTouchMove={viewerSwipe.onTouchMove}
-          onTouchEnd={viewerSwipe.onTouchEnd}
+          {...viewerSwipe.bind()}
         >
           <button
             type="button"
@@ -631,7 +629,7 @@ export default function PublicProfilePage() {
             <img
               src={gallery[viewerIndex]}
               alt={profile.username}
-              className="max-w-[92vw] max-h-[88vh] object-contain rounded-3xl select-none"
+              className="max-w-[92vw] max-h-[88vh] object-contain rounded-3xl select-none pointer-events-none"
               draggable={false}
             />
           </SensitiveMediaShell>

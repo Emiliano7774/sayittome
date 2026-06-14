@@ -226,11 +226,13 @@ export default function ModernPublicProfile({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeViewer();
+      if (event.key === "ArrowLeft") prevPhoto();
+      if (event.key === "ArrowRight") nextPhoto();
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeViewer, viewerOpen]);
+  }, [closeViewer, nextPhoto, prevPhoto, viewerOpen]);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
@@ -479,14 +481,12 @@ export default function ModernPublicProfile({
 
       {viewerOpen && gallery.length > 0 ? (
         <div
-          className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95"
+          className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/95 ${viewerSwipe.touchActionClass}`}
           onClick={(event) => {
             if (viewerSwipe.consumeSwipe()) return;
             if (event.target === event.currentTarget) closeViewer();
           }}
-          onTouchStart={viewerSwipe.onTouchStart}
-          onTouchMove={viewerSwipe.onTouchMove}
-          onTouchEnd={viewerSwipe.onTouchEnd}
+          {...viewerSwipe.bind()}
         >
           <button
             type="button"
@@ -527,7 +527,8 @@ export default function ModernPublicProfile({
             <img
               src={gallery[viewerIndex]}
               alt={profile.username}
-              className="max-h-[88vh] max-w-[92vw] rounded-3xl object-contain"
+              className="max-h-[88vh] max-w-[92vw] rounded-3xl object-contain pointer-events-none select-none"
+              draggable={false}
             />
           </SensitiveMediaShell>
 

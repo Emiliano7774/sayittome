@@ -9,14 +9,60 @@ type Options = {
   enabled?: boolean;
 };
 
+type Point = { x: number; y: number };
+
+function resolveSwipe(
+  start: Point,
+  end: Point,
+  minDistance: number,
+  onSwipeLeft?: () => void,
+  onSwipeRight?: () => void,
+) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  if (Math.abs(dx) < minDistance) return false;
+
+  // Allow mildly diagonal swipes; reject only clearly vertical gestures.
+  if (Math.abs(dy) > Math.abs(dx) * 1.35) return false;
+
+  if (dx < 0) {
+    onSwipeLeft?.();
+  } else {
+    onSwipeRight?.();
+  }
+
+  return true;
+}
+
 export function useHorizontalSwipe({
   onSwipeLeft,
   onSwipeRight,
-  minDistance = 48,
+  minDistance = 40,
   enabled = true,
 }: Options) {
-  const startRef = useRef<{ x: number; y: number } | null>(null);
+  const startRef = useRef<Point | null>(null);
   const swipedRef = useRef(false);
+  const activePointerIdRef = useRef<number | null>(null);
+
+  const resetGesture = useCallback(() => {
+    startRef.current = null;
+    activePointerIdRef.current = null;
+  }, []);
+
+  const completeGesture = useCallback(
+    (end: Point) => {
+      const start = startRef.current;
+      resetGesture();
+      if (!enabled || !start) return;
+
+      const didSwipe = resolveSwipe(start, end, minDistance, onSwipeLeft, onSwipeRight);
+      if (didSwipe) {
+        swipedRef.current = true;
+      }
+    },
+    [enabled, minDistance, onSwipeLeft, onSwipeRight, resetGesture],
+  );
 
   const onTouchStart = useCallback(
     (event: React.TouchEvent) => {
@@ -29,23 +75,9 @@ export function useHorizontalSwipe({
     [enabled],
   );
 
-  const onTouchMove = useCallback(
-    (event: React.TouchEvent) => {
-      if (!enabled || !startRef.current) return;
-
-      const touch = event.touches[0];
-      if (!touch) return;
-
-      const dx = touch.clientX - startRef.current.x;
-      const dy = touch.clientY - startRef.current.y;
-
-      // Let vertical scroll win unless the gesture is clearly horizontal.
-      if (Math.abs(dy) > Math.abs(dx) + 12) {
-        startRef.current = null;
-      }
-    },
-    [enabled],
-  );
+  const onTouchMove = useCallback(() => {
+    // Decide swipe direction on release only so small vertical jitter does not cancel it.
+  }, []);
 
   const onTouchEnd = useCallback(
     (event: React.TouchEvent) => {
@@ -53,26 +85,43 @@ export function useHorizontalSwipe({
 
       const touch = event.changedTouches[0];
       if (!touch) {
-        startRef.current = null;
+        resetGesture();
         return;
       }
 
-      const dx = touch.clientX - startRef.current.x;
-      const dy = touch.clientY - startRef.current.y;
-      startRef.current = null;
-
-      if (Math.abs(dx) < minDistance || Math.abs(dx) < Math.abs(dy)) {
-        return;
-      }
-
-      swipedRef.current = true;
-      if (dx < 0) {
-        onSwipeLeft?.();
-      } else {
-        onSwipeRight?.();
-      }
+      completeGesture({ x: touch.clientX, y: touch.clientY });
     },
-    [enabled, minDistance, onSwipeLeft, onSwipeRight],
+    [completeGesture, enabled, resetGesture],
+  );
+
+  const onTouchCancel = useCallback(() => {
+    resetGesture();
+  }, [resetGesture]);
+
+  const onPointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      if (!enabled || event.pointerType === "mouse") return;
+      swipedRef.current = false;
+      activePointerIdRef.current = event.pointerId;
+      startRef.current = { x: event.clientX, y: event.clientY };
+    },
+    [enabled],
+  );
+
+  const onPointerUp = useCallback(
+    (event: React.PointerEvent) => {
+      if (!enabled || activePointerIdRef.current !== event.pointerId) return;
+      completeGesture({ x: event.clientX, y: event.clientY });
+    },
+    [completeGesture, enabled],
+  );
+
+  const onPointerCancel = useCallback(
+    (event: React.PointerEvent) => {
+      if (activePointerIdRef.current !== event.pointerId) return;
+      resetGesture();
+    },
+    [resetGesture],
   );
 
   const consumeSwipe = useCallback(() => {
@@ -81,10 +130,36 @@ export function useHorizontalSwipe({
     return didSwipe;
   }, []);
 
+  const bind = useCallback(
+    () => ({
+      onTouchStart,
+      onTouchMove,
+      onTouchEnd,
+      onTouchCancel,
+      onPointerDown,
+      onPointerUp,
+      onPointerCancel,
+    }),
+    [
+      onPointerCancel,
+      onPointerDown,
+      onPointerUp,
+      onTouchCancel,
+      onTouchEnd,
+      onTouchMove,
+      onTouchStart,
+    ],
+  );
+
   return {
     onTouchStart,
     onTouchMove,
     onTouchEnd,
+    onTouchCancel,
+    onPointerDown,
+    onPointerUp,
+    onPointerCancel,
+    bind,
     consumeSwipe,
     touchActionClass: "touch-pan-y",
   };

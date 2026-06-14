@@ -509,10 +509,8 @@ export default function SettingsPage() {
             if (viewerSwipe.consumeSwipe()) return;
             setSelectedIndex(null);
           }}
-          onTouchStart={viewerSwipe.onTouchStart}
-          onTouchMove={viewerSwipe.onTouchMove}
-          onTouchEnd={viewerSwipe.onTouchEnd}
-          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-5"
+          {...viewerSwipe.bind()}
+          className={`fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-5 ${viewerSwipe.touchActionClass}`}
         >
           {media.length > 1 && (
             <>
@@ -549,7 +547,8 @@ export default function SettingsPage() {
             <img
               src={selected.url}
               onClick={(e) => e.stopPropagation()}
-              className="max-w-full max-h-full object-contain rounded-[24px]"
+              className="max-w-full max-h-full object-contain rounded-[24px] pointer-events-none select-none"
+              draggable={false}
             />
           ) : (
             <video
