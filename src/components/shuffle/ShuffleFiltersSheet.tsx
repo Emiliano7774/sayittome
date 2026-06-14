@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, SlidersHorizontal, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
 import { getCountryByCode, getSubdivisionsForCountry, SHUFFLE_COUNTRIES } from "@/lib/geo/countries";
@@ -91,13 +91,18 @@ export default function ShuffleFiltersSheet({
   const [draft, setDraft] = useState<ShuffleFilters>(applied);
   const [edadMinText, setEdadMinText] = useState("");
   const [edadMaxText, setEdadMaxText] = useState("");
+  const appliedRef = useRef(applied);
+
+  appliedRef.current = applied;
 
   useEffect(() => {
     if (!open) return;
-    setDraft(applied);
-    setEdadMinText(applied.edadMin > 0 ? String(applied.edadMin) : "");
-    setEdadMaxText(applied.edadMax > 0 ? String(applied.edadMax) : "");
-  }, [open, applied]);
+
+    const nextApplied = appliedRef.current;
+    setDraft(nextApplied);
+    setEdadMinText(nextApplied.edadMin > 0 ? String(nextApplied.edadMin) : "");
+    setEdadMaxText(nextApplied.edadMax > 0 ? String(nextApplied.edadMax) : "");
+  }, [open]);
 
   useEffect(() => {
     document.body.classList.toggle("sayittome-filters-open", open);
@@ -155,21 +160,25 @@ export default function ShuffleFiltersSheet({
     });
   }
 
-  function handleApply() {
+  function handleApply(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
     onApply({
       ...currentDraft,
       intereses: normalizeInterests(currentDraft.intereses),
     });
-    onClose();
   }
 
-  function handleClear() {
+  function handleClear(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
     const cleared = defaultShuffleFilters();
     setDraft(cleared);
     setEdadMinText("");
     setEdadMaxText("");
     onClear();
-    onClose();
   }
 
   const fieldClass = isModern
@@ -187,6 +196,7 @@ export default function ShuffleFiltersSheet({
       <button type="button" className="absolute inset-0" aria-label={t("common_cancel")} onClick={onClose} />
 
       <section
+        onClick={(event) => event.stopPropagation()}
         className={`sayittome-shuffle-filters-sheet relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden border border-white/10 bg-[#070707] text-white shadow-[0_18px_36px_rgba(0,0,0,0.55)] [color-scheme:dark] ${
           isModern ? "rounded-[28px]" : "rounded-[30px]"
         }`}

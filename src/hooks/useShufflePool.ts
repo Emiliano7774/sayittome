@@ -405,20 +405,38 @@ export function useShufflePool() {
   const applyFilters = useCallback(
     (nextFilters: ShuffleFilters) => {
       filtersRef.current = nextFilters;
+      setFiltersOpen(false);
       setFiltersState(nextFilters);
       saveStoredShuffleFilters(nextFilters);
-      filterActivePool(search.trim(), nextFilters);
+
+      const runFilter = () => {
+        filterActivePool(searchRef.current.trim(), nextFilters);
+      };
+
+      runFilter();
+
+      if (nextFilters.soloConHistorias) {
+        void refreshStoriesIndex(getStoryViewerKey(), false)
+          .then(() => {
+            storyOwnerUidsRef.current = new Set(
+              getCachedStoryGroups().map((group) => group.ownerUid),
+            );
+            filterActivePool(searchRef.current.trim(), nextFilters);
+          })
+          .catch(() => undefined);
+      }
     },
-    [filterActivePool, search],
+    [filterActivePool],
   );
 
   const clearFilters = useCallback(() => {
     const cleared = defaultShuffleFilters();
     filtersRef.current = cleared;
+    setFiltersOpen(false);
     setFiltersState(cleared);
     saveStoredShuffleFilters(cleared);
-    filterActivePool(search.trim(), cleared);
-  }, [filterActivePool, search]);
+    filterActivePool(searchRef.current.trim(), cleared);
+  }, [filterActivePool]);
 
   const handleListClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
