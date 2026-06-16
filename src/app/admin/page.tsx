@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
+import AdminOverviewAnalytics from "@/components/admin/AdminOverviewAnalytics";
 import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
 import AdminRegistrationsPanel from "@/components/admin/AdminRegistrationsPanel";
 import { auth } from "@/lib/firebase";
@@ -54,28 +56,42 @@ export default function AdminDashboardPage() {
         { label: "Mensajes 24h", value: stats.messagesLast24h, tone: "from-white/10" },
         { label: "Reportes abiertos", value: stats.reportsOpen, tone: "from-red-500/25" },
         { label: "Perfiles con blur", value: stats.blurProfiles, tone: "from-fuchsia-500/20" },
-        { label: "Storage estimado (MB)", value: stats.storageUsedMb, tone: "from-indigo-500/20" },
         { label: "Crecimiento hoy", value: stats.growthToday, tone: "from-emerald-500/20" },
       ]
     : [];
 
   return (
-    <AdminShell title="Dashboard">
+    <AdminShell title="Resumen">
+      <div className="mb-6 flex flex-wrap gap-3">
+        {stats && stats.reportsOpen > 0 ? (
+          <Link
+            href="/admin/moderation?tab=reports"
+            className="rounded-full border border-red-400/30 bg-red-500/15 px-4 py-2 text-sm font-black text-red-100"
+          >
+            {stats.reportsOpen} reportes pendientes →
+          </Link>
+        ) : null}
+      </div>
+
       <AdminRegistrationsPanel adminEmail={admin.email} />
+
       {loading ? (
-        <p className="text-white/40 font-black text-2xl">Cargando métricas...</p>
+        <p className="text-2xl font-black text-white/40">Cargando métricas...</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {cards.map((card) => (
-            <div
-              key={card.label}
-              className={`rounded-3xl border border-white/10 bg-gradient-to-br ${card.tone} to-black p-6 shadow-[0_20px_60px_rgba(0,0,0,.45)] animate-pulse [animation-duration:4s]`}
-            >
-              <p className="text-white/55 font-bold">{card.label}</p>
-              <p className="mt-3 text-5xl font-black tracking-tight">{card.value}</p>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {cards.map((card) => (
+              <div
+                key={card.label}
+                className={`rounded-3xl border border-white/10 bg-gradient-to-br ${card.tone} to-black p-5 shadow-[0_20px_60px_rgba(0,0,0,.45)]`}
+              >
+                <p className="font-bold text-white/55">{card.label}</p>
+                <p className="mt-2 text-4xl font-black tracking-tight">{card.value}</p>
+              </div>
+            ))}
+          </div>
+          {stats ? <AdminOverviewAnalytics stats={stats} /> : null}
+        </>
       )}
     </AdminShell>
   );

@@ -28,7 +28,7 @@ export default function AdminChatsError({
           Reintentar
         </button>
         <a
-          href="/admin/chats"
+          href="/admin/moderation?tab=chats"
           className="rounded-full border border-violet-400/30 bg-violet-500/12 px-5 py-2.5 text-sm font-bold text-violet-100"
         >
           Volver a revisar chats

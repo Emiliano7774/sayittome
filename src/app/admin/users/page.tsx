@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
-import AdminRegistrationsPanel from "@/components/admin/AdminRegistrationsPanel";
 import { auth } from "@/lib/firebase";
 
 type AdminUserRow = {
@@ -142,7 +141,6 @@ export default function AdminUsersPage() {
 
   return (
     <AdminShell title="Usuarios">
-      <AdminRegistrationsPanel adminEmail={admin.email} defaultOpen />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-4">
         <div>
           <p className="text-sm font-black text-sky-200">Auditoría de fechas de creación</p>

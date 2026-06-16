@@ -16,7 +16,7 @@ export default function AdminModerationUserPage() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={() => router.push("/admin/chats")}
+          onClick={() => router.push("/admin/moderation?tab=chats")}
           className="rounded-full border border-white/15 bg-[#111] px-4 py-2 text-sm font-bold"
         >
           ← Volver al listado
