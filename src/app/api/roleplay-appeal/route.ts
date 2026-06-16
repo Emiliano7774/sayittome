@@ -18,8 +18,8 @@ export async function POST(req: Request) {
     }
 
     const profile = await getFirestoreDoc("usuarios", uid);
-    if (!profile || String(profile.moderationTag || "") !== "roleplay") {
-      return NextResponse.json({ ok: false, error: "not_roleplay_profile" }, { status: 403 });
+    if (!profile) {
+      return NextResponse.json({ ok: false, error: "profile_not_found" }, { status: 404 });
     }
 
     const resolvedUsername = String(
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
       reporterEmail,
       mensaje,
       evidenceUrl,
-      moderationTag: "roleplay",
+      moderationTag: String(profile.moderationTag || ""),
       estado: "pendiente",
       createdAt: new Date().toISOString(),
     });

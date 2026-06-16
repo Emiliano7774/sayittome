@@ -332,9 +332,9 @@ export default function ModernPublicProfile({
                 </div>
               ) : null}
 
-              {isOwner && profile.moderationTag === "roleplay" ? (
+              {isOwner && profile.uid ? (
                 <div className="pointer-events-auto absolute left-4 top-4 z-20">
-                  <RoleplayAppealFlagButton uid={profile.uid} username={profile.username} />
+                  <RoleplayAppealFlagButton uid={profile.uid} username={profile.username} compact />
                 </div>
               ) : null}
             </div>

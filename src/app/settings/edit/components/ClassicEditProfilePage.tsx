@@ -479,11 +479,12 @@ export default function ClassicEditProfilePage() {
 
               <div className="flex flex-col sm:flex-row xl:flex-col gap-6">
                 <div className="relative w-full sm:w-[260px] xl:w-full aspect-square rounded-[34px] border-2 border-white/25 bg-zinc-950 overflow-hidden flex items-center justify-center">
-                  {moderationTag === "roleplay" && uid ? (
+                  {uid ? (
                     <div className="absolute left-4 top-4 z-20">
                       <RoleplayAppealFlagButton
                         uid={uid}
                         username={username || savedUsername || "usuario"}
+                        compact
                       />
                     </div>
                   ) : null}

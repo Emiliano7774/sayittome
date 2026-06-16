@@ -357,17 +357,18 @@ export default function SettingsPage() {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
 
-        {profile?.moderationTag === "roleplay" && profile?.uid ? (
-          <div className="absolute left-6 top-10 z-20 sm:left-10">
-            <RoleplayAppealFlagButton
-              uid={profile.uid}
-              username={String(profile.username || profile.nombre || "usuario")}
-            />
-          </div>
-        ) : null}
-
         <div className="relative z-10 max-w-[1500px] mx-auto">
-          <div className="flex flex-wrap justify-end items-center gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            {profile?.uid ? (
+              <RoleplayAppealFlagButton
+                uid={profile.uid}
+                username={String(profile.username || profile.nombre || "usuario")}
+                compact
+              />
+            ) : (
+              <span />
+            )}
+            <div className="flex flex-wrap justify-end items-center gap-3">
             <HeaderControls />
             {isAdminEmail(auth.currentUser?.email) ? (
               <button
@@ -397,6 +398,7 @@ export default function SettingsPage() {
                 variant="inline"
               />
             ) : null}
+            </div>
           </div>
 
           <div className="mt-24">
