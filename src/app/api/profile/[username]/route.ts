@@ -132,6 +132,8 @@ function buildProfilePayload(found: any, fallbackUsername: string) {
     adminBlurStories: fields?.adminBlurStories?.booleanValue === true,
     adminBlurGallery: fields?.adminBlurGallery?.booleanValue === true,
     adminBlurReason: str(fields, "adminBlurReason"),
+    moderationTag: str(fields, "moderationTag"),
+    moderationTagNote: str(fields, "moderationTagNote"),
   };
 
   return { ok: true as const, profile };

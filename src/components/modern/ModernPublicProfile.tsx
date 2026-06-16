@@ -36,6 +36,8 @@ import {
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import type { ProfileMediaSource } from "@/lib/profile/mediaSource";
@@ -72,6 +74,8 @@ export type ModernProfileData = {
   mostrarUltimaVez?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;
+  moderationTag?: string;
+  moderationTagNote?: string;
 };
 
 type Props = {
@@ -204,6 +208,7 @@ export default function ModernPublicProfile({
 
   const viewerSwipe = useHorizontalSwipe({
     enabled: viewerOpen && gallery.length > 1,
+    minDistance: 32,
     onSwipeLeft: nextPhoto,
     onSwipeRight: prevPhoto,
   });
@@ -319,15 +324,6 @@ export default function ModernPublicProfile({
                   {t("profile_online")}
                 </span>
               ) : null}
-
-              {mediaSourceForUrl(coverVideoUrl || heroPhoto) ? (
-                <div className="absolute bottom-4 left-1/2 z-[3] -translate-x-1/2">
-                  <StoryMediaSourceBadge
-                    source={mediaSourceForUrl(coverVideoUrl || heroPhoto)}
-                    mediaType={coverVideoUrl || isVideoMediaUrl(heroPhoto) ? "video" : "image"}
-                  />
-                </div>
-              ) : null}
             </div>
 
             <div className="relative z-10 -mt-[4.75rem] px-6 pb-8">
@@ -395,6 +391,12 @@ export default function ModernPublicProfile({
                 </p>
               ) : null}
 
+              {profile.moderationTag ? (
+                <div className="mt-4">
+                  <ProfileModerationTag tag={profile.moderationTag} />
+                </div>
+              ) : null}
+
               <div className="mt-5 grid grid-cols-4 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">
                 <StatItem icon={<Heart size={18} />} value={profile.likes || 0} label={t("profile_likes")} />
                 <StatItem
@@ -430,6 +432,12 @@ export default function ModernPublicProfile({
                   {t("profile_open_chat")}
                 </Link>
                 {!isOwner ? <FollowButton targetUid={profile.uid} /> : null}
+                {!isOwner ? (
+                  <ProfileReportButton
+                    targetUid={profile.uid}
+                    targetUsername={profile.username}
+                  />
+                ) : null}
                 {story.hasActive && story.storyPath ? (
                   <Link
                     href={story.storyPath}
@@ -486,8 +494,13 @@ export default function ModernPublicProfile({
             if (viewerSwipe.consumeSwipe()) return;
             if (event.target === event.currentTarget) closeViewer();
           }}
-          {...viewerSwipe.bind()}
         >
+          <div
+            className={`absolute inset-0 z-[6] ${viewerSwipe.touchActionClass}`}
+            aria-hidden
+            {...viewerSwipe.bind()}
+          />
+
           <button
             type="button"
             onClick={closeViewer}

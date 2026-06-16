@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Heart, Send, Trash2, UserRound, X } from "lucide-react";
+import { Heart, Send, Trash2, UserRound, X, Flag } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   doc,
@@ -30,6 +30,7 @@ import { preloadStoryMedia } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
+import ContentReportDialog from "@/components/moderation/ContentReportDialog";
 import type { StoryItem } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -61,6 +62,7 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const [replyDragY, setReplyDragY] = useState(0);
   const [replyDragging, setReplyDragging] = useState(false);
   const [replySentToast, setReplySentToast] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const startedRef = useRef(false);
   const viewedRef = useRef<Set<string>>(new Set());
   const pointerRef = useRef({ x: 0, y: 0, t: 0, swiped: false });
@@ -468,6 +470,21 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         </button>
       ) : null}
 
+      {!canDelete && !anonymousStory ? (
+        <button
+          type="button"
+          onClick={() => setReportOpen(true)}
+          className={[
+            "absolute right-20 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-amber-200 transition-opacity duration-150",
+            topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+          ].join(" ")}
+          data-story-chrome
+          aria-label={t("report_title")}
+        >
+          <Flag size={20} />
+        </button>
+      ) : null}
+
       <div
         className={[
           "absolute left-4 top-14 z-50 max-w-[70%] transition-opacity duration-150",
@@ -686,6 +703,15 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
           </div>
         </>
       ) : null}
+
+      <ContentReportDialog
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        kind="historia"
+        targetUid={resolvedOwnerUid}
+        targetUsername={profileUsername}
+        storyId={current.id}
+      />
     </main>
   );
 }

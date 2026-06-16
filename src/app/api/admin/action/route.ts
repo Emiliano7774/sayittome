@@ -107,6 +107,20 @@ export async function POST(req: Request) {
       });
     } else if (action === "reset_bio") {
       await patchFirestoreDoc("usuarios", uid, { bio: "", descripcion: "" });
+    } else if (action === "tag_roleplay") {
+      await patchFirestoreDoc("usuarios", uid, {
+        moderationTag: "roleplay",
+        moderationTagNote: String(body?.note || "Perfil de rol marcado por moderación."),
+        moderationTagAt: new Date().toISOString(),
+        moderationTagBy: adminEmail,
+      });
+    } else if (action === "clear_moderation_tag") {
+      await patchFirestoreDoc("usuarios", uid, {
+        moderationTag: "",
+        moderationTagNote: "",
+        moderationTagAt: "",
+        moderationTagBy: "",
+      });
     } else if (action === "shadowban") {
       await patchFirestoreDoc("usuarios", uid, {
         shadowban: body?.enabled !== false,

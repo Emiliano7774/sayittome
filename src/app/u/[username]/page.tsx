@@ -26,6 +26,8 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
+import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useProfileOwner } from "@/hooks/useProfileOwner";
@@ -83,6 +85,8 @@ type Profile = {
   mostrarUltimaVez?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;
+  moderationTag?: string;
+  moderationTagNote?: string;
 };
 
 export default function PublicProfilePage() {
@@ -250,6 +254,16 @@ export default function PublicProfilePage() {
     setViewerIndex((v) => (v + 1) % gallery.length);
   }
 
+  const prevPhotoCb = useCallback(() => {
+    if (gallery.length === 0) return;
+    setViewerIndex((v) => (v - 1 + gallery.length) % gallery.length);
+  }, [gallery.length]);
+
+  const nextPhotoCb = useCallback(() => {
+    if (gallery.length === 0) return;
+    setViewerIndex((v) => (v + 1) % gallery.length);
+  }, [gallery.length]);
+
   const prevHero = useCallback(() => {
     if (gallery.length <= 1) return;
     setHeroIndex((v) => (v - 1 + gallery.length) % gallery.length);
@@ -268,8 +282,9 @@ export default function PublicProfilePage() {
 
   const viewerSwipe = useHorizontalSwipe({
     enabled: viewerOpen && gallery.length > 1,
-    onSwipeLeft: nextPhoto,
-    onSwipeRight: prevPhoto,
+    minDistance: 32,
+    onSwipeLeft: nextPhotoCb,
+    onSwipeRight: prevPhotoCb,
   });
 
   useEffect(() => {
@@ -424,6 +439,14 @@ export default function PublicProfilePage() {
           <div className="flex flex-wrap items-center justify-end gap-3">
           {!isOwner ? <FollowButton targetUid={profile.uid} variant="profileClassic" /> : null}
 
+          {!isOwner ? (
+            <ProfileReportButton
+              targetUid={profile.uid}
+              targetUsername={profile.username}
+              compact
+            />
+          ) : null}
+
           {isOwner && (
             <button
               type="button"
@@ -484,12 +507,9 @@ export default function PublicProfilePage() {
 
         </div>
 
-        {heroPhoto && mediaSourceForUrl(heroPhoto) ? (
-          <div className="absolute left-1/2 bottom-[17vh] z-[14] -translate-x-1/2 md:bottom-[20vh]">
-            <StoryMediaSourceBadge
-              source={mediaSourceForUrl(heroPhoto)}
-              mediaType={heroIsVideo ? "video" : "image"}
-            />
+        {profile.moderationTag ? (
+          <div className="absolute left-8 right-8 md:left-24 md:right-24 bottom-[12vh] z-[14] pointer-events-auto">
+            <ProfileModerationTag tag={profile.moderationTag} />
           </div>
         ) : null}
 
@@ -544,41 +564,6 @@ export default function PublicProfilePage() {
         </div>
       </section>
 
-      {gallery.length > 1 && (
-        <section className="relative z-[6] mb-8 mt-4 bg-black px-8 md:px-24">
-          <div className="flex gap-4 overflow-x-auto pb-3">
-            {gallery.map((photo, index) => (
-              <button
-                type="button"
-                key={`${photo}-${index}`}
-                onClick={() => {
-                  setHeroIndex(index);
-                  openViewer(index);
-                }}
-                className="shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black active:scale-95 transition"
-                style={{ width: profileUi.thumb, height: profileUi.thumb }}
-              >
-                <SensitiveMediaShell
-                  url={photo}
-                  staticRequiresBlur={blurPhoto}
-                  profile={profile}
-                  galleryContext
-                  className="h-full w-full"
-                  overlayLabel="Foto moderada"
-                >
-                  <img
-                    src={photo}
-                    alt={`${profile.username} foto ${index + 1}`}
-                    className="w-full h-full object-cover"
-                    draggable={false}
-                  />
-                </SensitiveMediaShell>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
       <ProfileVideoViewer
         url={videoViewerUrl || ""}
         open={Boolean(videoViewerUrl)}
@@ -596,8 +581,13 @@ export default function PublicProfilePage() {
             if (viewerSwipe.consumeSwipe()) return;
             if (event.target === event.currentTarget) closeViewer();
           }}
-          {...viewerSwipe.bind()}
         >
+          <div
+            className={`absolute inset-0 z-[6] ${viewerSwipe.touchActionClass}`}
+            aria-hidden
+            {...viewerSwipe.bind()}
+          />
+
           <button
             type="button"
             onClick={closeViewer}
