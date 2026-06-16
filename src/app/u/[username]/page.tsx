@@ -433,6 +433,12 @@ export default function PublicProfilePage() {
         className="relative z-[5] px-8 md:px-24 pointer-events-none"
         style={{ minHeight: profileUi.heroHeight }}
       >
+        {profile.moderationTag ? (
+          <div className="pointer-events-auto absolute left-8 top-[max(1rem,env(safe-area-inset-top))] z-[30] md:left-24 md:top-10">
+            <ProfileModerationTag tag={profile.moderationTag} />
+          </div>
+        ) : null}
+
         <div className="absolute top-[max(1rem,env(safe-area-inset-top))] inset-x-4 z-[30] pointer-events-auto flex flex-col items-end gap-3 md:inset-x-auto md:right-8 md:left-auto md:top-10">
           <ClassicUxModeBar className="max-w-full" />
 
@@ -506,12 +512,6 @@ export default function PublicProfilePage() {
           ) : null}
 
         </div>
-
-        {profile.moderationTag ? (
-          <div className="absolute left-8 right-8 md:left-24 md:right-24 bottom-[12vh] z-[14] pointer-events-auto">
-            <ProfileModerationTag tag={profile.moderationTag} />
-          </div>
-        ) : null}
 
         <div className="absolute left-1/2 -translate-x-1/2 bottom-[24vh] md:bottom-[29vh] z-[20] w-full max-w-[1200px] px-8 grid grid-cols-4 gap-4 md:gap-12 pointer-events-none">
           <StatBubble color="bg-pink-500" value={profile.likes || 0} label="me gusta" icon={<Heart size={profileUi.statIcon} fill="white" />} ui={profileUi} />

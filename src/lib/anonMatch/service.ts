@@ -1,8 +1,11 @@
 import {
   createFirestoreDoc,
+  getFirestoreDoc,
   parseFirestoreDoc,
   patchFirestoreDoc,
   runCollectionQuery,
+  FIRESTORE_PROJECT_ID,
+  FIRESTORE_API_KEY,
 } from "@/lib/firestore/rest";
 import {
   buildAnonMatchRequestId,
@@ -460,6 +463,89 @@ export async function closeAnonDirectChat(input: {
   return { ok: true as const };
 }
 
+async function resolveProfileUsername(uid: string) {
+  if (!uid) return "";
+  const user = await getFirestoreDoc("usuarios", uid);
+  return String(user?.username || user?.usernameLower || "");
+}
+
+async function getAnonChatMessageExcerpt(chatId: string, limit = 8) {
+  if (!chatId) return "";
+
+  const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/chats_anonimos/${encodeURIComponent(chatId)}:runQuery?key=${FIRESTORE_API_KEY}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: "mensajes" }],
+        orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }],
+        limit,
+      },
+    }),
+  });
+
+  if (!res.ok) return "";
+
+  const json = await res.json();
+  if (!Array.isArray(json)) return "";
+
+  const lines = json
+    .map((row: { document?: unknown }) => row.document)
+    .filter(Boolean)
+    .map(parseFirestoreDoc)
+    .reverse()
+    .map((message) => {
+      const text = String(message.text || message.texto || message.mensaje || "").trim();
+      if (!text) return "";
+      const sender = String(message.senderId || message.remitenteId || message.autorId || "?");
+      const shortSender = sender.length > 10 ? `${sender.slice(0, 6)}…` : sender;
+      return `${shortSender}: ${text}`;
+    })
+    .filter(Boolean);
+
+  return lines.join("\n");
+}
+
+function resolveAnonChatReportedParty(
+  chat: Record<string, unknown>,
+  reporterId: string,
+  reporterUid: string,
+) {
+  const solicitanteUid = String(chat.solicitanteUid || "");
+  const destinatarioUid = String(chat.destinatarioUid || "");
+  const solicitanteAnonId = String(chat.solicitanteAnonId || "");
+  const destinatarioAnonId = String(chat.anonId || "");
+
+  const reporterIsSolicitante =
+    (reporterUid && reporterUid === solicitanteUid) ||
+    (reporterId && reporterId === solicitanteAnonId);
+  const reporterIsDestinatario =
+    (reporterUid && reporterUid === destinatarioUid) ||
+    (reporterId && reporterId === destinatarioAnonId);
+
+  if (reporterIsSolicitante) {
+    return {
+      targetUid: destinatarioUid,
+      targetAnonId: destinatarioAnonId,
+    };
+  }
+
+  if (reporterIsDestinatario) {
+    return {
+      targetUid: solicitanteUid,
+      targetAnonId: solicitanteAnonId,
+    };
+  }
+
+  return {
+    targetUid: destinatarioUid || solicitanteUid,
+    targetAnonId: destinatarioAnonId || solicitanteAnonId,
+  };
+}
+
 export async function reportAnonDirectChat(input: {
   chatId: string;
   reporterId: string;
@@ -468,12 +554,44 @@ export async function reportAnonDirectChat(input: {
 }) {
   const now = new Date().toISOString();
   const chat = (await getAnonDirectChat(input.chatId)) || {};
+  const reporterUid = String(input.reporterUid || "");
+  const reporterId = String(input.reporterId || "");
+  const reportedParty = resolveAnonChatReportedParty(chat, reporterId, reporterUid);
   const reportedAnonId = String(chat.anonId || "");
   const reportedSolicitanteAnonId = String(chat.solicitanteAnonId || "");
+  const solicitanteUid = String(chat.solicitanteUid || "");
+  const destinatarioUid = String(chat.destinatarioUid || "");
+
+  const [targetUsername, reporterUsername, solicitanteUsername, destinatarioUsername, chatExcerpt] =
+    await Promise.all([
+      resolveProfileUsername(reportedParty.targetUid),
+      resolveProfileUsername(reporterUid),
+      resolveProfileUsername(solicitanteUid),
+      resolveProfileUsername(destinatarioUid),
+      getAnonChatMessageExcerpt(input.chatId),
+    ]);
+
+  const targetLabel = targetUsername
+    ? `@${targetUsername}`
+    : reportedParty.targetAnonId
+      ? `Anónimo ${reportedParty.targetAnonId.slice(0, 8)}`
+      : "";
+  const reporterLabel = reporterUsername
+    ? `@${reporterUsername}`
+    : reporterUid
+      ? reporterUid.slice(0, 8)
+      : reporterId
+        ? `Anónimo ${reporterId.slice(0, 8)}`
+        : "Desconocido";
+
+  const detailParts = [
+    String(input.detalle || "").trim(),
+    chatExcerpt ? `Mensajes del chat:\n${chatExcerpt}` : "",
+  ].filter(Boolean);
 
   await patchFirestoreDoc("chats_anonimos", input.chatId, {
     estado: "denunciado",
-    denunciadoPor: input.reporterId,
+    denunciadoPor: reporterId,
     denunciadoAt: now,
     updatedAt: now,
   });
@@ -481,16 +599,26 @@ export async function reportAnonDirectChat(input: {
   await createFirestoreDoc("reportes", {
     tipo: "chat_anonimo_directo",
     motivo: "denuncia_chat_anonimo",
-    detalle: String(input.detalle || ""),
+    detalle: detailParts.join("\n\n") || "Chat anónimo denunciado sin detalle adicional.",
     chatId: input.chatId,
-    reporterUid: input.reporterUid || "",
-    reporterFingerprint: input.reporterId,
+    reporterUid,
+    reporterEmail: "",
+    reporterFingerprint: reporterId,
+    reporterLabel,
     reportedAnonId,
     reportedSolicitanteAnonId,
-    solicitanteUid: String(chat.solicitanteUid || ""),
+    targetUid: reportedParty.targetUid,
+    targetUsername: targetUsername || "",
+    targetAnonId: reportedParty.targetAnonId,
+    targetLabel,
+    solicitanteUid,
+    destinatarioUid,
+    solicitanteUsername,
+    destinatarioUsername,
+    chatExcerpt,
     chatTipo: String(chat.tipo || ""),
     permanentBlock: false,
-    blockedFingerprint: input.reporterId,
+    blockedFingerprint: reporterId,
     estado: "pendiente",
     createdAt: now,
   });

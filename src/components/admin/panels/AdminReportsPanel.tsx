@@ -1,11 +1,23 @@
 "use client";
 
-import { collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
 
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { useT } from "@/contexts/LocaleContext";
+import type { MessageKey } from "@/lib/i18n/getMessage";
 
 type ReportRow = {
   id: string;
@@ -16,10 +28,274 @@ type ReportRow = {
   evidenceUrl?: string;
   targetUsername?: string;
   targetUid?: string;
+  targetAnonId?: string;
+  targetLabel?: string;
   storyId?: string;
   reporterEmail?: string;
+  reporterUid?: string;
+  reporterFingerprint?: string;
+  reporterLabel?: string;
+  chatId?: string;
+  chatExcerpt?: string;
+  chatTipo?: string;
+  solicitanteUid?: string;
+  destinatarioUid?: string;
+  solicitanteUsername?: string;
+  destinatarioUsername?: string;
+  reportedAnonId?: string;
+  reportedSolicitanteAnonId?: string;
   estado?: string;
 };
+
+const MOTIVO_KEYS: Record<string, MessageKey> = {
+  perfil_falso: "report_reason_fake_profile",
+  perfil: "report_reason_profile",
+  historia: "report_reason_story",
+  denuncia_chat_anonimo: "admin_report_reason_anon_chat",
+  chat_anonimo_directo: "admin_report_reason_anon_chat",
+};
+
+function ReportChatMessages({ chatId }: { chatId: string }) {
+  const t = useT();
+  const [messages, setMessages] = useState<Array<{ id: string; text: string; sender: string }>>(
+    [],
+  );
+
+  useEffect(() => {
+    if (!chatId) return;
+
+    const q = query(
+      collection(db, "chats_anonimos", chatId, "mensajes"),
+      orderBy("createdAt", "asc"),
+      limit(40),
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      setMessages(
+        snap.docs.map((row) => {
+          const data = row.data();
+          const text = String(data.text || data.texto || data.mensaje || "").trim();
+          const sender = String(data.senderId || data.remitenteId || data.autorId || "?");
+          return { id: row.id, text, sender };
+        }),
+      );
+    });
+
+    return () => unsub();
+  }, [chatId]);
+
+  if (messages.length === 0) return null;
+
+  return (
+    <div className="mt-3 rounded-xl border border-white/10 bg-black/30 px-4 py-3">
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+        {t("admin_report_chat_messages")}
+      </p>
+      <div className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+        {messages.map((message) => (
+          <div key={message.id} className="rounded-xl bg-white/5 px-3 py-2">
+            <p className="text-[10px] font-black uppercase tracking-wide text-white/35">
+              {message.sender.slice(0, 12)}
+            </p>
+            <p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-white/80">
+              {message.text || "—"}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function useResolvedUsername(uid?: string) {
+  const [username, setUsername] = useState("");
+
+  useEffect(() => {
+    if (!uid) {
+      setUsername("");
+      return;
+    }
+
+    let cancelled = false;
+
+    void getDoc(doc(db, "usuarios", uid)).then((snap) => {
+      if (cancelled || !snap.exists()) return;
+      const data = snap.data();
+      setUsername(String(data.username || data.usernameLower || ""));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
+
+  return username;
+}
+
+function ReportMetaLine({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: string;
+  href?: string;
+}) {
+  if (!value) return null;
+
+  return (
+    <p className="text-sm font-semibold text-white/60">
+      <span className="font-black uppercase tracking-[0.12em] text-white/35">{label}: </span>
+      {href ? (
+        <Link href={href} className="text-sky-200/90 underline-offset-2 hover:underline">
+          {value}
+        </Link>
+      ) : (
+        <span className="text-white/75">{value}</span>
+      )}
+    </p>
+  );
+}
+
+function ReportCard({
+  report,
+  busyId,
+  onSetStatus,
+  onRunAction,
+}: {
+  report: ReportRow;
+  busyId: string;
+  onSetStatus: (id: string, estado: string) => Promise<void>;
+  onRunAction: (report: ReportRow, action: string) => Promise<void>;
+}) {
+  const t = useT();
+  const fallbackTargetUsername = useResolvedUsername(report.targetUid);
+  const fallbackSolicitanteUsername = useResolvedUsername(report.solicitanteUid);
+  const fallbackDestinatarioUsername = useResolvedUsername(report.destinatarioUid);
+
+  const titleKey = MOTIVO_KEYS[report.motivo || ""] || MOTIVO_KEYS[report.tipo || ""];
+  const title = titleKey ? t(titleKey) : report.motivo || report.tipo || t("admin_report_unknown");
+
+  const targetUsername =
+    report.targetUsername ||
+    fallbackTargetUsername ||
+    report.destinatarioUsername ||
+    fallbackDestinatarioUsername ||
+    report.solicitanteUsername ||
+    fallbackSolicitanteUsername;
+
+  const targetDisplay =
+    report.targetLabel ||
+    (targetUsername ? `@${targetUsername}` : "") ||
+    (report.targetAnonId ? `Anónimo ${report.targetAnonId.slice(0, 10)}` : "") ||
+    (report.reportedAnonId ? `Anónimo ${report.reportedAnonId.slice(0, 10)}` : "") ||
+    (report.reportedSolicitanteAnonId
+      ? `Anónimo ${report.reportedSolicitanteAnonId.slice(0, 10)}`
+      : "") ||
+    t("admin_report_unknown_target");
+
+  const reporterDisplay =
+    report.reporterLabel ||
+    (report.reporterEmail ? report.reporterEmail : "") ||
+    (report.reporterUid ? report.reporterUid.slice(0, 10) : "") ||
+    (report.reporterFingerprint ? `Anónimo ${report.reporterFingerprint.slice(0, 10)}` : "") ||
+    t("admin_report_unknown_reporter");
+
+  const profileHref = targetUsername ? `/u/${encodeURIComponent(targetUsername)}` : undefined;
+  const canModerateProfile = Boolean(report.targetUid);
+
+  return (
+    <div className="rounded-2xl border border-white/10 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="font-black text-xl">{title}</p>
+          <p className="mt-1 text-sm font-bold text-white/55">
+            {targetDisplay} · {report.estado || "pendiente"}
+          </p>
+        </div>
+        {report.evidenceUrl ? (
+          <a
+            href={report.evidenceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="overflow-hidden rounded-xl border border-white/10"
+          >
+            <img
+              src={report.evidenceUrl}
+              alt={t("admin_report_evidence")}
+              className="h-24 w-24 object-cover"
+            />
+          </a>
+        ) : null}
+      </div>
+
+      <div className="mt-3 space-y-1">
+        <ReportMetaLine label={t("admin_report_reporter")} value={reporterDisplay} />
+        <ReportMetaLine
+          label={t("admin_report_target")}
+          value={targetDisplay}
+          href={profileHref}
+        />
+        {report.chatId ? (
+          <ReportMetaLine label={t("admin_report_chat")} value={report.chatId} />
+        ) : null}
+        {report.storyId ? (
+          <ReportMetaLine label={t("admin_report_story")} value={report.storyId} />
+        ) : null}
+      </div>
+
+      <p className="mt-3 whitespace-pre-wrap font-semibold leading-relaxed text-white/75">
+        {report.detalle || report.chatExcerpt || "-"}
+      </p>
+
+      {report.links ? (
+        <div className="mt-3 rounded-xl border border-white/10 bg-black/30 px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+            {t("admin_report_links")}
+          </p>
+          <p className="mt-2 whitespace-pre-wrap break-all text-sm font-semibold text-sky-200/90">
+            {report.links}
+          </p>
+        </div>
+      ) : null}
+
+      {report.chatId ? <ReportChatMessages chatId={report.chatId} /> : null}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busyId === report.id || !canModerateProfile}
+          onClick={() => void onRunAction(report, "tag_roleplay")}
+          className="rounded-xl bg-amber-500/20 px-4 py-2 text-sm font-black text-amber-100 disabled:opacity-40"
+        >
+          {t("admin_report_tag_roleplay")}
+        </button>
+        <button
+          type="button"
+          disabled={busyId === report.id || !canModerateProfile}
+          onClick={() => void onRunAction(report, "ban_perm")}
+          className="rounded-xl bg-red-500/20 px-4 py-2 text-sm font-black text-red-200 disabled:opacity-40"
+        >
+          {t("admin_report_block_user")}
+        </button>
+        <button
+          type="button"
+          onClick={() => void onSetStatus(report.id, "revisado")}
+          className="rounded-xl bg-green-500/20 px-4 py-2 text-sm font-black"
+        >
+          Revisado
+        </button>
+        <button
+          type="button"
+          onClick={() => void onSetStatus(report.id, "descartado")}
+          className="rounded-xl bg-white/10 px-4 py-2 text-sm font-black"
+        >
+          Descartar
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminReportsPanel() {
   const t = useT();
@@ -36,6 +312,11 @@ export default function AdminReportsPanel() {
 
     return () => unsub();
   }, []);
+
+  const pendingCount = useMemo(
+    () => reports.filter((report) => (report.estado || "pendiente") === "pendiente").length,
+    [reports],
+  );
 
   async function setStatus(id: string, estado: string) {
     await updateDoc(doc(db, "reportes", id), {
@@ -80,81 +361,24 @@ export default function AdminReportsPanel() {
   }
 
   return (
-    <div className="space-y-3">
-      {reports.map((report) => (
-        <div key={report.id} className="rounded-2xl border border-white/10 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="font-black text-xl">{report.motivo || report.tipo}</p>
-              <p className="mt-1 text-sm font-bold text-white/55">
-                @{report.targetUsername || "-"} · {report.estado || "pendiente"}
-              </p>
-            </div>
-            {report.evidenceUrl ? (
-              <a
-                href={report.evidenceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="overflow-hidden rounded-xl border border-white/10"
-              >
-                <img
-                  src={report.evidenceUrl}
-                  alt={t("admin_report_evidence")}
-                  className="h-24 w-24 object-cover"
-                />
-              </a>
-            ) : null}
-          </div>
+    <div className="space-y-4">
+      {pendingCount > 0 ? (
+        <p className="text-sm font-black text-amber-100/80">
+          {t("admin_report_pending_count", { count: String(pendingCount) })}
+        </p>
+      ) : null}
 
-          <p className="mt-3 whitespace-pre-wrap font-semibold leading-relaxed text-white/75">
-            {report.detalle || "-"}
-          </p>
-
-          {report.links ? (
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/30 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
-                {t("admin_report_links")}
-              </p>
-              <p className="mt-2 whitespace-pre-wrap break-all text-sm font-semibold text-sky-200/90">
-                {report.links}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busyId === report.id || !report.targetUid}
-              onClick={() => void runAdminAction(report, "tag_roleplay")}
-              className="rounded-xl bg-amber-500/20 px-4 py-2 text-sm font-black text-amber-100 disabled:opacity-40"
-            >
-              {t("admin_report_tag_roleplay")}
-            </button>
-            <button
-              type="button"
-              disabled={busyId === report.id || !report.targetUid}
-              onClick={() => void runAdminAction(report, "ban_perm")}
-              className="rounded-xl bg-red-500/20 px-4 py-2 text-sm font-black text-red-200 disabled:opacity-40"
-            >
-              {t("admin_report_block_user")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void setStatus(report.id, "revisado")}
-              className="rounded-xl bg-green-500/20 px-4 py-2 text-sm font-black"
-            >
-              Revisado
-            </button>
-            <button
-              type="button"
-              onClick={() => void setStatus(report.id, "descartado")}
-              className="rounded-xl bg-white/10 px-4 py-2 text-sm font-black"
-            >
-              Descartar
-            </button>
-          </div>
-        </div>
-      ))}
+      <div className="space-y-3">
+        {reports.map((report) => (
+          <ReportCard
+            key={report.id}
+            report={report}
+            busyId={busyId}
+            onSetStatus={setStatus}
+            onRunAction={runAdminAction}
+          />
+        ))}
+      </div>
     </div>
   );
 }

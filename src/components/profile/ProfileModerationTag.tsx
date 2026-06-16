@@ -1,6 +1,6 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { useState } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
 
@@ -11,24 +11,36 @@ type Props = {
 
 export default function ProfileModerationTag({ tag, className = "" }: Props) {
   const t = useT();
+  const [open, setOpen] = useState(false);
 
   if (tag !== "roleplay") return null;
 
   return (
-    <div
-      className={[
-        "inline-flex max-w-full items-start gap-2 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-left",
-        className,
-      ].join(" ")}
-      title={t("profile_moderation_roleplay_hint")}
-    >
-      <Info size={16} className="mt-0.5 shrink-0 text-amber-200/80" />
-      <div className="min-w-0">
-        <p className="text-sm font-black text-amber-100">{t("profile_moderation_roleplay_title")}</p>
-        <p className="mt-1 text-xs font-semibold leading-snug text-amber-100/70">
-          {t("profile_moderation_roleplay_hint")}
-        </p>
-      </div>
+    <div className={["relative z-[40]", className].join(" ")}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="rounded-full border border-amber-400/35 bg-black/50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-amber-100 backdrop-blur-sm"
+        aria-expanded={open}
+      >
+        {t("profile_moderation_roleplay_title")}
+      </button>
+
+      {open ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[45]"
+            aria-label="Cerrar"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute left-0 top-[calc(100%+0.5rem)] z-[46] max-w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-amber-400/25 bg-zinc-950/95 px-4 py-3 text-left shadow-2xl">
+            <p className="text-xs font-semibold leading-snug text-amber-100/80">
+              {t("profile_moderation_roleplay_hint")}
+            </p>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

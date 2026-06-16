@@ -324,6 +324,12 @@ export default function ModernPublicProfile({
                   {t("profile_online")}
                 </span>
               ) : null}
+
+              {profile.moderationTag ? (
+                <div className="absolute left-4 top-4">
+                  <ProfileModerationTag tag={profile.moderationTag} />
+                </div>
+              ) : null}
             </div>
 
             <div className="relative z-10 -mt-[4.75rem] px-6 pb-8">
@@ -389,12 +395,6 @@ export default function ModernPublicProfile({
                 <p className="mt-4 text-base font-semibold text-zinc-400 md:mt-5 md:text-lg">
                   {lastSeen}
                 </p>
-              ) : null}
-
-              {profile.moderationTag ? (
-                <div className="mt-4">
-                  <ProfileModerationTag tag={profile.moderationTag} />
-                </div>
               ) : null}
 
               <div className="mt-5 grid grid-cols-4 gap-2 rounded-2xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-950/30 to-black/50 p-4">

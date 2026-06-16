@@ -322,7 +322,6 @@ export default function AnonDirectChatWindow() {
           chatId,
           reporterId: getVisitorId(),
           reporterUid: firebaseUser?.uid || "",
-          detalle: "reporte chat anonimo directo",
         }),
       });
       setReportConfirmOpen(false);
