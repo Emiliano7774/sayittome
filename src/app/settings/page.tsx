@@ -16,6 +16,7 @@ import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
+import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -312,6 +313,7 @@ export default function SettingsPage() {
           presenceAt: String(profile.lastActiveAt || profile.lastSeenAt || profile.presenceAt || ""),
           online: profile.online === true,
           showOnline: profile.online === true,
+          moderationTag: String(profile.moderationTag || ""),
         }}
         isOwner
         verifiedVisit={false}
@@ -354,6 +356,15 @@ export default function SettingsPage() {
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
+
+        {profile?.moderationTag === "roleplay" && profile?.uid ? (
+          <div className="absolute left-6 top-10 z-20 sm:left-10">
+            <RoleplayAppealFlagButton
+              uid={profile.uid}
+              username={String(profile.username || profile.nombre || "usuario")}
+            />
+          </div>
+        ) : null}
 
         <div className="relative z-10 max-w-[1500px] mx-auto">
           <div className="flex flex-wrap justify-end items-center gap-3">

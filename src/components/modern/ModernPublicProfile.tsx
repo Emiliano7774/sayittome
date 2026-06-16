@@ -38,6 +38,7 @@ import {
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
+import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import type { ProfileMediaSource } from "@/lib/profile/mediaSource";
@@ -325,9 +326,15 @@ export default function ModernPublicProfile({
                 </span>
               ) : null}
 
-              {profile.moderationTag ? (
+              {!isOwner && profile.moderationTag ? (
                 <div className="pointer-events-auto absolute left-4 top-4 z-20">
                   <ProfileModerationTag tag={profile.moderationTag} />
+                </div>
+              ) : null}
+
+              {isOwner && profile.moderationTag === "roleplay" ? (
+                <div className="pointer-events-auto absolute left-4 top-4 z-20">
+                  <RoleplayAppealFlagButton uid={profile.uid} username={profile.username} />
                 </div>
               ) : null}
             </div>

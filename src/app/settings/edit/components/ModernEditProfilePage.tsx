@@ -10,6 +10,7 @@ import ModernEditMediaSheet, {
   type EditMediaItem,
 } from "@/components/modern/ModernEditMediaSheet";
 import ModernProfileEditPreview from "@/components/modern/ModernProfileEditPreview";
+import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -64,6 +65,7 @@ export default function ModernEditProfilePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetMode, setSheetMode] = useState<MediaSheetMode>("gallery");
+  const [moderationTag, setModerationTag] = useState("");
 
   useEffect(() => {
     document.body.classList.add("sayittome-profile-edit-open");
@@ -90,6 +92,7 @@ export default function ModernEditProfilePage() {
       setMostrarProvincia(data.mostrarProvincia === true);
       setMostrarUltimaVez(data.mostrarUltimaVez !== false);
       setIntereses(Array.isArray(data.intereses) ? data.intereses.join(", ") : String(data.intereses || ""));
+      setModerationTag(String(data.moderationTag || ""));
 
       const mediaSources = normalizeProfileMediaSources(data.fotoMediaSources);
       const withSource = (url: string, type: "image" | "video") => ({
@@ -454,19 +457,30 @@ export default function ModernEditProfilePage() {
         {saveError ? <p className="mb-4 text-sm font-semibold text-red-400">{saveError}</p> : null}
         {uploadError ? <p className="mb-4 text-sm font-semibold text-red-400">{uploadError}</p> : null}
 
-        <ModernProfileEditPreview
-          username={username}
-          bio={bio}
-          provincia={provincia}
-          mostrarProvincia={mostrarProvincia}
-          fotoPrincipal={fotoPrincipalUrl}
-          fotoPortada={fotoPortada}
-          videoPortada={videoPortada}
-          onUsernameChange={setUsername}
-          onBioChange={setBio}
-          onCoverClick={() => openSheet("cover")}
-          onAvatarClick={() => openSheet("principal")}
-        />
+        <div className="relative">
+          {moderationTag === "roleplay" ? (
+            <div className="pointer-events-auto absolute left-4 top-4 z-30">
+              <RoleplayAppealFlagButton
+                uid={user.uid}
+                username={username || savedUsername || "usuario"}
+              />
+            </div>
+          ) : null}
+
+          <ModernProfileEditPreview
+            username={username}
+            bio={bio}
+            provincia={provincia}
+            mostrarProvincia={mostrarProvincia}
+            fotoPrincipal={fotoPrincipalUrl}
+            fotoPortada={fotoPortada}
+            videoPortada={videoPortada}
+            onUsernameChange={setUsername}
+            onBioChange={setBio}
+            onCoverClick={() => openSheet("cover")}
+            onAvatarClick={() => openSheet("principal")}
+          />
+        </div>
 
         {uploading ? (
           <p className="mt-4 text-center text-sm font-bold text-violet-300">{uploadText}</p>

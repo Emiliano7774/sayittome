@@ -54,5 +54,10 @@ service firebase.storage {
       allow read: if true;
       allow write: if isSignedIn() && isAllowedMedia();
     }
+
+    match /roleplay_appeals/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && isAllowedMedia();
+    }
   }
 }

@@ -33,6 +33,7 @@ import {
 import { previousUsernameToRemember } from "@/lib/profile/usernameHistory";
 import { isUsernameAvailable, isValidUsername, normalizeUsername } from "@/lib/profile/username";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
+import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import { useT } from "@/contexts/LocaleContext";
 
 type BadgeKey = "superMessages" | "likes" | "conversations" | "followers";
@@ -103,6 +104,7 @@ export default function ClassicEditProfilePage() {
   const [uploadText, setUploadText] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [moderationTag, setModerationTag] = useState("");
 
   const [visibleBadges, setVisibleBadges] = useState<Record<BadgeKey, boolean>>({
     superMessages: true,
@@ -175,6 +177,7 @@ export default function ClassicEditProfilePage() {
             ? data.intereses.join(", ")
             : ""
       );
+      setModerationTag(String(data.moderationTag || ""));
 
       const mediaSources = normalizeProfileMediaSources(data.fotoMediaSources);
       const withSource = (url: string, type: "image" | "video") => ({
@@ -475,7 +478,15 @@ export default function ClassicEditProfilePage() {
               </p>
 
               <div className="flex flex-col sm:flex-row xl:flex-col gap-6">
-                <div className="w-full sm:w-[260px] xl:w-full aspect-square rounded-[34px] border-2 border-white/25 bg-zinc-950 overflow-hidden flex items-center justify-center">
+                <div className="relative w-full sm:w-[260px] xl:w-full aspect-square rounded-[34px] border-2 border-white/25 bg-zinc-950 overflow-hidden flex items-center justify-center">
+                  {moderationTag === "roleplay" && uid ? (
+                    <div className="absolute left-4 top-4 z-20">
+                      <RoleplayAppealFlagButton
+                        uid={uid}
+                        username={username || savedUsername || "usuario"}
+                      />
+                    </div>
+                  ) : null}
                   {fotoPrincipalUrl ? (
                     <ProfileMediaSurface
                       url={fotoPrincipalUrl}
