@@ -512,7 +512,7 @@ const es = {
   report_unknown_target: "contenido",
   profile_moderation_roleplay_title: "Perfil de rol",
   profile_moderation_roleplay_hint:
-    "Este perfil usa fotos de internet o de ficción. No es una identidad verificada como persona real.",
+    "Perfil de rol es una etiqueta de la administración. Marca perfiles que no son la cuenta que dicen ser: usan imágenes robadas de internet o fingen ser otra persona.",
   admin_report_tag_roleplay: "Marcar perfil de rol",
   admin_report_block_user: "Bloquear cuenta",
   admin_report_evidence: "Evidencia",
@@ -1174,7 +1174,7 @@ const en: Record<keyof typeof es, string> = {
   report_unknown_target: "content",
   profile_moderation_roleplay_title: "Roleplay profile",
   profile_moderation_roleplay_hint:
-    "This profile uses internet or fictional photos. It is not verified as a real person.",
+    "A roleplay profile is an admin label. It marks profiles that are not the account they claim to be: they use stolen images from the internet or pretend to be someone else.",
   admin_report_tag_roleplay: "Mark as roleplay profile",
   admin_report_block_user: "Block account",
   admin_report_evidence: "Evidence",
