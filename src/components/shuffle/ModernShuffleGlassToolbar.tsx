@@ -9,6 +9,7 @@ import { useT } from "@/contexts/LocaleContext";
 type PoolControls = {
   search: string;
   handleSearchChange: (value: string) => void;
+  handleSearchSubmit: () => void;
   openFilters: () => void;
   handleShuffleClick: () => void;
   filtersActiveCount: number;
@@ -28,6 +29,12 @@ export default function ModernShuffleGlassToolbar({ pool }: Props) {
         <input
           value={pool.search}
           onChange={(e) => pool.handleSearchChange(e.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            pool.handleSearchSubmit();
+          }}
+          enterKeyHint="search"
           placeholder={t("shuffle_search")}
           className="min-w-0 flex-1 bg-transparent text-base font-bold text-white outline-none placeholder:text-white/25"
         />

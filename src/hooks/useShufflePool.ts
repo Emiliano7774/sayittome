@@ -359,6 +359,26 @@ export function useShufflePool() {
     }
   }, [applyWindowFromPool, loadProfiles]);
 
+  const runSearch = useCallback(
+    (value: string) => {
+      const q = value.trim();
+
+      if (!q) {
+        void reloadDefaultShuffle();
+        return;
+      }
+
+      filterActivePool(value, filtersRef.current);
+      void loadProfiles({ q, force: true });
+    },
+    [filterActivePool, loadProfiles, reloadDefaultShuffle],
+  );
+
+  const handleSearchSubmit = useCallback(() => {
+    if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+    runSearch(searchRef.current);
+  }, [runSearch]);
+
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearch(value);
@@ -388,10 +408,10 @@ export function useShufflePool() {
       filterActivePool(value, filtersRef.current);
 
       searchTimerRef.current = window.setTimeout(() => {
-        void loadProfiles({ q, force: true });
-      }, 550);
+        runSearch(value);
+      }, 250);
     },
-    [applyPool, applyWindowFromPool, filterActivePool, loadProfiles, reloadDefaultShuffle],
+    [applyPool, applyWindowFromPool, filterActivePool, reloadDefaultShuffle, runSearch],
   );
 
   const openFilters = useCallback(() => {
@@ -599,6 +619,7 @@ export function useShufflePool() {
     filtersOpen,
     filtersActiveCount,
     handleSearchChange,
+    handleSearchSubmit,
     handleShuffleClick,
     handleListClick,
     openFilters,

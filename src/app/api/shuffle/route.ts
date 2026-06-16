@@ -137,6 +137,27 @@ function isAnonymousDocActive(doc: any, now = Date.now()) {
   return now - seenDate.getTime() <= ANON_ACTIVE_MS;
 }
 
+async function runStructuredQuery(structuredQuery: Record<string, unknown>) {
+  const url =
+    `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents:runQuery?key=${API_KEY}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ structuredQuery }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Firestore runQuery ${res.status}`);
+  }
+
+  const json = await res.json();
+  if (!Array.isArray(json)) return [];
+
+  return json.map((row: any) => row.document).filter(Boolean);
+}
+
 async function runQuery(
   collectionId: string,
   options?: {
@@ -292,6 +313,127 @@ function docToProfile(doc: any): ApiProfile {
   return withPresenceBadge(profile);
 }
 
+function profileMatchesQueryText(profile: ApiProfile, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+
+  const username = String(profile.username || "").toLowerCase();
+  if (username.startsWith(needle) || username.includes(needle)) return true;
+
+  const haystack = [
+    profile.bio,
+    profile.provincia,
+    profile.ciudad,
+    ...(profile.intereses || []),
+    ...(profile.searchKeywords || []),
+    ...(profile.etiquetas || []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const tokens = needle.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1) {
+    return tokens.every((token) => haystack.includes(token));
+  }
+
+  return haystack.includes(needle);
+}
+
+function appendSearchProfile(
+  doc: any,
+  seen: Set<string>,
+  results: ApiProfile[],
+) {
+  const raw = parseFirestoreDoc(doc);
+  if (!isPublicProfile(raw)) return;
+
+  const profile = withResolvedCountry(docToProfile(doc));
+  if (profile.banned || !profile.username || profile.username.toLowerCase() === "usuario") {
+    return;
+  }
+
+  const keys = shuffleProfileDedupeKeys(profile);
+  if (keys.length > 0 && keys.some((key) => seen.has(key))) return;
+
+  for (const key of keys) {
+    seen.add(key);
+  }
+
+  results.push(profile);
+}
+
+async function searchProfilesByQuery(query: string, limit = SHUFFLE_POOL_LIMIT) {
+  const q = normalizeUsername(query).toLowerCase();
+  if (!q) return [];
+
+  const seen = new Set<string>();
+  const results: ApiProfile[] = [];
+
+  try {
+    if (q.length >= 2) {
+      const exactDocs = await runStructuredQuery({
+        from: [{ collectionId: "usuarios" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "usernameLower" },
+            op: "EQUAL",
+            value: { stringValue: q },
+          },
+        },
+        limit: 5,
+      });
+      exactDocs.forEach((doc) => appendSearchProfile(doc, seen, results));
+    }
+
+    const prefixDocs = await runStructuredQuery({
+      from: [{ collectionId: "usuarios" }],
+      where: {
+        compositeFilter: {
+          op: "AND",
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: "usernameLower" },
+                op: "GREATER_THAN_OR_EQUAL",
+                value: { stringValue: q },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "usernameLower" },
+                op: "LESS_THAN_OR_EQUAL",
+                value: { stringValue: `${q}\uf8ff` },
+              },
+            },
+          ],
+        },
+      },
+      limit,
+    });
+    prefixDocs.forEach((doc) => appendSearchProfile(doc, seen, results));
+  } catch (error) {
+    console.error("shuffle username search failed", error);
+  }
+
+  if (results.length < limit) {
+    const cached = await getProfilesCached(false);
+    for (const profile of cached) {
+      if (results.length >= limit) break;
+      if (!profileMatchesQueryText(profile, q)) continue;
+
+      const keys = shuffleProfileDedupeKeys(profile);
+      if (keys.length > 0 && keys.some((key) => seen.has(key))) continue;
+
+      for (const key of keys) {
+        seen.add(key);
+      }
+      results.push(profile);
+    }
+  }
+
+  return results.slice(0, limit);
+}
+
 function withResolvedCountry(profile: ApiProfile): ApiProfile {
   const resolved = resolveProfileCountryCode(profile);
   return resolved ? { ...profile, pais: resolved } : profile;
@@ -439,21 +581,14 @@ export async function GET(req: Request) {
       });
     }
 
-    const allProfiles = await getProfilesCached(force);
+    const allProfiles = q
+      ? await searchProfilesByQuery(q, SHUFFLE_POOL_LIMIT)
+      : await getProfilesCached(force);
     const filteredByDiscovery = allProfiles.filter((profile) =>
       profileMatchesShuffleServerFilters(profile, filters),
     );
 
-    let filtered = filteredByDiscovery;
-
-    if (q) {
-      filtered = filtered.filter((p) => {
-        return (
-          String(p.username || "").toLowerCase().includes(q) ||
-          String(p.bio || "").toLowerCase().includes(q)
-        );
-      });
-    }
+    const filtered = filteredByDiscovery;
 
     const ordered = shouldShuffle && !q ? shuffleArray(filtered) : filtered;
 

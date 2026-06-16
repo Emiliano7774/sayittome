@@ -228,6 +228,9 @@ export function profileMatchesShuffleSearch(profile: ShuffleProfile, query: stri
   const q = query.trim().toLowerCase();
   if (!q) return true;
 
+  const username = String(profile.username || "").toLowerCase();
+  if (username.startsWith(q) || username.includes(q)) return true;
+
   const haystack = [
     profile.username,
     profile.bio,
@@ -238,6 +241,11 @@ export function profileMatchesShuffleSearch(profile: ShuffleProfile, query: stri
   ]
     .join(" ")
     .toLowerCase();
+
+  const tokens = q.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1) {
+    return tokens.every((token) => haystack.includes(token));
+  }
 
   return haystack.includes(q);
 }
