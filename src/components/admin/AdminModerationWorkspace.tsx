@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback } from "react";
 
 import AdminAntiacosoPanel from "@/components/admin/panels/AdminAntiacosoPanel";
-import AdminRoleplayAppealsPanel from "@/components/admin/panels/AdminRoleplayAppealsPanel";
+import AdminGeneralClaimsPanel from "@/components/admin/panels/AdminGeneralClaimsPanel";
 import AdminReportsPanel from "@/components/admin/panels/AdminReportsPanel";
 import AdminStoriesPanel from "@/components/admin/panels/AdminStoriesPanel";
 import SpectatorModerationHub from "@/components/admin/spectator/SpectatorModerationHub";
@@ -14,7 +14,7 @@ import type { MessageKey } from "@/lib/i18n/getMessage";
 export type AdminModerationTab =
   | "reports"
   | "fake_profiles"
-  | "appeals"
+  | "claims"
   | "chats"
   | "stories"
   | "antiacoso";
@@ -22,7 +22,7 @@ export type AdminModerationTab =
 const TABS: AdminModerationTab[] = [
   "reports",
   "fake_profiles",
-  "appeals",
+  "claims",
   "chats",
   "stories",
   "antiacoso",
@@ -31,7 +31,7 @@ const TABS: AdminModerationTab[] = [
 const TAB_KEYS: Record<AdminModerationTab, MessageKey> = {
   reports: "admin_mod_tab_reports",
   fake_profiles: "admin_mod_tab_fake_profiles",
-  appeals: "admin_mod_tab_appeals",
+  claims: "admin_mod_tab_claims",
   chats: "admin_mod_tab_chats",
   stories: "admin_mod_tab_stories",
   antiacoso: "admin_mod_tab_antiacoso",
@@ -42,8 +42,9 @@ function AdminModerationWorkspaceInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get("tab");
-  const activeTab: AdminModerationTab = TABS.includes(rawTab as AdminModerationTab)
-    ? (rawTab as AdminModerationTab)
+  const normalizedTab = rawTab === "appeals" ? "claims" : rawTab;
+  const activeTab: AdminModerationTab = TABS.includes(normalizedTab as AdminModerationTab)
+    ? (normalizedTab as AdminModerationTab)
     : "reports";
 
   const setTab = useCallback(
@@ -75,7 +76,7 @@ function AdminModerationWorkspaceInner() {
 
       {activeTab === "reports" ? <AdminReportsPanel filter="all" /> : null}
       {activeTab === "fake_profiles" ? <AdminReportsPanel filter="fake_profiles" /> : null}
-      {activeTab === "appeals" ? <AdminRoleplayAppealsPanel /> : null}
+      {activeTab === "claims" ? <AdminGeneralClaimsPanel /> : null}
       {activeTab === "chats" ? <SpectatorModerationHub /> : null}
       {activeTab === "stories" ? <AdminStoriesPanel /> : null}
       {activeTab === "antiacoso" ? <AdminAntiacosoPanel /> : null}
