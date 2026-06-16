@@ -7,6 +7,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { useT } from "@/contexts/LocaleContext";
 import { auth } from "@/lib/firebase";
+import { guessMediaFileKind } from "@/lib/media/fileKind";
 import { uploadFileToStorage } from "@/lib/media/uploadFileToStorage";
 
 type Props = {
@@ -51,14 +52,23 @@ export default function RoleplayAppealDialog({ open, onClose, uid, username }: P
 
     try {
       let evidenceUrl = "";
+      let evidenceKind = "";
 
       if (evidenceFile) {
+        const kind = guessMediaFileKind(evidenceFile);
+        if (!kind) {
+          setError(t("roleplay_appeal_media_invalid"));
+          setBusy(false);
+          return;
+        }
+
         evidenceUrl = await uploadFileToStorage({
           path: `roleplay_appeals/${uid}/${Date.now()}_${evidenceFile.name.replace(/[^\w.-]+/g, "_")}`,
           file: evidenceFile,
-          kind: "image",
+          kind,
           requireRegisteredUser: true,
         });
+        evidenceKind = kind;
       }
 
       const reporter = await new Promise<{ uid: string; email: string }>((resolve) => {
@@ -80,6 +90,7 @@ export default function RoleplayAppealDialog({ open, onClose, uid, username }: P
         body: JSON.stringify({
           mensaje: trimmed,
           evidenceUrl,
+          evidenceKind,
           uid: reporter.uid || uid,
           username,
           reporterEmail: reporter.email,
@@ -147,12 +158,12 @@ export default function RoleplayAppealDialog({ open, onClose, uid, username }: P
           />
 
           <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-white/45">
-            {t("roleplay_appeal_photo_label")}
+            {t("roleplay_appeal_media_label")}
           </label>
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)}
             className="mb-2 w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-semibold text-white file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-black file:text-black"
           />

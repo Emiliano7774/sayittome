@@ -21,6 +21,8 @@ import {
   isFakeProfileReport,
   parseReportCreatedAtMs,
 } from "@/lib/admin/reportSort";
+import AdminEvidenceMedia from "@/components/admin/AdminEvidenceMedia";
+import AdminUndoButton from "@/components/admin/AdminUndoButton";
 import { useT } from "@/contexts/LocaleContext";
 import type { MessageKey } from "@/lib/i18n/getMessage";
 
@@ -260,24 +262,14 @@ function ReportCard({
       ) : null}
 
       {report.evidenceUrl ? (
-        <a
-          href={report.evidenceUrl}
-          target="_blank"
-          rel="noreferrer"
+        <AdminEvidenceMedia
+          url={report.evidenceUrl}
           className={[
             "mt-3 block overflow-hidden rounded-xl border border-white/10",
             emphasizeEvidence ? "max-w-md" : "max-w-xs",
           ].join(" ")}
-        >
-          <img
-            src={report.evidenceUrl}
-            alt={t("admin_report_evidence")}
-            className={[
-              "w-full object-cover",
-              emphasizeEvidence ? "max-h-80" : "max-h-40",
-            ].join(" ")}
-          />
-        </a>
+          maxHeightClass={emphasizeEvidence ? "max-h-80" : "max-h-40"}
+        />
       ) : null}
 
       {report.chatId ? <ReportChatMessages chatId={report.chatId} /> : null}
@@ -299,6 +291,13 @@ function ReportCard({
         >
           {t("admin_report_block_user")}
         </button>
+        {canModerateProfile ? (
+          <>
+            <AdminUndoButton uid={report.targetUid!} undoAction="clear_moderation_tag" />
+            <AdminUndoButton uid={report.targetUid!} undoAction="unban" />
+            <AdminUndoButton uid={report.targetUid!} undoAction="unblur_profile" />
+          </>
+        ) : null}
         <button
           type="button"
           onClick={() => void onSetStatus(report.id, "revisado")}

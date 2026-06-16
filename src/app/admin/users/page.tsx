@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
+import AdminUndoButton from "@/components/admin/AdminUndoButton";
 import { auth } from "@/lib/firebase";
 
 type AdminUserRow = {
@@ -17,6 +18,7 @@ type AdminUserRow = {
   blur: boolean;
   banned: boolean;
   shadowban: boolean;
+  moderationTag: string;
   activeStories: number;
   abuseProtectionEnabled: boolean;
 };
@@ -229,6 +231,7 @@ export default function AdminUsersPage() {
               <th className="px-4 py-4">Online</th>
               <th className="px-4 py-4">Blur</th>
               <th className="px-4 py-4">Ban</th>
+              <th className="px-4 py-4">Rol</th>
               <th className="px-4 py-4">Historias</th>
               <th className="px-4 py-4">Antiacoso</th>
               <th className="px-4 py-4">Acciones</th>
@@ -258,6 +261,7 @@ export default function AdminUsersPage() {
                 </td>
                 <td className="px-4 py-4">{user.blur ? "si" : "no"}</td>
                 <td className="px-4 py-4">{user.banned ? "si" : "no"}</td>
+                <td className="px-4 py-4">{user.moderationTag || "-"}</td>
                 <td className="px-4 py-4">{user.activeStories}</td>
                 <td className="px-4 py-4">{user.abuseProtectionEnabled ? "on" : "off"}</td>
                 <td className="px-4 py-4">
@@ -306,6 +310,38 @@ export default function AdminUsersPage() {
                     >
                       Antiacoso
                     </button>
+                    <button
+                      type="button"
+                      disabled={busyUid === user.uid}
+                      onClick={() => runAction(user.uid, "tag_roleplay")}
+                      className="rounded-lg bg-amber-500/20 px-3 py-2 text-xs font-black"
+                    >
+                      Marcar rol
+                    </button>
+                    {user.moderationTag ? (
+                      <AdminUndoButton
+                        uid={user.uid}
+                        undoAction="clear_moderation_tag"
+                        className="rounded-lg border border-sky-400/30 bg-sky-500/15 px-3 py-2 text-xs font-black text-sky-100"
+                        onDone={load}
+                      />
+                    ) : null}
+                    {user.banned ? (
+                      <AdminUndoButton
+                        uid={user.uid}
+                        undoAction="unban"
+                        className="rounded-lg border border-sky-400/30 bg-sky-500/15 px-3 py-2 text-xs font-black text-sky-100"
+                        onDone={load}
+                      />
+                    ) : null}
+                    {user.blur ? (
+                      <AdminUndoButton
+                        uid={user.uid}
+                        undoAction="unblur_profile"
+                        className="rounded-lg border border-sky-400/30 bg-sky-500/15 px-3 py-2 text-xs font-black text-sky-100"
+                        onDone={load}
+                      />
+                    ) : null}
                     <Link
                       href={`/u/${encodeURIComponent(user.username)}`}
                       className="rounded-lg border border-white/15 px-3 py-2 text-xs font-black"

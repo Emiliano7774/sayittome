@@ -11,6 +11,7 @@ export async function POST(req: Request) {
     const username = String(body?.username || "").trim();
     const mensaje = String(body?.mensaje || "").trim();
     const evidenceUrl = String(body?.evidenceUrl || "").trim();
+    const evidenceKind = String(body?.evidenceKind || "").trim();
     const reporterEmail = String(body?.reporterEmail || "").trim();
 
     if (!uid || !mensaje) {
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
       reporterEmail,
       mensaje,
       evidenceUrl,
+      evidenceKind,
       moderationTag: String(profile.moderationTag || ""),
       estado: "pendiente",
       createdAt: new Date().toISOString(),

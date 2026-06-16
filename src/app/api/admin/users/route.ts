@@ -44,6 +44,7 @@ export async function GET(req: Request) {
             user.adminBlurFotosPerfil === true,
           banned: user.banned === true || user.suspendido === true,
           shadowban: user.shadowban === true,
+          moderationTag: String(user.moderationTag || ""),
           activeStories: storiesByOwner.get(uid) || 0,
           abuseProtectionEnabled: user.abuseProtectionEnabled === true,
         };

@@ -73,6 +73,8 @@ export async function POST(req: Request) {
         suspendido: false,
         banPermanent: false,
         banUntil: "",
+        bannedAt: "",
+        bannedBy: "",
       });
     } else if (action === "blur_profile") {
       await patchFirestoreDoc("usuarios", uid, {
@@ -161,6 +163,12 @@ export async function POST(req: Request) {
         suspicious: true,
         suspiciousAt: new Date().toISOString(),
         suspiciousBy: adminEmail,
+      });
+    } else if (action === "unmark_chat_suspicious" && chatId) {
+      await patchFirestoreDoc("chats", chatId, {
+        suspicious: false,
+        suspiciousAt: "",
+        suspiciousBy: "",
       });
     } else if (action === "remove_abuse_block" && blockId) {
       await deleteFirestoreDoc("anon_abuse_blocks", blockId);

@@ -16,6 +16,8 @@ import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { sortReportsNewestFirst, parseReportCreatedAtMs } from "@/lib/admin/reportSort";
+import AdminEvidenceMedia from "@/components/admin/AdminEvidenceMedia";
+import AdminUndoButton from "@/components/admin/AdminUndoButton";
 import { useT } from "@/contexts/LocaleContext";
 
 type AppealRow = {
@@ -128,22 +130,16 @@ export default function AdminRoleplayAppealsPanel() {
                 {appeal.mensaje || "-"}
               </p>
 
-              {appeal.evidenceUrl ? (
-                <a
-                  href={appeal.evidenceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 block max-w-md overflow-hidden rounded-xl border border-white/10"
-                >
-                  <img
-                    src={appeal.evidenceUrl}
-                    alt={t("admin_appeal_photo")}
-                    className="max-h-80 w-full object-cover"
-                  />
-                </a>
-              ) : null}
+              {appeal.evidenceUrl ? <AdminEvidenceMedia url={appeal.evidenceUrl} /> : null}
 
               <div className="mt-4 flex flex-wrap gap-2">
+                {appeal.uid ? (
+                  <AdminUndoButton
+                    uid={appeal.uid}
+                    undoAction="clear_moderation_tag"
+                    onDone={() => void setStatus(appeal.id, "revisado")}
+                  />
+                ) : null}
                 <button
                   type="button"
                   onClick={() => void setStatus(appeal.id, "revisado")}

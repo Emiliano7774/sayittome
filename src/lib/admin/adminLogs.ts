@@ -13,6 +13,8 @@ export type AdminLogAction =
   | "delete_chat"
   | "reset_username"
   | "reset_bio"
+  | "tag_roleplay"
+  | "clear_moderation_tag"
   | "shadowban"
   | "abuse_block_remove"
   | "abuse_block_extend"
