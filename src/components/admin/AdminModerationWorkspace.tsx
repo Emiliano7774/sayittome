@@ -10,12 +10,13 @@ import SpectatorModerationHub from "@/components/admin/spectator/SpectatorModera
 import { useT } from "@/contexts/LocaleContext";
 import type { MessageKey } from "@/lib/i18n/getMessage";
 
-export type AdminModerationTab = "reports" | "chats" | "stories" | "antiacoso";
+export type AdminModerationTab = "reports" | "fake_profiles" | "chats" | "stories" | "antiacoso";
 
-const TABS: AdminModerationTab[] = ["reports", "chats", "stories", "antiacoso"];
+const TABS: AdminModerationTab[] = ["reports", "fake_profiles", "chats", "stories", "antiacoso"];
 
 const TAB_KEYS: Record<AdminModerationTab, MessageKey> = {
   reports: "admin_mod_tab_reports",
+  fake_profiles: "admin_mod_tab_fake_profiles",
   chats: "admin_mod_tab_chats",
   stories: "admin_mod_tab_stories",
   antiacoso: "admin_mod_tab_antiacoso",
@@ -57,7 +58,8 @@ function AdminModerationWorkspaceInner() {
         ))}
       </div>
 
-      {activeTab === "reports" ? <AdminReportsPanel /> : null}
+      {activeTab === "reports" ? <AdminReportsPanel filter="all" /> : null}
+      {activeTab === "fake_profiles" ? <AdminReportsPanel filter="fake_profiles" /> : null}
       {activeTab === "chats" ? <SpectatorModerationHub /> : null}
       {activeTab === "stories" ? <AdminStoriesPanel /> : null}
       {activeTab === "antiacoso" ? <AdminAntiacosoPanel /> : null}

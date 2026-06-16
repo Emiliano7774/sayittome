@@ -16,6 +16,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
+import {
+  filterAdminReports,
+  isFakeProfileReport,
+  parseReportCreatedAtMs,
+} from "@/lib/admin/reportSort";
 import { useT } from "@/contexts/LocaleContext";
 import type { MessageKey } from "@/lib/i18n/getMessage";
 
@@ -23,6 +28,7 @@ type ReportRow = {
   id: string;
   tipo?: string;
   motivo?: string;
+  createdAt?: unknown;
   detalle?: string;
   links?: string;
   evidenceUrl?: string;
@@ -160,11 +166,13 @@ function ReportMetaLine({
 function ReportCard({
   report,
   busyId,
+  emphasizeEvidence = false,
   onSetStatus,
   onRunAction,
 }: {
   report: ReportRow;
   busyId: string;
+  emphasizeEvidence?: boolean;
   onSetStatus: (id: string, estado: string) => Promise<void>;
   onRunAction: (report: ReportRow, action: string) => Promise<void>;
 }) {
@@ -203,6 +211,9 @@ function ReportCard({
 
   const profileHref = targetUsername ? `/u/${encodeURIComponent(targetUsername)}` : undefined;
   const canModerateProfile = Boolean(report.targetUid);
+  const createdLabel = parseReportCreatedAtMs(report.createdAt)
+    ? new Date(parseReportCreatedAtMs(report.createdAt)).toLocaleString("es-AR")
+    : "";
 
   return (
     <div className="rounded-2xl border border-white/10 p-5">
@@ -212,21 +223,10 @@ function ReportCard({
           <p className="mt-1 text-sm font-bold text-white/55">
             {targetDisplay} · {report.estado || "pendiente"}
           </p>
+          {createdLabel ? (
+            <p className="mt-1 text-xs font-semibold text-white/35">{createdLabel}</p>
+          ) : null}
         </div>
-        {report.evidenceUrl ? (
-          <a
-            href={report.evidenceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="overflow-hidden rounded-xl border border-white/10"
-          >
-            <img
-              src={report.evidenceUrl}
-              alt={t("admin_report_evidence")}
-              className="h-24 w-24 object-cover"
-            />
-          </a>
-        ) : null}
       </div>
 
       <div className="mt-3 space-y-1">
@@ -257,6 +257,27 @@ function ReportCard({
             {report.links}
           </p>
         </div>
+      ) : null}
+
+      {report.evidenceUrl ? (
+        <a
+          href={report.evidenceUrl}
+          target="_blank"
+          rel="noreferrer"
+          className={[
+            "mt-3 block overflow-hidden rounded-xl border border-white/10",
+            emphasizeEvidence ? "max-w-md" : "max-w-xs",
+          ].join(" ")}
+        >
+          <img
+            src={report.evidenceUrl}
+            alt={t("admin_report_evidence")}
+            className={[
+              "w-full object-cover",
+              emphasizeEvidence ? "max-h-80" : "max-h-40",
+            ].join(" ")}
+          />
+        </a>
       ) : null}
 
       {report.chatId ? <ReportChatMessages chatId={report.chatId} /> : null}
@@ -297,7 +318,11 @@ function ReportCard({
   );
 }
 
-export default function AdminReportsPanel() {
+export default function AdminReportsPanel({
+  filter = "all",
+}: {
+  filter?: "all" | "fake_profiles";
+}) {
   const t = useT();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [busyId, setBusyId] = useState("");
@@ -305,17 +330,28 @@ export default function AdminReportsPanel() {
   useEffect(() => {
     if (!isAdminEmail(auth.currentUser?.email)) return;
 
-    const q = query(collection(db, "reportes"), orderBy("createdAt", "desc"), limit(120));
+    const q = query(collection(db, "reportes"), orderBy("createdAt", "desc"), limit(200));
     const unsub = onSnapshot(q, (snap) => {
-      setReports(snap.docs.map((row) => ({ id: row.id, ...(row.data() as Omit<ReportRow, "id">) })));
+      setReports(
+        snap.docs.map((row) => ({
+          id: row.id,
+          ...(row.data() as Omit<ReportRow, "id">),
+        })),
+      );
     });
 
     return () => unsub();
   }, []);
 
+  const visibleReports = useMemo(
+    () => filterAdminReports(reports, filter),
+    [filter, reports],
+  );
+
   const pendingCount = useMemo(
-    () => reports.filter((report) => (report.estado || "pendiente") === "pendiente").length,
-    [reports],
+    () =>
+      visibleReports.filter((report) => (report.estado || "pendiente") === "pendiente").length,
+    [visibleReports],
   );
 
   async function setStatus(id: string, estado: string) {
@@ -356,8 +392,14 @@ export default function AdminReportsPanel() {
     }
   }
 
-  if (reports.length === 0) {
-    return <p className="text-white/40 font-bold">No hay reportes pendientes.</p>;
+  if (visibleReports.length === 0) {
+    return (
+      <p className="text-white/40 font-bold">
+        {filter === "fake_profiles"
+          ? "No hay denuncias de perfiles truchos."
+          : "No hay reportes pendientes."}
+      </p>
+    );
   }
 
   return (
@@ -369,11 +411,12 @@ export default function AdminReportsPanel() {
       ) : null}
 
       <div className="space-y-3">
-        {reports.map((report) => (
+        {visibleReports.map((report) => (
           <ReportCard
             key={report.id}
             report={report}
             busyId={busyId}
+            emphasizeEvidence={filter === "fake_profiles" || isFakeProfileReport(report)}
             onSetStatus={setStatus}
             onRunAction={runAdminAction}
           />
