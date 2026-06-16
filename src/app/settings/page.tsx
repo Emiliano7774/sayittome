@@ -61,7 +61,7 @@ export default function SettingsPage() {
     try {
       const cached = await getDoc(ref);
       if (cached.exists()) {
-        setProfile({ uid: user.uid, ...cached.data() });
+        setProfile({ ...cached.data(), uid: user.uid });
         setLoading(false);
         return;
       }
@@ -71,12 +71,12 @@ export default function SettingsPage() {
 
     try {
       const snap = await getDocFromServer(ref);
-      setProfile(snap.exists() ? { uid: user.uid, ...snap.data() } : { uid: user.uid });
+      setProfile(snap.exists() ? { ...snap.data(), uid: user.uid } : { uid: user.uid });
     } catch (error) {
       console.error("settings_profile_load", error);
       try {
         const snap = await getDoc(ref);
-        setProfile(snap.exists() ? { uid: user.uid, ...snap.data() } : { uid: user.uid });
+        setProfile(snap.exists() ? { ...snap.data(), uid: user.uid } : { uid: user.uid });
       } catch (fallbackError) {
         console.error("settings_profile_load_fallback", fallbackError);
       }
@@ -147,6 +147,8 @@ export default function SettingsPage() {
           ? "it-IT"
           : "de-DE";
   const username = profile?.username || profile?.nombre || t("settings_no_username");
+  const ownerUid = String(profile?.uid || auth.currentUser?.uid || "");
+  const ownerUsername = String(profile?.username || profile?.nombre || username || "usuario");
   const bio = profile?.bio || profile?.descripcion || t("settings_bio_empty");
   const createdAtLabel = resolvePublicProfileCreatedLabel(profile, localeTag);
   const lastSeenLabel = resolveProfileLastSeenLabel(
@@ -358,17 +360,7 @@ export default function SettingsPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
 
         <div className="relative z-10 max-w-[1500px] mx-auto">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            {profile?.uid ? (
-              <RoleplayAppealFlagButton
-                uid={profile.uid}
-                username={String(profile.username || profile.nombre || "usuario")}
-                compact
-              />
-            ) : (
-              <span />
-            )}
-            <div className="flex flex-wrap justify-end items-center gap-3">
+          <div className="flex flex-wrap justify-end items-center gap-3">
             <HeaderControls />
             {isAdminEmail(auth.currentUser?.email) ? (
               <button
@@ -398,10 +390,19 @@ export default function SettingsPage() {
                 variant="inline"
               />
             ) : null}
-            </div>
           </div>
 
           <div className="mt-24">
+            {ownerUid ? (
+              <div className="pointer-events-auto mb-6">
+                <RoleplayAppealFlagButton
+                  uid={ownerUid}
+                  username={ownerUsername}
+                  compact
+                  className="h-12 w-12 border-sky-300/55 bg-sky-500/30 shadow-[0_0_24px_rgba(14,165,233,.35)]"
+                />
+              </div>
+            ) : null}
             <h1
               className="font-black leading-none"
               style={{ fontSize: profileUi.usernameSizeMd }}
