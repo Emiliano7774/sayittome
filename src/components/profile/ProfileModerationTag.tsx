@@ -24,6 +24,7 @@ export default function ProfileModerationTag({ tag, className = "" }: Props) {
   const t = useT();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const openGuardUntilRef = useRef(0);
   const [mounted, setMounted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -74,6 +75,26 @@ export default function ProfileModerationTag({ tag, className = "" }: Props) {
     setHovered(false);
   }
 
+  function openPinned() {
+    updateCoords();
+    openGuardUntilRef.current = Date.now() + 450;
+    setPinned(true);
+    setHovered(false);
+  }
+
+  function togglePinned() {
+    if (pinned) {
+      closeAll();
+      return;
+    }
+    openPinned();
+  }
+
+  function handleBackdropClose() {
+    if (Date.now() < openGuardUntilRef.current) return;
+    closeAll();
+  }
+
   useEffect(() => {
     if (!open) return;
 
@@ -100,9 +121,16 @@ export default function ProfileModerationTag({ tag, className = "" }: Props) {
             {pinned ? (
               <button
                 type="button"
-                className="fixed inset-0 z-[999998] cursor-default bg-transparent"
+                className="fixed inset-0 z-[999998] cursor-default touch-manipulation bg-black/20"
                 aria-label="Cerrar"
-                onClick={closeAll}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  handleBackdropClose();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleBackdropClose();
+                }}
               />
             ) : null}
             <div
@@ -111,6 +139,7 @@ export default function ProfileModerationTag({ tag, className = "" }: Props) {
               style={{ top: coords.top, left: coords.left }}
               onMouseEnter={canUseHover() ? reveal : undefined}
               onMouseLeave={canUseHover() ? scheduleHide : undefined}
+              onPointerDown={(event) => event.stopPropagation()}
             >
               <p className="text-xs font-semibold leading-snug text-amber-100/85">
                 {t("profile_moderation_roleplay_hint")}
@@ -123,21 +152,22 @@ export default function ProfileModerationTag({ tag, className = "" }: Props) {
 
   return (
     <>
-      <div className={className}>
+      <div className={["relative z-[30] touch-manipulation", className].join(" ")}>
         <button
           ref={buttonRef}
           type="button"
-          onClick={(event) => {
+          onTouchEnd={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            updateCoords();
-            setPinned((value) => !value);
-            setHovered(false);
+            togglePinned();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            togglePinned();
           }}
           onMouseEnter={canUseHover() ? reveal : undefined}
           onMouseLeave={canUseHover() ? scheduleHide : undefined}
-          onTouchStart={(event) => event.stopPropagation()}
-          className="rounded-full border border-amber-400/35 bg-black/50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-amber-100 backdrop-blur-sm"
+          className="relative z-[31] rounded-full border border-amber-400/35 bg-black/50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-amber-100 backdrop-blur-sm touch-manipulation"
           aria-expanded={open}
         >
           {t("profile_moderation_roleplay_title")}

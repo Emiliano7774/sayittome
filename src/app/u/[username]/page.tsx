@@ -434,7 +434,7 @@ export default function PublicProfilePage() {
         style={{ minHeight: profileUi.heroHeight }}
       >
         {profile.moderationTag ? (
-          <div className="pointer-events-auto absolute left-8 top-[max(1rem,env(safe-area-inset-top))] z-[30] md:left-24 md:top-10">
+          <div className="pointer-events-auto absolute left-8 top-[max(1rem,env(safe-area-inset-top))] z-[40] md:left-24 md:top-10">
             <ProfileModerationTag tag={profile.moderationTag} />
           </div>
         ) : null}

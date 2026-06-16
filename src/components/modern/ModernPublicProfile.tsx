@@ -326,7 +326,7 @@ export default function ModernPublicProfile({
               ) : null}
 
               {profile.moderationTag ? (
-                <div className="absolute left-4 top-4">
+                <div className="pointer-events-auto absolute left-4 top-4 z-20">
                   <ProfileModerationTag tag={profile.moderationTag} />
                 </div>
               ) : null}
