@@ -82,6 +82,11 @@ export function tryCloseNativeOverlays(): boolean {
     return true;
   }
 
+  if (body.classList.contains("sayittome-report-open")) {
+    window.dispatchEvent(new Event("sayittome:close-report"));
+    return true;
+  }
+
   return false;
 }
 

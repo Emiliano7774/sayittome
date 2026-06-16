@@ -14,6 +14,7 @@ const BLOCKED_BODY_CLASSES = [
   "sayittome-sensitive-consent-open",
   "sayittome-story-viewer-open",
   "sayittome-entry-legal-open",
+  "sayittome-report-open",
 ] as const;
 
 export function isShuffleRoute(pathname: string) {

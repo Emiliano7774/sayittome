@@ -19,6 +19,7 @@ const NAV_LAYOUT_CLASSES = [
   "sayittome-profile-video-open",
   "sayittome-chat-open",
   "sayittome-filters-open",
+  "sayittome-report-open",
 ];
 
 function shouldSyncBannerForMutation(mutation: MutationRecord) {

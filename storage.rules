@@ -49,5 +49,10 @@ service firebase.storage {
       allow write: if isSignedIn()
         && request.resource.size < 120 * 1024 * 1024;
     }
+
+    match /report_evidence/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && isAllowedMedia();
+    }
   }
 }
