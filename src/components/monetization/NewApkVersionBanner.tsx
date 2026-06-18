@@ -1,7 +1,8 @@
 "use client";
 
-import ApkDownloadButton from "@/components/monetization/ApkDownloadButton";
+import PlayStoreButton from "@/components/monetization/PlayStoreButton";
 import { useApkReleaseNotice } from "@/hooks/useApkReleaseNotice";
+import { useShowWebOnlyPromo } from "@/hooks/useShowWebOnlyPromo";
 import { formatApkReleaseRemaining } from "@/lib/app/release";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -15,9 +16,10 @@ export default function NewApkVersionBanner({
   className = "",
 }: Props) {
   const t = useT();
+  const showWebPromo = useShowWebOnlyPromo();
   const { show, release, remainingMs } = useApkReleaseNotice();
 
-  if (!show || !release) return null;
+  if (!showWebPromo || !show || !release) return null;
 
   const isModern = variant === "modern";
 
@@ -56,12 +58,12 @@ export default function NewApkVersionBanner({
           </p>
         </div>
 
-        <ApkDownloadButton
+        <PlayStoreButton
           label={t("apk_download")}
           className={
             isModern
-              ? "rounded-full bg-white px-5 py-2.5 text-sm font-normal text-black disabled:opacity-60"
-              : "rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_30px_rgba(105,82,255,0.35)] disabled:opacity-60"
+              ? "rounded-full bg-white px-5 py-2.5 text-sm font-normal text-black transition active:scale-[0.98]"
+              : "rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_30px_rgba(105,82,255,0.35)] transition active:scale-[0.98]"
           }
         />
       </div>

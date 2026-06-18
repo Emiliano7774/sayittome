@@ -170,24 +170,26 @@ const es = {
   shuffle_new_story: "+ Historia",
 
   apk_new_version: "NUEVA VERSIÓN DISPONIBLE",
-  apk_new_version_body: "SayItToMe Android v{version} — actualizá la APK oficial.",
+  apk_new_version_body: "SayItToMe Android v{version} ya está en Google Play.",
   apk_new_version_countdown: "Desaparece en {time}",
-  apk_download: "Descargar APK",
-  apk_section_modern_title: "Descargá la app Android",
+  apk_download: "Ver en Play Store",
+  play_store_badge_line1: "DISPONIBLE EN",
+  play_store_badge_line2: "Google Play",
+  apk_section_modern_title: "Descargá en Google Play",
   apk_section_modern_body:
-    "APK oficial con AdMob integrado, shuffle fluido y experiencia AMOLED premium.",
-  apk_android: "Android APK",
+    "La app oficial de SayItToMe ya está publicada. Shuffle, chats anónimos y stories con la experiencia completa en Android.",
+  apk_android: "Google Play",
   apk_iphone_soon: "iPhone (pronto)",
   apk_section_classic_title: "Descargá la app",
   apk_section_classic_body:
-    "Mientras Play Store/App Store terminan su proceso, podés dejar accesos directos desde acá.",
+    "Instalá SayItToMe desde Google Play y llevá shuffle, chats y stories al celular con la experiencia completa.",
   apk_unavailable: "La APK no está disponible todavía.",
   apk_unavailable_server:
     "La APK todavía no está publicada. Volvé a intentar en unos minutos.",
   apk_download_fail: "No se pudo descargar la APK. Probá de nuevo en unos minutos.",
-  apk_welcome_tag: "Nuevo en SayItToMe",
+  apk_welcome_tag: "Disponible en Google Play",
   apk_welcome_body:
-    "Descargá la app Android oficial para shuffle, chats anónimos y stories con la experiencia completa en el celular.",
+    "La app Android oficial ya está en Play Store: shuffle, chats anónimos y stories con la experiencia completa en el celular.",
   apk_welcome_dismiss: "Cerrar aviso",
 
   shuffle_no_profiles: "No hay perfiles para mostrar.",
@@ -877,24 +879,26 @@ const en: Record<keyof typeof es, string> = {
   shuffle_new_story: "+ Story",
 
   apk_new_version: "NEW VERSION AVAILABLE",
-  apk_new_version_body: "SayItToMe Android v{version} — update the official APK.",
+  apk_new_version_body: "SayItToMe Android v{version} is now on Google Play.",
   apk_new_version_countdown: "Disappears in {time}",
-  apk_download: "Download APK",
-  apk_section_modern_title: "Download the Android app",
+  apk_download: "View on Play Store",
+  play_store_badge_line1: "GET IT ON",
+  play_store_badge_line2: "Google Play",
+  apk_section_modern_title: "Get it on Google Play",
   apk_section_modern_body:
-    "Official APK with integrated AdMob, smooth shuffle and premium AMOLED experience.",
-  apk_android: "Android APK",
+    "The official SayItToMe app is live on Google Play: shuffle, anonymous chats, and stories with the full mobile experience.",
+  apk_android: "Google Play",
   apk_iphone_soon: "iPhone (soon)",
   apk_section_classic_title: "Download the app",
   apk_section_classic_body:
-    "While Play Store/App Store finish their process, you can use direct links from here.",
+    "Install SayItToMe from Google Play and take shuffle, chats, and stories to your phone with the full experience.",
   apk_unavailable: "The APK is not available yet.",
   apk_unavailable_server:
     "The APK is not published yet. Please try again in a few minutes.",
   apk_download_fail: "Could not download the APK. Try again in a few minutes.",
-  apk_welcome_tag: "New to SayItToMe",
+  apk_welcome_tag: "Available on Google Play",
   apk_welcome_body:
-    "Download the official Android app for shuffle, anonymous chats, and stories with the full mobile experience.",
+    "The official Android app is on Play Store: shuffle, anonymous chats, and stories with the full mobile experience.",
   apk_welcome_dismiss: "Dismiss notice",
 
   shuffle_no_profiles: "No profiles to show.",
@@ -1561,24 +1565,26 @@ const it: Record<keyof typeof es, string> = {
   shuffle_new_story: "+ Storia",
 
   apk_new_version: "NUOVA VERSIONE DISPONIBILE",
-  apk_new_version_body: "SayItToMe Android v{version} — aggiorna l'APK ufficiale.",
+  apk_new_version_body: "SayItToMe Android v{version} è ora su Google Play.",
   apk_new_version_countdown: "Scompare tra {time}",
-  apk_download: "Scarica APK",
-  apk_section_modern_title: "Scarica l'app Android",
+  apk_download: "Vedi su Play Store",
+  play_store_badge_line1: "DISPONIBILE SU",
+  play_store_badge_line2: "Google Play",
+  apk_section_modern_title: "Scarica su Google Play",
   apk_section_modern_body:
-    "APK ufficiale con AdMob integrato, shuffle fluido ed esperienza AMOLED premium.",
-  apk_android: "Android APK",
+    "L'app ufficiale SayItToMe è su Google Play: shuffle, chat anonime e stories con l'esperienza completa su Android.",
+  apk_android: "Google Play",
   apk_iphone_soon: "iPhone (presto)",
   apk_section_classic_title: "Scarica l'app",
   apk_section_classic_body:
-    "Mentre Play Store/App Store completano il processo, puoi usare i link diretti da qui.",
+    "Installa SayItToMe da Google Play e porta shuffle, chat e stories sul telefono con l'esperienza completa.",
   apk_unavailable: "L'APK non è ancora disponibile.",
   apk_unavailable_server:
     "L'APK non è ancora pubblicata. Riprova tra qualche minuto.",
   apk_download_fail: "Impossibile scaricare l'APK. Riprova tra qualche minuto.",
-  apk_welcome_tag: "Nuovo su SayItToMe",
+  apk_welcome_tag: "Disponibile su Google Play",
   apk_welcome_body:
-    "Scarica l'app Android ufficiale per shuffle, chat anonime e stories con l'esperienza completa sul telefono.",
+    "L'app Android ufficiale è su Play Store: shuffle, chat anonime e stories con l'esperienza completa sul telefono.",
   apk_welcome_dismiss: "Chiudi avviso",
 
   settings_loading: "Caricamento profilo...",
@@ -1766,24 +1772,26 @@ const de: Record<keyof typeof es, string> = {
   shuffle_new_story: "+ Story",
 
   apk_new_version: "NEUE VERSION VERFÜGBAR",
-  apk_new_version_body: "SayItToMe Android v{version} — aktualisiere die offizielle APK.",
+  apk_new_version_body: "SayItToMe Android v{version} ist jetzt bei Google Play.",
   apk_new_version_countdown: "Verschwindet in {time}",
-  apk_download: "APK herunterladen",
-  apk_section_modern_title: "Android-App herunterladen",
+  apk_download: "Bei Play Store ansehen",
+  play_store_badge_line1: "JETZT BEI",
+  play_store_badge_line2: "Google Play",
+  apk_section_modern_title: "Bei Google Play herunterladen",
   apk_section_modern_body:
-    "Offizielle APK mit integriertem AdMob, flüssigem Shuffle und premium AMOLED-Erlebnis.",
-  apk_android: "Android APK",
+    "Die offizielle SayItToMe-App ist bei Google Play: Shuffle, anonyme Chats und Stories mit dem vollen Mobile-Erlebnis.",
+  apk_android: "Google Play",
   apk_iphone_soon: "iPhone (bald)",
   apk_section_classic_title: "App herunterladen",
   apk_section_classic_body:
-    "Während Play Store/App Store ihren Prozess abschließen, kannst du direkte Links von hier nutzen.",
+    "Installiere SayItToMe über Google Play und nimm Shuffle, Chats und Stories mit dem vollen Erlebnis aufs Handy.",
   apk_unavailable: "Die APK ist noch nicht verfügbar.",
   apk_unavailable_server:
     "Die APK ist noch nicht veröffentlicht. Bitte versuche es in ein paar Minuten erneut.",
   apk_download_fail: "APK konnte nicht heruntergeladen werden. Versuche es später erneut.",
-  apk_welcome_tag: "Neu bei SayItToMe",
+  apk_welcome_tag: "Bei Google Play verfügbar",
   apk_welcome_body:
-    "Lade die offizielle Android-App herunter für Shuffle, anonyme Chats und Stories mit dem vollen Mobile-Erlebnis.",
+    "Die offizielle Android-App ist im Play Store: Shuffle, anonyme Chats und Stories mit dem vollen Mobile-Erlebnis.",
   apk_welcome_dismiss: "Hinweis schließen",
 
   settings_loading: "Profil wird geladen...",
