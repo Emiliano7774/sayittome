@@ -18,14 +18,22 @@ export function resolveUsernameLower(profile: {
 }) {
   const fromField = normalizeUsername(String(profile.usernameLower || "")).toLowerCase();
   if (fromField && fromField !== "usuario" && fromField !== "undefined") {
-    return fromField;
+    return canonicalShuffleUsername(fromField);
   }
 
   const username = normalizeUsername(String(profile.username || "")).toLowerCase();
   if (!username || username === "usuario" || username === "undefined") {
     return "";
   }
-  return username;
+  return canonicalShuffleUsername(username);
+}
+
+/** Looser username match for dedupe: strips trailing punctuation variants. */
+export function canonicalShuffleUsername(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[._-]+$/g, "");
 }
 
 export function resolveShuffleAuthUid(profile: {
@@ -115,6 +123,7 @@ export function shuffleProfileDedupeKeys(profile: {
   usernameLower?: string;
   email?: string;
   photo?: string;
+  fotos?: string[];
 }) {
   const keys = new Set<string>();
   const identityKey = shuffleProfileIdentityKey(profile);
@@ -122,12 +131,20 @@ export function shuffleProfileDedupeKeys(profile: {
   const uid = String(profile.uid || "").trim();
   const authUid = String(profile.authUid || "").trim();
   const email = String(profile.email || "").trim().toLowerCase();
-  const photoKey = normalizeShufflePhotoKey(profile.photo);
+  const photoKey = normalizeShufflePhotoKey(
+    profile.photo || (Array.isArray(profile.fotos) ? profile.fotos[0] : ""),
+  );
 
   if (identityKey) keys.add(identityKey);
-  if (usernameLower) keys.add(`ul:${usernameLower}`);
+  if (usernameLower) {
+    keys.add(`ul:${usernameLower}`);
+    keys.add(`uln:${usernameLower}`);
+  }
   if (authUid) keys.add(`auth:${authUid}`);
-  if (uid) keys.add(`id:${uid}`);
+  if (uid) {
+    keys.add(`id:${uid}`);
+    if (authUid && authUid !== uid) keys.add(`auth:${uid}`);
+  }
   if (email.includes("@")) keys.add(`e:${email}`);
   if (photoKey) keys.add(`p:${photoKey}`);
 

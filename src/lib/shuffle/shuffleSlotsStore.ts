@@ -70,6 +70,7 @@ export function setShuffleSlots(
     }
   }
 
+  dedupeFilledSlots();
   scheduleFlush();
 }
 
@@ -85,21 +86,12 @@ export function patchShuffleProfileModerationTag(uid: string, moderationTag: str
   scheduleFlush();
 }
 
-function profilesShareSlotIdentity(
-  left: ShuffleProfile | null,
-  right: ShuffleProfile | null,
-) {
-  if (!left || !right) return false;
-  const rightKeys = new Set(shuffleProfileDedupeKeys(right));
-  return shuffleProfileDedupeKeys(left).some((key) => rightKeys.has(key));
-}
-
 export function setShuffleSlotsWithFeatured(
   featured: ShuffleProfile[],
   pool: ShuffleProfile[],
   indices: Int32Array,
   count: number,
-  forceReplace = false,
+  _forceReplace = false,
 ) {
   const used = new Set<string>();
   const uniqueFeatured: ShuffleProfile[] = [];
@@ -128,31 +120,43 @@ export function setShuffleSlotsWithFeatured(
 
   for (let slot = 0; slot < featuredCount; slot++) {
     const next = uniqueFeatured[slot] ?? null;
-    const prev = slots[slot];
-    if (forceReplace || !profilesShareSlotIdentity(prev, next)) {
-      slots[slot] = next;
-      dirtySlots.add(slot);
-    }
+    slots[slot] = next;
+    dirtySlots.add(slot);
   }
 
   for (let slot = 0; slot < regularCount; slot++) {
     const targetSlot = featuredCount + slot;
-    const next = regularSlots[slot]?.profile ?? null;
-    const prev = slots[targetSlot];
-    if (forceReplace || !profilesShareSlotIdentity(prev, next)) {
-      slots[targetSlot] = next;
-      dirtySlots.add(targetSlot);
-    }
+    slots[targetSlot] = regularSlots[slot]?.profile ?? null;
+    dirtySlots.add(targetSlot);
   }
 
   for (let slot = featuredCount + regularCount; slot < SHUFFLE_WINDOW_SIZE; slot++) {
-    if (forceReplace || slots[slot] !== null) {
+    if (slots[slot] !== null) {
       slots[slot] = null;
       dirtySlots.add(slot);
     }
   }
 
+  dedupeFilledSlots();
   scheduleFlush();
+}
+
+function dedupeFilledSlots() {
+  const used = new Set<string>();
+
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = slots[slot];
+    if (!profile) continue;
+
+    const keys = shuffleProfileDedupeKeys(profile);
+    if (keys.length > 0 && keys.some((key) => used.has(key))) {
+      slots[slot] = null;
+      dirtySlots.add(slot);
+      continue;
+    }
+
+    for (const key of keys) used.add(key);
+  }
 }
 
 export function getShuffleSlotProfile(slot: number) {
