@@ -73,6 +73,18 @@ export function setShuffleSlots(
   scheduleFlush();
 }
 
+export function patchShuffleProfileModerationTag(uid: string, moderationTag: string) {
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = slots[slot];
+    if (!profile || profile.uid !== uid) continue;
+
+    slots[slot] = { ...profile, moderationTag };
+    dirtySlots.add(slot);
+  }
+
+  scheduleFlush();
+}
+
 function profilesShareSlotIdentity(
   left: ShuffleProfile | null,
   right: ShuffleProfile | null,

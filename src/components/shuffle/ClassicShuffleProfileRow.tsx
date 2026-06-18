@@ -3,6 +3,8 @@
 import { memo } from "react";
 
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
+import AdminShuffleRoleplayButton from "@/components/shuffle/AdminShuffleRoleplayButton";
+import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
@@ -36,6 +38,11 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
         >
           <h2 className={`truncate ${tokens.nameClass}`}>
             {username}
+            {profile.moderationTag === "roleplay" ? (
+              <span className="ml-2 inline-flex align-middle">
+                <ProfileModerationTag tag="roleplay" />
+              </span>
+            ) : null}
             {profile.shuffleFeatured ? (
               <span className="ml-2 inline-flex align-middle rounded-full bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-orange-300">
                 ★
@@ -44,6 +51,8 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
           </h2>
           <p className={`mt-0.5 ${tokens.bioClass}`}>{bio}</p>
         </button>
+
+        <AdminShuffleRoleplayButton profile={profile} variant="classic" />
       </div>
     </div>
   );

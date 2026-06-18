@@ -4,6 +4,7 @@ export type ShuffleProfile = {
   username: string;
   usernameLower?: string;
   email?: string;
+  moderationTag?: string;
   bio: string;
   photo: string;
   coverPhoto?: string;

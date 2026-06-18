@@ -5,6 +5,8 @@ import Link from "next/link";
 import { UserRound } from "lucide-react";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
+import AdminShuffleRoleplayButton from "@/components/shuffle/AdminShuffleRoleplayButton";
+import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -18,7 +20,13 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
   const subtext = profile.bio?.trim() || "Perfil SayItToMe";
 
   return (
-    <Link href={href} className="relative block w-full">
+    <div className="relative block w-full">
+      <AdminShuffleRoleplayButton
+        profile={profile}
+        variant="modern"
+        className="absolute right-3 top-3 z-30"
+      />
+      <Link href={href} className="relative block w-full">
       <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
       <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
         <div className="relative aspect-[3/4] w-full overflow-hidden">
@@ -48,6 +56,12 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
             <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full border border-orange-400/40 bg-black/60 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-300 backdrop-blur-sm">
               ★ Destacado
             </span>
+          ) : null}
+
+          {profile.moderationTag === "roleplay" ? (
+            <div className="absolute left-3 top-12 z-20">
+              <ProfileModerationTag tag="roleplay" />
+            </div>
           ) : null}
 
           {profile.showOnline ? (
@@ -101,6 +115,7 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
         </div>
       </div>
     </Link>
+    </div>
   );
 }
 
@@ -111,5 +126,6 @@ export default memo(
     a.profile.username === b.profile.username &&
     a.profile.photo === b.profile.photo &&
     a.profile.showOnline === b.profile.showOnline &&
-    a.profile.shuffleFeatured === b.profile.shuffleFeatured,
+    a.profile.shuffleFeatured === b.profile.shuffleFeatured &&
+    a.profile.moderationTag === b.profile.moderationTag,
 );

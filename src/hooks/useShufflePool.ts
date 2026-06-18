@@ -548,6 +548,22 @@ export function useShufflePool() {
 
     window.addEventListener("sayittome:shuffle", onShuffleEvent);
 
+    function onProfileModeration(event: Event) {
+      const detail = (event as CustomEvent<{ uid?: string; moderationTag?: string }>).detail;
+      const uid = String(detail?.uid || "");
+      const moderationTag = String(detail?.moderationTag || "");
+      if (!uid) return;
+
+      poolRef.current = poolRef.current.map((profile) =>
+        profile.uid === uid ? { ...profile, moderationTag } : profile,
+      );
+      activePoolRef.current = activePoolRef.current.map((profile) =>
+        profile.uid === uid ? { ...profile, moderationTag } : profile,
+      );
+    }
+
+    window.addEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
+
     const presenceTimer = window.setInterval(() => {
       if (poolRef.current.length === 0) return;
 
@@ -565,6 +581,7 @@ export function useShufflePool() {
       window.clearInterval(presenceTimer);
       window.clearInterval(poolSyncTimer);
       window.removeEventListener("sayittome:shuffle", onShuffleEvent);
+      window.removeEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
       abortRef.current?.abort();
     };

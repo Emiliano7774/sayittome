@@ -63,6 +63,7 @@ type ApiProfile = {
   adminBlurStories?: boolean;
   adminBlurGallery?: boolean;
   banned?: boolean;
+  moderationTag?: string;
 };
 
 let cachedProfiles: ApiProfile[] = [];
@@ -301,6 +302,7 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
       raw.suspendido === true ||
       String(raw.estado || "") === "bloqueado",
     mostrarUltimaVez: raw.mostrarUltimaVez !== false,
+    moderationTag: String(raw.moderationTag || ""),
   };
 
   return withPresenceBadge(profile);

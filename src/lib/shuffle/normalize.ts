@@ -80,6 +80,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
           adminBlurFotosPerfil,
           adminBlurGallery,
         }),
+        moderationTag: String(item?.moderationTag || ""),
         shuffleFeatured: item?.shuffleFeatured === true,
       };
     })
