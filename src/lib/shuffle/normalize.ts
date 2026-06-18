@@ -2,7 +2,7 @@ import { isLastSeenPublic } from "@/lib/profile/lastSeenVisibility";
 import { isActiveWithinWindow } from "@/lib/presence";
 import { galleryRequiresBlur } from "@/lib/moderation/blur";
 import { normalizeUsername } from "@/lib/profile/username";
-import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
+import { dedupeShuffleProfiles, resolveUsernameLower } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
@@ -30,7 +30,13 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
 
       return {
         uid: String(item?.uid || item?.id || item?.username || `profile-${index}`),
-        username: normalizeUsername(String(item?.username || "usuario")) || "usuario",
+        username:
+          normalizeUsername(String(item?.username || item?.usernameLower || "usuario")) ||
+          "usuario",
+        usernameLower: resolveUsernameLower({
+          username: String(item?.username || ""),
+          usernameLower: String(item?.usernameLower || ""),
+        }),
         email: String(item?.email || ""),
         bio: String(item?.bio || "Sin descripcion."),
         photo: String(item?.photo || item?.fotoPrincipal || item?.photoURL || ""),

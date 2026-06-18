@@ -3,6 +3,7 @@ import { normalizeUsername } from "@/lib/profile/username";
 type DedupeableProfile = {
   uid: string;
   username: string;
+  usernameLower?: string;
   email?: string;
   photo?: string;
   presenceAt?: string;
@@ -10,12 +11,27 @@ type DedupeableProfile = {
   shuffleFeatured?: boolean;
 };
 
-function normalizedUsername(profile: { username?: string }) {
+export function resolveUsernameLower(profile: {
+  username?: string;
+  usernameLower?: string;
+}) {
+  const fromField = String(profile.usernameLower || "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase();
+  if (fromField && fromField !== "usuario" && fromField !== "undefined") {
+    return fromField;
+  }
+
   const username = normalizeUsername(String(profile.username || "")).toLowerCase();
   if (!username || username === "usuario" || username === "undefined") {
     return "";
   }
   return username;
+}
+
+function normalizedUsername(profile: { username?: string; usernameLower?: string }) {
+  return resolveUsernameLower(profile);
 }
 
 export function normalizeShufflePhotoKey(photo?: string) {
@@ -36,9 +52,10 @@ export function normalizeShufflePhotoKey(photo?: string) {
 export function shuffleProfileIdentityKey(profile: {
   uid?: string;
   username?: string;
+  usernameLower?: string;
   email?: string;
 }) {
-  const username = normalizedUsername(profile);
+  const username = resolveUsernameLower(profile);
   if (username) return `u:${username}`;
 
   const email = String(profile.email || "").trim().toLowerCase();
@@ -85,16 +102,19 @@ function pickBetterProfile<T extends DedupeableProfile>(a: T, b: T) {
 export function shuffleProfileDedupeKeys(profile: {
   uid?: string;
   username?: string;
+  usernameLower?: string;
   email?: string;
   photo?: string;
 }) {
   const keys = new Set<string>();
   const identityKey = shuffleProfileIdentityKey(profile);
+  const usernameLower = resolveUsernameLower(profile);
   const uid = String(profile.uid || "").trim();
   const email = String(profile.email || "").trim().toLowerCase();
   const photoKey = normalizeShufflePhotoKey(profile.photo);
 
   if (identityKey) keys.add(identityKey);
+  if (usernameLower) keys.add(`ul:${usernameLower}`);
   if (uid) keys.add(`id:${uid}`);
   if (email.includes("@")) keys.add(`e:${email}`);
   if (photoKey) keys.add(`p:${photoKey}`);
@@ -107,8 +127,8 @@ function dedupeKeysForProfile(profile: DedupeableProfile) {
 }
 
 export function shuffleProfilesShareIdentity(
-  left: { uid?: string; username?: string; email?: string },
-  right: { uid?: string; username?: string; email?: string },
+  left: { uid?: string; username?: string; usernameLower?: string; email?: string },
+  right: { uid?: string; username?: string; usernameLower?: string; email?: string },
 ) {
   const rightKeys = new Set(shuffleProfileDedupeKeys(right));
   return shuffleProfileDedupeKeys(left).some((key) => rightKeys.has(key));

@@ -1,6 +1,7 @@
 export type ShuffleProfile = {
   uid: string;
   username: string;
+  usernameLower?: string;
   email?: string;
   bio: string;
   photo: string;

@@ -9,7 +9,7 @@ import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVis
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { resolveProfileCountryCode } from "@/lib/geo/countries";
 import { normalizeUsername } from "@/lib/profile/username";
-import { dedupeShuffleProfiles, shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
+import { dedupeShuffleProfiles, resolveUsernameLower, shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
 import {
   parseShuffleFiltersFromSearchParams,
   profileMatchesShuffleServerFilters,
@@ -35,6 +35,7 @@ const ANON_ACTIVE_MS = 90 * 1000;
 type ApiProfile = {
   uid: string;
   username: string;
+  usernameLower?: string;
   email?: string;
   bio: string;
   photo: string;
@@ -258,11 +259,15 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
     Number(raw.historias || 0);
 
   const profile: ApiProfile = {
-    uid: String(raw.uid || raw.id || fallbackUid || ""),
+    uid: String(raw.id || raw.uid || fallbackUid || ""),
     username:
       normalizeUsername(
         String(raw.username || raw.usernameLower || raw.nombre || "usuario"),
       ) || "usuario",
+    usernameLower: resolveUsernameLower({
+      username: String(raw.username || raw.nombre || ""),
+      usernameLower: String(raw.usernameLower || ""),
+    }),
     bio: String(raw.bio || raw.descripcion || "Sin descripcion."),
     photo: String(raw.fotoPrincipal || raw.photoURL || fotos[0] || ""),
     coverPhoto: String(

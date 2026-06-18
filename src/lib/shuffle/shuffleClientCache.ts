@@ -2,7 +2,7 @@ import { readClientCache, writeClientCache } from "@/lib/cache/clientCache";
 import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
-const SHUFFLE_POOL_KEY = "sayittome:shuffle:pool:v7";
+const SHUFFLE_POOL_KEY = "sayittome:shuffle:pool:v8";
 const SHUFFLE_STATS_KEY = "sayittome:shuffle:stats:v1";
 const POOL_TTL_MS = 8 * 60_000;
 const STATS_TTL_MS = 5 * 60_000;
