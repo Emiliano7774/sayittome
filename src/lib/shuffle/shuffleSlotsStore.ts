@@ -99,6 +99,7 @@ export function setShuffleSlotsWithFeatured(
   pool: ShuffleProfile[],
   indices: Int32Array,
   count: number,
+  forceReplace = false,
 ) {
   const used = new Set<string>();
   const uniqueFeatured: ShuffleProfile[] = [];
@@ -128,7 +129,7 @@ export function setShuffleSlotsWithFeatured(
   for (let slot = 0; slot < featuredCount; slot++) {
     const next = uniqueFeatured[slot] ?? null;
     const prev = slots[slot];
-    if (!profilesShareSlotIdentity(prev, next)) {
+    if (forceReplace || !profilesShareSlotIdentity(prev, next)) {
       slots[slot] = next;
       dirtySlots.add(slot);
     }
@@ -138,14 +139,14 @@ export function setShuffleSlotsWithFeatured(
     const targetSlot = featuredCount + slot;
     const next = regularSlots[slot]?.profile ?? null;
     const prev = slots[targetSlot];
-    if (!profilesShareSlotIdentity(prev, next)) {
+    if (forceReplace || !profilesShareSlotIdentity(prev, next)) {
       slots[targetSlot] = next;
       dirtySlots.add(targetSlot);
     }
   }
 
   for (let slot = featuredCount + regularCount; slot < SHUFFLE_WINDOW_SIZE; slot++) {
-    if (slots[slot] !== null) {
+    if (forceReplace || slots[slot] !== null) {
       slots[slot] = null;
       dirtySlots.add(slot);
     }

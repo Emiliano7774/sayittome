@@ -130,7 +130,9 @@ export function useShufflePool() {
     searchRef.current = search;
   }, [search]);
 
-  const applyWindowFromPool = useCallback((pool: ShuffleProfile[]) => {
+  const applyWindowFromPool = useCallback(
+    (pool: ShuffleProfile[], options?: { forceReplace?: boolean }) => {
+      const forceReplace = options?.forceReplace === true;
     const featured = dedupeShuffleProfiles(featuredRef.current);
     featuredRef.current = featured;
     const featuredKeys = new Set<string>();
@@ -150,11 +152,12 @@ export function useShufflePool() {
 
     if (len === 0 && featuredCount === 0) {
       windowCountRef.current = 0;
-      setShuffleSlotsWithFeatured([], [], windowIndicesRef.current, 0);
+      setShuffleSlotsWithFeatured([], [], windowIndicesRef.current, 0, true);
       setListReady(false);
       return;
     }
 
+    const excludeKeys = forceReplace ? undefined : recentExcludeKeys();
     const remainingSlots = Math.max(0, SHUFFLE_WINDOW_SIZE - featuredCount);
     const regularCount =
       len > 0
@@ -163,7 +166,7 @@ export function useShufflePool() {
             scratchIndicesRef.current,
             windowIndicesRef.current,
             remainingSlots,
-            recentExcludeKeys(),
+            excludeKeys,
           )
         : 0;
 
@@ -181,6 +184,7 @@ export function useShufflePool() {
       eligiblePool,
       windowIndicesRef.current,
       regularCount,
+      forceReplace,
     );
     setListReady(true);
   }, []);
@@ -212,7 +216,12 @@ export function useShufflePool() {
   );
 
   const filterActivePool = useCallback(
-    (needle: string, nextFilters = filtersRef.current) => {
+    (
+      needle: string,
+      nextFilters = filtersRef.current,
+      options?: { forceWindow?: boolean },
+    ) => {
+      const forceWindow = options?.forceWindow === true;
       const q = needle.trim();
       const storyOwnerUids = storyOwnerUidsRef.current;
       const now = Date.now();
@@ -242,7 +251,7 @@ export function useShufflePool() {
           isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
         ).length,
       );
-      applyWindowFromPool(activePoolRef.current);
+      applyWindowFromPool(activePoolRef.current, { forceReplace: forceWindow });
     },
     [applyWindowFromPool],
   );
@@ -365,7 +374,7 @@ export function useShufflePool() {
 
     shuffleMark("shuffle-click-end");
     shuffleMeasure("shuffle-click", "shuffle-click-start", "shuffle-click-end");
-  }, []);
+  }, [applyWindowFromPool]);
 
   const reloadDefaultShuffle = useCallback(async () => {
     await loadProfiles({ q: "", force: true });
@@ -444,9 +453,10 @@ export function useShufflePool() {
       setFiltersOpen(false);
       setFiltersState(nextFilters);
       saveStoredShuffleFilters(nextFilters);
+      recentlyShownKeysRef.current = [];
 
       const runFilter = () => {
-        filterActivePool(searchRef.current.trim(), nextFilters);
+        filterActivePool(searchRef.current.trim(), nextFilters, { forceWindow: true });
       };
 
       runFilter();
@@ -457,7 +467,7 @@ export function useShufflePool() {
             storyOwnerUidsRef.current = new Set(
               getCachedStoryGroups().map((group) => group.ownerUid),
             );
-            filterActivePool(searchRef.current.trim(), nextFilters);
+            filterActivePool(searchRef.current.trim(), nextFilters, { forceWindow: true });
           })
           .catch(() => undefined);
       }
@@ -471,7 +481,8 @@ export function useShufflePool() {
     setFiltersOpen(false);
     setFiltersState(cleared);
     saveStoredShuffleFilters(cleared);
-    filterActivePool(searchRef.current.trim(), cleared);
+    recentlyShownKeysRef.current = [];
+    filterActivePool(searchRef.current.trim(), cleared, { forceWindow: true });
   }, [filterActivePool]);
 
   const handleListClick = useCallback(
