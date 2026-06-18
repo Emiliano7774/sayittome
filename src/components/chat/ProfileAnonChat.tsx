@@ -328,12 +328,14 @@ export default function ProfileAnonChat({
   const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
   const viewerId =
     currentUid && targetUid && currentUid === targetUid ? currentUid : anonSenderId;
+  const hasChatActivity = messages.length > 0;
   const classicChatEngaged =
     isClassic &&
     (isOwnerViewing
-      ? messages.some((message) => message.mine)
-      : messages.some((message) => message.mine) || messages.length > 0);
-  const showClassicIntro = isClassic && !classicChatEngaged;
+      ? hasChatActivity
+      : messages.some((message) => message.mine) || hasChatActivity);
+  const showClassicIntro = isClassic && !isOwnerViewing && !classicChatEngaged;
+  const showModernVisitorIntro = !isClassic && !isOwnerViewing && !hasChatActivity;
   const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
   const displayPeerName = isOwnerViewing
     ? formatAnonSessionLabel(anonSenderId)
@@ -931,7 +933,7 @@ export default function ProfileAnonChat({
           <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
             {t("chat_anon_you_are", { session: anonSenderId || anonSession })}
           </p>
-        ) : (
+        ) : showModernVisitorIntro ? (
           <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
             <div className="flex flex-col items-center">
               <StoryAvatarButton
@@ -960,7 +962,7 @@ export default function ProfileAnonChat({
               </p>
             </div>
           </div>
-        )}
+        ) : null}
 
         <div
           className={[
