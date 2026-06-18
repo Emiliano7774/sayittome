@@ -3,6 +3,7 @@
 import { memo } from "react";
 
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
+import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
@@ -44,9 +45,15 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
           </h2>
           <p className={`mt-0.5 ${tokens.bioClass}`}>{bio}</p>
         </button>
+
+        <AdminProfileRoleplayButton
+          profile={profile}
+          variant="classic"
+          appearance="shuffle"
+        />
       </div>
     </div>
   );
 }
 
-export default memo(ClassicShuffleProfileRow);
+export default memo(ClassicShuffleProfileRow, (a, b) => a.profile.uid === b.profile.uid && a.profile.moderationTag === b.profile.moderationTag);

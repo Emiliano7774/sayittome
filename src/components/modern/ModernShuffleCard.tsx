@@ -5,6 +5,7 @@ import Link from "next/link";
 import { UserRound } from "lucide-react";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
+import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -19,6 +20,15 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
 
   return (
     <div className="relative block w-full">
+      <AdminProfileRoleplayButton
+        profile={profile}
+        variant="modern"
+        appearance="shuffle"
+        className={[
+          "absolute right-3 z-30",
+          profile.showOnline ? "top-12" : "top-3",
+        ].join(" ")}
+      />
       <Link href={href} className="relative block w-full">
       <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
       <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
@@ -113,5 +123,6 @@ export default memo(
     a.profile.username === b.profile.username &&
     a.profile.photo === b.profile.photo &&
     a.profile.showOnline === b.profile.showOnline &&
-    a.profile.shuffleFeatured === b.profile.shuffleFeatured,
+    a.profile.shuffleFeatured === b.profile.shuffleFeatured &&
+    a.profile.moderationTag === b.profile.moderationTag,
 );
