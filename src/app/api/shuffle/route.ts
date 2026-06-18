@@ -4,7 +4,7 @@ import { getActiveBoostProfiles } from "@/lib/boost/service";
 import { BOOST_TOP_SLOTS } from "@/lib/boost/constants";
 import { readPublicStats, writePublicStats } from "@/lib/firestore/publicStats";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
-import { parseFirestoreDoc } from "@/lib/firestore/rest";
+import { parseFirestoreDoc, runCollectionQueryAll } from "@/lib/firestore/rest";
 import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVisibility";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { resolveProfileCountryCode } from "@/lib/geo/countries";
@@ -23,7 +23,12 @@ const PROJECT_ID = "sayittome-app";
 const PROFILE_CACHE_MS = 8 * 60_000;
 const ANON_CACHE_MS = 5 * 60_000;
 const STATS_REFRESH_MS = 10 * 60_000;
-const SHUFFLE_POOL_LIMIT = 80;
+/** Max profiles returned in one API response (client holds the full shuffle pool). */
+const SHUFFLE_RESPONSE_LIMIT = 10_000;
+/** Max profiles considered when searching by username text. */
+const SHUFFLE_SEARCH_LIMIT = 200;
+const SHUFFLE_FETCH_PAGE_SIZE = 500;
+const SHUFFLE_FETCH_MAX_PAGES = 40;
 const ANON_SCAN_LIMIT = 40;
 const ANON_ACTIVE_MS = 90 * 1000;
 
@@ -170,7 +175,7 @@ async function runQuery(
 
   const structuredQuery: Record<string, unknown> = {
     from: [{ collectionId }],
-    limit: options?.limit || SHUFFLE_POOL_LIMIT,
+    limit: options?.limit || 500,
   };
 
   if (options?.orderBy) {
@@ -225,92 +230,79 @@ async function runCollectionCount(collectionId: string) {
   return Number(value || 0);
 }
 
-function docToProfile(doc: any): ApiProfile {
-  const fields = doc.fields || {};
-  const fotos = fieldArrayStrings(fields, "fotos");
-  const intereses = fieldArrayStrings(fields, "intereses");
-  const etiquetas = fieldArrayStrings(fields, "etiquetas");
-  const searchKeywords = fieldArrayStrings(fields, "searchKeywords");
+function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfile {
+  const fotos = Array.isArray(raw.fotos)
+    ? raw.fotos.map((value) => String(value || "")).filter(Boolean)
+    : [];
+  const intereses = Array.isArray(raw.intereses)
+    ? raw.intereses.map((value) => String(value || "")).filter(Boolean)
+    : [];
+  const etiquetas = Array.isArray(raw.etiquetas)
+    ? raw.etiquetas.map((value) => String(value || "")).filter(Boolean)
+    : [];
+  const searchKeywords = Array.isArray(raw.searchKeywords)
+    ? raw.searchKeywords.map((value) => String(value || "")).filter(Boolean)
+    : [];
 
-  const presenceAt =
-    fieldTimestamp(fields, "lastActiveAt") ||
-    fieldTimestamp(fields, "lastSeenAt") ||
-    fieldTimestamp(fields, "lastActive");
-
-  const lastActive =
-    presenceAt ||
-    fieldTimestamp(fields, "updatedAt") ||
-    fieldTimestamp(fields, "createdAt");
+  const presenceAt = String(
+    raw.lastActiveAt || raw.lastSeenAt || raw.lastActive || "",
+  );
+  const lastActive = String(
+    presenceAt || raw.updatedAt || raw.createdAt || raw.fechaCreacion || "",
+  );
 
   const historiasActivasCount =
-    fieldInt(fields, "historiasActivasCount") ||
-    fieldInt(fields, "activeStoriesCount") ||
-    fieldInt(fields, "storiesCount") ||
-    fieldInt(fields, "historias");
+    Number(raw.historiasActivasCount || 0) ||
+    Number(raw.activeStoriesCount || 0) ||
+    Number(raw.storiesCount || 0) ||
+    Number(raw.historias || 0);
 
   const profile: ApiProfile = {
-    uid:
-      fieldString(fields, "uid") ||
-      String(doc.name || "").split("/").pop() ||
-      "",
+    uid: String(raw.uid || raw.id || fallbackUid || ""),
     username:
       normalizeUsername(
-        fieldString(fields, "username") ||
-          fieldString(fields, "usernameLower") ||
-          fieldString(fields, "nombre") ||
-          "usuario",
+        String(raw.username || raw.usernameLower || raw.nombre || "usuario"),
       ) || "usuario",
-    bio:
-      fieldString(fields, "bio") ||
-      fieldString(fields, "descripcion") ||
-      "Sin descripcion.",
-    photo:
-      fieldString(fields, "fotoPrincipal") ||
-      fieldString(fields, "photoURL") ||
-      fotos[0] ||
-      "",
-    coverPhoto:
-      fieldString(fields, "fotoPortada") ||
-      fieldString(fields, "coverPhoto") ||
-      fieldString(fields, "portada") ||
-      fieldString(fields, "heroPhoto") ||
-      "",
-    coverVideo:
-      fieldString(fields, "videoPortada") ||
-      fieldString(fields, "coverVideo") ||
-      "",
+    bio: String(raw.bio || raw.descripcion || "Sin descripcion."),
+    photo: String(raw.fotoPrincipal || raw.photoURL || fotos[0] || ""),
+    coverPhoto: String(
+      raw.fotoPortada || raw.coverPhoto || raw.portada || raw.heroPhoto || "",
+    ),
+    coverVideo: String(raw.videoPortada || raw.coverVideo || ""),
     lastActive,
     presenceAt: presenceAt || undefined,
-    online: fieldBool(fields, "online"),
-    email: fieldString(fields, "email"),
-    provincia: fieldString(fields, "provincia") || fieldString(fields, "region"),
-    ciudad: fieldString(fields, "ciudad"),
-    pais:
-      fieldString(fields, "pais") ||
-      fieldString(fields, "country") ||
-      fieldString(fields, "countryCode"),
-    sexo: fieldString(fields, "sexo"),
-    edad: fieldInt(fields, "edad"),
+    online: raw.online === true,
+    email: String(raw.email || ""),
+    provincia: String(raw.provincia || raw.region || ""),
+    ciudad: String(raw.ciudad || ""),
+    pais: String(raw.pais || raw.country || raw.countryCode || ""),
+    sexo: String(raw.sexo || ""),
+    edad: Number(raw.edad || 0),
     intereses,
     etiquetas,
     fotos,
     searchKeywords,
     historiasActivasCount,
     hasActiveStories:
-      fieldBool(fields, "hasActiveStories") ||
-      fieldBool(fields, "tieneHistoriasActivas"),
-    adminBlurProfilePhoto: fieldBool(fields, "adminBlurProfilePhoto"),
-    adminBlurFotosPerfil: fieldBool(fields, "adminBlurFotosPerfil"),
-    adminBlurStories: fieldBool(fields, "adminBlurStories"),
-    adminBlurGallery: fieldBool(fields, "adminBlurGallery"),
+      raw.hasActiveStories === true || raw.tieneHistoriasActivas === true,
+    adminBlurProfilePhoto: raw.adminBlurProfilePhoto === true,
+    adminBlurFotosPerfil: raw.adminBlurFotosPerfil === true,
+    adminBlurStories: raw.adminBlurStories === true,
+    adminBlurGallery: raw.adminBlurGallery === true,
     banned:
-      fieldBool(fields, "banned") ||
-      fieldBool(fields, "suspendido") ||
-      fieldString(fields, "estado") === "bloqueado",
-    mostrarUltimaVez: fields?.mostrarUltimaVez?.booleanValue !== false,
+      raw.banned === true ||
+      raw.suspendido === true ||
+      String(raw.estado || "") === "bloqueado",
+    mostrarUltimaVez: raw.mostrarUltimaVez !== false,
   };
 
   return withPresenceBadge(profile);
+}
+
+function docToProfile(doc: any): ApiProfile {
+  const raw = parseFirestoreDoc(doc);
+  const fallbackUid = String(doc?.name || "").split("/").pop() || "";
+  return rawToProfile(raw, fallbackUid);
 }
 
 function profileMatchesQueryText(profile: ApiProfile, query: string) {
@@ -362,7 +354,7 @@ function appendSearchProfile(
   results.push(profile);
 }
 
-async function searchProfilesByQuery(query: string, limit = SHUFFLE_POOL_LIMIT) {
+async function searchProfilesByQuery(query: string, limit = SHUFFLE_SEARCH_LIMIT) {
   const q = normalizeUsername(query).toLowerCase();
   if (!q) return [];
 
@@ -460,6 +452,10 @@ async function getRegisteredCountCached(force = false) {
   return count;
 }
 
+function isShuffleEligibleProfile(profile: ApiProfile) {
+  return !profile.banned && !!profile.username && profile.username.toLowerCase() !== "usuario";
+}
+
 async function getProfilesCached(force = false) {
   const now = Date.now();
 
@@ -467,25 +463,19 @@ async function getProfilesCached(force = false) {
     return cachedProfiles;
   }
 
-  let docs: any[] = [];
-
-  try {
-    docs = await runQuery("usuarios", {
-      limit: SHUFFLE_POOL_LIMIT,
-      orderBy: { field: "lastActiveAt", direction: "DESCENDING" },
-    });
-  } catch {
-    docs = await runQuery("usuarios", { limit: SHUFFLE_POOL_LIMIT });
-  }
+  const rows = await runCollectionQueryAll(
+    "usuarios",
+    "usernameLower",
+    "ASCENDING",
+    SHUFFLE_FETCH_PAGE_SIZE,
+    SHUFFLE_FETCH_MAX_PAGES,
+  );
 
   const profiles = dedupeShuffleProfiles(
-    docs
-      .map((doc: any) => ({ doc, raw: parseFirestoreDoc(doc) }))
-      .filter(({ raw }) => isPublicProfile(raw))
-      .map(({ doc }) => withResolvedCountry(docToProfile(doc)))
-      .filter(
-        (p: ApiProfile) => !p.banned && !!p.username && p.username.toLowerCase() !== "usuario",
-      ),
+    rows
+      .filter((raw) => isPublicProfile(raw))
+      .map((raw) => withResolvedCountry(rawToProfile(raw)))
+      .filter(isShuffleEligibleProfile),
   );
 
   cachedProfiles = profiles;
@@ -560,7 +550,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
 
     const q = String(searchParams.get("q") || "").trim().toLowerCase();
-    const limit = Math.min(Number(searchParams.get("limit") || 35) || 35, SHUFFLE_POOL_LIMIT);
+    const poolFull = searchParams.get("pool") === "full";
+    const requestedLimit = Number(searchParams.get("limit") || 0);
     const shouldShuffle = searchParams.get("shuffle") === "1";
     const countOnly = searchParams.get("countOnly") === "1";
     const force = searchParams.get("force") === "1";
@@ -582,7 +573,7 @@ export async function GET(req: Request) {
     }
 
     const allProfiles = q
-      ? await searchProfilesByQuery(q, SHUFFLE_POOL_LIMIT)
+      ? await searchProfilesByQuery(q, SHUFFLE_SEARCH_LIMIT)
       : await getProfilesCached(force);
     const filteredByDiscovery = allProfiles.filter((profile) =>
       profileMatchesShuffleServerFilters(profile, filters),
@@ -612,13 +603,19 @@ export async function GET(req: Request) {
       }
     }
 
+    const responseLimit = poolFull
+      ? filtered.length
+      : requestedLimit > 0
+        ? Math.min(requestedLimit, SHUFFLE_RESPONSE_LIMIT)
+        : filtered.length;
+
     const selected = dedupeShuffleProfiles(
       ordered
         .filter((profile) => {
           const keys = shuffleProfileDedupeKeys(profile);
           return keys.length === 0 || !keys.some((key) => featuredKeys.has(key));
         })
-        .slice(0, limit)
+        .slice(0, Math.min(responseLimit, filtered.length))
         .map((profile) => withPresenceBadge(profile)),
     );
 

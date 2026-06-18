@@ -259,7 +259,7 @@ export function useShufflePool() {
 
       try {
         const params = new URLSearchParams({
-          limit: "80",
+          pool: "full",
           shuffle: "0",
         });
         if (q) params.set("q", q);
