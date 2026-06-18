@@ -37,7 +37,10 @@ import {
   shuffleMark,
   shuffleMeasure,
 } from "@/lib/shuffle/shuffleProfiler";
-import { setShuffleSlotsWithFeatured } from "@/lib/shuffle/shuffleSlotsStore";
+import {
+  patchShuffleSlotPresence,
+  setShuffleSlotsWithFeatured,
+} from "@/lib/shuffle/shuffleSlotsStore";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import {
@@ -364,7 +367,8 @@ export function useShufflePool() {
 
     const pool = activePoolRef.current;
     if (pool.length > 0 || featuredRef.current.length > 0) {
-      applyWindowFromPool(refreshPoolPresence(pool));
+      recentlyShownKeysRef.current = [];
+      applyWindowFromPool(refreshPoolPresence(pool), { forceReplace: true });
     }
 
     shuffleClickCountRef.current += 1;
@@ -580,7 +584,23 @@ export function useShufflePool() {
 
       const now = Date.now();
       poolRef.current = refreshPoolPresence(poolRef.current, now);
-      filterActivePool(searchRef.current, filtersRef.current);
+      const filters = filtersRef.current;
+      const needsMembershipRefresh =
+        filters.soloOnline || filters.soloConHistorias || filters.soloConFoto;
+
+      if (needsMembershipRefresh) {
+        filterActivePool(searchRef.current, filters);
+        return;
+      }
+
+      activePoolRef.current = refreshPoolPresence(activePoolRef.current, now);
+      featuredRef.current = refreshPoolPresence(featuredRef.current, now);
+      setFilteredOnlineCount(
+        activePoolRef.current.filter((profile) =>
+          isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
+        ).length,
+      );
+      patchShuffleSlotPresence(activePoolRef.current);
     }, 45_000);
 
     const poolSyncTimer = window.setInterval(() => {

@@ -10,7 +10,6 @@ import {
   isShuffleNativeAdIndex,
   shouldShowShuffleFeedAds,
 } from "@/lib/shuffle/shuffleFeedAds";
-import { uniqueShuffleWindow } from "@/lib/shuffle/dedupeProfiles";
 import {
   getShuffleSlotsVersion,
   getVisibleShuffleProfiles,
@@ -39,7 +38,7 @@ export default function ShuffleFeedWithNativeAds({
     getShuffleSlotsVersion,
   );
 
-  const profiles = uniqueShuffleWindow(getVisibleShuffleProfiles());
+  const profiles = getVisibleShuffleProfiles();
   const showAds = shouldShowShuffleFeedAds(profiles.length);
   const itemCount = getShuffleFeedItemCount(profiles.length, showAds);
 

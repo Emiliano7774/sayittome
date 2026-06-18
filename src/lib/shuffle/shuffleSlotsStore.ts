@@ -191,3 +191,46 @@ export function getVisibleShuffleProfiles() {
 
   return uniqueShuffleWindow(visible);
 }
+
+/** Refresh online badges in the current window without reshuffling identities. */
+export function patchShuffleSlotPresence(pool: ShuffleProfile[]) {
+  if (pool.length === 0) return;
+
+  const lookup = new Map<string, ShuffleProfile>();
+  for (const profile of pool) {
+    lookup.set(profile.uid, profile);
+    const username = String(profile.username || "").trim().toLowerCase();
+    if (username) lookup.set(`u:${username}`, profile);
+  }
+
+  let changed = false;
+
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const current = slots[slot];
+    if (!current) continue;
+
+    const refreshed =
+      lookup.get(current.uid) ||
+      lookup.get(`u:${String(current.username || "").trim().toLowerCase()}`);
+    if (!refreshed) continue;
+
+    if (
+      current.showOnline === refreshed.showOnline &&
+      current.lastActive === refreshed.lastActive &&
+      current.presenceAt === refreshed.presenceAt
+    ) {
+      continue;
+    }
+
+    slots[slot] = {
+      ...current,
+      showOnline: refreshed.showOnline,
+      lastActive: refreshed.lastActive,
+      presenceAt: refreshed.presenceAt,
+    };
+    dirtySlots.add(slot);
+    changed = true;
+  }
+
+  if (changed) scheduleFlush();
+}
