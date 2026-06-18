@@ -37,6 +37,7 @@ import {
 } from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
@@ -87,6 +88,7 @@ type Props = {
   onLogout?: () => void;
   /** When false, hides the shuffle back link (e.g. own /settings view). */
   showShuffleBack?: boolean;
+  onModerationTagChange?: (moderationTag: string) => void;
 };
 
 export default function ModernPublicProfile({
@@ -96,6 +98,7 @@ export default function ModernPublicProfile({
   onEdit,
   onLogout,
   showShuffleBack = true,
+  onModerationTagChange,
 }: Props) {
   const router = useRouter();
   const { locale } = useLocale();
@@ -326,14 +329,19 @@ export default function ModernPublicProfile({
                 </span>
               ) : null}
 
-              {!isOwner && profile.moderationTag ? (
-                <div className="pointer-events-auto absolute left-4 top-4 z-20">
-                  <ProfileModerationTag tag={profile.moderationTag} />
-                </div>
-              ) : null}
+              <div className="pointer-events-auto absolute left-4 top-4 z-20 flex items-center gap-2">
+                {!isOwner && profile.moderationTag ? (
+                  <ProfileModerationTag tag={profile.moderationTag} compact />
+                ) : null}
+                <AdminProfileRoleplayButton
+                  profile={profile}
+                  variant="modern"
+                  onTagChange={onModerationTagChange}
+                />
+              </div>
 
               {isOwner && profile.uid ? (
-                <div className="pointer-events-auto absolute left-4 top-4 z-20">
+                <div className="pointer-events-auto absolute left-4 top-14 z-20">
                   <RoleplayAppealFlagButton uid={profile.uid} username={profile.username} compact />
                 </div>
               ) : null}

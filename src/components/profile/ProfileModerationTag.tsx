@@ -8,6 +8,7 @@ import { useT } from "@/contexts/LocaleContext";
 type Props = {
   tag?: string;
   className?: string;
+  compact?: boolean;
 };
 
 type PopoverCoords = {
@@ -20,7 +21,7 @@ function canUseHover() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 }
 
-export default function ProfileModerationTag({ tag, className = "" }: Props) {
+export default function ProfileModerationTag({ tag, className = "", compact = false }: Props) {
   const t = useT();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const hideTimerRef = useRef<number | null>(null);
@@ -167,7 +168,10 @@ export default function ProfileModerationTag({ tag, className = "" }: Props) {
           }}
           onMouseEnter={canUseHover() ? reveal : undefined}
           onMouseLeave={canUseHover() ? scheduleHide : undefined}
-          className="relative z-[31] rounded-full border border-amber-400/35 bg-black/50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-amber-100 backdrop-blur-sm touch-manipulation"
+          className={[
+            "relative z-[31] rounded-full border border-amber-400/35 bg-black/50 font-black uppercase tracking-[0.12em] text-amber-100 backdrop-blur-sm touch-manipulation",
+            compact ? "px-2.5 py-1 text-[10px] tracking-[0.1em]" : "px-3 py-1.5 text-[11px]",
+          ].join(" ")}
           aria-expanded={open}
         >
           {t("profile_moderation_roleplay_title")}

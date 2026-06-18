@@ -27,6 +27,7 @@ import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -364,10 +365,15 @@ export default function PublicProfilePage() {
           mostrarUltimaVez: profile.mostrarUltimaVez,
           adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
           adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
+          moderationTag: profile.moderationTag,
+          moderationTagNote: profile.moderationTagNote,
         }}
         isOwner={isOwner}
         verifiedVisit={verifiedVisit}
         onEdit={isOwner ? () => router.push("/settings/edit") : undefined}
+        onModerationTagChange={(moderationTag) =>
+          setProfile((current) => (current ? { ...current, moderationTag } : current))
+        }
       />
     );
   }
@@ -433,11 +439,18 @@ export default function PublicProfilePage() {
         className="relative z-[5] px-8 md:px-24 pointer-events-none"
         style={{ minHeight: profileUi.heroHeight }}
       >
-        {profile.moderationTag ? (
-          <div className="pointer-events-auto absolute left-8 top-[max(1rem,env(safe-area-inset-top))] z-[40] md:left-24 md:top-10">
-            <ProfileModerationTag tag={profile.moderationTag} />
-          </div>
-        ) : null}
+        <div className="pointer-events-auto absolute left-8 top-[max(1rem,env(safe-area-inset-top))] z-[40] flex items-center gap-2 md:left-24 md:top-10">
+          {profile.moderationTag && !isOwner ? (
+            <ProfileModerationTag tag={profile.moderationTag} compact />
+          ) : null}
+          <AdminProfileRoleplayButton
+            profile={profile}
+            variant="classic"
+            onTagChange={(moderationTag) =>
+              setProfile((current) => (current ? { ...current, moderationTag } : current))
+            }
+          />
+        </div>
 
         <div className="absolute top-[max(1rem,env(safe-area-inset-top))] inset-x-4 z-[30] pointer-events-auto flex flex-col items-end gap-3 md:inset-x-auto md:right-8 md:left-auto md:top-10">
           <ClassicUxModeBar className="max-w-full" />
