@@ -14,6 +14,22 @@ import {
 } from "@/lib/profile/profileCache";
 import { ProfileUsernameChangedError } from "@/lib/profile/usernameHistory";
 
+export class OwnerProfileInboxRedirect extends Error {
+  readonly code = "owner_profile_inbox_redirect";
+
+  constructor() {
+    super("owner_profile_inbox_redirect");
+    this.name = "OwnerProfileInboxRedirect";
+  }
+}
+
+export function isOwnerProfileInboxRedirect(error: unknown) {
+  return (
+    error instanceof OwnerProfileInboxRedirect ||
+    (error instanceof Error && error.message === "owner_profile_inbox_redirect")
+  );
+}
+
 export type ProfileLookupResult = {
   profile: Record<string, unknown> | null;
   usernameChanged: boolean;
@@ -124,6 +140,8 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
     const incoming = await findOwnerIncomingChat(firebaseUid, lookup.currentUsername);
     if (incoming?.id) {
       chatId = incoming.id;
+    } else {
+      throw new OwnerProfileInboxRedirect();
     }
   }
 

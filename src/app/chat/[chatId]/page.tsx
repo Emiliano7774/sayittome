@@ -7,7 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 import ProfileAnonChat from "@/components/chat/ProfileAnonChat";
 import { ChatErrorScreen, ChatLoadingScreen } from "@/components/chat/ChatScreens";
 import { isProfileAnonChatId, usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
-import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
+import { resolveProfileChat, isOwnerProfileInboxRedirect } from "@/lib/chat/resolveProfileChat";
 import { useT } from "@/contexts/LocaleContext";
 import { db } from "@/lib/firebase";
 
@@ -96,6 +96,10 @@ function ProfileAnonChatRoute() {
       } catch (e) {
         console.error(e);
         if (!cancelled) {
+          if (isOwnerProfileInboxRedirect(e)) {
+            window.location.replace("/chats");
+            return;
+          }
           setErrorText(t("chat_load_fail"));
           setReady(true);
         }

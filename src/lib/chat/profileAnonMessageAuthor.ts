@@ -33,10 +33,6 @@ export function resolveProfileAnonSenderKind(input: {
     return "anon";
   }
 
-  if (profileUid && from && from !== threadAnonId) {
-    return "profile";
-  }
-
   return "anon";
 }
 

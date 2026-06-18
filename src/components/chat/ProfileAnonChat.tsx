@@ -127,6 +127,7 @@ export default function ProfileAnonChat({
   const [targetShowsLastSeen, setTargetShowsLastSeen] = useState(true);
   const [blockedByAbuse, setBlockedByAbuse] = useState(false);
   const [chatAnonSessionId, setChatAnonSessionId] = useState("");
+  const [chatOwnerUid, setChatOwnerUid] = useState("");
   const [recording, setRecording] = useState(false);
   const [cameraMode, setCameraMode] = useState<"photo" | "video" | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -150,6 +151,7 @@ export default function ProfileAnonChat({
     authReady: false,
     currentUid: "",
     targetUid: "",
+    chatOwnerUid: "",
     chatAnonSessionId: "",
     username: "",
   });
@@ -160,10 +162,11 @@ export default function ProfileAnonChat({
     if (!ctx.chatId || !ctx.authReady || !chat) return;
 
     const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
-    const messageViewerId =
-      ctx.currentUid && ctx.targetUid && ctx.currentUid === ctx.targetUid
-        ? ctx.currentUid
-        : senderId;
+    const profileOwnerUid = ctx.targetUid || ctx.chatOwnerUid;
+    const ownerViewing = Boolean(
+      ctx.currentUid && profileOwnerUid && ctx.currentUid === profileOwnerUid,
+    );
+    const messageViewerId = ownerViewing ? ctx.currentUid : senderId;
 
     if (!messageViewerId) return;
 
@@ -223,28 +226,41 @@ export default function ProfileAnonChat({
   }, [chatId]);
 
   useEffect(() => {
-    if (!targetUid || !authReady) return;
+    if (!authReady) return;
+
+    const profileOwnerUid = targetUid || chatOwnerUid;
+    if (!profileOwnerUid) return;
 
     const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+    const ownerViewing = Boolean(
+      currentUid && profileOwnerUid && currentUid === profileOwnerUid,
+    );
+    if (ownerViewing) return;
+
     const visitorId = getVisitorId();
 
     findActiveAbuseBlock({
-      receptorUid: targetUid,
+      receptorUid: profileOwnerUid,
       blockedAnonId: senderId,
       blockedVisitorId: visitorId,
     })
       .then((block) => setBlockedByAbuse(Boolean(block)))
       .catch(() => setBlockedByAbuse(false));
-  }, [targetUid, authReady, anonSession, chatId, chatAnonSessionId]);
+  }, [targetUid, chatOwnerUid, authReady, chatId, chatAnonSessionId, currentUid]);
 
   useEffect(() => {
     if (!chatId) return;
+
+    setChatOwnerUid("");
 
     const unsub = onSnapshot(doc(db, "chats", chatId), (snap) => {
       if (!snap.exists()) return;
 
       const data = snap.data() as Record<string, unknown> | undefined;
       setChatAnonSessionId(String(data?.anonSessionId || ""));
+      setChatOwnerUid(
+        String(data?.receptorUid || data?.targetUid || data?.anonOwnerUid || ""),
+      );
       chatMetaRef.current = inboxChatFromFirestore(chatId, data, username);
       markOpenChatAsRead();
     });
@@ -320,14 +336,17 @@ export default function ProfileAnonChat({
   }, [username, chatId]);
 
   const isClassic = uxMode === "classic";
-  const isOwnerViewing = Boolean(currentUid && targetUid && currentUid === targetUid);
+  const profileOwnerUid = targetUid || chatOwnerUid;
+  const isOwnerViewing = Boolean(
+    currentUid && profileOwnerUid && currentUid === profileOwnerUid,
+  );
+  const profileUid = profileOwnerUid || targetUid;
   const presenceLabel =
     targetShowsLastSeen && !isOwnerViewing
       ? formatLastSeen(targetLastActive, targetOnline)
       : "";
   const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
-  const viewerId =
-    currentUid && targetUid && currentUid === targetUid ? currentUid : anonSenderId;
+  const viewerId = isOwnerViewing ? currentUid : anonSenderId;
   const hasChatActivity = messages.length > 0;
   const classicChatEngaged =
     isClassic &&
@@ -341,7 +360,7 @@ export default function ProfileAnonChat({
     ? formatAnonSessionLabel(anonSenderId)
     : username;
   const avatarProps = {
-    ownerUid: isOwnerViewing ? "" : targetUid,
+    ownerUid: isOwnerViewing ? "" : profileUid,
     username: displayPeerName,
     photo: isOwnerViewing ? "" : targetPhoto,
     anonAvatar: isOwnerViewing,
@@ -356,16 +375,17 @@ export default function ProfileAnonChat({
     authReady,
     currentUid,
     targetUid,
+    chatOwnerUid,
     chatAnonSessionId,
     username,
   };
 
   useEffect(() => {
     markOpenChatAsRead();
-  }, [chatId, authReady, currentUid, targetUid, chatAnonSessionId]);
+  }, [chatId, authReady, currentUid, targetUid, chatOwnerUid, chatAnonSessionId]);
 
   useEffect(() => {
-    if (!chatId || !authReady) return;
+    if (!chatId || !authReady || !profileUid) return;
 
     const q = query(
       collection(db, "chats", chatId, "mensajes"),
@@ -374,8 +394,7 @@ export default function ProfileAnonChat({
     );
 
     const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
-    const messageViewerId =
-      currentUid && targetUid && currentUid === targetUid ? currentUid : senderId;
+    const messageViewerId = isOwnerViewing ? currentUid : senderId;
 
     const unsub = onSnapshot(
       q,
@@ -407,7 +426,7 @@ export default function ProfileAnonChat({
             senderKind: data.senderKind,
             from,
             threadAnonId: senderId,
-            profileUid: targetUid,
+            profileUid: profileUid,
             isOwnerViewing,
             ownerUid: currentUid,
           });
@@ -496,7 +515,17 @@ export default function ProfileAnonChat({
       }
       unsub();
     };
-  }, [chatId, authReady, anonSession, currentUid, targetUid, chatAnonSessionId, isOwnerViewing, username]);
+  }, [
+    chatId,
+    authReady,
+    profileUid,
+    currentUid,
+    targetUid,
+    chatOwnerUid,
+    chatAnonSessionId,
+    isOwnerViewing,
+    username,
+  ]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -712,7 +741,7 @@ export default function ProfileAnonChat({
       alert(t("chat_abuse_write_block"));
       return;
     }
-    if (!targetUid) {
+    if (!profileUid) {
       alert(t("chat_load_fail"));
       return;
     }
@@ -767,7 +796,7 @@ export default function ProfileAnonChat({
         username,
         senderId,
         currentUid,
-        targetUid,
+        targetUid: profileUid,
         targetPhoto,
         messageText:
           previewType === "audio"
@@ -802,17 +831,17 @@ export default function ProfileAnonChat({
       alert(t("chat_abuse_write_block"));
       return;
     }
-    if (!targetUid) {
+    if (!profileUid) {
       alert(t("chat_load_fail"));
       return;
     }
 
     const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
-    const isOwnerReply = Boolean(currentUid && targetUid && currentUid === targetUid);
+    const isOwnerReply = isOwnerViewing;
 
-    if (targetUid && !isOwnerReply) {
+    if (profileUid && !isOwnerReply) {
       const block = await findActiveAbuseBlock({
-        receptorUid: targetUid,
+        receptorUid: profileUid,
         blockedAnonId: senderId,
         blockedVisitorId: getVisitorId(),
       });
@@ -844,7 +873,7 @@ export default function ProfileAnonChat({
       username,
       senderId,
       currentUid,
-      targetUid,
+      targetUid: profileUid,
       targetPhoto,
       messageText,
       reply: replyText,
@@ -908,12 +937,12 @@ export default function ProfileAnonChat({
             ) : null}
           </div>
 
-          {currentUid && currentUid === targetUid ? (
+          {isOwnerViewing ? (
             <AbuseProtectionMenu
-              receptorUid={targetUid}
+              receptorUid={profileOwnerUid}
               targetUsername={username}
               chatId={chatId}
-              blockedAnonId={chatAnonSessionId || anonSession}
+              blockedAnonId={anonSenderId}
               blockedBy={currentUid}
             />
           ) : null}
@@ -976,7 +1005,7 @@ export default function ProfileAnonChat({
               const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
               const receiptSenderId =
                 message.mine && isOwnerViewing
-                  ? profileReplyAuthorId(targetUid || currentUid)
+                  ? profileReplyAuthorId(profileOwnerUid || currentUid)
                   : anonSenderId;
               const receiptStatus = resolveMessageReceiptStatus({
                 mine: message.mine,

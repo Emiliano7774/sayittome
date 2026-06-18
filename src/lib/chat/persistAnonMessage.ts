@@ -157,6 +157,6 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     lastMessage: messageText,
     lastMessageSender: messageAuthorId,
     anon: true,
-    senderIsAnonymous: true,
+    senderIsAnonymous: !isOwnerReply,
   });
 }

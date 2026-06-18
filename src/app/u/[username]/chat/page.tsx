@@ -4,7 +4,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import UsernameChangedNotice from "@/components/profile/UsernameChangedNotice";
-import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
+import { resolveProfileChat, isOwnerProfileInboxRedirect } from "@/lib/chat/resolveProfileChat";
 import { isProfileUsernameChangedError } from "@/lib/profile/usernameHistory";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
 import { useRouter } from "next/navigation";
@@ -36,6 +36,11 @@ export default function UserChatRedirectPage() {
       } catch (e) {
         console.error(e);
         if (cancelled) return;
+
+        if (isOwnerProfileInboxRedirect(e)) {
+          router.replace("/chats");
+          return;
+        }
 
         if (isProfileUsernameChangedError(e)) {
           setUsernameChanged({

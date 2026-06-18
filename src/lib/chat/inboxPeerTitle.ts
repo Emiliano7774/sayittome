@@ -47,14 +47,22 @@ export function isIncomingAnonChatForOwner(chat: InboxChat, viewerUid?: string) 
   const chatId = chat.canonicalChatId || chat.id;
   if (!isProfileAnonChatId(chatId)) return false;
 
-  const { senderId } = parseProfileAnonChatId(chatId);
-  if (!senderId.startsWith("anon_")) return false;
+  const parsedSenderId = parseProfileAnonChatId(chatId).senderId;
+  const storedAnonId = String(chat.anonSessionId || "").trim();
+  const senderId = storedAnonId.startsWith("anon_")
+    ? storedAnonId
+    : parsedSenderId.startsWith("anon_")
+      ? parsedSenderId
+      : parsedSenderId || storedAnonId;
+
+  if (!senderId || senderId === viewerUid) return false;
 
   const ownerByUid =
     chat.targetUid === viewerUid ||
-    chat.receptorUid === viewerUid;
+    chat.receptorUid === viewerUid ||
+    chat.anonOwnerUid === viewerUid;
 
-  return ownerByUid && senderId !== viewerUid;
+  return ownerByUid;
 }
 
 /** Inbox row shows the profile (name + photo), not the anon label. */
