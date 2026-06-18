@@ -1,4 +1,4 @@
-import { shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
+import { shuffleProfileDedupeKeys, uniqueShuffleWindow } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { SHUFFLE_WINDOW_SIZE } from "@/lib/shuffle/pickWindow";
 import { shuffleCount, shuffleMark, shuffleMeasure } from "@/lib/shuffle/shuffleProfiler";
@@ -73,6 +73,15 @@ export function setShuffleSlots(
   scheduleFlush();
 }
 
+function profilesShareSlotIdentity(
+  left: ShuffleProfile | null,
+  right: ShuffleProfile | null,
+) {
+  if (!left || !right) return false;
+  const rightKeys = new Set(shuffleProfileDedupeKeys(right));
+  return shuffleProfileDedupeKeys(left).some((key) => rightKeys.has(key));
+}
+
 export function setShuffleSlotsWithFeatured(
   featured: ShuffleProfile[],
   pool: ShuffleProfile[],
@@ -107,7 +116,7 @@ export function setShuffleSlotsWithFeatured(
   for (let slot = 0; slot < featuredCount; slot++) {
     const next = uniqueFeatured[slot] ?? null;
     const prev = slots[slot];
-    if (prev?.uid !== next?.uid || prev?.username !== next?.username) {
+    if (!profilesShareSlotIdentity(prev, next)) {
       slots[slot] = next;
       dirtySlots.add(slot);
     }
@@ -117,7 +126,7 @@ export function setShuffleSlotsWithFeatured(
     const targetSlot = featuredCount + slot;
     const next = regularSlots[slot]?.profile ?? null;
     const prev = slots[targetSlot];
-    if (prev?.uid !== next?.uid || prev?.username !== next?.username) {
+    if (!profilesShareSlotIdentity(prev, next)) {
       slots[targetSlot] = next;
       dirtySlots.add(targetSlot);
     }
@@ -157,18 +166,11 @@ export function subscribeAllShuffleSlots(listener: () => void) {
 
 export function getVisibleShuffleProfiles() {
   const visible: ShuffleProfile[] = [];
-  const seen = new Set<string>();
 
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
-    if (!profile) continue;
-
-    const keys = shuffleProfileDedupeKeys(profile);
-    if (keys.length > 0 && keys.some((key) => seen.has(key))) continue;
-    for (const key of keys) seen.add(key);
-
-    visible.push(profile);
+    if (profile) visible.push(profile);
   }
 
-  return visible;
+  return uniqueShuffleWindow(visible);
 }

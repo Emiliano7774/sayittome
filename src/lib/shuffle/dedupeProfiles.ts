@@ -2,6 +2,7 @@ import { normalizeUsername } from "@/lib/profile/username";
 
 type DedupeableProfile = {
   uid: string;
+  authUid?: string;
   username: string;
   usernameLower?: string;
   email?: string;
@@ -15,10 +16,7 @@ export function resolveUsernameLower(profile: {
   username?: string;
   usernameLower?: string;
 }) {
-  const fromField = String(profile.usernameLower || "")
-    .normalize("NFKC")
-    .trim()
-    .toLowerCase();
+  const fromField = normalizeUsername(String(profile.usernameLower || "")).toLowerCase();
   if (fromField && fromField !== "usuario" && fromField !== "undefined") {
     return fromField;
   }
@@ -28,6 +26,16 @@ export function resolveUsernameLower(profile: {
     return "";
   }
   return username;
+}
+
+export function resolveShuffleAuthUid(profile: {
+  uid?: string;
+  authUid?: string;
+}) {
+  const authUid = String(profile.authUid || "").trim();
+  if (authUid) return authUid;
+
+  return String(profile.uid || "").trim();
 }
 
 function normalizedUsername(profile: { username?: string; usernameLower?: string }) {
@@ -51,6 +59,7 @@ export function normalizeShufflePhotoKey(photo?: string) {
 
 export function shuffleProfileIdentityKey(profile: {
   uid?: string;
+  authUid?: string;
   username?: string;
   usernameLower?: string;
   email?: string;
@@ -101,6 +110,7 @@ function pickBetterProfile<T extends DedupeableProfile>(a: T, b: T) {
 
 export function shuffleProfileDedupeKeys(profile: {
   uid?: string;
+  authUid?: string;
   username?: string;
   usernameLower?: string;
   email?: string;
@@ -110,11 +120,13 @@ export function shuffleProfileDedupeKeys(profile: {
   const identityKey = shuffleProfileIdentityKey(profile);
   const usernameLower = resolveUsernameLower(profile);
   const uid = String(profile.uid || "").trim();
+  const authUid = String(profile.authUid || "").trim();
   const email = String(profile.email || "").trim().toLowerCase();
   const photoKey = normalizeShufflePhotoKey(profile.photo);
 
   if (identityKey) keys.add(identityKey);
   if (usernameLower) keys.add(`ul:${usernameLower}`);
+  if (authUid) keys.add(`auth:${authUid}`);
   if (uid) keys.add(`id:${uid}`);
   if (email.includes("@")) keys.add(`e:${email}`);
   if (photoKey) keys.add(`p:${photoKey}`);
@@ -160,4 +172,19 @@ export function dedupeShuffleProfiles<T extends DedupeableProfile>(
   }
 
   return [...merged.values()];
+}
+
+/** Keep one row per identity when building the visible shuffle window. */
+export function uniqueShuffleWindow<T extends DedupeableProfile>(profiles: T[]): T[] {
+  const used = new Set<string>();
+  const unique: T[] = [];
+
+  for (const profile of profiles) {
+    const keys = shuffleProfileDedupeKeys(profile);
+    if (keys.length > 0 && keys.some((key) => used.has(key))) continue;
+    for (const key of keys) used.add(key);
+    unique.push(profile);
+  }
+
+  return unique;
 }

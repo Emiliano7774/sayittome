@@ -34,6 +34,7 @@ const ANON_ACTIVE_MS = 90 * 1000;
 
 type ApiProfile = {
   uid: string;
+  authUid?: string;
   username: string;
   usernameLower?: string;
   email?: string;
@@ -260,6 +261,7 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
 
   const profile: ApiProfile = {
     uid: String(raw.id || raw.uid || fallbackUid || ""),
+    authUid: String(raw.uid || raw.id || fallbackUid || "").trim(),
     username:
       normalizeUsername(
         String(raw.username || raw.usernameLower || raw.nombre || "usuario"),

@@ -30,6 +30,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
 
       return {
         uid: String(item?.uid || item?.id || item?.username || `profile-${index}`),
+        authUid: String(item?.authUid || item?.uid || item?.id || `profile-${index}`),
         username:
           normalizeUsername(String(item?.username || item?.usernameLower || "usuario")) ||
           "usuario",

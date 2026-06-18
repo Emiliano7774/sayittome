@@ -7,7 +7,9 @@ import { useSyncExternalStore } from "react";
 import {
   dedupeShuffleProfiles,
   shuffleProfileDedupeKeys,
+  uniqueShuffleWindow,
 } from "@/lib/shuffle/dedupeProfiles";
+import { getShuffleExcludeKeys, subscribeShuffleExclude } from "@/lib/shuffle/shuffleExcludeStore";
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
 import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
 import { isShuffleProfileOnline } from "@/lib/presence";
@@ -101,7 +103,11 @@ export function useShufflePool() {
   }
 
   function recentExcludeKeys() {
-    return new Set(recentlyShownKeysRef.current);
+    const keys = new Set(recentlyShownKeysRef.current);
+    for (const key of getShuffleExcludeKeys()) {
+      keys.add(key);
+    }
+    return keys;
   }
 
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
@@ -163,10 +169,10 @@ export function useShufflePool() {
 
     windowCountRef.current = featuredCount + regularCount;
 
-    const shownProfiles = [
+    const shownProfiles = uniqueShuffleWindow([
       ...featured,
       ...Array.from({ length: regularCount }, (_, slot) => eligiblePool[windowIndicesRef.current[slot]]),
-    ].filter(Boolean) as ShuffleProfile[];
+    ].filter(Boolean) as ShuffleProfile[]);
 
     rememberShownProfiles(shownProfiles);
 
@@ -178,6 +184,16 @@ export function useShufflePool() {
     );
     setListReady(true);
   }, []);
+
+  useEffect(() => {
+    return subscribeShuffleExclude(() => {
+      if (!mountedRef.current) return;
+      const pool = activePoolRef.current;
+      if (pool.length > 0 || featuredRef.current.length > 0) {
+        applyWindowFromPool(refreshPoolPresence(pool));
+      }
+    });
+  }, [applyWindowFromPool]);
 
   const applyPool = useCallback(
     (profiles: ShuffleProfile[], total: number) => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
 import ModernShuffleCard from "@/components/modern/ModernShuffleCard";
 import ShuffleFeedWithNativeAds from "@/components/shuffle/ShuffleFeedWithNativeAds";
 
@@ -11,7 +12,7 @@ export default function ModernShuffleGrid() {
       className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-3"
       renderProfile={(profile, index) => (
         <ModernShuffleCard
-          key={`${profile.uid}-${profile.username}-${index}`}
+          key={shuffleProfileIdentityKey(profile) || `${profile.uid}-${profile.username}`}
           profile={profile}
         />
       )}

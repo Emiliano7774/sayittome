@@ -36,13 +36,15 @@ export function pickRandomWindowIndices(
 }
 
 function pickUniqueIndicesFromPool(
-  pool: Array<{ uid: string; username: string; photo?: string }>,
+  pool: Array<{ uid: string; username: string; authUid?: string; photo?: string }>,
   order: number[],
   out: Int32Array,
   size: number,
   excludeKeys?: ReadonlySet<string>,
+  outStart = 0,
+  seedUsed?: Set<string>,
 ) {
-  const used = new Set<string>();
+  const used = seedUsed ? new Set(seedUsed) : new Set<string>();
   let count = 0;
 
   for (let i = 0; i < order.length && count < size; i++) {
@@ -52,16 +54,16 @@ function pickUniqueIndicesFromPool(
     if (excludeKeys && keys.some((key) => excludeKeys.has(key))) continue;
 
     for (const key of keys) used.add(key);
-    out[count] = idx;
+    out[outStart + count] = idx;
     count += 1;
   }
 
-  return count;
+  return { count, used };
 }
 
 /** Like pickRandomWindowIndices but never returns two indices for the same identity. */
 export function pickRandomUniqueWindowIndices(
-  pool: Array<{ uid: string; username: string; photo?: string }>,
+  pool: Array<{ uid: string; username: string; authUid?: string; photo?: string }>,
   scratch: number[],
   out: Int32Array,
   size = SHUFFLE_WINDOW_SIZE,
@@ -86,10 +88,20 @@ export function pickRandomUniqueWindowIndices(
   }
 
   const target = Math.min(size, poolLength);
-  let count = pickUniqueIndicesFromPool(pool, scratch, out, target, excludeKeys);
+  const firstPass = pickUniqueIndicesFromPool(pool, scratch, out, target, excludeKeys);
+  let count = firstPass.count;
 
   if (count < target) {
-    count = pickUniqueIndicesFromPool(pool, scratch, out, target);
+    const secondPass = pickUniqueIndicesFromPool(
+      pool,
+      scratch,
+      out,
+      target - count,
+      undefined,
+      count,
+      firstPass.used,
+    );
+    count += secondPass.count;
   }
 
   return count;
