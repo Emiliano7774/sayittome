@@ -10,20 +10,17 @@ type Props = {
   className?: string;
 };
 
-/** Visible on the profile owner's view — same roleplay label visitors see, plus appeal. */
+/** Owner view: yellow roleplay badge only (no outer panel), plus compact appeal control. */
 export default function OwnerRoleplayNotice({ uid, username, tag, className = "" }: Props) {
   if (tag !== "roleplay" || !uid) return null;
 
   return (
     <div
-      className={[
-        "flex w-full max-w-full flex-wrap items-center gap-3 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3",
-        className,
-      ].join(" ")}
+      className={["flex flex-wrap items-center gap-2.5", className].join(" ")}
       data-owner-roleplay-notice
     >
-      <ProfileModerationTag tag={tag} />
-      <RoleplayAppealFlagButton uid={uid} username={username} />
+      <ProfileModerationTag tag={tag} compact />
+      <RoleplayAppealFlagButton uid={uid} username={username} compact />
     </div>
   );
 }

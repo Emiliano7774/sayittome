@@ -359,55 +359,64 @@ export default function SettingsPage() {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
 
-        <div className="relative z-10 max-w-[1500px] mx-auto">
-          {profile?.moderationTag === "roleplay" && ownerUid ? (
-            <OwnerRoleplayNotice
-              uid={ownerUid}
-              username={ownerUsername}
-              tag={String(profile.moderationTag)}
-              className="mb-6"
-            />
-          ) : null}
+        <div className="relative z-10 mx-auto flex max-w-[1500px] flex-col gap-8">
+          <div className="flex flex-col items-stretch gap-4 sm:items-end">
+            <div className="flex justify-end">
+              <HeaderControls />
+            </div>
 
-          <div className="flex flex-wrap justify-end items-center gap-3">
-            <HeaderControls />
-            {isAdminEmail(auth.currentUser?.email) ? (
+            <div className="flex w-full max-w-md flex-col gap-3 sm:ml-auto">
+              {isAdminEmail(auth.currentUser?.email) ? (
+                <button
+                  type="button"
+                  onClick={() => router.push("/admin")}
+                  className="w-full rounded-full border border-violet-400/40 bg-violet-500/15 px-8 py-4 text-center font-black text-violet-100 sm:w-auto"
+                >
+                  {t("settings_admin_panel")}
+                </button>
+              ) : null}
               <button
-                onClick={() => router.push("/admin")}
-                className="rounded-full border border-violet-400/40 bg-violet-500/15 text-violet-100 px-8 py-4 font-black"
+                type="button"
+                onClick={() => router.push("/settings/edit")}
+                className="w-full rounded-full bg-white px-9 py-4 text-center font-black text-black shadow-[0_0_30px_rgba(255,255,255,.18)] sm:w-auto"
               >
-                {t("settings_admin_panel")}
+                {t("profile_edit")}
               </button>
-            ) : null}
-            <button
-              onClick={() => router.push("/settings/edit")}
-              className="rounded-full bg-white text-black px-9 py-4 font-black shadow-[0_0_30px_rgba(255,255,255,.18)]"
-            >
-              {t("profile_edit")}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="rounded-full border border-white/20 bg-white/5 px-9 py-4 font-black text-white/80"
-            >
-              {t("settings_logout")}
-            </button>
-            {profile?.username || profile?.nombre ? (
-              <VerifiedLinkBubble
-                username={String(profile.username || profile.nombre)}
-                profileUid={profile.uid}
-                variant="inline"
-              />
-            ) : null}
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className="w-full rounded-full border border-white/20 bg-white/5 px-9 py-4 text-center font-black text-white/80 sm:w-auto"
+              >
+                {t("settings_logout")}
+              </button>
+              {profile?.username || profile?.nombre ? (
+                <div className="w-full sm:w-auto [&_button]:w-full sm:[&_button]:w-auto [&_button]:justify-center">
+                  <VerifiedLinkBubble
+                    username={String(profile.username || profile.nombre)}
+                    profileUid={profile.uid}
+                    variant="inline"
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
 
-          <div className="mt-24">
+          <div>
             <h1
               className="font-black leading-none"
               style={{ fontSize: profileUi.usernameSizeMd }}
             >
               {username}
             </h1>
+
+            {profile?.moderationTag === "roleplay" && ownerUid ? (
+              <OwnerRoleplayNotice
+                uid={ownerUid}
+                username={ownerUsername}
+                tag={String(profile.moderationTag)}
+                className="mt-5"
+              />
+            ) : null}
 
             {lastSeenLabel ? (
               <p
