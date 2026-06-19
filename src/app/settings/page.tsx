@@ -16,7 +16,7 @@ import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
-import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
+import OwnerRoleplayNotice from "@/components/profile/OwnerRoleplayNotice";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -360,6 +360,15 @@ export default function SettingsPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
 
         <div className="relative z-10 max-w-[1500px] mx-auto">
+          {profile?.moderationTag === "roleplay" && ownerUid ? (
+            <OwnerRoleplayNotice
+              uid={ownerUid}
+              username={ownerUsername}
+              tag={String(profile.moderationTag)}
+              className="mb-6"
+            />
+          ) : null}
+
           <div className="flex flex-wrap justify-end items-center gap-3">
             <HeaderControls />
             {isAdminEmail(auth.currentUser?.email) ? (
@@ -393,16 +402,6 @@ export default function SettingsPage() {
           </div>
 
           <div className="mt-24">
-            {ownerUid ? (
-              <div className="pointer-events-auto mb-6">
-                <RoleplayAppealFlagButton
-                  uid={ownerUid}
-                  username={ownerUsername}
-                  compact
-                  className="h-12 w-12 border-sky-300/55 bg-sky-500/30 shadow-[0_0_24px_rgba(14,165,233,.35)]"
-                />
-              </div>
-            ) : null}
             <h1
               className="font-black leading-none"
               style={{ fontSize: profileUi.usernameSizeMd }}

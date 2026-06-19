@@ -33,7 +33,7 @@ import {
 import { previousUsernameToRemember } from "@/lib/profile/usernameHistory";
 import { isUsernameAvailable, isValidUsername, normalizeUsername } from "@/lib/profile/username";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
-import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
+import OwnerRoleplayNotice from "@/components/profile/OwnerRoleplayNotice";
 import { useT } from "@/contexts/LocaleContext";
 
 type BadgeKey = "superMessages" | "likes" | "conversations" | "followers";
@@ -470,6 +470,15 @@ export default function ClassicEditProfilePage() {
           <p className="mb-6 text-sm font-semibold text-red-400">{saveError}</p>
         ) : null}
 
+        {moderationTag === "roleplay" && uid ? (
+          <OwnerRoleplayNotice
+            uid={uid}
+            username={username || savedUsername || "usuario"}
+            tag={moderationTag}
+            className="mb-6"
+          />
+        ) : null}
+
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(420px,520px)_1fr] gap-10 xl:gap-16 items-start">
           <aside className="w-full">
             <div className="border-b border-white/18 pb-8 mb-8">
@@ -479,15 +488,6 @@ export default function ClassicEditProfilePage() {
 
               <div className="flex flex-col sm:flex-row xl:flex-col gap-6">
                 <div className="relative w-full sm:w-[260px] xl:w-full aspect-square rounded-[34px] border-2 border-white/25 bg-zinc-950 overflow-hidden flex items-center justify-center">
-                  {uid ? (
-                    <div className="absolute left-4 top-4 z-20">
-                      <RoleplayAppealFlagButton
-                        uid={uid}
-                        username={username || savedUsername || "usuario"}
-                        compact
-                      />
-                    </div>
-                  ) : null}
                   {fotoPrincipalUrl ? (
                     <ProfileMediaSurface
                       url={fotoPrincipalUrl}
