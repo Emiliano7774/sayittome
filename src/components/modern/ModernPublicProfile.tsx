@@ -483,14 +483,14 @@ export default function ModernPublicProfile({
                   </button>
                 ) : null}
               </div>
-            </div>
 
-            {createdSignature ? (
-              <ProfileCreatedFooter
-                label={t("settings_profile_created", { date: createdSignature })}
-                className="absolute right-6 bottom-6 z-[21] pointer-events-none w-auto px-0 pb-0 pt-0 md:right-8"
-              />
-            ) : null}
+              {createdSignature ? (
+                <ProfileCreatedFooter
+                  label={t("settings_profile_created", { date: createdSignature })}
+                  className="mt-8 px-0 pb-0 pt-0 text-right text-xs md:text-sm"
+                />
+              ) : null}
+            </div>
           </section>
         </div>
       </div>
