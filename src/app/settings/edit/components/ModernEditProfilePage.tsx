@@ -11,6 +11,7 @@ import ModernEditMediaSheet, {
 } from "@/components/modern/ModernEditMediaSheet";
 import ModernProfileEditPreview from "@/components/modern/ModernProfileEditPreview";
 import OwnerRoleplayNotice from "@/components/profile/OwnerRoleplayNotice";
+import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -458,15 +459,20 @@ export default function ModernEditProfilePage() {
         {uploadError ? <p className="mb-4 text-sm font-semibold text-red-400">{uploadError}</p> : null}
 
         {moderationTag === "roleplay" && user.uid ? (
-          <OwnerRoleplayNotice
-            uid={user.uid}
-            username={username || savedUsername || "usuario"}
-            tag={moderationTag}
-            className="mb-4"
-          />
+          <OwnerRoleplayNotice tag={moderationTag} className="mb-4" />
         ) : null}
 
         <div className="relative">
+          {moderationTag === "roleplay" && user.uid ? (
+            <div className="pointer-events-auto absolute left-4 top-4 z-30">
+              <RoleplayAppealFlagButton
+                uid={user.uid}
+                username={username || savedUsername || "usuario"}
+                minimal
+              />
+            </div>
+          ) : null}
+
           <ModernProfileEditPreview
             username={username}
             bio={bio}

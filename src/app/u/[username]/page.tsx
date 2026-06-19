@@ -29,6 +29,7 @@ import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import OwnerRoleplayNotice from "@/components/profile/OwnerRoleplayNotice";
+import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -453,6 +454,16 @@ export default function PublicProfilePage() {
           />
         </div>
 
+        {isOwner && profile.moderationTag === "roleplay" && profile.uid ? (
+          <div className="pointer-events-auto absolute left-8 top-[max(3.5rem,env(safe-area-inset-top))] z-[40] md:left-24">
+            <RoleplayAppealFlagButton
+              uid={profile.uid}
+              username={profile.username}
+              minimal
+            />
+          </div>
+        ) : null}
+
         <div className="absolute top-[max(1rem,env(safe-area-inset-top))] inset-x-4 z-[30] pointer-events-auto flex flex-col items-end gap-3 md:inset-x-auto md:right-8 md:left-auto md:top-10">
           <ClassicUxModeBar className="max-w-full" />
 
@@ -501,12 +512,7 @@ export default function PublicProfilePage() {
           </h1>
 
           {isOwner && profile.moderationTag === "roleplay" && profile.uid ? (
-            <OwnerRoleplayNotice
-              uid={profile.uid}
-              username={profile.username}
-              tag={profile.moderationTag}
-              className="mt-5"
-            />
+            <OwnerRoleplayNotice tag={profile.moderationTag} className="mt-5" />
           ) : null}
 
           {verifiedVisit ? (

@@ -39,6 +39,7 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import OwnerRoleplayNotice from "@/components/profile/OwnerRoleplayNotice";
+import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -339,6 +340,16 @@ export default function ModernPublicProfile({
                   onTagChange={onModerationTagChange}
                 />
               </div>
+
+              {isOwner && profile.moderationTag === "roleplay" && profile.uid ? (
+                <div className="pointer-events-auto absolute left-4 top-14 z-20">
+                  <RoleplayAppealFlagButton
+                    uid={profile.uid}
+                    username={profile.username}
+                    minimal
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="relative z-10 -mt-[4.75rem] px-6 pb-8">
@@ -390,12 +401,7 @@ export default function ModernPublicProfile({
               </h1>
 
               {isOwner && profile.moderationTag === "roleplay" && profile.uid ? (
-                <OwnerRoleplayNotice
-                  uid={profile.uid}
-                  username={profile.username}
-                  tag={profile.moderationTag}
-                  className="mt-4"
-                />
+                <OwnerRoleplayNotice tag={profile.moderationTag} className="mt-4" />
               ) : null}
 
               {verifiedVisit ? (

@@ -17,6 +17,7 @@ import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import OwnerRoleplayNotice from "@/components/profile/OwnerRoleplayNotice";
+import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -359,6 +360,16 @@ export default function SettingsPage() {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
 
+        {profile?.moderationTag === "roleplay" && ownerUid ? (
+          <div className="pointer-events-auto absolute left-6 top-[max(2.5rem,env(safe-area-inset-top))] z-20 sm:left-10">
+            <RoleplayAppealFlagButton
+              uid={ownerUid}
+              username={ownerUsername}
+              minimal
+            />
+          </div>
+        ) : null}
+
         <div className="relative z-10 mx-auto flex max-w-[1500px] flex-col gap-8">
           <div className="flex flex-col items-stretch gap-4 sm:items-end">
             <div className="flex justify-end">
@@ -409,13 +420,8 @@ export default function SettingsPage() {
               {username}
             </h1>
 
-            {profile?.moderationTag === "roleplay" && ownerUid ? (
-              <OwnerRoleplayNotice
-                uid={ownerUid}
-                username={ownerUsername}
-                tag={String(profile.moderationTag)}
-                className="mt-5"
-              />
+            {profile?.moderationTag === "roleplay" ? (
+              <OwnerRoleplayNotice tag={String(profile.moderationTag)} className="mt-5" />
             ) : null}
 
             {lastSeenLabel ? (
