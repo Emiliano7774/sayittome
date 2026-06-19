@@ -16,7 +16,7 @@ import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
-import OwnerRoleplayNotice from "@/components/profile/OwnerRoleplayNotice";
+import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
@@ -361,68 +361,58 @@ export default function SettingsPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
 
         {profile?.moderationTag === "roleplay" && ownerUid ? (
-          <div className="pointer-events-auto absolute left-6 top-[max(2.5rem,env(safe-area-inset-top))] z-20 sm:left-10">
+          <div className="pointer-events-auto absolute left-6 top-[max(2.5rem,env(safe-area-inset-top))] z-20 flex items-center gap-2.5 sm:left-10">
             <RoleplayAppealFlagButton
               uid={ownerUid}
               username={ownerUsername}
               minimal
             />
+            <ProfileModerationTag tag={String(profile.moderationTag)} compact />
           </div>
         ) : null}
 
-        <div className="relative z-10 mx-auto flex max-w-[1500px] flex-col gap-8">
-          <div className="flex flex-col items-stretch gap-4 sm:items-end">
-            <div className="flex justify-end">
-              <HeaderControls />
-            </div>
-
-            <div className="flex w-full max-w-md flex-col gap-3 sm:ml-auto">
-              {isAdminEmail(auth.currentUser?.email) ? (
-                <button
-                  type="button"
-                  onClick={() => router.push("/admin")}
-                  className="w-full rounded-full border border-violet-400/40 bg-violet-500/15 px-8 py-4 text-center font-black text-violet-100 sm:w-auto"
-                >
-                  {t("settings_admin_panel")}
-                </button>
-              ) : null}
+        <div className="relative z-10 mx-auto max-w-[1500px]">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <HeaderControls />
+            {isAdminEmail(auth.currentUser?.email) ? (
               <button
                 type="button"
-                onClick={() => router.push("/settings/edit")}
-                className="w-full rounded-full bg-white px-9 py-4 text-center font-black text-black shadow-[0_0_30px_rgba(255,255,255,.18)] sm:w-auto"
+                onClick={() => router.push("/admin")}
+                className="rounded-full border border-violet-400/40 bg-violet-500/15 px-8 py-4 font-black text-violet-100"
               >
-                {t("profile_edit")}
+                {t("settings_admin_panel")}
               </button>
-              <button
-                type="button"
-                onClick={() => void handleLogout()}
-                className="w-full rounded-full border border-white/20 bg-white/5 px-9 py-4 text-center font-black text-white/80 sm:w-auto"
-              >
-                {t("settings_logout")}
-              </button>
-              {profile?.username || profile?.nombre ? (
-                <div className="w-full sm:w-auto [&_button]:w-full sm:[&_button]:w-auto [&_button]:justify-center">
-                  <VerifiedLinkBubble
-                    username={String(profile.username || profile.nombre)}
-                    profileUid={profile.uid}
-                    variant="inline"
-                  />
-                </div>
-              ) : null}
-            </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => router.push("/settings/edit")}
+              className="rounded-full bg-white px-9 py-4 font-black text-black shadow-[0_0_30px_rgba(255,255,255,.18)]"
+            >
+              {t("profile_edit")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="rounded-full border border-white/20 bg-white/5 px-9 py-4 font-black text-white/80"
+            >
+              {t("settings_logout")}
+            </button>
+            {profile?.username || profile?.nombre ? (
+              <VerifiedLinkBubble
+                username={String(profile.username || profile.nombre)}
+                profileUid={profile.uid}
+                variant="inline"
+              />
+            ) : null}
           </div>
 
-          <div>
+          <div className="mt-24">
             <h1
               className="font-black leading-none"
               style={{ fontSize: profileUi.usernameSizeMd }}
             >
               {username}
             </h1>
-
-            {profile?.moderationTag === "roleplay" ? (
-              <OwnerRoleplayNotice tag={String(profile.moderationTag)} className="mt-5" />
-            ) : null}
 
             {lastSeenLabel ? (
               <p

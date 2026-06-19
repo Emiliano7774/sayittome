@@ -28,7 +28,6 @@ import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
-import OwnerRoleplayNotice from "@/components/profile/OwnerRoleplayNotice";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
@@ -442,7 +441,16 @@ export default function PublicProfilePage() {
         style={{ minHeight: profileUi.heroHeight }}
       >
         <div className="pointer-events-auto absolute left-8 top-[max(1rem,env(safe-area-inset-top))] z-[40] flex items-center gap-2 md:left-24 md:top-10">
-          {profile.moderationTag && !isOwner ? (
+          {isOwner && profile.moderationTag === "roleplay" && profile.uid ? (
+            <>
+              <RoleplayAppealFlagButton
+                uid={profile.uid}
+                username={profile.username}
+                minimal
+              />
+              <ProfileModerationTag tag={profile.moderationTag} compact />
+            </>
+          ) : profile.moderationTag && !isOwner ? (
             <ProfileModerationTag tag={profile.moderationTag} compact />
           ) : null}
           <AdminProfileRoleplayButton
@@ -453,16 +461,6 @@ export default function PublicProfilePage() {
             }
           />
         </div>
-
-        {isOwner && profile.moderationTag === "roleplay" && profile.uid ? (
-          <div className="pointer-events-auto absolute left-8 top-[max(3.5rem,env(safe-area-inset-top))] z-[40] md:left-24">
-            <RoleplayAppealFlagButton
-              uid={profile.uid}
-              username={profile.username}
-              minimal
-            />
-          </div>
-        ) : null}
 
         <div className="absolute top-[max(1rem,env(safe-area-inset-top))] inset-x-4 z-[30] pointer-events-auto flex flex-col items-end gap-3 md:inset-x-auto md:right-8 md:left-auto md:top-10">
           <ClassicUxModeBar className="max-w-full" />
@@ -510,10 +508,6 @@ export default function PublicProfilePage() {
           >
             {profile.username}
           </h1>
-
-          {isOwner && profile.moderationTag === "roleplay" && profile.uid ? (
-            <OwnerRoleplayNotice tag={profile.moderationTag} className="mt-5" />
-          ) : null}
 
           {verifiedVisit ? (
             <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-violet-500/15 px-5 py-2 text-sm md:text-base font-black text-violet-100">
