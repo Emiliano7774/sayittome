@@ -26,7 +26,7 @@ export function resolveProfileHeartbeat(
   return stamp || undefined;
 }
 
-/** Profile owners always see their own status; visitors need public opt-in and real activity. */
+/** Visitors need public opt-in and a heartbeat; owners only when visibility is on. */
 export function canShowLastSeenToViewer(
   profile?: (LastSeenPrivacy & {
     lastActive?: string | null;
@@ -35,8 +35,8 @@ export function canShowLastSeenToViewer(
   isOwner = false,
 ) {
   if (!profile) return false;
-  if (isOwner) return true;
   if (!isLastSeenPublic(profile)) return false;
+  if (isOwner) return true;
   return Boolean(resolveProfileHeartbeat(profile));
 }
 

@@ -1,5 +1,6 @@
 import {
   canShowLastSeenToViewer,
+  isLastSeenPublic,
   resolveProfileHeartbeat,
 } from "@/lib/profile/lastSeenVisibility";
 
@@ -17,7 +18,7 @@ export function resolveProfileLastSeenLabel(
   formatLastSeen: (lastActive?: string | null, online?: boolean) => string,
   isOnline: boolean,
 ) {
-  if (!profile || !canShowLastSeenToViewer(profile, isOwner)) {
+  if (!profile || !isLastSeenPublic(profile) || !canShowLastSeenToViewer(profile, isOwner)) {
     return "";
   }
 
