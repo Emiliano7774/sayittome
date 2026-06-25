@@ -13,6 +13,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { auth, db } from "@/lib/firebase";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { inboxPeerDedupeKey } from "@/lib/chat/inboxPeerTitle";
 import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
@@ -89,8 +90,20 @@ function dedupeChats(chats: InboxChat[], viewerUid = "") {
   });
 }
 
-export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
+export type UseChatsInboxOptions = {
+  /** Logged-in user: four Firestore inbox queries. */
+  enableInboxQueries?: boolean;
+  /** Per-doc listeners for chats opened this browser session (anonymous threads). */
+  enableSessionChatListeners?: boolean;
+  /** Anonymous visitor: participantes query for the current anon session id. */
+  enableAnonInboxQuery?: boolean;
+};
+
+export function useChatsInbox(options?: UseChatsInboxOptions) {
   const enableInboxQueries = options?.enableInboxQueries ?? true;
+  const enableSessionChatListeners =
+    options?.enableSessionChatListeners ?? enableInboxQueries;
+  const enableAnonInboxQuery = options?.enableAnonInboxQuery ?? false;
   const { firebaseUser, loading } = useAuth();
   const [chats, setChats] = useState<InboxChat[]>([]);
   const [sessionChats, setSessionChats] = useState<InboxChat[]>([]);
@@ -118,6 +131,7 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
     anonOwner: new Map(),
     receptor: new Map(),
     target: new Map(),
+    anonParticipantes: new Map(),
   });
 
   useEffect(() => {
@@ -133,6 +147,7 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
       anonOwner: new Map(),
       receptor: new Map(),
       target: new Map(),
+      anonParticipantes: new Map(),
     };
 
     const rebuild = () => {
@@ -205,8 +220,57 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
 
   useEffect(() => {
     if (loading) return;
+    if (!enableAnonInboxQuery || uid) return;
 
-    if (!enableInboxQueries) {
+    const anonId = getChatAnonSenderId();
+    if (!anonId.startsWith("anon_")) return;
+
+    queryMapsRef.current.anonParticipantes = new Map();
+
+    const rebuild = () => {
+      const merged = new Map<string, InboxChat>();
+      for (const map of Object.values(queryMapsRef.current)) {
+        for (const [id, chat] of map) {
+          merged.set(id, chat);
+        }
+      }
+      setChats([...merged.values()]);
+    };
+
+    const byAnonParticipantes = query(
+      collection(db, "chats"),
+      where("participantes", "array-contains", anonId),
+      limit(50),
+    );
+
+    const unsub = onSnapshot(
+      byAnonParticipantes,
+      (snap) => {
+        const map = new Map<string, InboxChat>();
+        for (const docSnap of snap.docs) {
+          const normalized = normalizeInboxChat({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<InboxChat, "id">),
+          });
+          if (normalized) map.set(docSnap.id, normalized);
+        }
+        queryMapsRef.current.anonParticipantes = map;
+        rebuild();
+      },
+      (error) => {
+        console.error(error);
+      },
+    );
+
+    return () => {
+      unsub();
+    };
+  }, [enableAnonInboxQuery, loading, uid]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (!enableSessionChatListeners) {
       return;
     }
 
@@ -237,7 +301,7 @@ export function useChatsInbox(options?: { enableInboxQueries?: boolean }) {
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [enableInboxQueries, loading, sessionChatIds]);
+  }, [enableSessionChatListeners, loading, sessionChatIds]);
 
   const sortedChats = useMemo(() => {
     return dedupeChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);

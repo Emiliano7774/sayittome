@@ -38,10 +38,12 @@ export function useGlobalChatAlerts() {
     [pathname],
   );
   const liveFirestoreEnabled = inboxRouteEnabled && !documentHidden;
-  const liveChatAlertsEnabled = chatAlertsRouteEnabled;
+  const liveChatAlertsEnabled = chatAlertsRouteEnabled && !documentHidden;
 
   const { sortedChats, uid, loading, isAnonymousSession } = useChatsInbox({
     enableInboxQueries: liveFirestoreEnabled,
+    enableSessionChatListeners: liveChatAlertsEnabled,
+    enableAnonInboxQuery: liveChatAlertsEnabled,
   });
 
   const viewerId = resolveInboxViewerId(uid);
