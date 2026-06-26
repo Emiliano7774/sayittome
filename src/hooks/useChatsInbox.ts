@@ -14,9 +14,10 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { auth, db } from "@/lib/firebase";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import { ANON_SESSION_CHANGED_EVENT } from "@/lib/chat/anonSession";
 import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { inboxPeerDedupeKey } from "@/lib/chat/inboxPeerTitle";
-import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
+import { hasInboxPreview, isVisibleInboxChat } from "@/lib/chat/inboxVisible";
 import { normalizeInboxChat } from "@/lib/chat/normalizeInboxChat";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 
@@ -75,12 +76,27 @@ function dedupeChats(chats: InboxChat[], viewerUid = "") {
     const chatMs = chat.updatedAt?.toMillis?.() ?? 0;
     const existingMs = existing?.updatedAt?.toMillis?.() ?? 0;
     const mergedPhoto = chat.targetPhoto || existing?.targetPhoto;
+    const chatVisible = hasInboxPreview(chat);
+    const existingVisible = existing ? hasInboxPreview(existing) : false;
 
-    if (!existing || chatMs >= existingMs) {
-      map.set(key, mergedPhoto ? { ...chat, targetPhoto: mergedPhoto } : chat);
-    } else if (mergedPhoto && !existing.targetPhoto) {
-      map.set(key, { ...existing, targetPhoto: mergedPhoto });
+    let winner = chat;
+    if (existing) {
+      if (chatVisible && !existingVisible) {
+        winner = chat;
+      } else if (!chatVisible && existingVisible) {
+        winner = existing;
+      } else if (chatMs >= existingMs) {
+        winner = chat;
+      } else {
+        winner = existing;
+      }
     }
+
+    const mergedTargetPhoto = winner.targetPhoto || mergedPhoto;
+    map.set(
+      key,
+      mergedTargetPhoto ? { ...winner, targetPhoto: mergedTargetPhoto } : winner,
+    );
   }
 
   return [...map.values()].sort((a, b) => {
@@ -108,8 +124,24 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   const [chats, setChats] = useState<InboxChat[]>([]);
   const [sessionChats, setSessionChats] = useState<InboxChat[]>([]);
   const [sessionChatIds, setSessionChatIds] = useState<string[]>([]);
+  const [anonSessionId, setAnonSessionId] = useState("");
 
   const uid = firebaseUser?.uid || auth.currentUser?.uid || "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncAnonSessionId = () => {
+      setAnonSessionId(getChatAnonSenderId());
+    };
+
+    syncAnonSessionId();
+    window.addEventListener(ANON_SESSION_CHANGED_EVENT, syncAnonSessionId);
+
+    return () => {
+      window.removeEventListener(ANON_SESSION_CHANGED_EVENT, syncAnonSessionId);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -132,7 +164,18 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     receptor: new Map(),
     target: new Map(),
     anonParticipantes: new Map(),
+    anonSession: new Map(),
   });
+
+  const rebuildChats = () => {
+    const merged = new Map<string, InboxChat>();
+    for (const map of Object.values(queryMapsRef.current)) {
+      for (const [id, chat] of map) {
+        merged.set(id, chat);
+      }
+    }
+    setChats([...merged.values()]);
+  };
 
   useEffect(() => {
     if (loading) return;
@@ -141,24 +184,11 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       return;
     }
 
-    setChats([]);
-    queryMapsRef.current = {
-      participantes: new Map(),
-      anonOwner: new Map(),
-      receptor: new Map(),
-      target: new Map(),
-      anonParticipantes: new Map(),
-    };
-
-    const rebuild = () => {
-      const merged = new Map<string, InboxChat>();
-      for (const map of Object.values(queryMapsRef.current)) {
-        for (const [id, chat] of map) {
-          merged.set(id, chat);
-        }
-      }
-      setChats([...merged.values()]);
-    };
+    queryMapsRef.current.participantes = new Map();
+    queryMapsRef.current.anonOwner = new Map();
+    queryMapsRef.current.receptor = new Map();
+    queryMapsRef.current.target = new Map();
+    rebuildChats();
 
     const mergeQuery = (key: string) => (snap: QuerySnapshot) => {
       const map = new Map<string, InboxChat>();
@@ -170,7 +200,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
         if (normalized) map.set(docSnap.id, normalized);
       }
       queryMapsRef.current[key] = map;
-      rebuild();
+      rebuildChats();
     };
 
     const byParticipantes = query(
@@ -215,26 +245,36 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       unsubB();
       unsubC();
       unsubD();
+      queryMapsRef.current.participantes = new Map();
+      queryMapsRef.current.anonOwner = new Map();
+      queryMapsRef.current.receptor = new Map();
+      queryMapsRef.current.target = new Map();
+      rebuildChats();
     };
   }, [uid, loading, enableInboxQueries]);
 
   useEffect(() => {
     if (loading) return;
-    if (!enableAnonInboxQuery || uid) return;
+    if (!enableAnonInboxQuery) return;
 
-    const anonId = getChatAnonSenderId();
+    const anonId = anonSessionId || getChatAnonSenderId();
     if (!anonId.startsWith("anon_")) return;
 
     queryMapsRef.current.anonParticipantes = new Map();
+    queryMapsRef.current.anonSession = new Map();
+    rebuildChats();
 
-    const rebuild = () => {
-      const merged = new Map<string, InboxChat>();
-      for (const map of Object.values(queryMapsRef.current)) {
-        for (const [id, chat] of map) {
-          merged.set(id, chat);
-        }
+    const mergeAnonQuery = (key: string) => (snap: QuerySnapshot) => {
+      const map = new Map<string, InboxChat>();
+      for (const docSnap of snap.docs) {
+        const normalized = normalizeInboxChat({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<InboxChat, "id">),
+        });
+        if (normalized) map.set(docSnap.id, normalized);
       }
-      setChats([...merged.values()]);
+      queryMapsRef.current[key] = map;
+      rebuildChats();
     };
 
     const byAnonParticipantes = query(
@@ -243,29 +283,35 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       limit(50),
     );
 
-    const unsub = onSnapshot(
+    const byAnonSession = query(
+      collection(db, "chats"),
+      where("anonSessionId", "==", anonId),
+      limit(50),
+    );
+
+    const unsubA = onSnapshot(
       byAnonParticipantes,
-      (snap) => {
-        const map = new Map<string, InboxChat>();
-        for (const docSnap of snap.docs) {
-          const normalized = normalizeInboxChat({
-            id: docSnap.id,
-            ...(docSnap.data() as Omit<InboxChat, "id">),
-          });
-          if (normalized) map.set(docSnap.id, normalized);
-        }
-        queryMapsRef.current.anonParticipantes = map;
-        rebuild();
+      mergeAnonQuery("anonParticipantes"),
+      (error) => {
+        console.error(error);
       },
+    );
+    const unsubB = onSnapshot(
+      byAnonSession,
+      mergeAnonQuery("anonSession"),
       (error) => {
         console.error(error);
       },
     );
 
     return () => {
-      unsub();
+      unsubA();
+      unsubB();
+      queryMapsRef.current.anonParticipantes = new Map();
+      queryMapsRef.current.anonSession = new Map();
+      rebuildChats();
     };
-  }, [enableAnonInboxQuery, loading, uid]);
+  }, [enableAnonInboxQuery, loading, anonSessionId]);
 
   useEffect(() => {
     if (loading) return;

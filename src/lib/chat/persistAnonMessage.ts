@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   increment,
   serverTimestamp,
   writeBatch,
@@ -66,9 +67,35 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const messageAuthorId = isOwnerReply ? profileReplyAuthorId(targetUid) : senderId;
   const recipientUid = isOwnerReply ? senderId : targetUid;
 
+  const chatRef = doc(db, "chats", chatId);
+  const existingSnap = await getDoc(chatRef);
+  const existingData = existingSnap.exists()
+    ? (existingSnap.data() as Record<string, unknown>)
+    : {};
+
+  const existingParticipantes = Array.isArray(existingData.participantes)
+    ? existingData.participantes.map((entry) => String(entry)).filter(Boolean)
+    : [];
+
   const participantes = Array.from(
-    new Set([senderId, ...(currentUid ? [currentUid] : []), ...(targetUid ? [targetUid] : [])].filter(Boolean)),
+    new Set([
+      ...existingParticipantes,
+      senderId,
+      ...(currentUid ? [currentUid] : []),
+      ...(targetUid ? [targetUid] : []),
+    ].filter(Boolean)),
   );
+
+  const storedAnonSession = String(existingData.anonSessionId || "").trim();
+  const anonSessionId =
+    isOwnerReply && storedAnonSession.startsWith("anon_")
+      ? storedAnonSession
+      : senderId;
+
+  const existingInitiatorUid = String(existingData.initiatorUid || "").trim();
+  const initiatorUid = isOwnerReply
+    ? existingInitiatorUid || null
+    : currentUid || null;
 
   const legacyIds = [
     ...buildLegacyProfileChatIds(senderId, username, targetUid),
@@ -81,9 +108,9 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     receptorUsername: username,
     receptorUid: targetUid || null,
     targetUid: targetUid || null,
-    initiatorUid: currentUid || null,
+    initiatorUid,
     anonOwnerUid: targetUid || null,
-    anonSessionId: senderId,
+    anonSessionId,
     participantes,
     anon: true,
     senderIsAnonymous: !isOwnerReply,
@@ -135,7 +162,6 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     ...(input.moderationModel ? { moderationModel: input.moderationModel } : {}),
   };
 
-  const chatRef = doc(db, "chats", chatId);
   const batch = writeBatch(db);
   batch.set(chatRef, chatMeta, { merge: true });
   batch.set(messageRef, messagePayload);
@@ -153,7 +179,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     targetUid: targetUid || undefined,
     initiatorUid: currentUid || undefined,
     anonOwnerUid: targetUid || undefined,
-    anonSessionId: senderId,
+    anonSessionId,
     lastMessage: messageText,
     lastMessageSender: messageAuthorId,
     anon: true,

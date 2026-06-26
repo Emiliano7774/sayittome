@@ -104,6 +104,11 @@ export function inboxPeerDedupeKey(chat: InboxChat, viewerUid?: string) {
     return `anon-thread:${chatId}`;
   }
 
+  // Anonymous visitors: one stable key per thread (avoid username collisions).
+  if (!viewerUid && isProfileAnonChatId(chatId)) {
+    return `anon-visitor:${chatId}`;
+  }
+
   const title = profileUsername(chat);
   if (title) return `profile:${safeChatPart(title)}`;
   if (isProfileAnonChatId(chatId)) {

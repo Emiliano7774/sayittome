@@ -3,6 +3,12 @@ import { deleteAnonymousStoriesForSession } from "@/lib/stories/anonStories";
 
 const ANON_KEY = "sayittome_anon_session";
 const ANON_RESET_FLAG = "sayittome_anon_reset_pending";
+export const ANON_SESSION_CHANGED_EVENT = "sayittome-anon-session-changed";
+
+function notifyAnonSessionChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(ANON_SESSION_CHANGED_EVENT));
+}
 
 export function getAnonSessionId() {
   if (typeof window === "undefined") {
@@ -19,6 +25,7 @@ export function getAnonSessionId() {
       Date.now().toString(36);
 
     sessionStorage.setItem(ANON_KEY, current);
+    notifyAnonSessionChanged();
   }
 
   return current;
@@ -66,7 +73,9 @@ export function beginFreshAnonSession() {
     void deleteAnonymousStoriesForSession(oldSession);
   }
 
-  return getAnonSessionId();
+  const next = getAnonSessionId();
+  notifyAnonSessionChanged();
+  return next;
 }
 
 /** Apply a pending reset (after visiting home) before using shuffle/anonymous features. */
