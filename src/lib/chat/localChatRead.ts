@@ -66,3 +66,20 @@ export function subscribeLocalChatRead(callback: () => void) {
   window.addEventListener("sayittome-chat-read-local-changed", callback);
   return () => window.removeEventListener("sayittome-chat-read-local-changed", callback);
 }
+
+export function clearLocalChatReadForViewer(viewerId: string) {
+  if (!viewerId || typeof window === "undefined") return;
+
+  const map = readMap();
+  const suffix = `:${viewerId}`;
+  let changed = false;
+
+  for (const key of Object.keys(map)) {
+    if (key.endsWith(suffix)) {
+      delete map[key];
+      changed = true;
+    }
+  }
+
+  if (changed) writeMap(map);
+}

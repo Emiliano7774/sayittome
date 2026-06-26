@@ -1,4 +1,6 @@
 import { clearSessionChats } from "@/lib/chat/sessionChats";
+import { deleteAnonymousChatsForSession } from "@/lib/chat/anonChatCleanup";
+import { clearLocalChatReadForViewer } from "@/lib/chat/localChatRead";
 import { deleteAnonymousStoriesForSession } from "@/lib/stories/anonStories";
 
 const ANON_KEY = "sayittome_anon_session";
@@ -70,7 +72,9 @@ export function beginFreshAnonSession() {
   clearSessionChats();
 
   if (oldSession) {
+    clearLocalChatReadForViewer(oldSession);
     void deleteAnonymousStoriesForSession(oldSession);
+    void deleteAnonymousChatsForSession(oldSession);
   }
 
   const next = getAnonSessionId();

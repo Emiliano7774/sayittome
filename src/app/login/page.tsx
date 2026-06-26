@@ -9,7 +9,6 @@ import {
 } from "firebase/auth";
 
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
-import { beginFreshAnonSession } from "@/lib/chat/anonSession";
 import { mapLoginErrorCode } from "@/lib/auth/registerErrors";
 import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { auth } from "@/lib/firebase";
@@ -51,8 +50,6 @@ export default function LoginPage() {
         email.trim().toLowerCase(),
         password,
       );
-
-      beginFreshAnonSession();
 
       const next = await resolvePostAuthPath(
         cred.user.uid,
