@@ -5,6 +5,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
 import { auth, db } from "@/lib/firebase";
+import { withTimeout } from "@/lib/async/withTimeout";
 
 type OwnerState = {
   ready: boolean;
@@ -43,7 +44,11 @@ export function useProfileOwner(profileUid?: string, profileUsername?: string) {
       }
 
       try {
-        const snap = await getDoc(doc(db, "usuarios", user.uid));
+        const snap = await withTimeout(
+          getDoc(doc(db, "usuarios", user.uid)),
+          8000,
+          "profile_owner_timeout",
+        );
         if (!snap.exists()) {
           setState({ ready: true, isOwner: false, uid: user.uid });
           return;

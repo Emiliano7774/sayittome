@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -21,6 +22,7 @@ import {
   auth,
   db,
 } from "@/lib/firebase";
+import { withTimeout } from "@/lib/async/withTimeout";
 
 type AuthUserData = {
   uid: string;
@@ -75,92 +77,86 @@ export function AuthProvider({
   const [loading, setLoading] =
     useState(true);
 
+  const loadedProfileUidRef = useRef<string | null>(null);
+
   useEffect(() => {
     const unsub =
       onAuthStateChanged(
         auth,
         async (user) => {
-          setLoading(true);
-
           setFirebaseUser(user);
 
           if (!user) {
+            loadedProfileUidRef.current = null;
             setProfile(null);
-
             setLoading(false);
-
             return;
           }
 
-          try {
-            const snap =
-              await getDoc(
-                doc(
-                  db,
-                  "usuarios",
-                  user.uid
-                )
-              );
+          const sameUser = loadedProfileUidRef.current === user.uid;
+          if (!sameUser) {
+            setLoading(true);
+          }
 
-            if (
-              snap.exists()
-            ) {
-              const data =
-                snap.data();
+          try {
+            const snap = await withTimeout(
+              getDoc(doc(db, "usuarios", user.uid)),
+              8000,
+              "auth_profile_timeout",
+            );
+
+            if (snap.exists()) {
+              const data = snap.data();
 
               setProfile({
                 uid: user.uid,
 
-                username:
-                  data.username ||
-                  "",
+                username: data.username || "",
 
-                email:
-                  data.email ||
-                  user.email ||
-                  "",
+                email: data.email || user.email || "",
 
-                fotoPrincipal:
-                  data.fotoPrincipal ||
-                  "",
+                fotoPrincipal: data.fotoPrincipal || "",
 
-                bio:
-                  data.bio || "",
+                bio: data.bio || "",
 
-                provincia:
-                  data.provincia ||
-                  "",
+                provincia: data.provincia || "",
 
-                profileSetupComplete:
-                  data.profileSetupComplete === true,
+                profileSetupComplete: data.profileSetupComplete === true,
               });
             } else {
               setProfile({
                 uid: user.uid,
 
-                username:
-                  "",
+                username: "",
 
-                email:
-                  user.email ||
-                  "",
+                email: user.email || "",
 
-                fotoPrincipal:
-                  "",
+                fotoPrincipal: "",
 
                 bio: "",
 
-                provincia:
-                  "",
+                provincia: "",
 
                 profileSetupComplete: false,
               });
             }
+
+            loadedProfileUidRef.current = user.uid;
           } catch (e) {
             console.error(e);
+            setProfile({
+              uid: user.uid,
+              username: "",
+              email: user.email || "",
+              fotoPrincipal: "",
+              bio: "",
+              provincia: "",
+              profileSetupComplete: false,
+            });
+            loadedProfileUidRef.current = user.uid;
+          } finally {
+            setLoading(false);
           }
-
-          setLoading(false);
         }
       );
 

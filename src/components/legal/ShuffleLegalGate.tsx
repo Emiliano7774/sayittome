@@ -16,15 +16,21 @@ export default function ShuffleLegalGate({ children }: { children: React.ReactNo
   const { firebaseUser, loading } = useAuth();
   const [ready, setReady] = useState(false);
   const [needsModal, setNeedsModal] = useState(false);
+  const [authGraceReady, setAuthGraceReady] = useState(false);
 
   useEffect(() => {
-    if (loading) return;
+    const timer = window.setTimeout(() => setAuthGraceReady(true), 4000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (loading && !authGraceReady) return;
 
     const uid = firebaseUser?.uid || "";
     const accepted = hasShuffleLegalAcceptance(uid);
     setNeedsModal(!accepted);
     setReady(true);
-  }, [firebaseUser?.uid, loading]);
+  }, [authGraceReady, firebaseUser?.uid, loading]);
 
   async function handleAccept() {
     const uid = firebaseUser?.uid || "";
@@ -38,7 +44,7 @@ export default function ShuffleLegalGate({ children }: { children: React.ReactNo
     setNeedsModal(false);
   }
 
-  if (!ready || loading) {
+  if ((!ready || loading) && !authGraceReady) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-white">
         <p className="text-white/40">Cargando...</p>

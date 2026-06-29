@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
+import { withTimeout } from "@/lib/async/withTimeout";
 import { isRecentlyActive } from "@/lib/presence";
 
 export type FollowingProfile = {
@@ -22,7 +23,11 @@ export type FollowingProfile = {
 };
 
 async function loadFollowingProfile(targetUid: string): Promise<FollowingProfile | null> {
-  const snap = await getDoc(doc(db, "usuarios", targetUid));
+  const snap = await withTimeout(
+    getDoc(doc(db, "usuarios", targetUid)),
+    8000,
+    "following_profile_timeout",
+  );
   if (!snap.exists()) return null;
 
   const data = snap.data() as Record<string, unknown>;

@@ -521,6 +521,10 @@ export function useShufflePool() {
     attachShuffleProfilerWindow();
     document.body.classList.remove("sayittome-chat-open");
 
+    const loadingSafety = window.setTimeout(() => {
+      if (mountedRef.current) setLoading(false);
+    }, 15000);
+
     const cachedProfiles = readCachedShufflePool();
     const cachedStats = readCachedShuffleStats();
 
@@ -609,6 +613,7 @@ export function useShufflePool() {
 
     return () => {
       mountedRef.current = false;
+      window.clearTimeout(loadingSafety);
       window.clearInterval(presenceTimer);
       window.clearInterval(poolSyncTimer);
       window.removeEventListener("sayittome:shuffle", onShuffleEvent);

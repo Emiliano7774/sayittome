@@ -13,6 +13,7 @@ import {
   setCachedFullProfile,
 } from "@/lib/profile/profileCache";
 import { ProfileUsernameChangedError } from "@/lib/profile/usernameHistory";
+import { withTimeout } from "@/lib/async/withTimeout";
 
 export class OwnerProfileInboxRedirect extends Error {
   readonly code = "owner_profile_inbox_redirect";
@@ -54,9 +55,13 @@ export async function lookupProfileByUsername(
     }
   }
 
-  const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
-    cache: "no-store",
-  });
+  const res = await withTimeout(
+    fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
+      cache: "no-store",
+    }),
+    12000,
+    "profile_lookup_timeout",
+  );
   const json = await res.json();
 
   if (json?.reason === "username_changed") {
