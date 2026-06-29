@@ -3,6 +3,7 @@ import {
   applyShuffleProfileBlurFlags,
   resolveShuffleProfileBlurPhoto,
 } from "@/lib/shuffle/resolveShuffleBlur";
+import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { SHUFFLE_WINDOW_SIZE } from "@/lib/shuffle/pickWindow";
 import { shuffleCount, shuffleMark, shuffleMeasure } from "@/lib/shuffle/shuffleProfiler";
 
