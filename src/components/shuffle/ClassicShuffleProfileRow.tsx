@@ -5,8 +5,10 @@ import { memo } from "react";
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
+import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
+import { isShuffleProfileModerated } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
@@ -14,20 +16,34 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
   const tokens = getClassicShuffleDensityTokens(density);
   const username = profile.username;
   const bio = profile.bio || "Sin descripcion.";
+  const moderated = isShuffleProfileModerated(profile);
 
   return (
-    <div className="w-full border-b border-white/10 contain-[layout_paint_style]">
-      <div className={`flex w-full items-center ${tokens.gapClass} ${tokens.rowPadding}`}>
-        <StoryAvatarButton
-          ownerUid={profile.uid}
-          username={username}
-          photo={profile.photo}
-          size={tokens.avatarSize}
-          mode="delegate"
-          blurPhoto={profile.blurPhoto}
-          showOnline={profile.showOnline}
-          iconSize={tokens.iconSize}
-        />
+    <div
+      className={[
+        "relative w-full border-b border-white/10 contain-[layout_paint_style]",
+        moderated ? "bg-white/[0.02]" : "",
+      ].join(" ")}
+    >
+      <div
+        className={[
+          `flex w-full items-center ${tokens.gapClass} ${tokens.rowPadding}`,
+          moderated ? "opacity-55 saturate-[0.45]" : "",
+        ].join(" ")}
+      >
+        <div className="relative shrink-0">
+          <StoryAvatarButton
+            ownerUid={profile.uid}
+            username={username}
+            photo={profile.photo}
+            size={tokens.avatarSize}
+            mode="delegate"
+            blurPhoto={profile.blurPhoto}
+            showOnline={profile.showOnline}
+            iconSize={tokens.iconSize}
+          />
+          <ShuffleModeratedIndicator profile={profile} variant="classic" />
+        </div>
 
         <button
           type="button"
@@ -64,4 +80,10 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
   );
 }
 
-export default memo(ClassicShuffleProfileRow, (a, b) => a.profile.uid === b.profile.uid && a.profile.moderationTag === b.profile.moderationTag);
+export default memo(
+  ClassicShuffleProfileRow,
+  (a, b) =>
+    a.profile.uid === b.profile.uid &&
+    a.profile.moderationTag === b.profile.moderationTag &&
+    a.profile.blurPhoto === b.profile.blurPhoto,
+);

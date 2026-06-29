@@ -26,6 +26,7 @@ import {
   type ShuffleFilters,
 } from "@/lib/shuffle/filters";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
+import { applyShuffleProfileBlurFlags } from "@/lib/shuffle/resolveShuffleBlur";
 import {
   pickRandomUniqueWindowIndices,
   SHUFFLE_WINDOW_SIZE,
@@ -573,15 +574,31 @@ export function useShufflePool() {
       const moderationTag = String(detail?.moderationTag || "");
       if (!uid) return;
 
-      poolRef.current = poolRef.current.map((profile) =>
-        profile.uid === uid ? { ...profile, moderationTag } : profile,
-      );
-      activePoolRef.current = activePoolRef.current.map((profile) =>
-        profile.uid === uid ? { ...profile, moderationTag } : profile,
-      );
+      const patchModeration = (profile: ShuffleProfile) =>
+        profile.uid === uid ? { ...profile, moderationTag } : profile;
+
+      poolRef.current = poolRef.current.map(patchModeration);
+      activePoolRef.current = activePoolRef.current.map(patchModeration);
+      featuredRef.current = featuredRef.current.map(patchModeration);
+    }
+
+    function onProfileBlur(event: Event) {
+      const detail = (event as CustomEvent<{ uid?: string; mediaBlurFlags?: Record<string, boolean> }>)
+        .detail;
+      const uid = String(detail?.uid || "");
+      const mediaBlurFlags = detail?.mediaBlurFlags || {};
+      if (!uid) return;
+
+      const patchBlur = (profile: ShuffleProfile) =>
+        profile.uid === uid ? applyShuffleProfileBlurFlags(profile, mediaBlurFlags) : profile;
+
+      poolRef.current = poolRef.current.map(patchBlur);
+      activePoolRef.current = activePoolRef.current.map(patchBlur);
+      featuredRef.current = featuredRef.current.map(patchBlur);
     }
 
     window.addEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
+    window.addEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
 
     const presenceTimer = window.setInterval(() => {
       if (poolRef.current.length === 0) return;
@@ -618,6 +635,7 @@ export function useShufflePool() {
       window.clearInterval(poolSyncTimer);
       window.removeEventListener("sayittome:shuffle", onShuffleEvent);
       window.removeEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
+      window.removeEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
       abortRef.current?.abort();
     };

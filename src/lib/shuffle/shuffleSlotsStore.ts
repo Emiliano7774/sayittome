@@ -1,5 +1,8 @@
 import { shuffleProfileDedupeKeys, uniqueShuffleWindow } from "@/lib/shuffle/dedupeProfiles";
-import type { ShuffleProfile } from "@/lib/shuffle/types";
+import {
+  applyShuffleProfileBlurFlags,
+  resolveShuffleProfileBlurPhoto,
+} from "@/lib/shuffle/resolveShuffleBlur";
 import { SHUFFLE_WINDOW_SIZE } from "@/lib/shuffle/pickWindow";
 import { shuffleCount, shuffleMark, shuffleMeasure } from "@/lib/shuffle/shuffleProfiler";
 
@@ -56,6 +59,27 @@ export function setShuffleSlots(
     const prev = slots[slot];
 
     if (prev?.uid === next?.uid && prev?.username === next?.username) {
+      const mergedFlags = {
+        ...(next.mediaBlurFlags || {}),
+        ...(prev.mediaBlurFlags || {}),
+      };
+      const merged: ShuffleProfile = {
+        ...prev,
+        moderationTag: next.moderationTag || prev.moderationTag,
+        mediaBlurFlags: mergedFlags,
+        blurPhoto: resolveShuffleProfileBlurPhoto(
+          { ...prev, mediaBlurFlags: mergedFlags },
+          mergedFlags,
+        ),
+      };
+
+      if (
+        prev.blurPhoto !== merged.blurPhoto ||
+        prev.moderationTag !== merged.moderationTag
+      ) {
+        slots[slot] = merged;
+        dirtySlots.add(slot);
+      }
       continue;
     }
 
@@ -94,17 +118,7 @@ export function patchShuffleProfileBlurFlags(
     const profile = slots[slot];
     if (!profile || profile.uid !== uid) continue;
 
-    const blurPhoto =
-      profile.adminBlurProfilePhoto === true ||
-      profile.adminBlurFotosPerfil === true ||
-      profile.adminBlurGallery === true ||
-      mediaBlurFlags[profile.photo] === true;
-
-    slots[slot] = {
-      ...profile,
-      mediaBlurFlags,
-      blurPhoto,
-    };
+    slots[slot] = applyShuffleProfileBlurFlags(profile, mediaBlurFlags);
     dirtySlots.add(slot);
   }
 

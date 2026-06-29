@@ -7,11 +7,14 @@ import { UserRound } from "lucide-react";
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
+import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { isShuffleProfileModerated } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
   const story = useStoryStatus(profile.uid, profile.username);
+  const moderated = isShuffleProfileModerated(profile);
   const href =
     story.hasActive && story.hasUnseen && story.storyPath
       ? story.storyPath
@@ -39,8 +42,15 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
         />
       </div>
       <Link href={href} className="relative block w-full">
-      <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
-      <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
+      <div className={["absolute -inset-4 rounded-[2rem] blur-2xl", moderated ? "bg-zinc-500/10" : "bg-fuchsia-500/20"].join(" ")} />
+      <div
+        className={[
+          "group relative overflow-hidden rounded-[2.5rem] border bg-zinc-950 shadow-2xl contain-[layout_paint_style]",
+          moderated
+            ? "border-white/10 opacity-60 saturate-[0.4] shadow-none"
+            : "border-fuchsia-500/20 shadow-fuchsia-950/40",
+        ].join(" ")}
+      >
         <div className="relative aspect-[3/4] w-full overflow-hidden">
           {profile.photo ? (
             <>
@@ -63,6 +73,7 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
           )}
 
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
+          <ShuffleModeratedIndicator profile={profile} variant="modern" />
 
           {profile.shuffleFeatured ? (
             <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full border border-orange-400/40 bg-black/60 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-300 backdrop-blur-sm">
@@ -133,5 +144,6 @@ export default memo(
     a.profile.photo === b.profile.photo &&
     a.profile.showOnline === b.profile.showOnline &&
     a.profile.shuffleFeatured === b.profile.shuffleFeatured &&
-    a.profile.moderationTag === b.profile.moderationTag,
+    a.profile.moderationTag === b.profile.moderationTag &&
+    a.profile.blurPhoto === b.profile.blurPhoto,
 );
