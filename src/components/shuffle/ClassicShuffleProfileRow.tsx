@@ -4,6 +4,7 @@ import { memo } from "react";
 
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
+import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
@@ -46,11 +47,18 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
           <p className={`mt-0.5 ${tokens.bioClass}`}>{bio}</p>
         </button>
 
-        <AdminProfileRoleplayButton
-          profile={profile}
-          variant="classic"
-          appearance="shuffle"
-        />
+        <div className="flex shrink-0 flex-col gap-1">
+          <AdminProfileRoleplayButton
+            profile={profile}
+            variant="classic"
+            appearance="shuffle"
+          />
+          <AdminProfileBlurPhotosButton
+            profile={profile}
+            variant="classic"
+            appearance="shuffle"
+          />
+        </div>
       </div>
     </div>
   );

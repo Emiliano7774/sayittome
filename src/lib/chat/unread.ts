@@ -1,6 +1,7 @@
 import { doc, increment, updateDoc } from "firebase/firestore";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isAnonVisitorProfileChat } from "@/lib/chat/inboxPeerTitle";
 import { markChatReadLocally } from "@/lib/chat/localChatRead";
 import { db } from "@/lib/firebase";
 
@@ -59,7 +60,11 @@ export async function markChatAsRead(
     [`unreadCounts.${viewerId}`]: 0,
   };
 
-  if (firebaseUid && firebaseUid !== viewerId) {
+  if (
+    firebaseUid &&
+    firebaseUid !== viewerId &&
+    !(chat && isAnonVisitorProfileChat(chat, firebaseUid))
+  ) {
     patch[`readBy.${firebaseUid}`] = true;
     patch[`unreadCounts.${firebaseUid}`] = 0;
   }

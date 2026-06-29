@@ -1,6 +1,6 @@
 import { isLastSeenPublic } from "@/lib/profile/lastSeenVisibility";
 import { isActiveWithinWindow } from "@/lib/presence";
-import { galleryRequiresBlur } from "@/lib/moderation/blur";
+import { galleryRequiresBlur, urlRequiresBlurFromProfile } from "@/lib/moderation/blur";
 import { normalizeUsername } from "@/lib/profile/username";
 import { dedupeShuffleProfiles, resolveUsernameLower } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
@@ -17,6 +17,11 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
       const adminBlurProfilePhoto = item?.adminBlurProfilePhoto === true;
       const adminBlurFotosPerfil = item?.adminBlurFotosPerfil === true;
       const adminBlurGallery = item?.adminBlurGallery === true;
+      const mediaBlurFlags =
+        item?.mediaBlurFlags && typeof item.mediaBlurFlags === "object"
+          ? (item.mediaBlurFlags as Record<string, boolean>)
+          : undefined;
+      const mainPhoto = String(item?.photo || item?.fotoPrincipal || item?.photoURL || "");
       const intereses = Array.isArray(item?.intereses)
         ? item.intereses.map(String)
         : [];
@@ -51,6 +56,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         adminBlurProfilePhoto,
         adminBlurFotosPerfil,
         adminBlurGallery,
+        mediaBlurFlags,
         provincia: String(item?.provincia || ""),
         ciudad: String(item?.ciudad || ""),
         pais: String(item?.pais || ""),
@@ -75,11 +81,13 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
             ? item.showOnline
             : isActiveWithinWindow(presenceAt, lastActive)
           : false,
-        blurPhoto: galleryRequiresBlur({
-          adminBlurProfilePhoto,
-          adminBlurFotosPerfil,
-          adminBlurGallery,
-        }),
+        blurPhoto:
+          galleryRequiresBlur({
+            adminBlurProfilePhoto,
+            adminBlurFotosPerfil,
+            adminBlurGallery,
+            mediaBlurFlags,
+          }) || urlRequiresBlurFromProfile({ mediaBlurFlags }, mainPhoto),
         moderationTag: String(item?.moderationTag || ""),
         shuffleFeatured: item?.shuffleFeatured === true,
       };

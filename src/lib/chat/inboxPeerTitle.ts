@@ -28,7 +28,7 @@ function profileUsername(chat: InboxChat) {
   );
 }
 
-function profileAnonSenderFromChat(chat: InboxChat) {
+export function profileAnonSenderFromChat(chat: InboxChat) {
   const chatId = chat.canonicalChatId || chat.id;
   const stored = String(chat.anonSessionId || "").trim();
   if (stored.startsWith("anon_")) return stored;
@@ -63,6 +63,18 @@ export function isIncomingAnonChatForOwner(chat: InboxChat, viewerUid?: string) 
     chat.anonOwnerUid === viewerUid;
 
   return ownerByUid;
+}
+
+/** Visitor messaging a profile as anon (not the profile owner inbox row). */
+export function isAnonVisitorProfileChat(chat: InboxChat, firebaseUid = "") {
+  const chatId = chat.canonicalChatId || chat.id;
+  if (!isProfileAnonChatId(chatId)) return false;
+  if (firebaseUid && isIncomingAnonChatForOwner(chat, firebaseUid)) return false;
+
+  const threadAnonId = profileAnonSenderFromChat(chat);
+  if (!threadAnonId.startsWith("anon_")) return false;
+
+  return threadAnonId === getChatAnonSenderId();
 }
 
 /** Inbox row shows the profile (name + photo), not the anon label. */
@@ -104,8 +116,7 @@ export function inboxPeerDedupeKey(chat: InboxChat, viewerUid?: string) {
     return `anon-thread:${chatId}`;
   }
 
-  // Anonymous visitors: one stable key per thread (avoid username collisions).
-  if (!viewerUid && isProfileAnonChatId(chatId)) {
+  if (isAnonVisitorProfileChat(chat, viewerUid || "")) {
     return `anon-visitor:${chatId}`;
   }
 

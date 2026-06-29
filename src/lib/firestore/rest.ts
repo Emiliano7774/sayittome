@@ -43,6 +43,14 @@ export function toFirestoreFields(
   return fields;
 }
 
+export function toFirestoreMapValue(map: Record<string, boolean>) {
+  const fields: Record<string, { booleanValue: boolean }> = {};
+  for (const [key, value] of Object.entries(map)) {
+    fields[key] = { booleanValue: value === true };
+  }
+  return { mapValue: { fields } };
+}
+
 export function parseFirestoreValue(field: any): unknown {
   if (!field) return undefined;
   if ("stringValue" in field) return field.stringValue;
@@ -313,6 +321,39 @@ export async function patchFirestoreDoc(
 
   if (!res.ok) {
     throw new Error(`patch ${collection}/${id} ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function patchFirestoreMediaBlurFlags(
+  uid: string,
+  flags: Record<string, boolean>,
+  meta?: { adminBlurBy?: string; adminBlurAt?: string },
+) {
+  const url = new URL(
+    `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/usuarios/${encodeURIComponent(uid)}`,
+  );
+  url.searchParams.set("key", FIRESTORE_API_KEY);
+  url.searchParams.append("updateMask.fieldPaths", "mediaBlurFlags");
+  if (meta?.adminBlurBy) url.searchParams.append("updateMask.fieldPaths", "adminBlurBy");
+  if (meta?.adminBlurAt) url.searchParams.append("updateMask.fieldPaths", "adminBlurAt");
+
+  const bodyFields: Record<string, unknown> = {
+    mediaBlurFlags: toFirestoreMapValue(flags),
+  };
+  if (meta?.adminBlurBy) bodyFields.adminBlurBy = { stringValue: meta.adminBlurBy };
+  if (meta?.adminBlurAt) bodyFields.adminBlurAt = { stringValue: meta.adminBlurAt };
+
+  const res = await fetch(url.toString(), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({ fields: bodyFields }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`patch usuarios/${uid} mediaBlurFlags ${res.status}`);
   }
 
   return res.json();

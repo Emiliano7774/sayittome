@@ -1,7 +1,10 @@
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { isIncomingChatActivity } from "@/lib/chat/incomingChatActivity";
-import { resolveChatViewerId } from "@/lib/chat/inboxPeerTitle";
+import {
+  isAnonVisitorProfileChat,
+  resolveChatViewerId,
+} from "@/lib/chat/inboxPeerTitle";
 import { wasChatReadLocally } from "@/lib/chat/localChatRead";
 
 export function resolveInboxViewerId(uid: string) {
@@ -19,6 +22,12 @@ function isExcludedChat(chat: InboxChat, excludeChatId?: string) {
   return excludeChatId === chatKey || excludeChatId === chat.id;
 }
 
+function usesFirebaseUnreadKeys(chat: InboxChat, viewerId: string, firebaseUid = "") {
+  if (!firebaseUid || viewerId === firebaseUid) return true;
+  if (isAnonVisitorProfileChat(chat, firebaseUid)) return false;
+  return true;
+}
+
 function storedUnreadForViewer(
   chat: InboxChat,
   viewerId: string,
@@ -26,7 +35,9 @@ function storedUnreadForViewer(
 ) {
   const keys = new Set<string>();
   if (viewerId) keys.add(viewerId);
-  if (firebaseUid) keys.add(firebaseUid);
+  if (firebaseUid && usesFirebaseUnreadKeys(chat, viewerId, firebaseUid)) {
+    keys.add(firebaseUid);
+  }
 
   for (const key of keys) {
     const stored = chat.unreadCounts?.[key];
@@ -45,17 +56,24 @@ export function chatUnreadCount(
   if (!viewerId) return 0;
   if (isExcludedChat(chat, options.excludeChatId)) return 0;
 
-  const stored = storedUnreadForViewer(chat, viewerId, options.firebaseUid || "");
+  const firebaseUid = options.firebaseUid || "";
+  const stored = storedUnreadForViewer(chat, viewerId, firebaseUid);
   if (stored === 0) return 0;
 
   if (wasChatReadLocally(chat, viewerId)) return 0;
 
-  if (!isIncomingChatActivity(chat, viewerId, options.firebaseUid || "")) return 0;
+  if (!isIncomingChatActivity(chat, viewerId, firebaseUid)) return 0;
 
   if (typeof stored === "number" && stored > 0) return 1;
 
   if (chat.readBy?.[viewerId] === true) return 0;
-  if (options.firebaseUid && chat.readBy?.[options.firebaseUid] === true) return 0;
+  if (
+    firebaseUid &&
+    usesFirebaseUnreadKeys(chat, viewerId, firebaseUid) &&
+    chat.readBy?.[firebaseUid] === true
+  ) {
+    return 0;
+  }
 
   return 1;
 }

@@ -86,6 +86,31 @@ export function patchShuffleProfileModerationTag(uid: string, moderationTag: str
   scheduleFlush();
 }
 
+export function patchShuffleProfileBlurFlags(
+  uid: string,
+  mediaBlurFlags: Record<string, boolean>,
+) {
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = slots[slot];
+    if (!profile || profile.uid !== uid) continue;
+
+    const blurPhoto =
+      profile.adminBlurProfilePhoto === true ||
+      profile.adminBlurFotosPerfil === true ||
+      profile.adminBlurGallery === true ||
+      mediaBlurFlags[profile.photo] === true;
+
+    slots[slot] = {
+      ...profile,
+      mediaBlurFlags,
+      blurPhoto,
+    };
+    dirtySlots.add(slot);
+  }
+
+  scheduleFlush();
+}
+
 export function setShuffleSlotsWithFeatured(
   featured: ShuffleProfile[],
   pool: ShuffleProfile[],

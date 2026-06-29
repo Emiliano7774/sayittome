@@ -62,6 +62,7 @@ type ApiProfile = {
   adminBlurFotosPerfil?: boolean;
   adminBlurStories?: boolean;
   adminBlurGallery?: boolean;
+  mediaBlurFlags?: Record<string, boolean>;
   banned?: boolean;
   moderationTag?: string;
 };
@@ -297,6 +298,10 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
     adminBlurFotosPerfil: raw.adminBlurFotosPerfil === true,
     adminBlurStories: raw.adminBlurStories === true,
     adminBlurGallery: raw.adminBlurGallery === true,
+    mediaBlurFlags:
+      raw.mediaBlurFlags && typeof raw.mediaBlurFlags === "object"
+        ? (raw.mediaBlurFlags as Record<string, boolean>)
+        : undefined,
     banned:
       raw.banned === true ||
       raw.suspendido === true ||

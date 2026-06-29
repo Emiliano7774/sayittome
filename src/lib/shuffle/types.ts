@@ -14,6 +14,8 @@ export type ShuffleProfile = {
   online?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;
+  adminBlurGallery?: boolean;
+  mediaBlurFlags?: Record<string, boolean>;
   provincia?: string;
   ciudad?: string;
   pais?: string;

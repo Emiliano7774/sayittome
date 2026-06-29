@@ -6,6 +6,7 @@ import { UserRound } from "lucide-react";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
+import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -20,15 +21,23 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
 
   return (
     <div className="relative block w-full">
-      <AdminProfileRoleplayButton
-        profile={profile}
-        variant="modern"
-        appearance="shuffle"
+      <div
         className={[
-          "absolute right-3 z-30",
-          profile.showOnline ? "top-12" : "top-3",
+          "pointer-events-auto absolute right-3 z-30 flex shrink-0 flex-col gap-1.5",
+          profile.showOnline ? "top-14" : "top-3",
         ].join(" ")}
-      />
+      >
+        <AdminProfileRoleplayButton
+          profile={profile}
+          variant="modern"
+          appearance="shuffle"
+        />
+        <AdminProfileBlurPhotosButton
+          profile={profile}
+          variant="modern"
+          appearance="shuffle"
+        />
+      </div>
       <Link href={href} className="relative block w-full">
       <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
       <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">

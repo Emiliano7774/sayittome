@@ -132,6 +132,14 @@ function buildProfilePayload(found: any, fallbackUsername: string) {
     adminBlurStories: fields?.adminBlurStories?.booleanValue === true,
     adminBlurGallery: fields?.adminBlurGallery?.booleanValue === true,
     adminBlurReason: str(fields, "adminBlurReason"),
+    mediaBlurFlags:
+      rawProfile.mediaBlurFlags && typeof rawProfile.mediaBlurFlags === "object"
+        ? Object.fromEntries(
+            Object.entries(rawProfile.mediaBlurFlags as Record<string, unknown>).filter(
+              ([, value]) => value === true,
+            ),
+          )
+        : {},
     moderationTag: str(fields, "moderationTag"),
     moderationTagNote: str(fields, "moderationTagNote"),
   };

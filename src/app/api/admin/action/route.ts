@@ -5,7 +5,9 @@ import { assertAdminEmail, getAdminEmailFromRequest } from "@/lib/admin/isAdmin"
 import {
   createFirestoreDoc,
   deleteFirestoreDoc,
+  getFirestoreDoc,
   patchFirestoreDoc,
+  patchFirestoreMediaBlurFlags,
   runCollectionQuery,
 } from "@/lib/firestore/rest";
 import { deleteOrphanProfile } from "@/lib/profile/cleanupOrphans";
@@ -122,6 +124,27 @@ export async function POST(req: Request) {
         moderationTagNote: "",
         moderationTagAt: "",
         moderationTagBy: "",
+      });
+    } else if (action === "toggle_media_blur" && uid) {
+      const mediaUrl = String(body?.mediaUrl || "").trim();
+      if (!mediaUrl) {
+        return NextResponse.json({ ok: false, error: "missing_media_url" }, { status: 400 });
+      }
+
+      const user = await getFirestoreDoc("usuarios", uid);
+      const current =
+        user?.mediaBlurFlags && typeof user.mediaBlurFlags === "object"
+          ? (user.mediaBlurFlags as Record<string, boolean>)
+          : {};
+      const next = { ...current };
+      const blurred = body?.blurred !== false;
+
+      if (blurred) next[mediaUrl] = true;
+      else delete next[mediaUrl];
+
+      await patchFirestoreMediaBlurFlags(uid, next, {
+        adminBlurBy: adminEmail,
+        adminBlurAt: new Date().toISOString(),
       });
     } else if (action === "shadowban") {
       await patchFirestoreDoc("usuarios", uid, {
