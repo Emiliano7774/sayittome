@@ -46,10 +46,34 @@ export function messageRequiresBlur(message?: MessageBlurSource) {
   );
 }
 
+export function normalizeBlurMediaUrl(url: string): string {
+  const trimmed = String(url || "").trim();
+  if (!trimmed) return "";
+
+  try {
+    const parsed = new URL(trimmed);
+    return decodeURIComponent(`${parsed.origin}${parsed.pathname}`).toLowerCase();
+  } catch {
+    return decodeURIComponent(trimmed.split("?")[0].split("#")[0]).toLowerCase();
+  }
+}
+
 export function urlRequiresBlurFromProfile(profile: ModerationBlurSource, url: string) {
   if (!url) return false;
   const flags = profile.mediaBlurFlags;
-  return flags?.[url] === true;
+  if (!flags) return false;
+  if (flags[url] === true) return true;
+
+  const normalized = normalizeBlurMediaUrl(url);
+  if (!normalized) return false;
+
+  for (const [key, value] of Object.entries(flags)) {
+    if (value !== true) continue;
+    if (key === url) return true;
+    if (normalizeBlurMediaUrl(key) === normalized) return true;
+  }
+
+  return false;
 }
 
 export function resolveMediaBlur(input: {

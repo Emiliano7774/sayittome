@@ -1,3 +1,5 @@
+import { normalizeBlurMediaUrl } from "@/lib/moderation/blur";
+
 export function collectProfilePhotoUrls(profile: Record<string, unknown> | null | undefined) {
   const urls = new Set<string>();
 
@@ -42,6 +44,13 @@ export function profilePhotoIsBlurred(
 
   const flags = readMediaBlurFlags(profile);
   if (flags[url] === true) return true;
+
+  const normalized = normalizeBlurMediaUrl(url);
+  if (normalized) {
+    for (const [key, value] of Object.entries(flags)) {
+      if (value === true && normalizeBlurMediaUrl(key) === normalized) return true;
+    }
+  }
 
   return (
     profile?.adminBlurProfilePhoto === true || profile?.adminBlurFotosPerfil === true

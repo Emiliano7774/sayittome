@@ -368,7 +368,11 @@ function appendSearchProfile(
   results.push(profile);
 }
 
-async function searchProfilesByQuery(query: string, limit = SHUFFLE_SEARCH_LIMIT) {
+async function searchProfilesByQuery(
+  query: string,
+  limit = SHUFFLE_SEARCH_LIMIT,
+  forceFresh = false,
+) {
   const q = normalizeUsername(query).toLowerCase();
   if (!q) return [];
 
@@ -422,7 +426,7 @@ async function searchProfilesByQuery(query: string, limit = SHUFFLE_SEARCH_LIMIT
   }
 
   if (results.length < limit) {
-    const cached = await getProfilesCached(false);
+    const cached = await getProfilesCached(forceFresh);
     for (const profile of cached) {
       if (results.length >= limit) break;
       if (!profileMatchesQueryText(profile, q)) continue;
@@ -587,7 +591,7 @@ export async function GET(req: Request) {
     }
 
     const allProfiles = q
-      ? await searchProfilesByQuery(q, SHUFFLE_SEARCH_LIMIT)
+      ? await searchProfilesByQuery(q, SHUFFLE_SEARCH_LIMIT, force)
       : await getProfilesCached(force);
     const filteredByDiscovery = allProfiles.filter((profile) =>
       profileMatchesShuffleServerFilters(profile, filters),

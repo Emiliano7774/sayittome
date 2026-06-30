@@ -26,7 +26,7 @@ import {
   type ShuffleFilters,
 } from "@/lib/shuffle/filters";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
-import { applyShuffleProfileBlurFlags } from "@/lib/shuffle/resolveShuffleBlur";
+import { applyShuffleProfileBlurFlags, mergeShuffleProfileModeration } from "@/lib/shuffle/resolveShuffleBlur";
 import {
   pickRandomUniqueWindowIndices,
   SHUFFLE_WINDOW_SIZE,
@@ -302,9 +302,20 @@ export function useShufflePool() {
 
         if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
 
-        const nextProfiles = normalizeShuffleProfiles(json?.profiles);
+        const nextProfiles = normalizeShuffleProfiles(json?.profiles).map((profile) =>
+          mergeShuffleProfileModeration(
+            profile,
+            poolRef.current.find((row) => row.uid === profile.uid) ||
+              activePoolRef.current.find((row) => row.uid === profile.uid),
+          ),
+        );
         const nextFeatured = dedupeShuffleProfiles(
-          normalizeShuffleProfiles(json?.featuredProfiles),
+          normalizeShuffleProfiles(json?.featuredProfiles).map((profile) =>
+            mergeShuffleProfileModeration(
+              profile,
+              featuredRef.current.find((row) => row.uid === profile.uid),
+            ),
+          ),
         );
         featuredRef.current = nextFeatured;
         const profilesCreated = Number(json?.profilesCreated ?? 0);

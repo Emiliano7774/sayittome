@@ -35,3 +35,25 @@ export function applyShuffleProfileBlurFlags(
 export function isShuffleProfileModerated(profile: ShuffleProfile): boolean {
   return resolveShuffleProfileBlurPhoto(profile);
 }
+
+export function mergeShuffleProfileModeration(
+  profile: ShuffleProfile,
+  existing?: ShuffleProfile | null,
+): ShuffleProfile {
+  if (!existing || existing.uid !== profile.uid) return profile;
+
+  const mediaBlurFlags = {
+    ...(profile.mediaBlurFlags || {}),
+    ...(existing.mediaBlurFlags || {}),
+  };
+
+  return applyShuffleProfileBlurFlags(
+    {
+      ...profile,
+      mediaBlurFlags,
+      adminBlurProfilePhoto:
+        profile.adminBlurProfilePhoto === true || existing.adminBlurProfilePhoto === true,
+    },
+    mediaBlurFlags,
+  );
+}
