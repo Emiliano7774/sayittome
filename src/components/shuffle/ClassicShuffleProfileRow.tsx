@@ -8,6 +8,7 @@ import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurP
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
+import { isShuffleProfileModerated } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
@@ -19,19 +20,26 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
   return (
     <div className="relative w-full border-b border-white/10 contain-[layout_paint_style]">
       <div className={`flex w-full items-center ${tokens.gapClass} ${tokens.rowPadding}`}>
-        <div className="relative shrink-0">
-          <StoryAvatarButton
-            ownerUid={profile.uid}
-            username={username}
-            photo={profile.photo}
-            size={tokens.avatarSize}
-            mode="delegate"
-            blurPhoto={profile.blurPhoto}
-            showOnline={profile.showOnline}
-            iconSize={tokens.iconSize}
-          />
-          <ShuffleModeratedIndicator profile={profile} variant="classic" />
-        </div>
+        <StoryAvatarButton
+          ownerUid={profile.uid}
+          username={username}
+          photo={profile.photo}
+          size={tokens.avatarSize}
+          mode="delegate"
+          blurPhoto={profile.blurPhoto}
+          showOnline={profile.showOnline}
+          iconSize={tokens.iconSize}
+          avatarOverlay={
+            isShuffleProfileModerated(profile) ? (
+              <ShuffleModeratedIndicator
+                profile={profile}
+                variant="classic"
+                placement="avatar"
+                iconSize={tokens.iconSize}
+              />
+            ) : null
+          }
+        />
 
         <button
           type="button"

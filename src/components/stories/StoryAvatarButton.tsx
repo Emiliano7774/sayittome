@@ -64,6 +64,7 @@ type Props = {
   anonKey?: string;
   onOpenProfile?: () => void;
   children?: ReactNode;
+  avatarOverlay?: ReactNode;
 };
 
 function StoryAvatarButton({
@@ -81,6 +82,7 @@ function StoryAvatarButton({
   anonKey = "",
   onOpenProfile,
   children,
+  avatarOverlay,
 }: Props) {
   const router = useRouter();
   const status = useStoryStatus(ownerUid, username);
@@ -125,7 +127,7 @@ function StoryAvatarButton({
     <div
       className={[
         SIZE_CLASS[size],
-        size === "hero" ? "" : "rounded-full overflow-hidden bg-[#242424] flex items-center justify-center",
+        size === "hero" ? "" : "relative rounded-full overflow-hidden bg-[#242424] flex items-center justify-center",
       ].join(" ")}
     >
       {photo ? (
@@ -152,6 +154,7 @@ function StoryAvatarButton({
       ) : (
         <UserRound size={iconSize} className="text-white/75" />
       )}
+      {avatarOverlay}
     </div>
   );
 
