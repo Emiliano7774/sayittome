@@ -6,7 +6,7 @@ type BlurSource = Pick<
   "photo" | "adminBlurProfilePhoto" | "adminBlurFotosPerfil" | "adminBlurGallery" | "mediaBlurFlags"
 >;
 
-/** Shuffle avatar blur: only the visible main photo, not whole-gallery admin flags. */
+/** Shuffle avatar blur: only the visible main photo with an explicit per-url flag or manual admin blur. */
 export function resolveShuffleProfileBlurPhoto(
   profile: BlurSource,
   mediaBlurFlagsOverride?: Record<string, boolean>,
@@ -14,16 +14,10 @@ export function resolveShuffleProfileBlurPhoto(
   const mediaBlurFlags = mediaBlurFlagsOverride ?? profile.mediaBlurFlags;
   const photo = String(profile.photo || "").trim();
 
-  if (profile.adminBlurProfilePhoto === true) return true;
+  if (profile.adminBlurProfilePhoto === true && photo) return true;
   if (photo && urlRequiresBlurFromProfile({ mediaBlurFlags }, photo)) return true;
 
   return false;
-}
-
-export function hasExplicitMediaBlur(profile: Pick<ShuffleProfile, "mediaBlurFlags">): boolean {
-  const flags = profile.mediaBlurFlags;
-  if (!flags) return false;
-  return Object.values(flags).some((value) => value === true);
 }
 
 export function applyShuffleProfileBlurFlags(
@@ -37,10 +31,7 @@ export function applyShuffleProfileBlurFlags(
   };
 }
 
+/** Admin shuffle eye overlay: only when the avatar photo is actually blurred manually. */
 export function isShuffleProfileModerated(profile: ShuffleProfile): boolean {
-  return (
-    profile.moderationTag === "roleplay" ||
-    resolveShuffleProfileBlurPhoto(profile) ||
-    hasExplicitMediaBlur(profile)
-  );
+  return resolveShuffleProfileBlurPhoto(profile);
 }

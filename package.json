@@ -21,7 +21,9 @@
     "cleanup:orphans": "node scripts/cleanup-orphan-profiles.mjs",
     "cleanup:orphans:dry": "node scripts/cleanup-orphan-profiles.mjs --dry-run",
     "audit:profile-dates": "node scripts/audit-profile-created-at.mjs --dry-run",
-    "audit:profile-dates:apply": "node scripts/audit-profile-created-at.mjs --apply"
+    "audit:profile-dates:apply": "node scripts/audit-profile-created-at.mjs --apply",
+    "cleanup:auto-blur:dry": "node scripts/cleanup-auto-media-blur.mjs",
+    "cleanup:auto-blur:apply": "node scripts/cleanup-auto-media-blur.mjs --apply"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

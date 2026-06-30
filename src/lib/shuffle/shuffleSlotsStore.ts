@@ -1,7 +1,6 @@
 import { shuffleProfileDedupeKeys, uniqueShuffleWindow } from "@/lib/shuffle/dedupeProfiles";
 import {
   applyShuffleProfileBlurFlags,
-  resolveShuffleProfileBlurPhoto,
 } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { SHUFFLE_WINDOW_SIZE } from "@/lib/shuffle/pickWindow";
@@ -60,25 +59,22 @@ export function setShuffleSlots(
     const prev = slots[slot];
 
     if (prev?.uid === next?.uid && prev?.username === next?.username) {
-      const mergedFlags = {
-        ...(next.mediaBlurFlags || {}),
-        ...(prev.mediaBlurFlags || {}),
-      };
-      const merged: ShuffleProfile = {
+      const updated: ShuffleProfile = {
         ...prev,
-        moderationTag: next.moderationTag || prev.moderationTag,
-        mediaBlurFlags: mergedFlags,
-        blurPhoto: resolveShuffleProfileBlurPhoto(
-          { ...prev, mediaBlurFlags: mergedFlags },
-          mergedFlags,
-        ),
+        blurPhoto: next.blurPhoto,
+        moderationTag: next.moderationTag,
+        mediaBlurFlags: next.mediaBlurFlags,
+        adminBlurProfilePhoto: next.adminBlurProfilePhoto,
+        adminBlurFotosPerfil: next.adminBlurFotosPerfil,
+        adminBlurGallery: next.adminBlurGallery,
       };
 
       if (
-        prev.blurPhoto !== merged.blurPhoto ||
-        prev.moderationTag !== merged.moderationTag
+        prev.blurPhoto !== updated.blurPhoto ||
+        prev.moderationTag !== updated.moderationTag ||
+        prev.mediaBlurFlags !== updated.mediaBlurFlags
       ) {
-        slots[slot] = merged;
+        slots[slot] = updated;
         dirtySlots.add(slot);
       }
       continue;
