@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { EyeOff, X } from "lucide-react";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
@@ -49,8 +50,24 @@ export default function AdminProfileBlurPhotosButton({
   const [loading, setLoading] = useState(false);
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [photos, setPhotos] = useState<string[]>([]);
+  const [mounted, setMounted] = useState(false);
 
   const modern = variant === "modern";
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -136,6 +153,106 @@ export default function AdminProfileBlurPhotosButton({
     className,
   ].join(" ");
 
+  const modal =
+    open && mounted ? (
+      <div
+        className="fixed inset-0 z-[20000] flex items-end justify-center bg-[#050505] p-4 sm:items-center"
+        onClick={() => setOpen(false)}
+      >
+        <div
+          className="max-h-[85vh] w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-[#101010] shadow-2xl"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-center justify-between border-b border-white/10 bg-[#101010] px-4 py-3">
+            <div className="min-w-0 pr-3">
+              <p className="truncate text-base font-black text-white">
+                @{profile.username}
+              </p>
+              <p className="text-xs font-semibold text-white/45">
+                {t("admin_blur_photos_subtitle")}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#171717] text-white/70"
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="max-h-[65vh] overflow-y-auto bg-[#101010] p-4">
+            {loading ? (
+              <p className="py-10 text-center text-sm font-bold text-white/35">
+                {t("common_loading")}
+              </p>
+            ) : photos.length === 0 ? (
+              <p className="py-10 text-center text-sm font-bold text-white/35">
+                {t("admin_blur_photos_empty")}
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {photos.map((url) => {
+                  const blurred = flags[url] === true;
+                  const busy = busyUrl === url;
+
+                  return (
+                    <button
+                      key={url}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void toggleBlur(url)}
+                      className={[
+                        "relative aspect-square overflow-hidden rounded-2xl border transition",
+                        blurred
+                          ? "border-orange-400/50 ring-2 ring-orange-400/35"
+                          : "border-white/10 hover:border-violet-400/35",
+                        busy ? "opacity-60" : "",
+                      ].join(" ")}
+                      title={blurred ? t("admin_blur_photos_unblur") : t("admin_blur_photos_blur")}
+                    >
+                      <img
+                        src={url}
+                        alt=""
+                        className={[
+                          "h-full w-full object-cover",
+                          blurred ? "scale-110 blur-2xl" : "",
+                        ].join(" ")}
+                      />
+                      {blurred ? (
+                        <SensitiveBlurOverlay
+                          label={t("admin_blur_photos_blurred")}
+                          mediaKey={url}
+                        />
+                      ) : null}
+                      <span
+                        className={[
+                          "absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
+                          blurred
+                            ? "bg-orange-500/85 text-black"
+                            : "bg-black/55 text-white/80",
+                        ].join(" ")}
+                      >
+                        {blurred ? t("admin_blur_photos_blurred") : t("admin_blur_photos_visible")}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-white/10 bg-[#101010] px-4 py-3 text-xs font-semibold text-white/45">
+            {t("admin_blur_photos_count", {
+              count: String(blurredCount),
+              total: String(photos.length),
+            })}
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   return (
     <>
       <button
@@ -152,104 +269,7 @@ export default function AdminProfileBlurPhotosButton({
         <EyeOff size={15} strokeWidth={2.2} />
       </button>
 
-      {open ? (
-        <div
-          className="fixed inset-0 z-[12000] flex items-end justify-center bg-black/80 p-4 sm:items-center"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="max-h-[85vh] w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-[#101010] shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <div className="min-w-0 pr-3">
-                <p className="truncate text-base font-black text-white">
-                  @{profile.username}
-                </p>
-                <p className="text-xs font-semibold text-white/45">
-                  {t("admin_blur_photos_subtitle")}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 text-white/70"
-                aria-label="Cerrar"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="max-h-[65vh] overflow-y-auto p-4">
-              {loading ? (
-                <p className="py-10 text-center text-sm font-bold text-white/35">
-                  {t("common_loading")}
-                </p>
-              ) : photos.length === 0 ? (
-                <p className="py-10 text-center text-sm font-bold text-white/35">
-                  {t("admin_blur_photos_empty")}
-                </p>
-              ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {photos.map((url) => {
-                    const blurred = flags[url] === true;
-                    const busy = busyUrl === url;
-
-                    return (
-                      <button
-                        key={url}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void toggleBlur(url)}
-                        className={[
-                          "relative aspect-square overflow-hidden rounded-2xl border transition",
-                          blurred
-                            ? "border-orange-400/50 ring-2 ring-orange-400/35"
-                            : "border-white/10 hover:border-violet-400/35",
-                          busy ? "opacity-60" : "",
-                        ].join(" ")}
-                        title={blurred ? t("admin_blur_photos_unblur") : t("admin_blur_photos_blur")}
-                      >
-                        <img
-                          src={url}
-                          alt=""
-                          className={[
-                            "h-full w-full object-cover",
-                            blurred ? "scale-110 blur-2xl" : "",
-                          ].join(" ")}
-                        />
-                        {blurred ? (
-                          <SensitiveBlurOverlay
-                            label={t("admin_blur_photos_blurred")}
-                            mediaKey={url}
-                          />
-                        ) : null}
-                        <span
-                          className={[
-                            "absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
-                            blurred
-                              ? "bg-orange-500/85 text-black"
-                              : "bg-black/55 text-white/80",
-                          ].join(" ")}
-                        >
-                          {blurred ? t("admin_blur_photos_blurred") : t("admin_blur_photos_visible")}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-white/10 px-4 py-3 text-xs font-semibold text-white/45">
-              {t("admin_blur_photos_count", {
-                count: String(blurredCount),
-                total: String(photos.length),
-              })}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {modal ? createPortal(modal, document.body) : null}
     </>
   );
 }

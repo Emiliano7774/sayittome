@@ -9,12 +9,10 @@ import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRolepla
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
-import { isShuffleProfileModerated } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
   const story = useStoryStatus(profile.uid, profile.username);
-  const moderated = isShuffleProfileModerated(profile);
   const href =
     story.hasActive && story.hasUnseen && story.storyPath
       ? story.storyPath
@@ -42,15 +40,8 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
         />
       </div>
       <Link href={href} className="relative block w-full">
-      <div className={["absolute -inset-4 rounded-[2rem] blur-2xl", moderated ? "bg-zinc-500/10" : "bg-fuchsia-500/20"].join(" ")} />
-      <div
-        className={[
-          "group relative overflow-hidden rounded-[2.5rem] border bg-zinc-950 shadow-2xl contain-[layout_paint_style]",
-          moderated
-            ? "border-white/10 opacity-60 saturate-[0.4] shadow-none"
-            : "border-fuchsia-500/20 shadow-fuchsia-950/40",
-        ].join(" ")}
-      >
+      <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
+      <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
         <div className="relative aspect-[3/4] w-full overflow-hidden">
           {profile.photo ? (
             <>

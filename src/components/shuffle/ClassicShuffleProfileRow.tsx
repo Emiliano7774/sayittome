@@ -8,7 +8,6 @@ import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurP
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
-import { isShuffleProfileModerated } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
@@ -16,21 +15,10 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
   const tokens = getClassicShuffleDensityTokens(density);
   const username = profile.username;
   const bio = profile.bio || "Sin descripcion.";
-  const moderated = isShuffleProfileModerated(profile);
 
   return (
-    <div
-      className={[
-        "relative w-full border-b border-white/10 contain-[layout_paint_style]",
-        moderated ? "bg-white/[0.02]" : "",
-      ].join(" ")}
-    >
-      <div
-        className={[
-          `flex w-full items-center ${tokens.gapClass} ${tokens.rowPadding}`,
-          moderated ? "opacity-55 saturate-[0.45]" : "",
-        ].join(" ")}
-      >
+    <div className="relative w-full border-b border-white/10 contain-[layout_paint_style]">
+      <div className={`flex w-full items-center ${tokens.gapClass} ${tokens.rowPadding}`}>
         <div className="relative shrink-0">
           <StoryAvatarButton
             ownerUid={profile.uid}

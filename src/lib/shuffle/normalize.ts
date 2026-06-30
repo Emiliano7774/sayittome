@@ -1,8 +1,7 @@
-import { isLastSeenPublic } from "@/lib/profile/lastSeenVisibility";
 import { isActiveWithinWindow } from "@/lib/presence";
-import { galleryRequiresBlur, urlRequiresBlurFromProfile } from "@/lib/moderation/blur";
 import { normalizeUsername } from "@/lib/profile/username";
 import { dedupeShuffleProfiles, resolveUsernameLower } from "@/lib/shuffle/dedupeProfiles";
+import { resolveShuffleProfileBlurPhoto } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
@@ -81,13 +80,13 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
             ? item.showOnline
             : isActiveWithinWindow(presenceAt, lastActive)
           : false,
-        blurPhoto:
-          galleryRequiresBlur({
-            adminBlurProfilePhoto,
-            adminBlurFotosPerfil,
-            adminBlurGallery,
-            mediaBlurFlags,
-          }) || urlRequiresBlurFromProfile({ mediaBlurFlags }, mainPhoto),
+        blurPhoto: resolveShuffleProfileBlurPhoto({
+          photo: mainPhoto,
+          adminBlurProfilePhoto,
+          adminBlurFotosPerfil,
+          adminBlurGallery,
+          mediaBlurFlags,
+        }),
         moderationTag: String(item?.moderationTag || ""),
         shuffleFeatured: item?.shuffleFeatured === true,
       };

@@ -21,27 +21,43 @@ export default function ShuffleModeratedIndicator({
 
   const modern = variant === "modern";
 
+  if (modern) {
+    return (
+      <>
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-[1] rounded-[2.5rem] bg-black/30"
+        />
+        {ready && isAdmin ? (
+          <span
+            className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center"
+            title="Perfil moderado"
+            aria-label="Perfil moderado"
+          >
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white/75 backdrop-blur-sm">
+              <EyeOff size={16} strokeWidth={2.2} />
+            </span>
+          </span>
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <>
       <span
         aria-hidden
-        className={[
-          "pointer-events-none absolute inset-0 z-[1]",
-          modern ? "rounded-[2.5rem] bg-black/25" : "",
-        ].join(" ")}
+        className="pointer-events-none absolute inset-0 z-[1] rounded-full bg-black/40"
       />
       {ready && isAdmin ? (
         <span
-          className={[
-            "pointer-events-none absolute z-[2] inline-flex items-center justify-center rounded-full border backdrop-blur-sm",
-            modern
-              ? "left-3 top-3 h-7 w-7 border-white/20 bg-black/55 text-white/70"
-              : "bottom-1 left-1 h-6 w-6 border-violet-400/30 bg-black/60 text-violet-200/90",
-          ].join(" ")}
+          className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center"
           title="Perfil moderado"
           aria-label="Perfil moderado"
         >
-          <EyeOff size={modern ? 13 : 12} strokeWidth={2.2} />
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-400/35 bg-black/75 text-violet-100/90 backdrop-blur-sm">
+            <EyeOff size={14} strokeWidth={2.2} />
+          </span>
         </span>
       ) : null}
     </>

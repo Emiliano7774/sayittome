@@ -1,4 +1,4 @@
-import { galleryRequiresBlur, urlRequiresBlurFromProfile } from "@/lib/moderation/blur";
+import { urlRequiresBlurFromProfile } from "@/lib/moderation/blur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 type BlurSource = Pick<
@@ -6,20 +6,24 @@ type BlurSource = Pick<
   "photo" | "adminBlurProfilePhoto" | "adminBlurFotosPerfil" | "adminBlurGallery" | "mediaBlurFlags"
 >;
 
+/** Shuffle avatar blur: only the visible main photo, not whole-gallery admin flags. */
 export function resolveShuffleProfileBlurPhoto(
   profile: BlurSource,
   mediaBlurFlagsOverride?: Record<string, boolean>,
 ): boolean {
   const mediaBlurFlags = mediaBlurFlagsOverride ?? profile.mediaBlurFlags;
+  const photo = String(profile.photo || "").trim();
 
-  return (
-    galleryRequiresBlur({
-      adminBlurProfilePhoto: profile.adminBlurProfilePhoto,
-      adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
-      adminBlurGallery: profile.adminBlurGallery,
-      mediaBlurFlags,
-    }) || urlRequiresBlurFromProfile({ mediaBlurFlags }, profile.photo || "")
-  );
+  if (profile.adminBlurProfilePhoto === true) return true;
+  if (photo && urlRequiresBlurFromProfile({ mediaBlurFlags }, photo)) return true;
+
+  return false;
+}
+
+export function hasExplicitMediaBlur(profile: Pick<ShuffleProfile, "mediaBlurFlags">): boolean {
+  const flags = profile.mediaBlurFlags;
+  if (!flags) return false;
+  return Object.values(flags).some((value) => value === true);
 }
 
 export function applyShuffleProfileBlurFlags(
@@ -34,5 +38,9 @@ export function applyShuffleProfileBlurFlags(
 }
 
 export function isShuffleProfileModerated(profile: ShuffleProfile): boolean {
-  return profile.blurPhoto || profile.moderationTag === "roleplay";
+  return (
+    profile.moderationTag === "roleplay" ||
+    resolveShuffleProfileBlurPhoto(profile) ||
+    hasExplicitMediaBlur(profile)
+  );
 }
