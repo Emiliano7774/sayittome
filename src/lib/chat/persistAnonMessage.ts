@@ -2,7 +2,6 @@ import {
   collection,
   doc,
   getDoc,
-  increment,
   serverTimestamp,
   writeBatch,
 } from "firebase/firestore";
@@ -10,6 +9,7 @@ import {
 import { buildLegacyProfileChatIds } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
+import { buildOutgoingChatMetaPatch } from "@/lib/chat/outgoingChatMeta";
 import {
   profileReplyAuthorId,
   type ProfileAnonSenderKind,
@@ -44,6 +44,34 @@ type PersistAnonMessageInput = {
   moderationScannedAt?: string;
   moderationModel?: string;
 };
+
+function resolveProfileAnonUnreadRecipients(input: {
+  isOwnerReply: boolean;
+  messageAuthorId: string;
+  targetUid: string;
+  participantes: string[];
+  anonSessionId: string;
+  senderId: string;
+}) {
+  if (!input.isOwnerReply) {
+    return input.targetUid ? [input.targetUid] : [];
+  }
+
+  const recipients = new Set<string>();
+  if (input.anonSessionId.startsWith("anon_")) recipients.add(input.anonSessionId);
+  if (input.senderId.startsWith("anon_")) recipients.add(input.senderId);
+
+  const liveAnonId = getChatAnonSenderId();
+  if (liveAnonId.startsWith("anon_")) recipients.add(liveAnonId);
+
+  for (const id of input.participantes) {
+    if (id.startsWith("anon_") && id !== input.messageAuthorId) {
+      recipients.add(id);
+    }
+  }
+
+  return [...recipients];
+}
 
 export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const {
@@ -90,11 +118,14 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const storedAnonSession = String(existingData.anonSessionId || "").trim();
   const anonSessionId =
     storedAnonSession.startsWith("anon_") ? storedAnonSession : senderId;
-  const unreadRecipientUid = isOwnerReply
-    ? storedAnonSession.startsWith("anon_")
-      ? storedAnonSession
-      : senderId
-    : targetUid;
+  const unreadRecipients = resolveProfileAnonUnreadRecipients({
+    isOwnerReply,
+    messageAuthorId,
+    targetUid,
+    participantes,
+    anonSessionId,
+    senderId,
+  });
 
   const existingInitiatorUid = String(existingData.initiatorUid || "").trim();
   const initiatorUid = isOwnerReply
@@ -121,17 +152,10 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     canonicalChatId: chatId,
     schemaVersion: 2,
     targetPhoto: targetPhoto || null,
-    lastMessage: messageText,
-    lastMessageSender: messageAuthorId,
-    updatedAt: serverTimestamp(),
-    [`readBy.${messageAuthorId}`]: true,
-    [`typing.${messageAuthorId}`]: false,
-    ...(unreadRecipientUid
-      ? {
-          [`unreadCounts.${unreadRecipientUid}`]: increment(1),
-          [`readBy.${unreadRecipientUid}`]: false,
-        }
-      : {}),
+    ...buildOutgoingChatMetaPatch(messageAuthorId, unreadRecipients, {
+      lastMessage: messageText,
+      lastMessageSender: messageAuthorId,
+    }),
   };
 
   registerSessionChat(chatId);

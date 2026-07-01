@@ -71,7 +71,10 @@ export function useGlobalChatAlerts() {
       liveFirestoreEnabled || backgroundNotificationInboxEnabled,
     enableSessionChatListeners:
       messageListenersEnabled || getSessionChatIds().length > 0,
-    enableAnonInboxQuery: messageListenersEnabled,
+    enableAnonInboxQuery:
+      liveFirestoreEnabled ||
+      backgroundNotificationInboxEnabled ||
+      messageListenersEnabled,
   });
 
   const viewerId = resolveInboxViewerId(uid);
