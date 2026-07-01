@@ -334,8 +334,13 @@ body.sayittome-native-shell.sayittome-entry-legal-open .sayittome-entry-legal-ac
   padding-bottom: 0.5rem;
 }
 
-@view-transition {
-  navigation: auto;
+.sayittome-main-tab-route-hidden {
+  display: none !important;
+}
+
+body.sayittome-main-tab-shell-active ::view-transition-old(root),
+body.sayittome-main-tab-shell-active ::view-transition-new(root) {
+  animation-duration: 0ms;
 }
 
 ::view-transition-old(root),

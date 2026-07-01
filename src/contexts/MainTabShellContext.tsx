@@ -14,9 +14,11 @@ import { usePathname } from "next/navigation";
 import MainTabShellPanels from "@/components/navigation/MainTabShellPanels";
 import {
   isMainTabHref,
-  readBrowserPathname,
   type MainTabHref,
 } from "@/lib/navigation/mainTabs";
+import {
+  CLEAR_SHELL_EVENT,
+} from "@/lib/navigation/mainTabShellBridge";
 
 type MainTabShellContextValue = {
   effectivePathname: string;
@@ -29,8 +31,10 @@ type MainTabShellContextValue = {
 
 const MainTabShellContext = createContext<MainTabShellContextValue | null>(null);
 
-function resolveShellTabFromUrl(pathname: string): MainTabHref | null {
-  return isMainTabHref(pathname) ? pathname : null;
+declare global {
+  interface Window {
+    __sayittomeActiveShellTab?: MainTabHref | null;
+  }
 }
 
 export function MainTabShellProvider({
@@ -47,34 +51,31 @@ export function MainTabShellProvider({
   );
 
   useEffect(() => {
+    if (isMainTabHref(nextPathname)) return;
     setShellTab(null);
   }, [nextPathname]);
 
   useEffect(() => {
-    const onPopState = () => {
-      const tab = resolveShellTabFromUrl(readBrowserPathname());
-      if (!tab || tab === nextPathname) {
-        setShellTab(null);
-        return;
-      }
+    window.__sayittomeActiveShellTab = shellTab;
+    document.body.classList.toggle("sayittome-main-tab-shell-active", shellTab !== null);
 
-      setShellMountedTabs((prev) => {
-        if (prev.has(tab)) return prev;
-        const next = new Set(prev);
-        next.add(tab);
-        return next;
-      });
-      setShellTab(tab);
+    return () => {
+      window.__sayittomeActiveShellTab = null;
+      document.body.classList.remove("sayittome-main-tab-shell-active");
     };
+  }, [shellTab]);
 
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [nextPathname]);
+  useEffect(() => {
+    function clearShell() {
+      setShellTab(null);
+    }
+
+    window.addEventListener(CLEAR_SHELL_EVENT, clearShell);
+    return () => window.removeEventListener(CLEAR_SHELL_EVENT, clearShell);
+  }, []);
 
   const openMainTab = useCallback(
     (href: MainTabHref) => {
-      window.history.pushState({ sayittomeMainTab: true }, "", href);
-
       if (href === nextPathname) {
         setShellTab(null);
         return;
@@ -115,7 +116,11 @@ export function MainTabShellProvider({
 
   return (
     <MainTabShellContext.Provider value={value}>
-      <div hidden={childrenHidden} aria-hidden={childrenHidden}>
+      <div
+        className={childrenHidden ? "sayittome-main-tab-route-hidden" : undefined}
+        hidden={childrenHidden}
+        aria-hidden={childrenHidden}
+      >
         {children}
       </div>
       <MainTabShellPanels />

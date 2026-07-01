@@ -1,4 +1,5 @@
 import { popNativeNavPath } from "@/lib/navigation/nativeNavStack";
+import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
 
 export type NativeBackResult =
   | { handled: true; hintKey?: string; navigateTo?: string }
@@ -127,6 +128,10 @@ export function isNativeRootRoute(pathname: string) {
 
 export function resolveNativeBack(pathname: string): NativeBackResult {
   if (tryCloseNativeOverlays()) {
+    return { handled: true };
+  }
+
+  if (clearMainTabShellOverlay()) {
     return { handled: true };
   }
 
