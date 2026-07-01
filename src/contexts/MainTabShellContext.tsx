@@ -11,6 +11,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 
+import MainTabShellPanels from "@/components/navigation/MainTabShellPanels";
 import {
   isMainTabHref,
   readBrowserPathname,
@@ -32,7 +33,13 @@ function resolveShellTabFromUrl(pathname: string): MainTabHref | null {
   return isMainTabHref(pathname) ? pathname : null;
 }
 
-export function MainTabShellProvider({ children }: { children: ReactNode }) {
+export function MainTabShellProvider({
+  children,
+  chrome,
+}: {
+  children: ReactNode;
+  chrome?: ReactNode;
+}) {
   const nextPathname = usePathname();
   const [shellTab, setShellTab] = useState<MainTabHref | null>(null);
   const [shellMountedTabs, setShellMountedTabs] = useState<Set<MainTabHref>>(
@@ -108,7 +115,11 @@ export function MainTabShellProvider({ children }: { children: ReactNode }) {
 
   return (
     <MainTabShellContext.Provider value={value}>
-      <div hidden={childrenHidden}>{children}</div>
+      <div hidden={childrenHidden} aria-hidden={childrenHidden}>
+        {children}
+      </div>
+      <MainTabShellPanels />
+      {chrome}
     </MainTabShellContext.Provider>
   );
 }

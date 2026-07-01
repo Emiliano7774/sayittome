@@ -5,6 +5,7 @@ import SayItToMeVisualPolish from "@/components/SayItToMeVisualPolish";
 import VisualViewportInset from "@/components/layout/VisualViewportInset";
 import Providers from "@/components/providers/Providers";
 import AppNavigation from "@/components/navigation/AppNavigation";
+import { MainTabShellProvider } from "@/contexts/MainTabShellContext";
 
 export const metadata: Metadata = {
   title: "SayItToMe",
@@ -40,8 +41,7 @@ export default function RootLayout({
         <SayItToMeVisualPolish />
         <VisualViewportInset />
         <Providers>
-          {children}
-          <AppNavigation />
+          <MainTabShellProvider chrome={<AppNavigation />}>{children}</MainTabShellProvider>
         </Providers>
       </body>
     </html>
