@@ -1,6 +1,8 @@
 import { shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
 
 export const SHUFFLE_WINDOW_SIZE = 35;
+/** Shuffle rounds to remember before a profile can reappear. */
+export const SHUFFLE_BATCH_MEMORY = 5;
 
 /** Partial shuffle: O(k) con k=35, sin barajar el pool completo. */
 export function pickRandomWindowIndices(
