@@ -1,8 +1,14 @@
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import {
+  isActiveAnonVisitorInboxChat,
+  isProfileAnonVisitorInboxChat,
+  profileReplyCountsAsVisitorUnread,
+  resolveAnonVisitorViewerId,
+  unreadCountKeysForVisitor,
+} from "@/lib/chat/anonVisitorInbox";
 import { isIncomingChatActivity } from "@/lib/chat/incomingChatActivity";
 import {
-  isAnonVisitorProfileChat,
   resolveChatViewerId,
 } from "@/lib/chat/inboxPeerTitle";
 import { wasChatReadLocally } from "@/lib/chat/localChatRead";
@@ -24,7 +30,7 @@ function isExcludedChat(chat: InboxChat, excludeChatId?: string) {
 
 function usesFirebaseUnreadKeys(chat: InboxChat, viewerId: string, firebaseUid = "") {
   if (!firebaseUid || viewerId === firebaseUid) return true;
-  if (isAnonVisitorProfileChat(chat, firebaseUid)) return false;
+  if (isProfileAnonVisitorInboxChat(chat, firebaseUid)) return false;
   return true;
 }
 
@@ -33,7 +39,10 @@ function storedUnreadForViewer(
   viewerId: string,
   firebaseUid = "",
 ) {
-  const keys = new Set<string>();
+  const keys = isActiveAnonVisitorInboxChat(chat, firebaseUid)
+    ? unreadCountKeysForVisitor(chat, viewerId, firebaseUid)
+    : new Set<string>([viewerId]);
+
   if (viewerId) keys.add(viewerId);
   if (firebaseUid && usesFirebaseUnreadKeys(chat, viewerId, firebaseUid)) {
     keys.add(firebaseUid);
@@ -62,7 +71,11 @@ export function chatUnreadCount(
 
   if (wasChatReadLocally(chat, viewerId)) return 0;
 
-  if (!isIncomingChatActivity(chat, viewerId, firebaseUid)) return 0;
+  const incoming =
+    profileReplyCountsAsVisitorUnread(chat, firebaseUid) ||
+    isIncomingChatActivity(chat, viewerId, firebaseUid);
+
+  if (!incoming) return 0;
 
   if (typeof stored === "number" && stored > 0) return 1;
 
@@ -76,6 +89,12 @@ export function chatUnreadCountForViewer(
   firebaseUid = "",
   options: Omit<UnreadCountOptions, "firebaseUid"> = {},
 ) {
+  if (isProfileAnonVisitorInboxChat(chat, firebaseUid)) {
+    if (!isActiveAnonVisitorInboxChat(chat, firebaseUid)) return 0;
+    const viewerId = resolveAnonVisitorViewerId(chat, firebaseUid);
+    return chatUnreadCount(chat, viewerId, { ...options, firebaseUid });
+  }
+
   const viewerId = resolveChatViewerId(chat, firebaseUid);
   return chatUnreadCount(chat, viewerId, { ...options, firebaseUid });
 }

@@ -26,7 +26,19 @@ import {
   subscribeChatNotificationPrefs,
 } from "@/lib/chat/chatNotificationPrefs";
 import { initChatNotifications, requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
+import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
+
+function subscribeSessionChatIds(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => undefined;
+  const handler = () => onStoreChange();
+  window.addEventListener(SESSION_CHATS_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(SESSION_CHATS_CHANGED_EVENT, handler);
+}
+
+function getSessionChatIdsVersion() {
+  return getSessionChatIds().join("|");
+}
 
 export function useGlobalChatAlerts() {
   const pathname = usePathname();
@@ -57,13 +69,15 @@ export function useGlobalChatAlerts() {
   const { sortedChats, uid, loading, isAnonymousSession } = useChatsInbox({
     enableInboxQueries:
       liveFirestoreEnabled || backgroundNotificationInboxEnabled,
-    enableSessionChatListeners: messageListenersEnabled,
+    enableSessionChatListeners:
+      messageListenersEnabled || getSessionChatIds().length > 0,
     enableAnonInboxQuery: messageListenersEnabled,
   });
 
   const viewerId = resolveInboxViewerId(uid);
   const firebaseUid = firebaseUser?.uid || uid || "";
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
+  useSyncExternalStore(subscribeSessionChatIds, getSessionChatIdsVersion, () => "");
 
   const activeChatId = (() => {
     const match = pathname.match(/\/chat\/([^/?#]+)/);
@@ -108,20 +122,24 @@ export function useGlobalChatAlerts() {
   }, [viewerId, firebaseUid]);
 
   useEffect(() => {
-    globalChatWhipManager.setPaused(!messageListenersEnabled || loading);
+    const sessionActive = getSessionChatIds().length > 0;
+    globalChatWhipManager.setPaused(
+      (!messageListenersEnabled && !sessionActive) || loading,
+    );
 
     if (loading || !chatAlertsRouteEnabled) {
       globalChatWhipManager.syncInboxChatIds([]);
       return;
     }
 
-    if (!messageListenersEnabled) {
+    if (!messageListenersEnabled && !sessionActive) {
       return;
     }
 
     globalChatWhipManager.start();
+    const inboxIds = sortedChats.map((chat) => chat.canonicalChatId || chat.id);
     globalChatWhipManager.syncInboxChatIds(
-      sortedChats.map((chat) => chat.canonicalChatId || chat.id),
+      Array.from(new Set([...inboxIds, ...getSessionChatIds()])),
     );
   }, [chatAlertsRouteEnabled, messageListenersEnabled, loading, sortedChats]);
 

@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import AudioWave from "@/components/chat/media/AudioWave";
@@ -35,6 +35,13 @@ import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
+import {
+  getAnonSessionVersion,
+  messageAnonSenderId,
+  resolveProfileChatAnonIdentity,
+  shouldShowAnonIdentityDivider,
+  subscribeAnonSession,
+} from "@/lib/chat/anonIdentity";
 import { chatHasActivity, deleteEmptyChatIfIdle } from "@/lib/chat/migrate";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { unregisterSessionChat, registerSessionChat } from "@/lib/chat/sessionChats";
@@ -146,6 +153,7 @@ export default function ProfileAnonChat({
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
   const chatMetaRef = useRef<InboxChat | null>(null);
+  useSyncExternalStore(subscribeAnonSession, getAnonSessionVersion, () => "anon_server");
   const markReadContextRef = useRef({
     chatId: "",
     authReady: false,
@@ -160,6 +168,7 @@ export default function ProfileAnonChat({
     const ctx = markReadContextRef.current;
     const chat = chatMetaRef.current;
     if (!ctx.chatId || !ctx.authReady || !chat) return;
+    if (typeof document !== "undefined" && document.hidden) return;
 
     const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
     const profileOwnerUid = ctx.targetUid || ctx.chatOwnerUid;
@@ -355,6 +364,9 @@ export default function ProfileAnonChat({
       : messages.some((message) => message.mine) || hasChatActivity);
   const showClassicIntro = isClassic && !isOwnerViewing && !classicChatEngaged;
   const showModernVisitorIntro = !isClassic && !isOwnerViewing && !hasChatActivity;
+  const anonIdentity = resolveProfileChatAnonIdentity(chatId, chatAnonSessionId);
+  const showAnonIdentityNotice =
+    anonIdentity.identityChanged && (isOwnerViewing || hasChatActivity || !showModernVisitorIntro);
   const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
   const displayPeerName = isOwnerViewing
     ? formatAnonSessionLabel(anonSenderId)
@@ -987,7 +999,7 @@ export default function ProfileAnonChat({
               </p>
 
               <p className="mt-3 text-base text-zinc-400">
-                {t("chat_anon_you_are", { session: anonSession })}
+                {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
               </p>
             </div>
           </div>
@@ -1001,7 +1013,41 @@ export default function ProfileAnonChat({
           ].join(" ")}
         >
           <div className={chatWidthClass}>
-            {messages.map((message) => {
+            {showAnonIdentityNotice ? (
+              <div
+                className={[
+                  "mb-4 rounded-2xl border px-4 py-3 text-center",
+                  isClassic
+                    ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
+                    : "border-violet-400/25 bg-violet-500/10 text-violet-100",
+                ].join(" ")}
+              >
+                <p className="text-sm font-black">
+                  {isOwnerViewing
+                    ? t("chat_anon_identity_changed_owner", {
+                        session: anonIdentity.liveLabel,
+                      })
+                    : t("chat_anon_identity_changed", {
+                        session: anonIdentity.liveLabel,
+                      })}
+                </p>
+                {!isOwnerViewing ? (
+                  <p className="mt-1 text-xs font-semibold text-white/55">
+                    {t("chat_anon_identity_thread", {
+                      session: anonIdentity.threadLabel,
+                    })}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {messages.map((message, index) => {
+              const previousFrom = index > 0 ? String(messages[index - 1]?.fromUid || "") : "";
+              const currentFrom = String(message.fromUid || "");
+              const dividerAnonId = messageAnonSenderId(currentFrom);
+              const showIdentityDivider =
+                dividerAnonId &&
+                shouldShowAnonIdentityDivider(currentFrom, previousFrom);
               const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
               const receiptSenderId =
                 message.mine && isOwnerViewing
@@ -1017,8 +1063,21 @@ export default function ProfileAnonChat({
               });
 
               return (
+              <div key={message.id} className="w-full">
+                {showIdentityDivider ? (
+                  <div className="my-4 flex justify-center px-2">
+                    <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-center text-xs font-black text-white/60">
+                      {isOwnerViewing
+                        ? t("chat_anon_identity_divider_owner", {
+                            session: formatAnonSessionLabel(dividerAnonId),
+                          })
+                        : t("chat_anon_identity_divider", {
+                            session: formatAnonSessionLabel(dividerAnonId),
+                          })}
+                    </span>
+                  </div>
+                ) : null}
               <div
-                key={message.id}
                 className={[
                   "mb-2.5 flex w-full flex-col",
                   message.mine ? "items-end pr-0.5" : "items-start pl-0.5",
@@ -1128,6 +1187,7 @@ export default function ProfileAnonChat({
                 </div>
 
                 {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
+              </div>
               </div>
             );
             })}

@@ -480,6 +480,11 @@ const es = {
   chat_anon_keep: "Mantenemos tu anonimato",
   chat_anon_identity_hidden: "No sabrán quién sos.",
   chat_anon_you_are: "Sos: {session}",
+  chat_anon_identity_changed: "Sos {session} ahora. Tu identidad anónima cambió.",
+  chat_anon_identity_thread: "En este chat figurás como {session}.",
+  chat_anon_identity_divider: "Identidad anónima: {session}",
+  chat_anon_identity_divider_owner: "El anónimo ahora es {session}",
+  chat_anon_identity_changed_owner: "El visitante anónimo ahora es {session}",
   chat_anon_classic_tag: "Modo anónimo",
   chat_anon_classic_invisible: "Estás invisible",
   chat_anon_classic_body:
@@ -1209,6 +1214,11 @@ const en: Record<keyof typeof es, string> = {
   chat_anon_keep: "We keep you anonymous",
   chat_anon_identity_hidden: "They will not know who you are.",
   chat_anon_you_are: "You are: {session}",
+  chat_anon_identity_changed: "You are {session} now. Your anonymous identity changed.",
+  chat_anon_identity_thread: "In this chat you appear as {session}.",
+  chat_anon_identity_divider: "Anonymous identity: {session}",
+  chat_anon_identity_divider_owner: "The anonymous visitor is now {session}",
+  chat_anon_identity_changed_owner: "The anonymous visitor is now {session}",
   chat_anon_classic_tag: "Anonymous mode",
   chat_anon_classic_invisible: "You are invisible",
   chat_anon_classic_body:

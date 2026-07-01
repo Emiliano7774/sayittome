@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 
 import { buildLegacyProfileChatIds } from "@/lib/chat/anonChatId";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
 import {
   profileReplyAuthorId,
@@ -82,6 +83,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
       senderId,
       ...(currentUid ? [currentUid] : []),
       ...(targetUid ? [targetUid] : []),
+      ...(getChatAnonSenderId().startsWith("anon_") ? [getChatAnonSenderId()] : []),
     ].filter(Boolean)),
   );
 
