@@ -366,7 +366,9 @@ export default function ProfileAnonChat({
   const showModernVisitorIntro = !isClassic && !isOwnerViewing && !hasChatActivity;
   const anonIdentity = resolveProfileChatAnonIdentity(chatId, chatAnonSessionId);
   const showAnonIdentityNotice =
-    anonIdentity.identityChanged && (isOwnerViewing || hasChatActivity || !showModernVisitorIntro);
+    !isOwnerViewing &&
+    anonIdentity.identityChanged &&
+    (hasChatActivity || !showModernVisitorIntro);
   const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
   const displayPeerName = isOwnerViewing
     ? formatAnonSessionLabel(anonSenderId)
@@ -1016,21 +1018,15 @@ export default function ProfileAnonChat({
             {showAnonIdentityNotice ? (
               <div className="mb-3 border-b border-white/[0.06] px-2 py-2.5 text-center">
                 <p className="text-xs font-medium text-white/35">
-                  {isOwnerViewing
-                    ? t("chat_anon_identity_changed_owner", {
-                        session: anonIdentity.liveLabel,
-                      })
-                    : t("chat_anon_identity_changed", {
-                        session: anonIdentity.liveLabel,
-                      })}
+                  {t("chat_anon_identity_changed", {
+                    session: anonIdentity.liveLabel,
+                  })}
                 </p>
-                {!isOwnerViewing ? (
-                  <p className="mt-1 text-[11px] font-medium text-white/25">
-                    {t("chat_anon_identity_thread", {
-                      session: anonIdentity.threadLabel,
-                    })}
-                  </p>
-                ) : null}
+                <p className="mt-1 text-[11px] font-medium text-white/25">
+                  {t("chat_anon_identity_thread", {
+                    session: anonIdentity.threadLabel,
+                  })}
+                </p>
               </div>
             ) : null}
 
@@ -1057,16 +1053,12 @@ export default function ProfileAnonChat({
 
               return (
               <div key={message.id} className="w-full">
-                {showIdentityDivider ? (
+                {showIdentityDivider && !isOwnerViewing ? (
                   <div className="my-3 text-center">
                     <p className="text-[11px] font-medium text-white/30">
-                      {isOwnerViewing
-                        ? t("chat_anon_identity_divider_owner", {
-                            session: formatAnonSessionLabel(dividerAnonId),
-                          })
-                        : t("chat_anon_identity_divider", {
-                            session: formatAnonSessionLabel(dividerAnonId),
-                          })}
+                      {t("chat_anon_identity_divider", {
+                        session: formatAnonSessionLabel(dividerAnonId),
+                      })}
                     </p>
                   </div>
                 ) : null}
