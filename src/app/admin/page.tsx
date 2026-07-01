@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import AdminOverviewAnalytics from "@/components/admin/AdminOverviewAnalytics";
 import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
+import AdminGenderRatioPanel from "@/components/admin/AdminGenderRatioPanel";
 import AdminRegistrationsPanel from "@/components/admin/AdminRegistrationsPanel";
 import { auth } from "@/lib/firebase";
 
@@ -74,6 +75,7 @@ export default function AdminDashboardPage() {
       </div>
 
       <AdminRegistrationsPanel adminEmail={admin.email} />
+      <AdminGenderRatioPanel adminEmail={admin.email} />
 
       {loading ? (
         <p className="text-2xl font-black text-white/40">Cargando métricas...</p>
