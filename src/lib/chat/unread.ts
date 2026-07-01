@@ -60,9 +60,11 @@ export async function markChatAsRead(
     [`unreadCounts.${viewerId}`]: 0,
   };
 
+  const viewerIsAnonSession = viewerId.startsWith("anon_");
   if (
     firebaseUid &&
     firebaseUid !== viewerId &&
+    !viewerIsAnonSession &&
     !(chat && isAnonVisitorProfileChat(chat, firebaseUid))
   ) {
     patch[`readBy.${firebaseUid}`] = true;

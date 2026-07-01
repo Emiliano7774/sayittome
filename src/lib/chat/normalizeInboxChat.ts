@@ -64,6 +64,8 @@ export function normalizeInboxChat(raw: InboxChat): InboxChat | null {
     lastMessage: String(raw.lastMessage || ""),
     lastMessageSender: String(raw.lastMessageSender || ""),
     targetPhoto: raw.targetPhoto ? String(raw.targetPhoto) : undefined,
+    anonSessionId: raw.anonSessionId ? String(raw.anonSessionId) : undefined,
+    anonOwnerUid: raw.anonOwnerUid ? String(raw.anonOwnerUid) : undefined,
     readBy: asStringRecord<boolean>(raw.readBy, "boolean"),
     unreadCounts: asStringRecord<number>(raw.unreadCounts, "number"),
     participantes: Array.isArray(raw.participantes)

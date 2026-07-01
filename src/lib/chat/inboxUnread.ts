@@ -66,15 +66,8 @@ export function chatUnreadCount(
 
   if (typeof stored === "number" && stored > 0) return 1;
 
-  if (chat.readBy?.[viewerId] === true) return 0;
-  if (
-    firebaseUid &&
-    usesFirebaseUnreadKeys(chat, viewerId, firebaseUid) &&
-    chat.readBy?.[firebaseUid] === true
-  ) {
-    return 0;
-  }
-
+  // Incoming activity always counts as pending. Do not suppress with stale readBy
+  // left over from the visitor's own last message before a profile reply arrives.
   return 1;
 }
 

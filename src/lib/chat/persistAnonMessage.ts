@@ -65,7 +65,6 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   );
   const senderKind: ProfileAnonSenderKind = isOwnerReply ? "profile" : "anon";
   const messageAuthorId = isOwnerReply ? profileReplyAuthorId(targetUid) : senderId;
-  const recipientUid = isOwnerReply ? senderId : targetUid;
 
   const chatRef = doc(db, "chats", chatId);
   const existingSnap = await getDoc(chatRef);
@@ -88,9 +87,12 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
 
   const storedAnonSession = String(existingData.anonSessionId || "").trim();
   const anonSessionId =
-    isOwnerReply && storedAnonSession.startsWith("anon_")
+    storedAnonSession.startsWith("anon_") ? storedAnonSession : senderId;
+  const unreadRecipientUid = isOwnerReply
+    ? storedAnonSession.startsWith("anon_")
       ? storedAnonSession
-      : senderId;
+      : senderId
+    : targetUid;
 
   const existingInitiatorUid = String(existingData.initiatorUid || "").trim();
   const initiatorUid = isOwnerReply
@@ -122,10 +124,10 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     updatedAt: serverTimestamp(),
     [`readBy.${messageAuthorId}`]: true,
     [`typing.${messageAuthorId}`]: false,
-    ...(recipientUid
+    ...(unreadRecipientUid
       ? {
-          [`unreadCounts.${recipientUid}`]: increment(1),
-          [`readBy.${recipientUid}`]: false,
+          [`unreadCounts.${unreadRecipientUid}`]: increment(1),
+          [`readBy.${unreadRecipientUid}`]: false,
         }
       : {}),
   };

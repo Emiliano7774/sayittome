@@ -256,7 +256,6 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   useEffect(() => {
     if (loading) return;
     if (!enableAnonInboxQuery) return;
-    if (uid && sessionChatIds.length === 0) return;
 
     const anonId = anonSessionId || getChatAnonSenderId();
     if (!anonId.startsWith("anon_")) return;
@@ -312,7 +311,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       queryMapsRef.current.anonSession = new Map();
       rebuildChats();
     };
-  }, [enableAnonInboxQuery, loading, anonSessionId, sessionChatIds.length, uid]);
+  }, [enableAnonInboxQuery, loading, anonSessionId]);
 
   useEffect(() => {
     if (loading) return;
