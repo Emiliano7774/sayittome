@@ -43,6 +43,7 @@ function pickUniqueIndicesFromPool(
   excludeKeys?: ReadonlySet<string>,
   outStart = 0,
   seedUsed?: Set<string>,
+  options?: { strictExclude?: boolean },
 ) {
   const used = seedUsed ? new Set(seedUsed) : new Set<string>();
   let count = 0;
@@ -68,6 +69,7 @@ export function pickRandomUniqueWindowIndices(
   out: Int32Array,
   size = SHUFFLE_WINDOW_SIZE,
   excludeKeys?: ReadonlySet<string>,
+  options?: { strictExclude?: boolean },
 ): number {
   const poolLength = pool.length;
   if (poolLength <= 0) return 0;
@@ -88,10 +90,20 @@ export function pickRandomUniqueWindowIndices(
   }
 
   const target = Math.min(size, poolLength);
-  const firstPass = pickUniqueIndicesFromPool(pool, scratch, out, target, excludeKeys);
+  const strictExclude = options?.strictExclude === true;
+  const firstPass = pickUniqueIndicesFromPool(
+    pool,
+    scratch,
+    out,
+    target,
+    excludeKeys,
+    0,
+    undefined,
+    options,
+  );
   let count = firstPass.count;
 
-  if (count < target) {
+  if (count < target && !strictExclude) {
     const secondPass = pickUniqueIndicesFromPool(
       pool,
       scratch,
@@ -100,6 +112,7 @@ export function pickRandomUniqueWindowIndices(
       undefined,
       count,
       firstPass.used,
+      options,
     );
     count += secondPass.count;
   }

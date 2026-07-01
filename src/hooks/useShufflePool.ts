@@ -87,29 +87,38 @@ export function useShufflePool() {
   const windowCountRef = useRef(0);
   const featuredRef = useRef<ShuffleProfile[]>([]);
   const shuffleClickCountRef = useRef(0);
-  const recentlyShownKeysRef = useRef<string[]>([]);
+  const previousBatchKeysRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(false);
 
-  const RECENTLY_SHOWN_CAP = 90;
-
-  function rememberShownProfiles(profiles: ShuffleProfile[]) {
-    const queue = recentlyShownKeysRef.current;
-
+  function keysFromProfiles(profiles: ShuffleProfile[]) {
+    const keys = new Set<string>();
     for (const profile of profiles) {
       for (const key of shuffleProfileDedupeKeys(profile)) {
-        if (!queue.includes(key)) queue.push(key);
+        keys.add(key);
       }
     }
-
-    while (queue.length > RECENTLY_SHOWN_CAP) {
-      queue.shift();
-    }
+    return keys;
   }
 
-  function recentExcludeKeys() {
-    const keys = new Set(recentlyShownKeysRef.current);
+  function profileMatchesExcludeKeys(
+    profile: ShuffleProfile,
+    excludeKeys: ReadonlySet<string>,
+  ) {
+    const keys = shuffleProfileDedupeKeys(profile);
+    return keys.length > 0 && keys.some((key) => excludeKeys.has(key));
+  }
+
+  function buildWindowExcludeKeys(options?: {
+    excludePreviousBatch?: boolean;
+  }) {
+    const keys = new Set<string>();
     for (const key of getShuffleExcludeKeys()) {
       keys.add(key);
+    }
+    if (options?.excludePreviousBatch) {
+      for (const key of previousBatchKeysRef.current) {
+        keys.add(key);
+      }
     }
     return keys;
   }
@@ -135,63 +144,84 @@ export function useShufflePool() {
   }, [search]);
 
   const applyWindowFromPool = useCallback(
-    (pool: ShuffleProfile[], options?: { forceReplace?: boolean }) => {
+    (pool: ShuffleProfile[], options?: {
+      forceReplace?: boolean;
+      excludePreviousBatch?: boolean;
+      resetBatchMemory?: boolean;
+    }) => {
       const forceReplace = options?.forceReplace === true;
-    const featured = dedupeShuffleProfiles(featuredRef.current);
-    featuredRef.current = featured;
-    const featuredKeys = new Set<string>();
-    for (const profile of featured) {
-      for (const key of shuffleProfileDedupeKeys(profile)) {
-        featuredKeys.add(key);
+      const excludePreviousBatch = options?.excludePreviousBatch === true;
+
+      if (options?.resetBatchMemory) {
+        previousBatchKeysRef.current = new Set();
       }
-    }
-    const eligiblePool = dedupeShuffleProfiles(
-      pool.filter((profile) => {
-        const keys = shuffleProfileDedupeKeys(profile);
-        return keys.length === 0 || !keys.some((key) => featuredKeys.has(key));
-      }),
-    );
-    const len = eligiblePool.length;
-    const featuredCount = featured.length;
 
-    if (len === 0 && featuredCount === 0) {
-      windowCountRef.current = 0;
-      setShuffleSlotsWithFeatured([], [], windowIndicesRef.current, 0, true);
-      setListReady(false);
-      return;
-    }
+      const excludeKeys = buildWindowExcludeKeys({ excludePreviousBatch });
+      const excludeSet = excludeKeys.size > 0 ? excludeKeys : undefined;
 
-    const excludeKeys = forceReplace ? undefined : recentExcludeKeys();
-    const remainingSlots = Math.max(0, SHUFFLE_WINDOW_SIZE - featuredCount);
-    const regularCount =
-      len > 0
-        ? pickRandomUniqueWindowIndices(
-            eligiblePool,
-            scratchIndicesRef.current,
-            windowIndicesRef.current,
-            remainingSlots,
-            excludeKeys,
-          )
-        : 0;
+      let featured = dedupeShuffleProfiles(featuredRef.current);
+      if (excludePreviousBatch && excludeSet) {
+        featured = featured.filter(
+          (profile) => !profileMatchesExcludeKeys(profile, excludeSet),
+        );
+      }
+      featuredRef.current = featured;
+      const featuredKeys = new Set<string>();
+      for (const profile of featured) {
+        for (const key of shuffleProfileDedupeKeys(profile)) {
+          featuredKeys.add(key);
+        }
+      }
+      const eligiblePool = dedupeShuffleProfiles(
+        pool.filter((profile) => {
+          const keys = shuffleProfileDedupeKeys(profile);
+          return keys.length === 0 || !keys.some((key) => featuredKeys.has(key));
+        }),
+      );
+      const len = eligiblePool.length;
+      const featuredCount = featured.length;
 
-    windowCountRef.current = featuredCount + regularCount;
+      if (len === 0 && featuredCount === 0) {
+        windowCountRef.current = 0;
+        setShuffleSlotsWithFeatured([], [], windowIndicesRef.current, 0, true);
+        setListReady(false);
+        previousBatchKeysRef.current = new Set();
+        return;
+      }
 
-    const shownProfiles = uniqueShuffleWindow([
-      ...featured,
-      ...Array.from({ length: regularCount }, (_, slot) => eligiblePool[windowIndicesRef.current[slot]]),
-    ].filter(Boolean) as ShuffleProfile[]);
+      const remainingSlots = Math.max(0, SHUFFLE_WINDOW_SIZE - featuredCount);
+      const regularCount =
+        len > 0
+          ? pickRandomUniqueWindowIndices(
+              eligiblePool,
+              scratchIndicesRef.current,
+              windowIndicesRef.current,
+              remainingSlots,
+              excludeSet,
+              { strictExclude: excludePreviousBatch },
+            )
+          : 0;
 
-    rememberShownProfiles(shownProfiles);
+      windowCountRef.current = featuredCount + regularCount;
 
-    setShuffleSlotsWithFeatured(
-      featured,
-      eligiblePool,
-      windowIndicesRef.current,
-      regularCount,
-      forceReplace,
-    );
-    setListReady(true);
-  }, []);
+      const shownProfiles = uniqueShuffleWindow([
+        ...featured,
+        ...Array.from({ length: regularCount }, (_, slot) => eligiblePool[windowIndicesRef.current[slot]]),
+      ].filter(Boolean) as ShuffleProfile[]);
+
+      previousBatchKeysRef.current = keysFromProfiles(shownProfiles);
+
+      setShuffleSlotsWithFeatured(
+        featured,
+        eligiblePool,
+        windowIndicesRef.current,
+        regularCount,
+        forceReplace,
+      );
+      setListReady(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     return subscribeShuffleExclude(() => {
@@ -255,7 +285,10 @@ export function useShufflePool() {
           isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
         ).length,
       );
-      applyWindowFromPool(activePoolRef.current, { forceReplace: forceWindow });
+      applyWindowFromPool(activePoolRef.current, {
+        forceReplace: forceWindow,
+        resetBatchMemory: forceWindow,
+      });
     },
     [applyWindowFromPool],
   );
@@ -379,8 +412,10 @@ export function useShufflePool() {
 
     const pool = activePoolRef.current;
     if (pool.length > 0 || featuredRef.current.length > 0) {
-      recentlyShownKeysRef.current = [];
-      applyWindowFromPool(refreshPoolPresence(pool), { forceReplace: true });
+      applyWindowFromPool(refreshPoolPresence(pool), {
+        forceReplace: true,
+        excludePreviousBatch: true,
+      });
     }
 
     shuffleClickCountRef.current += 1;
@@ -469,7 +504,7 @@ export function useShufflePool() {
       setFiltersOpen(false);
       setFiltersState(nextFilters);
       saveStoredShuffleFilters(nextFilters);
-      recentlyShownKeysRef.current = [];
+      previousBatchKeysRef.current = new Set();
 
       const runFilter = () => {
         filterActivePool(searchRef.current.trim(), nextFilters, { forceWindow: true });
@@ -497,7 +532,7 @@ export function useShufflePool() {
     setFiltersOpen(false);
     setFiltersState(cleared);
     saveStoredShuffleFilters(cleared);
-    recentlyShownKeysRef.current = [];
+    previousBatchKeysRef.current = new Set();
     filterActivePool(searchRef.current.trim(), cleared, { forceWindow: true });
   }, [filterActivePool]);
 
