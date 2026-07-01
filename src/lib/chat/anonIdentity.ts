@@ -6,11 +6,15 @@ import { isProfileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
 export function resolveProfileChatAnonIdentity(
   chatId: string,
   chatAnonSessionId = "",
+  options: { isOwnerViewing?: boolean } = {},
 ) {
   const threadAnonId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
   const liveAnonId = getAnonSessionId();
 
+  // Profile owners also carry a browser anon id; only the visitor should see
+  // identity-change guidance when their live session diverges from this thread.
   const identityChanged =
+    !options.isOwnerViewing &&
     threadAnonId.startsWith("anon_") &&
     liveAnonId.startsWith("anon_") &&
     threadAnonId !== liveAnonId;
@@ -22,6 +26,18 @@ export function resolveProfileChatAnonIdentity(
     threadLabel: formatAnonSessionLabel(threadAnonId),
     liveLabel: formatAnonSessionLabel(liveAnonId),
   };
+}
+
+/** Identity guide is only for anonymous visitors continuing the same thread. */
+export function shouldShowAnonIdentityGuide(input: {
+  isOwnerViewing: boolean;
+  identityChanged: boolean;
+  hasChatActivity: boolean;
+  showModernVisitorIntro: boolean;
+}) {
+  if (input.isOwnerViewing) return false;
+  if (!input.identityChanged) return false;
+  return input.hasChatActivity || !input.showModernVisitorIntro;
 }
 
 export function messageAnonSenderId(from: string) {

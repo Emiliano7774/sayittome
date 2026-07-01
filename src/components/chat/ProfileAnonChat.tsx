@@ -40,6 +40,7 @@ import {
   messageAnonSenderId,
   resolveProfileChatAnonIdentity,
   shouldShowAnonIdentityDivider,
+  shouldShowAnonIdentityGuide,
   subscribeAnonSession,
 } from "@/lib/chat/anonIdentity";
 import { chatHasActivity, deleteEmptyChatIfIdle } from "@/lib/chat/migrate";
@@ -364,11 +365,15 @@ export default function ProfileAnonChat({
       : messages.some((message) => message.mine) || hasChatActivity);
   const showClassicIntro = isClassic && !isOwnerViewing && !classicChatEngaged;
   const showModernVisitorIntro = !isClassic && !isOwnerViewing && !hasChatActivity;
-  const anonIdentity = resolveProfileChatAnonIdentity(chatId, chatAnonSessionId);
-  const showAnonIdentityNotice =
-    !isOwnerViewing &&
-    anonIdentity.identityChanged &&
-    (hasChatActivity || !showModernVisitorIntro);
+  const anonIdentity = resolveProfileChatAnonIdentity(chatId, chatAnonSessionId, {
+    isOwnerViewing,
+  });
+  const showAnonIdentityNotice = shouldShowAnonIdentityGuide({
+    isOwnerViewing,
+    identityChanged: anonIdentity.identityChanged,
+    hasChatActivity,
+    showModernVisitorIntro,
+  });
   const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
   const displayPeerName = isOwnerViewing
     ? formatAnonSessionLabel(anonSenderId)
