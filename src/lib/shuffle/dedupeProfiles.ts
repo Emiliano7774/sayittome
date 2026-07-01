@@ -12,20 +12,35 @@ type DedupeableProfile = {
   shuffleFeatured?: boolean;
 };
 
+function canonicalUsernameFrom(value?: string) {
+  const normalized = normalizeUsername(String(value || "")).toLowerCase();
+  if (!normalized || normalized === "usuario" || normalized === "undefined") {
+    return "";
+  }
+  return canonicalShuffleUsername(normalized);
+}
+
+/** All canonical username keys for a profile (handles stale usernameLower in Firestore). */
+function usernameCanonicalCandidates(profile: {
+  username?: string;
+  usernameLower?: string;
+}) {
+  const fromUsername = canonicalUsernameFrom(profile.username);
+  const fromStored = canonicalUsernameFrom(profile.usernameLower);
+  const candidates = new Set<string>();
+  if (fromUsername) candidates.add(fromUsername);
+  if (fromStored) candidates.add(fromStored);
+  return [...candidates];
+}
+
 export function resolveUsernameLower(profile: {
   username?: string;
   usernameLower?: string;
 }) {
-  const fromField = normalizeUsername(String(profile.usernameLower || "")).toLowerCase();
-  if (fromField && fromField !== "usuario" && fromField !== "undefined") {
-    return canonicalShuffleUsername(fromField);
-  }
+  const fromUsername = canonicalUsernameFrom(profile.username);
+  if (fromUsername) return fromUsername;
 
-  const username = normalizeUsername(String(profile.username || "")).toLowerCase();
-  if (!username || username === "usuario" || username === "undefined") {
-    return "";
-  }
-  return canonicalShuffleUsername(username);
+  return canonicalUsernameFrom(profile.usernameLower);
 }
 
 /** Looser username match for dedupe: strips trailing punctuation variants. */
@@ -127,13 +142,13 @@ export function shuffleProfileDedupeKeys(profile: {
 }) {
   const keys = new Set<string>();
   const identityKey = shuffleProfileIdentityKey(profile);
-  const usernameLower = resolveUsernameLower(profile);
   const uid = String(profile.uid || "").trim();
   const authUid = String(profile.authUid || "").trim();
   const email = String(profile.email || "").trim().toLowerCase();
 
   if (identityKey) keys.add(identityKey);
-  if (usernameLower) {
+  for (const usernameLower of usernameCanonicalCandidates(profile)) {
+    keys.add(`u:${usernameLower}`);
     keys.add(`ul:${usernameLower}`);
   }
   if (authUid) keys.add(`auth:${authUid}`);
