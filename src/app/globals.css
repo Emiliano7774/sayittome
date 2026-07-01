@@ -340,7 +340,7 @@ body.sayittome-native-shell.sayittome-entry-legal-open .sayittome-entry-legal-ac
 
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 220ms;
+  animation-duration: 80ms;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 

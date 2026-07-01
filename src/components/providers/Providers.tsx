@@ -17,6 +17,8 @@ import StoriesBootstrap from "@/components/stories/StoriesBootstrap";
 import SensitiveConsentBootstrap from "@/components/moderation/SensitiveConsentBootstrap";
 import AnonMatchBootstrap from "@/components/anonMatch/AnonMatchBootstrap";
 import ChatNotificationPrompt from "@/components/chat/ChatNotificationPrompt";
+import MainTabShellPanels from "@/components/navigation/MainTabShellPanels";
+import { MainTabShellProvider } from "@/contexts/MainTabShellContext";
 
 export default function Providers({
   children,
@@ -29,6 +31,7 @@ export default function Providers({
         <AnonMatchProvider>
         <UxModeProvider>
           <ChatAlertsProvider>
+          <MainTabShellProvider>
           <PresenceBootstrap />
           <AnonymousPresenceBootstrap />
           <AnonSessionLifecycle />
@@ -42,6 +45,8 @@ export default function Providers({
           <BoostBootstrap />
           <ChatNotificationPrompt />
           {children}
+          <MainTabShellPanels />
+          </MainTabShellProvider>
           </ChatAlertsProvider>
         </UxModeProvider>
         </AnonMatchProvider>

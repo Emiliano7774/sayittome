@@ -1,9 +1,9 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
 import BottomNavLink from "@/components/navigation/BottomNavLink";
+import { useEffectivePathname } from "@/contexts/MainTabShellContext";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -17,7 +17,7 @@ type Props = {
 };
 
 export default function BottomNav({ unreadCount = 0 }: Props) {
-  const pathname = usePathname();
+  const pathname = useEffectivePathname();
   const t = useT();
 
   const items: NavItem[] = [

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname } from "next/navigation";
-
+import { useEffectivePathname } from "@/contexts/MainTabShellContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 import BottomNav from "@/components/navigation/BottomNav";
 import ModernBottomNav from "@/components/navigation/ModernBottomNav";
@@ -12,7 +11,7 @@ const HIDE_PREFIXES = ["/admin", "/login", "/register", "/privacy", "/settings/e
 
 export default function AppNavigation() {
   const { uxMode } = useUxMode();
-  const pathname = usePathname();
+  const pathname = useEffectivePathname();
   const { totalUnread } = useChatAlerts();
 
   const navHidden =
