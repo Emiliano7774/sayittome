@@ -33,6 +33,16 @@ export async function initChatNotifications() {
   if (bootstrapped || typeof window === "undefined") return;
   bootstrapped = true;
   await ensureNativeChannel();
+
+  if (isCapacitorNative() && areChatNotificationsEnabled()) {
+    try {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      const current = await LocalNotifications.checkPermissions();
+      nativePermissionGranted = current.display === "granted";
+    } catch {
+      nativePermissionGranted = false;
+    }
+  }
 }
 
 export async function requestChatNotificationPermission() {
@@ -89,14 +99,22 @@ export function shouldShowBackgroundChatNotification() {
   return isCapacitorNative() && !isNativeAppActive();
 }
 
+export function shouldShowChatNotification(input?: { viewingActiveChat?: boolean }) {
+  if (!areChatNotificationsEnabled()) return false;
+  if (input?.viewingActiveChat) return false;
+  if (shouldShowBackgroundChatNotification()) return true;
+  // Native shell: also notify when the app is open on another screen.
+  return isCapacitorNative() && isNativeAppActive();
+}
+
 export async function showChatNotification(input: {
   title: string;
   body: string;
   chatId?: string;
+  viewingActiveChat?: boolean;
 }) {
   if (typeof window === "undefined") return;
-  if (!areChatNotificationsEnabled()) return;
-  if (!shouldShowBackgroundChatNotification()) return;
+  if (!shouldShowChatNotification({ viewingActiveChat: input.viewingActiveChat })) return;
 
   const body = String(input.body || "").trim();
   if (!body) return;

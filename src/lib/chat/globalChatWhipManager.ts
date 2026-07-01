@@ -196,6 +196,7 @@ class GlobalChatWhipManager {
               title: ctx.getChatLabel(chatId) || "Nuevo mensaje",
               body,
               chatId,
+              viewingActiveChat,
             });
           },
         });

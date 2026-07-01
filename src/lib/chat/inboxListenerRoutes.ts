@@ -33,6 +33,17 @@ export function shouldEnableChatAlerts(pathname: string) {
   return true;
 }
 
+/** Keep message listeners for opted-in users (includes home and background). */
+export function shouldEnableChatNotificationListeners(
+  pathname: string,
+  notificationsEnabled: boolean,
+) {
+  if (!pathname) return false;
+  if (isBlockedRoute(pathname)) return false;
+  if (pathname === "/" && !notificationsEnabled) return false;
+  return true;
+}
+
 /** Stories index polling only on routes that render story UI. */
 export function shouldEnableStoriesRefresh(pathname: string) {
   if (!pathname || pathname === "/") return false;

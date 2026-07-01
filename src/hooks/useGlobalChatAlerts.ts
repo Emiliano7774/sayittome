@@ -10,7 +10,7 @@ import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { chatPeerTitle } from "@/lib/chat/inboxPeerTitle";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
-  shouldEnableChatAlerts,
+  shouldEnableChatNotificationListeners,
   shouldEnableFullInboxListeners,
 } from "@/lib/chat/inboxListenerRoutes";
 import {
@@ -21,7 +21,10 @@ import {
   resolveInboxViewerId,
   totalUnreadCount,
 } from "@/lib/chat/inboxUnread";
-import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
+import {
+  areChatNotificationsEnabled,
+  subscribeChatNotificationPrefs,
+} from "@/lib/chat/chatNotificationPrefs";
 import { initChatNotifications, requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 
@@ -29,22 +32,33 @@ export function useGlobalChatAlerts() {
   const pathname = usePathname();
   const documentHidden = useDocumentHidden();
   const { firebaseUser } = useAuth();
+  const notificationsEnabled = useSyncExternalStore(
+    subscribeChatNotificationPrefs,
+    areChatNotificationsEnabled,
+    () => false,
+  );
 
   const inboxRouteEnabled = useMemo(
     () => shouldEnableFullInboxListeners(pathname),
     [pathname],
   );
   const chatAlertsRouteEnabled = useMemo(
-    () => shouldEnableChatAlerts(pathname),
-    [pathname],
+    () => shouldEnableChatNotificationListeners(pathname, notificationsEnabled),
+    [pathname, notificationsEnabled],
   );
   const liveFirestoreEnabled = inboxRouteEnabled && !documentHidden;
-  const liveChatAlertsEnabled = chatAlertsRouteEnabled && !documentHidden;
+  const notificationInboxEnabled =
+    notificationsEnabled && chatAlertsRouteEnabled && !documentHidden;
+  const backgroundNotificationInboxEnabled =
+    notificationsEnabled && chatAlertsRouteEnabled;
+  const messageListenersEnabled =
+    chatAlertsRouteEnabled && (!documentHidden || notificationsEnabled);
 
   const { sortedChats, uid, loading, isAnonymousSession } = useChatsInbox({
-    enableInboxQueries: liveFirestoreEnabled,
-    enableSessionChatListeners: liveChatAlertsEnabled,
-    enableAnonInboxQuery: liveChatAlertsEnabled,
+    enableInboxQueries:
+      liveFirestoreEnabled || backgroundNotificationInboxEnabled,
+    enableSessionChatListeners: messageListenersEnabled,
+    enableAnonInboxQuery: messageListenersEnabled,
   });
 
   const viewerId = resolveInboxViewerId(uid);
@@ -72,9 +86,9 @@ export function useGlobalChatAlerts() {
   }, []);
 
   useEffect(() => {
-    if (!chatAlertsRouteEnabled || loading || !areChatNotificationsEnabled()) return;
+    if (!chatAlertsRouteEnabled || loading || !notificationsEnabled) return;
     void requestChatNotificationPermission();
-  }, [chatAlertsRouteEnabled, loading]);
+  }, [chatAlertsRouteEnabled, loading, notificationsEnabled]);
 
   useEffect(() => {
     globalChatWhipManager.setContext({
@@ -94,14 +108,14 @@ export function useGlobalChatAlerts() {
   }, [viewerId, firebaseUid]);
 
   useEffect(() => {
-    globalChatWhipManager.setPaused(!liveChatAlertsEnabled || loading);
+    globalChatWhipManager.setPaused(!messageListenersEnabled || loading);
 
     if (loading || !chatAlertsRouteEnabled) {
       globalChatWhipManager.syncInboxChatIds([]);
       return;
     }
 
-    if (!liveChatAlertsEnabled) {
+    if (!messageListenersEnabled) {
       return;
     }
 
@@ -109,12 +123,7 @@ export function useGlobalChatAlerts() {
     globalChatWhipManager.syncInboxChatIds(
       sortedChats.map((chat) => chat.canonicalChatId || chat.id),
     );
-  }, [
-    chatAlertsRouteEnabled,
-    liveChatAlertsEnabled,
-    loading,
-    sortedChats,
-  ]);
+  }, [chatAlertsRouteEnabled, messageListenersEnabled, loading, sortedChats]);
 
   return {
     totalUnread,
@@ -123,6 +132,6 @@ export function useGlobalChatAlerts() {
     uid,
     loading,
     isAnonymousSession,
-    inboxQueriesEnabled: inboxRouteEnabled,
+    inboxQueriesEnabled: inboxRouteEnabled || notificationInboxEnabled,
   };
 }
