@@ -21,6 +21,7 @@ import {
   resolveInboxViewerId,
   totalUnreadCount,
 } from "@/lib/chat/inboxUnread";
+import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
 import { initChatNotifications, requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 
@@ -71,7 +72,7 @@ export function useGlobalChatAlerts() {
   }, []);
 
   useEffect(() => {
-    if (!chatAlertsRouteEnabled || loading) return;
+    if (!chatAlertsRouteEnabled || loading || !areChatNotificationsEnabled()) return;
     void requestChatNotificationPermission();
   }, [chatAlertsRouteEnabled, loading]);
 

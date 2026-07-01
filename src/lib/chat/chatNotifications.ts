@@ -1,6 +1,7 @@
 "use client";
 
 import { isCapacitorNative, isNativeAppActive } from "@/lib/app/nativeShell";
+import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
 
 const CHAT_CHANNEL_ID = "chat-messages";
 const ICON_PATH = "/icons/Icon-192.png";
@@ -36,6 +37,7 @@ export async function initChatNotifications() {
 
 export async function requestChatNotificationPermission() {
   if (typeof window === "undefined") return false;
+  if (!areChatNotificationsEnabled()) return false;
   if (permissionRequested) {
     return hasChatNotificationPermission();
   }
@@ -93,6 +95,7 @@ export async function showChatNotification(input: {
   chatId?: string;
 }) {
   if (typeof window === "undefined") return;
+  if (!areChatNotificationsEnabled()) return;
   if (!shouldShowBackgroundChatNotification()) return;
 
   const body = String(input.body || "").trim();

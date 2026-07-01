@@ -16,6 +16,7 @@ import PresenceBootstrap from "@/components/PresenceBootstrap";
 import StoriesBootstrap from "@/components/stories/StoriesBootstrap";
 import SensitiveConsentBootstrap from "@/components/moderation/SensitiveConsentBootstrap";
 import AnonMatchBootstrap from "@/components/anonMatch/AnonMatchBootstrap";
+import ChatNotificationPrompt from "@/components/chat/ChatNotificationPrompt";
 
 export default function Providers({
   children,
@@ -39,6 +40,7 @@ export default function Providers({
           <SensitiveConsentBootstrap />
           <AnonMatchBootstrap />
           <BoostBootstrap />
+          <ChatNotificationPrompt />
           {children}
           </ChatAlertsProvider>
         </UxModeProvider>

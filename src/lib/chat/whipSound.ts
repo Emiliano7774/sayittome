@@ -27,8 +27,13 @@ function getPooledAudio() {
 function requestNotificationPermission() {
   if (notificationPermissionRequested || typeof window === "undefined") return;
   notificationPermissionRequested = true;
-  void import("@/lib/chat/chatNotifications")
-    .then(({ requestChatNotificationPermission }) => requestChatNotificationPermission())
+  void import("@/lib/chat/chatNotificationPrefs")
+    .then(({ areChatNotificationsEnabled }) => {
+      if (!areChatNotificationsEnabled()) return;
+      return import("@/lib/chat/chatNotifications").then(({ requestChatNotificationPermission }) =>
+        requestChatNotificationPermission(),
+      );
+    })
     .catch(() => undefined);
 }
 

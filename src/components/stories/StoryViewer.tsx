@@ -7,7 +7,6 @@ import { onAuthStateChanged } from "firebase/auth";
 import {
   doc,
   increment,
-  onSnapshot,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -16,11 +15,7 @@ import {
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import { auth, db } from "@/lib/firebase";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
-import {
-  buildProfileLikeId,
-  getLikerId,
-  toggleProfileLike,
-} from "@/lib/likes/profileLike";
+import { getLikerId } from "@/lib/likes/profileLike";
 import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories";
 import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
@@ -52,8 +47,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const [localStories, setLocalStories] = useState(stories);
   const [paused, setPaused] = useState(false);
   const [blurLocked, setBlurLocked] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [profileLikes, setProfileLikes] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
   const [viewerUid, setViewerUid] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -103,6 +96,9 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   const needsBlur = current ? storyRequiresBlur(current) : false;
   const isPaused = paused || replyOpen || (needsBlur && blurLocked);
   const canDelete = current ? canManageStory(current, viewerUid) : false;
+  const likerId = getLikerId();
+  const storyLiked = Boolean(likerId && current?.likedBy?.[likerId]);
+  const storyLikeCount = Number(current?.likeCount || 0);
   const topChromeHidden = paused && !blurLocked;
   const bottomChromeHidden = topChromeHidden || replyOpen;
   const durationMs =
@@ -153,30 +149,6 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!resolvedOwnerUid || anonymousStory) return;
-
-    const likerId = getLikerId();
-    const unsubLike = onSnapshot(
-      doc(db, "perfil_likes", buildProfileLikeId(likerId, resolvedOwnerUid)),
-      (snap) => setLiked(snap.exists()),
-      () => setLiked(false),
-    );
-
-    const unsubProfile = onSnapshot(doc(db, "usuarios", resolvedOwnerUid), (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      setProfileLikes(
-        Number(data.likesPerfilCount ?? data.likesCount ?? data.likes ?? 0),
-      );
-    });
-
-    return () => {
-      unsubLike();
-      unsubProfile();
-    };
-  }, [resolvedOwnerUid, anonymousStory]);
 
   const markViewed = useCallback(async (story: StoryItem) => {
     if (viewedRef.current.has(story.id)) return;
@@ -283,29 +255,39 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
   }
 
   async function handleLike() {
-    if (!current || !resolvedOwnerUid || likeBusy) return;
+    if (!current || likeBusy) return;
 
-    const likerId = getLikerId();
     if (!likerId || likerId === resolvedOwnerUid) return;
 
     setLikeBusy(true);
 
-    try {
-      const nextLiked = await toggleProfileLike(resolvedOwnerUid);
-      setLiked(nextLiked);
+    const nextLiked = !storyLiked;
 
+    try {
       if (nextLiked) {
         await updateDoc(doc(db, "historias", current.id), {
           likeCount: increment(1),
           [`likedBy.${likerId}`]: true,
           storyLikeAt: serverTimestamp(),
         });
-      } else if (liked) {
+      } else {
         await updateDoc(doc(db, "historias", current.id), {
           likeCount: increment(-1),
           [`likedBy.${likerId}`]: false,
         });
       }
+
+      setLocalStories((prev) =>
+        prev.map((story) =>
+          story.id === current.id
+            ? {
+                ...story,
+                likeCount: Math.max(0, Number(story.likeCount || 0) + (nextLiked ? 1 : -1)),
+                likedBy: { ...(story.likedBy || {}), [likerId]: nextLiked },
+              }
+            : story,
+        ),
+      );
     } catch (e) {
       console.error(e);
     } finally {
@@ -559,6 +541,29 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
 
       </div>
 
+      {needsBlur && blurLocked ? (
+        <>
+          <button
+            type="button"
+            className="absolute bottom-0 left-0 top-0 z-[35] w-1/3 touch-none"
+            onClick={(event) => {
+              event.stopPropagation();
+              goPrev();
+            }}
+            aria-label={t("stories_prev")}
+          />
+          <button
+            type="button"
+            className="absolute bottom-0 right-0 top-0 z-[35] w-1/3 touch-none"
+            onClick={(event) => {
+              event.stopPropagation();
+              goNext();
+            }}
+            aria-label={t("stories_next")}
+          />
+        </>
+      ) : null}
+
       <div
         className={[
           "absolute bottom-0 left-0 right-0 z-50 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4 transition-opacity duration-150",
@@ -610,17 +615,17 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
               <button
                 type="button"
                 onClick={handleLike}
-                disabled={likeBusy || getLikerId() === resolvedOwnerUid}
+                disabled={likeBusy || likerId === resolvedOwnerUid}
                 className={[
                   "flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-black transition",
-                  liked
+                  storyLiked
                     ? "bg-pink-500 text-white shadow-[0_0_30px_rgba(236,72,153,.35)]"
                     : "bg-white/10 text-white",
                   likeBusy ? "opacity-60" : "",
                 ].join(" ")}
               >
-                <Heart size={18} fill={liked ? "currentColor" : "none"} />
-                {liked ? t("stories_liked") : t("settings_likes")} · {profileLikes}
+                <Heart size={18} fill={storyLiked ? "currentColor" : "none"} />
+                {storyLiked ? t("stories_liked") : t("settings_likes")} · {storyLikeCount}
               </button>
             ) : null}
             <span className="text-sm font-bold text-white/50">
