@@ -3,7 +3,7 @@
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 
 import BottomNavLink from "@/components/navigation/BottomNavLink";
-import { useEffectivePathname } from "@/contexts/MainTabShellContext";
+import { useEffectivePathname, useMainTabShell } from "@/contexts/MainTabShellContext";
 import { useT } from "@/contexts/LocaleContext";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 
@@ -18,6 +18,7 @@ type Props = {
 
 export default function ModernBottomNav({ unreadCount = 0 }: Props) {
   const pathname = useEffectivePathname();
+  const { openMainTab } = useMainTabShell();
   const t = useT();
 
   const items: NavItem[] = [
@@ -30,6 +31,11 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
 
   function dispatchShuffle() {
     window.dispatchEvent(new CustomEvent("sayittome:shuffle"));
+  }
+
+  function openShuffleTab() {
+    openMainTab("/shuffle");
+    window.requestAnimationFrame(() => dispatchShuffle());
   }
 
   return (
@@ -54,6 +60,24 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
                   className={active ? "text-[#f59e0b]" : "text-[#777]"}
                 />
               </BottomNavLink>
+            );
+          }
+
+          if (item.kind === "shuffle" && pathname !== "/shuffle") {
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={openShuffleTab}
+                className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0"
+                aria-label={t("nav_shuffle_refresh")}
+              >
+                <Icon
+                  size={34}
+                  strokeWidth={2.35}
+                  className="block shrink-0 translate-x-px -translate-y-px text-[#777]"
+                />
+              </button>
             );
           }
 

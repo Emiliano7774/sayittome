@@ -18,7 +18,9 @@ import {
 } from "@/lib/navigation/mainTabs";
 import {
   CLEAR_SHELL_EVENT,
+  OPEN_MAIN_TAB_EVENT,
 } from "@/lib/navigation/mainTabShellBridge";
+import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
 
 type MainTabShellContextValue = {
   effectivePathname: string;
@@ -65,15 +67,6 @@ export function MainTabShellProvider({
     };
   }, [shellTab]);
 
-  useEffect(() => {
-    function clearShell() {
-      setShellTab(null);
-    }
-
-    window.addEventListener(CLEAR_SHELL_EVENT, clearShell);
-    return () => window.removeEventListener(CLEAR_SHELL_EVENT, clearShell);
-  }, []);
-
   const openMainTab = useCallback(
     (href: MainTabHref) => {
       if (href === nextPathname) {
@@ -87,10 +80,31 @@ export function MainTabShellProvider({
         next.add(href);
         return next;
       });
+      recordNativeNavPath(href);
       setShellTab(href);
     },
     [nextPathname],
   );
+
+  useEffect(() => {
+    function clearShell() {
+      setShellTab(null);
+    }
+
+    function openShell(event: Event) {
+      const href = (event as CustomEvent<{ href?: MainTabHref }>).detail?.href;
+      if (href && isMainTabHref(href)) {
+        openMainTab(href);
+      }
+    }
+
+    window.addEventListener(CLEAR_SHELL_EVENT, clearShell);
+    window.addEventListener(OPEN_MAIN_TAB_EVENT, openShell);
+    return () => {
+      window.removeEventListener(CLEAR_SHELL_EVENT, clearShell);
+      window.removeEventListener(OPEN_MAIN_TAB_EVENT, openShell);
+    };
+  }, [openMainTab]);
 
   const activeShellTab = shellTab;
   const childrenHidden = activeShellTab !== null;

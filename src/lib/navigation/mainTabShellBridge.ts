@@ -1,6 +1,7 @@
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 
 const CLEAR_SHELL_EVENT = "sayittome:clear-main-tab-shell";
+const OPEN_MAIN_TAB_EVENT = "sayittome:open-main-tab";
 
 declare global {
   interface Window {
@@ -15,4 +16,9 @@ export function clearMainTabShellOverlay() {
   return true;
 }
 
-export { CLEAR_SHELL_EVENT };
+export function openMainTabFromBridge(href: MainTabHref) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(OPEN_MAIN_TAB_EVENT, { detail: { href } }));
+}
+
+export { CLEAR_SHELL_EVENT, OPEN_MAIN_TAB_EVENT };

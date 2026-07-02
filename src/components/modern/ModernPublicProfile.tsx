@@ -36,6 +36,13 @@ import {
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import { useMainTabShell } from "@/contexts/MainTabShellContext";
+import { isMainTabHref } from "@/lib/navigation/mainTabs";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import {
+  consumeProfileReturnTo,
+  peekProfileReturnTo,
+} from "@/lib/navigation/profileReturnNav";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
@@ -101,6 +108,7 @@ export default function ModernPublicProfile({
   onModerationTagChange,
 }: Props) {
   const router = useRouter();
+  const shell = useMainTabShell();
   const { locale } = useLocale();
   const t = useT();
   const formatLastSeen = useFormatLastSeen();
@@ -210,6 +218,16 @@ export default function ModernPublicProfile({
     onSwipeRight: prevHero,
   });
 
+  const handleProfileBack = useCallback(() => {
+    const returnTo = peekProfileReturnTo() || "/shuffle";
+    consumeProfileReturnTo();
+    if (isMainTabHref(returnTo)) {
+      shell?.openMainTab(returnTo);
+      return;
+    }
+    fastRouterPush(router, returnTo);
+  }, [router, shell]);
+
   const viewerSwipe = useHorizontalSwipe({
     enabled: viewerOpen && gallery.length > 1,
     minDistance: 32,
@@ -248,13 +266,14 @@ export default function ModernPublicProfile({
       <div className="mx-auto w-full max-w-3xl px-4 py-5 md:px-6">
         <header className="mb-5 flex items-center justify-between">
           {showShuffleBack ? (
-            <Link
-              href="/shuffle"
+            <button
+              type="button"
+              onClick={handleProfileBack}
               className="inline-flex items-center gap-2 text-sm font-black text-white/55 hover:text-white"
             >
               <ArrowLeft size={18} />
               Shuffle
-            </Link>
+            </button>
           ) : (
             <div />
           )}

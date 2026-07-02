@@ -46,6 +46,7 @@ import {
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { prefetchPublicProfile } from "@/lib/profile/profileCache";
 import {
   readCachedShufflePool,
@@ -602,8 +603,10 @@ export function useShufflePool() {
 
       if (action === "story") {
         const ownerUid = target.getAttribute("data-owner-uid");
+        stashProfileReturnTo("/shuffle");
         fastRouterPush(router, `/stories/${encodeURIComponent(ownerUid || username)}`);
       } else if (action === "profile") {
+        stashProfileReturnTo("/shuffle");
         fastRouterPush(router, `/u/${encodeURIComponent(username)}`);
       } else if (action === "chat") {
         const senderId = getChatAnonSenderId();

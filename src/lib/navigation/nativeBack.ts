@@ -1,4 +1,5 @@
 import { popNativeNavPath } from "@/lib/navigation/nativeNavStack";
+import { peekProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
 
 export type NativeBackResult =
@@ -95,10 +96,13 @@ export function getNativeBackDestination(pathname: string): string | null {
   const path = normalizePath(pathname);
 
   if (path.startsWith("/chat/")) return "/chats";
-  if (path === "/chats") return "/shuffle";
 
   if (path.startsWith("/u/") && path.endsWith("/chat")) return "/chats";
-  if (path.startsWith("/u/")) return "/shuffle";
+  if (path.startsWith("/u/")) {
+    const returnTo = peekProfileReturnTo();
+    if (returnTo) return returnTo;
+    return "/shuffle";
+  }
 
   if (path === "/stories/new") return "/shuffle";
   if (path.startsWith("/stories/")) return "/stories";
@@ -136,6 +140,11 @@ export function resolveNativeBack(pathname: string): NativeBackResult {
   }
 
   const path = normalizePath(pathname);
+
+  if (path.startsWith("/chat/")) {
+    stripNativeChatFullscreen();
+    return { handled: true, navigateTo: "/chats" };
+  }
 
   if (isNativeRootRoute(path)) {
     return { handled: true, hintKey: "native_back_exit_hint" };

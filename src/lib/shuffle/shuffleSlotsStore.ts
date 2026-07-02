@@ -111,6 +111,7 @@ export function setShuffleSlots(
   }
 
   dedupeFilledSlots();
+  compactShuffleSlotsLeft();
   scheduleFlush();
 }
 
@@ -193,6 +194,7 @@ export function setShuffleSlotsWithFeatured(
   }
 
   dedupeFilledSlots();
+  compactShuffleSlotsLeft();
   scheduleFlush({ sync: forceReplace });
 }
 
@@ -211,6 +213,21 @@ function dedupeFilledSlots() {
     }
 
     for (const key of keys) used.add(key);
+  }
+}
+
+function compactShuffleSlotsLeft() {
+  const filled: (ShuffleProfile | null)[] = [];
+
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    if (slots[slot]) filled.push(slots[slot]);
+  }
+
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const next = filled[slot] ?? null;
+    if (slots[slot] === next) continue;
+    slots[slot] = next;
+    dirtySlots.add(slot);
   }
 }
 

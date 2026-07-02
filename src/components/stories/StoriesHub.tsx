@@ -61,6 +61,7 @@ export default function StoriesHub({ groups, viewerUid = "", variant = "modern" 
       </section>
 
       <StoriesMosaic groups={mosaicGroups} title={t("stories_mosaic_title")} />
+      <div aria-hidden className="sayittome-nav-scroll-spacer" />
     </div>
   );
 }

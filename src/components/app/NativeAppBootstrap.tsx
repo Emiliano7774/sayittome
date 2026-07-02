@@ -17,6 +17,9 @@ import {
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 import { recordNativeNavPath, seedNativeNavStack } from "@/lib/navigation/nativeNavStack";
 import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
+import { openMainTabFromBridge } from "@/lib/navigation/mainTabShellBridge";
+import { isMainTabHref } from "@/lib/navigation/mainTabs";
+import { consumeProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 
 const HARDWARE_BACK_EVENT = "sayittomeHardwareBack";
 
@@ -34,6 +37,13 @@ function runNativeBackNavigation(
 
   if (action.navigateTo) {
     pathnameRef.current = action.navigateTo;
+    if (currentPath.startsWith("/u/") && !currentPath.endsWith("/chat")) {
+      consumeProfileReturnTo();
+    }
+    if (isMainTabHref(action.navigateTo)) {
+      openMainTabFromBridge(action.navigateTo);
+      return;
+    }
     runNativeViewTransition(() => {
       router.replace(action.navigateTo!);
     });

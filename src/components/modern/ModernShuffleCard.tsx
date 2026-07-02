@@ -11,6 +11,7 @@ import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurP
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { prefetchPublicProfile } from "@/lib/profile/profileCache";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -33,6 +34,7 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
 
   function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
+    stashProfileReturnTo("/shuffle");
     fastRouterPush(router, href);
   }
 

@@ -7,7 +7,7 @@ import ChatInboxLink from "@/components/chats/ChatInboxLink";
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
 } from "@/components/chats/ChatsSelectionToolbar";
-import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
+import ChatInboxPeerAvatar from "@/components/chats/ChatInboxPeerAvatar";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import { formatClassicInboxTime } from "@/lib/chat/inboxTime";
@@ -127,7 +127,9 @@ export default function ModernChatsInbox({
                     <ChatSelectionCheckbox checked={selected} variant="modern" />
                   ) : null}
 
-                  <ChatInboxAvatar
+                  <ChatInboxPeerAvatar
+                    chat={chat}
+                    viewerUid={uid}
                     photo={photo}
                     username={title}
                     size="lg"

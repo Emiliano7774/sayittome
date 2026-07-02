@@ -71,10 +71,24 @@ export function findAnonIdentityChangeInsertIndex(
   if (threadAnonId === liveAnonId) return -1;
 
   for (let i = 0; i < messages.length; i++) {
-    const message = messages[i];
-    const from = messageAnonSenderId(String(message.fromUid || ""));
+    const from = messageAnonSenderId(String(messages[i].fromUid || ""));
     if (from === liveAnonId) return i;
-    if (message.mine && from && from !== threadAnonId) return i;
+    if (messages[i].mine && from && from !== threadAnonId) return i;
+  }
+
+  let lastThreadOutbound = -1;
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    if (!message.mine) continue;
+    const from = messageAnonSenderId(String(message.fromUid || ""));
+    if (from === threadAnonId || !from) {
+      lastThreadOutbound = i;
+    }
+  }
+
+  const nextOutbound = lastThreadOutbound + 1;
+  if (nextOutbound < messages.length && messages[nextOutbound]?.mine) {
+    return nextOutbound;
   }
 
   return messages.length;

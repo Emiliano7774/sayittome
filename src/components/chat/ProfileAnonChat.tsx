@@ -13,10 +13,12 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import AudioWave from "@/components/chat/media/AudioWave";
+import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import { uploadMedia } from "@/lib/media/upload";
 import {
@@ -31,6 +33,7 @@ import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import ClassicAnonPresenceBubble from "@/components/chat/ClassicAnonPresenceBubble";
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import { useUxMode } from "@/contexts/UxModeContext";
+import { useMainTabShell } from "@/contexts/MainTabShellContext";
 import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
@@ -65,6 +68,7 @@ import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import {
   collection,
   doc,
@@ -100,7 +104,16 @@ type Message = {
   readBy?: Record<string, boolean>;
   status?: "sending" | "error";
   clientId?: string;
+  createdAt?: { toDate?: () => Date };
 };
+
+function formatMessageTime(createdAt?: { toDate?: () => Date }) {
+  if (!createdAt?.toDate) return "";
+  return createdAt.toDate().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default function ProfileAnonChat({
   chatId,
@@ -112,6 +125,8 @@ export default function ProfileAnonChat({
 
   const t = useT();
   const { uxMode } = useUxMode();
+  const router = useRouter();
+  const shell = useMainTabShell();
   const formatLastSeen = useFormatLastSeen();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -447,6 +462,7 @@ export default function ProfileAnonChat({
             mediaUrl?: string;
             source?: Message["source"];
             viewOnce?: boolean;
+            createdAt?: { toDate?: () => Date };
             autoModerationRequiresBlur?: boolean;
             moderationRequiresBlur?: boolean;
           };
@@ -477,6 +493,7 @@ export default function ProfileAnonChat({
             autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
             moderationRequiresBlur: data.moderationRequiresBlur === true,
             readBy: data.readBy || {},
+            createdAt: data.createdAt,
           };
         });
 
@@ -868,7 +885,9 @@ export default function ProfileAnonChat({
       return;
     }
 
-    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+    const senderId = anonIdentity.identityChanged
+      ? getAnonSessionId()
+      : getProfileChatAnonSenderId(chatId, chatAnonSessionId);
     const isOwnerReply = isOwnerViewing;
 
     if (profileUid && !isOwnerReply) {
@@ -892,8 +911,10 @@ export default function ProfileAnonChat({
       clientId,
       text: messageText,
       mine: true,
+      fromUid: senderId,
       reply: replyText,
       status: "sending" as const,
+      createdAt: { toDate: () => new Date() },
     };
 
     setMessages((old) => [...old, localMessage]);
@@ -948,9 +969,20 @@ export default function ProfileAnonChat({
 
       <section className="flex min-h-screen flex-col bg-black">
         <header className="flex items-center gap-4 bg-black px-5 py-4">
-          <Link href="/chats" className="text-4xl leading-none text-white/70">
+          <button
+            type="button"
+            onClick={() => {
+              if (shell) {
+                shell.openMainTab("/chats");
+                return;
+              }
+              fastRouterPush(router, "/chats");
+            }}
+            className="text-4xl leading-none text-white/70"
+            aria-label={t("chats_title")}
+          >
             ‹
-          </Link>
+          </button>
 
           <StoryAvatarButton
             {...avatarProps}
@@ -1074,6 +1106,10 @@ export default function ProfileAnonChat({
                     </p>
                   </div>
                 ) : null}
+              <ChatSwipeRevealTime
+                timeLabel={formatMessageTime(message.createdAt)}
+                align={message.mine ? "right" : "left"}
+              >
               <div
                 className={[
                   "mb-2.5 flex w-full flex-col",
@@ -1185,6 +1221,7 @@ export default function ProfileAnonChat({
 
                 {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
               </div>
+              </ChatSwipeRevealTime>
               </div>
             );
             })}
