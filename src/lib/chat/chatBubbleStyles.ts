@@ -8,8 +8,8 @@ export function chatBubbleShellClass(isClassic: boolean, mine: boolean) {
       : "rounded-[22px] rounded-bl-md";
 
   const size = isClassic
-    ? "max-w-[min(82vw,20rem)] px-3 py-2"
-    : "max-w-[75%] px-4 py-2.5";
+    ? "w-fit max-w-[min(82vw,20rem)] px-3 py-2"
+    : "w-fit max-w-[75%] px-4 py-2.5";
 
   const colors = mine
     ? isClassic

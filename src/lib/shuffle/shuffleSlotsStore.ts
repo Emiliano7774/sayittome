@@ -14,6 +14,8 @@ const listeners: Array<Set<() => void>> = Array.from(
 
 let rafId: number | null = null;
 let slotsVersion = 0;
+/** Bumps only when the visible shuffle window is fully replaced (not presence patches). */
+let windowGeneration = 0;
 const dirtySlots = new Set<number>();
 const globalListeners = new Set<() => void>();
 
@@ -142,6 +144,17 @@ export function patchShuffleProfileBlurFlags(
   scheduleFlush();
 }
 
+export function resetShuffleWindowSlots() {
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    if (slots[slot] !== null) {
+      slots[slot] = null;
+      dirtySlots.add(slot);
+    }
+  }
+  windowGeneration += 1;
+  scheduleFlush({ sync: true });
+}
+
 export function setShuffleSlotsWithFeatured(
   featured: ShuffleProfile[],
   pool: ShuffleProfile[],
@@ -149,6 +162,16 @@ export function setShuffleSlotsWithFeatured(
   count: number,
   forceReplace = false,
 ) {
+  if (forceReplace) {
+    for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+      if (slots[slot] !== null) {
+        slots[slot] = null;
+        dirtySlots.add(slot);
+      }
+    }
+    windowGeneration += 1;
+  }
+
   const used = new Set<string>();
   const uniqueFeatured: ShuffleProfile[] = [];
 
@@ -246,6 +269,10 @@ export function getShuffleSlotCount() {
 
 export function getShuffleSlotsVersion() {
   return slotsVersion;
+}
+
+export function getShuffleWindowGeneration() {
+  return windowGeneration;
 }
 
 export function subscribeAllShuffleSlots(listener: () => void) {

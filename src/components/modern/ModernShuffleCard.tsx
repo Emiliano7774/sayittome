@@ -15,7 +15,13 @@ import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
-function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
+function ModernShuffleCard({
+  profile,
+  feedIndex = 0,
+}: {
+  profile: ShuffleProfile;
+  feedIndex?: number;
+}) {
   const router = useRouter();
   const story = useStoryStatus(profile.uid, profile.username);
   const opensStory =
@@ -29,6 +35,8 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
       : `/u/${encodeURIComponent(profile.username)}`;
 
   const subtext = profile.bio?.trim() || "Perfil SayItToMe";
+  const photoLoading = feedIndex < 8 ? "eager" : "lazy";
+  const photoPriority = feedIndex < 8 ? "high" : "auto";
 
   function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
@@ -69,9 +77,9 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
               <img
                 src={profile.photo}
                 alt={profile.username}
-                loading="eager"
+                loading={photoLoading}
                 decoding="async"
-                fetchPriority="high"
+                fetchPriority={photoPriority}
                 className={[
                   "absolute inset-0 h-full w-full object-cover",
                   profile.blurPhoto ? "scale-110 blur-2xl" : "",
@@ -118,7 +126,7 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
                     <img
                       src={profile.photo}
                       alt=""
-                      loading="eager"
+                      loading={photoLoading}
                       decoding="async"
                       className={[
                         "h-full w-full object-cover",

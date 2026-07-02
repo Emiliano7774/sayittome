@@ -49,6 +49,7 @@ import {
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { registerShuffleClickHandler } from "@/lib/shuffle/shuffleClickBridge";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
+import { scrollShuffleFeedToTop } from "@/lib/shuffle/scrollShuffleFeed";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import {
@@ -288,7 +289,7 @@ export function useShufflePool() {
         regularCount,
         forceReplace,
       );
-      warmShuffleImages(shownProfiles, SHUFFLE_WINDOW_SIZE);
+      warmShuffleImages(shownProfiles, SHUFFLE_WINDOW_SIZE, { urgent: forceReplace });
       setListReady(true);
     },
     [],
@@ -315,7 +316,7 @@ export function useShufflePool() {
       setTotalLive(total > 0 ? total : profiles.length);
       setLoading(false);
       setErrorText("");
-      warmShuffleImages(profiles);
+      warmShuffleImages(profiles, 24, { urgent: true });
     },
     [],
   );
@@ -520,6 +521,8 @@ export function useShufflePool() {
 
       if (changed || isLast) break;
     }
+
+    scrollShuffleFeedToTop();
 
     shuffleClickCountRef.current += 1;
     if (shuffleClickCountRef.current % 40 === 0) {

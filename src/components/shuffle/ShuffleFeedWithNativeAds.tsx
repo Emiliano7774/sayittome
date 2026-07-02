@@ -12,6 +12,7 @@ import {
 } from "@/lib/shuffle/shuffleFeedAds";
 import {
   getShuffleSlotsVersion,
+  getShuffleWindowGeneration,
   getVisibleShuffleProfiles,
   subscribeAllShuffleSlots,
 } from "@/lib/shuffle/shuffleSlotsStore";
@@ -38,12 +39,18 @@ export default function ShuffleFeedWithNativeAds({
     getShuffleSlotsVersion,
   );
 
+  const windowGeneration = getShuffleWindowGeneration();
   const profiles = getVisibleShuffleProfiles();
   const showAds = shouldShowShuffleFeedAds(profiles.length);
   const itemCount = getShuffleFeedItemCount(profiles.length, showAds);
 
   return (
-    <div className={className} data-shuffle-list data-stm-no-polish>
+    <div
+      key={windowGeneration}
+      className={className}
+      data-shuffle-list
+      data-stm-no-polish
+    >
       {Array.from({ length: itemCount }, (_, index) => {
         if (isShuffleNativeAdIndex(index, profiles.length, showAds)) {
           return (

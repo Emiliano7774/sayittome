@@ -1,6 +1,15 @@
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
-export function warmShuffleImages(profiles: ShuffleProfile[], max = 80) {
+type WarmOptions = {
+  /** Prefetch immediately instead of waiting for idle time. */
+  urgent?: boolean;
+};
+
+export function warmShuffleImages(
+  profiles: ShuffleProfile[],
+  max = 80,
+  options?: WarmOptions,
+) {
   if (typeof window === "undefined") return;
 
   const run = () => {
@@ -15,12 +24,20 @@ export function warmShuffleImages(profiles: ShuffleProfile[], max = 80) {
       warmed += 1;
       const img = new Image();
       img.decoding = "async";
+      if (warmed <= 12) {
+        img.fetchPriority = "high";
+      }
       img.src = src;
     }
   };
 
+  if (options?.urgent) {
+    run();
+    return;
+  }
+
   if (typeof requestIdleCallback === "function") {
-    requestIdleCallback(run, { timeout: 2500 });
+    requestIdleCallback(run, { timeout: 400 });
   } else {
     setTimeout(run, 0);
   }

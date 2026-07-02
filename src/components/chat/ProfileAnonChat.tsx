@@ -1118,7 +1118,13 @@ export default function ProfileAnonChat({
               });
 
               return (
-              <div key={message.id} className="w-full">
+              <div
+                key={message.id}
+                className={[
+                  "flex w-full flex-col",
+                  message.mine ? "items-end" : "items-start",
+                ].join(" ")}
+              >
                 {index === anonIdentityChangeInsertIndex ? (
                   <div className="my-3 text-center">
                     <p className="text-[11px] font-medium text-white/30">

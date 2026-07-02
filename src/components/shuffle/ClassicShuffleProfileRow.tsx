@@ -11,11 +11,18 @@ import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 import { isShuffleProfileModerated } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
-function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
+function ClassicShuffleProfileRow({
+  profile,
+  feedIndex = 0,
+}: {
+  profile: ShuffleProfile;
+  feedIndex?: number;
+}) {
   const { density } = useClassicShuffleDensity();
   const tokens = getClassicShuffleDensityTokens(density);
   const username = profile.username;
   const bio = profile.bio || "Sin descripcion.";
+  const photoLoading = feedIndex < 15 ? "eager" : "lazy";
 
   return (
     <div className="relative w-full border-b border-white/10 contain-[layout_paint_style]">
@@ -26,7 +33,7 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
           photo={profile.photo}
           size={tokens.avatarSize}
           mode="delegate"
-          photoLoading="eager"
+          photoLoading={photoLoading}
           blurPhoto={profile.blurPhoto}
           showOnline={profile.showOnline}
           iconSize={tokens.iconSize}
