@@ -50,39 +50,3 @@ export function setCachedFullProfile(username: string, profile: unknown) {
     fetchedAt: Date.now(),
   });
 }
-
-const prefetchInflight = new Map<string, Promise<void>>();
-
-/** Warm profile JSON + main photo on hover/touch — skips if already cached. */
-export function prefetchPublicProfile(username: string) {
-  const key = username.trim().toLowerCase();
-  if (!key || typeof window === "undefined") return;
-  if (getCachedFullProfile(key)) return;
-  if (prefetchInflight.has(key)) return;
-
-  const promise = (async () => {
-    try {
-      const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
-        cache: "no-store",
-      });
-      const json = await res.json();
-      if (json?.profile) {
-        setCachedFullProfile(key, json.profile);
-        const photo = String(
-          json.profile.fotoPrincipal || json.profile.photo || "",
-        ).trim();
-        if (photo) {
-          const img = new Image();
-          img.decoding = "async";
-          img.src = photo;
-        }
-      }
-    } catch {
-      // Best-effort prefetch.
-    } finally {
-      prefetchInflight.delete(key);
-    }
-  })();
-
-  prefetchInflight.set(key, promise);
-}

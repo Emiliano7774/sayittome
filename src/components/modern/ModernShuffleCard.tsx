@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef } from "react";
+import { memo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserRound } from "lucide-react";
@@ -10,17 +10,19 @@ import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRolepla
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { useProfilePrefetchIntent } from "@/hooks/useProfilePrefetchIntent";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
-import { prefetchPublicProfile } from "@/lib/profile/profileCache";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
   const router = useRouter();
-  const prefetchStartedRef = useRef(false);
   const story = useStoryStatus(profile.uid, profile.username);
   const opensStory =
     story.hasActive && story.hasUnseen && Boolean(story.storyPath);
+  const prefetchIntent = useProfilePrefetchIntent(profile.username, {
+    enabled: !opensStory,
+  });
   const href =
     opensStory && story.storyPath
       ? story.storyPath
@@ -28,20 +30,10 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
 
   const subtext = profile.bio?.trim() || "Perfil SayItToMe";
 
-  useEffect(() => {
-    prefetchStartedRef.current = false;
-  }, [profile.username]);
-
   function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
     stashProfileReturnTo("/shuffle");
     fastRouterPush(router, href);
-  }
-
-  function handlePointerEnter() {
-    if (opensStory || prefetchStartedRef.current) return;
-    prefetchStartedRef.current = true;
-    prefetchPublicProfile(profile.username);
   }
 
   return (
@@ -66,7 +58,7 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
       <Link
         href={href}
         onClick={handleLinkClick}
-        onPointerEnter={handlePointerEnter}
+        {...prefetchIntent}
         className="relative block w-full"
       >
       <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />

@@ -1,13 +1,13 @@
 "use client";
 
-import { memo, useEffect, useRef, type ReactNode } from "react";
+import { memo, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { UserRound } from "lucide-react";
 
 import StoryRing from "@/components/stories/StoryRing";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { useProfilePrefetchIntent } from "@/hooks/useProfilePrefetchIntent";
 import { classicAnonAvatarColor } from "@/lib/chat/anonAvatarStyle";
-import { prefetchPublicProfile } from "@/lib/profile/profileCache";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 
@@ -89,8 +89,10 @@ function StoryAvatarButton({
   avatarOverlay,
 }: Props) {
   const router = useRouter();
-  const prefetchStartedRef = useRef(false);
   const status = useStoryStatus(ownerUid, username);
+  const prefetchIntent = useProfilePrefetchIntent(username, {
+    enabled: mode === "navigate" || mode === "delegate",
+  });
   const showAnonAvatar = anonAvatar && !photo;
   const resolvedAnonKey = anonKey || username || "anon";
 
@@ -99,10 +101,6 @@ function StoryAvatarButton({
       prefetchOwnerStories(ownerUid, username);
     }
   }, [ownerUid, username, status.hasActive, status.storyCount]);
-
-  useEffect(() => {
-    prefetchStartedRef.current = false;
-  }, [username]);
 
   function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
     const storyPath =
@@ -126,12 +124,6 @@ function StoryAvatarButton({
         fastRouterPush(router, `/u/${encodeURIComponent(username)}`);
       }
     }
-  }
-
-  function handlePointerEnter() {
-    if (prefetchStartedRef.current) return;
-    prefetchStartedRef.current = true;
-    prefetchPublicProfile(username);
   }
 
   const openStories = status.hasActive && status.hasUnseen;
@@ -186,7 +178,7 @@ function StoryAvatarButton({
       data-username={mode === "delegate" ? username : undefined}
       data-owner-uid={mode === "delegate" ? ownerUid : undefined}
       onClick={handleClick}
-      onPointerEnter={handlePointerEnter}
+      {...prefetchIntent}
       className={[
         "relative shrink-0 active:scale-95 transition",
         className,

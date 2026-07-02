@@ -121,11 +121,7 @@ export default function ModernShuffleClient() {
             </div>
           )
         ) : (
-          <div
-            className="mt-5"
-            onClick={pool.handleListClick}
-            onPointerEnter={pool.handleListPointerEnter}
-          >
+          <div className="mt-5" onClick={pool.handleListClick}>
             <ModernShuffleGrid />
           </div>
         )}

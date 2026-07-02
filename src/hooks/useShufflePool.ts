@@ -47,7 +47,6 @@ import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
-import { prefetchPublicProfile } from "@/lib/profile/profileCache";
 import {
   readCachedShufflePool,
   readCachedShuffleStats,
@@ -620,19 +619,6 @@ export function useShufflePool() {
     [router],
   );
 
-  const handleListPointerEnter = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const target = (event.target as HTMLElement).closest<HTMLElement>(
-      "[data-action][data-username]",
-    );
-    if (!target) return;
-
-    const action = target.getAttribute("data-action");
-    const username = target.getAttribute("data-username");
-    if (action === "profile" && username) {
-      prefetchPublicProfile(username);
-    }
-  }, []);
-
   useEffect(() => {
     mountedRef.current = true;
     attachShuffleProfilerWindow();
@@ -825,7 +811,6 @@ export function useShufflePool() {
     handleSearchSubmit,
     handleShuffleClick,
     handleListClick,
-    handleListPointerEnter,
     openFilters,
     closeFilters,
     applyFilters,
