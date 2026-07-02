@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 
 import StoryViewer from "@/components/stories/StoryViewer";
@@ -14,9 +14,13 @@ import {
 } from "@/lib/stories/storiesIndexStore";
 import type { StoryItem } from "@/lib/stories/types";
 
-export default function StoryUserPage() {
+function StoryUserPageInner() {
   const params = useParams<{ username: string }>();
+  const searchParams = useSearchParams();
   const param = String(params.username || "");
+  const initialStoryId = String(
+    searchParams.get("story") || searchParams.get("storyId") || "",
+  ).trim();
 
   const [stories, setStories] = useState<StoryItem[]>(() => {
     const group = getStoryGroup(param, param);
@@ -84,6 +88,21 @@ export default function StoryUserPage() {
       stories={stories}
       ownerUsername={ownerUsername}
       ownerUid={stories[0]?.ownerUid}
+      initialStoryId={initialStoryId || undefined}
     />
+  );
+}
+
+export default function StoryUserPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-black text-white">
+          <p className="text-2xl font-black text-white/40">Abriendo historia...</p>
+        </main>
+      }
+    >
+      <StoryUserPageInner />
+    </Suspense>
   );
 }

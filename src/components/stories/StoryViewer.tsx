@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
+import AdminStoryBlurButton from "@/components/stories/AdminStoryBlurButton";
 import { auth, db } from "@/lib/firebase";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
 import { getLikerId } from "@/lib/likes/profileLike";
@@ -33,6 +34,7 @@ type Props = {
   stories: StoryItem[];
   ownerUsername?: string;
   ownerUid?: string;
+  initialStoryId?: string;
 };
 
 const DEFAULT_IMAGE_MS = 5500;
@@ -40,7 +42,12 @@ const SWIPE_REPLY_PX = 56;
 const SWIPE_DISMISS_PX = 48;
 const TAP_MAX_MS = 380;
 
-export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props) {
+export default function StoryViewer({
+  stories,
+  ownerUsername,
+  ownerUid,
+  initialStoryId,
+}: Props) {
   const router = useRouter();
   const t = useT();
   const [index, setIndex] = useState(0);
@@ -64,8 +71,13 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
 
   useEffect(() => {
     setLocalStories(stories);
+    if (initialStoryId) {
+      const nextIndex = stories.findIndex((story) => story.id === initialStoryId);
+      setIndex(nextIndex >= 0 ? nextIndex : 0);
+      return;
+    }
     setIndex(0);
-  }, [stories]);
+  }, [initialStoryId, stories]);
 
   useEffect(() => {
     document.body.classList.add("sayittome-story-viewer-open");
@@ -105,6 +117,23 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
     current?.mediaType === "video" && current.durationMs
       ? current.durationMs
       : DEFAULT_IMAGE_MS;
+
+  function handleAdminStoryBlurChange(blurred: boolean) {
+    if (!current) return;
+
+    setLocalStories((prev) =>
+      prev.map((story) =>
+        story.id === current.id
+          ? {
+              ...story,
+              adminForceBlur: blurred,
+              moderationRequiresBlur: blurred,
+            }
+          : story,
+      ),
+    );
+    setBlurLocked(blurred);
+  }
 
   const closeReply = useCallback(() => {
     setReplyOpen(false);
@@ -465,6 +494,15 @@ export default function StoryViewer({ stories, ownerUsername, ownerUid }: Props)
         >
           <Flag size={20} />
         </button>
+      ) : null}
+
+      {current ? (
+        <AdminStoryBlurButton
+          storyId={current.id}
+          blurred={needsBlur}
+          chromeHidden={topChromeHidden}
+          onBlurChange={handleAdminStoryBlurChange}
+        />
       ) : null}
 
       <div
