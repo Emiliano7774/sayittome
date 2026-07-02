@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { auth } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { useT } from "@/contexts/LocaleContext";
 import type { MessageKey } from "@/lib/i18n/getMessage";
 
@@ -54,11 +55,17 @@ function NavLink({
   compact?: boolean;
 }) {
   const t = useT();
+  const router = useRouter();
   const Icon = item.icon;
 
   return (
     <Link
       href={item.href}
+      onClick={(event) => {
+        if (active) return;
+        event.preventDefault();
+        fastRouterPush(router, item.href);
+      }}
       className={[
         compact
           ? "flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-black"

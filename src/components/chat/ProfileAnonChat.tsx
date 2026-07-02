@@ -36,6 +36,7 @@ import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import {
+  findAnonIdentityChangeInsertIndex,
   getAnonSessionVersion,
   messageAnonSenderId,
   resolveProfileChatAnonIdentity,
@@ -374,6 +375,18 @@ export default function ProfileAnonChat({
     hasChatActivity,
     showModernVisitorIntro,
   });
+  const anonIdentityChangeInsertIndex = showAnonIdentityNotice
+    ? findAnonIdentityChangeInsertIndex(
+        messages,
+        anonIdentity.threadAnonId,
+        anonIdentity.liveAnonId,
+      )
+    : -1;
+  const showClassicIdentityBar =
+    isClassic &&
+    !isOwnerViewing &&
+    !showClassicIntro &&
+    !(showAnonIdentityNotice && hasChatActivity);
   const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
   const displayPeerName = isOwnerViewing
     ? formatAnonSessionLabel(anonSenderId)
@@ -975,11 +988,11 @@ export default function ProfileAnonChat({
               iconSize={88}
               className="!scale-100"
             />
-            <ClassicAnonPresenceBubble session={anonSenderId || anonSession} />
+            <ClassicAnonPresenceBubble session={anonIdentity.liveLabel} />
           </div>
-        ) : isClassic && !isOwnerViewing ? (
+        ) : showClassicIdentityBar ? (
           <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
-            {t("chat_anon_you_are", { session: anonSenderId || anonSession })}
+            {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
           </p>
         ) : showModernVisitorIntro ? (
           <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
@@ -1020,21 +1033,6 @@ export default function ProfileAnonChat({
           ].join(" ")}
         >
           <div className={chatWidthClass}>
-            {showAnonIdentityNotice ? (
-              <div className="mb-3 border-b border-white/[0.06] px-2 py-2.5 text-center">
-                <p className="text-xs font-medium text-white/35">
-                  {t("chat_anon_identity_changed", {
-                    session: anonIdentity.liveLabel,
-                  })}
-                </p>
-                <p className="mt-1 text-[11px] font-medium text-white/25">
-                  {t("chat_anon_identity_thread", {
-                    session: anonIdentity.threadLabel,
-                  })}
-                </p>
-              </div>
-            ) : null}
-
             {messages.map((message, index) => {
               const previousFrom = index > 0 ? String(messages[index - 1]?.fromUid || "") : "";
               const currentFrom = String(message.fromUid || "");
@@ -1058,6 +1056,15 @@ export default function ProfileAnonChat({
 
               return (
               <div key={message.id} className="w-full">
+                {index === anonIdentityChangeInsertIndex ? (
+                  <div className="my-3 text-center">
+                    <p className="text-[11px] font-medium text-white/30">
+                      {t("chat_anon_identity_changed", {
+                        session: anonIdentity.liveLabel,
+                      })}
+                    </p>
+                  </div>
+                ) : null}
                 {showIdentityDivider && !isOwnerViewing ? (
                   <div className="my-3 text-center">
                     <p className="text-[11px] font-medium text-white/30">
@@ -1181,6 +1188,15 @@ export default function ProfileAnonChat({
               </div>
             );
             })}
+            {anonIdentityChangeInsertIndex === messages.length ? (
+              <div className="my-3 text-center">
+                <p className="text-[11px] font-medium text-white/30">
+                  {t("chat_anon_identity_changed", {
+                    session: anonIdentity.liveLabel,
+                  })}
+                </p>
+              </div>
+            ) : null}
             <div ref={messagesEndRef} />
           </div>
         </div>

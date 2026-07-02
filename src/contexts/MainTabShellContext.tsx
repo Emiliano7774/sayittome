@@ -142,3 +142,7 @@ export function useEffectivePathname() {
   const pathname = usePathname();
   return shell?.effectivePathname ?? pathname;
 }
+
+export function useMainTabRouteActive(href: MainTabHref) {
+  return useEffectivePathname() === href;
+}

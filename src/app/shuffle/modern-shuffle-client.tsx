@@ -24,19 +24,22 @@ import {
   getStoriesIndexVersion,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
+import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
 import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernShuffleClient() {
+  const shuffleActive = useMainTabRouteActive("/shuffle");
   const t = useT();
   const pool = useShufflePool();
   const { totalUnread } = useChatAlerts();
 
   useEffect(() => {
+    if (!shuffleActive) return;
     document.body.classList.add("sayittome-shuffle-route");
     return () => {
       document.body.classList.remove("sayittome-shuffle-route");
     };
-  }, []);
+  }, [shuffleActive]);
 
   useSyncExternalStore(subscribeAllShuffleSlots, getShuffleSlotsVersion, getShuffleSlotsVersion);
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);

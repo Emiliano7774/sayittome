@@ -19,6 +19,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { arrayUnion, doc, getDoc, getDocFromServer, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import { guessMediaFileKind, isMediaFile } from "@/lib/media/fileKind";
 import {
@@ -431,7 +432,7 @@ export default function ClassicEditProfilePage() {
       );
 
       await getDocFromServer(doc(db, "usuarios", uid));
-      router.replace("/settings");
+      fastRouterReplace(router, "/settings");
     } catch (error) {
       console.error(error);
       setSaveError("No se pudo guardar tu perfil. Probá de nuevo.");
@@ -453,7 +454,7 @@ export default function ClassicEditProfilePage() {
       <section className="w-full max-w-[1480px] mx-auto">
         <div className="flex items-center justify-between mb-10">
           <button
-            onClick={() => router.push("/settings")}
+            onClick={() => fastRouterPush(router, "/settings")}
             className="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center"
           >
             <ArrowLeft size={25} />

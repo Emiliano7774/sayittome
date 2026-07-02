@@ -1,28 +1,19 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import type { ReactNode } from "react";
 
 type Props = {
   children: ReactNode;
+  active?: boolean;
 };
 
-/** Fixed dock above bottom nav; portaled to body so scroll never moves it. */
-export default function BoostStickyCtaBar({ children }: Props) {
-  const [mounted, setMounted] = useState(false);
+/** Fixed dock above bottom nav; stays inside the boost page so tab switches hide it. */
+export default function BoostStickyCtaBar({ children, active = true }: Props) {
+  if (!active) return null;
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return null;
-  }
-
-  return createPortal(
+  return (
     <div className="sayittome-boost-sticky-shell" role="region" aria-label="Boost actions">
       <div className="sayittome-boost-sticky-shell-inner">{children}</div>
-    </div>,
-    document.body,
+    </div>
   );
 }

@@ -28,10 +28,10 @@ import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { isActiveWithinWindow } from "@/lib/presence";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
-import {
-  resolveProfileCoverPhoto,
+import { resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
 type MediaItem = {
@@ -321,7 +321,7 @@ export default function SettingsPage() {
         isOwner
         verifiedVisit={false}
         showShuffleBack={false}
-        onEdit={() => router.push("/settings/edit")}
+        onEdit={() => fastRouterPush(router, "/settings/edit")}
         onLogout={() => void handleLogout()}
       />
     );
@@ -385,7 +385,7 @@ export default function SettingsPage() {
             ) : null}
             <button
               type="button"
-              onClick={() => router.push("/settings/edit")}
+              onClick={() => fastRouterPush(router, "/settings/edit")}
               className="rounded-full bg-white px-9 py-4 font-black text-black shadow-[0_0_30px_rgba(255,255,255,.18)]"
             >
               {t("profile_edit")}

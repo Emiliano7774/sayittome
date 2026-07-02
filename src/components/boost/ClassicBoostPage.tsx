@@ -16,12 +16,14 @@ import BoostReferralPromoCard from "@/components/boost/BoostReferralPromoCard";
 import BoostRocketHero from "@/components/boost/BoostRocketHero";
 import BoostStickyCtaBar from "@/components/boost/BoostStickyCtaBar";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
+import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
 import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_ACTIVATION } from "@/lib/boost/constants";
 import { getReferralRewardLabel } from "@/lib/boost/format";
 
 export default function ClassicBoostPage() {
+  const boostActive = useMainTabRouteActive("/boost");
   const { t, locale } = useLocale();
   const referralReward = getReferralRewardLabel(locale);
   const {
@@ -49,11 +51,12 @@ export default function ClassicBoostPage() {
     !activating;
 
   useEffect(() => {
+    if (!boostActive) return;
     document.body.classList.add("sayittome-boost-route");
     return () => {
       document.body.classList.remove("sayittome-boost-route");
     };
-  }, []);
+  }, [boostActive]);
 
   return (
     <main data-scroll-root className="sayittome-boost-page min-h-screen bg-black text-white">
@@ -232,7 +235,7 @@ export default function ClassicBoostPage() {
       </div>
 
       {canUseBoost ? (
-        <BoostStickyCtaBar>
+        <BoostStickyCtaBar active={boostActive}>
           {credits >= BOOST_MIN_MINUTES ? (
             <div className="mb-3 lg:hidden">
               <BoostMinutesPicker

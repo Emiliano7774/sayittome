@@ -59,6 +59,27 @@ export function shouldShowAnonIdentityDivider(
   return currentAnon !== previousAnon;
 }
 
+/** Index in the timeline where the live anon identity starts (after older messages). */
+export function findAnonIdentityChangeInsertIndex(
+  messages: ReadonlyArray<{ fromUid?: string; mine?: boolean }>,
+  threadAnonId: string,
+  liveAnonId: string,
+) {
+  if (!threadAnonId.startsWith("anon_") || !liveAnonId.startsWith("anon_")) {
+    return messages.length;
+  }
+  if (threadAnonId === liveAnonId) return -1;
+
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    const from = messageAnonSenderId(String(message.fromUid || ""));
+    if (from === liveAnonId) return i;
+    if (message.mine && from && from !== threadAnonId) return i;
+  }
+
+  return messages.length;
+}
+
 export function subscribeAnonSession(onStoreChange: () => void) {
   if (typeof window === "undefined") return () => undefined;
   const handler = () => onStoreChange();

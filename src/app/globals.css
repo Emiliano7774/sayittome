@@ -343,6 +343,18 @@ body.sayittome-main-tab-shell-active ::view-transition-new(root) {
   animation-duration: 0ms;
 }
 
+body.sayittome-admin-open ::view-transition-old(root),
+body.sayittome-admin-open ::view-transition-new(root),
+body.sayittome-profile-edit-open ::view-transition-old(root),
+body.sayittome-profile-edit-open ::view-transition-new(root),
+body.sayittome-profile-viewer-open ::view-transition-old(root),
+body.sayittome-profile-viewer-open ::view-transition-new(root),
+body.sayittome-profile-video-open ::view-transition-old(root),
+body.sayittome-profile-video-open ::view-transition-new(root) {
+  animation-duration: 80ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 80ms;
