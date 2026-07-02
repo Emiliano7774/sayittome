@@ -23,7 +23,8 @@
     "audit:profile-dates": "node scripts/audit-profile-created-at.mjs --dry-run",
     "audit:profile-dates:apply": "node scripts/audit-profile-created-at.mjs --apply",
     "cleanup:auto-blur:dry": "node scripts/cleanup-auto-media-blur.mjs",
-    "cleanup:auto-blur:apply": "node scripts/cleanup-auto-media-blur.mjs --apply"
+    "cleanup:auto-blur:apply": "node scripts/cleanup-auto-media-blur.mjs --apply",
+    "audit:shuffle-dedupe": "node scripts/audit-shuffle-dedupe.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

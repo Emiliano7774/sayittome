@@ -183,6 +183,26 @@ export function shuffleProfileDedupeKeys(profile: {
   return [...keys];
 }
 
+export function profileMatchesShuffleExcludeKeys(
+  profile: {
+    uid?: string;
+    authUid?: string;
+    username?: string;
+    usernameLower?: string;
+    email?: string;
+    photo?: string;
+    fotos?: string[];
+  },
+  excludeKeys: ReadonlySet<string>,
+) {
+  if (excludeKeys.size === 0) return false;
+
+  const batchKeys = shuffleProfileBatchExcludeKeys(profile);
+  if (batchKeys.some((key) => excludeKeys.has(key))) return true;
+
+  return shuffleProfileDedupeKeys(profile).some((key) => excludeKeys.has(key));
+}
+
 /** Keys used only to remember recently shown profiles between shuffle clicks. */
 export function shuffleProfileBatchExcludeKeys(profile: {
   uid?: string;
@@ -191,11 +211,11 @@ export function shuffleProfileBatchExcludeKeys(profile: {
 }) {
   const keys = new Set<string>();
   const uid = String(profile.uid || "").trim();
-  const authUid = resolveShuffleAuthUid(profile);
+  const authUid = String(profile.authUid || "").trim();
   const email = String(profile.email || "").trim().toLowerCase();
 
   if (uid) keys.add(`id:${uid}`);
-  if (authUid) keys.add(`auth:${authUid}`);
+  if (authUid && authUid !== uid) keys.add(`auth:${authUid}`);
   if (email.includes("@")) keys.add(`e:${email}`);
 
   return [...keys];

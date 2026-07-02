@@ -1,4 +1,7 @@
-import { shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
+import {
+  profileMatchesShuffleExcludeKeys,
+  shuffleProfileDedupeKeys,
+} from "@/lib/shuffle/dedupeProfiles";
 
 export const SHUFFLE_WINDOW_SIZE = 35;
 /** Shuffle rounds to remember before a profile can reappear. */
@@ -54,7 +57,7 @@ function pickUniqueIndicesFromPool(
     const idx = order[i];
     const keys = shuffleProfileDedupeKeys(pool[idx]);
     if (keys.length === 0 || keys.some((key) => used.has(key))) continue;
-    if (excludeKeys && keys.some((key) => excludeKeys.has(key))) continue;
+    if (excludeKeys && profileMatchesShuffleExcludeKeys(pool[idx], excludeKeys)) continue;
 
     for (const key of keys) used.add(key);
     out[outStart + count] = idx;

@@ -6,6 +6,7 @@ import { useSyncExternalStore } from "react";
 
 import {
   dedupeShuffleProfiles,
+  profileMatchesShuffleExcludeKeys,
   shuffleProfileBatchExcludeKeys,
   shuffleProfileDedupeKeys,
   uniqueShuffleWindow,
@@ -165,8 +166,7 @@ export function useShufflePool() {
     profile: ShuffleProfile,
     excludeKeys: ReadonlySet<string>,
   ) {
-    const keys = shuffleProfileDedupeKeys(profile);
-    return keys.length > 0 && keys.some((key) => excludeKeys.has(key));
+    return profileMatchesShuffleExcludeKeys(profile, excludeKeys);
   }
 
   function buildWindowExcludeKeys(options?: {
@@ -211,6 +211,7 @@ export function useShufflePool() {
       forceReplace?: boolean;
       excludeRecentBatches?: boolean;
       resetBatchMemory?: boolean;
+      recordBatchMemory?: boolean;
     }) => {
       const forceReplace = options?.forceReplace === true;
       const excludeRecentBatches = options?.excludeRecentBatches === true;
@@ -273,10 +274,12 @@ export function useShufflePool() {
         ...Array.from({ length: regularCount }, (_, slot) => eligiblePool[windowIndicesRef.current[slot]]),
       ].filter(Boolean) as ShuffleProfile[]);
 
-      rememberBatchMemory(shownProfiles, {
-        shuffleRound: excludeRecentBatches,
-        resetBatchMemory: options?.resetBatchMemory,
-      });
+      if (options?.recordBatchMemory !== false) {
+        rememberBatchMemory(shownProfiles, {
+          shuffleRound: excludeRecentBatches,
+          resetBatchMemory: options?.resetBatchMemory,
+        });
+      }
 
       setShuffleSlotsWithFeatured(
         featured,
@@ -495,12 +498,27 @@ export function useShufflePool() {
       { forceReplace: true, resetBatchMemory: true },
     ];
 
-    for (const options of attempts) {
-      applyWindowFromPool(refreshPoolPresence(pool), options);
-      const after = windowSignature(getVisibleShuffleProfiles());
-      if (after !== before || getVisibleShuffleProfiles().length === 0) {
-        break;
+    for (let i = 0; i < attempts.length; i++) {
+      const opts = attempts[i];
+      const isLast = i === attempts.length - 1;
+
+      applyWindowFromPool(refreshPoolPresence(pool), {
+        ...opts,
+        recordBatchMemory: false,
+      });
+
+      const visible = getVisibleShuffleProfiles();
+      const after = windowSignature(visible);
+      const changed = after !== before && visible.length > 0;
+
+      if (changed || isLast) {
+        rememberBatchMemory(visible, {
+          shuffleRound: opts.excludeRecentBatches === true,
+          resetBatchMemory: opts.resetBatchMemory === true,
+        });
       }
+
+      if (changed || isLast) break;
     }
 
     shuffleClickCountRef.current += 1;

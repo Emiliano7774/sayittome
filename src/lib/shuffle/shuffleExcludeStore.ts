@@ -1,4 +1,4 @@
-import { shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
+import { shuffleProfileBatchExcludeKeys } from "@/lib/shuffle/dedupeProfiles";
 
 let excludeKeys = new Set<string>();
 const listeners = new Set<() => void>();
@@ -20,7 +20,7 @@ export function setShuffleExcludeProfiles(
   const next = new Set<string>();
 
   for (const profile of profiles) {
-    for (const key of shuffleProfileDedupeKeys(profile)) {
+    for (const key of shuffleProfileBatchExcludeKeys(profile)) {
       next.add(key);
     }
   }
