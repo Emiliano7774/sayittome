@@ -1,12 +1,14 @@
 "use client";
 
-import { memo, useEffect, type ReactNode } from "react";
+import { memo, useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { UserRound } from "lucide-react";
 
 import StoryRing from "@/components/stories/StoryRing";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { classicAnonAvatarColor } from "@/lib/chat/anonAvatarStyle";
+import { prefetchPublicProfile } from "@/lib/profile/profileCache";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 
 type Size = "2xs" | "xs" | "sm" | "md" | "lg" | "xl" | "hero";
@@ -63,6 +65,7 @@ type Props = {
   anonAvatar?: boolean;
   anonKey?: string;
   onOpenProfile?: () => void;
+  photoLoading?: "lazy" | "eager";
   children?: ReactNode;
   avatarOverlay?: ReactNode;
 };
@@ -81,10 +84,12 @@ function StoryAvatarButton({
   anonAvatar = false,
   anonKey = "",
   onOpenProfile,
+  photoLoading = "lazy",
   children,
   avatarOverlay,
 }: Props) {
   const router = useRouter();
+  const prefetchStartedRef = useRef(false);
   const status = useStoryStatus(ownerUid, username);
   const showAnonAvatar = anonAvatar && !photo;
   const resolvedAnonKey = anonKey || username || "anon";
@@ -95,6 +100,10 @@ function StoryAvatarButton({
     }
   }, [ownerUid, username, status.hasActive, status.storyCount]);
 
+  useEffect(() => {
+    prefetchStartedRef.current = false;
+  }, [username]);
+
   function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
     const storyPath =
       status.hasActive && status.hasUnseen && status.storyPath
@@ -104,7 +113,7 @@ function StoryAvatarButton({
     if (storyPath && !preferProfile) {
       event.preventDefault();
       event.stopPropagation();
-      router.push(storyPath);
+      fastRouterPush(router, storyPath);
       return;
     }
 
@@ -114,9 +123,15 @@ function StoryAvatarButton({
       if (onOpenProfile) {
         onOpenProfile();
       } else {
-        router.push(`/u/${encodeURIComponent(username)}`);
+        fastRouterPush(router, `/u/${encodeURIComponent(username)}`);
       }
     }
+  }
+
+  function handlePointerEnter() {
+    if (prefetchStartedRef.current) return;
+    prefetchStartedRef.current = true;
+    prefetchPublicProfile(username);
   }
 
   const openStories = status.hasActive && status.hasUnseen;
@@ -134,9 +149,9 @@ function StoryAvatarButton({
         <img
           src={photo}
           alt={username}
-          loading="lazy"
+          loading={photoLoading}
           decoding="async"
-          fetchPriority={size === "lg" ? "low" : "auto"}
+          fetchPriority={photoLoading === "eager" ? "high" : size === "lg" ? "low" : "auto"}
           className={[
             "h-full w-full object-cover",
             blurPhoto ? "blur-2xl scale-110" : "",
@@ -171,6 +186,7 @@ function StoryAvatarButton({
       data-username={mode === "delegate" ? username : undefined}
       data-owner-uid={mode === "delegate" ? ownerUid : undefined}
       onClick={handleClick}
+      onPointerEnter={handlePointerEnter}
       className={[
         "relative shrink-0 active:scale-95 transition",
         className,

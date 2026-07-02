@@ -26,6 +26,7 @@ function ClassicShuffleProfileRow({ profile }: { profile: ShuffleProfile }) {
           photo={profile.photo}
           size={tokens.avatarSize}
           mode="delegate"
+          photoLoading="eager"
           blurPhoto={profile.blurPhoto}
           showOnline={profile.showOnline}
           iconSize={tokens.iconSize}

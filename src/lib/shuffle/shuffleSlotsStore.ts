@@ -23,6 +23,11 @@ function notifyGlobal() {
 }
 
 function flushDirtySlots() {
+  if (dirtySlots.size === 0) {
+    rafId = null;
+    return;
+  }
+
   rafId = null;
   shuffleMark("shuffle-slots-flush-end");
 
@@ -41,7 +46,21 @@ function flushDirtySlots() {
   shuffleCount("rafFlushes");
 }
 
-function scheduleFlush() {
+function flushShuffleSlotsNow() {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+  if (dirtySlots.size === 0) return;
+  shuffleMark("shuffle-slots-flush-start");
+  flushDirtySlots();
+}
+
+function scheduleFlush(options?: { sync?: boolean }) {
+  if (options?.sync) {
+    flushShuffleSlotsNow();
+    return;
+  }
   if (rafId !== null) return;
   shuffleMark("shuffle-slots-flush-start");
   rafId = requestAnimationFrame(flushDirtySlots);
@@ -127,7 +146,7 @@ export function setShuffleSlotsWithFeatured(
   pool: ShuffleProfile[],
   indices: Int32Array,
   count: number,
-  _forceReplace = false,
+  forceReplace = false,
 ) {
   const used = new Set<string>();
   const uniqueFeatured: ShuffleProfile[] = [];
@@ -174,7 +193,7 @@ export function setShuffleSlotsWithFeatured(
   }
 
   dedupeFilledSlots();
-  scheduleFlush();
+  scheduleFlush({ sync: forceReplace });
 }
 
 function dedupeFilledSlots() {

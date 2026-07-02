@@ -45,6 +45,8 @@ import {
 } from "@/lib/shuffle/shuffleSlotsStore";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { prefetchPublicProfile } from "@/lib/profile/profileCache";
 import {
   readCachedShufflePool,
   readCachedShuffleStats,
@@ -268,6 +270,7 @@ export function useShufflePool() {
         regularCount,
         forceReplace,
       );
+      warmShuffleImages(shownProfiles, SHUFFLE_WINDOW_SIZE);
       setListReady(true);
     },
     [],
@@ -599,19 +602,33 @@ export function useShufflePool() {
 
       if (action === "story") {
         const ownerUid = target.getAttribute("data-owner-uid");
-        router.push(`/stories/${encodeURIComponent(ownerUid || username)}`);
+        fastRouterPush(router, `/stories/${encodeURIComponent(ownerUid || username)}`);
       } else if (action === "profile") {
-        router.push(`/u/${encodeURIComponent(username)}`);
+        fastRouterPush(router, `/u/${encodeURIComponent(username)}`);
       } else if (action === "chat") {
         const senderId = getChatAnonSenderId();
         const chatId = buildProfileAnonChatId(senderId, username);
-        router.push(
+        fastRouterPush(
+          router,
           `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}`,
         );
       }
     },
     [router],
   );
+
+  const handleListPointerEnter = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>(
+      "[data-action][data-username]",
+    );
+    if (!target) return;
+
+    const action = target.getAttribute("data-action");
+    const username = target.getAttribute("data-username");
+    if (action === "profile" && username) {
+      prefetchPublicProfile(username);
+    }
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -805,6 +822,7 @@ export function useShufflePool() {
     handleSearchSubmit,
     handleShuffleClick,
     handleListClick,
+    handleListPointerEnter,
     openFilters,
     closeFilters,
     applyFilters,

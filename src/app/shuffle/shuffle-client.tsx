@@ -16,4 +16,6 @@ import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet"; impo
                ) : null}
              </div>
            )
-         ) : (           <div onClick={pool.handleListClick}>             <ShuffleSlots />           </div>         )}       </section>     </main>   ); }
+         ) : (           <div onClick={pool.handleListClick} onPointerEnter={pool.handleListPointerEnter}>
+             <ShuffleSlots />
+           </div>         )}       </section>     </main>   ); }

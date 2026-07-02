@@ -1,7 +1,8 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { UserRound } from "lucide-react";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
@@ -9,16 +10,37 @@ import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRolepla
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { prefetchPublicProfile } from "@/lib/profile/profileCache";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
+  const router = useRouter();
+  const prefetchStartedRef = useRef(false);
   const story = useStoryStatus(profile.uid, profile.username);
+  const opensStory =
+    story.hasActive && story.hasUnseen && Boolean(story.storyPath);
   const href =
-    story.hasActive && story.hasUnseen && story.storyPath
+    opensStory && story.storyPath
       ? story.storyPath
       : `/u/${encodeURIComponent(profile.username)}`;
 
   const subtext = profile.bio?.trim() || "Perfil SayItToMe";
+
+  useEffect(() => {
+    prefetchStartedRef.current = false;
+  }, [profile.username]);
+
+  function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    fastRouterPush(router, href);
+  }
+
+  function handlePointerEnter() {
+    if (opensStory || prefetchStartedRef.current) return;
+    prefetchStartedRef.current = true;
+    prefetchPublicProfile(profile.username);
+  }
 
   return (
     <div className="relative block w-full">
@@ -39,7 +61,12 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
           appearance="shuffle"
         />
       </div>
-      <Link href={href} className="relative block w-full">
+      <Link
+        href={href}
+        onClick={handleLinkClick}
+        onPointerEnter={handlePointerEnter}
+        className="relative block w-full"
+      >
       <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
       <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
         <div className="relative aspect-[3/4] w-full overflow-hidden">
@@ -48,8 +75,9 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
               <img
                 src={profile.photo}
                 alt={profile.username}
-                loading="lazy"
+                loading="eager"
                 decoding="async"
+                fetchPriority="high"
                 className={[
                   "absolute inset-0 h-full w-full object-cover",
                   profile.blurPhoto ? "scale-110 blur-2xl" : "",
@@ -96,7 +124,7 @@ function ModernShuffleCard({ profile }: { profile: ShuffleProfile }) {
                     <img
                       src={profile.photo}
                       alt=""
-                      loading="lazy"
+                      loading="eager"
                       decoding="async"
                       className={[
                         "h-full w-full object-cover",
