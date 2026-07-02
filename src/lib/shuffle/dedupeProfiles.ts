@@ -7,6 +7,7 @@ type DedupeableProfile = {
   usernameLower?: string;
   email?: string;
   photo?: string;
+  fotos?: string[];
   presenceAt?: string;
   lastActive?: string;
   shuffleFeatured?: boolean;
@@ -80,6 +81,27 @@ export function normalizeShufflePhotoKey(photo?: string) {
   }
 }
 
+function isGenericShufflePhotoKey(key: string) {
+  if (!key || key.length < 12) return true;
+  if (key.includes("placeholder")) return true;
+  if (key.endsWith("/default") || key.endsWith("/default.jpg")) return true;
+  return false;
+}
+
+function shuffleProfilePhotoKeys(profile: { photo?: string; fotos?: string[] }) {
+  const keys = new Set<string>();
+  const candidates = [profile.photo, ...(profile.fotos || [])];
+
+  for (const candidate of candidates) {
+    const photoKey = normalizeShufflePhotoKey(candidate);
+    if (photoKey && !isGenericShufflePhotoKey(photoKey)) {
+      keys.add(`p:${photoKey}`);
+    }
+  }
+
+  return [...keys];
+}
+
 export function shuffleProfileIdentityKey(profile: {
   uid?: string;
   authUid?: string;
@@ -143,7 +165,7 @@ export function shuffleProfileDedupeKeys(profile: {
   const keys = new Set<string>();
   const identityKey = shuffleProfileIdentityKey(profile);
   const uid = String(profile.uid || "").trim();
-  const authUid = String(profile.authUid || "").trim();
+  const authUid = resolveShuffleAuthUid(profile);
   const email = String(profile.email || "").trim().toLowerCase();
 
   if (identityKey) keys.add(identityKey);
@@ -154,6 +176,9 @@ export function shuffleProfileDedupeKeys(profile: {
   if (authUid) keys.add(`auth:${authUid}`);
   if (uid) keys.add(`id:${uid}`);
   if (email.includes("@")) keys.add(`e:${email}`);
+  for (const photoKey of shuffleProfilePhotoKeys(profile)) {
+    keys.add(photoKey);
+  }
 
   return [...keys];
 }
@@ -170,7 +195,27 @@ export function shuffleProfilesShareIdentity(
   return shuffleProfileDedupeKeys(left).some((key) => rightKeys.has(key));
 }
 
-/** Collapse duplicate shuffle rows that share username, email, or uid. */
+export function buildShuffleDedupeProfileFromFirestoreUser(user: Record<string, unknown>) {
+  const docId = String(user.id || "").trim();
+  const firebaseUid = String(user.uid || "").trim();
+  const fotos = Array.isArray(user.fotos)
+    ? user.fotos.map((value) => String(value || "")).filter(Boolean)
+    : [];
+
+  return {
+    uid: docId || firebaseUid,
+    authUid: firebaseUid || docId,
+    username: String(user.username || user.nombre || user.usernameLower || ""),
+    usernameLower: resolveUsernameLower({
+      username: String(user.username || user.nombre || ""),
+      usernameLower: String(user.usernameLower || ""),
+    }),
+    email: String(user.email || ""),
+    photo: String(user.fotoPrincipal || user.photoURL || fotos[0] || ""),
+    fotos,
+  };
+}
+/** Collapse duplicate shuffle rows that share username, email, auth uid, doc id, or photo. */
 export function dedupeShuffleProfiles<T extends DedupeableProfile>(
   profiles: T[],
 ): T[] {

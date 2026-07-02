@@ -32,9 +32,12 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         ? item.searchKeywords.map(String)
         : [];
 
+      const docId = String(item?.id || item?.uid || "").trim();
+      const authUid = String(item?.authUid || "").trim();
+
       return {
-        uid: String(item?.uid || item?.id || item?.username || `profile-${index}`),
-        authUid: String(item?.authUid || item?.uid || item?.id || `profile-${index}`),
+        uid: docId || String(item?.username || `profile-${index}`),
+        authUid: authUid || docId || String(item?.username || `profile-${index}`),
         username:
           normalizeUsername(String(item?.username || item?.usernameLower || "usuario")) ||
           "usuario",

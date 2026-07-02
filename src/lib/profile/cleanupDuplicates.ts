@@ -2,6 +2,10 @@ import { writeAdminLog } from "@/lib/admin/adminLogs";
 import { runCollectionQueryAll } from "@/lib/firestore/rest";
 import { deleteOrphanProfile } from "@/lib/profile/cleanupOrphans";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
+import {
+  buildShuffleDedupeProfileFromFirestoreUser,
+  shuffleProfileDedupeKeys,
+} from "@/lib/shuffle/dedupeProfiles";
 
 export type DuplicateProfileRow = {
   uid: string;
@@ -59,75 +63,78 @@ function toDuplicateRow(user: Record<string, unknown>): DuplicateProfileRow {
   };
 }
 
+function resolveDocId(user: Record<string, unknown>) {
+  return String(user.id || user.uid || "").trim();
+}
+
 export async function listDuplicateProfileGroups() {
-  const users = await runCollectionQueryAll("usuarios", "createdAt", "DESCENDING", 500, 20);
-  const byUsername = new Map<string, Record<string, unknown>[]>();
-  const byEmail = new Map<string, Record<string, unknown>[]>();
-  const byUid = new Map<string, Record<string, unknown>[]>();
+  const users = await runCollectionQueryAll(
+    "usuarios",
+    "usernameLower",
+    "ASCENDING",
+    500,
+    40,
+  );
+
+  const usersByDocId = new Map<string, Record<string, unknown>>();
+  const parent = new Map<string, string>();
+  const keyToDocId = new Map<string, string>();
 
   for (const user of users) {
-    const usernameLower = String(user.usernameLower || user.username || "")
-      .trim()
-      .toLowerCase();
+    const docId = resolveDocId(user);
+    if (!docId) continue;
+    usersByDocId.set(docId, user);
+    parent.set(docId, docId);
+  }
 
-    if (usernameLower && usernameLower !== "usuario") {
-      const group = byUsername.get(usernameLower) || [];
-      group.push(user);
-      byUsername.set(usernameLower, group);
-    }
+  function find(docId: string): string {
+    const current = parent.get(docId) || docId;
+    if (current === docId) return docId;
+    const root = find(current);
+    parent.set(docId, root);
+    return root;
+  }
 
-    const email = String(user.email || "").trim().toLowerCase();
-    if (email.includes("@")) {
-      const group = byEmail.get(email) || [];
-      group.push(user);
-      byEmail.set(email, group);
-    }
+  function union(a: string, b: string) {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent.set(rootB, rootA);
+  }
 
-    const uid = String(user.uid || user.id || "").trim();
-    if (uid) {
-      const group = byUid.get(uid) || [];
-      group.push(user);
-      byUid.set(uid, group);
+  for (const user of users) {
+    const docId = resolveDocId(user);
+    if (!docId) continue;
+
+    const keys = shuffleProfileDedupeKeys(buildShuffleDedupeProfileFromFirestoreUser(user));
+    for (const key of keys) {
+      const existingDocId = keyToDocId.get(key);
+      if (existingDocId) {
+        union(docId, existingDocId);
+      } else {
+        keyToDocId.set(key, docId);
+      }
     }
   }
 
-  const mergedGroups = new Map<string, Record<string, unknown>[]>();
+  const grouped = new Map<string, Record<string, unknown>[]>();
 
-  function absorbGroup(key: string, rows: Record<string, unknown>[]) {
-    if (rows.length < 2) return;
-    const existing = mergedGroups.get(key) || [];
-    const seen = new Set(existing.map((row) => String(row.id || row.uid || "")));
-    for (const row of rows) {
-      const id = String(row.id || row.uid || "");
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      existing.push(row);
-    }
-    if (existing.length > 1) {
-      mergedGroups.set(key, existing);
-    }
-  }
-
-  for (const [usernameLower, rows] of byUsername) {
-    absorbGroup(`username:${usernameLower}`, rows);
-  }
-
-  for (const [email, rows] of byEmail) {
-    absorbGroup(`email:${email}`, rows);
-  }
-
-  for (const [uid, rows] of byUid) {
-    absorbGroup(`uid:${uid}`, rows);
+  for (const docId of usersByDocId.keys()) {
+    const root = find(docId);
+    const rows = grouped.get(root) || [];
+    rows.push(usersByDocId.get(docId)!);
+    grouped.set(root, rows);
   }
 
   const groups: DuplicateProfileGroup[] = [];
 
-  for (const [, rows] of mergedGroups) {
+  for (const rows of grouped.values()) {
+    if (rows.length < 2) continue;
+
     const sorted = [...rows].sort((a, b) => profileRank(b) - profileRank(a));
-    const keepUid = String(sorted[0].id || sorted[0].uid || "");
+    const keepUid = resolveDocId(sorted[0]);
     const removeUids = sorted
       .slice(1)
-      .map((row) => String(row.id || row.uid || ""))
+      .map((row) => resolveDocId(row))
       .filter((uid) => uid && uid !== keepUid);
 
     if (!keepUid || removeUids.length === 0) continue;

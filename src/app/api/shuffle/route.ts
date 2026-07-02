@@ -261,9 +261,12 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
     Number(raw.storiesCount || 0) ||
     Number(raw.historias || 0);
 
+  const docId = String(raw.id || fallbackUid || "").trim();
+  const firebaseUid = String(raw.uid || "").trim();
+
   const profile: ApiProfile = {
-    uid: String(raw.id || raw.uid || fallbackUid || ""),
-    authUid: String(raw.uid || raw.id || fallbackUid || "").trim(),
+    uid: docId || firebaseUid || fallbackUid || "",
+    authUid: firebaseUid || docId || fallbackUid || "",
     username:
       normalizeUsername(
         String(raw.username || raw.usernameLower || raw.nombre || "usuario"),
@@ -656,7 +659,7 @@ export async function GET(req: Request) {
       {
         ok: false,
         error: e?.message || "unknown",
-        profiles: cachedProfiles.slice(0, 35),
+        profiles: dedupeShuffleProfiles(cachedProfiles).slice(0, 35),
         profilesCreated,
         anonymousOnline: cachedAnonymousOnline,
         totalLive,
