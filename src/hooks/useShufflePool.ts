@@ -6,6 +6,7 @@ import { useSyncExternalStore } from "react";
 
 import {
   dedupeShuffleProfiles,
+  shuffleProfileBatchExcludeKeys,
   shuffleProfileDedupeKeys,
   uniqueShuffleWindow,
 } from "@/lib/shuffle/dedupeProfiles";
@@ -105,7 +106,7 @@ export function useShufflePool() {
   function keysFromProfiles(profiles: ShuffleProfile[]) {
     const keys = new Set<string>();
     for (const profile of profiles) {
-      for (const key of shuffleProfileDedupeKeys(profile)) {
+      for (const key of shuffleProfileBatchExcludeKeys(profile)) {
         keys.add(key);
       }
     }
@@ -240,6 +241,11 @@ export function useShufflePool() {
       const featuredCount = featured.length;
 
       if (len === 0 && featuredCount === 0) {
+        const hadVisible = getVisibleShuffleProfiles().length > 0;
+        if (hadVisible && options?.resetBatchMemory !== true) {
+          return;
+        }
+
         windowCountRef.current = 0;
         setShuffleSlotsWithFeatured([], [], windowIndicesRef.current, 0, true);
         setListReady(false);
@@ -473,18 +479,27 @@ export function useShufflePool() {
     event?.stopPropagation?.();
 
     const pool = activePoolRef.current;
-    if (pool.length > 0 || featuredRef.current.length > 0) {
-      const before = windowSignature(getVisibleShuffleProfiles());
-      applyWindowFromPool(refreshPoolPresence(pool), {
-        forceReplace: true,
-        excludeRecentBatches: true,
-      });
+    if (pool.length === 0 && featuredRef.current.length === 0) {
+      shuffleMark("shuffle-click-end");
+      return;
+    }
+
+    const before = windowSignature(getVisibleShuffleProfiles());
+    const attempts: Array<{
+      forceReplace: true;
+      excludeRecentBatches?: boolean;
+      resetBatchMemory?: boolean;
+    }> = [
+      { forceReplace: true, excludeRecentBatches: true },
+      { forceReplace: true, excludeRecentBatches: false },
+      { forceReplace: true, resetBatchMemory: true },
+    ];
+
+    for (const options of attempts) {
+      applyWindowFromPool(refreshPoolPresence(pool), options);
       const after = windowSignature(getVisibleShuffleProfiles());
-      if (before === after && pool.length > 1) {
-        applyWindowFromPool(refreshPoolPresence(pool), {
-          forceReplace: true,
-          excludeRecentBatches: false,
-        });
+      if (after !== before || getVisibleShuffleProfiles().length === 0) {
+        break;
       }
     }
 
@@ -496,6 +511,9 @@ export function useShufflePool() {
     shuffleMark("shuffle-click-end");
     shuffleMeasure("shuffle-click", "shuffle-click-start", "shuffle-click-end");
   }, [applyWindowFromPool]);
+
+  const handleShuffleClickRef = useRef(handleShuffleClick);
+  handleShuffleClickRef.current = handleShuffleClick;
 
   const reloadDefaultShuffle = useCallback(async () => {
     await loadProfiles({ q: "", force: true });
@@ -638,10 +656,10 @@ export function useShufflePool() {
 
   useEffect(() => {
     registerShuffleClickHandler(() => {
-      handleShuffleClick();
+      handleShuffleClickRef.current();
     });
     return () => registerShuffleClickHandler(null);
-  }, [handleShuffleClick]);
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -758,7 +776,7 @@ export function useShufflePool() {
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
       abortRef.current?.abort();
     };
-  }, [filterActivePool, handleShuffleClick, loadProfiles]);
+  }, [filterActivePool, loadProfiles]);
 
   useEffect(() => {
     let cancelled = false;

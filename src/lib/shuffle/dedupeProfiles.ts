@@ -183,6 +183,24 @@ export function shuffleProfileDedupeKeys(profile: {
   return [...keys];
 }
 
+/** Keys used only to remember recently shown profiles between shuffle clicks. */
+export function shuffleProfileBatchExcludeKeys(profile: {
+  uid?: string;
+  authUid?: string;
+  email?: string;
+}) {
+  const keys = new Set<string>();
+  const uid = String(profile.uid || "").trim();
+  const authUid = resolveShuffleAuthUid(profile);
+  const email = String(profile.email || "").trim().toLowerCase();
+
+  if (uid) keys.add(`id:${uid}`);
+  if (authUid) keys.add(`auth:${authUid}`);
+  if (email.includes("@")) keys.add(`e:${email}`);
+
+  return [...keys];
+}
+
 function dedupeKeysForProfile(profile: DedupeableProfile) {
   return shuffleProfileDedupeKeys(profile);
 }
