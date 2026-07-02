@@ -105,13 +105,13 @@ export function pickRandomUniqueWindowIndices(
   );
   let count = firstPass.count;
 
-  if (count < target && !strictExclude) {
+  if (count < target) {
     const secondPass = pickUniqueIndicesFromPool(
       pool,
       scratch,
       out,
       target - count,
-      undefined,
+      strictExclude ? undefined : excludeKeys,
       count,
       firstPass.used,
       options,

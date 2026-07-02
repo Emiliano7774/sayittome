@@ -15,6 +15,9 @@ export default function ChatSwipeRevealTime({ timeLabel, align, children }: Prop
   const draggingRef = useRef(false);
 
   const maxReveal = 72;
+  const revealTime = Math.abs(offsetX) >= 10 && Boolean(timeLabel);
+  const timeOffset =
+    align === "right" ? maxReveal + offsetX : -maxReveal + offsetX;
 
   function clamp(value: number) {
     if (align === "right") {
@@ -24,6 +27,7 @@ export default function ChatSwipeRevealTime({ timeLabel, align, children }: Prop
   }
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!timeLabel) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     draggingRef.current = true;
     startXRef.current = event.clientX;
@@ -32,7 +36,7 @@ export default function ChatSwipeRevealTime({ timeLabel, align, children }: Prop
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (!draggingRef.current) return;
+    if (!draggingRef.current || !timeLabel) return;
     const delta = event.clientX - startXRef.current;
     setOffsetX(clamp(startOffsetRef.current + delta));
   }
@@ -46,18 +50,33 @@ export default function ChatSwipeRevealTime({ timeLabel, align, children }: Prop
     setOffsetX(0);
   }
 
+  if (!timeLabel) {
+    return <>{children}</>;
+  }
+
   return (
-    <div className="relative w-full overflow-hidden">
+    <div
+      className={[
+        "relative max-w-full overflow-hidden",
+        align === "right" ? "self-end" : "self-start",
+      ].join(" ")}
+    >
       <div
         className={[
-          "pointer-events-none absolute inset-y-0 flex items-center text-[11px] font-medium text-white/35",
-          align === "right" ? "right-1 justify-end" : "left-1 justify-start",
+          "pointer-events-none absolute inset-y-0 z-0 flex items-center whitespace-nowrap text-[11px] font-medium text-white/35",
+          align === "right" ? "right-0 justify-end pr-1" : "left-0 justify-start pl-1",
+          revealTime ? "opacity-100" : "opacity-0",
         ].join(" ")}
+        style={{
+          transform: `translateX(${timeOffset}px)`,
+          transition: draggingRef.current ? "none" : "transform 160ms ease-out, opacity 100ms ease-out",
+        }}
+        aria-hidden={!revealTime}
       >
         {timeLabel}
       </div>
       <div
-        className="relative touch-pan-y"
+        className="relative z-10 touch-pan-y"
         style={{
           transform: `translateX(${offsetX}px)`,
           transition: draggingRef.current ? "none" : "transform 160ms ease-out",

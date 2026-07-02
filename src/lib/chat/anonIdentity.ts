@@ -3,6 +3,17 @@ import { ANON_SESSION_CHANGED_EVENT, getAnonSessionId } from "@/lib/chat/anonSes
 import { formatAnonSessionLabel } from "@/lib/chat/inboxPeerTitle";
 import { isProfileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
 
+const DIVIDER_KEY_PREFIX = "sayittome:anon-divider:";
+
+function dividerStorageKey(chatId: string) {
+  return `${DIVIDER_KEY_PREFIX}${chatId}`;
+}
+
+function clearAnonIdentityDividerIndex(chatId: string) {
+  if (typeof window === "undefined" || !chatId) return;
+  window.sessionStorage.removeItem(dividerStorageKey(chatId));
+}
+
 export function resolveProfileChatAnonIdentity(
   chatId: string,
   chatAnonSessionId = "",
@@ -81,9 +92,12 @@ export function findAnonIdentityChangeInsertIndex(
     const message = messages[i];
     if (!message.mine) continue;
     const from = messageAnonSenderId(String(message.fromUid || ""));
-    if (from === threadAnonId || !from) {
+    if (from === threadAnonId) {
       lastThreadOutbound = i;
+      continue;
     }
+    if (!from) continue;
+    return i;
   }
 
   const nextOutbound = lastThreadOutbound + 1;
@@ -91,6 +105,50 @@ export function findAnonIdentityChangeInsertIndex(
     return nextOutbound;
   }
 
+  return messages.length;
+}
+
+/**
+ * Divider between history under the old anon id and messages in the live session.
+ * Persists the first boundary so new outbound messages stay below the notice.
+ */
+export function resolveAnonIdentityDividerIndex(
+  chatId: string,
+  messages: ReadonlyArray<{ fromUid?: string; mine?: boolean }>,
+  threadAnonId: string,
+  liveAnonId: string,
+) {
+  if (threadAnonId === liveAnonId) {
+    clearAnonIdentityDividerIndex(chatId);
+    return -1;
+  }
+
+  const fromMessages = findAnonIdentityChangeInsertIndex(
+    messages,
+    threadAnonId,
+    liveAnonId,
+  );
+  if (fromMessages >= 0 && fromMessages < messages.length) {
+    if (typeof window !== "undefined" && chatId) {
+      window.sessionStorage.setItem(dividerStorageKey(chatId), String(fromMessages));
+    }
+    return fromMessages;
+  }
+
+  if (typeof window === "undefined" || !chatId) {
+    return fromMessages;
+  }
+
+  const key = dividerStorageKey(chatId);
+  const stored = window.sessionStorage.getItem(key);
+  if (stored !== null) {
+    const index = Number(stored);
+    if (Number.isFinite(index) && index >= 0 && index <= messages.length) {
+      return index;
+    }
+  }
+
+  window.sessionStorage.setItem(key, String(messages.length));
   return messages.length;
 }
 

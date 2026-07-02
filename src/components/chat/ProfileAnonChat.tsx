@@ -42,6 +42,7 @@ import {
   findAnonIdentityChangeInsertIndex,
   getAnonSessionVersion,
   messageAnonSenderId,
+  resolveAnonIdentityDividerIndex,
   resolveProfileChatAnonIdentity,
   shouldShowAnonIdentityDivider,
   shouldShowAnonIdentityGuide,
@@ -391,7 +392,8 @@ export default function ProfileAnonChat({
     showModernVisitorIntro,
   });
   const anonIdentityChangeInsertIndex = showAnonIdentityNotice
-    ? findAnonIdentityChangeInsertIndex(
+    ? resolveAnonIdentityDividerIndex(
+        chatId,
         messages,
         anonIdentity.threadAnonId,
         anonIdentity.liveAnonId,
@@ -430,6 +432,26 @@ export default function ProfileAnonChat({
   useEffect(() => {
     markOpenChatAsRead();
   }, [chatId, authReady, currentUid, targetUid, chatOwnerUid, chatAnonSessionId]);
+
+  useEffect(() => {
+    if (!showAnonIdentityNotice || !chatId || typeof window === "undefined") return;
+    const key = `sayittome:anon-divider:${chatId}`;
+    if (window.sessionStorage.getItem(key) !== null) return;
+    const index = findAnonIdentityChangeInsertIndex(
+      messages,
+      anonIdentity.threadAnonId,
+      anonIdentity.liveAnonId,
+    );
+    if (index >= 0 && index <= messages.length) {
+      window.sessionStorage.setItem(key, String(index));
+    }
+  }, [
+    anonIdentity.liveAnonId,
+    anonIdentity.threadAnonId,
+    chatId,
+    messages,
+    showAnonIdentityNotice,
+  ]);
 
   useEffect(() => {
     if (!chatId || !authReady || !profileUid) return;
@@ -890,6 +912,15 @@ export default function ProfileAnonChat({
       : getProfileChatAnonSenderId(chatId, chatAnonSessionId);
     const isOwnerReply = isOwnerViewing;
 
+    if (anonIdentity.identityChanged && typeof window !== "undefined") {
+      const dividerKey = `sayittome:anon-divider:${chatId}`;
+      const stored = window.sessionStorage.getItem(dividerKey);
+      const nextIndex = messages.length;
+      if (stored === null || Number(stored) > nextIndex) {
+        window.sessionStorage.setItem(dividerKey, String(nextIndex));
+      }
+    }
+
     if (profileUid && !isOwnerReply) {
       const block = await findActiveAbuseBlock({
         receptorUid: profileUid,
@@ -1110,12 +1141,6 @@ export default function ProfileAnonChat({
                 timeLabel={formatMessageTime(message.createdAt)}
                 align={message.mine ? "right" : "left"}
               >
-              <div
-                className={[
-                  "mb-2.5 flex w-full flex-col",
-                  message.mine ? "items-end pr-0.5" : "items-start pl-0.5",
-                ].join(" ")}
-              >
                 <div
                   onDoubleClick={() => setReplyingTo(message)}
                   className={chatBubbleShellClass(isClassic, message.mine)}
@@ -1218,22 +1243,19 @@ export default function ProfileAnonChat({
                     </p>
                   ) : null}
                 </div>
+              </ChatSwipeRevealTime>
 
+              <div
+                className={[
+                  "mb-2.5 flex w-full flex-col",
+                  message.mine ? "items-end pr-0.5" : "items-start pl-0.5",
+                ].join(" ")}
+              >
                 {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
               </div>
-              </ChatSwipeRevealTime>
               </div>
             );
             })}
-            {anonIdentityChangeInsertIndex === messages.length ? (
-              <div className="my-3 text-center">
-                <p className="text-[11px] font-medium text-white/30">
-                  {t("chat_anon_identity_changed", {
-                    session: anonIdentity.liveLabel,
-                  })}
-                </p>
-              </div>
-            ) : null}
             <div ref={messagesEndRef} />
           </div>
         </div>

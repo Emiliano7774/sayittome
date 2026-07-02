@@ -42,8 +42,10 @@ import {
 import {
   patchShuffleSlotPresence,
   setShuffleSlotsWithFeatured,
+  getVisibleShuffleProfiles,
 } from "@/lib/shuffle/shuffleSlotsStore";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
+import { registerShuffleClickHandler } from "@/lib/shuffle/shuffleClickBridge";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
@@ -92,6 +94,13 @@ export function useShufflePool() {
   const shuffleClickCountRef = useRef(0);
   const recentBatchKeysQueueRef = useRef<Set<string>[]>([]);
   const mountedRef = useRef(false);
+
+  function windowSignature(profiles: ShuffleProfile[]) {
+    return profiles
+      .map((profile) => profile.uid || profile.username)
+      .sort()
+      .join("|");
+  }
 
   function keysFromProfiles(profiles: ShuffleProfile[]) {
     const keys = new Set<string>();
@@ -465,10 +474,18 @@ export function useShufflePool() {
 
     const pool = activePoolRef.current;
     if (pool.length > 0 || featuredRef.current.length > 0) {
+      const before = windowSignature(getVisibleShuffleProfiles());
       applyWindowFromPool(refreshPoolPresence(pool), {
         forceReplace: true,
         excludeRecentBatches: true,
       });
+      const after = windowSignature(getVisibleShuffleProfiles());
+      if (before === after && pool.length > 1) {
+        applyWindowFromPool(refreshPoolPresence(pool), {
+          forceReplace: true,
+          excludeRecentBatches: false,
+        });
+      }
     }
 
     shuffleClickCountRef.current += 1;
@@ -620,6 +637,13 @@ export function useShufflePool() {
   );
 
   useEffect(() => {
+    registerShuffleClickHandler(() => {
+      handleShuffleClick();
+    });
+    return () => registerShuffleClickHandler(null);
+  }, [handleShuffleClick]);
+
+  useEffect(() => {
     mountedRef.current = true;
     attachShuffleProfilerWindow();
     document.body.classList.remove("sayittome-chat-open");
@@ -663,12 +687,6 @@ export function useShufflePool() {
       }
     };
     scheduleStoriesIndex();
-
-    function onShuffleEvent(event: Event) {
-      handleShuffleClick(event);
-    }
-
-    window.addEventListener("sayittome:shuffle", onShuffleEvent);
 
     function onProfileModeration(event: Event) {
       const detail = (event as CustomEvent<{ uid?: string; moderationTag?: string }>).detail;
@@ -735,7 +753,6 @@ export function useShufflePool() {
       window.clearTimeout(loadingSafety);
       window.clearInterval(presenceTimer);
       window.clearInterval(poolSyncTimer);
-      window.removeEventListener("sayittome:shuffle", onShuffleEvent);
       window.removeEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
       window.removeEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);

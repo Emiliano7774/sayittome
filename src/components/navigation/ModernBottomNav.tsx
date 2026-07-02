@@ -5,6 +5,7 @@ import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 import BottomNavLink from "@/components/navigation/BottomNavLink";
 import { useEffectivePathname, useMainTabShell } from "@/contexts/MainTabShellContext";
 import { useT } from "@/contexts/LocaleContext";
+import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 
 type NavItem =
@@ -30,12 +31,12 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
   ];
 
   function dispatchShuffle() {
-    window.dispatchEvent(new CustomEvent("sayittome:shuffle"));
+    triggerShuffleClick();
   }
 
   function openShuffleTab() {
     openMainTab("/shuffle");
-    window.requestAnimationFrame(() => dispatchShuffle());
+    window.setTimeout(() => triggerShuffleClick(), 80);
   }
 
   return (

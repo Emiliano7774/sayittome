@@ -6,6 +6,7 @@ import BottomNavLink from "@/components/navigation/BottomNavLink";
 import { useEffectivePathname, useMainTabShell } from "@/contexts/MainTabShellContext";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import { useT } from "@/contexts/LocaleContext";
+import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
 
 type NavItem =
   | { id: string; kind: "link"; href: string; icon: typeof Circle; badge?: number }
@@ -30,12 +31,12 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
   ];
 
   function dispatchShuffle() {
-    window.dispatchEvent(new CustomEvent("sayittome:shuffle"));
+    triggerShuffleClick();
   }
 
   function openShuffleTab() {
     openMainTab("/shuffle");
-    window.requestAnimationFrame(() => dispatchShuffle());
+    window.setTimeout(() => triggerShuffleClick(), 80);
   }
 
   return (
