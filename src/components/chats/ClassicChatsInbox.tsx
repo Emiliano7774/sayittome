@@ -62,7 +62,7 @@ function ClassicChatRow({
     mine && isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, uid);
 
   const rowClass =
-    "flex items-center gap-3.5 border-b border-white/10 px-4 py-3.5 transition active:bg-white/[0.03] " +
+    "flex w-full items-center gap-3.5 border-b border-white/10 px-4 py-3.5 transition active:bg-white/[0.03] " +
     (unread > 0 ? "bg-white/[0.07]" : "");
 
   const content = (

@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 
 import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
-import { resolveChatUsername, type InboxChat } from "@/hooks/useChatsInbox";
+import { chatHref, resolveChatUsername, type InboxChat } from "@/hooks/useChatsInbox";
 import { shouldHidePeerProfilePhoto } from "@/lib/chat/inboxPeerTitle";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
 
 type Props = {
   chat: InboxChat;
@@ -37,18 +38,28 @@ export default function ChatInboxPeerAvatar({
   const story = useStoryStatus(ownerUid, profileUsername);
   const hidePhoto = shouldHidePeerProfilePhoto(chat, viewerUid);
 
+  function openChat() {
+    clearMainTabShellOverlay();
+    fastRouterPush(router, chatHref(chat));
+  }
+
   function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
 
     if (story.hasActive && story.hasUnseen && story.storyPath) {
+      clearMainTabShellOverlay();
       fastRouterPush(router, story.storyPath);
       return;
     }
 
     if (profileUsername && !hidePhoto) {
+      clearMainTabShellOverlay();
       fastRouterPush(router, `/u/${encodeURIComponent(profileUsername)}`);
+      return;
     }
+
+    openChat();
   }
 
   return (
