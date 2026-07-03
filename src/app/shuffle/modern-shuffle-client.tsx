@@ -24,6 +24,7 @@ import {
   getStoriesIndexVersion,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
+import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -35,6 +36,7 @@ export default function ModernShuffleClient() {
 
   useEffect(() => {
     if (!shuffleActive) return;
+    releaseChatViewportLock();
     document.body.classList.add("sayittome-shuffle-route");
     return () => {
       document.body.classList.remove("sayittome-shuffle-route");

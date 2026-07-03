@@ -23,6 +23,25 @@ function syncChatViewportVars() {
   );
 }
 
+/** Undo chat viewport lock even if the chat component is still mounted off-screen. */
+export function releaseChatViewportLock() {
+  if (typeof window === "undefined") return;
+
+  const { body, documentElement } = document;
+  const top = body.style.top;
+  const scrollY = top ? Math.abs(parseInt(top, 10)) || 0 : window.scrollY;
+
+  body.classList.remove("sayittome-chat-open");
+  body.style.position = "";
+  body.style.top = "";
+  body.style.left = "";
+  body.style.right = "";
+  body.style.width = "";
+  documentElement.style.removeProperty("--sayittome-chat-vvh");
+  documentElement.style.removeProperty("--sayittome-chat-vv-offset-top");
+  window.scrollTo(0, scrollY);
+}
+
 /** Locks the page and tracks the visible viewport while a fullscreen chat is open. */
 export function useChatViewportLock(active = true) {
   useEffect(() => {

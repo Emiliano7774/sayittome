@@ -50,6 +50,7 @@ import {
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { registerShuffleClickHandler } from "@/lib/shuffle/shuffleClickBridge";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
+import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { scrollShuffleFeedToTop } from "@/lib/shuffle/scrollShuffleFeed";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
@@ -687,7 +688,7 @@ export function useShufflePool() {
   useEffect(() => {
     mountedRef.current = true;
     attachShuffleProfilerWindow();
-    document.body.classList.remove("sayittome-chat-open");
+    releaseChatViewportLock();
 
     const loadingSafety = window.setTimeout(() => {
       if (mountedRef.current) setLoading(false);

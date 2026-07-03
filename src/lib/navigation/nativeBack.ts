@@ -1,5 +1,6 @@
 import { popNativeNavPath } from "@/lib/navigation/nativeNavStack";
 import { peekProfileReturnTo } from "@/lib/navigation/profileReturnNav";
+import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
 
 export type NativeBackResult =
@@ -19,8 +20,8 @@ export function stripNativeChatFullscreen() {
   if (typeof document === "undefined") return;
 
   const body = document.body;
-  body.classList.remove("sayittome-chat-open");
   body.classList.remove("sayittome-chat-fullscreen-open");
+  releaseChatViewportLock();
 }
 
 /** Close open overlays before leaving the current screen. */

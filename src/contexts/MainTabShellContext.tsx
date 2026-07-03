@@ -20,6 +20,7 @@ import {
   CLEAR_SHELL_EVENT,
   OPEN_MAIN_TAB_EVENT,
 } from "@/lib/navigation/mainTabShellBridge";
+import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
 
 type MainTabShellContextValue = {
@@ -81,6 +82,7 @@ export function MainTabShellProvider({
         return next;
       });
       recordNativeNavPath(href);
+      releaseChatViewportLock();
       setShellTab(href);
     },
     [nextPathname],

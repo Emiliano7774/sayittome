@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
@@ -203,7 +203,10 @@ export default function ProfileAnonChat({
   const t = useT();
   const { uxMode } = useUxMode();
   const router = useRouter();
+  const pathname = usePathname();
   const shell = useMainTabShell();
+  const chatViewportLockActive =
+    pathname.startsWith("/chat") && !shell.childrenHidden;
   const formatLastSeen = useFormatLastSeen();
   const [messages, setMessages] = useState<Message[]>(() => {
     const cached = readCachedChatMessages(chatId);
@@ -336,7 +339,7 @@ export default function ProfileAnonChat({
     return () => window.removeEventListener("sayittome:close-chat-fullscreen", onBack);
   }, []);
 
-  useChatViewportLock(true);
+  useChatViewportLock(chatViewportLockActive);
 
   useEffect(() => {
     setAnonSession(getAnonSessionId());
