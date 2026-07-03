@@ -50,7 +50,7 @@ import {
 } from "@/lib/chat/anonIdentity";
 import { chatHasActivity, deleteEmptyChatIfIdle } from "@/lib/chat/migrate";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
-import { unregisterSessionChat, registerSessionChat } from "@/lib/chat/sessionChats";
+import { unregisterSessionChat, registerSessionChat, getSessionChatIds } from "@/lib/chat/sessionChats";
 import {
   buildProfileAnonViewerContext,
   mapFirestoreDocToProfileAnonMessage,
@@ -229,6 +229,35 @@ function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
   return merged;
 }
 
+function threadHasPriorActivity(chatId: string) {
+  if (readCachedChatMessages(chatId)?.length) return true;
+  return getSessionChatIds().includes(chatId);
+}
+
+function readInitialTargetProfile(username: string) {
+  const cachedLite = getCachedProfile(username);
+  if (cachedLite) {
+    return {
+      uid: cachedLite.uid,
+      photo: cachedLite.photo,
+      blurPhoto: cachedLite.blurPhoto,
+      lastActive: cachedLite.lastActive,
+      online: cachedLite.online,
+    };
+  }
+
+  const cachedFull = getCachedFullProfile(username) as Record<string, unknown> | null;
+  if (!cachedFull) return null;
+
+  return {
+    uid: String(cachedFull.uid || ""),
+    photo: resolveProfilePhoto(cachedFull),
+    blurPhoto: cachedFull.adminBlurProfilePhoto === true,
+    lastActive: String(cachedFull.lastActive || ""),
+    online: cachedFull.online === true,
+  };
+}
+
 export default function ProfileAnonChat({
   chatId,
   username,
@@ -245,8 +274,10 @@ export default function ProfileAnonChat({
   const chatViewportLockActive =
     pathname.startsWith("/chat") && !shell.childrenHidden;
   const formatLastSeen = useFormatLastSeen();
+  const initialProfile = readInitialTargetProfile(username);
+  const initialThreadActive = threadHasPriorActivity(chatId);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(false);
+  const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(initialThreadActive);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [fullscreenUrl, setFullscreenUrl] = useState("");
@@ -261,11 +292,11 @@ export default function ProfileAnonChat({
   const [anonSession, setAnonSession] = useState("anon_server");
   const [authReady, setAuthReady] = useState(false);
   const [currentUid, setCurrentUid] = useState("");
-  const [targetUid, setTargetUid] = useState("");
-  const [targetPhoto, setTargetPhoto] = useState("");
-  const [targetBlurPhoto, setTargetBlurPhoto] = useState(false);
-  const [targetLastActive, setTargetLastActive] = useState("");
-  const [targetOnline, setTargetOnline] = useState(false);
+  const [targetUid, setTargetUid] = useState(initialProfile?.uid || "");
+  const [targetPhoto, setTargetPhoto] = useState(initialProfile?.photo || "");
+  const [targetBlurPhoto, setTargetBlurPhoto] = useState(initialProfile?.blurPhoto || false);
+  const [targetLastActive, setTargetLastActive] = useState(initialProfile?.lastActive || "");
+  const [targetOnline, setTargetOnline] = useState(initialProfile?.online || false);
   const [targetShowsLastSeen, setTargetShowsLastSeen] = useState(true);
   const [blockedByAbuse, setBlockedByAbuse] = useState(false);
   const [chatAnonSessionId, setChatAnonSessionId] = useState("");
@@ -287,6 +318,7 @@ export default function ProfileAnonChat({
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
+  const keepComposerFocusRef = useRef(false);
   const keyboardAnimatingRef = useRef(false);
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
@@ -304,19 +336,28 @@ export default function ProfileAnonChat({
 
   function scrollChatToBottom() {
     const node = messagesScrollRef.current;
-    const end = messagesEndRef.current;
-    if (end) {
-      end.scrollIntoView({ block: "end" });
-    } else if (node) {
+    if (node) {
       node.scrollTop = node.scrollHeight;
+      return;
     }
+
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
   }
 
-  function scheduleScrollToBottom() {
+  function scheduleScrollToBottom(options?: { keepKeyboard?: boolean }) {
+    if (options?.keepKeyboard) {
+      keepComposerFocusRef.current = true;
+    }
+
     stickToBottomRef.current = true;
     const run = () => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(scrollChatToBottom);
+        requestAnimationFrame(() => {
+          scrollChatToBottom();
+          if (keepComposerFocusRef.current) {
+            refocusComposer();
+          }
+        });
       });
     };
 
@@ -339,9 +380,22 @@ export default function ProfileAnonChat({
   });
 
   function refocusComposer() {
-    requestAnimationFrame(() => {
-      inputRef.current?.focus({ preventScroll: true });
-    });
+    const input = inputRef.current;
+    if (!input) return;
+
+    const focus = () => {
+      try {
+        input.focus({ preventScroll: true });
+      } catch {
+        input.focus();
+      }
+    };
+
+    focus();
+    requestAnimationFrame(focus);
+    window.setTimeout(focus, 0);
+    window.setTimeout(focus, 80);
+    window.setTimeout(focus, 180);
   }
 
   function goBackFromChat() {
@@ -410,8 +464,11 @@ export default function ProfileAnonChat({
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         keyboardAnimatingRef.current = false;
+        if (keepComposerFocusRef.current) {
+          refocusComposer();
+        }
         if (!stickToBottomRef.current) return;
-        scheduleScrollToBottom();
+        scheduleScrollToBottom({ keepKeyboard: keepComposerFocusRef.current });
       }, 360);
     };
 
@@ -498,6 +555,10 @@ export default function ProfileAnonChat({
       setChatOwnerUid(
         String(data?.receptorUid || data?.targetUid || data?.anonOwnerUid || ""),
       );
+      const chatPhoto = String(data?.targetPhoto || "").trim();
+      if (chatPhoto) {
+        setTargetPhoto((prev) => prev || chatPhoto);
+      }
       chatMetaRef.current = inboxChatFromFirestore(chatId, data, username);
       markOpenChatAsRead();
     });
@@ -1147,7 +1208,8 @@ export default function ProfileAnonChat({
     setText("");
     setReplyingTo(null);
     stickToBottomRef.current = true;
-    scheduleScrollToBottom();
+    keepComposerFocusRef.current = true;
+    scheduleScrollToBottom({ keepKeyboard: true });
     refocusComposer();
 
     if (effectiveTargetUid && !isOwnerReply) {
@@ -1181,6 +1243,7 @@ export default function ProfileAnonChat({
     })
       .then(() => {
         messagePersistedRef.current = true;
+        keepComposerFocusRef.current = true;
         refocusComposer();
       })
       .catch((e) => {
@@ -1683,7 +1746,16 @@ export default function ProfileAnonChat({
                 ref={inputRef}
                 data-sayittome-chat-composer
                 value={text}
-                onFocus={() => resetChatBackNavigationState()}
+                onFocus={() => {
+                  resetChatBackNavigationState();
+                }}
+                onBlur={() => {
+                  window.setTimeout(() => {
+                    if (document.activeElement !== inputRef.current) {
+                      keepComposerFocusRef.current = false;
+                    }
+                  }, 0);
+                }}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -1715,8 +1787,15 @@ export default function ProfileAnonChat({
             <button
               type="button"
               onMouseDown={(event) => event.preventDefault()}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={sendMessage}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                if (text.trim()) {
+                  sendMessage();
+                }
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+              }}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-500/80 text-white"
               title="Enviar"
             >
