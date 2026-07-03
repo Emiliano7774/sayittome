@@ -74,6 +74,7 @@ import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubble
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
+import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
@@ -225,6 +226,7 @@ export default function ProfileAnonChat({
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
+  const keyboardAnimatingRef = useRef(false);
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
   const chatMetaRef = useRef<InboxChat | null>(null);
@@ -282,10 +284,10 @@ export default function ProfileAnonChat({
     return () => window.removeEventListener("sayittome:close-chat-fullscreen", onBack);
   }, []);
 
+  useChatViewportLock(true);
+
   useEffect(() => {
     setAnonSession(getAnonSessionId());
-    inputRef.current?.focus();
-    document.body.classList.add("sayittome-chat-open");
 
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUid(user?.uid || "");
@@ -294,7 +296,29 @@ export default function ProfileAnonChat({
 
     return () => {
       unsub();
-      document.body.classList.remove("sayittome-chat-open");
+    };
+  }, []);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onResize = () => {
+      keyboardAnimatingRef.current = true;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        keyboardAnimatingRef.current = false;
+        if (!stickToBottomRef.current) return;
+        const node = messagesScrollRef.current;
+        if (node) node.scrollTop = node.scrollHeight;
+      }, 320);
+    };
+
+    viewport.addEventListener("resize", onResize);
+    return () => {
+      viewport.removeEventListener("resize", onResize);
+      if (timer) clearTimeout(timer);
     };
   }, []);
 
@@ -688,14 +712,12 @@ export default function ProfileAnonChat({
   }, [chatId, authReady]);
 
   useEffect(() => {
-    if (!stickToBottomRef.current) return;
+    if (!stickToBottomRef.current || keyboardAnimatingRef.current) return;
     const node = messagesScrollRef.current;
     if (!node) return;
 
-    requestAnimationFrame(() => {
-      node.scrollTop = node.scrollHeight;
-    });
-  }, [messages.length, messages[messages.length - 1]?.clientId, messages[messages.length - 1]?.id]);
+    node.scrollTop = node.scrollHeight;
+  }, [messages.length]);
 
   async function openRealCamera(mode: "photo" | "video") {
     if (mode === "photo") {
@@ -1037,7 +1059,6 @@ export default function ProfileAnonChat({
     setText("");
     setReplyingTo(null);
     stickToBottomRef.current = true;
-    setTimeout(() => inputRef.current?.focus(), 0);
 
     if (effectiveTargetUid && !isOwnerReply) {
       void findActiveAbuseBlock({
@@ -1070,11 +1091,6 @@ export default function ProfileAnonChat({
     })
       .then(() => {
         messagePersistedRef.current = true;
-        setMessages((old) =>
-          old.map((message) =>
-            message.clientId === clientId ? { ...message, status: undefined } : message,
-          ),
-        );
       })
       .catch((e) => {
         console.error(e);
@@ -1097,13 +1113,13 @@ export default function ProfileAnonChat({
   }
 
   return (
-    <main id="sayittome-chat-page-root" className="min-h-screen overflow-hidden bg-black text-white">
+    <main id="sayittome-chat-page-root" className="sayittome-chat-shell text-white">
       {fullscreenUrl ? (
         <FullscreenMedia url={fullscreenUrl} onClose={() => setFullscreenUrl("")} />
       ) : null}
 
-      <section className="flex min-h-screen flex-col bg-black">
-        <header className="flex items-center gap-4 bg-black px-5 py-4">
+      <section className="flex h-full min-h-0 flex-col bg-black">
+        <header className="flex shrink-0 items-center gap-4 bg-black px-5 py-4">
           <button
             type="button"
             onClick={() => {
@@ -1147,13 +1163,8 @@ export default function ProfileAnonChat({
           ) : null}
         </header>
 
-        {isClassic && !isOwnerViewing ? (
-          <div
-            className={[
-              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
-              chatSurfaceEngaged ? "max-h-0 opacity-0" : "max-h-[42vh] opacity-100",
-            ].join(" ")}
-          >
+        {isClassic && !isOwnerViewing && !chatSurfaceEngaged ? (
+          <div className="shrink-0">
             <div className="flex flex-col items-center justify-center px-6 pb-2 pt-[min(12vh,5rem)]">
               <StoryAvatarButton
                 {...avatarProps}
@@ -1168,13 +1179,8 @@ export default function ProfileAnonChat({
           <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
             {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
           </p>
-        ) : !isClassic && !isOwnerViewing ? (
-          <div
-            className={[
-              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
-              chatSurfaceEngaged ? "max-h-0 opacity-0" : "max-h-[50vh] opacity-100",
-            ].join(" ")}
-          >
+        ) : !isClassic && !isOwnerViewing && !chatSurfaceEngaged ? (
+          <div className="shrink-0">
             <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
               <div className="flex flex-col items-center">
                 <StoryAvatarButton
@@ -1208,6 +1214,7 @@ export default function ProfileAnonChat({
 
         <div
           ref={messagesScrollRef}
+          data-stm-no-polish
           onScroll={() => {
             const node = messagesScrollRef.current;
             if (!node) return;
@@ -1215,7 +1222,7 @@ export default function ProfileAnonChat({
             stickToBottomRef.current = distance < 120;
           }}
           className={[
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-36",
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
             isClassic ? "px-3 sm:px-4" : "px-5",
             classicChatEngaged ? "pt-3" : "",
           ].join(" ")}
@@ -1439,7 +1446,7 @@ export default function ProfileAnonChat({
           </div>
         ) : null}
 
-        <div className="sticky bottom-0 border-t border-white/5 bg-black/95 px-4 pb-4 pt-3 backdrop-blur-xl">
+        <div className="sayittome-chat-composer shrink-0 border-t border-white/5 bg-black/95 px-4 pt-3 backdrop-blur-xl">
           {replyingTo && (
             <div className={`${chatWidthClass} mb-3 rounded-3xl bg-[#090909] px-5 py-4`}>
               <div className="flex items-center justify-between">

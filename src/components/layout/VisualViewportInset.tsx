@@ -20,6 +20,14 @@ function readBrowserChromeBottom() {
 export default function VisualViewportInset() {
   useEffect(() => {
     function sync() {
+      if (document.body.classList.contains("sayittome-chat-open")) {
+        document.documentElement.style.setProperty(
+          "--sayittome-browser-chrome-bottom",
+          "0px",
+        );
+        return;
+      }
+
       document.documentElement.style.setProperty(
         "--sayittome-browser-chrome-bottom",
         `${readBrowserChromeBottom()}px`,
