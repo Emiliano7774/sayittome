@@ -1,6 +1,7 @@
 import { doc, increment, updateDoc } from "firebase/firestore";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { collectViewerSenderIds } from "@/lib/chat/incomingChatActivity";
 import { isAnonVisitorProfileChat } from "@/lib/chat/inboxPeerTitle";
 import { markChatReadLocally } from "@/lib/chat/localChatRead";
 import { db } from "@/lib/firebase";
@@ -49,16 +50,20 @@ export async function markChatAsRead(
   if (!chatId || !viewerId) return;
 
   if (chat) {
-    markChatReadLocally(chat, viewerId);
-    if (firebaseUid && firebaseUid !== viewerId) {
-      markChatReadLocally(chat, firebaseUid);
-    }
+    markChatReadLocally(chat, viewerId, firebaseUid);
   }
 
   const patch: Record<string, boolean | number> = {
     [`readBy.${viewerId}`]: true,
     [`unreadCounts.${viewerId}`]: 0,
   };
+
+  if (chat) {
+    for (const id of collectViewerSenderIds(chat, viewerId, firebaseUid)) {
+      patch[`readBy.${id}`] = true;
+      patch[`unreadCounts.${id}`] = 0;
+    }
+  }
 
   const viewerIsAnonSession = viewerId.startsWith("anon_");
   if (

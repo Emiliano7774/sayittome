@@ -1,4 +1,7 @@
-import { chatActivityKey } from "@/lib/chat/incomingChatActivity";
+import {
+  chatActivityKey,
+  collectViewerSenderIds,
+} from "@/lib/chat/incomingChatActivity";
 import type { InboxChat } from "@/hooks/useChatsInbox";
 
 const READ_KEY = "sayittome_chat_read_local";
@@ -15,7 +18,7 @@ function readMap(): ReadMap {
   if (typeof window === "undefined") return {};
 
   try {
-    const raw = sessionStorage.getItem(READ_KEY);
+    const raw = window.localStorage.getItem(READ_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
@@ -27,7 +30,7 @@ function writeMap(map: ReadMap) {
   if (typeof window === "undefined") return;
 
   try {
-    sessionStorage.setItem(READ_KEY, JSON.stringify(map));
+    window.localStorage.setItem(READ_KEY, JSON.stringify(map));
     localReadVersion += 1;
     window.dispatchEvent(new Event("sayittome-chat-read-local-changed"));
   } catch {
@@ -39,26 +42,56 @@ function readCacheKey(chatId: string, viewerId: string) {
   return `${chatId}:${viewerId}`;
 }
 
-export function markChatReadLocally(chat: InboxChat, viewerId: string) {
-  if (!viewerId) return;
-  const chatId = chat.canonicalChatId || chat.id;
-  const map = readMap();
-  map[readCacheKey(chatId, viewerId)] = chatActivityKey(chat);
-  if (chat.id !== chatId) {
-    map[readCacheKey(chat.id, viewerId)] = chatActivityKey(chat);
-  }
-  writeMap(map);
-}
+export function markChatReadLocally(
+  chat: InboxChat,
+  viewerId: string,
+  firebaseUid = "",
+) {
+  if (!viewerId && !firebaseUid) return;
 
-export function wasChatReadLocally(chat: InboxChat, viewerId: string) {
-  if (!viewerId) return false;
   const chatId = chat.canonicalChatId || chat.id;
   const activityKey = chatActivityKey(chat);
   const map = readMap();
-  return (
-    map[readCacheKey(chatId, viewerId)] === activityKey ||
-    map[readCacheKey(chat.id, viewerId)] === activityKey
+  const viewerIds = collectViewerSenderIds(
+    chat,
+    viewerId || firebaseUid,
+    firebaseUid,
   );
+
+  for (const id of viewerIds) {
+    map[readCacheKey(chatId, id)] = activityKey;
+    if (chat.id !== chatId) {
+      map[readCacheKey(chat.id, id)] = activityKey;
+    }
+  }
+
+  writeMap(map);
+}
+
+export function wasChatReadLocally(
+  chat: InboxChat,
+  viewerId: string,
+  firebaseUid = "",
+) {
+  const chatId = chat.canonicalChatId || chat.id;
+  const activityKey = chatActivityKey(chat);
+  const map = readMap();
+  const viewerIds = collectViewerSenderIds(
+    chat,
+    viewerId || firebaseUid,
+    firebaseUid,
+  );
+
+  for (const id of viewerIds) {
+    if (
+      map[readCacheKey(chatId, id)] === activityKey ||
+      map[readCacheKey(chat.id, id)] === activityKey
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function subscribeLocalChatRead(callback: () => void) {

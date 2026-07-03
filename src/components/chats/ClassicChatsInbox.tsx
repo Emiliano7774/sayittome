@@ -11,7 +11,7 @@ import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { formatClassicInboxTime } from "@/lib/chat/inboxTime";
 import { chatHref, type InboxChat } from "@/hooks/useChatsInbox";
-import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
+import { isOwnInboxLastSender } from "@/lib/chat/incomingChatActivity";
 import { chatPeerTitle, resolveChatViewerId, shouldHidePeerProfilePhoto, shouldShowAnonPeerInbox } from "@/lib/chat/inboxPeerTitle";
 import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
 import { isMessageSeenByOther } from "@/lib/chat/messageReceipt";
@@ -57,7 +57,7 @@ function ClassicChatRow({
   const title = chatPeerTitle(chat, uid);
   const lastSender = String(chat.lastMessageSender || "").trim();
   const timeLabel = formatClassicInboxTime(chat, chatViewerId, t, uid);
-  const mine = isOwnChatSender(lastSender, chatViewerId, uid);
+  const mine = isOwnInboxLastSender(chat, chatViewerId, uid);
   const readByOther =
     mine && isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, uid);
 

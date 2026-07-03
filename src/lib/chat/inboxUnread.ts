@@ -1,6 +1,6 @@
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { isIncomingChatActivity } from "@/lib/chat/incomingChatActivity";
+import { isIncomingChatActivity, wasChatReadOnServer } from "@/lib/chat/incomingChatActivity";
 import { resolveChatViewerId } from "@/lib/chat/inboxPeerTitle";
 import { wasChatReadLocally } from "@/lib/chat/localChatRead";
 
@@ -30,7 +30,8 @@ export function chatUnreadCount(
 
   const firebaseUid = options.firebaseUid || "";
 
-  if (wasChatReadLocally(chat, viewerId)) return 0;
+  if (wasChatReadOnServer(chat, viewerId, firebaseUid)) return 0;
+  if (wasChatReadLocally(chat, viewerId, firebaseUid)) return 0;
 
   if (!isIncomingChatActivity(chat, viewerId, firebaseUid)) return 0;
 
