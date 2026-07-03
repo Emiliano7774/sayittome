@@ -20,11 +20,8 @@ export function rememberInboxChatCount(count: number) {
   }
 }
 
-/** Keep the chats list visible when returning from a thread if data is already in memory. */
-export function shouldShowChatsInboxSkeleton(
-  inbox: InboxGateInput,
-  authGraceReady: boolean,
-) {
+/** Full-page inbox loader only on the very first cold open with no cached rows. */
+export function shouldShowChatsInboxSkeleton(inbox: InboxGateInput) {
   const chatCount = inbox.sortedChats.length;
 
   if (chatCount > 0) {
@@ -36,5 +33,5 @@ export function shouldShowChatsInboxSkeleton(
     return false;
   }
 
-  return inbox.loading && !authGraceReady;
+  return inbox.loading;
 }

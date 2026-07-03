@@ -1,3 +1,5 @@
+import { markChatsInboxHydrated } from "@/hooks/useChatsInboxReady";
+
 const SESSION_CHATS_KEY = "sayittome_session_chats";
 export const SESSION_CHATS_CHANGED_EVENT = "sayittome-session-chats-changed";
 
@@ -39,6 +41,8 @@ export function unregisterSessionChat(chatId: string) {
 
 export function registerSessionChat(chatId: string) {
   if (typeof window === "undefined" || !chatId) return;
+
+  markChatsInboxHydrated(1);
 
   const current = getSessionChatIds();
   if (current.includes(chatId)) return;
