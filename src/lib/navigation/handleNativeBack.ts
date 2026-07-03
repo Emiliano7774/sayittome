@@ -39,6 +39,10 @@ export function resolveNativeBackNavigation(
   const result = resolveNativeBack(pathname);
 
   if (result.handled) {
+    if (result.dismissChatKeyboard) {
+      return {};
+    }
+
     if (result.navigateTo) {
       backLockUntil = now + BACK_LOCK_MS;
       pendingExitUntil = 0;

@@ -4,7 +4,7 @@ import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
 
 export type NativeBackResult =
-  | { handled: true; hintKey?: string; navigateTo?: string }
+  | { handled: true; hintKey?: string; navigateTo?: string; dismissChatKeyboard?: boolean }
   | { handled: false };
 
 const ROOT_ROUTES = new Set(["/shuffle", "/"]);
@@ -16,26 +16,21 @@ function normalizePath(pathname: string) {
   return path || "/";
 }
 
-function isChatComposerKeyboardOpen() {
+function isChatComposerFocused() {
   if (typeof window === "undefined") return false;
 
   const input = document.querySelector<HTMLElement>(CHAT_COMPOSER_SELECTOR);
   if (!input) return false;
 
   const active = document.activeElement;
-  if (active === input || input.contains(active)) return true;
-
-  const viewport = window.visualViewport;
-  if (!viewport) return false;
-
-  return viewport.height < window.innerHeight * 0.82;
+  return active === input || input.contains(active);
 }
 
 /** First Android back while typing: dismiss the keyboard and stay in the chat. */
 export function tryDismissChatComposerKeyboard(): boolean {
   if (typeof window === "undefined") return false;
   if (!normalizePath(window.location.pathname).startsWith("/chat/")) return false;
-  if (!isChatComposerKeyboardOpen()) return false;
+  if (!isChatComposerFocused()) return false;
 
   const active = document.activeElement as HTMLElement | null;
   active?.blur?.();
@@ -181,7 +176,7 @@ export function resolveNativeBack(pathname: string): NativeBackResult {
 
   if (path.startsWith("/chat/")) {
     if (tryDismissChatComposerKeyboard()) {
-      return { handled: true };
+      return { handled: true, dismissChatKeyboard: true };
     }
 
     stripNativeChatFullscreen();
