@@ -15,6 +15,7 @@ import {
   resolveNativeBackNavigation,
 } from "@/lib/navigation/handleNativeBack";
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
+import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
 import { recordNativeNavPath, seedNativeNavStack } from "@/lib/navigation/nativeNavStack";
 import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
 import { openMainTabFromBridge } from "@/lib/navigation/mainTabShellBridge";
@@ -111,6 +112,7 @@ export default function NativeAppBootstrap() {
   useEffect(() => {
     pathnameRef.current = pathname;
     resetNativeBackExitTimer();
+    resetChatBackNavigationState();
     seedNativeNavStack(pathname);
     recordNativeNavPath(pathname);
 

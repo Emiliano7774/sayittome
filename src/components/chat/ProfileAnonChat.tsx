@@ -79,6 +79,7 @@ import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
+import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
 import { isMainTabHref } from "@/lib/navigation/mainTabs";
 import { openMainTabFromBridge } from "@/lib/navigation/mainTabShellBridge";
 import {
@@ -1687,6 +1688,7 @@ export default function ProfileAnonChat({
                 ref={inputRef}
                 data-sayittome-chat-composer
                 value={text}
+                onFocus={() => resetChatBackNavigationState()}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {

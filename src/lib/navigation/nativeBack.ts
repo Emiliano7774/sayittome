@@ -2,40 +2,18 @@ import { peekNativeNavPath, popNativeNavPath } from "@/lib/navigation/nativeNavS
 import { peekProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
+import { resolveChatBackAction } from "@/lib/navigation/chatBackNavigation";
 
 export type NativeBackResult =
   | { handled: true; hintKey?: string; navigateTo?: string; dismissChatKeyboard?: boolean }
   | { handled: false };
 
 const ROOT_ROUTES = new Set(["/shuffle", "/"]);
-const CHAT_COMPOSER_SELECTOR = "[data-sayittome-chat-composer]";
 
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
   return path || "/";
-}
-
-function isChatComposerFocused() {
-  if (typeof window === "undefined") return false;
-
-  const input = document.querySelector<HTMLElement>(CHAT_COMPOSER_SELECTOR);
-  if (!input) return false;
-
-  const active = document.activeElement;
-  return active === input || input.contains(active);
-}
-
-/** First Android back while typing: dismiss the keyboard and stay in the chat. */
-export function tryDismissChatComposerKeyboard(): boolean {
-  if (typeof window === "undefined") return false;
-  if (!normalizePath(window.location.pathname).startsWith("/chat/")) return false;
-  if (!isChatComposerFocused()) return false;
-
-  const active = document.activeElement as HTMLElement | null;
-  active?.blur?.();
-  document.querySelector<HTMLElement>(CHAT_COMPOSER_SELECTOR)?.blur();
-  return true;
 }
 
 /** Leave chat and return to the screen the user came from (shuffle, chats, etc.). */
@@ -175,7 +153,8 @@ export function resolveNativeBack(pathname: string): NativeBackResult {
   const path = normalizePath(pathname);
 
   if (path.startsWith("/chat/")) {
-    if (tryDismissChatComposerKeyboard()) {
+    const chatAction = resolveChatBackAction(path);
+    if (chatAction?.kind === "dismiss-keyboard") {
       return { handled: true, dismissChatKeyboard: true };
     }
 
