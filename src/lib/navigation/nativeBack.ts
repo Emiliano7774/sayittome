@@ -1,4 +1,4 @@
-import { popNativeNavPath } from "@/lib/navigation/nativeNavStack";
+import { peekNativeNavPath, popNativeNavPath } from "@/lib/navigation/nativeNavStack";
 import { peekProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
@@ -8,11 +8,46 @@ export type NativeBackResult =
   | { handled: false };
 
 const ROOT_ROUTES = new Set(["/shuffle", "/"]);
+const CHAT_COMPOSER_SELECTOR = "[data-sayittome-chat-composer]";
 
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
   return path || "/";
+}
+
+function isChatComposerKeyboardOpen() {
+  if (typeof window === "undefined") return false;
+
+  const input = document.querySelector<HTMLElement>(CHAT_COMPOSER_SELECTOR);
+  if (!input) return false;
+
+  const active = document.activeElement;
+  if (active === input || input.contains(active)) return true;
+
+  const viewport = window.visualViewport;
+  if (!viewport) return false;
+
+  return viewport.height < window.innerHeight * 0.82;
+}
+
+/** First Android back while typing: dismiss the keyboard and stay in the chat. */
+export function tryDismissChatComposerKeyboard(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!normalizePath(window.location.pathname).startsWith("/chat/")) return false;
+  if (!isChatComposerKeyboardOpen()) return false;
+
+  const active = document.activeElement as HTMLElement | null;
+  active?.blur?.();
+  document.querySelector<HTMLElement>(CHAT_COMPOSER_SELECTOR)?.blur();
+  return true;
+}
+
+/** Leave chat and return to the screen the user came from (shuffle, chats, etc.). */
+export function resolveChatBackDestination(pathname: string): string {
+  const path = normalizePath(pathname);
+  stripNativeChatFullscreen();
+  return popNativeNavPath(path) || "/chats";
 }
 
 /** Drop chat fullscreen shell classes so the previous tab can render with bottom nav. */
@@ -96,7 +131,9 @@ export function tryCloseNativeOverlays(): boolean {
 export function getNativeBackDestination(pathname: string): string | null {
   const path = normalizePath(pathname);
 
-  if (path.startsWith("/chat/")) return "/chats";
+  if (path.startsWith("/chat/")) {
+    return peekNativeNavPath(path) || "/chats";
+  }
 
   if (path.startsWith("/u/") && path.endsWith("/chat")) return "/chats";
   if (path.startsWith("/u/")) {
@@ -143,8 +180,15 @@ export function resolveNativeBack(pathname: string): NativeBackResult {
   const path = normalizePath(pathname);
 
   if (path.startsWith("/chat/")) {
+    if (tryDismissChatComposerKeyboard()) {
+      return { handled: true };
+    }
+
     stripNativeChatFullscreen();
-    return { handled: true, navigateTo: "/chats" };
+    return {
+      handled: true,
+      navigateTo: popNativeNavPath(path) || "/chats",
+    };
   }
 
   if (isNativeRootRoute(path)) {

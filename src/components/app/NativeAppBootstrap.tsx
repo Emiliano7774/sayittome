@@ -40,6 +40,15 @@ function runNativeBackNavigation(
     if (currentPath.startsWith("/u/") && !currentPath.endsWith("/chat")) {
       consumeProfileReturnTo();
     }
+    if (currentPath.startsWith("/chat/")) {
+      runNativeViewTransition(() => {
+        router.replace(action.navigateTo!);
+      });
+      if (isMainTabHref(action.navigateTo)) {
+        openMainTabFromBridge(action.navigateTo);
+      }
+      return;
+    }
     if (isMainTabHref(action.navigateTo)) {
       openMainTabFromBridge(action.navigateTo);
       return;

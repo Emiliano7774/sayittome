@@ -77,7 +77,10 @@ import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
-import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
+import { isMainTabHref } from "@/lib/navigation/mainTabs";
+import { openMainTabFromBridge } from "@/lib/navigation/mainTabShellBridge";
 import {
   collection,
   doc,
@@ -305,6 +308,20 @@ export default function ProfileAnonChat({
     chatAnonSessionId: "",
     username: "",
   });
+
+  function refocusComposer() {
+    requestAnimationFrame(() => {
+      inputRef.current?.focus({ preventScroll: true });
+    });
+  }
+
+  function goBackFromChat() {
+    const dest = resolveChatBackDestination(pathname);
+    fastRouterReplace(router, dest);
+    if (isMainTabHref(dest)) {
+      openMainTabFromBridge(dest);
+    }
+  }
 
   function markOpenChatAsRead() {
     const ctx = markReadContextRef.current;
@@ -1135,6 +1152,7 @@ export default function ProfileAnonChat({
     setReplyingTo(null);
     stickToBottomRef.current = true;
     scheduleScrollToBottom();
+    refocusComposer();
 
     if (effectiveTargetUid && !isOwnerReply) {
       void findActiveAbuseBlock({
@@ -1167,6 +1185,7 @@ export default function ProfileAnonChat({
     })
       .then(() => {
         messagePersistedRef.current = true;
+        refocusComposer();
       })
       .catch((e) => {
         console.error(e);
@@ -1198,13 +1217,7 @@ export default function ProfileAnonChat({
         <header className="flex shrink-0 items-center gap-4 bg-black px-5 py-4">
           <button
             type="button"
-            onClick={() => {
-              if (shell) {
-                shell.openMainTab("/chats");
-                return;
-              }
-              fastRouterPush(router, "/chats");
-            }}
+            onClick={goBackFromChat}
             className="text-4xl leading-none text-white/70"
             aria-label={t("chats_title")}
           >
@@ -1672,6 +1685,7 @@ export default function ProfileAnonChat({
             <div className="flex h-11 flex-1 items-center rounded-2xl border border-white/5 bg-[#090909] px-4">
               <input
                 ref={inputRef}
+                data-sayittome-chat-composer
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
@@ -1702,6 +1716,9 @@ export default function ProfileAnonChat({
             </button>
 
             <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onPointerDown={(event) => event.preventDefault()}
               onClick={sendMessage}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-500/80 text-white"
               title="Enviar"
