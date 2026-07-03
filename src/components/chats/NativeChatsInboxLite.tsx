@@ -8,6 +8,7 @@ import ModernChatsInbox from "@/components/chats/ModernChatsInbox";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useChatsSelection } from "@/hooks/useChatsSelection";
+import { shouldShowChatsInboxSkeleton } from "@/hooks/useChatsInboxReady";
 import { useT } from "@/contexts/LocaleContext";
 
 function ChatsPageSkeleton() {
@@ -37,7 +38,7 @@ export default function NativeChatsInboxLite() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  if (!mounted || (inbox.loading && !authGraceReady)) {
+  if (shouldShowChatsInboxSkeleton(inbox, mounted, authGraceReady)) {
     return <ChatsPageSkeleton />;
   }
 

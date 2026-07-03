@@ -166,6 +166,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     anonParticipantes: new Map(),
     anonSession: new Map(),
   });
+  const inboxUidRef = useRef("");
 
   const rebuildChats = () => {
     const merged = new Map<string, InboxChat>();
@@ -184,11 +185,14 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       return;
     }
 
-    queryMapsRef.current.participantes = new Map();
-    queryMapsRef.current.anonOwner = new Map();
-    queryMapsRef.current.receptor = new Map();
-    queryMapsRef.current.target = new Map();
-    rebuildChats();
+    if (inboxUidRef.current !== uid) {
+      inboxUidRef.current = uid;
+      queryMapsRef.current.participantes = new Map();
+      queryMapsRef.current.anonOwner = new Map();
+      queryMapsRef.current.receptor = new Map();
+      queryMapsRef.current.target = new Map();
+      rebuildChats();
+    }
 
     const mergeQuery = (key: string) => (snap: QuerySnapshot) => {
       const map = new Map<string, InboxChat>();
@@ -245,11 +249,6 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       unsubB();
       unsubC();
       unsubD();
-      queryMapsRef.current.participantes = new Map();
-      queryMapsRef.current.anonOwner = new Map();
-      queryMapsRef.current.receptor = new Map();
-      queryMapsRef.current.target = new Map();
-      rebuildChats();
     };
   }, [uid, loading, enableInboxQueries]);
 
@@ -259,10 +258,6 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
 
     const anonId = anonSessionId || getChatAnonSenderId();
     if (!anonId.startsWith("anon_")) return;
-
-    queryMapsRef.current.anonParticipantes = new Map();
-    queryMapsRef.current.anonSession = new Map();
-    rebuildChats();
 
     const mergeAnonQuery = (key: string) => (snap: QuerySnapshot) => {
       const map = new Map<string, InboxChat>();
@@ -307,9 +302,6 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     return () => {
       unsubA();
       unsubB();
-      queryMapsRef.current.anonParticipantes = new Map();
-      queryMapsRef.current.anonSession = new Map();
-      rebuildChats();
     };
   }, [enableAnonInboxQuery, loading, anonSessionId]);
 

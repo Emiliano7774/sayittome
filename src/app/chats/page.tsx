@@ -10,6 +10,7 @@ import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import { useChatsSelection } from "@/hooks/useChatsSelection";
+import { shouldShowChatsInboxSkeleton } from "@/hooks/useChatsInboxReady";
 
 function ChatsPageSkeleton() {
   return (
@@ -35,7 +36,7 @@ function WebChatsPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  if (!mounted || (inbox.loading && !authGraceReady)) {
+  if (shouldShowChatsInboxSkeleton(inbox, mounted, authGraceReady)) {
     return <ChatsPageSkeleton />;
   }
 
