@@ -132,9 +132,35 @@ function chatMessagesSignature(messages: Message[]) {
   return messages
     .map(
       (message) =>
-        `${messageRowKey(message)}:${message.status || ""}:${message.text}:${message.mediaUrl || ""}`,
+        `${messageRowKey(message)}:${message.mine ? 1 : 0}:${message.status || ""}:${message.text}:${message.mediaUrl || ""}`,
     )
     .join("|");
+}
+
+function resolveMessageMineForViewer(
+  message: Pick<Message, "fromUid">,
+  input: {
+    chatId: string;
+    chatAnonSessionId: string;
+    currentUid: string;
+    targetUid: string;
+    chatOwnerUid: string;
+  },
+) {
+  const profileUid = input.targetUid || input.chatOwnerUid;
+  const isOwnerViewing = Boolean(
+    input.currentUid && profileUid && input.currentUid === profileUid,
+  );
+  const threadAnonId = getProfileChatAnonSenderId(input.chatId, input.chatAnonSessionId);
+  const from = String(message.fromUid || "");
+
+  return resolveProfileAnonMessageMine({
+    from,
+    threadAnonId,
+    profileUid,
+    isOwnerViewing,
+    ownerUid: input.currentUid,
+  });
 }
 
 function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
@@ -240,6 +266,32 @@ export default function ProfileAnonChat({
     isOwnerViewing: false,
     profileUid: "",
   });
+
+  function scrollChatToBottom() {
+    const node = messagesScrollRef.current;
+    const end = messagesEndRef.current;
+    if (end) {
+      end.scrollIntoView({ block: "end" });
+    } else if (node) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }
+
+  function scheduleScrollToBottom() {
+    stickToBottomRef.current = true;
+    const run = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(scrollChatToBottom);
+      });
+    };
+
+    if (keyboardAnimatingRef.current) {
+      window.setTimeout(run, 360);
+      return;
+    }
+
+    run();
+  }
   useSyncExternalStore(subscribeAnonSession, getAnonSessionVersion, () => "anon_server");
   const markReadContextRef = useRef({
     chatId: "",
@@ -310,9 +362,8 @@ export default function ProfileAnonChat({
       timer = setTimeout(() => {
         keyboardAnimatingRef.current = false;
         if (!stickToBottomRef.current) return;
-        const node = messagesScrollRef.current;
-        if (node) node.scrollTop = node.scrollHeight;
-      }, 320);
+        scheduleScrollToBottom();
+      }, 360);
     };
 
     viewport.addEventListener("resize", onResize);
@@ -709,14 +760,35 @@ export default function ProfileAnonChat({
       }
       unsub();
     };
-  }, [chatId, authReady]);
+  }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid]);
 
   useEffect(() => {
-    if (!stickToBottomRef.current || keyboardAnimatingRef.current) return;
-    const node = messagesScrollRef.current;
-    if (!node) return;
+    if (!chatId || !authReady) return;
 
-    node.scrollTop = node.scrollHeight;
+    setMessages((prev) => {
+      if (prev.length === 0) return prev;
+
+      let changed = false;
+      const next = prev.map((message) => {
+        const mine = resolveMessageMineForViewer(message, {
+          chatId,
+          chatAnonSessionId,
+          currentUid,
+          targetUid,
+          chatOwnerUid,
+        });
+        if (mine === message.mine) return message;
+        changed = true;
+        return { ...message, mine };
+      });
+
+      return changed ? next : prev;
+    });
+  }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid]);
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    scheduleScrollToBottom();
   }, [messages.length]);
 
   async function openRealCamera(mode: "photo" | "video") {
@@ -1059,6 +1131,7 @@ export default function ProfileAnonChat({
     setText("");
     setReplyingTo(null);
     stickToBottomRef.current = true;
+    scheduleScrollToBottom();
 
     if (effectiveTargetUid && !isOwnerReply) {
       void findActiveAbuseBlock({
@@ -1227,7 +1300,7 @@ export default function ProfileAnonChat({
             classicChatEngaged ? "pt-3" : "",
           ].join(" ")}
         >
-          <div className={chatWidthClass}>
+          <div className={`${chatWidthClass} flex min-h-full flex-col justify-end`}>
             {messages.map((message, index) => {
               const previousFrom = index > 0 ? String(messages[index - 1]?.fromUid || "") : "";
               const currentFrom = String(message.fromUid || "");
