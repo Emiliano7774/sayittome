@@ -17,6 +17,7 @@ import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
 import { isShuffleProfileOnline } from "@/lib/presence";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { getStoryViewerKey } from "@/lib/stories/storyAuthor";
 import {
   defaultShuffleFilters,
@@ -666,6 +667,7 @@ export function useShufflePool() {
       } else if (action === "chat") {
         const senderId = getChatAnonSenderId();
         const chatId = buildProfileAnonChatId(senderId, username);
+        prefetchChatThread(chatId);
         fastRouterPush(
           router,
           `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}`,

@@ -26,6 +26,8 @@ type PersistAnonMessageInput = {
   targetUid: string;
   targetPhoto: string;
   messageText: string;
+  /** Skip the pre-write chat read when the open thread already has metadata. */
+  existingChatData?: Record<string, unknown>;
   reply?: string;
   storyReply?: {
     storyId: string;
@@ -96,10 +98,14 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const messageAuthorId = isOwnerReply ? profileReplyAuthorId(targetUid) : senderId;
 
   const chatRef = doc(db, "chats", chatId);
-  const existingSnap = await getDoc(chatRef);
-  const existingData = existingSnap.exists()
-    ? (existingSnap.data() as Record<string, unknown>)
-    : {};
+  let existingData = input.existingChatData || {};
+
+  if (!input.existingChatData) {
+    const existingSnap = await getDoc(chatRef);
+    existingData = existingSnap.exists()
+      ? (existingSnap.data() as Record<string, unknown>)
+      : {};
+  }
 
   const existingParticipantes = Array.isArray(existingData.participantes)
     ? existingData.participantes.map((entry) => String(entry)).filter(Boolean)

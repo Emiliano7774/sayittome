@@ -63,9 +63,16 @@ import {
 import { messageRequiresBlur, profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
-import { getCachedProfile, setCachedProfile } from "@/lib/profile/profileCache";
+import { getCachedProfile, setCachedProfile, getCachedFullProfile } from "@/lib/profile/profileCache";
+import {
+  cachedMessageToUi,
+  readCachedChatMessages,
+  uiMessageToCached,
+  writeCachedChatMessages,
+} from "@/lib/chat/chatMessageCache";
 import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
@@ -129,7 +136,10 @@ export default function ProfileAnonChat({
   const router = useRouter();
   const shell = useMainTabShell();
   const formatLastSeen = useFormatLastSeen();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const cached = readCachedChatMessages(chatId);
+    return cached?.map((row) => cachedMessageToUi(row) as Message) ?? [];
+  });
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [fullscreenUrl, setFullscreenUrl] = useState("");
@@ -171,6 +181,16 @@ export default function ProfileAnonChat({
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
   const chatMetaRef = useRef<InboxChat | null>(null);
+  const chatDocDataRef = useRef<Record<string, unknown>>({});
+  const threadContextRef = useRef({
+    chatId: "",
+    currentUid: "",
+    targetUid: "",
+    chatOwnerUid: "",
+    chatAnonSessionId: "",
+    isOwnerViewing: false,
+    profileUid: "",
+  });
   useSyncExternalStore(subscribeAnonSession, getAnonSessionVersion, () => "anon_server");
   const markReadContextRef = useRef({
     chatId: "",
@@ -233,6 +253,15 @@ export default function ProfileAnonChat({
 
   useEffect(() => {
     if (!chatId) return;
+    prefetchChatThread(chatId);
+    const cached = readCachedChatMessages(chatId);
+    if (cached?.length) {
+      setMessages(cached.map((row) => cachedMessageToUi(row) as Message));
+    }
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!chatId) return;
     registerSessionChat(chatId);
   }, [chatId]);
 
@@ -284,6 +313,7 @@ export default function ProfileAnonChat({
       if (!snap.exists()) return;
 
       const data = snap.data() as Record<string, unknown> | undefined;
+      chatDocDataRef.current = data || {};
       setChatAnonSessionId(String(data?.anonSessionId || ""));
       setChatOwnerUid(
         String(data?.receptorUid || data?.targetUid || data?.anonOwnerUid || ""),
@@ -306,13 +336,23 @@ export default function ProfileAnonChat({
     let cancelled = false;
 
     async function loadTargetProfile() {
-      const cached = getCachedProfile(username);
-      if (cached) {
-        setTargetUid(cached.uid);
-        setTargetPhoto(cached.photo);
-        setTargetBlurPhoto(cached.blurPhoto);
-        setTargetLastActive(cached.lastActive);
-        setTargetOnline(cached.online);
+      const cachedLite = getCachedProfile(username);
+      const cachedFull = getCachedFullProfile(username) as Record<string, unknown> | null;
+
+      if (cachedLite) {
+        setTargetUid(cachedLite.uid);
+        setTargetPhoto(cachedLite.photo);
+        setTargetBlurPhoto(cachedLite.blurPhoto);
+        setTargetLastActive(cachedLite.lastActive);
+        setTargetOnline(cachedLite.online);
+      } else if (cachedFull) {
+        const photo = resolveProfilePhoto(cachedFull);
+        const uid = String(cachedFull.uid || "");
+        setTargetUid(uid);
+        setTargetPhoto(photo);
+        setTargetBlurPhoto(cachedFull.adminBlurProfilePhoto === true);
+        setTargetLastActive(String(cachedFull.lastActive || ""));
+        setTargetOnline(cachedFull.online === true);
       }
 
       try {
@@ -368,6 +408,15 @@ export default function ProfileAnonChat({
     currentUid && profileOwnerUid && currentUid === profileOwnerUid,
   );
   const profileUid = profileOwnerUid || targetUid;
+  threadContextRef.current = {
+    chatId,
+    currentUid,
+    targetUid,
+    chatOwnerUid,
+    chatAnonSessionId,
+    isOwnerViewing,
+    profileUid,
+  };
   const presenceLabel =
     targetShowsLastSeen && !isOwnerViewing
       ? formatLastSeen(targetLastActive, targetOnline)
@@ -454,7 +503,7 @@ export default function ProfileAnonChat({
   ]);
 
   useEffect(() => {
-    if (!chatId || !authReady || !profileUid) return;
+    if (!chatId || !authReady) return;
 
     const q = query(
       collection(db, "chats", chatId, "mensajes"),
@@ -462,12 +511,15 @@ export default function ProfileAnonChat({
       limitToLast(50),
     );
 
-    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
-    const messageViewerId = isOwnerViewing ? currentUid : senderId;
-
     const unsub = onSnapshot(
       q,
       (snapshot) => {
+        const ctx = threadContextRef.current;
+        const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
+        const resolvedProfileUid = ctx.profileUid || ctx.chatOwnerUid;
+        const ownerViewing = ctx.isOwnerViewing;
+        const messageViewerId = ownerViewing ? ctx.currentUid : senderId;
+
         const loaded: Message[] = snapshot.docs.map((docSnap) => {
           const data = docSnap.data() as {
             texto?: string;
@@ -496,9 +548,9 @@ export default function ProfileAnonChat({
             senderKind: data.senderKind,
             from,
             threadAnonId: senderId,
-            profileUid: profileUid,
-            isOwnerViewing,
-            ownerUid: currentUid,
+            profileUid: resolvedProfileUid,
+            isOwnerViewing: ownerViewing,
+            ownerUid: ctx.currentUid,
           });
 
           return {
@@ -536,6 +588,8 @@ export default function ProfileAnonChat({
 
           return merged;
         });
+
+        writeCachedChatMessages(chatId, loaded.map(uiMessageToCached));
 
         markChatMessagesWhipAlerted(
           chatId,
@@ -586,20 +640,13 @@ export default function ProfileAnonChat({
       }
       unsub();
     };
-  }, [
-    chatId,
-    authReady,
-    profileUid,
-    currentUid,
-    targetUid,
-    chatOwnerUid,
-    chatAnonSessionId,
-    isOwnerViewing,
-    username,
-  ]);
+  }, [chatId, authReady]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    messagesEndRef.current?.scrollIntoView({
+      behavior: messages.length <= 1 ? "auto" : "smooth",
+      block: "end",
+    });
   }, [messages.length, messages[messages.length - 1]?.id]);
 
   async function openRealCamera(mode: "photo" | "video") {
@@ -867,7 +914,7 @@ export default function ProfileAnonChat({
         username,
         senderId,
         currentUid,
-        targetUid: profileUid,
+        targetUid: profileUid || chatOwnerUid,
         targetPhoto,
         messageText:
           previewType === "audio"
@@ -880,6 +927,7 @@ export default function ProfileAnonChat({
         source: previewSource,
         viewOnce: previewViewOnce,
         ...scanFields,
+        existingChatData: chatDocDataRef.current,
       });
 
       messagePersistedRef.current = true;
@@ -902,7 +950,9 @@ export default function ProfileAnonChat({
       alert(t("chat_abuse_write_block"));
       return;
     }
-    if (!profileUid) {
+
+    const effectiveTargetUid = profileUid || chatOwnerUid;
+    if (!effectiveTargetUid && !isOwnerViewing) {
       alert(t("chat_load_fail"));
       return;
     }
@@ -918,19 +968,6 @@ export default function ProfileAnonChat({
       const nextIndex = messages.length;
       if (stored === null || Number(stored) > nextIndex) {
         window.sessionStorage.setItem(dividerKey, String(nextIndex));
-      }
-    }
-
-    if (profileUid && !isOwnerReply) {
-      const block = await findActiveAbuseBlock({
-        receptorUid: profileUid,
-        blockedAnonId: senderId,
-        blockedVisitorId: getVisitorId(),
-      });
-      if (block) {
-        setBlockedByAbuse(true);
-        alert(t("chat_abuse_write_block"));
-        return;
       }
     }
 
@@ -951,16 +988,36 @@ export default function ProfileAnonChat({
     setMessages((old) => [...old, localMessage]);
     setText("");
     setReplyingTo(null);
+    setTimeout(() => inputRef.current?.focus(), 0);
+
+    if (effectiveTargetUid && !isOwnerReply) {
+      void findActiveAbuseBlock({
+        receptorUid: effectiveTargetUid,
+        blockedAnonId: senderId,
+        blockedVisitorId: getVisitorId(),
+      })
+        .then((block) => {
+          if (!block) return;
+          setBlockedByAbuse(true);
+          setMessages((old) =>
+            old.map((message) =>
+              message.clientId === clientId ? { ...message, status: "error" as const } : message,
+            ),
+          );
+        })
+        .catch(() => undefined);
+    }
 
     void persistAnonChatMessage({
       chatId,
       username,
       senderId,
       currentUid,
-      targetUid: profileUid,
+      targetUid: effectiveTargetUid,
       targetPhoto,
       messageText,
       reply: replyText,
+      existingChatData: chatDocDataRef.current,
     })
       .then(() => {
         messagePersistedRef.current = true;
@@ -979,8 +1036,6 @@ export default function ProfileAnonChat({
         );
         alert(t("chat_save_fail"));
       });
-
-    setTimeout(() => inputRef.current?.focus(), 10);
   }
 
   function sourceLabel(message: Message) {

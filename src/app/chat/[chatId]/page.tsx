@@ -2,14 +2,15 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
 
 import ProfileAnonChat from "@/components/chat/ProfileAnonChat";
 import { ChatErrorScreen, ChatLoadingScreen } from "@/components/chat/ChatScreens";
 import { isProfileAnonChatId, usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { resolveProfileChat, isOwnerProfileInboxRedirect } from "@/lib/chat/resolveProfileChat";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useT } from "@/contexts/LocaleContext";
 import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 import LegacyChatPage from "./legacy-chat";
 
@@ -19,11 +20,18 @@ function ProfileAnonChatRoute() {
   const searchParams = useSearchParams();
   const rawChatId = decodeURIComponent(String(params.chatId || ""));
   const usernameFromQuery = String(searchParams.get("u") || "");
+  const canOpenImmediately = Boolean(usernameFromQuery) && isProfileAnonChatId(rawChatId);
 
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(canOpenImmediately);
   const [username, setUsername] = useState(usernameFromQuery);
   const [chatId, setChatId] = useState(rawChatId);
   const [errorText, setErrorText] = useState("");
+
+  useEffect(() => {
+    if (canOpenImmediately) {
+      prefetchChatThread(rawChatId);
+    }
+  }, [canOpenImmediately, rawChatId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,6 +39,30 @@ function ProfileAnonChatRoute() {
     async function prepare() {
       try {
         let resolvedUsername = usernameFromQuery;
+
+        if (canOpenImmediately) {
+          void getDoc(doc(db, "chats", rawChatId))
+            .then((requestedSnap) => {
+              if (cancelled || !requestedSnap.exists()) return;
+              const requestedData = requestedSnap.data() as {
+                targetUsername?: string;
+                receptorUsername?: string;
+              };
+              const docUsername =
+                requestedData.targetUsername || requestedData.receptorUsername || "";
+              if (docUsername && docUsername !== usernameFromQuery) {
+                setUsername(docUsername);
+                const query = new URLSearchParams({ u: docUsername });
+                window.history.replaceState(
+                  null,
+                  "",
+                  `/chat/${encodeURIComponent(rawChatId)}?${query.toString()}`,
+                );
+              }
+            })
+            .catch(() => undefined);
+          return;
+        }
 
         const requestedSnap = await getDoc(doc(db, "chats", rawChatId));
         const requestedData = requestedSnap.exists()
@@ -111,7 +143,7 @@ function ProfileAnonChatRoute() {
     return () => {
       cancelled = true;
     };
-  }, [rawChatId, usernameFromQuery, t]);
+  }, [rawChatId, usernameFromQuery, canOpenImmediately, t]);
 
   if (!ready) return <ChatLoadingScreen />;
   if (errorText || !chatId || !username) return <ChatErrorScreen message={errorText} />;
