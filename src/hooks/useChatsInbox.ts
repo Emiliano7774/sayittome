@@ -19,6 +19,7 @@ import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { inboxPeerDedupeKey } from "@/lib/chat/inboxPeerTitle";
 import { hasInboxPreview, isVisibleInboxChat } from "@/lib/chat/inboxVisible";
 import { normalizeInboxChat } from "@/lib/chat/normalizeInboxChat";
+import { rememberInboxChatCount } from "@/hooks/useChatsInboxReady";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 
 export type InboxChat = {
@@ -167,6 +168,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     anonSession: new Map(),
   });
   const inboxUidRef = useRef("");
+  const lastSortedChatsRef = useRef<InboxChat[]>([]);
 
   const rebuildChats = () => {
     const merged = new Map<string, InboxChat>();
@@ -342,13 +344,22 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   }, [enableSessionChatListeners, loading, sessionChatIds]);
 
   const sortedChats = useMemo(() => {
-    return dedupeChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);
+    const next = dedupeChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);
+    if (next.length > 0) {
+      lastSortedChatsRef.current = next;
+      rememberInboxChatCount(next.length);
+    }
+    return next;
   }, [chats, sessionChats, uid]);
+
+  const displaySortedChats =
+    sortedChats.length > 0 ? sortedChats : lastSortedChatsRef.current;
 
   return {
     uid,
     loading,
     sortedChats,
+    displaySortedChats,
     isAnonymousSession: !uid && !loading,
   };
 }

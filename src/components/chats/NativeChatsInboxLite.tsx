@@ -26,19 +26,14 @@ export default function NativeChatsInboxLite() {
   const { uxMode } = useUxMode();
   const inbox = useChatAlerts();
   const selection = useChatsSelection(inbox.sortedChats);
-  const [mounted, setMounted] = useState(false);
   const [authGraceReady, setAuthGraceReady] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setAuthGraceReady(true), 4000);
     return () => window.clearTimeout(timer);
   }, []);
 
-  if (shouldShowChatsInboxSkeleton(inbox, mounted, authGraceReady)) {
+  if (shouldShowChatsInboxSkeleton(inbox, authGraceReady)) {
     return <ChatsPageSkeleton />;
   }
 
