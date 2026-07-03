@@ -52,8 +52,12 @@ import { chatHasActivity, deleteEmptyChatIfIdle } from "@/lib/chat/migrate";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { unregisterSessionChat, registerSessionChat } from "@/lib/chat/sessionChats";
 import {
+  buildProfileAnonViewerContext,
+  mapFirestoreDocToProfileAnonMessage,
   profileReplyAuthorId,
+  remapProfileAnonMessagesMine,
   resolveProfileAnonMessageMine,
+  type ProfileAnonFirestoreMessage,
 } from "@/lib/chat/profileAnonMessageAuthor";
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { inboxChatFromFirestore, markChatAsRead } from "@/lib/chat/unread";
@@ -101,6 +105,7 @@ type Message = {
   text: string;
   mine: boolean;
   fromUid?: string;
+  senderKind?: "anon" | "profile";
   reply?: string;
   storyReply?: {
     storyId: string;
@@ -141,29 +146,43 @@ function chatMessagesSignature(messages: Message[]) {
     .join("|");
 }
 
-function resolveMessageMineForViewer(
-  message: Pick<Message, "fromUid">,
+function hydrateCachedMessages(
+  chatId: string,
+  rows: ReturnType<typeof readCachedChatMessages>,
   input: {
-    chatId: string;
     chatAnonSessionId: string;
     currentUid: string;
     targetUid: string;
     chatOwnerUid: string;
   },
-) {
-  const profileUid = input.targetUid || input.chatOwnerUid;
-  const isOwnerViewing = Boolean(
-    input.currentUid && profileUid && input.currentUid === profileUid,
-  );
-  const threadAnonId = getProfileChatAnonSenderId(input.chatId, input.chatAnonSessionId);
-  const from = String(message.fromUid || "");
+): Message[] {
+  if (!rows?.length) return [];
 
-  return resolveProfileAnonMessageMine({
-    from,
-    threadAnonId,
-    profileUid,
-    isOwnerViewing,
-    ownerUid: input.currentUid,
+  const ctx = buildProfileAnonViewerContext({
+    chatId,
+    chatAnonSessionId: input.chatAnonSessionId,
+    currentUid: input.currentUid,
+    targetUid: input.targetUid,
+    chatOwnerUid: input.chatOwnerUid,
+  });
+
+  return rows.map((row) => {
+    const base = cachedMessageToUi(row) as Message;
+    const mine = resolveProfileAnonMessageMine({
+      senderKind: row.senderKind,
+      from: row.fromUid || "",
+      threadAnonId: ctx.threadAnonId,
+      profileUid: ctx.profileUid,
+      isOwnerViewing: ctx.isOwnerViewing,
+      ownerUid: ctx.currentUid,
+    });
+
+    return {
+      ...base,
+      mine,
+      senderKind: row.senderKind,
+      fromUid: row.fromUid,
+    };
   });
 }
 
@@ -171,13 +190,27 @@ function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
   const merged = loaded.map((message) => ({ ...message }));
 
   for (const optimistic of pending) {
-    const matchIndex = merged.findIndex(
-      (message) =>
-        message.mine === optimistic.mine &&
+    const matchIndex = merged.findIndex((message) => {
+      if (optimistic.clientId && message.clientId === optimistic.clientId) {
+        return true;
+      }
+
+      const samePayload =
         message.text === optimistic.text &&
         (message.type || "text") === (optimistic.type || "text") &&
-        (message.mediaUrl || "") === (optimistic.mediaUrl || ""),
-    );
+        (message.mediaUrl || "") === (optimistic.mediaUrl || "");
+
+      if (!samePayload) return false;
+
+      if (optimistic.status === "sending" && optimistic.mine) {
+        if (optimistic.fromUid && message.fromUid) {
+          return message.fromUid === optimistic.fromUid;
+        }
+        return message.mine;
+      }
+
+      return message.mine === optimistic.mine;
+    });
 
     if (matchIndex >= 0) {
       if (optimistic.clientId) {
@@ -212,13 +245,8 @@ export default function ProfileAnonChat({
   const chatViewportLockActive =
     pathname.startsWith("/chat") && !shell.childrenHidden;
   const formatLastSeen = useFormatLastSeen();
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const cached = readCachedChatMessages(chatId);
-    return cached?.map((row) => cachedMessageToUi(row) as Message) ?? [];
-  });
-  const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(
-    () => (readCachedChatMessages(chatId)?.length ?? 0) > 0,
-  );
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(false);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [fullscreenUrl, setFullscreenUrl] = useState("");
@@ -398,11 +426,19 @@ export default function ProfileAnonChat({
     if (!chatId) return;
     prefetchChatThread(chatId);
     const cached = readCachedChatMessages(chatId);
-    if (cached?.length) {
-      setMessages(cached.map((row) => cachedMessageToUi(row) as Message));
-      setChatSurfaceEngaged(true);
-    }
-  }, [chatId]);
+    if (!cached?.length) return;
+
+    setMessages((prev) => {
+      if (prev.length > 0) return prev;
+      return hydrateCachedMessages(chatId, cached, {
+        chatAnonSessionId,
+        currentUid,
+        targetUid,
+        chatOwnerUid,
+      });
+    });
+    setChatSurfaceEngaged((engaged) => engaged || cached.length > 0);
+  }, [chatId, chatAnonSessionId, currentUid, targetUid, chatOwnerUid]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -664,62 +700,24 @@ export default function ProfileAnonChat({
     const unsub = onSnapshot(
       q,
       (snapshot) => {
-        const ctx = threadContextRef.current;
-        const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
-        const resolvedProfileUid = ctx.profileUid || ctx.chatOwnerUid;
-        const ownerViewing = ctx.isOwnerViewing;
-        const messageViewerId = ownerViewing ? ctx.currentUid : senderId;
-
-        const loaded: Message[] = snapshot.docs.map((docSnap) => {
-          const data = docSnap.data() as {
-            texto?: string;
-            text?: string;
-            fromUid?: string;
-            ownerId?: string;
-            senderUid?: string;
-            senderKind?: string;
-            mine?: boolean;
-            reply?: string;
-            storyReply?: Message["storyReply"];
-            readBy?: Record<string, boolean>;
-            type?: Message["type"];
-            mediaUrl?: string;
-            source?: Message["source"];
-            viewOnce?: boolean;
-            createdAt?: { toDate?: () => Date };
-            autoModerationRequiresBlur?: boolean;
-            moderationRequiresBlur?: boolean;
-          };
-
-          const from = String(
-            data.fromUid || data.ownerId || data.senderUid || "",
-          );
-          const mine = resolveProfileAnonMessageMine({
-            senderKind: data.senderKind,
-            from,
-            threadAnonId: senderId,
-            profileUid: resolvedProfileUid,
-            isOwnerViewing: ownerViewing,
-            ownerUid: ctx.currentUid,
-          });
-
-          return {
-            id: docSnap.id,
-            text: String(data.texto || data.text || ""),
-            mine,
-            fromUid: from,
-            reply: data.reply,
-            storyReply: data.storyReply,
-            type: data.type,
-            mediaUrl: data.mediaUrl,
-            source: data.source,
-            viewOnce: data.viewOnce,
-            autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
-            moderationRequiresBlur: data.moderationRequiresBlur === true,
-            readBy: data.readBy || {},
-            createdAt: data.createdAt,
-          };
+        const ctx = buildProfileAnonViewerContext({
+          chatId: threadContextRef.current.chatId,
+          chatAnonSessionId: threadContextRef.current.chatAnonSessionId,
+          currentUid: threadContextRef.current.currentUid,
+          targetUid: threadContextRef.current.targetUid,
+          chatOwnerUid: threadContextRef.current.chatOwnerUid,
         });
+        const messageViewerId = ctx.isOwnerViewing ? ctx.currentUid : ctx.threadAnonId;
+
+        const loaded: Message[] = snapshot.docs
+          .map((docSnap) =>
+            mapFirestoreDocToProfileAnonMessage(
+              docSnap.id,
+              docSnap.data() as ProfileAnonFirestoreMessage,
+              ctx,
+            ),
+          )
+          .filter((row): row is Message => row !== null);
 
         setMessages((prev) => {
           const pending = prev.filter((message) => message.status === "sending");
@@ -786,24 +784,18 @@ export default function ProfileAnonChat({
   useEffect(() => {
     if (!chatId || !authReady) return;
 
+    const ctx = buildProfileAnonViewerContext({
+      chatId,
+      chatAnonSessionId,
+      currentUid,
+      targetUid,
+      chatOwnerUid,
+    });
+
     setMessages((prev) => {
       if (prev.length === 0) return prev;
-
-      let changed = false;
-      const next = prev.map((message) => {
-        const mine = resolveMessageMineForViewer(message, {
-          chatId,
-          chatAnonSessionId,
-          currentUid,
-          targetUid,
-          chatOwnerUid,
-        });
-        if (mine === message.mine) return message;
-        changed = true;
-        return { ...message, mine };
-      });
-
-      return changed ? next : prev;
+      const next = remapProfileAnonMessagesMine(prev, ctx);
+      return next === prev ? prev : next;
     });
   }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid]);
 
@@ -1041,6 +1033,8 @@ export default function ProfileAnonChat({
         clientId,
         text: previewType === "audio" ? t("chat_media_audio") : "",
         mine: true,
+        fromUid: isOwnerViewing ? profileReplyAuthorId(profileUid || chatOwnerUid) : senderId,
+        senderKind: isOwnerViewing ? "profile" : "anon",
         type: previewType,
         source: previewSource,
         viewOnce: previewViewOnce,
@@ -1142,7 +1136,8 @@ export default function ProfileAnonChat({
       clientId,
       text: messageText,
       mine: true,
-      fromUid: senderId,
+      fromUid: isOwnerReply ? profileReplyAuthorId(effectiveTargetUid) : senderId,
+      senderKind: (isOwnerReply ? "profile" : "anon") as Message["senderKind"],
       reply: replyText,
       status: "sending" as const,
       createdAt: { toDate: () => new Date() },

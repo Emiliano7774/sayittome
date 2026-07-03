@@ -1,8 +1,8 @@
 export type CachedChatMessage = {
   id: string;
   text: string;
-  mine: boolean;
   fromUid?: string;
+  senderKind?: "anon" | "profile";
   reply?: string;
   storyReply?: {
     storyId: string;
@@ -21,7 +21,7 @@ export type CachedChatMessage = {
 };
 
 const memory = new Map<string, CachedChatMessage[]>();
-const STORAGE_PREFIX = "sayittome:chat-msgs:";
+const STORAGE_PREFIX = "sayittome:chat-msgs:v2:";
 const MAX_CACHED = 50;
 
 function storageKey(chatId: string) {
@@ -75,8 +75,8 @@ export function cachedMessageToUi(message: CachedChatMessage) {
 export function uiMessageToCached(message: {
   id: string;
   text: string;
-  mine: boolean;
   fromUid?: string;
+  senderKind?: "anon" | "profile";
   reply?: string;
   storyReply?: CachedChatMessage["storyReply"];
   type?: CachedChatMessage["type"];
@@ -92,8 +92,8 @@ export function uiMessageToCached(message: {
   return {
     id: message.id,
     text: message.text,
-    mine: message.mine,
     fromUid: message.fromUid,
+    senderKind: message.senderKind,
     reply: message.reply,
     storyReply: message.storyReply,
     type: message.type,

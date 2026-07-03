@@ -6,20 +6,21 @@ import {
   query,
 } from "firebase/firestore";
 
-import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
   readCachedChatMessages,
   writeCachedChatMessages,
   type CachedChatMessage,
 } from "@/lib/chat/chatMessageCache";
-import { resolveProfileAnonMessageMine } from "@/lib/chat/profileAnonMessageAuthor";
+import {
+  firestoreMessageAuthorId,
+  resolveProfileAnonSenderKind,
+} from "@/lib/chat/profileAnonMessageAuthor";
 import { db } from "@/lib/firebase";
 
 const inflight = new Map<string, Promise<void>>();
 
 function mapDocToCached(
   docSnap: { id: string; data: () => Record<string, unknown> },
-  chatId: string,
 ): CachedChatMessage | null {
   const data = docSnap.data();
   const text = String(data.texto || data.text || "").trim();
@@ -28,22 +29,20 @@ function mapDocToCached(
 
   const createdAt = data.createdAt as { toDate?: () => Date } | undefined;
   const createdAtMs = createdAt?.toDate?.()?.getTime();
-  const from = String(data.fromUid || data.ownerId || data.senderUid || "");
-  const threadAnonId = getProfileChatAnonSenderId(chatId);
-  const mine = resolveProfileAnonMessageMine({
+  const from = firestoreMessageAuthorId(data as Parameters<typeof firestoreMessageAuthorId>[0]);
+  const senderKind = resolveProfileAnonSenderKind({
     senderKind: data.senderKind as string | undefined,
     from,
-    threadAnonId,
+    threadAnonId: "",
     profileUid: "",
-    isOwnerViewing: false,
-    ownerUid: "",
+    messageProfileUid: String(data.profileUid || "").trim() || undefined,
   });
 
   return {
     id: docSnap.id,
     text: String(data.texto || data.text || ""),
-    mine,
     fromUid: from || undefined,
+    senderKind: senderKind === "unknown" ? undefined : senderKind,
     reply: data.reply ? String(data.reply) : undefined,
     type: data.type as CachedChatMessage["type"],
     mediaUrl: mediaUrl || undefined,
@@ -73,7 +72,7 @@ export function prefetchChatThread(chatId: string) {
       );
       const snap = await getDocs(q);
       const messages = snap.docs
-        .map((docSnap) => mapDocToCached(docSnap, chatId))
+        .map((docSnap) => mapDocToCached(docSnap))
         .filter((row): row is CachedChatMessage => row !== null);
       if (messages.length > 0) {
         writeCachedChatMessages(chatId, messages);
