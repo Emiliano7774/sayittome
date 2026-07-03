@@ -123,6 +123,48 @@ function formatMessageTime(createdAt?: { toDate?: () => Date }) {
   });
 }
 
+function messageRowKey(message: Message) {
+  return message.clientId || message.id;
+}
+
+function chatMessagesSignature(messages: Message[]) {
+  return messages
+    .map(
+      (message) =>
+        `${messageRowKey(message)}:${message.status || ""}:${message.text}:${message.mediaUrl || ""}`,
+    )
+    .join("|");
+}
+
+function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
+  const merged = loaded.map((message) => ({ ...message }));
+
+  for (const optimistic of pending) {
+    const matchIndex = merged.findIndex(
+      (message) =>
+        message.mine === optimistic.mine &&
+        message.text === optimistic.text &&
+        (message.type || "text") === (optimistic.type || "text") &&
+        (message.mediaUrl || "") === (optimistic.mediaUrl || ""),
+    );
+
+    if (matchIndex >= 0) {
+      if (optimistic.clientId) {
+        merged[matchIndex] = {
+          ...merged[matchIndex],
+          clientId: optimistic.clientId,
+          status: undefined,
+        };
+      }
+      continue;
+    }
+
+    merged.push(optimistic);
+  }
+
+  return merged;
+}
+
 export default function ProfileAnonChat({
   chatId,
   username,
@@ -140,6 +182,9 @@ export default function ProfileAnonChat({
     const cached = readCachedChatMessages(chatId);
     return cached?.map((row) => cachedMessageToUi(row) as Message) ?? [];
   });
+  const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(
+    () => (readCachedChatMessages(chatId)?.length ?? 0) > 0,
+  );
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [fullscreenUrl, setFullscreenUrl] = useState("");
@@ -177,7 +222,9 @@ export default function ProfileAnonChat({
   const galleryRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
   const chatMetaRef = useRef<InboxChat | null>(null);
@@ -257,6 +304,7 @@ export default function ProfileAnonChat({
     const cached = readCachedChatMessages(chatId);
     if (cached?.length) {
       setMessages(cached.map((row) => cachedMessageToUi(row) as Message));
+      setChatSurfaceEngaged(true);
     }
   }, [chatId]);
 
@@ -429,8 +477,8 @@ export default function ProfileAnonChat({
     (isOwnerViewing
       ? hasChatActivity
       : messages.some((message) => message.mine) || hasChatActivity);
-  const showClassicIntro = isClassic && !isOwnerViewing && !classicChatEngaged;
-  const showModernVisitorIntro = !isClassic && !isOwnerViewing && !hasChatActivity;
+  const showClassicIntro = isClassic && !isOwnerViewing && !chatSurfaceEngaged;
+  const showModernVisitorIntro = !isClassic && !isOwnerViewing && !chatSurfaceEngaged;
   const anonIdentity = resolveProfileChatAnonIdentity(chatId, chatAnonSessionId, {
     isOwnerViewing,
   });
@@ -477,6 +525,12 @@ export default function ProfileAnonChat({
     chatAnonSessionId,
     username,
   };
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setChatSurfaceEngaged(true);
+    }
+  }, [messages.length]);
 
   useEffect(() => {
     markOpenChatAsRead();
@@ -573,19 +627,10 @@ export default function ProfileAnonChat({
 
         setMessages((prev) => {
           const pending = prev.filter((message) => message.status === "sending");
-          const merged = [...loaded];
-
-          for (const optimistic of pending) {
-            const alreadySynced = loaded.some(
-              (message) =>
-                message.mine === optimistic.mine &&
-                message.text === optimistic.text &&
-                (message.type || "text") === (optimistic.type || "text") &&
-                (message.mediaUrl || "") === (optimistic.mediaUrl || ""),
-            );
-            if (!alreadySynced) merged.push(optimistic);
+          const merged = mergeLoadedChatMessages(loaded, pending);
+          if (chatMessagesSignature(prev) === chatMessagesSignature(merged)) {
+            return prev;
           }
-
           return merged;
         });
 
@@ -643,11 +688,14 @@ export default function ProfileAnonChat({
   }, [chatId, authReady]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: messages.length <= 1 ? "auto" : "smooth",
-      block: "end",
+    if (!stickToBottomRef.current) return;
+    const node = messagesScrollRef.current;
+    if (!node) return;
+
+    requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
     });
-  }, [messages.length, messages[messages.length - 1]?.id]);
+  }, [messages.length, messages[messages.length - 1]?.clientId, messages[messages.length - 1]?.id]);
 
   async function openRealCamera(mode: "photo" | "video") {
     if (mode === "photo") {
@@ -988,6 +1036,7 @@ export default function ProfileAnonChat({
     setMessages((old) => [...old, localMessage]);
     setText("");
     setReplyingTo(null);
+    stickToBottomRef.current = true;
     setTimeout(() => inputRef.current?.focus(), 0);
 
     if (effectiveTargetUid && !isOwnerReply) {
@@ -1098,55 +1147,76 @@ export default function ProfileAnonChat({
           ) : null}
         </header>
 
-        {showClassicIntro ? (
-          <div className="flex flex-col items-center justify-center px-6 pb-2 pt-[min(12vh,5rem)]">
-            <StoryAvatarButton
-              {...avatarProps}
-              size="xl"
-              iconSize={88}
-              className="!scale-100"
-            />
-            <ClassicAnonPresenceBubble session={anonIdentity.liveLabel} />
+        {isClassic && !isOwnerViewing ? (
+          <div
+            className={[
+              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
+              chatSurfaceEngaged ? "max-h-0 opacity-0" : "max-h-[42vh] opacity-100",
+            ].join(" ")}
+          >
+            <div className="flex flex-col items-center justify-center px-6 pb-2 pt-[min(12vh,5rem)]">
+              <StoryAvatarButton
+                {...avatarProps}
+                size="xl"
+                iconSize={88}
+                className="!scale-100"
+              />
+              <ClassicAnonPresenceBubble session={anonIdentity.liveLabel} />
+            </div>
           </div>
         ) : showClassicIdentityBar ? (
           <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
             {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
           </p>
-        ) : showModernVisitorIntro ? (
-          <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
-            <div className="flex flex-col items-center">
-              <StoryAvatarButton
-                {...avatarProps}
-                size="lg"
-                iconSize={72}
-                className="!scale-100"
-              />
+        ) : !isClassic && !isOwnerViewing ? (
+          <div
+            className={[
+              "overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
+              chatSurfaceEngaged ? "max-h-0 opacity-0" : "max-h-[50vh] opacity-100",
+            ].join(" ")}
+          >
+            <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
+              <div className="flex flex-col items-center">
+                <StoryAvatarButton
+                  {...avatarProps}
+                  size="lg"
+                  iconSize={72}
+                  className="!scale-100"
+                />
 
-              <h2 className="mt-6 text-5xl font-black tracking-[-0.08em]">
-                {username}
-              </h2>
-            </div>
+                <h2 className="mt-6 text-5xl font-black tracking-[-0.08em]">
+                  {username}
+                </h2>
+              </div>
 
-            <div className="mt-8 rounded-[28px] bg-[#ececec] px-6 py-5 text-left text-black shadow-2xl">
-              <p className="text-2xl font-bold text-violet-600">
-                {t("chat_anon_keep")}
-              </p>
+              <div className="mt-8 rounded-[28px] bg-[#ececec] px-6 py-5 text-left text-black shadow-2xl">
+                <p className="text-2xl font-bold text-violet-600">
+                  {t("chat_anon_keep")}
+                </p>
 
-              <p className="mt-1 text-xl text-zinc-600">
-                {t("chat_anon_identity_hidden")}
-              </p>
+                <p className="mt-1 text-xl text-zinc-600">
+                  {t("chat_anon_identity_hidden")}
+                </p>
 
-              <p className="mt-3 text-base text-zinc-400">
-                {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
-              </p>
+                <p className="mt-3 text-base text-zinc-400">
+                  {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
+                </p>
+              </div>
             </div>
           </div>
         ) : null}
 
         <div
+          ref={messagesScrollRef}
+          onScroll={() => {
+            const node = messagesScrollRef.current;
+            if (!node) return;
+            const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
+            stickToBottomRef.current = distance < 120;
+          }}
           className={[
-            "min-h-0 flex-1 pb-36",
-            isClassic ? "overflow-y-auto px-3 sm:px-4" : "px-5",
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-36",
+            isClassic ? "px-3 sm:px-4" : "px-5",
             classicChatEngaged ? "pt-3" : "",
           ].join(" ")}
         >
@@ -1174,7 +1244,7 @@ export default function ProfileAnonChat({
 
               return (
               <div
-                key={message.id}
+                key={messageRowKey(message)}
                 className={[
                   "flex w-full flex-col",
                   message.mine ? "items-end" : "items-start",
@@ -1308,7 +1378,7 @@ export default function ProfileAnonChat({
 
               <div
                 className={[
-                  "mb-2.5 flex w-full flex-col",
+                  "mb-2.5 flex min-h-[18px] w-full flex-col",
                   message.mine ? "items-end pr-0.5" : "items-start pl-0.5",
                 ].join(" ")}
               >
