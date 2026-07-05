@@ -14,6 +14,7 @@ import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptySt
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ModernShuffleGlassToolbar from "@/components/shuffle/ModernShuffleGlassToolbar";
 import { useShufflePool } from "@/hooks/useShufflePool";
+import { shouldShowShuffleLoading } from "@/hooks/useShuffleReady";
 import {
   getShuffleSlotsVersion,
   getVisibleShuffleProfiles,
@@ -51,6 +52,11 @@ export default function ModernShuffleClient() {
   const profileCount = pool.profilesCreated || pool.livePeopleCount;
   const filtersBlockResults =
     pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery;
+  const showShuffleLoading = shouldShowShuffleLoading({
+    loading: pool.loading,
+    listReady: pool.listReady,
+    visibleCount: visible.length,
+  });
 
   return (
     <>
@@ -101,7 +107,7 @@ export default function ModernShuffleClient() {
           onClear={pool.clearFilters}
         />
 
-        {pool.loading && visible.length === 0 ? (
+        {showShuffleLoading ? (
           <div className="flex h-[50vh] items-center justify-center">
             <p className="text-2xl font-black text-white/35">{t("common_loading")}</p>
           </div>

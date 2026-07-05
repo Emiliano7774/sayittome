@@ -66,17 +66,47 @@ import {
   refreshStoriesIndex,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
+import { markShuffleHydrated } from "@/hooks/useShuffleReady";
+
+function readInitialShuffleState() {
+  const cachedProfiles = readCachedShufflePool() ?? [];
+  const cachedStats = readCachedShuffleStats();
+  const visible = getVisibleShuffleProfiles();
+  const hasContent = cachedProfiles.length > 0 || visible.length > 0;
+
+  return {
+    cachedProfiles,
+    cachedStats,
+    loading: !hasContent,
+    listReady: hasContent,
+    visibleCount: visible.length,
+  };
+}
 
 export function useShufflePool() {
   const router = useRouter();
+  const initialShuffleRef = useRef<ReturnType<typeof readInitialShuffleState> | null>(null);
+  if (!initialShuffleRef.current) {
+    initialShuffleRef.current = readInitialShuffleState();
+  }
+  const initialShuffle = initialShuffleRef.current;
+
   const [search, setSearch] = useState("");
-  const [totalLive, setTotalLive] = useState(0);
-  const [profilesCreated, setProfilesCreated] = useState(0);
-  const [anonymousOnline, setAnonymousOnline] = useState(0);
-  const [livePeopleCount, setLivePeopleCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [totalLive, setTotalLive] = useState(
+    () => initialShuffle.cachedStats?.totalLive ?? 0,
+  );
+  const [profilesCreated, setProfilesCreated] = useState(
+    () => initialShuffle.cachedStats?.profilesCreated ?? 0,
+  );
+  const [anonymousOnline, setAnonymousOnline] = useState(
+    () => initialShuffle.cachedStats?.anonymousOnline ?? 0,
+  );
+  const [livePeopleCount, setLivePeopleCount] = useState(
+    () => initialShuffle.cachedStats?.totalLive ?? 0,
+  );
+  const [loading, setLoading] = useState(() => initialShuffle.loading);
   const [errorText, setErrorText] = useState("");
-  const [listReady, setListReady] = useState(false);
+  const [listReady, setListReady] = useState(() => initialShuffle.listReady);
   const [filters, setFiltersState] = useState<ShuffleFilters>(() => loadStoredShuffleFilters());
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filteredCount, setFilteredCount] = useState(0);
@@ -85,9 +115,13 @@ export function useShufflePool() {
   const filtersRef = useRef<ShuffleFilters>(loadStoredShuffleFilters());
   const searchRef = useRef("");
   const storyOwnerUidsRef = useRef<Set<string>>(new Set());
-  const poolRef = useRef<ShuffleProfile[]>([]);
-  const activePoolRef = useRef<ShuffleProfile[]>([]);
-  const totalLiveRef = useRef(0);
+  const poolRef = useRef<ShuffleProfile[]>(
+    initialShuffle.cachedProfiles.length > 0
+      ? dedupeShuffleProfiles(initialShuffle.cachedProfiles)
+      : [],
+  );
+  const activePoolRef = useRef<ShuffleProfile[]>(poolRef.current);
+  const totalLiveRef = useRef(initialShuffle.cachedStats?.totalLive ?? 0);
   const requestSeqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const searchTimerRef = useRef<number | null>(null);
@@ -293,6 +327,7 @@ export function useShufflePool() {
       );
       warmShuffleImages(shownProfiles, SHUFFLE_WINDOW_SIZE, { urgent: forceReplace });
       setListReady(true);
+      markShuffleHydrated(shownProfiles.length);
     },
     [],
   );
@@ -689,6 +724,10 @@ export function useShufflePool() {
     mountedRef.current = true;
     attachShuffleProfilerWindow();
     releaseChatViewportLock();
+
+    if (initialShuffle.listReady) {
+      markShuffleHydrated(initialShuffle.visibleCount);
+    }
 
     const loadingSafety = window.setTimeout(() => {
       if (mountedRef.current) setLoading(false);
