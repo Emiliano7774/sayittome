@@ -3,6 +3,7 @@
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
+import { maybePinShuffleKeepAliveFromPath } from "@/lib/navigation/shuffleKeepAlive";
 import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
 
 function normalizeChatHref(href: string) {
@@ -11,6 +12,10 @@ function normalizeChatHref(href: string) {
 }
 
 export function fastRouterPush(router: AppRouterInstance, href: string) {
+  if (typeof window !== "undefined") {
+    maybePinShuffleKeepAliveFromPath(window.location.pathname);
+  }
+
   if (normalizeChatHref(href)) {
     recordPathBeforeChatOpen();
   }

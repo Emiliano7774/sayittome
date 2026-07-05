@@ -281,6 +281,16 @@ body.sayittome-chat-open {
   overscroll-behavior: none;
 }
 
+.sayittome-shuffle-keepalive-frozen {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
 .sayittome-chat-shell {
   position: fixed;
   left: 0;
@@ -294,6 +304,7 @@ body.sayittome-chat-open {
   flex-direction: column;
   background: #000;
   touch-action: manipulation;
+  z-index: 40;
 }
 
 .sayittome-chat-composer {

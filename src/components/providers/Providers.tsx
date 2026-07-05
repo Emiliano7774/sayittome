@@ -17,6 +17,7 @@ import StoriesBootstrap from "@/components/stories/StoriesBootstrap";
 import SensitiveConsentBootstrap from "@/components/moderation/SensitiveConsentBootstrap";
 import AnonMatchBootstrap from "@/components/anonMatch/AnonMatchBootstrap";
 import ChatNotificationPrompt from "@/components/chat/ChatNotificationPrompt";
+import ShuffleKeepAliveHost from "@/components/shuffle/ShuffleKeepAliveHost";
 
 export default function Providers({
   children,
@@ -41,6 +42,7 @@ export default function Providers({
           <AnonMatchBootstrap />
           <BoostBootstrap />
           <ChatNotificationPrompt />
+          <ShuffleKeepAliveHost />
           {children}
           </ChatAlertsProvider>
         </UxModeProvider>

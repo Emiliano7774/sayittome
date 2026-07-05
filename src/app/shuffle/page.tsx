@@ -1,17 +1,25 @@
 "use client";
 
-import { useUxMode } from "@/contexts/UxModeContext";
-import ShuffleLegalGate from "@/components/legal/ShuffleLegalGate";
+import { useSyncExternalStore } from "react";
 
-import ShuffleClient from "./shuffle-client";
-import ModernShuffleClient from "./modern-shuffle-client";
+import {
+  getShuffleKeepAliveVersion,
+  isShuffleKeepAliveActive,
+  subscribeShuffleKeepAlive,
+} from "@/lib/navigation/shuffleKeepAlive";
+
+import ShuffleRouteContent from "./ShuffleRouteContent";
 
 export default function ShufflePage() {
-  const { uxMode } = useUxMode();
-
-  return (
-    <ShuffleLegalGate>
-      {uxMode === "modern" ? <ModernShuffleClient /> : <ShuffleClient />}
-    </ShuffleLegalGate>
+  useSyncExternalStore(
+    subscribeShuffleKeepAlive,
+    getShuffleKeepAliveVersion,
+    getShuffleKeepAliveVersion,
   );
+
+  if (isShuffleKeepAliveActive()) {
+    return null;
+  }
+
+  return <ShuffleRouteContent />;
 }
