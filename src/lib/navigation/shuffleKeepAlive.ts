@@ -1,4 +1,5 @@
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
+import { pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 
 function normalizePath(pathname: string) {
@@ -34,6 +35,7 @@ export function isShuffleKeepAliveActive() {
 export function pinShuffleKeepAlive() {
   if (keepAliveActive) return;
   keepAliveActive = true;
+  pinMainTabKeepAlive();
   notifyKeepAliveListeners();
 }
 

@@ -1,3 +1,4 @@
+import { markStoriesHydrated } from "@/hooks/useStoriesReady";
 import { fetchActiveStoriesGrouped } from "@/lib/stories/fetchStories";
 import { preloadStoryGroup } from "@/lib/stories/preload";
 import {
@@ -111,6 +112,9 @@ const listeners = new Set<() => void>();
 
 function notify() {
   version += 1;
+  if (cachedGroups.length > 0) {
+    markStoriesHydrated(cachedGroups.length);
+  }
   listeners.forEach((listener) => listener());
 }
 

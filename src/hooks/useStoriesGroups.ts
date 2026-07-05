@@ -11,11 +11,19 @@ import {
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import type { StoryUserGroup } from "@/lib/stories/types";
+import {
+  hasStoriesEverHydrated,
+  markStoriesHydrated,
+  shouldShowStoriesLoading,
+} from "@/hooks/useStoriesReady";
 
 export function useStoriesGroups() {
-  const [groups, setGroups] = useState<StoryUserGroup[]>(() => getCachedStoryGroups());
+  const initialGroups = getCachedStoryGroups();
+  const [groups, setGroups] = useState<StoryUserGroup[]>(() => initialGroups);
   const [viewerUid, setViewerUid] = useState("");
-  const [loading, setLoading] = useState(() => getCachedStoryGroups().length === 0);
+  const [loading, setLoading] = useState(
+    () => !hasStoriesEverHydrated() && initialGroups.length === 0,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -24,13 +32,22 @@ export function useStoriesGroups() {
       if (cancelled) return;
       const cached = getCachedStoryGroups();
       setGroups(cached);
-      if (cached.length > 0) setLoading(false);
+      if (cached.length > 0) {
+        markStoriesHydrated(cached.length);
+        setLoading(false);
+      }
+    });
+
+    const viewerId = resolveStoryViewerId(auth.currentUser);
+    setViewerUid(viewerId);
+    void refreshStoriesIndex(viewerId).finally(() => {
+      if (!cancelled) setLoading(false);
     });
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
-      const uid = resolveStoryViewerId(user);
-      setViewerUid(uid);
-      void refreshStoriesIndex(uid).finally(() => {
+      const nextViewerId = resolveStoryViewerId(user);
+      setViewerUid(nextViewerId);
+      void refreshStoriesIndex(nextViewerId).finally(() => {
         if (!cancelled) setLoading(false);
       });
     });
@@ -42,5 +59,10 @@ export function useStoriesGroups() {
     };
   }, []);
 
-  return { groups, viewerUid, loading };
+  const showLoading = shouldShowStoriesLoading({
+    loading,
+    groupCount: groups.length,
+  });
+
+  return { groups, viewerUid, loading: showLoading };
 }

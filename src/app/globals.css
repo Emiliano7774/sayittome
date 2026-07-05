@@ -281,6 +281,23 @@ body.sayittome-chat-open {
   overscroll-behavior: none;
 }
 
+.sayittome-main-tab-keepalive-frozen {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  overscroll-behavior: none;
+  contain: strict;
+  visibility: hidden;
+}
+
+.sayittome-main-tab-keepalive-visible {
+  position: relative;
+  z-index: auto;
+  visibility: visible;
+}
+
 .sayittome-shuffle-keepalive-frozen {
   position: fixed;
   inset: 0;

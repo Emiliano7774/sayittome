@@ -60,9 +60,24 @@ function StoryUserPageInner() {
       setLoading(false);
     }
 
+    const viewerId = resolveStoryViewerId(auth.currentUser);
+    void refreshStoriesIndex(viewerId).then(() => {
+      if (cancelled) return;
+
+      const group = getStoryGroup(param, param);
+      if (group) {
+        setStories(group.stories);
+        setOwnerUsername(group.ownerUsername);
+        preloadStoryGroup(group, 3);
+      }
+      setLoading(false);
+    });
+
     const unsub = onAuthStateChanged(auth, (user) => {
-      const viewerId = resolveStoryViewerId(user);
-      void refreshStoriesIndex(viewerId).then(() => {
+      const nextViewerId = resolveStoryViewerId(user);
+      if (nextViewerId === viewerId) return;
+
+      void refreshStoriesIndex(nextViewerId).then(() => {
         if (cancelled) return;
 
         const group = getStoryGroup(param, param);
@@ -81,7 +96,7 @@ function StoryUserPageInner() {
     };
   }, [param]);
 
-  if (loading) {
+  if (loading && stories.length === 0) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-white">
         <p className="text-2xl font-black text-white/40">Abriendo historia...</p>
@@ -109,13 +124,7 @@ function StoryUserPageInner() {
 
 export default function StoryUserPage() {
   return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-screen items-center justify-center bg-black text-white">
-          <p className="text-2xl font-black text-white/40">Abriendo historia...</p>
-        </main>
-      }
-    >
+    <Suspense fallback={null}>
       <StoryUserPageInner />
     </Suspense>
   );

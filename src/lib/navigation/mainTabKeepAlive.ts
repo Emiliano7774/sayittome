@@ -1,0 +1,58 @@
+import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
+
+function normalizePath(pathname: string) {
+  const path = String(pathname || "/").split("?")[0].split("#")[0];
+  if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
+  return path || "/";
+}
+
+let keepAliveActive = false;
+let keepAliveVersion = 0;
+const listeners = new Set<() => void>();
+
+function notifyListeners() {
+  keepAliveVersion += 1;
+  listeners.forEach((listener) => listener());
+}
+
+export function subscribeMainTabKeepAlive(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function getMainTabKeepAliveVersion() {
+  return keepAliveVersion;
+}
+
+export function isMainTabKeepAliveActive() {
+  return keepAliveActive;
+}
+
+/** Pin main-tab panels after the first in-app tab visit so switches stay mounted. */
+export function pinMainTabKeepAlive() {
+  if (keepAliveActive) return;
+  keepAliveActive = true;
+  notifyListeners();
+}
+
+export function shouldRenderMainTabKeepAliveHost(pathname: string) {
+  const path = normalizePath(pathname);
+
+  if (!keepAliveActive) {
+    return (MAIN_TAB_HREFS as readonly string[]).includes(path);
+  }
+
+  if ((MAIN_TAB_HREFS as readonly string[]).includes(path)) return true;
+  if (path === "/shuffle") return true;
+  if (path.startsWith("/chat/")) return true;
+  if (path.startsWith("/u/")) return true;
+  return false;
+}
+
+export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
+  return normalizePath(pathname) === href;
+}
+
+export function listMainTabKeepAliveHrefs() {
+  return MAIN_TAB_HREFS;
+}

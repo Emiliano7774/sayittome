@@ -44,7 +44,7 @@ export function shouldEnableChatNotificationListeners(
   return true;
 }
 
-/** Stories index polling only on routes that render story UI. */
+/** Warm stories index on all in-app main routes, not only the stories screen. */
 export function shouldEnableStoriesRefresh(pathname: string) {
   if (!pathname || pathname === "/") return false;
   if (isBlockedRoute(pathname)) return false;
@@ -52,6 +52,13 @@ export function shouldEnableStoriesRefresh(pathname: string) {
   return (
     pathname === "/shuffle" ||
     pathname === "/stories" ||
-    pathname.startsWith("/stories/")
+    pathname.startsWith("/stories/") ||
+    pathname === "/chats" ||
+    pathname.startsWith("/chat/") ||
+    pathname === "/boost" ||
+    pathname.startsWith("/boost/") ||
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/") ||
+    pathname.startsWith("/u/")
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { BookOpen, ChevronLeft, ChevronRight, Heart, MessageCircle, Users, X } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -9,6 +9,11 @@ import { logoutAndResetAnon } from "@/lib/auth/logout";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
+import { isMainTabRouteHandledByKeepAlive } from "@/components/navigation/MainTabKeepAliveHost";
+import {
+  getMainTabKeepAliveVersion,
+  subscribeMainTabKeepAlive,
+} from "@/lib/navigation/mainTabKeepAlive";
 import ProfileEntryGate from "@/components/profile/ProfileEntryGate";
 import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
@@ -39,7 +44,7 @@ type MediaItem = {
   type: "image" | "video";
 };
 
-export default function SettingsPage() {
+export function SettingsRouteContent() {
   const router = useRouter();
   const pathname = usePathname();
   const { uxMode } = useUxMode();
@@ -581,6 +586,22 @@ export default function SettingsPage() {
       )}
     </main>
   );
+}
+
+export default function SettingsPage() {
+  const pathname = usePathname();
+
+  useSyncExternalStore(
+    subscribeMainTabKeepAlive,
+    getMainTabKeepAliveVersion,
+    getMainTabKeepAliveVersion,
+  );
+
+  if (isMainTabRouteHandledByKeepAlive(pathname, "/settings")) {
+    return null;
+  }
+
+  return <SettingsRouteContent />;
 }
 
 

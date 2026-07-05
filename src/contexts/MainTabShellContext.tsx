@@ -11,7 +11,6 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 
-import MainTabShellPanels from "@/components/navigation/MainTabShellPanels";
 import {
   isMainTabHref,
   type MainTabHref,
@@ -21,7 +20,9 @@ import {
   OPEN_MAIN_TAB_EVENT,
 } from "@/lib/navigation/mainTabShellBridge";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
+import { pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
 import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
+import MainTabKeepAliveHost from "@/components/navigation/MainTabKeepAliveHost";
 
 type MainTabShellContextValue = {
   effectivePathname: string;
@@ -32,13 +33,13 @@ type MainTabShellContextValue = {
   activeShellTab: MainTabHref | null;
 };
 
-const MainTabShellContext = createContext<MainTabShellContextValue | null>(null);
-
 declare global {
   interface Window {
     __sayittomeActiveShellTab?: MainTabHref | null;
   }
 }
+
+const MainTabShellContext = createContext<MainTabShellContextValue | null>(null);
 
 export function MainTabShellProvider({
   children,
@@ -49,9 +50,7 @@ export function MainTabShellProvider({
 }) {
   const nextPathname = usePathname();
   const [shellTab, setShellTab] = useState<MainTabHref | null>(null);
-  const [shellMountedTabs, setShellMountedTabs] = useState<Set<MainTabHref>>(
-    () => new Set(),
-  );
+  const shellMountedTabs = useMemo(() => new Set<MainTabHref>(), []);
 
   useEffect(() => {
     if (isMainTabHref(nextPathname)) return;
@@ -75,12 +74,7 @@ export function MainTabShellProvider({
         return;
       }
 
-      setShellMountedTabs((prev) => {
-        if (prev.has(href)) return prev;
-        const next = new Set(prev);
-        next.add(href);
-        return next;
-      });
+      pinMainTabKeepAlive();
       recordNativeNavPath(href);
       releaseChatViewportLock();
       setShellTab(href);
@@ -139,7 +133,7 @@ export function MainTabShellProvider({
       >
         {children}
       </div>
-      <MainTabShellPanels />
+      <MainTabKeepAliveHost />
       {chrome}
     </MainTabShellContext.Provider>
   );
