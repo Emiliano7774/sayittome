@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   isMainTabHref,
@@ -49,6 +49,7 @@ export function MainTabShellProvider({
   chrome?: ReactNode;
 }) {
   const nextPathname = usePathname();
+  const router = useRouter();
   const [shellTab, setShellTab] = useState<MainTabHref | null>(null);
   const shellMountedTabs = useMemo(() => new Set<MainTabHref>(), []);
 
@@ -69,17 +70,14 @@ export function MainTabShellProvider({
 
   const openMainTab = useCallback(
     (href: MainTabHref) => {
-      if (href === nextPathname) {
-        setShellTab(null);
-        return;
-      }
-
+      setShellTab(null);
+      if (href === nextPathname) return;
       pinMainTabKeepAlive();
       recordNativeNavPath(href);
       releaseChatViewportLock();
-      setShellTab(href);
+      router.push(href);
     },
-    [nextPathname],
+    [nextPathname, router],
   );
 
   useEffect(() => {
@@ -127,7 +125,7 @@ export function MainTabShellProvider({
   return (
     <MainTabShellContext.Provider value={value}>
       <div
-        className={childrenHidden ? "sayittome-main-tab-route-hidden" : undefined}
+        className="sayittome-route-shell"
         hidden={childrenHidden}
         aria-hidden={childrenHidden}
       >
@@ -154,5 +152,6 @@ export function useEffectivePathname() {
 }
 
 export function useMainTabRouteActive(href: MainTabHref) {
-  return useEffectivePathname() === href;
+  const pathname = usePathname();
+  return pathname === href;
 }

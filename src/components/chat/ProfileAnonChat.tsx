@@ -85,8 +85,6 @@ import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
 import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
-import { isMainTabHref } from "@/lib/navigation/mainTabs";
-import { openMainTabFromBridge } from "@/lib/navigation/mainTabShellBridge";
 import {
   collection,
   doc,
@@ -407,9 +405,6 @@ export default function ProfileAnonChat({
   function goBackFromChat() {
     const dest = resolveChatBackDestination(pathname);
     fastRouterReplace(router, dest);
-    if (isMainTabHref(dest)) {
-      openMainTabFromBridge(dest);
-    }
   }
 
   function markOpenChatAsRead() {

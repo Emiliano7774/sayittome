@@ -22,8 +22,6 @@ import {
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
 import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
-import { openMainTabFromBridge } from "@/lib/navigation/mainTabShellBridge";
-import { isMainTabHref } from "@/lib/navigation/mainTabs";
 import { consumeProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 
 const HARDWARE_BACK_EVENT = "sayittomeHardwareBack";
@@ -45,22 +43,9 @@ function runNativeBackNavigation(
     if (currentPath.startsWith("/u/") && !currentPath.endsWith("/chat")) {
       consumeProfileReturnTo();
     }
-    if (currentPath.startsWith("/chat/")) {
-      if (isInstantShuffleReturnDestination(action.navigateTo!)) {
-        prepareInstantShuffleReturn();
-        router.replace(action.navigateTo!);
-      } else {
-        runNativeViewTransition(() => {
-          router.replace(action.navigateTo!);
-        });
-      }
-      if (isMainTabHref(action.navigateTo)) {
-        openMainTabFromBridge(action.navigateTo);
-      }
-      return;
-    }
-    if (isMainTabHref(action.navigateTo)) {
-      openMainTabFromBridge(action.navigateTo);
+    if (isInstantShuffleReturnDestination(action.navigateTo)) {
+      prepareInstantShuffleReturn();
+      router.replace(action.navigateTo);
       return;
     }
     runNativeViewTransition(() => {

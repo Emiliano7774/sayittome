@@ -1,10 +1,11 @@
 "use client";
 
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 
 import BottomNavLink from "@/components/navigation/BottomNavLink";
-import { useEffectivePathname, useMainTabShell } from "@/contexts/MainTabShellContext";
 import { useT } from "@/contexts/LocaleContext";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 
@@ -18,8 +19,8 @@ type Props = {
 };
 
 export default function ModernBottomNav({ unreadCount = 0 }: Props) {
-  const pathname = useEffectivePathname();
-  const { openMainTab } = useMainTabShell();
+  const pathname = usePathname();
+  const router = useRouter();
   const t = useT();
 
   const items: NavItem[] = [
@@ -35,7 +36,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
   }
 
   function openShuffleTab() {
-    openMainTab("/shuffle");
+    fastRouterPush(router, "/shuffle");
     window.setTimeout(() => triggerShuffleClick(), 80);
   }
 

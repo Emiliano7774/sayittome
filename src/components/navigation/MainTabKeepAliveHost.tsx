@@ -8,7 +8,6 @@ import { BoostRouteContent } from "@/app/boost/page";
 import { ChatsRouteContent } from "@/app/chats/page";
 import { SettingsRouteContent } from "@/app/settings/page";
 import { StoriesRouteContent } from "@/app/stories/page";
-import { useEffectivePathname } from "@/contexts/MainTabShellContext";
 import {
   getMainTabKeepAliveVersion,
   isMainTabPanelVisible,
@@ -28,7 +27,6 @@ const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
 
 export default function MainTabKeepAliveHost() {
   const pathname = usePathname();
-  const effectivePathname = useEffectivePathname();
 
   useSyncExternalStore(
     subscribeMainTabKeepAlive,
@@ -52,7 +50,7 @@ export default function MainTabKeepAliveHost() {
         .filter((href): href is Exclude<MainTabHref, "/shuffle"> => href !== "/shuffle")
         .map((href) => {
           const Panel = PANELS[href];
-          const visible = isMainTabPanelVisible(effectivePathname, href);
+          const visible = isMainTabPanelVisible(pathname, href);
 
           return (
             <div

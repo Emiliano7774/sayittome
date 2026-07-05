@@ -36,9 +36,7 @@ import {
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
-import { useMainTabShell } from "@/contexts/MainTabShellContext";
-import { isMainTabHref } from "@/lib/navigation/mainTabs";
-import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import {
   consumeProfileReturnTo,
   peekProfileReturnTo,
@@ -108,7 +106,6 @@ export default function ModernPublicProfile({
   onModerationTagChange,
 }: Props) {
   const router = useRouter();
-  const shell = useMainTabShell();
   const { locale } = useLocale();
   const t = useT();
   const formatLastSeen = useFormatLastSeen();
@@ -221,12 +218,8 @@ export default function ModernPublicProfile({
   const handleProfileBack = useCallback(() => {
     const returnTo = peekProfileReturnTo() || "/shuffle";
     consumeProfileReturnTo();
-    if (isMainTabHref(returnTo)) {
-      shell?.openMainTab(returnTo);
-      return;
-    }
-    fastRouterPush(router, returnTo);
-  }, [router, shell]);
+    fastRouterReplace(router, returnTo);
+  }, [router]);
 
   const viewerSwipe = useHorizontalSwipe({
     enabled: viewerOpen && gallery.length > 1,
