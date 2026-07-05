@@ -24,6 +24,7 @@ import { uploadMedia } from "@/lib/media/upload";
 import {
   captureChatPhotoFromCamera,
   ensureChatCameraStreamPermission,
+  ensureChatMicrophonePermission,
   openNativeGalleryFilePicker,
   pickChatPhotoFromGallery,
 } from "@/lib/media/chatMediaCapture";
@@ -315,6 +316,11 @@ export default function ProfileAnonChat({
   const galleryRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioRecordingSessionRef = useRef(0);
+  const audioPreviewUrlRef = useRef("");
+  const imagePreviewUrlRef = useRef("");
+  const videoPreviewUrlRef = useRef("");
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -432,6 +438,14 @@ export default function ProfileAnonChat({
       document.body.classList.remove("sayittome-chat-fullscreen-open");
     };
   }, [fullscreenUrl]);
+
+  useEffect(() => {
+    return () => {
+      audioRecordingSessionRef.current += 1;
+      revokePreviewUrls();
+      resetAudioRecorder();
+    };
+  }, []);
 
   useEffect(() => {
     const onBack = () => setFullscreenUrl("");
@@ -982,7 +996,68 @@ export default function ProfileAnonChat({
     setRecording(false);
   }
 
+  function pickSupportedAudioMimeType() {
+    if (typeof MediaRecorder === "undefined") return "";
+
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/aac",
+      "audio/ogg;codecs=opus",
+    ];
+
+    for (const type of candidates) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        return type;
+      }
+    }
+
+    return "";
+  }
+
+  function revokePreviewUrls() {
+    if (audioPreviewUrlRef.current) {
+      URL.revokeObjectURL(audioPreviewUrlRef.current);
+      audioPreviewUrlRef.current = "";
+    }
+
+    if (imagePreviewUrlRef.current) {
+      URL.revokeObjectURL(imagePreviewUrlRef.current);
+      imagePreviewUrlRef.current = "";
+    }
+
+    if (videoPreviewUrlRef.current) {
+      URL.revokeObjectURL(videoPreviewUrlRef.current);
+      videoPreviewUrlRef.current = "";
+    }
+  }
+
+  function stopAudioStream() {
+    audioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    audioStreamRef.current = null;
+  }
+
+  function resetAudioRecorder() {
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+
+    if (recorder && recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+      } catch {
+        // Ignore stop races while cleaning up.
+      }
+    }
+
+    stopAudioStream();
+  }
+
   function clearPreview() {
+    audioRecordingSessionRef.current += 1;
+    revokePreviewUrls();
+    resetAudioRecorder();
     setAudioPreview("");
     setImagePreview("");
     setVideoPreview("");
@@ -991,6 +1066,7 @@ export default function ProfileAnonChat({
     setPendingSource(undefined);
     setUploadProgress(null);
     setViewOnce(false);
+    setRecording(false);
   }
 
   function handleFile(file: File | null, source: "camera" | "gallery") {
@@ -998,6 +1074,12 @@ export default function ProfileAnonChat({
 
     const isVideo = file.type.startsWith("video/");
     const url = URL.createObjectURL(file);
+    revokePreviewUrls();
+    if (isVideo) {
+      videoPreviewUrlRef.current = url;
+    } else {
+      imagePreviewUrlRef.current = url;
+    }
 
     setPendingBlob(file);
     setPendingType(isVideo ? "video" : "image");
@@ -1020,18 +1102,46 @@ export default function ProfileAnonChat({
   }
 
   async function startAudioRecording() {
-    const allowed = await ensureChatCameraStreamPermission(true);
+    if (recording || mediaRecorderRef.current) return;
+
+    const session = audioRecordingSessionRef.current + 1;
+    audioRecordingSessionRef.current = session;
+    setRecording(true);
+
+    const allowed = await ensureChatMicrophonePermission();
+    if (session !== audioRecordingSessionRef.current) return;
+
     if (!allowed) {
-      alert(t("chat_camera_fail"));
+      setRecording(false);
+      alert(t("chat_mic_fail"));
       return;
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (session !== audioRecordingSessionRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        setRecording(false);
+        return;
+      }
 
+      revokePreviewUrls();
+      setAudioPreview("");
+      setImagePreview("");
+      setVideoPreview("");
+      setPendingBlob(null);
+      setPendingType(null);
+      setPendingSource(undefined);
+      setUploadProgress(null);
+      setViewOnce(false);
+
+      audioStreamRef.current = stream;
       audioChunksRef.current = [];
 
-      const recorder = new MediaRecorder(stream);
+      const mimeType = pickSupportedAudioMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -1041,31 +1151,74 @@ export default function ProfileAnonChat({
       };
 
       recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
+        if (session !== audioRecordingSessionRef.current) {
+          resetAudioRecorder();
+          setRecording(false);
+          return;
+        }
 
+        const blob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || mimeType || "audio/webm",
+        });
+
+        resetAudioRecorder();
+        setRecording(false);
+
+        if (blob.size < 512) {
+          alert(t("chat_mic_fail"));
+          return;
+        }
+
+        revokePreviewUrls();
+        const url = URL.createObjectURL(blob);
+        audioPreviewUrlRef.current = url;
         setPendingBlob(blob);
         setPendingType("audio");
         setPendingSource("audio");
         setAudioPreview(url);
-        setRecording(false);
-
-        stream.getTracks().forEach((track) => track.stop());
       };
 
-      recorder.start();
-      setRecording(true);
+      recorder.onerror = () => {
+        if (session !== audioRecordingSessionRef.current) return;
+        resetAudioRecorder();
+        setRecording(false);
+        alert(t("chat_mic_fail"));
+      };
+
+      recorder.start(250);
     } catch {
-      alert(t("chat_mic_fail"));
+      if (session !== audioRecordingSessionRef.current) return;
+      resetAudioRecorder();
       setRecording(false);
+      alert(t("chat_mic_fail"));
     }
   }
 
   function stopAudioRecording() {
     const recorder = mediaRecorderRef.current;
 
-    if (recorder && recorder.state !== "inactive") {
+    if (!recorder) {
+      if (recording) {
+        audioRecordingSessionRef.current += 1;
+        resetAudioRecorder();
+        setRecording(false);
+      }
+      return;
+    }
+
+    if (recorder.state === "inactive") {
+      setRecording(false);
+      return;
+    }
+
+    try {
+      if (typeof recorder.requestData === "function") {
+        recorder.requestData();
+      }
       recorder.stop();
+    } catch {
+      resetAudioRecorder();
+      setRecording(false);
     }
   }
 
@@ -1612,7 +1765,15 @@ export default function ProfileAnonChat({
 
           {audioPreview || imagePreview || videoPreview ? (
             <div className={`${chatWidthClass} mb-4 rounded-[28px] bg-[#070707] p-4`}>
-              {audioPreview ? <audio controls src={audioPreview} className="w-full" /> : null}
+              {audioPreview ? (
+                <audio
+                  controls
+                  playsInline
+                  preload="metadata"
+                  src={audioPreview}
+                  className="w-full"
+                />
+              ) : null}
 
               {imagePreview ? (
                 viewOnce ? (
@@ -1665,14 +1826,22 @@ export default function ProfileAnonChat({
 
               <div className="mt-4 flex gap-3">
                 <button
-                  onClick={sendMedia}
+                  type="button"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    void sendMedia();
+                  }}
                   className="rounded-2xl bg-violet-500/80 px-5 py-3 text-lg font-bold"
                 >
                   Enviar
                 </button>
 
                 <button
-                  onClick={clearPreview}
+                  type="button"
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    clearPreview();
+                  }}
                   className="rounded-2xl bg-white/[0.07] px-5 py-3 text-lg"
                 >
                   Cancelar
@@ -1770,9 +1939,19 @@ export default function ProfileAnonChat({
 
             <button
               type="button"
-              onPointerDown={startAudioRecording}
-              onPointerUp={stopAudioRecording}
-              onPointerCancel={stopAudioRecording}
+              onMouseDown={(event) => event.preventDefault()}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                void startAudioRecording();
+              }}
+              onPointerUp={(event) => {
+                event.preventDefault();
+                stopAudioRecording();
+              }}
+              onPointerCancel={(event) => {
+                event.preventDefault();
+                stopAudioRecording();
+              }}
               className={[
                 "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border transition",
                 recording

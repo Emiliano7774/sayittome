@@ -128,6 +128,20 @@ export async function pickChatPhotoFromGallery(): Promise<ChatMediaCaptureResult
   }
 }
 
+export async function ensureChatMicrophonePermission() {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return false;
+  }
+
+  if (!isNativeShell()) {
+    return true;
+  }
+
+  // Native WebView prompts for RECORD_AUDIO via getUserMedia itself.
+  // Do not gate audio-only capture on the Capacitor Camera plugin.
+  return true;
+}
+
 export async function ensureChatCameraStreamPermission(includeAudio: boolean) {
   if (!isNativeShell()) return true;
 
@@ -136,7 +150,7 @@ export async function ensureChatCameraStreamPermission(includeAudio: boolean) {
 
   if (!includeAudio) return true;
 
-  return ensureChatMediaPermission("microphone");
+  return ensureChatMicrophonePermission();
 }
 
 export async function openNativeGalleryFilePicker(input: HTMLInputElement | null) {
