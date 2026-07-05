@@ -170,6 +170,40 @@ export function firestoreMessageAuthorId(data: ProfileAnonFirestoreMessage) {
   return String(data.fromUid || data.ownerId || data.senderUid || "").trim();
 }
 
+export function resolveFirestoreMessageType(
+  data: ProfileAnonFirestoreMessage & { mediaType?: string },
+): ProfileAnonFirestoreMessage["type"] | undefined {
+  const explicit = data.type;
+  if (
+    explicit === "text" ||
+    explicit === "audio" ||
+    explicit === "image" ||
+    explicit === "video"
+  ) {
+    return explicit;
+  }
+
+  const legacy = String(data.mediaType || "").trim();
+  if (legacy === "image" || legacy === "video" || legacy === "audio") {
+    return legacy;
+  }
+
+  if (data.mediaUrl) {
+    if (data.source === "audio") return "audio";
+    const url = data.mediaUrl.toLowerCase();
+    if (/\.(mp4|webm|mov|m4v)(\?|#|$)/.test(url)) return "video";
+    if (/\.(mp3|wav|ogg|aac|m4a)(\?|#|$)/.test(url)) return "audio";
+    return "image";
+  }
+
+  if (data.source === "audio") return "audio";
+  if (data.source === "camera" || data.source === "gallery") {
+    return "image";
+  }
+
+  return undefined;
+}
+
 export function mapFirestoreDocToProfileAnonMessage(
   docId: string,
   data: ProfileAnonFirestoreMessage,
@@ -200,15 +234,19 @@ export function mapFirestoreDocToProfileAnonMessage(
     ownerUid: ctx.currentUid,
   });
 
+  const resolvedType = resolveFirestoreMessageType(data);
+  const displayText =
+    resolvedType && resolvedType !== "text" ? "" : String(data.texto || data.text || "");
+
   return {
     id: docId,
-    text: String(data.texto || data.text || ""),
+    text: displayText,
     mine,
     fromUid: from || undefined,
     senderKind: resolvedSenderKind,
     reply: data.reply ? String(data.reply) : undefined,
     storyReply: data.storyReply,
-    type: data.type,
+    type: resolvedType,
     mediaUrl: mediaUrl || undefined,
     source: data.source,
     viewOnce: data.viewOnce === true,

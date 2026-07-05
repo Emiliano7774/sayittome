@@ -13,6 +13,7 @@ import {
 } from "@/lib/chat/chatMessageCache";
 import {
   firestoreMessageAuthorId,
+  resolveFirestoreMessageType,
   resolveProfileAnonSenderKind,
 } from "@/lib/chat/profileAnonMessageAuthor";
 import { db } from "@/lib/firebase";
@@ -44,7 +45,7 @@ function mapDocToCached(
     fromUid: from || undefined,
     senderKind: senderKind === "unknown" ? undefined : senderKind,
     reply: data.reply ? String(data.reply) : undefined,
-    type: data.type as CachedChatMessage["type"],
+    type: resolveFirestoreMessageType(data as Parameters<typeof resolveFirestoreMessageType>[0]),
     mediaUrl: mediaUrl || undefined,
     source: data.source as CachedChatMessage["source"],
     viewOnce: data.viewOnce === true,

@@ -11,6 +11,7 @@ export async function uploadMedia(
   onProgress?: (
     pct: number,
   ) => void,
+  contentType?: string,
 ) {
   const storage =
     getStorage();
@@ -24,6 +25,7 @@ export async function uploadMedia(
     uploadBytesResumable(
       storageRef,
       file,
+      contentType ? { contentType } : undefined,
     );
 
   await new Promise<void>(
@@ -52,5 +54,30 @@ export async function uploadMedia(
 
   return getDownloadURL(
     storageRef,
+  );
+}
+
+export async function uploadChatMessageMedia(
+  chatId: string,
+  clientId: string,
+  file: Blob,
+  kind: "image" | "video" | "audio",
+  onProgress?: (pct: number) => void,
+) {
+  const ext =
+    kind === "audio" ? "webm" : kind === "video" ? "mp4" : "jpg";
+  const contentType =
+    file.type ||
+    (kind === "audio"
+      ? "audio/webm"
+      : kind === "video"
+        ? "video/mp4"
+        : "image/jpeg");
+
+  return uploadMedia(
+    `chats/${chatId}/${clientId}_${ext}`,
+    file,
+    onProgress,
+    contentType,
   );
 }

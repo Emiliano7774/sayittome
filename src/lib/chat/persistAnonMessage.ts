@@ -26,6 +26,8 @@ type PersistAnonMessageInput = {
   targetUid: string;
   targetPhoto: string;
   messageText: string;
+  /** Inbox preview line; defaults to messageText. For media, keep messageText empty. */
+  lastMessagePreview?: string;
   /** Skip the pre-write chat read when the open thread already has metadata. */
   existingChatData?: Record<string, unknown>;
   reply?: string;
@@ -90,6 +92,9 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     source,
     viewOnce,
   } = input;
+
+  const storedText = type === "text" ? messageText : "";
+  const lastMessagePreview = input.lastMessagePreview ?? messageText;
 
   const isOwnerReply = Boolean(
     currentUid && targetUid && currentUid === targetUid,
@@ -159,7 +164,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     schemaVersion: 2,
     targetPhoto: targetPhoto || null,
     ...buildOutgoingChatMetaPatch(messageAuthorId, unreadRecipients, {
-      lastMessage: messageText,
+      lastMessage: lastMessagePreview,
       lastMessageSender: messageAuthorId,
     }),
   };
@@ -168,8 +173,8 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
 
   const messageRef = doc(collection(db, "chats", chatId, "mensajes"));
   const messagePayload = {
-    texto: messageText,
-    text: messageText,
+    texto: storedText,
+    text: storedText,
     createdAt: serverTimestamp(),
     fromUid: messageAuthorId,
     ownerId: messageAuthorId,
@@ -214,7 +219,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     initiatorUid: currentUid || undefined,
     anonOwnerUid: targetUid || undefined,
     anonSessionId,
-    lastMessage: messageText,
+    lastMessage: lastMessagePreview,
     lastMessageSender: messageAuthorId,
     anon: true,
     senderIsAnonymous: !isOwnerReply,

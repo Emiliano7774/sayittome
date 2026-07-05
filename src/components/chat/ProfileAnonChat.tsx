@@ -20,7 +20,7 @@ import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import AudioWave from "@/components/chat/media/AudioWave";
 import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
-import { uploadMedia } from "@/lib/media/upload";
+import { uploadChatMessageMedia } from "@/lib/media/upload";
 import {
   captureChatPhotoFromCamera,
   ensureChatCameraStreamPermission,
@@ -66,7 +66,7 @@ import {
   formatAnonSessionLabel,
 } from "@/lib/chat/inboxPeerTitle";
 import { messageRequiresBlur, profilePhotoRequiresBlur } from "@/lib/moderation/blur";
-import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
+import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
 import { getCachedProfile, setCachedProfile, getCachedFullProfile } from "@/lib/profile/profileCache";
 import {
@@ -795,7 +795,9 @@ export default function ProfileAnonChat({
           .filter((row): row is Message => row !== null);
 
         setMessages((prev) => {
-          const pending = prev.filter((message) => message.status === "sending");
+          const pending = prev.filter(
+            (message) => message.status === "sending" || message.status === "error",
+          );
           const merged = mergeLoadedChatMessages(loaded, pending);
           if (chatMessagesSignature(prev) === chatMessagesSignature(merged)) {
             return prev;
@@ -1084,6 +1086,7 @@ export default function ProfileAnonChat({
     setPendingBlob(file);
     setPendingType(isVideo ? "video" : "image");
     setPendingSource(source);
+    setViewOnce(source === "camera" ? viewOnce : false);
     setImagePreview(isVideo ? "" : url);
     setVideoPreview(isVideo ? url : "");
   }
@@ -1237,19 +1240,21 @@ export default function ProfileAnonChat({
     const clientId = crypto.randomUUID();
     const previewType = pendingType;
     const previewSource = pendingSource;
-    const previewViewOnce = viewOnce;
+    const previewViewOnce = previewSource === "camera" ? viewOnce : false;
     const blob = pendingBlob;
+    const localPreviewUrl = URL.createObjectURL(blob);
 
     setMessages((old) => [
       ...old,
       {
         id: clientId,
         clientId,
-        text: previewType === "audio" ? t("chat_media_audio") : "",
+        text: "",
         mine: true,
         fromUid: isOwnerViewing ? profileReplyAuthorId(profileUid || chatOwnerUid) : senderId,
         senderKind: isOwnerViewing ? "profile" : "anon",
         type: previewType,
+        mediaUrl: localPreviewUrl,
         source: previewSource,
         viewOnce: previewViewOnce,
         status: "sending",
@@ -1264,18 +1269,28 @@ export default function ProfileAnonChat({
         previewType,
         { type: blob.type || (previewType === "video" ? "video/webm" : "image/jpeg") },
       );
-      const scanFields = firestoreScanFields(await scanUploadFile(scanFile));
+      const scanResult = await scanUploadFile(scanFile);
 
-      const url = await uploadMedia(
-        `chat_media/${Date.now()}`,
+      const url = await uploadChatMessageMedia(
+        chatId,
+        clientId,
         blob,
+        previewType,
         (pct) => setUploadProgress(pct),
       );
+
+      URL.revokeObjectURL(localPreviewUrl);
 
       setMessages((old) =>
         old.map((message) =>
           message.clientId === clientId
-            ? { ...message, mediaUrl: url, status: undefined }
+            ? {
+                ...message,
+                mediaUrl: url,
+                autoModerationRequiresBlur: scanResult.requiresBlur,
+                moderationRequiresBlur: scanResult.requiresBlur,
+                status: undefined,
+              }
             : message,
         ),
       );
@@ -1287,17 +1302,12 @@ export default function ProfileAnonChat({
         currentUid,
         targetUid: profileUid || chatOwnerUid,
         targetPhoto,
-        messageText:
-          previewType === "audio"
-            ? t("chat_media_audio")
-            : previewType === "video"
-              ? t("chat_media_camera_video")
-              : t("chat_media_gallery_photo"),
+        messageText: "",
+        lastMessagePreview: mediaLastMessageLabel(previewType, previewSource),
         type: previewType,
         mediaUrl: url,
         source: previewSource,
         viewOnce: previewViewOnce,
-        ...scanFields,
         existingChatData: chatDocDataRef.current,
       });
 
@@ -1305,12 +1315,14 @@ export default function ProfileAnonChat({
       setUploadProgress(null);
     } catch (e) {
       console.error(e);
+      URL.revokeObjectURL(localPreviewUrl);
       setMessages((old) =>
         old.map((message) =>
           message.clientId === clientId ? { ...message, status: "error" } : message,
         ),
       );
-      alert(t("chat_save_fail"));
+      const code = String((e as { code?: string }).code || "");
+      alert(code.includes("storage") ? t("chat_upload_fail") : t("chat_save_fail"));
     }
   }
 
@@ -1408,6 +1420,21 @@ export default function ProfileAnonChat({
         );
         alert(t("chat_save_fail"));
       });
+  }
+
+  function mediaLastMessageLabel(
+    type: NonNullable<Message["type"]>,
+    source?: Message["source"],
+  ) {
+    if (type === "audio") return t("chat_media_audio");
+    if (type === "video") {
+      return source === "camera"
+        ? t("chat_media_camera_video")
+        : t("chat_media_gallery_video");
+    }
+    return source === "camera"
+      ? t("chat_media_camera_photo")
+      : t("chat_media_gallery_photo");
   }
 
   function sourceLabel(message: Message) {
@@ -1776,7 +1803,7 @@ export default function ProfileAnonChat({
               ) : null}
 
               {imagePreview ? (
-                viewOnce ? (
+                pendingSource === "camera" && viewOnce ? (
                   <div className="flex min-h-[180px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
                     <Bomb size={44} />
                     <p className="mt-3 text-xl font-black">Bomba activada</p>
@@ -1788,7 +1815,7 @@ export default function ProfileAnonChat({
               ) : null}
 
               {videoPreview ? (
-                viewOnce ? (
+                pendingSource === "camera" && viewOnce ? (
                   <div className="flex min-h-[180px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
                     <Bomb size={44} />
                     <p className="mt-3 text-xl font-black">Bomba activada</p>
@@ -1799,21 +1826,23 @@ export default function ProfileAnonChat({
                 )
               ) : null}
 
-              <button
-                type="button"
-                onClick={() => setViewOnce((v) => !v)}
-                className={[
-                  "mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition",
-                  viewOnce
-                    ? "border-orange-400/40 bg-orange-500/15 text-orange-300"
-                    : "border-white/10 bg-white/[0.04] text-white/60",
-                ].join(" ")}
-              >
-                <Bomb size={18} />
-                {viewOnce
-                  ? "Bomba activada: se vera una sola vez"
-                  : "Activar bomba: ver una sola vez"}
-              </button>
+              {pendingSource === "camera" ? (
+                <button
+                  type="button"
+                  onClick={() => setViewOnce((v) => !v)}
+                  className={[
+                    "mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition",
+                    viewOnce
+                      ? "border-orange-400/40 bg-orange-500/15 text-orange-300"
+                      : "border-white/10 bg-white/[0.04] text-white/60",
+                  ].join(" ")}
+                >
+                  <Bomb size={18} />
+                  {viewOnce
+                    ? "Bomba activada: se vera una sola vez"
+                    : "Activar bomba: ver una sola vez"}
+                </button>
+              ) : null}
 
               {uploadProgress !== null ? (
                 <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/30">
