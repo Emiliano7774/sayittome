@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 
 import {
@@ -68,6 +68,7 @@ import {
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import { markShuffleHydrated, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
+import { isShuffleFeedFrozen } from "@/lib/navigation/shuffleKeepAlive";
 
 function readInitialShuffleState() {
   const cachedProfiles = readCachedShufflePool() ?? [];
@@ -86,6 +87,10 @@ function readInitialShuffleState() {
 
 export function useShufflePool() {
   const router = useRouter();
+  const pathname = usePathname();
+  const shuffleFeedFrozen = isShuffleFeedFrozen(pathname);
+  const shuffleFeedFrozenRef = useRef(shuffleFeedFrozen);
+  shuffleFeedFrozenRef.current = shuffleFeedFrozen;
   const initialShuffleRef = useRef<ReturnType<typeof readInitialShuffleState> | null>(null);
   if (!initialShuffleRef.current) {
     initialShuffleRef.current = readInitialShuffleState();
@@ -335,7 +340,7 @@ export function useShufflePool() {
 
   useEffect(() => {
     return subscribeShuffleExclude(() => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || shuffleFeedFrozenRef.current) return;
       const pool = activePoolRef.current;
       if (pool.length > 0 || featuredRef.current.length > 0) {
         applyWindowFromPool(refreshPoolPresence(pool));
@@ -365,6 +370,10 @@ export function useShufflePool() {
       nextFilters = filtersRef.current,
       options?: { forceWindow?: boolean },
     ) => {
+      if (shuffleFeedFrozenRef.current && options?.forceWindow !== true) {
+        return;
+      }
+
       const forceWindow = options?.forceWindow === true;
       const q = needle.trim();
       const storyOwnerUids = storyOwnerUidsRef.current;
@@ -480,9 +489,13 @@ export function useShufflePool() {
             anonymousOnline,
             totalLive: total > 0 ? total : profilesCreated + anonymousOnline,
           });
-          filterActivePool(q, filtersRef.current);
+          if (!shuffleFeedFrozenRef.current) {
+            filterActivePool(q, filtersRef.current);
+          }
         } else if (poolRef.current.length > 0) {
-          filterActivePool(q, filtersRef.current);
+          if (!shuffleFeedFrozenRef.current) {
+            filterActivePool(q, filtersRef.current);
+          }
         } else {
           activePoolRef.current = [];
           setFilteredCount(0);
@@ -727,7 +740,7 @@ export function useShufflePool() {
       markShuffleHydrated(initialShuffle.visibleCount);
     }
 
-    if (poolRef.current.length > 0) {
+    if (poolRef.current.length > 0 && getVisibleShuffleProfiles().length === 0) {
       filterActivePool("", filtersRef.current);
     }
   }, [filterActivePool]);
@@ -750,7 +763,9 @@ export function useShufflePool() {
 
     if (cachedProfiles?.length) {
       applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
-      filterActivePool("", filtersRef.current);
+      if (getVisibleShuffleProfiles().length === 0) {
+        filterActivePool("", filtersRef.current);
+      }
     }
 
     if (cachedStats) {
@@ -770,7 +785,9 @@ export function useShufflePool() {
             storyOwnerUidsRef.current = new Set(
               getCachedStoryGroups().map((group) => group.ownerUid),
             );
-            filterActivePool(search, filtersRef.current);
+            if (!shuffleFeedFrozenRef.current) {
+              filterActivePool(search, filtersRef.current);
+            }
           })
           .catch(() => {});
       if (typeof requestIdleCallback === "function") {

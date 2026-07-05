@@ -1,25 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-
-import {
-  getShuffleKeepAliveVersion,
-  isShuffleKeepAliveActive,
-  subscribeShuffleKeepAlive,
-} from "@/lib/navigation/shuffleKeepAlive";
-
-import ShuffleRouteContent from "./ShuffleRouteContent";
-
+/** Shuffle UI lives in ShuffleKeepAliveHost so the feed survives chat/profile overlays. */
 export default function ShufflePage() {
-  useSyncExternalStore(
-    subscribeShuffleKeepAlive,
-    getShuffleKeepAliveVersion,
-    getShuffleKeepAliveVersion,
-  );
-
-  if (isShuffleKeepAliveActive()) {
-    return null;
-  }
-
-  return <ShuffleRouteContent />;
+  return null;
 }

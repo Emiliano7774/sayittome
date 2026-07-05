@@ -42,10 +42,10 @@ export function maybePinShuffleKeepAliveFromPath(pathname: string) {
 }
 
 export function shouldRenderShuffleKeepAliveHost(pathname: string) {
-  if (!keepAliveActive) return false;
-
   const path = normalizePath(pathname);
   if (path === "/shuffle") return true;
+  if (!keepAliveActive) return false;
+
   if (path.startsWith("/chat/")) return true;
   if (path.startsWith("/u/")) return true;
   return false;
@@ -53,6 +53,11 @@ export function shouldRenderShuffleKeepAliveHost(pathname: string) {
 
 export function isShuffleKeepAliveVisible(pathname: string) {
   return normalizePath(pathname) === "/shuffle";
+}
+
+/** True while the pinned shuffle feed sits under chat/profile and must not reshuffle. */
+export function isShuffleFeedFrozen(pathname: string) {
+  return keepAliveActive && !isShuffleKeepAliveVisible(pathname);
 }
 
 export function isInstantShuffleReturnDestination(pathname: string) {

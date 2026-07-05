@@ -8,6 +8,7 @@ import {
   clearInstantShuffleReturn,
   getShuffleKeepAliveVersion,
   isShuffleKeepAliveVisible,
+  pinShuffleKeepAlive,
   shouldRenderShuffleKeepAliveHost,
   subscribeShuffleKeepAlive,
 } from "@/lib/navigation/shuffleKeepAlive";
@@ -22,6 +23,10 @@ export default function ShuffleKeepAliveHost() {
   );
 
   const visible = isShuffleKeepAliveVisible(pathname);
+
+  useEffect(() => {
+    pinShuffleKeepAlive();
+  }, []);
 
   useEffect(() => {
     if (visible) {
