@@ -302,6 +302,26 @@ html.sayittome-shuffle-return-pending ::view-transition-group(root) {
   animation: none !important;
 }
 
+html.sayittome-shuffle-return-pending,
+html.sayittome-shuffle-return-pending body {
+  background: #000;
+}
+
+html.sayittome-shuffle-return-pending .sayittome-chat-shell {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html.sayittome-shuffle-return-pending #sayittome-shuffle-keepalive-host {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: auto;
+  overflow: hidden;
+  overscroll-behavior: none;
+  contain: none;
+}
+
 .sayittome-chat-shell {
   position: fixed;
   left: 0;

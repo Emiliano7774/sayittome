@@ -1,12 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
 import {
   clearInstantShuffleReturn,
   getShuffleKeepAliveVersion,
+  isInstantShuffleReturnPending,
   isShuffleKeepAliveVisible,
   pinShuffleKeepAlive,
   shouldRenderShuffleKeepAliveHost,
@@ -22,17 +23,18 @@ export default function ShuffleKeepAliveHost() {
     getShuffleKeepAliveVersion,
   );
 
-  const visible = isShuffleKeepAliveVisible(pathname);
+  const visible =
+    isShuffleKeepAliveVisible(pathname) || isInstantShuffleReturnPending();
 
   useEffect(() => {
     pinShuffleKeepAlive();
   }, []);
 
-  useEffect(() => {
-    if (visible) {
+  useLayoutEffect(() => {
+    if (isShuffleKeepAliveVisible(pathname)) {
       clearInstantShuffleReturn();
     }
-  }, [visible, pathname]);
+  }, [pathname]);
 
   if (!shouldRenderShuffleKeepAliveHost(pathname)) {
     return null;
