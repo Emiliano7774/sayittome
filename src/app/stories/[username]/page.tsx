@@ -6,6 +6,11 @@ import { onAuthStateChanged } from "firebase/auth";
 
 import StoryViewer from "@/components/stories/StoryViewer";
 import { auth } from "@/lib/firebase";
+import { peekNativeNavPath } from "@/lib/navigation/nativeNavStack";
+import {
+  peekStoryReturnTo,
+  stashStoryReturnTo,
+} from "@/lib/navigation/storyReturnNav";
 import { resolveStoryViewerId } from "@/lib/stories/anonStories";
 import { preloadStoryGroup } from "@/lib/stories/preload";
 import {
@@ -34,6 +39,15 @@ function StoryUserPageInner() {
     const group = getStoryGroup(param, param);
     return !group || group.stories.length === 0;
   });
+
+  useEffect(() => {
+    if (peekStoryReturnTo()) return;
+
+    const previous = peekNativeNavPath(`/stories/${encodeURIComponent(param)}`);
+    if (previous) {
+      stashStoryReturnTo(previous);
+    }
+  }, [param]);
 
   useEffect(() => {
     let cancelled = false;

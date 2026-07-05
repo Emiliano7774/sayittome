@@ -54,6 +54,7 @@ import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { scrollShuffleFeedToTop } from "@/lib/shuffle/scrollShuffleFeed";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
+import { stashStoryReturnTo } from "@/lib/navigation/storyReturnNav";
 import {
   readCachedShufflePool,
   readCachedShuffleStats,
@@ -695,6 +696,7 @@ export function useShufflePool() {
 
       if (action === "story") {
         const ownerUid = target.getAttribute("data-owner-uid");
+        stashStoryReturnTo("/shuffle");
         stashProfileReturnTo("/shuffle");
         fastRouterPush(router, `/stories/${encodeURIComponent(ownerUid || username)}`);
       } else if (action === "profile") {

@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 
 import StoryRing from "@/components/stories/StoryRing";
 import AppImage from "@/components/media/AppImage";
+import { useStoryReturnStash } from "@/hooks/useStoryReturnStash";
 import { useT } from "@/contexts/LocaleContext";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 import { storyDisplayName } from "@/lib/stories/storyDisplay";
@@ -17,6 +18,7 @@ type Props = {
 
 export default function StoriesTray({ groups, showAdd = true }: Props) {
   const t = useT();
+  const stashStoryReturn = useStoryReturnStash();
 
   return (
     <div className="flex gap-5 overflow-x-auto pb-2 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -39,6 +41,7 @@ export default function StoriesTray({ groups, showAdd = true }: Props) {
           key={group.ownerUid}
           href={`/stories/${encodeURIComponent(group.ownerUid)}`}
           className="flex shrink-0 flex-col items-center gap-2"
+          onClick={stashStoryReturn}
           onMouseEnter={() => prefetchOwnerStories(group.ownerUid, group.ownerUsername)}
           onFocus={() => prefetchOwnerStories(group.ownerUid, group.ownerUsername)}
         >

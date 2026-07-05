@@ -24,6 +24,7 @@ import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import { markStoryViewedLocally } from "@/lib/stories/storiesIndexStore";
 import { preloadStoryMedia } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
+import { resolveStoryViewerExitDestination } from "@/lib/navigation/storyReturnNav";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import ContentReportDialog from "@/components/moderation/ContentReportDialog";
@@ -86,11 +87,23 @@ export default function StoryViewer({
     };
   }, []);
 
+  const exitStoryViewer = useCallback(() => {
+    const dest = resolveStoryViewerExitDestination();
+    const currentPath = window.location.pathname.split("?")[0].split("#")[0];
+
+    if (dest === currentPath || dest === currentPath.replace(/\/$/, "")) {
+      router.back();
+      return;
+    }
+
+    router.replace(dest);
+  }, [router]);
+
   useEffect(() => {
-    const onBack = () => router.back();
+    const onBack = () => exitStoryViewer();
     window.addEventListener("sayittome:close-story", onBack);
     return () => window.removeEventListener("sayittome:close-story", onBack);
-  }, [router]);
+  }, [exitStoryViewer]);
 
   const current = localStories[index];
   const resolvedOwnerUid = ownerUid || current?.ownerUid || "";
@@ -218,12 +231,12 @@ export default function StoryViewer({
           markStoryViewedLocally(owner, story.id, viewerId);
         }
       }
-      router.back();
+      exitStoryViewer();
       return;
     }
 
     setIndex((i) => i + 1);
-  }, [current, index, localStories, resolvedOwnerUid, router]);
+  }, [current, exitStoryViewer, index, localStories, resolvedOwnerUid]);
 
   const goPrev = useCallback(() => {
     const prevIndex = Math.max(0, index - 1);
@@ -337,7 +350,7 @@ export default function StoryViewer({
 
       const nextStories = localStories.filter((story) => story.id !== current.id);
       if (nextStories.length === 0) {
-        router.push("/stories");
+        exitStoryViewer();
         return;
       }
 
@@ -454,7 +467,7 @@ export default function StoryViewer({
 
       <button
         type="button"
-        onClick={() => router.back()}
+        onClick={() => exitStoryViewer()}
         className={[
           "absolute right-4 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 transition-opacity duration-150",
           topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",

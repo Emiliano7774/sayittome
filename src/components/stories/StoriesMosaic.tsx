@@ -5,6 +5,7 @@ import { Film } from "lucide-react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import AppImage from "@/components/media/AppImage";
+import { useStoryReturnStash } from "@/hooks/useStoryReturnStash";
 import { useT } from "@/contexts/LocaleContext";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
 import { latestStoryInGroup, storyDisplayName } from "@/lib/stories/storyDisplay";
@@ -20,11 +21,13 @@ function StoryTile({
   group,
   storyCount,
   t,
+  onOpen,
 }: {
   story: StoryItem;
   group: StoryUserGroup;
   storyCount: number;
   t: ReturnType<typeof useT>;
+  onOpen: () => void;
 }) {
   const href = `/stories/${encodeURIComponent(story.ownerUid)}`;
   const username = storyDisplayName(group, t);
@@ -33,6 +36,7 @@ function StoryTile({
   return (
     <Link
       href={href}
+      onClick={onOpen}
       className="group relative aspect-[3/4] overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-[0_0_30px_rgba(0,0,0,.35)] transition hover:border-violet-500/35 hover:scale-[1.02] active:scale-[0.98]"
     >
       {story.mediaType === "video" && story.mediaUrl ? (
@@ -93,6 +97,7 @@ function StoryTile({
 
 export default function StoriesMosaic({ groups, title }: Props) {
   const t = useT();
+  const stashStoryReturn = useStoryReturnStash();
 
   const tiles = groups
     .map((group) => {
@@ -130,6 +135,7 @@ export default function StoriesMosaic({ groups, title }: Props) {
             group={group}
             storyCount={storyCount}
             t={t}
+            onOpen={stashStoryReturn}
           />
         ))}
       </div>
