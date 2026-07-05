@@ -10,12 +10,26 @@ import {
   hasShuffleLegalAcceptance,
   setShuffleLegalAcceptance,
 } from "@/lib/legal/shuffleTerms";
+import { markShuffleHydrated } from "@/hooks/useShuffleReady";
+
+let shuffleLegalGateUnlocked = false;
+
+function isShuffleLegalGateUnlocked(uid?: string | null) {
+  if (shuffleLegalGateUnlocked) return true;
+  if (typeof window === "undefined") return false;
+  if (!hasShuffleLegalAcceptance(uid)) return false;
+  shuffleLegalGateUnlocked = true;
+  markShuffleHydrated();
+  return true;
+}
 
 export default function ShuffleLegalGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { firebaseUser, loading } = useAuth();
-  const [ready, setReady] = useState(false);
-  const [needsModal, setNeedsModal] = useState(false);
+  const uid = firebaseUser?.uid || "";
+  const legalAccepted = isShuffleLegalGateUnlocked(uid);
+  const [ready, setReady] = useState(() => legalAccepted);
+  const [needsModal, setNeedsModal] = useState(() => !legalAccepted);
   const [authGraceReady, setAuthGraceReady] = useState(false);
 
   useEffect(() => {
@@ -24,24 +38,30 @@ export default function ShuffleLegalGate({ children }: { children: React.ReactNo
   }, []);
 
   useEffect(() => {
+    if (legalAccepted) return;
     if (loading && !authGraceReady) return;
 
-    const uid = firebaseUser?.uid || "";
     const accepted = hasShuffleLegalAcceptance(uid);
+    if (accepted) {
+      shuffleLegalGateUnlocked = true;
+    }
     setNeedsModal(!accepted);
     setReady(true);
-  }, [authGraceReady, firebaseUser?.uid, loading]);
+  }, [authGraceReady, legalAccepted, loading, uid]);
 
   async function handleAccept() {
-    const uid = firebaseUser?.uid || "";
-
     if (uid) {
       setShuffleLegalAcceptance(uid);
     } else {
       await enterAnonymousMode();
     }
 
+    shuffleLegalGateUnlocked = true;
     setNeedsModal(false);
+  }
+
+  if (legalAccepted) {
+    return <>{children}</>;
   }
 
   if ((!ready || loading) && !authGraceReady) {

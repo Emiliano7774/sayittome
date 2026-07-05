@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 
@@ -66,7 +66,7 @@ import {
   refreshStoriesIndex,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
-import { markShuffleHydrated } from "@/hooks/useShuffleReady";
+import { markShuffleHydrated, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
 
 function readInitialShuffleState() {
   const cachedProfiles = readCachedShufflePool() ?? [];
@@ -423,7 +423,7 @@ export function useShufflePool() {
 
       const timeout = window.setTimeout(() => controller.abort(), 12000);
 
-      if (mountedRef.current && poolRef.current.length === 0) {
+      if (mountedRef.current && poolRef.current.length === 0 && !hasShuffleEverHydrated()) {
         setLoading(true);
         setErrorText("");
       }
@@ -719,6 +719,16 @@ export function useShufflePool() {
     });
     return () => registerShuffleClickHandler(null);
   }, []);
+
+  useLayoutEffect(() => {
+    if (initialShuffle.listReady || initialShuffle.visibleCount > 0) {
+      markShuffleHydrated(initialShuffle.visibleCount);
+    }
+
+    if (poolRef.current.length > 0) {
+      filterActivePool("", filtersRef.current);
+    }
+  }, [filterActivePool]);
 
   useEffect(() => {
     mountedRef.current = true;
