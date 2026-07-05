@@ -285,10 +285,21 @@ body.sayittome-chat-open {
   position: fixed;
   inset: 0;
   z-index: 0;
-  visibility: hidden;
   pointer-events: none;
   overflow: hidden;
+  overscroll-behavior: none;
   contain: strict;
+}
+
+.sayittome-shuffle-keepalive-visible {
+  position: relative;
+  z-index: auto;
+}
+
+html.sayittome-shuffle-return-pending ::view-transition-old(root),
+html.sayittome-shuffle-return-pending ::view-transition-new(root),
+html.sayittome-shuffle-return-pending ::view-transition-group(root) {
+  animation: none !important;
 }
 
 .sayittome-chat-shell {

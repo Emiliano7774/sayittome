@@ -1,10 +1,11 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
 import {
+  clearInstantShuffleReturn,
   getShuffleKeepAliveVersion,
   isShuffleKeepAliveVisible,
   shouldRenderShuffleKeepAliveHost,
@@ -20,15 +21,26 @@ export default function ShuffleKeepAliveHost() {
     getShuffleKeepAliveVersion,
   );
 
+  const visible = isShuffleKeepAliveVisible(pathname);
+
+  useEffect(() => {
+    if (visible) {
+      clearInstantShuffleReturn();
+    }
+  }, [visible, pathname]);
+
   if (!shouldRenderShuffleKeepAliveHost(pathname)) {
     return null;
   }
 
-  const visible = isShuffleKeepAliveVisible(pathname);
-
   return (
     <div
-      className={visible ? undefined : "sayittome-shuffle-keepalive-frozen"}
+      id="sayittome-shuffle-keepalive-host"
+      className={
+        visible
+          ? "sayittome-shuffle-keepalive-visible"
+          : "sayittome-shuffle-keepalive-frozen"
+      }
       aria-hidden={!visible}
     >
       <ShuffleRouteContent />

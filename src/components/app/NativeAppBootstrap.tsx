@@ -17,6 +17,10 @@ import {
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
 import { recordNativeNavPath, seedNativeNavStack } from "@/lib/navigation/nativeNavStack";
+import {
+  isInstantShuffleReturnDestination,
+  prepareInstantShuffleReturn,
+} from "@/lib/navigation/shuffleKeepAlive";
 import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
 import { openMainTabFromBridge } from "@/lib/navigation/mainTabShellBridge";
 import { isMainTabHref } from "@/lib/navigation/mainTabs";
@@ -42,9 +46,14 @@ function runNativeBackNavigation(
       consumeProfileReturnTo();
     }
     if (currentPath.startsWith("/chat/")) {
-      runNativeViewTransition(() => {
+      if (isInstantShuffleReturnDestination(action.navigateTo!)) {
+        prepareInstantShuffleReturn();
         router.replace(action.navigateTo!);
-      });
+      } else {
+        runNativeViewTransition(() => {
+          router.replace(action.navigateTo!);
+        });
+      }
       if (isMainTabHref(action.navigateTo)) {
         openMainTabFromBridge(action.navigateTo);
       }

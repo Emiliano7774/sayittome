@@ -1,3 +1,6 @@
+import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
+import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
+
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
@@ -50,4 +53,22 @@ export function shouldRenderShuffleKeepAliveHost(pathname: string) {
 
 export function isShuffleKeepAliveVisible(pathname: string) {
   return normalizePath(pathname) === "/shuffle";
+}
+
+export function isInstantShuffleReturnDestination(pathname: string) {
+  return keepAliveActive && normalizePath(pathname) === "/shuffle";
+}
+
+/** Reveal the pinned shuffle before chat unmounts so back feels instant. */
+export function prepareInstantShuffleReturn() {
+  if (typeof document === "undefined" || !keepAliveActive) return;
+
+  document.documentElement.classList.add("sayittome-shuffle-return-pending");
+  stripNativeChatFullscreen();
+  releaseChatViewportLock();
+}
+
+export function clearInstantShuffleReturn() {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.remove("sayittome-shuffle-return-pending");
 }
