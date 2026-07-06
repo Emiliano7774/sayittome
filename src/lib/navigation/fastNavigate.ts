@@ -4,6 +4,7 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import {
+  clearInstantShuffleReturn,
   isInstantShuffleReturnDestination,
   maybePinShuffleKeepAliveFromPath,
   prepareInstantShuffleReturn,
@@ -33,5 +34,6 @@ export function fastRouterReplace(router: AppRouterInstance, href: string) {
     return;
   }
 
+  clearInstantShuffleReturn();
   router.replace(href);
 }

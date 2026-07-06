@@ -31,7 +31,11 @@ export default function ShuffleKeepAliveHost() {
   }, []);
 
   useLayoutEffect(() => {
-    if (isShuffleKeepAliveVisible(pathname)) {
+    const path = pathname.split("?")[0].split("#")[0];
+    if (
+      isShuffleKeepAliveVisible(pathname) ||
+      (path.startsWith("/u/") && !path.endsWith("/chat"))
+    ) {
       clearInstantShuffleReturn();
     }
   }, [pathname]);
