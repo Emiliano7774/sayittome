@@ -79,8 +79,14 @@ async function sampleStructural(page) {
             visibility: shuffleCs?.visibility,
             opacity: shuffleCs?.opacity,
             zIndex: shuffleCs?.zIndex,
+            loading: /Cargando\.\.\.|Loading\.\.\./i.test(shuffle.textContent?.slice(0, 300) ?? ""),
           }
         : null,
+      handoff: {
+        mainTabPending: document.documentElement.classList.contains("sayittome-main-tab-handoff-pending"),
+        shuffleExitPending: document.documentElement.classList.contains("sayittome-shuffle-exit-handoff-pending"),
+        source: document.documentElement.dataset.sayittomeMainTabHandoffSource ?? null,
+      },
     };
   });
 }
@@ -100,7 +106,17 @@ function classifyStructural(geo, fromKey, toKey) {
   const toPrimary =
     toKey === "shuffle" ? Boolean(geo.shuffle?.visible) : geo.panels[toKey]?.primary;
 
-  const anyLoading = Object.values(geo.panels).some((p) => p?.loading);
+  const presentedPanel = geo.panels[fromKey];
+  const destPanel = geo.panels[toKey];
+  const fromLoading =
+    fromKey === "shuffle"
+      ? Boolean(geo.shuffle?.loading)
+      : Boolean(presentedPanel?.loading && presentedPanel?.visibleClass);
+  const toLoading =
+    toKey === "shuffle"
+      ? Boolean(geo.shuffle?.loading)
+      : Boolean(destPanel?.loading && destPanel?.visibleClass);
+
   const visiblePanels = Object.entries(geo.panels).filter(([, p]) => p?.visibleClass).map(([k]) => k);
   const presentedCount =
     visiblePanels.length + (geo.shuffle?.visible ? 1 : 0);
@@ -108,7 +124,7 @@ function classifyStructural(geo, fromKey, toKey) {
   if (fromHost && fromPrimary && !toHost) return "SOURCE_VALID";
   if (toHost && toPrimary && !fromHost) return "DEST_VALID";
   if (fromHost && toHost) return "SOURCE_DEST_OVERLAP";
-  if (anyLoading || Object.values(geo.panels).some((p) => p?.loading)) return "LOADING";
+  if (fromLoading || toLoading) return "LOADING";
   if (presentedCount === 0) return "BLANK_ROOT";
   if (toHost && !toPrimary) return "DEST_PARTIAL";
   return "OTHER_TRANSIENT";

@@ -43,7 +43,7 @@ export default function ModernBoostPage() {
     !activating;
 
   return (
-    <main data-scroll-root className="sayittome-boost-page min-h-screen bg-black text-white">
+    <main data-nav-primary-content data-scroll-root className="sayittome-boost-page min-h-screen bg-black text-white">
       <BoostRocketHero variant="modern" />
 
       <div className="relative z-[1] -mt-8 mx-auto w-full max-w-[1400px] px-4 md:px-8">

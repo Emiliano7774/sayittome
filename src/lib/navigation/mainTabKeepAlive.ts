@@ -1,7 +1,11 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
-import { getPresentedMainTab } from "@/lib/navigation/atomicMainTabHandoff";
+import {
+  getPresentedMainTab,
+  isAtomicMainTabHandoffActive,
+} from "@/lib/navigation/atomicMainTabHandoff";
 import {
   getShuffleDeferSourcePath,
+  isShuffleExitToMainTabPending,
   isShuffleRevealDeferred,
   isShuffleSurfacePresented,
 } from "@/lib/navigation/shuffleHandoffState";
@@ -111,8 +115,16 @@ export function clearPendingVisualTab() {
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
   const path = normalizePath(pathname);
 
-  if (isShuffleSurfacePresented()) {
+  if (isShuffleExitToMainTabPending()) {
     return false;
+  }
+
+  if (isShuffleSurfacePresented() && !isShuffleExitToMainTabPending()) {
+    return false;
+  }
+
+  if (isAtomicMainTabHandoffActive()) {
+    return getPresentedMainTab(pathname) === href;
   }
 
   if (isShuffleRevealDeferred()) {

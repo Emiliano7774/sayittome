@@ -4,9 +4,11 @@ import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
-import { isMainTabPrimaryReady } from "@/lib/navigation/atomicMainTabHandoff";
+import { commitPresentedMainTabIfReady, isMainTabPrimaryReady } from "@/lib/navigation/atomicMainTabHandoff";
 import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
+  beginShuffleExitToMainTab,
+  clearShuffleExitToMainTab,
   isShuffleSurfacePresented,
 } from "@/lib/navigation/shuffleHandoffState";
 import {
@@ -16,6 +18,7 @@ import {
   getShuffleKeepAliveVersion,
   isInstantShuffleReturnPending,
   isShuffleKeepAliveActive,
+  isShuffleSourceRetainedForMainTabExit,
   pinShuffleKeepAlive,
   pinShuffleWindowWhileAway,
   prepareShuffleTabReturn,
@@ -30,12 +33,12 @@ import {
   subscribeShuffleWarmReturn,
 } from "@/lib/shuffle/shuffleWarmVisual";
 import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
-import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
+import { isMainTabHref, type MainTabHref } from "@/lib/navigation/mainTabs";
 
 const HANDOFF_FRAME_BUDGET = 120;
 
-function isMainTabPath(path: string): path is MainTabHref {
-  return (MAIN_TAB_HREFS as readonly string[]).includes(path);
+function isMainTabPath(path: string): path is Exclude<MainTabHref, "/shuffle"> {
+  return isMainTabHref(path) && path !== "/shuffle";
 }
 
 export default function ShuffleKeepAliveHost() {
@@ -56,7 +59,9 @@ export default function ShuffleKeepAliveHost() {
   );
 
   const visible =
-    canShowShuffleKeepAliveSurface(pathname) || isInstantShuffleReturnPending();
+    canShowShuffleKeepAliveSurface(pathname) ||
+    isInstantShuffleReturnPending() ||
+    isShuffleSourceRetainedForMainTabExit();
 
   useLayoutEffect(() => {
     pinShuffleKeepAlive();
@@ -113,6 +118,7 @@ export default function ShuffleKeepAliveHost() {
       const loopId = handoffLoopRef.current;
 
       if (isMainTabPath(path)) {
+        beginShuffleExitToMainTab(path);
         let frames = 0;
         let cancelled = false;
 
@@ -121,7 +127,9 @@ export default function ShuffleKeepAliveHost() {
           frames += 1;
 
           if (isMainTabPrimaryReady(path)) {
+            commitPresentedMainTabIfReady(pathname);
             releaseShuffleTabSurface();
+            clearShuffleExitToMainTab();
             pinShuffleWindowWhileAway();
             clearQueuedShuffleTriggers();
             resetShuffleGeometryStability();
@@ -132,6 +140,7 @@ export default function ShuffleKeepAliveHost() {
             requestAnimationFrame(releaseWhenMainTabReady);
           } else {
             releaseShuffleTabSurface();
+            clearShuffleExitToMainTab();
             pinShuffleWindowWhileAway();
             clearQueuedShuffleTriggers();
             resetShuffleGeometryStability();

@@ -74,14 +74,16 @@ export function onMainTabRouteChange(pathname: string) {
   notify();
 }
 
-export function isMainTabPrimaryReady(href: MainTabHref) {
-  if (typeof document === "undefined") return false;
+function mainTabPrimarySelector(href: MainTabHref) {
+  if (href === "/settings") return "[data-nav-settings-primary]";
+  return "[data-nav-primary-content]";
+}
 
-  const host = document.getElementById(`sayittome-main-tab-keepalive-${href.slice(1)}`);
-  if (!host) return false;
+function isPresentablePrimary(host: HTMLElement, primary: Element) {
+  if (host.querySelector("[data-loading-shell]")) return false;
 
-  const primary = host.querySelector("[data-nav-primary-content]");
-  if (!primary) return false;
+  const text = primary.textContent?.slice(0, 240) ?? "";
+  if (/Cargando\.\.\.|Loading\.\.\./i.test(text)) return false;
 
   const rect = primary.getBoundingClientRect();
   const style = getComputedStyle(primary);
@@ -92,6 +94,18 @@ export function isMainTabPrimaryReady(href: MainTabHref) {
     style.display !== "none" &&
     style.opacity !== "0"
   );
+}
+
+export function isMainTabPrimaryReady(href: MainTabHref) {
+  if (typeof document === "undefined") return false;
+
+  const host = document.getElementById(`sayittome-main-tab-keepalive-${href.slice(1)}`);
+  if (!host) return false;
+
+  const primary = host.querySelector(mainTabPrimarySelector(href));
+  if (!primary) return false;
+
+  return isPresentablePrimary(host, primary);
 }
 
 /** Commit destination only when route and primary content are coherent. */

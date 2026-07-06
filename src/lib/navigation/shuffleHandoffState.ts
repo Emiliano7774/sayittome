@@ -1,6 +1,9 @@
+import type { MainTabHref } from "@/lib/navigation/mainTabs";
+
 let shuffleRevealDeferred = false;
 let deferSourcePath = "/chats";
 let shuffleSurfacePresented = false;
+let shuffleExitMainTabTarget: MainTabHref | null = null;
 let handoffVersion = 0;
 const listeners = new Set<() => void>();
 
@@ -44,8 +47,39 @@ export function presentShuffleSurface() {
 }
 
 export function clearShuffleHandoffState() {
-  if (!shuffleRevealDeferred && !shuffleSurfacePresented) return;
+  if (!shuffleRevealDeferred && !shuffleSurfacePresented && !shuffleExitMainTabTarget) return;
   shuffleRevealDeferred = false;
   shuffleSurfacePresented = false;
+  shuffleExitMainTabTarget = null;
   notify();
+}
+
+/** Retain shuffle as the presented source until a main-tab destination is ready. */
+export function beginShuffleExitToMainTab(target: MainTabHref) {
+  shuffleExitMainTabTarget = target;
+  if (typeof document !== "undefined") {
+    document.documentElement.classList.add("sayittome-shuffle-exit-handoff-pending");
+  }
+  notify();
+}
+
+export function clearShuffleExitToMainTab() {
+  if (!shuffleExitMainTabTarget) return;
+  shuffleExitMainTabTarget = null;
+  if (typeof document !== "undefined") {
+    document.documentElement.classList.remove("sayittome-shuffle-exit-handoff-pending");
+  }
+  notify();
+}
+
+export function isShuffleExitToMainTabPending() {
+  return shuffleExitMainTabTarget !== null;
+}
+
+export function getShuffleExitMainTabTarget() {
+  return shuffleExitMainTabTarget;
+}
+
+export function isShuffleSourceRetainedForMainTabExit() {
+  return shuffleExitMainTabTarget !== null && shuffleSurfacePresented;
 }

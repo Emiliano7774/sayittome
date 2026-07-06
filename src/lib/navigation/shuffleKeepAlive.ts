@@ -8,9 +8,11 @@ import {
 import { clearPendingVisualTab, pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
 import {
   beginShuffleRevealDeferred,
+  clearShuffleExitToMainTab,
   clearShuffleHandoffState,
   getShuffleDeferSourcePath,
   isShuffleRevealDeferred,
+  isShuffleSourceRetainedForMainTabExit,
   isShuffleSurfacePresented,
   presentShuffleSurface,
 } from "@/lib/navigation/shuffleHandoffState";
@@ -23,7 +25,12 @@ import {
   setShuffleHandoffPreparing,
 } from "@/lib/shuffle/shuffleWarmVisual";
 
-export { getShuffleDeferSourcePath, isShuffleRevealDeferred } from "@/lib/navigation/shuffleHandoffState";
+export {
+  getShuffleDeferSourcePath,
+  isShuffleExitToMainTabPending,
+  isShuffleRevealDeferred,
+  isShuffleSourceRetainedForMainTabExit,
+} from "@/lib/navigation/shuffleHandoffState";
 
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
@@ -220,6 +227,7 @@ export function releaseShuffleTabSurface() {
   document.body.classList.remove("sayittome-shuffle-surface-active");
   clearShuffleHandoffPendingDom();
   clearShuffleHandoffState();
+  clearShuffleExitToMainTab();
   finishShuffleHandoffPreparing();
   resetAtomicVisualHandoff();
   resetShuffleGeometryStability();
@@ -237,6 +245,7 @@ export function commitShuffleTabReturn() {
 
 export function canShowShuffleKeepAliveSurface(pathname: string) {
   if (isInstantShuffleReturnPending()) return true;
+  if (isShuffleSourceRetainedForMainTabExit()) return true;
   if (!isShuffleKeepAliveVisible(pathname)) return false;
   if (isShuffleRevealDeferred()) return false;
   if (!keepAliveActive) return true;
