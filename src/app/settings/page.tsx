@@ -88,7 +88,7 @@ export function SettingsRouteContent() {
   const formatLastSeen = useFormatLastSeen();
 
   useSettingsTabPaint({ loading, profile, showAnonGate, authKnown: authKnown || Boolean(profile) });
-  useNavUsefulPaint(!loading && (Boolean(profile) || showAnonGate));
+  useNavUsefulPaint(!loading && (Boolean(profile) || showAnonGate), "/settings");
 
   const loadProfile = useCallback(async (user: { uid: string }) => {
     const ref = doc(db, "usuarios", user.uid);

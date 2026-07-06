@@ -242,7 +242,23 @@ export function useShufflePool() {
 
     if (wasFrozen && !shuffleFeedFrozen) {
       const visible = getVisibleShuffleProfiles();
-      if (
+      const pinnedWindow =
+        shouldSuppressShuffleWindowRefresh() &&
+        windowCountRef.current > 0 &&
+        activePoolRef.current.length > 0;
+
+      if (visible.length > 0) {
+        patchShuffleSlotPresence(activePoolRef.current);
+      } else if (pinnedWindow) {
+        const regularCount = Math.max(0, windowCountRef.current - featuredRef.current.length);
+        setShuffleSlotsWithFeatured(
+          featuredRef.current,
+          activePoolRef.current,
+          windowIndicesRef.current,
+          regularCount,
+          false,
+        );
+      } else if (
         visible.length === 0 &&
         windowCountRef.current > 0 &&
         activePoolRef.current.length > 0
@@ -255,12 +271,12 @@ export function useShufflePool() {
           regularCount,
           false,
         );
-      } else if (visible.length > 0) {
-        patchShuffleSlotPresence(activePoolRef.current);
       }
       setLoading(false);
       setListReady(true);
-      markShuffleHydrated(Math.max(visible.length, windowCountRef.current, 1));
+      markShuffleHydrated(
+        Math.max(getVisibleShuffleProfiles().length, windowCountRef.current, 1),
+      );
     }
   }, [shuffleFeedFrozen]);
 

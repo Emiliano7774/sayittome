@@ -59,6 +59,12 @@ export function recordPathBeforeChatOpen() {
   const pathname = normalizePath(window.location.pathname);
   if (pathname.startsWith("/chat/")) return;
 
+  // Prefer the real route (profile/shuffle) over a stale main-tab shell pointer.
+  if (pathname.startsWith("/u/") || pathname === "/shuffle") {
+    recordNativeNavPath(pathname);
+    return;
+  }
+
   const shellTab = window.__sayittomeActiveShellTab;
   const entry = shellTab ? normalizePath(shellTab) : pathname;
   recordNativeNavPath(entry);

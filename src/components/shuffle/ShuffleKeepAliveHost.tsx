@@ -49,6 +49,12 @@ export default function ShuffleKeepAliveHost() {
     } else if (prev === "/shuffle" && path !== "/shuffle" && isShuffleKeepAliveActive()) {
       pinShuffleWindowWhileAway();
       clearQueuedShuffleTriggers();
+    } else if (
+      prev.startsWith("/chat/") &&
+      path.startsWith("/u/") &&
+      isShuffleKeepAliveActive()
+    ) {
+      pinShuffleWindowWhileAway();
     }
 
     if (path === "/shuffle") {

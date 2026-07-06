@@ -63,7 +63,7 @@ export default function ModernShuffleClient() {
       visibleCount: visible.length,
     });
 
-  useNavUsefulPaint(shuffleActive && visible.length > 0 && !showShuffleLoading);
+  useNavUsefulPaint(shuffleActive && visible.length > 0 && !showShuffleLoading, "/shuffle");
 
   return (
     <>

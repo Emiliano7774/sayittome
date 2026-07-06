@@ -1,0 +1,131 @@
+{
+  "phase": "advanced-instantaneity",
+  "measuredAt": "2026-07-06T17:55:00.000Z",
+  "baselineSource": "scripts/nav-bench-results-final-closure.json",
+  "afterSource": "scripts/nav-bench-*-instantaneity-*.json (post-change, NAV_TRACE=1)",
+  "productionBuild": "npm run build (NEXT_PUBLIC_NAV_TRACE unset — trace inert)",
+  "maintainedChanges": [
+    "profileChatWarmup PREPARE/ACTIVATE (max 1 speculative chat, chunk prefetch, no Firestore writes)",
+    "mainTabKeepAlive pendingVisualTab + VISUAL SWITCH FIRST",
+    "useNavUsefulPaint route-scoped (prevents keep-alive cross-finish)",
+    "StoryMediaBuffers double-buffer + goNext gate on nextMediaReady",
+    "adaptivePreloadPolicy (effectiveType/saveData limits)",
+    "storyBlankFrameTrace dev-only gap detection",
+    "tab-chain warm scenarios in nav-bench-baseline.mjs"
+  ],
+  "revertedChanges": [],
+  "firestoreImpact": {
+    "additionalReads": 0,
+    "additionalListeners": 0,
+    "notes": "Speculative chat uses existing chatMessageCache + prefetchChatThread only on explicit promote; no new global listeners."
+  },
+  "memoryLimits": {
+    "maxSpeculativeChats": 1,
+    "maxStoryMediaBuffers": 2,
+    "notes": "Front/back story slots only; LRU via single prepared chat eviction on username change."
+  },
+  "results": [
+    {
+      "path": "profile→chat warm",
+      "scenario": "chat-metadata-cache-hit",
+      "n": 5,
+      "beforeMedianMs": 64,
+      "beforeP95Ms": 75,
+      "afterMedianMs": 54,
+      "afterP95Ms": 213,
+      "improvementPctMedian": 15.6,
+      "visualGapMs": null,
+      "extraCost": "0 Firestore reads; +1 in-memory prepared chat; chunk prefetch bandwidth"
+    },
+    {
+      "path": "shuffle→Stories tab warm",
+      "scenario": "stories-warm-keep-alive",
+      "n": 5,
+      "beforeMedianMs": 111,
+      "beforeP95Ms": 111,
+      "afterMedianMs": 74,
+      "afterP95Ms": 74,
+      "improvementPctMedian": 33.3,
+      "visualGapMs": null,
+      "extraCost": "0 Firestore; pendingVisualTab client state only"
+    },
+    {
+      "path": "Stories→Chats warm (proxy tab→chats-A)",
+      "scenario": "chats-keep-alive-revisit",
+      "n": 5,
+      "beforeMedianMs": 123,
+      "beforeP95Ms": 123,
+      "afterMedianMs": null,
+      "afterP95Ms": null,
+      "improvementPctMedian": null,
+      "visualGapMs": null,
+      "extraCost": "not re-benchmarked this session; chain runner filter gap",
+      "notes": "useChatsTabPaint already uses resolveEffectiveMainTab"
+    },
+    {
+      "path": "Chats→Boost warm",
+      "scenario": "boost-warm-keep-alive",
+      "n": 5,
+      "beforeMedianMs": 112,
+      "beforeP95Ms": 112,
+      "afterMedianMs": 99,
+      "afterP95Ms": 99,
+      "improvementPctMedian": 11.6,
+      "visualGapMs": null,
+      "extraCost": "0 Firestore"
+    },
+    {
+      "path": "Boost→Settings warm (tab→settings-A)",
+      "scenario": "settings-keep-alive-revisit",
+      "n": 5,
+      "beforeMedianMs": 57,
+      "beforeP95Ms": 64,
+      "afterMedianMs": 48,
+      "afterP95Ms": 1755,
+      "improvementPctMedian": 15.8,
+      "visualGapMs": null,
+      "extraCost": "0 Firestore; p95 outlier on run 4 — investigate separately"
+    },
+    {
+      "path": "story→next preloaded",
+      "scenario": "story-next-preloaded",
+      "n": 3,
+      "beforeMedianMs": null,
+      "beforeP95Ms": null,
+      "afterMedianMs": 16,
+      "afterP95Ms": 23,
+      "improvementPctMedian": null,
+      "visualGapMs": 0,
+      "extraCost": "adaptive prefetch bytes (dev estimate via recordPrefetchBytes)"
+    },
+    {
+      "path": "last story→next user preloaded",
+      "scenario": "last-story-next-user-preloaded",
+      "n": 3,
+      "beforeMedianMs": null,
+      "beforeP95Ms": null,
+      "afterMedianMs": 19,
+      "afterP95Ms": 19,
+      "improvementPctMedian": null,
+      "visualGapMs": 0,
+      "extraCost": "continuous buffer promotion; 0 extra Firestore"
+    }
+  ],
+  "storiesBlankFrame": {
+    "devOnly": true,
+    "preloadedVisualGapMs": 0,
+    "instrumentation": "window.__sayittomeStoryBlankFrame (NEXT_PUBLIC_NAV_TRACE only)"
+  },
+  "prefetchTradeoff": {
+    "notes": "adaptivePreloadPolicy limits +1/+2 by connection; exportPrefetchStats() for dev bench",
+    "wastedPrefetchRatio": "measure in browser via exportPrefetchStats() during story sessions"
+  },
+  "cpu4x": {
+    "status": "deferred",
+    "notes": "Run: node scripts/nav-bench-baseline.mjs --base http://localhost:3005 --cpu 4 --cpu-only"
+  },
+  "limitsNotReached": {
+    "profileChatTargetMs": "16-35ms — median 54ms; router+mount still dominant after PREPARE",
+    "tabWarmTargetMs": "16-35ms — Stories 74ms; Boost 99ms; React visibility+router sync remainder"
+  }
+}

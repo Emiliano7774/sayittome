@@ -10,6 +10,7 @@ import { SettingsRouteContent } from "@/app/settings/page";
 import { StoriesRouteContent } from "@/app/stories/page";
 import {
   getMainTabKeepAliveVersion,
+  getPendingVisualTab,
   isMainTabPanelVisible,
   listMainTabKeepAliveHrefs,
   markMainTabVisited,
@@ -17,6 +18,7 @@ import {
   shouldMountMainTabPanel,
   shouldRenderMainTabKeepAliveHost,
   subscribeMainTabKeepAlive,
+  syncPendingVisualTabWithPathname,
 } from "@/lib/navigation/mainTabKeepAlive";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
@@ -33,13 +35,15 @@ const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
 export default function MainTabKeepAliveHost() {
   const pathname = usePathname();
 
-  useSyncExternalStore(
+  const version = useSyncExternalStore(
     subscribeMainTabKeepAlive,
     getMainTabKeepAliveVersion,
     getMainTabKeepAliveVersion,
   );
 
   useLayoutEffect(() => {
+    syncPendingVisualTabWithPathname(pathname);
+
     if (shouldRenderMainTabKeepAliveHost(pathname)) {
       pinMainTabKeepAlive();
     }
@@ -50,6 +54,8 @@ export default function MainTabKeepAliveHost() {
     }
 
     if (isNavTraceEnabled()) {
+      const pending = getPendingVisualTab();
+      if (pending) navTraceMarkDetail("tab-visual-pending");
       for (const href of listMainTabKeepAliveHrefs()) {
         if (href === "/shuffle") continue;
         if (!isMainTabPanelVisible(pathname, href)) continue;
@@ -61,7 +67,7 @@ export default function MainTabKeepAliveHost() {
         break;
       }
     }
-  }, [pathname]);
+  }, [pathname, version]);
 
   if (!shouldRenderMainTabKeepAliveHost(pathname)) {
     return null;

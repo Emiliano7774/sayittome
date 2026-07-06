@@ -7,6 +7,7 @@ import BottomNavLink from "@/components/navigation/BottomNavLink";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { resolveEffectiveMainTab } from "@/lib/navigation/mainTabKeepAlive";
 import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
 
 type NavItem =
@@ -20,6 +21,7 @@ type Props = {
 
 export default function BottomNav({ unreadCount = 0 }: Props) {
   const pathname = usePathname();
+  const effectiveTab = resolveEffectiveMainTab(pathname);
   const router = useRouter();
   const t = useT();
 
@@ -46,7 +48,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
           const Icon = item.icon;
 
           if (item.kind === "boost") {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active = effectiveTab === item.href || effectiveTab.startsWith(`${item.href}/`);
 
             return (
               <BottomNavLink
@@ -101,7 +103,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
             );
           }
 
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = effectiveTab === item.href || effectiveTab.startsWith(`${item.href}/`);
           const badge = item.kind === "link" ? item.badge || 0 : 0;
 
           return (

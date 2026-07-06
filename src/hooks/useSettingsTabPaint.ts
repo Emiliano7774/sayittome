@@ -3,6 +3,7 @@
 import { useLayoutEffect } from "react";
 import { usePathname } from "next/navigation";
 
+import { resolveEffectiveMainTab } from "@/lib/navigation/mainTabKeepAlive";
 import {
   settingsPipelineBegin,
   settingsPipelineMark,
@@ -42,7 +43,7 @@ type SettingsPaintInput = {
 
 export function useSettingsTabPaint(input: SettingsPaintInput) {
   const pathname = usePathname();
-  const onSettings = pathname === "/settings";
+  const onSettings = resolveEffectiveMainTab(pathname) === "/settings";
   const ready = !input.loading && (Boolean(input.profile) || input.showAnonGate);
 
   useLayoutEffect(() => {

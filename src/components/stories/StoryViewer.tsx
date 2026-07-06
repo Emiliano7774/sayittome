@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Heart, Send, Trash2, UserRound, X, Flag } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -32,6 +32,7 @@ import { preloadStoryPlaybackChain } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { resolveStoryViewerExitDestination } from "@/lib/navigation/storyReturnNav";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
+import StoryMediaBuffers from "@/components/stories/StoryMediaBuffers";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import ContentReportDialog from "@/components/moderation/ContentReportDialog";
 import type { StoryItem } from "@/lib/stories/types";
@@ -41,9 +42,6 @@ import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import {
   storyPipelineBegin,
   storyPipelineMark,
-  storyPipelineMarkImageDecodeReady,
-  storyPipelineMarkResponseReady,
-  storyPipelineMarkVideoPhase,
   storyPipelineNoteMediaUrl,
 } from "@/lib/perf/storyPipelineTrace";
 
@@ -84,6 +82,8 @@ export default function StoryViewer({
   const [reportOpen, setReportOpen] = useState(false);
   const startedRef = useRef(false);
   const viewedRef = useRef<Set<string>>(new Set());
+  const [nextMediaReady, setNextMediaReady] = useState(false);
+  const pendingAdvanceRef = useRef(false);
   const pointerRef = useRef({ x: 0, y: 0, t: 0, swiped: false });
   const replyPointerRef = useRef({ y: 0, dragging: false });
   const replySentTimerRef = useRef<number | null>(null);
@@ -126,8 +126,17 @@ export default function StoryViewer({
   }, [exitStoryViewer]);
 
   const current = localStories[index];
-  useNavUsefulPaint(Boolean(current));
   const resolvedOwnerUid = activeOwnerUid || ownerUid || current?.ownerUid || "";
+  const nextStory = useMemo(() => {
+    if (!current) return null;
+    if (index < localStories.length - 1) {
+      return localStories[index + 1] ?? null;
+    }
+    const nextGroup = getNextStoryGroup(resolvedOwnerUid);
+    return nextGroup?.stories[0] ?? null;
+  }, [current, index, localStories, resolvedOwnerUid]);
+
+  useNavUsefulPaint(Boolean(current));
   const resolvedOwnerUsername =
     activeOwnerUsername || ownerUsername || current?.ownerUsername || "";
 
@@ -312,6 +321,21 @@ export default function StoryViewer({
     setIndex((i) => i + 1);
   }, [current, exitStoryViewer, index, localStories, resolvedOwnerUid]);
 
+  const tryAdvance = useCallback(() => {
+    if (nextStory?.mediaUrl && !nextMediaReady) {
+      pendingAdvanceRef.current = true;
+      return;
+    }
+    pendingAdvanceRef.current = false;
+    goNext();
+  }, [goNext, nextMediaReady, nextStory?.mediaUrl]);
+
+  useEffect(() => {
+    if (!nextMediaReady || !pendingAdvanceRef.current) return;
+    pendingAdvanceRef.current = false;
+    goNext();
+  }, [goNext, nextMediaReady]);
+
   const goPrev = useCallback(() => {
     if (index <= 0) {
       const previousGroup = getPreviousStoryGroup(resolvedOwnerUid);
@@ -381,7 +405,7 @@ export default function StoryViewer({
     if (event.clientX < third) {
       goPrev();
     } else if (event.clientX > third * 2) {
-      goNext();
+      tryAdvance();
     }
   }
 
@@ -546,7 +570,7 @@ export default function StoryViewer({
                 }}
                 onAnimationEnd={(event) => {
                   if (event.currentTarget !== event.target || isPaused) return;
-                  goNext();
+                  tryAdvance();
                 }}
               />
             ) : null}
@@ -635,77 +659,21 @@ export default function StoryViewer({
       />
 
       <div className="relative flex h-full items-center justify-center pt-10">
-        {current.mediaType === "video" && current.mediaUrl ? (
-          <video
-            key={current.id}
-            src={current.mediaUrl}
-            className={[
-              "max-h-full max-w-full object-contain animate-[fadeIn_.28s_ease-out]",
-              needsBlur && blurLocked ? "blur-2xl scale-105" : "",
-            ].join(" ")}
-            autoPlay
-            playsInline
-            muted={false}
-            onLoadedData={() => {
-              if (isNavTraceEnabled()) storyPipelineMark("viewer-dom");
-            }}
-            onLoadedMetadata={(e) => {
-              const el = e.currentTarget;
-              if (isNavTraceEnabled()) {
-                storyPipelineMarkVideoPhase(current.mediaUrl!, "loadedmetadata", current.id);
-                storyPipelineMarkResponseReady(current.mediaUrl!, "video", current.id);
-              }
-              if (!startedRef.current && el.duration) {
+        {current.mediaUrl ? (
+          <StoryMediaBuffers
+            current={current}
+            nextStory={nextStory}
+            needsBlur={needsBlur}
+            blurLocked={blurLocked}
+            onNextReadyChange={setNextMediaReady}
+            onFrontVideoMetadata={(durationSec) => {
+              if (!startedRef.current && durationSec > 0 && current) {
                 startedRef.current = true;
                 setDoc(
                   doc(db, "historias", current.id),
-                  { durationMs: Math.round(el.duration * 1000) },
+                  { durationMs: Math.round(durationSec * 1000) },
                   { merge: true },
                 ).catch(() => {});
-              }
-            }}
-            onCanPlay={() => {
-              if (isNavTraceEnabled()) {
-                storyPipelineMarkVideoPhase(current.mediaUrl!, "canplay", current.id);
-              }
-            }}
-            onPlaying={() => {
-              if (isNavTraceEnabled()) {
-                storyPipelineMarkVideoPhase(current.mediaUrl!, "first-frame", current.id);
-              }
-            }}
-          />
-        ) : current.mediaUrl ? (
-          <img
-            key={current.id}
-            src={current.mediaUrl}
-            alt=""
-            className={[
-              "max-h-full max-w-full object-contain animate-[fadeIn_.28s_ease-out]",
-              needsBlur && blurLocked ? "blur-2xl scale-105" : "",
-            ].join(" ")}
-            onLoad={(e) => {
-              if (!isNavTraceEnabled()) return;
-              storyPipelineMark("viewer-dom");
-              const img = e.currentTarget;
-              storyPipelineMarkResponseReady(current.mediaUrl!, "image", current.id);
-              storyPipelineMarkImageDecodeReady(
-                current.mediaUrl!,
-                current.id,
-                img.complete,
-                img.naturalWidth,
-                img.naturalHeight,
-              );
-              if (typeof img.decode === "function") {
-                void img.decode().then(() => {
-                  storyPipelineMarkImageDecodeReady(
-                    current.mediaUrl!,
-                    current.id,
-                    img.complete,
-                    img.naturalWidth,
-                    img.naturalHeight,
-                  );
-                }).catch(() => undefined);
               }
             }}
           />
@@ -738,7 +706,7 @@ export default function StoryViewer({
             className="absolute bottom-0 right-0 top-0 z-[35] w-1/3 touch-none"
             onClick={(event) => {
               event.stopPropagation();
-              goNext();
+              tryAdvance();
             }}
             aria-label={t("stories_next")}
           />

@@ -38,7 +38,10 @@ import {
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
+import {
+  consumePreparedProfileChat,
+  prepareProfileChat,
+} from "@/lib/chat/profileChatWarmup";
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import { stashStoryReturnTo } from "@/lib/navigation/storyReturnNav";
@@ -156,19 +159,17 @@ export default function ModernPublicProfile({
     return Array.from(new Set(merged));
   }, [coverPhotoUrl, profile.fotoPrincipal, profile.fotos]);
   function warmProfileChat() {
-    const senderId = getChatAnonSenderId();
-    prefetchChatThread(buildProfileAnonChatId(senderId, profile.username));
+    prepareProfileChat(profile.username, { promote: true });
   }
+
+  useEffect(() => {
+    prepareProfileChat(profile.username);
+  }, [profile.username]);
 
   function openProfileChat() {
     recordPathBeforeChatOpen();
-    warmProfileChat();
-    const senderId = getChatAnonSenderId();
-    const chatId = buildProfileAnonChatId(senderId, profile.username);
-    fastRouterPush(
-      router,
-      `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(profile.username)}`,
-    );
+    const prepared = consumePreparedProfileChat(profile.username);
+    fastRouterPush(router, prepared?.href || `/chat/${encodeURIComponent(buildProfileAnonChatId(getChatAnonSenderId(), profile.username))}?u=${encodeURIComponent(profile.username)}`);
   }
 
   function openViewer(index = 0) {

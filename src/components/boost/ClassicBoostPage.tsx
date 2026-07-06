@@ -59,7 +59,7 @@ export default function ClassicBoostPage() {
     };
   }, [boostActive]);
 
-  useNavUsefulPaint(boostActive && !loading);
+  useNavUsefulPaint(boostActive && !loading, "/boost");
 
   return (
     <main data-scroll-root className="sayittome-boost-page min-h-screen bg-black text-white">

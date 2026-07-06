@@ -114,6 +114,22 @@ const SCENARIO_RULES = {
     expectedScenario: "boost-warm-keep-alive",
     requiredPhases: ["tab-pin"],
   },
+  "tab-chain→chats-warm": {
+    expectedScenario: "chats-warm-keep-alive-chain",
+    requiredPhases: ["tab-pin", "tab-panel-visible"],
+  },
+  "tab-chain→boost-warm": {
+    expectedScenario: "boost-warm-keep-alive-chain",
+    requiredPhases: ["tab-pin", "tab-panel-visible"],
+  },
+  "tab-chain→settings-warm": {
+    expectedScenario: "settings-warm-keep-alive-chain",
+    requiredPhases: ["tab-pin", "tab-panel-visible"],
+  },
+  "tab-chain→stories-warm": {
+    expectedScenario: "stories-warm-keep-alive-chain",
+    requiredPhases: ["tab-pin", "tab-panel-visible"],
+  },
   "tab→settings-A": {
     expectedScenario: "settings-keep-alive-revisit",
     requiredPhases: ["tab-pin", "settings-settings-panel-visible"],
@@ -1390,6 +1406,25 @@ async function runAllScenarios(page, initialUsername) {
       await spaTab(page, "/boost");
     })),
   );
+
+  // Warm tab chain: stories → chats → boost → settings → stories (all pre-visited)
+  await ensureTab(page, "/stories");
+  await ensureTab(page, "/chats");
+  await ensureTab(page, "/boost");
+  await ensureTab(page, "/settings");
+  const warmChain = [
+    { pathId: "tab-chain→chats-warm", href: "/chats", prep: async () => { await ensureTab(page, "/stories"); } },
+    { pathId: "tab-chain→boost-warm", href: "/boost", prep: async () => { await ensureTab(page, "/chats"); } },
+    { pathId: "tab-chain→settings-warm", href: "/settings", prep: async () => { await ensureTab(page, "/boost"); } },
+    { pathId: "tab-chain→stories-warm", href: "/stories", prep: async () => { await ensureTab(page, "/settings"); } },
+  ];
+  for (const step of warmChain) {
+    all.push(
+      ...(await runWarmLoop(page, step.pathId, step.prep, async () => {
+        await spaTab(page, step.href);
+      })),
+    );
+  }
   });
   }
 

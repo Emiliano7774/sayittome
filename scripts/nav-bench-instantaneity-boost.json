@@ -1,0 +1,790 @@
+{
+  "metadata": {
+    "commit": "62f9b272054d9c9c75f7b7dc08135274724d9ea2",
+    "measuredAt": "2026-07-06T17:51:47.365Z",
+    "baseUrl": "http://localhost:3005",
+    "device": "Pixel 5",
+    "viewport": {
+      "width": 393,
+      "height": 727
+    },
+    "cpuThrottle": null,
+    "warmRunsRequested": 5,
+    "traceEnabled": true,
+    "buildFlags": {
+      "NEXT_PUBLIC_NAV_TRACE": "1"
+    },
+    "cpuOnly": false,
+    "deferInboxFlag": null,
+    "chatsDeferCompare": false,
+    "methodologyNote": "La medición inicial de 530 ms para perfil cacheado era inválida. El runner eliminaba la caché en memoria y podía elegir un username distinto. Con escenario estable y cache hit verificado, la mediana real es aproximadamente 19–21 ms. Los valores 527 ms (chats) y 452 ms (settings) permanecen sospechosos hasta reproducir con esta metodología.",
+    "invalidLegacyBaselines": {
+      "shuffle→profile-cached": "530ms INVALID — cache cleared between samples / unstable username",
+      "profile→chat-cached": "30s INVALID — broken benchmark selector timeout; valid baseline ~62ms after data-nav-profile-chat instrumentation fix",
+      "tab→chats": "527ms SUSPECT — pending valid reproduction",
+      "tab→settings": "452ms SUSPECT — pending valid reproduction",
+      "tray→viewer-preloaded": "~8s SUSPECT — do not classify as network limit until preload phases verified",
+      "firestoreTimeout45s": "INVALID — broken preconditions, not Firestore latency"
+    },
+    "benchmarkFixesNotProductionOptimizations": [
+      "data-nav-profile-chat fixes measurement selector; not a UX optimization",
+      "data-nav-tab fixes shuffle bottom-nav detection; not a UX optimization"
+    ],
+    "validProfileWarmCachedMs": "19-21ms median with verified profile-cache-hit"
+  },
+  "scenarios": {
+    "tab→boost-warm": {
+      "pathId": "tab→boost-warm",
+      "validCount": 5,
+      "invalidCount": 0,
+      "min": 99,
+      "median": 99,
+      "p95": 99,
+      "max": 99,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "boost-warm-keep-alive",
+        "requiredPhases": [
+          "tab-pin"
+        ]
+      },
+      "invalidReasons": []
+    }
+  },
+  "validSamples": [
+    {
+      "pathId": "tab→boost-warm",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "boost-warm-keep-alive",
+      "phases": {
+        "pointerdown": 1.1000000089406967,
+        "dest-layout": 100,
+        "useful-paint": 100
+      },
+      "detailPhases": {
+        "tab-visual-pending": 97,
+        "tab-pin": 98,
+        "tab-active-boost": 98,
+        "tab-panel-visible": 98
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 99,
+        "origin→useful-paint": 99,
+        "pointerdown→useful-paint": 99
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 513,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/boost"
+      }
+    },
+    {
+      "pathId": "tab→boost-warm",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "boost-warm-keep-alive",
+      "phases": {
+        "pointerdown": 1.1000000089406967,
+        "dest-layout": 100,
+        "useful-paint": 100
+      },
+      "detailPhases": {
+        "tab-visual-pending": 97,
+        "tab-pin": 98,
+        "tab-active-boost": 98,
+        "tab-panel-visible": 98
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 99,
+        "origin→useful-paint": 99,
+        "pointerdown→useful-paint": 99
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 562,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/boost"
+      }
+    },
+    {
+      "pathId": "tab→boost-warm",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "boost-warm-keep-alive",
+      "phases": {
+        "pointerdown": 1.1000000089406967,
+        "dest-layout": 100,
+        "useful-paint": 100
+      },
+      "detailPhases": {
+        "tab-visual-pending": 97,
+        "tab-pin": 98,
+        "tab-active-boost": 98,
+        "tab-panel-visible": 98
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 99,
+        "origin→useful-paint": 99,
+        "pointerdown→useful-paint": 99
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 610,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/boost"
+      }
+    },
+    {
+      "pathId": "tab→boost-warm",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "boost-warm-keep-alive",
+      "phases": {
+        "pointerdown": 1.1000000089406967,
+        "dest-layout": 100,
+        "useful-paint": 100
+      },
+      "detailPhases": {
+        "tab-visual-pending": 97,
+        "tab-pin": 98,
+        "tab-active-boost": 98,
+        "tab-panel-visible": 98
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 99,
+        "origin→useful-paint": 99,
+        "pointerdown→useful-paint": 99
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 657,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/boost"
+      }
+    },
+    {
+      "pathId": "tab→boost-warm",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "boost-warm-keep-alive",
+      "phases": {
+        "pointerdown": 1.1000000089406967,
+        "dest-layout": 100,
+        "useful-paint": 100
+      },
+      "detailPhases": {
+        "tab-visual-pending": 97,
+        "tab-pin": 98,
+        "tab-active-boost": 98,
+        "tab-panel-visible": 98
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 99,
+        "origin→useful-paint": 99,
+        "pointerdown→useful-paint": 99
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 707,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/boost"
+      }
+    }
+  ],
+  "invalidSamples": [],
+  "rankings": {
+    "byWarmMedian": [
+      {
+        "pathId": "tab→boost-warm",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 99,
+        "median": 99,
+        "p95": 99,
+        "max": 99,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "boost-warm-keep-alive",
+          "requiredPhases": [
+            "tab-pin"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ],
+    "byP95": [
+      {
+        "pathId": "tab→boost-warm",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 99,
+        "median": 99,
+        "p95": 99,
+        "max": 99,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "boost-warm-keep-alive",
+          "requiredPhases": [
+            "tab-pin"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ]
+  },
+  "backLockProbe": [
+    {
+      "gapMs": 50,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/login",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783360288360,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/login",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783360288551,
+          "pathnameBefore": "/login",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/login",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 80,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/login",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783360288988,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/login",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783360289209,
+          "pathnameBefore": "/login",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/login",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 100,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/login",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783360289626,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/login",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783360289865,
+          "pathnameBefore": "/login",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/login",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 120,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/login",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783360290276,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/login",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783360290521,
+          "pathnameBefore": "/login",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/login",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 150,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/login",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783360290851,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/login",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783360291128,
+          "pathnameBefore": "/login",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/login",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 250,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/login",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783360291537,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/login",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783360291921,
+          "pathnameBefore": "/login",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/login",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    }
+  ],
+  "backLockValidation": {
+    "model": "same-path-dedupe (not global BACK_LOCK block)",
+    "rows": [
+      {
+        "gapMs": 50,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/login",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783360288360,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/login",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783360288551,
+            "pathnameBefore": "/login",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/login",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 80,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/login",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783360288988,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/login",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783360289209,
+            "pathnameBefore": "/login",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/login",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 100,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/login",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783360289626,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/login",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783360289865,
+            "pathnameBefore": "/login",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/login",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 120,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/login",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783360290276,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/login",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783360290521,
+            "pathnameBefore": "/login",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/login",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 150,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/login",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783360290851,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/login",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783360291128,
+            "pathnameBefore": "/login",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/login",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 250,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/login",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783360291537,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/login",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783360291921,
+            "pathnameBefore": "/login",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/login",
+            "outcome": "navigate"
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "samePathBackProbe": {
+    "pathnameBefore": "/shuffle",
+    "events": [
+      {
+        "eventNo": 1,
+        "timestamp": 1783360307119,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      },
+      {
+        "eventNo": 2,
+        "timestamp": 1783360307272,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      }
+    ]
+  }
+}

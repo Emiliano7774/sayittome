@@ -84,6 +84,12 @@ import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import {
+  isInstantShuffleReturnDestination,
+  isShuffleKeepAliveActive,
+  pinShuffleWindowWhileAway,
+  prepareInstantShuffleReturn,
+} from "@/lib/navigation/shuffleKeepAlive";
 import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
 import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
 import {
@@ -419,6 +425,16 @@ export default function ProfileAnonChat({
 
   function goBackFromChat() {
     const dest = resolveChatBackDestination(pathname);
+    if (isInstantShuffleReturnDestination(dest)) {
+      prepareInstantShuffleReturn();
+      router.replace(dest);
+      return;
+    }
+    if (isShuffleKeepAliveActive() && dest.startsWith("/u/")) {
+      pinShuffleWindowWhileAway();
+      router.replace(dest);
+      return;
+    }
     fastRouterReplace(router, dest);
   }
 

@@ -11,10 +11,10 @@ import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 export default function ClassicStoriesPage() {
   const t = useT();
   const { groups, viewerUid, loading } = useStoriesGroups();
-  useNavUsefulPaint(!loading);
+  useNavUsefulPaint(!loading, "/stories");
 
   return (
-    <main className="min-h-screen bg-black px-5 py-8 pb-32 text-white">
+    <main className="min-h-screen bg-black px-5 py-8 pb-32 text-white" data-nav-primary-content>
       <ClassicUxModeBar className="mb-4" />
 
       <div className="mb-8 flex items-center justify-between">

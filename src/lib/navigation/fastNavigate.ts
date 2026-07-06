@@ -8,10 +8,17 @@ import {
   clearInstantShuffleReturn,
   commitShuffleTabReturn,
   isInstantShuffleReturnDestination,
+  isShuffleKeepAliveActive,
   maybePinShuffleKeepAliveFromPath,
   pinShuffleWindowWhileAway,
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
+
+function pinShuffleWindowIfNeeded(currentPath: string) {
+  if (currentPath === "/shuffle" || isShuffleKeepAliveActive()) {
+    pinShuffleWindowWhileAway();
+  }
+}
 
 function normalizeChatHref(href: string) {
   const path = href.split("?")[0].split("#")[0];
@@ -27,9 +34,7 @@ export function fastRouterPush(router: AppRouterInstance, href: string) {
     const currentPath = window.location.pathname.split("?")[0].split("#")[0];
     maybePinShuffleKeepAliveFromPath(currentPath);
 
-    if (currentPath === "/shuffle") {
-      pinShuffleWindowWhileAway();
-    }
+    pinShuffleWindowIfNeeded(currentPath);
 
     if (isInstantShuffleReturnDestination(href)) {
       commitShuffleTabReturn();
@@ -48,12 +53,20 @@ export function fastRouterReplace(router: AppRouterInstance, href: string) {
     navTraceMark("nav-start");
   }
 
+  if (typeof window !== "undefined") {
+    const currentPath = window.location.pathname.split("?")[0].split("#")[0];
+    pinShuffleWindowIfNeeded(currentPath);
+  }
+
   if (isInstantShuffleReturnDestination(href)) {
     prepareInstantShuffleReturn();
     router.replace(href);
     return;
   }
 
-  clearInstantShuffleReturn();
+  if (!isShuffleKeepAliveActive()) {
+    clearInstantShuffleReturn();
+  }
+
   router.replace(href);
 }

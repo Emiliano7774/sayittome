@@ -1,6 +1,10 @@
 import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import {
+  recordPrefetchBytes,
+  resolveAdaptivePreloadLimits,
+} from "@/lib/stories/adaptivePreloadPolicy";
+import {
   storyPipelineMarkImageDecodeReady,
   storyPipelineMarkPreloadStart,
   storyPipelineMarkResponseReady,
@@ -81,7 +85,7 @@ function traceVideoReady(video: HTMLVideoElement, story: StoryItem) {
   }
 }
 
-export function preloadStoryMedia(story: StoryItem) {
+export function preloadStoryMedia(story: StoryItem, options?: { videoPreload?: "auto" | "metadata" }) {
   if (!story.mediaUrl) return;
 
   const mediaType = story.mediaType === "video" ? "video" : "image";
@@ -94,10 +98,15 @@ export function preloadStoryMedia(story: StoryItem) {
 
   if (story.mediaType === "video") {
     const video = document.createElement("video");
-    video.preload = "auto";
+    video.preload = options?.videoPreload ?? "auto";
     video.muted = true;
     video.src = story.mediaUrl;
     traceVideoReady(video, story);
+    video.addEventListener(
+      "loadeddata",
+      () => recordPrefetchBytes(Math.max(1, video.videoWidth * video.videoHeight * 3)),
+      { once: true },
+    );
     video.load();
     return;
   }
@@ -106,12 +115,21 @@ export function preloadStoryMedia(story: StoryItem) {
   img.decoding = "async";
   img.src = story.mediaUrl;
   traceImageReady(img, story);
+  img.addEventListener(
+    "load",
+    () => recordPrefetchBytes(Math.max(1, img.naturalWidth * img.naturalHeight * 4)),
+    { once: true },
+  );
 }
 
-export function preloadStoryGroup(group?: StoryUserGroup | null, max = 2) {
+export function preloadStoryGroup(
+  group?: StoryUserGroup | null,
+  max = 2,
+  options?: { videoPreload?: "auto" | "metadata" },
+) {
   if (!group) return;
 
-  group.stories.slice(0, max).forEach(preloadStoryMedia);
+  group.stories.slice(0, max).forEach((story) => preloadStoryMedia(story, options));
 }
 
 /** Preload the next story in the current group plus the first stories of upcoming groups. */
@@ -121,17 +139,23 @@ export function preloadStoryPlaybackChain(
   storyIndex: number,
   currentStories: StoryItem[],
 ) {
+  const limits = resolveAdaptivePreloadLimits();
+  const videoPreload = limits.videoSpeculative ? "auto" : "metadata";
+
   const nextStory = currentStories[storyIndex + 1];
-  if (nextStory) preloadStoryMedia(nextStory);
+  if (nextStory) preloadStoryMedia(nextStory, { videoPreload });
 
   const nextSecond = currentStories[storyIndex + 2];
-  if (nextSecond) preloadStoryMedia(nextSecond);
+  if (limits.fetchAhead >= 2 && nextSecond) {
+    preloadStoryMedia(nextSecond, { videoPreload });
+  }
 
   const groupIndex = groups.findIndex((group) => group.ownerUid === currentOwnerUid);
   if (groupIndex < 0) return;
 
-  for (let offset = 1; offset <= 2; offset += 1) {
+  const maxStoriesPerUser = limits.fetchAhead >= 2 ? 2 : 1;
+  for (let offset = 1; offset <= limits.upcomingUserFirstMedia; offset += 1) {
     const upcoming = groups[groupIndex + offset];
-    if (upcoming) preloadStoryGroup(upcoming, 2);
+    if (upcoming) preloadStoryGroup(upcoming, maxStoriesPerUser, { videoPreload });
   }
 }

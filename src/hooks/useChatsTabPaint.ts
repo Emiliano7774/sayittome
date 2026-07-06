@@ -4,6 +4,7 @@ import { useLayoutEffect } from "react";
 import { usePathname } from "next/navigation";
 
 import { explainChatsInboxSkeleton } from "@/hooks/useChatsInboxReady";
+import { resolveEffectiveMainTab } from "@/lib/navigation/mainTabKeepAlive";
 import {
   peekFirstInboxSnapshotReadMeta,
   readInboxSnapshotWithMeta,
@@ -54,8 +55,9 @@ type InboxPaintInput = {
 
 export function useChatsTabPaint(inbox: InboxPaintInput) {
   const pathname = usePathname();
+  const effectiveTab = resolveEffectiveMainTab(pathname);
   const gate = explainChatsInboxSkeleton(inbox);
-  const onChatsRoute = pathname === "/chats";
+  const onChatsRoute = effectiveTab === "/chats";
   const hasListContent = inbox.sortedChats.length > 0;
 
   useLayoutEffect(() => {

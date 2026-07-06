@@ -1,8 +1,13 @@
 "use client";
 
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
+import {
+  getMainTabKeepAliveVersion,
+  resolveEffectiveMainTab,
+  subscribeMainTabKeepAlive,
+} from "@/lib/navigation/mainTabKeepAlive";
 import {
   isNavTraceEnabled,
   navTraceCommit,
@@ -35,12 +40,22 @@ function observeDomMainVisible() {
   return () => observer.disconnect();
 }
 
-/** Mark dest-layout + useful-paint for the active nav trace when primary content is ready. */
-export function useNavUsefulPaint(ready: boolean) {
+/**
+ * Mark dest-layout + useful-paint when primary content is ready.
+ * Pass `routeHref` on keep-alive surfaces so hidden panels do not finish another tab's trace.
+ */
+export function useNavUsefulPaint(ready: boolean, routeHref?: string) {
   const pathname = usePathname();
+  useSyncExternalStore(
+    subscribeMainTabKeepAlive,
+    getMainTabKeepAliveVersion,
+    getMainTabKeepAliveVersion,
+  );
+  const effectivePath = resolveEffectiveMainTab(pathname);
+  const isActiveSurface = routeHref ? effectivePath === routeHref : true;
 
   useLayoutEffect(() => {
-    if (!isNavTraceEnabled() || !ready) return;
+    if (!isNavTraceEnabled() || !ready || !isActiveSurface) return;
 
     const stopObserving = observeDomMainVisible();
     navTraceMark("dest-layout");
@@ -48,7 +63,7 @@ export function useNavUsefulPaint(ready: boolean) {
     navTraceFinish(undefined, "useful-paint");
 
     return stopObserving;
-  }, [ready, pathname]);
+  }, [ready, effectivePath, isActiveSurface]);
 }
 
 export function useNavDestLayout() {

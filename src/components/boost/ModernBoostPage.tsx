@@ -33,7 +33,7 @@ export default function ModernBoostPage() {
     handleCopy,
   } = useBoostActions(true);
 
-  useNavUsefulPaint(!loading);
+  useNavUsefulPaint(!loading, "/boost");
 
   const canActivate =
     credits >= BOOST_MIN_MINUTES &&

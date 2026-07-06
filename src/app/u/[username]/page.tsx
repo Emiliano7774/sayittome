@@ -53,7 +53,10 @@ import { navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
+import {
+  consumePreparedProfileChat,
+  prepareProfileChat,
+} from "@/lib/chat/profileChatWarmup";
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { useAdaptiveUsernameFontSize } from "@/lib/profile/adaptiveUsernameSize";
@@ -278,6 +281,11 @@ export default function PublicProfilePage() {
   useEffect(() => {
     setVerifiedVisit(isVerifiedProfileLink(window.location.search));
   }, [usernameParam]);
+
+  useEffect(() => {
+    if (!profile?.username) return;
+    prepareProfileChat(profile.username);
+  }, [profile?.username]);
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -632,14 +640,14 @@ export default function PublicProfilePage() {
             label="conv."
             icon={<MessageCircle size={profileUi.statIcon} fill="white" />}
             ui={profileUi}
+            onPointerDown={() => prepareProfileChat(profile.username, { promote: true })}
             onClick={() => {
               recordPathBeforeChatOpen();
-              const senderId = getChatAnonSenderId();
-              const chatId = buildProfileAnonChatId(senderId, profile.username);
-              prefetchChatThread(chatId);
+              const prepared = consumePreparedProfileChat(profile.username);
               fastRouterPush(
                 router,
-                `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(profile.username)}`,
+                prepared?.href ||
+                  `/chat/${encodeURIComponent(buildProfileAnonChatId(getChatAnonSenderId(), profile.username))}?u=${encodeURIComponent(profile.username)}`,
               );
             }}
           />
@@ -781,6 +789,7 @@ function StatBubble({
   label,
   icon,
   onClick,
+  onPointerDown,
   ring,
   ringSeen,
   ui,
@@ -790,6 +799,7 @@ function StatBubble({
   label: string;
   icon: ReactNode;
   onClick?: () => void;
+  onPointerDown?: () => void;
   ring?: boolean;
   ringSeen?: boolean;
   ui: ReturnType<typeof getClassicProfileUiTokens>;
@@ -813,7 +823,13 @@ function StatBubble({
   return (
     <div className="pointer-events-auto flex flex-col items-center justify-center">
       {onClick ? (
-        <button type="button" data-nav-profile-chat onClick={onClick} className="active:scale-95 transition">
+        <button
+          type="button"
+          data-nav-profile-chat
+          onClick={onClick}
+          onPointerDown={onPointerDown}
+          className="active:scale-95 transition"
+        >
           {bubble}
         </button>
       ) : (

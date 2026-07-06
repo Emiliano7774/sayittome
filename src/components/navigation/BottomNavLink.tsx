@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 
-import { markMainTabVisited, pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
+import {
+  hasMainTabBeenVisited,
+  markMainTabVisited,
+  pinMainTabKeepAlive,
+  setPendingVisualTab,
+} from "@/lib/navigation/mainTabKeepAlive";
 import { isMainTabHref } from "@/lib/navigation/mainTabs";
 import {
   pinShuffleKeepAlive,
@@ -28,8 +33,12 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     }
 
     if (isMainTabHref(href)) {
+      const wasVisited = hasMainTabBeenVisited(href);
       pinMainTabKeepAlive();
       markMainTabVisited(href);
+      if (wasVisited) {
+        setPendingVisualTab(href);
+      }
     }
   }
 

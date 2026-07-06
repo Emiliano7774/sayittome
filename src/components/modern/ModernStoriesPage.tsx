@@ -12,10 +12,10 @@ export default function ModernStoriesPage() {
   const t = useT();
   const { groups, viewerUid, loading } = useStoriesGroups();
 
-  useNavUsefulPaint(!loading);
+  useNavUsefulPaint(!loading, "/stories");
 
   return (
-    <main className="min-h-screen bg-black pb-32 text-white">
+    <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content>
       <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
         <ModernPageHeader title={t("stories_title")} subtitle={t("stories_subtitle")} />
 

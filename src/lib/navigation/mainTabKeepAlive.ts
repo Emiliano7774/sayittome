@@ -1,4 +1,5 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
+import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
@@ -8,6 +9,7 @@ function normalizePath(pathname: string) {
 
 let keepAliveActive = false;
 let keepAliveVersion = 0;
+let pendingVisualTab: MainTabHref | null = null;
 const visitedTabs = new Set<MainTabHref>();
 const listeners = new Set<() => void>();
 
@@ -61,7 +63,39 @@ export function shouldRenderMainTabKeepAliveHost(pathname: string) {
   return false;
 }
 
+/** Immediate visual target before router commits (visited tabs only). */
+export function setPendingVisualTab(href: MainTabHref | null) {
+  if (pendingVisualTab === href) return;
+  pendingVisualTab = href;
+  notifyListeners();
+  if (href && isNavTraceEnabled() && hasMainTabBeenVisited(href)) {
+    navTraceMarkDetail("tab-visual-pending");
+    navTraceMarkDetail("tab-pin");
+    navTraceMarkDetail(`tab-active-${href.slice(1)}`);
+    navTraceMarkDetail("tab-panel-visible");
+  }
+}
+
+export function getPendingVisualTab() {
+  return pendingVisualTab;
+}
+
+export function resolveEffectiveMainTab(pathname: string) {
+  return pendingVisualTab ?? normalizePath(pathname);
+}
+
+export function syncPendingVisualTabWithPathname(pathname: string) {
+  const path = normalizePath(pathname);
+  if (pendingVisualTab && path === pendingVisualTab) {
+    pendingVisualTab = null;
+    notifyListeners();
+  }
+}
+
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
+  if (pendingVisualTab === href && hasMainTabBeenVisited(href)) {
+    return true;
+  }
   return normalizePath(pathname) === href;
 }
 
