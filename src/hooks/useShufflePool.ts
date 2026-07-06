@@ -752,7 +752,12 @@ export function useShufflePool() {
       markShuffleHydrated(initialShuffle.visibleCount);
     }
 
-    if (poolRef.current.length > 0 && getVisibleShuffleProfiles().length === 0) {
+    if (
+      poolRef.current.length > 0 &&
+      getVisibleShuffleProfiles().length === 0 &&
+      !shouldSuppressShuffleWindowRefresh() &&
+      !shuffleFeedFrozenRef.current
+    ) {
       filterActivePool("", filtersRef.current);
     }
   }, [filterActivePool]);

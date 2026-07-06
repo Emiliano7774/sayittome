@@ -18,6 +18,10 @@ function normalizeChatHref(href: string) {
 export function fastRouterPush(router: AppRouterInstance, href: string) {
   if (typeof window !== "undefined") {
     maybePinShuffleKeepAliveFromPath(window.location.pathname);
+
+    if (isInstantShuffleReturnDestination(href)) {
+      prepareInstantShuffleReturn();
+    }
   }
 
   if (normalizeChatHref(href)) {

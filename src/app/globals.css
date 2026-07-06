@@ -306,11 +306,13 @@ body.sayittome-chat-open {
   overflow: hidden;
   overscroll-behavior: none;
   contain: strict;
+  visibility: hidden;
 }
 
 .sayittome-shuffle-keepalive-visible {
   position: relative;
   z-index: auto;
+  visibility: visible;
 }
 
 html.sayittome-shuffle-return-pending ::view-transition-old(root),

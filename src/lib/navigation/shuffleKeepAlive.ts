@@ -1,5 +1,6 @@
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
+import { MAIN_TAB_HREFS } from "@/lib/navigation/mainTabs";
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 
 function normalizePath(pathname: string) {
@@ -52,6 +53,7 @@ export function shouldRenderShuffleKeepAliveHost(pathname: string) {
 
   if (path.startsWith("/chat/")) return true;
   if (path.startsWith("/u/")) return true;
+  if ((MAIN_TAB_HREFS as readonly string[]).includes(path)) return true;
   return false;
 }
 
