@@ -1441,6 +1441,8 @@ export default function ProfileAnonChat({
     return "";
   }
 
+  const hasMediaPreview = Boolean(audioPreview || imagePreview || videoPreview);
+
   return (
     <main id="sayittome-chat-page-root" className="sayittome-chat-shell text-white">
       {fullscreenUrl ? (
@@ -1769,7 +1771,12 @@ export default function ProfileAnonChat({
           </div>
         ) : null}
 
-        <div className="sayittome-chat-composer shrink-0 border-t border-white/5 bg-black/95 px-4 pt-3 backdrop-blur-xl">
+        <div
+          className={[
+            "sayittome-chat-composer shrink-0 border-t border-white/5 bg-black/95 px-4 pt-3 backdrop-blur-xl",
+            hasMediaPreview ? "sayittome-chat-composer--preview" : "",
+          ].join(" ")}
+        >
           {replyingTo && (
             <div className={`${chatWidthClass} mb-3 rounded-3xl bg-[#090909] px-5 py-4`}>
               <div className="flex items-center justify-between">
@@ -1785,101 +1792,114 @@ export default function ProfileAnonChat({
             </div>
           )}
 
-          {audioPreview || imagePreview || videoPreview ? (
-            <div className={`${chatWidthClass} mb-4 rounded-[28px] bg-[#070707] p-4`}>
-              {audioPreview ? (
-                <audio
-                  controls
-                  playsInline
-                  preload="metadata"
-                  src={audioPreview}
-                  className="w-full"
-                />
-              ) : null}
-
-              {imagePreview ? (
-                pendingSource === "camera" && viewOnce ? (
-                  <div className="flex min-h-[180px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
-                    <Bomb size={44} />
-                    <p className="mt-3 text-xl font-black">Bomba activada</p>
-                    <p className="mt-1 text-sm text-orange-200/70">La imagen no se vera hasta abrirse una vez</p>
-                  </div>
-                ) : (
-                  <img src={imagePreview} className="max-h-[280px] rounded-[22px]" />
-                )
-              ) : null}
-
-              {videoPreview ? (
-                pendingSource === "camera" && viewOnce ? (
-                  <div className="flex min-h-[180px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
-                    <Bomb size={44} />
-                    <p className="mt-3 text-xl font-black">Bomba activada</p>
-                    <p className="mt-1 text-sm text-orange-200/70">El video no se vera hasta abrirse una vez</p>
-                  </div>
-                ) : (
-                  <video src={videoPreview} controls className="max-h-[280px] rounded-[22px]" />
-                )
-              ) : null}
-
-              {pendingSource === "camera" ? (
-                <button
-                  type="button"
-                  onClick={() => setViewOnce((v) => !v)}
-                  className={[
-                    "mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition",
-                    viewOnce
-                      ? "border-orange-400/40 bg-orange-500/15 text-orange-300"
-                      : "border-white/10 bg-white/[0.04] text-white/60",
-                  ].join(" ")}
-                >
-                  <Bomb size={18} />
-                  {viewOnce
-                    ? "Bomba activada: se vera una sola vez"
-                    : "Activar bomba: ver una sola vez"}
-                </button>
-              ) : null}
-
-              {uploadProgress !== null ? (
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-black/30">
-                  <div
-                    className="h-full bg-violet-500"
-                    style={{ width: `${uploadProgress}%` }}
+          {hasMediaPreview ? (
+            <div className={`${chatWidthClass} sayittome-chat-media-preview rounded-[28px] bg-[#070707] p-4`}>
+              <div className="sayittome-chat-media-preview-body">
+                {audioPreview ? (
+                  <audio
+                    controls
+                    playsInline
+                    preload="metadata"
+                    src={audioPreview}
+                    className="w-full"
                   />
+                ) : null}
+
+                {imagePreview ? (
+                  pendingSource === "camera" && viewOnce ? (
+                    <div className="flex min-h-[140px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
+                      <Bomb size={44} />
+                      <p className="mt-3 text-xl font-black">Bomba activada</p>
+                      <p className="mt-1 text-sm text-orange-200/70">La imagen no se vera hasta abrirse una vez</p>
+                    </div>
+                  ) : (
+                    <img
+                      src={imagePreview}
+                      alt=""
+                      className="sayittome-chat-media-preview-visual mx-auto max-w-full rounded-[22px] object-contain"
+                    />
+                  )
+                ) : null}
+
+                {videoPreview ? (
+                  pendingSource === "camera" && viewOnce ? (
+                    <div className="flex min-h-[140px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
+                      <Bomb size={44} />
+                      <p className="mt-3 text-xl font-black">Bomba activada</p>
+                      <p className="mt-1 text-sm text-orange-200/70">El video no se vera hasta abrirse una vez</p>
+                    </div>
+                  ) : (
+                    <video
+                      src={videoPreview}
+                      controls
+                      className="sayittome-chat-media-preview-visual mx-auto max-w-full rounded-[22px] object-contain"
+                    />
+                  )
+                ) : null}
+              </div>
+
+              <div className="sayittome-chat-media-preview-actions">
+                {pendingSource === "camera" ? (
+                  <button
+                    type="button"
+                    onClick={() => setViewOnce((v) => !v)}
+                    className={[
+                      "flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition",
+                      viewOnce
+                        ? "border-orange-400/40 bg-orange-500/15 text-orange-300"
+                        : "border-white/10 bg-white/[0.04] text-white/60",
+                    ].join(" ")}
+                  >
+                    <Bomb size={18} />
+                    {viewOnce
+                      ? "Bomba activada: se vera una sola vez"
+                      : "Activar bomba: ver una sola vez"}
+                  </button>
+                ) : null}
+
+                {uploadProgress !== null ? (
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/30">
+                    <div
+                      className="h-full bg-violet-500"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                ) : null}
+
+                <div className="mt-3 flex gap-3">
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      void sendMedia();
+                    }}
+                    className="rounded-2xl bg-violet-500/80 px-5 py-3 text-lg font-bold"
+                  >
+                    Enviar
+                  </button>
+
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      clearPreview();
+                    }}
+                    className="rounded-2xl bg-white/[0.07] px-5 py-3 text-lg"
+                  >
+                    Cancelar
+                  </button>
                 </div>
-              ) : null}
-
-              <div className="mt-4 flex gap-3">
-                <button
-                  type="button"
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    void sendMedia();
-                  }}
-                  className="rounded-2xl bg-violet-500/80 px-5 py-3 text-lg font-bold"
-                >
-                  Enviar
-                </button>
-
-                <button
-                  type="button"
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    clearPreview();
-                  }}
-                  className="rounded-2xl bg-white/[0.07] px-5 py-3 text-lg"
-                >
-                  Cancelar
-                </button>
               </div>
             </div>
           ) : null}
 
-          {recording ? (
+          {!hasMediaPreview && recording ? (
             <div className={`${chatWidthClass} mb-3 rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-300`}>
               Grabando audio... solta para terminar
             </div>
           ) : null}
 
+          {!hasMediaPreview ? (
           <div className={`${chatWidthClass} flex items-center gap-2`}>
             <input
               ref={cameraPhotoRef}
@@ -2005,6 +2025,7 @@ export default function ProfileAnonChat({
               {text.trim() ? <Send size={18} /> : <ArrowUp size={18} />}
             </button>
           </div>
+          ) : null}
         </div>
       </section>
     </main>
