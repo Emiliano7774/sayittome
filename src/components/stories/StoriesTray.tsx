@@ -42,6 +42,7 @@ export default function StoriesTray({ groups, showAdd = true }: Props) {
           href={`/stories/${encodeURIComponent(group.ownerUid)}`}
           className="flex shrink-0 flex-col items-center gap-2"
           onClick={stashStoryReturn}
+          onPointerDown={() => prefetchOwnerStories(group.ownerUid, group.ownerUsername)}
           onMouseEnter={() => prefetchOwnerStories(group.ownerUid, group.ownerUsername)}
           onFocus={() => prefetchOwnerStories(group.ownerUid, group.ownerUsername)}
         >

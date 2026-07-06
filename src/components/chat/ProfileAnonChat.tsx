@@ -601,6 +601,7 @@ export default function ProfileAnonChat({
     async function loadTargetProfile() {
       const cachedLite = getCachedProfile(username);
       const cachedFull = getCachedFullProfile(username) as Record<string, unknown> | null;
+      const hasCachedProfile = Boolean(cachedLite || cachedFull);
 
       if (cachedLite) {
         setTargetUid(cachedLite.uid);
@@ -618,44 +619,53 @@ export default function ProfileAnonChat({
         setTargetOnline(cachedFull.online === true);
       }
 
-      try {
-        const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
-          cache: "no-store",
-        });
-        const json = await res.json();
-        if (cancelled) return;
+      async function refreshFromNetwork() {
+        try {
+          const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
+            cache: "no-store",
+          });
+          const json = await res.json();
+          if (cancelled) return;
 
-        const profile = json?.profile;
-        const photo = resolveProfilePhoto(profile);
-        const uid = String(profile?.uid || "");
+          const profile = json?.profile;
+          const photo = resolveProfilePhoto(profile);
+          const uid = String(profile?.uid || "");
 
-        setTargetUid(uid);
-        setTargetPhoto(photo);
-        setTargetBlurPhoto(profile?.adminBlurProfilePhoto === true);
-        setTargetLastActive(String(profile?.lastActive || ""));
-        setTargetOnline(profile?.online === true);
-        setTargetShowsLastSeen(profile?.mostrarUltimaVez !== false);
+          setTargetUid(uid);
+          setTargetPhoto(photo);
+          setTargetBlurPhoto(profile?.adminBlurProfilePhoto === true);
+          setTargetLastActive(String(profile?.lastActive || ""));
+          setTargetOnline(profile?.online === true);
+          setTargetShowsLastSeen(profile?.mostrarUltimaVez !== false);
 
-        setCachedProfile(username, {
-          uid,
-          photo,
-          blurPhoto: profilePhotoRequiresBlur({
-            adminBlurProfilePhoto: profile?.adminBlurProfilePhoto === true,
-            adminBlurFotosPerfil: profile?.adminBlurFotosPerfil === true,
-          }),
-          lastActive: String(profile?.lastActive || ""),
-          online: profile?.online === true,
-        });
+          setCachedProfile(username, {
+            uid,
+            photo,
+            blurPhoto: profilePhotoRequiresBlur({
+              adminBlurProfilePhoto: profile?.adminBlurProfilePhoto === true,
+              adminBlurFotosPerfil: profile?.adminBlurFotosPerfil === true,
+            }),
+            lastActive: String(profile?.lastActive || ""),
+            online: profile?.online === true,
+          });
 
-        if (photo && chatId) {
-          void updateDoc(doc(db, "chats", chatId), {
-            targetPhoto: photo,
-            ...(uid ? { targetUid: uid, receptorUid: uid } : {}),
-          }).catch(() => undefined);
+          if (photo && chatId) {
+            void updateDoc(doc(db, "chats", chatId), {
+              targetPhoto: photo,
+              ...(uid ? { targetUid: uid, receptorUid: uid } : {}),
+            }).catch(() => undefined);
+          }
+        } catch (e) {
+          console.error(e);
         }
-      } catch (e) {
-        console.error(e);
       }
+
+      if (hasCachedProfile) {
+        void refreshFromNetwork();
+        return;
+      }
+
+      await refreshFromNetwork();
     }
 
     void loadTargetProfile();

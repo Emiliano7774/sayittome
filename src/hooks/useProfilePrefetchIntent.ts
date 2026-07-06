@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import {
   cancelProfilePrefetch,
+  prefetchProfileImmediately,
   scheduleProfilePrefetch,
 } from "@/lib/profile/prefetchPublicProfile";
 
@@ -40,7 +41,7 @@ export function useProfilePrefetchIntent(username: string, options: Options = {}
 
   const onPointerDown = useCallback(() => {
     if (!enabled) return;
-    scheduleProfilePrefetch(usernameRef.current);
+    prefetchProfileImmediately(usernameRef.current);
   }, [enabled]);
 
   return {

@@ -8,6 +8,7 @@ import AppImage from "@/components/media/AppImage";
 import { useStoryReturnStash } from "@/hooks/useStoryReturnStash";
 import { useT } from "@/contexts/LocaleContext";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
+import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 import { latestStoryInGroup, storyDisplayName } from "@/lib/stories/storyDisplay";
 import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
 
@@ -37,6 +38,7 @@ function StoryTile({
     <Link
       href={href}
       onClick={onOpen}
+      onPointerDown={() => prefetchOwnerStories(story.ownerUid, group.ownerUsername)}
       className="group relative aspect-[3/4] overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-[0_0_30px_rgba(0,0,0,.35)] transition hover:border-violet-500/35 hover:scale-[1.02] active:scale-[0.98]"
     >
       {story.mediaType === "video" && story.mediaUrl ? (

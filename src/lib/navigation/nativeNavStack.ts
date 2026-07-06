@@ -6,8 +6,12 @@ function normalizePath(pathname: string) {
 
 const STACK_KEY = "sayittome-native-nav-stack";
 const MAX_STACK = 40;
+const PERSIST_DEBOUNCE_MS = 300;
 
-function readStack(): string[] {
+let memoryStack: string[] | null = null;
+let persistTimer: number | null = null;
+
+function readStackFromStorage(): string[] {
   if (typeof window === "undefined") return [];
 
   try {
@@ -21,25 +25,45 @@ function readStack(): string[] {
   }
 }
 
-function writeStack(stack: string[]) {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(STACK_KEY, JSON.stringify(stack));
+function schedulePersistStack() {
+  if (typeof window === "undefined" || !memoryStack) return;
+
+  if (persistTimer !== null) {
+    window.clearTimeout(persistTimer);
+  }
+
+  persistTimer = window.setTimeout(() => {
+    persistTimer = null;
+    if (!memoryStack) return;
+    window.sessionStorage.setItem(STACK_KEY, JSON.stringify(memoryStack));
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+function getStack(): string[] {
+  if (memoryStack) return memoryStack;
+  memoryStack = readStackFromStorage();
+  return memoryStack;
+}
+
+function commitStack(next: string[]) {
+  memoryStack = next;
+  schedulePersistStack();
 }
 
 export function seedNativeNavStack(pathname: string) {
   const path = normalizePath(pathname);
-  const stack = readStack();
+  const stack = getStack();
   if (!stack.length) {
-    writeStack([path]);
+    commitStack([path]);
   }
 }
 
 export function recordNativeNavPath(pathname: string) {
   const path = normalizePath(pathname);
-  const stack = readStack();
+  const stack = [...getStack()];
 
   if (!stack.length) {
-    writeStack([path]);
+    commitStack([path]);
     return;
   }
 
@@ -50,13 +74,13 @@ export function recordNativeNavPath(pathname: string) {
     stack.splice(0, stack.length - MAX_STACK);
   }
 
-  writeStack(stack);
+  commitStack(stack);
 }
 
 /** Returns the route before `currentPathname` without mutating the stack. */
 export function peekNativeNavPath(currentPathname: string): string | null {
   const path = normalizePath(currentPathname);
-  const stack = readStack();
+  const stack = getStack();
 
   if (!stack.length) return null;
 
@@ -71,7 +95,7 @@ export function peekNativeNavPath(currentPathname: string): string | null {
 /** Returns the previous in-app route and updates the stack. */
 export function popNativeNavPath(currentPathname: string): string | null {
   const path = normalizePath(currentPathname);
-  const stack = readStack();
+  const stack = [...getStack()];
 
   if (!stack.length) return null;
 
@@ -80,6 +104,6 @@ export function popNativeNavPath(currentPathname: string): string | null {
   }
 
   const previous = stack[stack.length - 1] || null;
-  writeStack(stack);
+  commitStack(stack);
   return previous;
 }

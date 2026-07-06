@@ -8,6 +8,7 @@ function normalizePath(pathname: string) {
 
 let keepAliveActive = false;
 let keepAliveVersion = 0;
+const visitedTabs = new Set<MainTabHref>();
 const listeners = new Set<() => void>();
 
 function notifyListeners() {
@@ -26,6 +27,17 @@ export function getMainTabKeepAliveVersion() {
 
 export function isMainTabKeepAliveActive() {
   return keepAliveActive;
+}
+
+export function hasMainTabBeenVisited(href: MainTabHref) {
+  return visitedTabs.has(href);
+}
+
+/** Mark a tab panel as visited so its keep-alive tree mounts once. */
+export function markMainTabVisited(href: MainTabHref) {
+  if (visitedTabs.has(href)) return;
+  visitedTabs.add(href);
+  notifyListeners();
 }
 
 /** Pin main-tab panels after the first in-app tab visit so switches stay mounted. */
@@ -51,6 +63,10 @@ export function shouldRenderMainTabKeepAliveHost(pathname: string) {
 
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
   return normalizePath(pathname) === href;
+}
+
+export function shouldMountMainTabPanel(pathname: string, href: MainTabHref) {
+  return isMainTabPanelVisible(pathname, href) || hasMainTabBeenVisited(href);
 }
 
 export function listMainTabKeepAliveHrefs() {

@@ -12,7 +12,9 @@ import {
   getMainTabKeepAliveVersion,
   isMainTabPanelVisible,
   listMainTabKeepAliveHrefs,
+  markMainTabVisited,
   pinMainTabKeepAlive,
+  shouldMountMainTabPanel,
   shouldRenderMainTabKeepAliveHost,
   subscribeMainTabKeepAlive,
 } from "@/lib/navigation/mainTabKeepAlive";
@@ -38,6 +40,11 @@ export default function MainTabKeepAliveHost() {
     if (shouldRenderMainTabKeepAliveHost(pathname)) {
       pinMainTabKeepAlive();
     }
+
+    const path = pathname.split("?")[0].split("#")[0];
+    if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(path)) {
+      markMainTabVisited(path as MainTabHref);
+    }
   }, [pathname]);
 
   if (!shouldRenderMainTabKeepAliveHost(pathname)) {
@@ -51,6 +58,10 @@ export default function MainTabKeepAliveHost() {
         .map((href) => {
           const Panel = PANELS[href];
           const visible = isMainTabPanelVisible(pathname, href);
+
+          if (!shouldMountMainTabPanel(pathname, href)) {
+            return null;
+          }
 
           return (
             <div

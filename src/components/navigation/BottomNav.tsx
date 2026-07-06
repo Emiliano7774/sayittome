@@ -37,7 +37,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
 
   function openShuffleTab() {
     fastRouterPush(router, "/shuffle");
-    window.setTimeout(() => triggerShuffleClick(), 80);
+    triggerShuffleClick();
   }
 
   return (

@@ -126,6 +126,26 @@ export function markProfilePrefetchScroll() {
   cancelAllPendingPrefetches();
 }
 
+/** Fire prefetch immediately (tap path) — no intent delay. */
+export function prefetchProfileImmediately(username: string) {
+  const key = normalizeKey(username);
+  if (!key) return;
+
+  cancelPendingForKey(key);
+
+  if (shouldSkipPrefetch(key)) {
+    metrics.skipped += 1;
+    return;
+  }
+
+  recentPrefetchedAt.set(key, Date.now());
+  sessionFired += 1;
+  metrics.fired += 1;
+
+  const abort = new AbortController();
+  void executeProfilePrefetch(username, key, abort);
+}
+
 /** Schedule prefetch after sustained hover/touch intent (not instant). */
 export function scheduleProfilePrefetch(username: string) {
   const key = normalizeKey(username);

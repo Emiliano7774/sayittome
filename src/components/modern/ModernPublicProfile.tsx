@@ -155,11 +155,16 @@ export default function ModernPublicProfile({
     const merged = [coverPhotoUrl, profile.fotoPrincipal, ...photos].filter(Boolean);
     return Array.from(new Set(merged));
   }, [coverPhotoUrl, profile.fotoPrincipal, profile.fotos]);
+  function warmProfileChat() {
+    const senderId = getChatAnonSenderId();
+    prefetchChatThread(buildProfileAnonChatId(senderId, profile.username));
+  }
+
   function openProfileChat() {
     recordPathBeforeChatOpen();
+    warmProfileChat();
     const senderId = getChatAnonSenderId();
     const chatId = buildProfileAnonChatId(senderId, profile.username);
-    prefetchChatThread(chatId);
     fastRouterPush(
       router,
       `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(profile.username)}`,
@@ -472,6 +477,7 @@ export default function ModernPublicProfile({
               <div className="mt-5 flex flex-wrap gap-3">
                 <button
                   type="button"
+                  onPointerDown={warmProfileChat}
                   onClick={openProfileChat}
                   className="flex-1 rounded-full bg-white px-6 py-3.5 text-center text-sm font-normal text-black"
                 >

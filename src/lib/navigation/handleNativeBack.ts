@@ -14,7 +14,7 @@ export type NativeBackNavigation = {
 let backLockUntil = 0;
 let pendingExitUntil = 0;
 
-const BACK_LOCK_MS = 280;
+const BACK_LOCK_MS = 120;
 const EXIT_CONFIRM_MS = 2000;
 
 export function readNativePathname() {

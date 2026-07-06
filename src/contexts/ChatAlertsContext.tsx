@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import { useGlobalChatAlerts } from "@/hooks/useGlobalChatAlerts";
 
@@ -17,7 +17,19 @@ const ChatAlertsContext = createContext<ChatAlertsValue>({
 });
 
 export function ChatAlertsProvider({ children }: { children: ReactNode }) {
-  const value = useGlobalChatAlerts();
+  const alerts = useGlobalChatAlerts();
+  const value = useMemo(
+    () => alerts,
+    [
+      alerts.totalUnread,
+      alerts.viewerId,
+      alerts.sortedChats,
+      alerts.uid,
+      alerts.loading,
+      alerts.isAnonymousSession,
+      alerts.inboxQueriesEnabled,
+    ],
+  );
 
   return (
     <ChatAlertsContext.Provider value={value}>{children}</ChatAlertsContext.Provider>

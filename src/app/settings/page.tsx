@@ -164,10 +164,14 @@ export function SettingsRouteContent() {
 
     const user = auth.currentUser;
     if (!user?.emailVerified) return;
+    if (profile) {
+      void loadProfile(user);
+      return;
+    }
 
     setLoading(true);
     void loadProfile(user);
-  }, [loadProfile, pathname]);
+  }, [loadProfile, pathname, profile]);
 
   const localeTag =
     locale === "es"

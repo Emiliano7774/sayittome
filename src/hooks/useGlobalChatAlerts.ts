@@ -146,13 +146,25 @@ export function useGlobalChatAlerts() {
     );
   }, [chatAlertsRouteEnabled, messageListenersEnabled, loading, sortedChats]);
 
-  return {
-    totalUnread,
-    viewerId,
-    sortedChats: displaySortedChats,
-    uid,
-    loading,
-    isAnonymousSession,
-    inboxQueriesEnabled: inboxRouteEnabled || notificationInboxEnabled,
-  };
+  return useMemo(
+    () => ({
+      totalUnread,
+      viewerId,
+      sortedChats: displaySortedChats,
+      uid,
+      loading,
+      isAnonymousSession,
+      inboxQueriesEnabled: inboxRouteEnabled || notificationInboxEnabled,
+    }),
+    [
+      totalUnread,
+      viewerId,
+      displaySortedChats,
+      uid,
+      loading,
+      isAnonymousSession,
+      inboxRouteEnabled,
+      notificationInboxEnabled,
+    ],
+  );
 }

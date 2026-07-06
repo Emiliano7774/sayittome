@@ -145,11 +145,33 @@ export default function PublicProfilePage() {
         setProfile(cached as Profile);
         markProfileHydrated();
         setLoading(false);
+
+        void lookupProfileByUsername(usernameParam, true)
+          .then((lookup) => {
+            if (lookup.usernameChanged) {
+              setUsernameChanged({
+                requestedUsername: lookup.requestedUsername,
+                currentUsername: lookup.currentUsername,
+              });
+              setProfile(null);
+              return;
+            }
+
+            setUsernameChanged(null);
+            if (lookup.profile) {
+              setProfile(lookup.profile as Profile);
+              setCachedFullProfile(usernameParam, lookup.profile);
+              markProfileHydrated();
+            }
+          })
+          .catch(() => undefined);
+
+        return;
       }
 
       try {
-        if (!cached) setLoading(true);
-        const lookup = await lookupProfileByUsername(usernameParam, true);
+        setLoading(true);
+        const lookup = await lookupProfileByUsername(usernameParam, false);
         if (lookup.usernameChanged) {
           setUsernameChanged({
             requestedUsername: lookup.requestedUsername,
@@ -166,7 +188,7 @@ export default function PublicProfilePage() {
           markProfileHydrated();
         }
       } catch {
-        if (!cached) setProfile(null);
+        setProfile(null);
       } finally {
         setLoading(false);
       }
