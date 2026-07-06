@@ -31,6 +31,8 @@ import {
 import { canOpenViewOnce, markOpened } from "@/lib/media/viewOnce";
 import AbuseProtectionMenu from "@/components/chat/AbuseProtectionMenu";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
+import ChatMessageText from "@/components/chat/ChatMessageText";
+import ChatVerifiedProfileLinkCard from "@/components/chat/ChatVerifiedProfileLinkCard";
 import ClassicAnonPresenceBubble from "@/components/chat/ClassicAnonPresenceBubble";
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import { useUxMode } from "@/contexts/UxModeContext";
@@ -69,6 +71,7 @@ import {
 import { messageRequiresBlur, profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
+import { parseVerifiedProfileLinkInText } from "@/lib/profile/verifiedLink";
 import { getCachedProfile, setCachedProfile, getCachedFullProfile } from "@/lib/profile/profileCache";
 import {
   cachedMessageToUi,
@@ -1618,6 +1621,10 @@ export default function ProfileAnonChat({
                 isSending: message.status === "sending",
                 hasError: message.status === "error",
               });
+              const verifiedProfileLink =
+                message.type === "text"
+                  ? parseVerifiedProfileLinkInText(message.text)
+                  : null;
 
               return (
               <div
@@ -1739,9 +1746,11 @@ export default function ProfileAnonChat({
                       />
                     </SensitiveMediaShell>
                   ) : (
-                    <p className={chatBubbleTextClass(isClassic)}>
-                      {message.text}
-                    </p>
+                    <ChatMessageText
+                      text={message.text}
+                      verifiedLink={verifiedProfileLink}
+                      className={chatBubbleTextClass(isClassic)}
+                    />
                   )}
 
                   {sourceLabel(message) ? (
@@ -1752,6 +1761,14 @@ export default function ProfileAnonChat({
                   ) : null}
                 </div>
               </ChatSwipeRevealTime>
+
+              {verifiedProfileLink ? (
+                <ChatVerifiedProfileLinkCard
+                  link={verifiedProfileLink}
+                  mine={message.mine}
+                  isClassic={isClassic}
+                />
+              ) : null}
 
               <div
                 className={[

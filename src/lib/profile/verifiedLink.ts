@@ -38,6 +38,83 @@ export function isVerifiedProfileLink(search?: string | URLSearchParams | null) 
   return params.get(VERIFIED_QUERY_PARAM) === VERIFIED_QUERY_VALUE;
 }
 
+export type ParsedVerifiedProfileLink = {
+  username: string;
+  profileHref: string;
+  displayLink: string;
+};
+
+const VERIFIED_PUBLIC_LINK_RE =
+  /(?:https?:\/\/)?(?:www\.)?sytm\.me\/@([a-zA-Z0-9._-]{3,24})\/?(?:\?[^\s#]*)?(?:#[^\s]*)?$/i;
+
+const VERIFIED_AT_HANDLE_RE =
+  /(?:https?:\/\/)?(?:[\w.-]+)\/@([a-zA-Z0-9._-]{3,24})\/?(?:\?[^\s#]*)?(?:#[^\s]*)?$/i;
+
+const VERIFIED_LEGACY_PROFILE_RE =
+  /(?:https?:\/\/)?(?:[\w.-]+)\/u\/([a-zA-Z0-9._-]{3,24})(?:\?[^\s#]*)?(?:#[^\s]*)?$/i;
+
+function parseVerifiedProfileLinkCandidate(text: string): ParsedVerifiedProfileLink | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  let rawUsername = "";
+
+  const publicMatch = trimmed.match(VERIFIED_PUBLIC_LINK_RE);
+  if (publicMatch?.[1]) {
+    rawUsername = publicMatch[1];
+  } else {
+    const atMatch = trimmed.match(VERIFIED_AT_HANDLE_RE);
+    if (atMatch?.[1]) {
+      rawUsername = atMatch[1];
+    } else {
+      const legacyMatch = trimmed.match(VERIFIED_LEGACY_PROFILE_RE);
+      if (!legacyMatch?.[1]) return null;
+      const hasVerified =
+        /[?&]verified=1(?:&|$)/i.test(trimmed) || /#verified=1/i.test(trimmed);
+      if (!hasVerified) return null;
+      rawUsername = legacyMatch[1];
+    }
+  }
+
+  const username = normalizeVerifiedProfileUsername(rawUsername);
+  if (!username) return null;
+
+  return {
+    username,
+    profileHref: `/u/${encodeURIComponent(username)}?verified=1`,
+    displayLink: displayVerifiedProfileLink(username),
+  };
+}
+
+/** Detects a copied verified profile link inside a chat text message. */
+export function parseVerifiedProfileLinkInText(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const direct = parseVerifiedProfileLinkCandidate(trimmed);
+  if (direct) return direct;
+
+  const urlMatch = trimmed.match(
+    /(?:https?:\/\/)?(?:www\.)?sytm\.me\/@([a-zA-Z0-9._-]{3,24})/i,
+  );
+  if (urlMatch?.[1]) {
+    const username = normalizeVerifiedProfileUsername(urlMatch[1]);
+    if (!username) return null;
+    return {
+      username,
+      profileHref: `/u/${encodeURIComponent(username)}?verified=1`,
+      displayLink: displayVerifiedProfileLink(username),
+    };
+  }
+
+  return null;
+}
+
+export function getVerifiedProfileInAppHref(username: string) {
+  const slug = normalizeVerifiedProfileUsername(username);
+  return `/u/${encodeURIComponent(slug)}?verified=1`;
+}
+
 async function writeTextToClipboard(text: string): Promise<boolean> {
   if (typeof document === "undefined") return false;
 

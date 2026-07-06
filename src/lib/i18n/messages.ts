@@ -491,6 +491,8 @@ const es = {
   chat_anon_classic_body:
     "Hablás sin mostrar tu identidad. La otra persona no sabe quién sos; este chat vive solo en esta sesión.",
   chat_bomb: "Bomba",
+  chat_verified_link_badge: "Link verificado",
+  chat_verified_link_open: "Abrir perfil verificado de @{username}",
   chat_status_sending: "Enviando...",
   chat_status_delivered: "Entregado",
   chat_status_seen: "Visto",
@@ -1233,6 +1235,8 @@ const en: Record<keyof typeof es, string> = {
   chat_anon_classic_body:
     "You are messaging without revealing your identity. The other person does not know who you are; this chat lives only in this session.",
   chat_bomb: "Bomb",
+  chat_verified_link_badge: "Verified link",
+  chat_verified_link_open: "Open verified profile for @{username}",
   chat_status_sending: "Sending...",
   chat_status_delivered: "Delivered",
   chat_status_seen: "Seen",
