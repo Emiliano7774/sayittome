@@ -8,7 +8,6 @@ import {
   maybePinShuffleKeepAliveFromPath,
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
-import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
 
 function normalizeChatHref(href: string) {
   const path = href.split("?")[0].split("#")[0];
@@ -24,9 +23,7 @@ export function fastRouterPush(router: AppRouterInstance, href: string) {
     recordPathBeforeChatOpen();
   }
 
-  runNativeViewTransition(() => {
-    router.push(href);
-  });
+  router.push(href);
 }
 
 export function fastRouterReplace(router: AppRouterInstance, href: string) {
@@ -36,7 +33,5 @@ export function fastRouterReplace(router: AppRouterInstance, href: string) {
     return;
   }
 
-  runNativeViewTransition(() => {
-    router.replace(href);
-  });
+  router.replace(href);
 }

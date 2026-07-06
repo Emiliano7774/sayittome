@@ -123,7 +123,11 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     options?.enableSessionChatListeners ?? enableInboxQueries;
   const enableAnonInboxQuery = options?.enableAnonInboxQuery ?? false;
   const { firebaseUser, loading } = useAuth();
-  const [chats, setChats] = useState<InboxChat[]>([]);
+  const [chats, setChats] = useState<InboxChat[]>(() => {
+    const snapshot = readInboxSnapshot();
+    if (snapshot.length > 0) rememberInboxChatCount(snapshot.length);
+    return snapshot;
+  });
   const [sessionChats, setSessionChats] = useState<InboxChat[]>([]);
   const [sessionChatIds, setSessionChatIds] = useState<string[]>([]);
   const [anonSessionId, setAnonSessionId] = useState("");

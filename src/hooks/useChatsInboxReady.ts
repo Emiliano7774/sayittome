@@ -1,3 +1,5 @@
+import { readInboxSnapshot } from "@/lib/chat/inboxSnapshot";
+
 const INBOX_HYDRATED_SESSION_KEY = "sayittome:inbox:hydrated:v1";
 
 type InboxGateInput = {
@@ -44,6 +46,12 @@ export function shouldShowChatsInboxSkeleton(inbox: InboxGateInput) {
 
   if (chatCount > 0) {
     rememberInboxChatCount(chatCount);
+    return false;
+  }
+
+  const snapshotCount = readInboxSnapshot().length;
+  if (snapshotCount > 0) {
+    rememberInboxChatCount(snapshotCount);
     return false;
   }
 

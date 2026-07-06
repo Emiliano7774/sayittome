@@ -21,8 +21,14 @@ import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories";
 import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
-import { markStoryViewedLocally } from "@/lib/stories/storiesIndexStore";
-import { preloadStoryMedia } from "@/lib/stories/preload";
+import {
+  getCachedStoryGroups,
+  getNextStoryGroup,
+  getPreviousStoryGroup,
+  markStoryViewedLocally,
+  prefetchUpcomingStoryGroups,
+} from "@/lib/stories/storiesIndexStore";
+import { preloadStoryPlaybackChain } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { resolveStoryViewerExitDestination } from "@/lib/navigation/storyReturnNav";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
@@ -53,6 +59,8 @@ export default function StoryViewer({
   const t = useT();
   const [index, setIndex] = useState(0);
   const [localStories, setLocalStories] = useState(stories);
+  const [activeOwnerUid, setActiveOwnerUid] = useState(ownerUid || "");
+  const [activeOwnerUsername, setActiveOwnerUsername] = useState(ownerUsername || "");
   const [paused, setPaused] = useState(false);
   const [blurLocked, setBlurLocked] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
@@ -72,13 +80,15 @@ export default function StoryViewer({
 
   useEffect(() => {
     setLocalStories(stories);
+    if (ownerUid) setActiveOwnerUid(ownerUid);
+    if (ownerUsername) setActiveOwnerUsername(ownerUsername);
     if (initialStoryId) {
       const nextIndex = stories.findIndex((story) => story.id === initialStoryId);
       setIndex(nextIndex >= 0 ? nextIndex : 0);
       return;
     }
     setIndex(0);
-  }, [initialStoryId, stories]);
+  }, [initialStoryId, ownerUid, ownerUsername, stories]);
 
   useEffect(() => {
     document.body.classList.add("sayittome-story-viewer-open");
@@ -106,12 +116,19 @@ export default function StoryViewer({
   }, [exitStoryViewer]);
 
   const current = localStories[index];
-  const resolvedOwnerUid = ownerUid || current?.ownerUid || "";
+  const resolvedOwnerUid = activeOwnerUid || ownerUid || current?.ownerUid || "";
+  const resolvedOwnerUsername =
+    activeOwnerUsername || ownerUsername || current?.ownerUsername || "";
   const anonymousStory = current ? isAnonymousStory(current) : false;
   const displayName = current
     ? storyDisplayName(current, t)
-    : storyDisplayName({ ownerUsername, ownerUid: resolvedOwnerUid }, t);
-  const profileUsername = String(current?.ownerUsername || ownerUsername || "").trim();
+    : storyDisplayName(
+        { ownerUsername: resolvedOwnerUsername, ownerUid: resolvedOwnerUid },
+        t,
+      );
+  const profileUsername = String(
+    current?.ownerUsername || resolvedOwnerUsername || "",
+  ).trim();
   const profilePhoto = String(current?.ownerPhoto || "").trim();
   const canOpenProfile =
     !anonymousStory &&
@@ -169,9 +186,15 @@ export default function StoryViewer({
   }, [profileUsername, canReply]);
 
   useEffect(() => {
-    const next = localStories[index + 1];
-    if (next) preloadStoryMedia(next);
-  }, [index, localStories]);
+    if (!resolvedOwnerUid) return;
+    prefetchUpcomingStoryGroups(resolvedOwnerUid, 2);
+    preloadStoryPlaybackChain(
+      getCachedStoryGroups(),
+      resolvedOwnerUid,
+      index,
+      localStories,
+    );
+  }, [index, localStories, resolvedOwnerUid]);
 
   useEffect(() => {
     if (!replyOpen) return;
@@ -231,6 +254,21 @@ export default function StoryViewer({
           markStoryViewedLocally(owner, story.id, viewerId);
         }
       }
+
+      const nextGroup = getNextStoryGroup(resolvedOwnerUid);
+      if (nextGroup?.stories.length) {
+        prefetchUpcomingStoryGroups(nextGroup.ownerUid, 2);
+        preloadStoryPlaybackChain(getCachedStoryGroups(), nextGroup.ownerUid, -1, nextGroup.stories);
+        setLocalStories(nextGroup.stories);
+        setActiveOwnerUid(nextGroup.ownerUid);
+        setActiveOwnerUsername(nextGroup.ownerUsername);
+        setIndex(0);
+        setBlurLocked(storyRequiresBlur(nextGroup.stories[0]));
+        const nextPath = `/stories/${encodeURIComponent(nextGroup.ownerUid)}`;
+        window.history.replaceState(window.history.state, "", nextPath);
+        return;
+      }
+
       exitStoryViewer();
       return;
     }
@@ -239,12 +277,27 @@ export default function StoryViewer({
   }, [current, exitStoryViewer, index, localStories, resolvedOwnerUid]);
 
   const goPrev = useCallback(() => {
+    if (index <= 0) {
+      const previousGroup = getPreviousStoryGroup(resolvedOwnerUid);
+      if (previousGroup?.stories.length) {
+        const lastIndex = previousGroup.stories.length - 1;
+        setLocalStories(previousGroup.stories);
+        setActiveOwnerUid(previousGroup.ownerUid);
+        setActiveOwnerUsername(previousGroup.ownerUsername);
+        setIndex(lastIndex);
+        setBlurLocked(storyRequiresBlur(previousGroup.stories[lastIndex]));
+        const previousPath = `/stories/${encodeURIComponent(previousGroup.ownerUid)}`;
+        window.history.replaceState(window.history.state, "", previousPath);
+        return;
+      }
+    }
+
     const prevIndex = Math.max(0, index - 1);
     setBlurLocked(storyRequiresBlur(localStories[prevIndex]));
     setReplyOpen(false);
     setReplyText("");
     setIndex(prevIndex);
-  }, [index, localStories]);
+  }, [index, localStories, resolvedOwnerUid]);
 
   useEffect(() => {
     if (!current || isPaused) return;

@@ -37,6 +37,7 @@ import {
 } from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import { stashStoryReturnTo } from "@/lib/navigation/storyReturnNav";
 import {
   consumeProfileReturnTo,
   peekProfileReturnTo,
@@ -165,13 +166,15 @@ export default function ModernPublicProfile({
 
   function openStories() {
     if (story.hasActive && story.storyPath) {
-      router.push(story.storyPath);
+      stashStoryReturnTo(window.location.pathname);
+      fastRouterPush(router, story.storyPath);
     }
   }
 
   function openPrimary() {
     if (story.hasActive && story.storyPath) {
-      router.push(story.storyPath);
+      stashStoryReturnTo(window.location.pathname);
+      fastRouterPush(router, story.storyPath);
       return;
     }
     if (principalIsVideo && profile.fotoPrincipal) {

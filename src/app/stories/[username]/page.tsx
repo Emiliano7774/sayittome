@@ -12,6 +12,8 @@ import {
   stashStoryReturnTo,
 } from "@/lib/navigation/storyReturnNav";
 import { resolveStoryViewerId } from "@/lib/stories/anonStories";
+import { hasStoriesEverHydrated } from "@/hooks/useStoriesReady";
+import { shouldSuppressRouteLoadingShell } from "@/lib/navigation/instantNavPolicy";
 import { preloadStoryGroup } from "@/lib/stories/preload";
 import {
   getStoryGroup,
@@ -96,7 +98,19 @@ function StoryUserPageInner() {
     };
   }, [param]);
 
-  if (loading && stories.length === 0) {
+  const cachedOnRender = getStoryGroup(param, param);
+  const displayStories =
+    cachedOnRender && cachedOnRender.stories.length > 0 ? cachedOnRender.stories : stories;
+  const displayOwnerUsername =
+    cachedOnRender?.ownerUsername || ownerUsername;
+
+  const showOpenLoading = !shouldSuppressRouteLoadingShell({
+    hasCachedContent: displayStories.length > 0,
+    hasEverHydrated: hasStoriesEverHydrated(),
+    networkLoading: loading,
+  });
+
+  if (showOpenLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-white">
         <p className="text-2xl font-black text-white/40">Abriendo historia...</p>
@@ -104,7 +118,7 @@ function StoryUserPageInner() {
     );
   }
 
-  if (stories.length === 0) {
+  if (displayStories.length === 0) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black text-white">
         <p className="text-2xl font-black text-white/40">Historia no disponible.</p>
@@ -114,9 +128,9 @@ function StoryUserPageInner() {
 
   return (
     <StoryViewer
-      stories={stories}
-      ownerUsername={ownerUsername}
-      ownerUid={stories[0]?.ownerUid}
+      stories={displayStories}
+      ownerUsername={displayOwnerUsername}
+      ownerUid={displayStories[0]?.ownerUid}
       initialStoryId={initialStoryId || undefined}
     />
   );

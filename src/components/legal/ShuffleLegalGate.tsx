@@ -28,26 +28,18 @@ export default function ShuffleLegalGate({ children }: { children: React.ReactNo
   const { firebaseUser, loading } = useAuth();
   const uid = firebaseUser?.uid || "";
   const legalAccepted = isShuffleLegalGateUnlocked(uid);
-  const [ready, setReady] = useState(() => legalAccepted);
   const [needsModal, setNeedsModal] = useState(() => !legalAccepted);
-  const [authGraceReady, setAuthGraceReady] = useState(false);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setAuthGraceReady(true), 4000);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (legalAccepted) return;
-    if (loading && !authGraceReady) return;
 
     const accepted = hasShuffleLegalAcceptance(uid);
     if (accepted) {
       shuffleLegalGateUnlocked = true;
+      markShuffleHydrated();
     }
     setNeedsModal(!accepted);
-    setReady(true);
-  }, [authGraceReady, legalAccepted, loading, uid]);
+  }, [legalAccepted, loading, uid]);
 
   async function handleAccept() {
     if (uid) {
@@ -57,6 +49,7 @@ export default function ShuffleLegalGate({ children }: { children: React.ReactNo
     }
 
     shuffleLegalGateUnlocked = true;
+    markShuffleHydrated();
     setNeedsModal(false);
   }
 
@@ -64,18 +57,10 @@ export default function ShuffleLegalGate({ children }: { children: React.ReactNo
     return <>{children}</>;
   }
 
-  if ((!ready || loading) && !authGraceReady) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-black text-white">
-        <p className="text-white/40">Cargando...</p>
-      </main>
-    );
-  }
-
   if (needsModal) {
     return (
       <>
-        <main className="min-h-screen bg-black" />
+        {children}
         <AnonymousEntryLegalModal
           open
           onCancel={() => router.replace("/")}

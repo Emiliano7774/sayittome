@@ -21,7 +21,6 @@ import {
   isInstantShuffleReturnDestination,
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
-import { runNativeViewTransition } from "@/lib/navigation/nativeNavigate";
 import { consumeProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 
 const HARDWARE_BACK_EVENT = "sayittomeHardwareBack";
@@ -48,9 +47,7 @@ function runNativeBackNavigation(
       router.replace(action.navigateTo);
       return;
     }
-    runNativeViewTransition(() => {
-      router.replace(action.navigateTo!);
-    });
+    router.replace(action.navigateTo);
     return;
   }
 

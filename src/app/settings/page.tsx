@@ -39,6 +39,27 @@ import { resolveProfileCoverPhoto,
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
+const SETTINGS_PROFILE_CACHE_KEY = "sayittome:settings-self-profile:v1";
+
+function readSettingsProfileCache() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(SETTINGS_PROFILE_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSettingsProfileCache(profile: unknown) {
+  if (typeof window === "undefined" || !profile) return;
+  try {
+    window.sessionStorage.setItem(SETTINGS_PROFILE_CACHE_KEY, JSON.stringify(profile));
+  } catch {
+    // Ignore quota errors.
+  }
+}
+
 type MediaItem = {
   url: string;
   type: "image" | "video";
@@ -51,8 +72,8 @@ export function SettingsRouteContent() {
   const { locale } = useLocale();
   const t = useT();
 
-  const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(() => !readSettingsProfileCache());
+  const [profile, setProfile] = useState<any>(() => readSettingsProfileCache());
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [showAnonGate, setShowAnonGate] = useState(false);
   const [coverIndex, setCoverIndex] = useState(0);
@@ -67,7 +88,9 @@ export function SettingsRouteContent() {
     try {
       const cached = await getDoc(ref);
       if (cached.exists()) {
-        setProfile({ ...cached.data(), uid: user.uid });
+        const nextProfile = { ...cached.data(), uid: user.uid };
+        setProfile(nextProfile);
+        writeSettingsProfileCache(nextProfile);
         setLoading(false);
         return;
       }
@@ -77,7 +100,9 @@ export function SettingsRouteContent() {
 
     try {
       const snap = await getDocFromServer(ref);
-      setProfile(snap.exists() ? { ...snap.data(), uid: user.uid } : { uid: user.uid });
+      const nextProfile = snap.exists() ? { ...snap.data(), uid: user.uid } : { uid: user.uid };
+      setProfile(nextProfile);
+      writeSettingsProfileCache(nextProfile);
     } catch (error) {
       console.error("settings_profile_load", error);
       try {
@@ -277,7 +302,7 @@ export function SettingsRouteContent() {
     window.location.href = "/";
   }
 
-  if (loading) {
+  if (loading && !profile) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <p className="text-3xl font-black">{t("settings_loading")}</p>

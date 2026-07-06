@@ -20,10 +20,11 @@ function ProfileAnonChatRoute() {
   const searchParams = useSearchParams();
   const rawChatId = decodeURIComponent(String(params.chatId || ""));
   const usernameFromQuery = String(searchParams.get("u") || "");
-  const canOpenImmediately = Boolean(usernameFromQuery) && isProfileAnonChatId(rawChatId);
+  const usernameHint = usernameFromQuery || usernameHintFromAnonChatId(rawChatId);
+  const canOpenImmediately = Boolean(usernameHint) && isProfileAnonChatId(rawChatId);
 
   const [ready, setReady] = useState(canOpenImmediately);
-  const [username, setUsername] = useState(usernameFromQuery);
+  const [username, setUsername] = useState(usernameHint);
   const [chatId, setChatId] = useState(rawChatId);
   const [errorText, setErrorText] = useState("");
 
@@ -157,7 +158,7 @@ function ChatEntryPage() {
 
   if (isProfileAnonChatId(chatId)) {
     return (
-      <Suspense fallback={<ChatLoadingScreen />}>
+      <Suspense fallback={null}>
         <ProfileAnonChatRoute />
       </Suspense>
     );

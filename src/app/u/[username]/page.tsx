@@ -43,7 +43,8 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { lookupProfileByUsername } from "@/lib/chat/resolveProfileChat";
-import { getCachedFullProfile } from "@/lib/profile/profileCache";
+import { getCachedFullProfile, setCachedFullProfile } from "@/lib/profile/profileCache";
+import { markProfileHydrated, shouldShowProfileLoading } from "@/hooks/useProfileReady";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { useAdaptiveUsernameFontSize } from "@/lib/profile/adaptiveUsernameSize";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
@@ -137,6 +138,7 @@ export default function PublicProfilePage() {
       const cached = getCachedFullProfile(usernameParam);
       if (cached) {
         setProfile(cached as Profile);
+        markProfileHydrated();
         setLoading(false);
       }
 
@@ -154,6 +156,10 @@ export default function PublicProfilePage() {
 
         setUsernameChanged(null);
         setProfile((lookup.profile as Profile | null) || null);
+        if (lookup.profile) {
+          setCachedFullProfile(usernameParam, lookup.profile);
+          markProfileHydrated();
+        }
       } catch {
         if (!cached) setProfile(null);
       } finally {
@@ -306,7 +312,7 @@ export default function PublicProfilePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [viewerOpen, gallery.length]);
 
-  if (loading) {
+  if (shouldShowProfileLoading({ loading, hasProfile: Boolean(profile) })) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center pb-28">
         <p className="text-4xl font-black text-white/35">Cargando perfil...</p>

@@ -20,23 +20,29 @@ const UxModeContext = createContext<UxModeContextValue | null>(null);
 
 const STORAGE_KEY = "sayittome_ux_mode";
 
+function readStoredUxMode(): UxMode {
+  if (typeof window === "undefined") return "classic";
+
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved === "classic" || saved === "modern") return saved;
+  } catch {
+    // Ignore storage errors during hydration edge cases.
+  }
+
+  return "classic";
+}
+
 export function UxModeProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [uxMode, setUxModeState] = useState<UxMode>("classic");
+  const [uxMode, setUxModeState] = useState<UxMode>(() => readStoredUxMode());
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-
-      if (saved === "classic" || saved === "modern") {
-        setUxModeState(saved);
-      }
-    } catch {
-      setUxModeState("classic");
-    }
+    const saved = readStoredUxMode();
+    setUxModeState((current) => (current === saved ? current : saved));
   }, []);
 
   useEffect(() => {

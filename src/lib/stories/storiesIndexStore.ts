@@ -192,6 +192,31 @@ export function getCachedStoryGroups() {
   return cachedGroups;
 }
 
+export function getNextStoryGroup(currentOwnerUid: string) {
+  const groups = cachedGroups;
+  const index = groups.findIndex((group) => group.ownerUid === currentOwnerUid);
+  if (index < 0 || index >= groups.length - 1) return null;
+  return groups[index + 1] || null;
+}
+
+export function getPreviousStoryGroup(currentOwnerUid: string) {
+  const groups = cachedGroups;
+  const index = groups.findIndex((group) => group.ownerUid === currentOwnerUid);
+  if (index <= 0) return null;
+  return groups[index - 1] || null;
+}
+
+export function prefetchUpcomingStoryGroups(currentOwnerUid: string, count = 2) {
+  const groups = cachedGroups;
+  const index = groups.findIndex((group) => group.ownerUid === currentOwnerUid);
+  if (index < 0) return;
+
+  for (let offset = 1; offset <= count; offset += 1) {
+    const upcoming = groups[index + offset];
+    if (upcoming) preloadStoryGroup(upcoming, 3);
+  }
+}
+
 export function markStoryViewedLocally(
   ownerUid: string,
   storyId: string,
