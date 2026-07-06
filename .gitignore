@@ -11,6 +11,25 @@ yarn-error.log*
 firebase-debug.log
 scripts/bench-storage-state.json
 scripts/.bench-service-account.json
+# Local nav-bench run outputs (tracked baseline JSON files remain in git)
+scripts/nav-bench-results*.json
+scripts/nav-bench-*-run.log
+scripts/nav-bench-after-run.log
+scripts/nav-bench-back-lock-fixed.json
+scripts/nav-bench-chats-*.json
+scripts/nav-bench-chats-defer-*.json
+scripts/nav-bench-cpu4x.json
+scripts/nav-bench-debug.*
+scripts/nav-bench-instantaneity-tabs.json
+scripts/nav-bench-tab-fix-check.json
+scripts/nav-bench-waterfall-results.json
+scripts/nav-bench-waterfall-v2.json
+scripts/nav-bench.mjs
+scripts/nav-bench-debug.mjs
+scripts/nav-bench-isolated.mjs
+scripts/nav-bench-one.mjs
+scripts/nav-bench-path.mjs
+scripts/nav-bench-tab-test.mjs
 
 .firebase
 *.zip
