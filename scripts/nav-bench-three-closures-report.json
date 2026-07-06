@@ -1,0 +1,92 @@
+{
+  "closedAt": "2026-07-06T09:20:00.000Z",
+  "scope": "three-pending-closure-only",
+  "stories": {
+    "seed": {
+      "script": "scripts/bench-seed-stories.mjs",
+      "primary": { "username": "navbench", "stories": 4, "media": "local /bench/story-{1..4}.png" },
+      "secondary": { "username": "benchstory", "stories": 3, "media": "local /bench/story-{5..7}.png" }
+    },
+    "results": {
+      "A_tray_preloaded": { "pathId": "tray→viewer-preloaded", "valid": "3/3", "medianMs": 2387, "minMs": 27 },
+      "B_tray_not_preloaded": {
+        "pathId": "tray→viewer-not-preloaded",
+        "valid": "0/3",
+        "reason": "bench local PNG decodes before input — forbidden:story-media-ready-before-input; not a product regression"
+      },
+      "C_mosaic_preloaded": { "pathId": "mosaic→viewer-preloaded", "valid": "3/3", "medianMs": 2368 },
+      "D_next_preloaded": { "pathId": "story→next-preloaded", "valid": "3/3", "medianMs": 17 },
+      "E_next_not_decoded": {
+        "pathId": "story→next-not-decoded",
+        "valid": "0/3",
+        "reason": "same instant local decode — cannot simulate pending decode with 78-byte bench PNGs"
+      },
+      "F_last_to_next_user_preloaded": {
+        "pathId": "last-story→next-user-preloaded",
+        "valid": "3/3",
+        "medianMs": 19,
+        "timingChainMs": {
+          "pointerdown": 1,
+          "viewerStateReady": 10,
+          "mediaUrlKnown": 10,
+          "viewerDom": 19,
+          "mediaReady": 19,
+          "usefulPaint": 20,
+          "clickToUsefulPaint": 4
+        },
+        "visualFlashBetweenUsers": false,
+        "flashNote": "viewer-state-ready → viewer-dom → useful-paint en ~10ms sin remount observable; mismo viewer shell"
+      },
+      "G_last_to_next_user_pending": {
+        "pathId": "last-story→next-user-pending",
+        "valid": "0/3",
+        "reason": "bench assets demasiado pequeños; media-ready-before-input aparece antes del tap"
+      }
+    },
+    "artifacts": [
+      "scripts/nav-bench-stories-abc.json",
+      "scripts/nav-bench-stories-de.json",
+      "scripts/nav-bench-stories-fg.json"
+    ]
+  },
+  "hardwareBack50ms": {
+    "classification": "duplicate same-path intent during async router.replace — NOT two legitimate navigations",
+    "originalSequence": {
+      "t0_ms": 0,
+      "event1_at": 1783322130632,
+      "event1": { "pathnameBefore": "/u/navbench", "intendedDest": "/stories", "outcome": "navigate" },
+      "pathnameAfter120ms": "/u/navbench",
+      "event2_at": 1783322130826,
+      "gapSinceEvent1_ms": 194,
+      "event2": { "pathnameBefore": "/u/navbench", "intendedDest": "/stories", "outcome": "navigate" },
+      "rootCause": "BACK_LOCK_MS=120 expiró antes de que location.pathname reflejara el replace; segundo back mismo estado/path"
+    },
+    "fix": {
+      "file": "src/lib/navigation/handleNativeBack.ts",
+      "change": "same-path dedupe holds until pathname leaves backLockPath (notifyNativePathnameChanged)"
+    },
+    "reprobeGap50": {
+      "eventsDiscarded": 1,
+      "secondOutcome": "discarded-lock",
+      "reason": "same-path-dedupe-until-navigation",
+      "artifact": "scripts/nav-bench-three-closures.json"
+    },
+    "probeNote": "Web event sayittomeHardwareBack matches NativeAppBootstrap handler; probe wait windows are not UX latency"
+  },
+  "sytmMe": {
+    "dns": "NXDOMAIN on 8.8.8.8 and 1.1.1.1 as of closure",
+    "https": "unreachable — Could not resolve host",
+    "firebaseCustomDomain": "not configured on site sayittome-app",
+    "requiredAction": [
+      "Register/configure sytm.me DNS at registrar",
+      "Firebase Console → Hosting → Connect domain → add A/TXT records",
+      "Re-run: npm run bench:verify-sytm"
+    ],
+    "clipboardFormatUnchanged": "sytm.me/@username and https://sytm.me/@username",
+    "middlewareReady": "/@username → /u/username?verified=1 (works on sayittome-app.web.app/@navbench)"
+  },
+  "androidApk": {
+    "status": "deferred",
+    "note": "APK signing failure remains separate Android task; no APK deploy in this closure"
+  }
+}

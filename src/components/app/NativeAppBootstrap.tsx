@@ -10,6 +10,7 @@ import { initChatNotifications } from "@/lib/chat/chatNotifications";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { unlockWhipSound } from "@/lib/chat/whipSound";
 import {
+  notifyNativePathnameChanged,
   readNativePathname,
   resetNativeBackExitTimer,
   resolveNativeBackNavigation,
@@ -19,6 +20,8 @@ import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigatio
 import { recordNativeNavPath, seedNativeNavStack } from "@/lib/navigation/nativeNavStack";
 import {
   isInstantShuffleReturnDestination,
+  isShuffleKeepAliveActive,
+  pinShuffleWindowWhileAway,
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
 import { consumeProfileReturnTo } from "@/lib/navigation/profileReturnNav";
@@ -46,6 +49,12 @@ function runNativeBackNavigation(
       prepareInstantShuffleReturn();
       router.replace(action.navigateTo);
       return;
+    }
+    if (
+      isShuffleKeepAliveActive() &&
+      (action.navigateTo.startsWith("/u/") || action.navigateTo === "/shuffle")
+    ) {
+      pinShuffleWindowWhileAway();
     }
     router.replace(action.navigateTo);
     return;
@@ -102,6 +111,7 @@ export default function NativeAppBootstrap() {
 
   useEffect(() => {
     pathnameRef.current = pathname;
+    notifyNativePathnameChanged(pathname);
     resetNativeBackExitTimer();
     resetChatBackNavigationState();
     seedNativeNavStack(pathname);

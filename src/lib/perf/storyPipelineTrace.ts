@@ -258,6 +258,8 @@ declare global {
       getGroups: () => unknown[];
       clearPreload: () => void;
       preloadOwner: (ownerUid: string) => unknown;
+      refreshIndex?: () => Promise<void>;
+      preloadMediaUrl?: (mediaUrl: string, storyId?: string) => void;
     };
   }
 }

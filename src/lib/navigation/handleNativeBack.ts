@@ -14,6 +14,8 @@ export type NativeBackNavigation = {
 
 let backLockUntil = 0;
 let backLockPath = "";
+/** When true, same-path dedupe holds until pathname leaves `backLockPath` (async router.replace). */
+let backLockHoldUntilNavigation = false;
 let pendingExitUntil = 0;
 
 const BACK_LOCK_MS = 120;
@@ -29,9 +31,19 @@ function effectiveBackLockMs() {
   return backLockMsOverride ?? BACK_LOCK_MS;
 }
 
-function armBackLock(pathname: string, now: number) {
+function armBackLock(pathname: string, now: number, holdUntilNavigation = false) {
   backLockUntil = now + effectiveBackLockMs();
   backLockPath = pathname;
+  backLockHoldUntilNavigation = holdUntilNavigation;
+}
+
+/** Call when the active pathname changes so navigation dedupe can release after async replace. */
+export function notifyNativePathnameChanged(pathname: string) {
+  const next = pathname.split("?")[0].split("#")[0] || "/";
+  if (backLockHoldUntilNavigation && next !== backLockPath) {
+    backLockUntil = 0;
+    backLockHoldUntilNavigation = false;
+  }
 }
 
 type BackLockProbeEntry = {
@@ -93,13 +105,19 @@ export function resolveNativeBackNavigation(
   const now = Date.now();
   const awaitingExitConfirm = pendingExitUntil > now;
 
-  if (!awaitingExitConfirm && now < backLockUntil && pathname === backLockPath) {
+  if (
+    !awaitingExitConfirm &&
+    pathname === backLockPath &&
+    (now < backLockUntil || backLockHoldUntilNavigation)
+  ) {
     recordBackProbe({
       at: now,
       pathnameBefore: pathname,
       backLockPath,
       outcome: "discarded-lock",
-      reason: `same-path-dedupe-${effectiveBackLockMs()}ms`,
+      reason: backLockHoldUntilNavigation
+        ? "same-path-dedupe-until-navigation"
+        : `same-path-dedupe-${effectiveBackLockMs()}ms`,
     });
     return {};
   }
@@ -112,7 +130,7 @@ export function resolveNativeBackNavigation(
     }
 
     if (result.navigateTo) {
-      armBackLock(pathname, now);
+      armBackLock(pathname, now, true);
       pendingExitUntil = 0;
       stripNativeChatFullscreen();
       recordBackProbe({
@@ -144,7 +162,7 @@ export function resolveNativeBackNavigation(
 
   const destination = getNativeBackDestination(pathname);
   if (destination && destination !== pathname) {
-    armBackLock(pathname, now);
+    armBackLock(pathname, now, true);
     pendingExitUntil = 0;
     stripNativeChatFullscreen();
     recordBackProbe({

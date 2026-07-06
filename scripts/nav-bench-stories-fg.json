@@ -1,0 +1,1325 @@
+{
+  "metadata": {
+    "commit": "04da3de0eddd0e4db000083405081ac9ca3a81c3",
+    "measuredAt": "2026-07-06T09:18:25.828Z",
+    "baseUrl": "http://localhost:3002",
+    "device": "Pixel 5",
+    "viewport": {
+      "width": 393,
+      "height": 727
+    },
+    "cpuThrottle": null,
+    "warmRunsRequested": 3,
+    "traceEnabled": true,
+    "buildFlags": {
+      "NEXT_PUBLIC_NAV_TRACE": "1"
+    },
+    "cpuOnly": false,
+    "deferInboxFlag": null,
+    "chatsDeferCompare": false,
+    "methodologyNote": "La medición inicial de 530 ms para perfil cacheado era inválida. El runner eliminaba la caché en memoria y podía elegir un username distinto. Con escenario estable y cache hit verificado, la mediana real es aproximadamente 19–21 ms. Los valores 527 ms (chats) y 452 ms (settings) permanecen sospechosos hasta reproducir con esta metodología.",
+    "invalidLegacyBaselines": {
+      "shuffle→profile-cached": "530ms INVALID — cache cleared between samples / unstable username",
+      "profile→chat-cached": "30s INVALID — broken benchmark selector timeout; valid baseline ~62ms after data-nav-profile-chat instrumentation fix",
+      "tab→chats": "527ms SUSPECT — pending valid reproduction",
+      "tab→settings": "452ms SUSPECT — pending valid reproduction",
+      "tray→viewer-preloaded": "~8s SUSPECT — do not classify as network limit until preload phases verified",
+      "firestoreTimeout45s": "INVALID — broken preconditions, not Firestore latency"
+    },
+    "benchmarkFixesNotProductionOptimizations": [
+      "data-nav-profile-chat fixes measurement selector; not a UX optimization",
+      "data-nav-tab fixes shuffle bottom-nav detection; not a UX optimization"
+    ],
+    "validProfileWarmCachedMs": "19-21ms median with verified profile-cache-hit"
+  },
+  "scenarios": {
+    "last-story→next-user-preloaded": {
+      "pathId": "last-story→next-user-preloaded",
+      "validCount": 3,
+      "invalidCount": 0,
+      "min": 18,
+      "median": 19,
+      "p95": 38,
+      "max": 38,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "last-story-next-user-preloaded",
+        "requiredPhases": [
+          "story-media-ready-before-input"
+        ]
+      },
+      "invalidReasons": []
+    },
+    "last-story→next-user-pending": {
+      "pathId": "last-story→next-user-pending",
+      "validCount": 0,
+      "invalidCount": 3,
+      "min": null,
+      "median": 0,
+      "p95": 0,
+      "max": null,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "last-story-next-user-pending",
+        "forbiddenPhases": [
+          "story-media-ready-before-input"
+        ]
+      },
+      "invalidReasons": [
+        {
+          "runIndex": 0,
+          "reasons": [
+            "forbidden:story-media-ready-before-input"
+          ]
+        },
+        {
+          "runIndex": 1,
+          "reasons": [
+            "forbidden:story-media-ready-before-input"
+          ]
+        },
+        {
+          "runIndex": 2,
+          "reasons": [
+            "forbidden:story-media-ready-before-input"
+          ]
+        }
+      ]
+    }
+  },
+  "validSamples": [
+    {
+      "pathId": "last-story→next-user-preloaded",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "last-story-next-user-preloaded",
+      "phases": {
+        "pointerdown": 1,
+        "click": 16.5,
+        "useful-paint": 20.399999998509884
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 10,
+        "story-media-url-known": 10,
+        "story-viewer-dom": 19,
+        "story-media-response-ready": 19,
+        "story-image-decode-ready": 19,
+        "story-media-ready-before-input": 19
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 16,
+        "origin→useful-paint": 19,
+        "pointerdown→useful-paint": 19,
+        "click→useful-paint": 4
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 3402,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "viewer-dom": 8,
+            "media-response-ready": 8,
+            "image-decode-ready": 9,
+            "media-ready-before-input": 9
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "last-story→next-user-preloaded",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "last-story-next-user-preloaded",
+      "phases": {
+        "pointerdown": 0.7999999970197678,
+        "click": 15.5,
+        "useful-paint": 18.399999998509884
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 10,
+        "story-media-url-known": 10,
+        "story-viewer-dom": 17,
+        "story-media-response-ready": 17,
+        "story-image-decode-ready": 17,
+        "story-media-ready-before-input": 17
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 15,
+        "origin→useful-paint": 18,
+        "pointerdown→useful-paint": 18,
+        "click→useful-paint": 3
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 3462,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "viewer-dom": 7,
+            "media-response-ready": 7,
+            "image-decode-ready": 7,
+            "media-ready-before-input": 7
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "last-story→next-user-preloaded",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "last-story-next-user-preloaded",
+      "phases": {
+        "pointerdown": 0.8999999985098839,
+        "click": 14.399999998509884,
+        "useful-paint": 38.899999998509884
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 10,
+        "story-media-url-known": 10,
+        "story-viewer-dom": 20,
+        "story-media-response-ready": 20,
+        "story-image-decode-ready": 20,
+        "story-media-ready-before-input": 20
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 14,
+        "origin→useful-paint": 38,
+        "pointerdown→useful-paint": 38,
+        "click→useful-paint": 25
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2913,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "viewer-dom": 10,
+            "media-response-ready": 10,
+            "image-decode-ready": 10,
+            "media-ready-before-input": 10
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    }
+  ],
+  "invalidSamples": [
+    {
+      "pathId": "last-story→next-user-pending",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "last-story-next-user-pending",
+      "phases": {
+        "pointerdown": 0.6000000014901161,
+        "click": 14.799999997019768,
+        "useful-paint": 17.600000001490116
+      },
+      "detailPhases": {
+        "story-preload-start": 7,
+        "story-preload-request-start": 7,
+        "story-viewer-state-ready": 10,
+        "story-media-url-known": 10,
+        "story-media-response-ready": 10,
+        "story-image-decode-ready": 10,
+        "story-media-ready-before-input": 10,
+        "story-viewer-dom": 16
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 14,
+        "origin→useful-paint": 17,
+        "pointerdown→useful-paint": 17,
+        "click→useful-paint": 3
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "forbidden:story-media-ready-before-input"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2911,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "viewer-dom": 6
+          },
+          "meta": {
+            "storyId": "37af9d862115af8d00ef",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-5.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "last-story→next-user-pending",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "last-story-next-user-pending",
+      "phases": {
+        "pointerdown": 7.899999998509884,
+        "click": 23.899999998509884,
+        "useful-paint": 25.899999998509884
+      },
+      "detailPhases": {
+        "story-preload-start": 16,
+        "story-preload-request-start": 16,
+        "story-viewer-state-ready": 18,
+        "story-media-url-known": 18,
+        "story-media-response-ready": 23,
+        "story-image-decode-ready": 23,
+        "story-media-ready-before-input": 23,
+        "story-viewer-dom": 24
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 16,
+        "origin→useful-paint": 18,
+        "pointerdown→useful-paint": 18,
+        "click→useful-paint": 2
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "forbidden:story-media-ready-before-input"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2906,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 5,
+            "image-decode-ready": 5,
+            "media-ready-before-input": 5,
+            "viewer-dom": 5
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "last-story→next-user-pending",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "last-story-next-user-pending",
+      "phases": {
+        "pointerdown": 0.8999999985098839,
+        "click": 14.199999995529652,
+        "useful-paint": 16.19999999552965
+      },
+      "detailPhases": {
+        "story-preload-start": 7,
+        "story-preload-request-start": 7,
+        "story-viewer-state-ready": 10,
+        "story-media-url-known": 10,
+        "story-media-response-ready": 10,
+        "story-image-decode-ready": 10,
+        "story-media-ready-before-input": 10,
+        "story-viewer-dom": 14
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 13,
+        "origin→useful-paint": 15,
+        "pointerdown→useful-paint": 15,
+        "click→useful-paint": 2
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "forbidden:story-media-ready-before-input"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2926,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "viewer-dom": 4
+          },
+          "meta": {
+            "storyId": "37af9d862115af8d00ef",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-5.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    }
+  ],
+  "rankings": {
+    "byWarmMedian": [
+      {
+        "pathId": "last-story→next-user-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 18,
+        "median": 19,
+        "p95": 38,
+        "max": 38,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "last-story-next-user-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ],
+    "byP95": [
+      {
+        "pathId": "last-story→next-user-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 18,
+        "median": 19,
+        "p95": 38,
+        "max": 38,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "last-story-next-user-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ]
+  },
+  "backLockProbe": [
+    {
+      "gapMs": 50,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/u/navbench",
+      "pathnameAfterSecond": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+      "firstBackNavigated": false,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 1,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783329502084,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783329502257,
+          "pathnameBefore": "/u/navbench",
+          "backLockPath": "/u/navbench",
+          "outcome": "discarded-lock",
+          "reason": "same-path-dedupe-until-navigation"
+        }
+      ],
+      "secondDiscardedWithinGap": true
+    },
+    {
+      "gapMs": 80,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783329502588,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783329502800,
+          "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 100,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783329503137,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783329503375,
+          "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 120,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783329503790,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783329504039,
+          "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 150,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783329504364,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783329504647,
+          "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 250,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783329504960,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783329505332,
+          "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    }
+  ],
+  "backLockValidation": {
+    "model": "same-path-dedupe (not global BACK_LOCK block)",
+    "rows": [
+      {
+        "gapMs": 50,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/u/navbench",
+        "pathnameAfterSecond": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+        "firstBackNavigated": false,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 1,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783329502084,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783329502257,
+            "pathnameBefore": "/u/navbench",
+            "backLockPath": "/u/navbench",
+            "outcome": "discarded-lock",
+            "reason": "same-path-dedupe-until-navigation"
+          }
+        ]
+      },
+      {
+        "gapMs": 80,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783329502588,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783329502800,
+            "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 100,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783329503137,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783329503375,
+            "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 120,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783329503790,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783329504039,
+            "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 150,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783329504364,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783329504647,
+            "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 250,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783329504960,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783329505332,
+            "pathnameBefore": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/stories/opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "outcome": "navigate"
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "samePathBackProbe": {
+    "pathnameBefore": "/shuffle",
+    "events": [
+      {
+        "eventNo": 1,
+        "timestamp": 1783329505589,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      },
+      {
+        "eventNo": 2,
+        "timestamp": 1783329505733,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      }
+    ]
+  }
+}

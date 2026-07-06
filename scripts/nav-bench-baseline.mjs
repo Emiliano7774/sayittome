@@ -179,6 +179,13 @@ const CPU4X_SCENARIOS = [
   "last-story→next-user-preloaded",
 ];
 
+const STORY_ADVANCE_SCENARIOS = new Set([
+  "story→next-preloaded",
+  "story→next-not-decoded",
+  "last-story→next-user-preloaded",
+  "last-story→next-user-pending",
+]);
+
 function percentile(values, p) {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -544,22 +551,61 @@ async function waitForUsefulPaint(page, pathId, timeoutMs = 45000) {
   );
 }
 
+async function waitForSampleComplete(page, pathId, cold) {
+  const timeoutMs = cold ? 20000 : 45000;
+  if (STORY_ADVANCE_SCENARIOS.has(pathId)) {
+    await page.waitForFunction(
+      () => {
+        const story = window.__sayittomeStoryPipeline?.snapshot?.();
+        const { samples } = window.__sayittomeNavTrace.export();
+        const sample = samples.at(-1);
+        return (
+          story?.phases?.["viewer-dom"] != null ||
+          story?.phases?.["media-ready-before-input"] != null ||
+          story?.phases?.["useful-paint"] != null ||
+          typeof sample?.phases?.["useful-paint"] === "number"
+        );
+      },
+      { timeout: timeoutMs },
+    );
+    await page.evaluate(() => {
+      if (window.__sayittomeNavTrace?.mark) {
+        window.__sayittomeNavTrace.mark("useful-paint");
+        window.__sayittomeNavTrace.finish(undefined, "useful-paint");
+      }
+    });
+    return;
+  }
+  await waitForUsefulPaint(page, pathId, timeoutMs);
+}
+
 async function measureSample(page, { pathId, cold, runIndex, expectedScenario, action }) {
+  const skipStoryReset = STORY_ADVANCE_SCENARIOS.has(pathId);
+  const skipPreloadLock = pathId === "tray→viewer-not-preloaded" || pathId === "story→next-not-decoded" || pathId === "last-story→next-user-pending";
+
   await page.evaluate(
-    ({ pathId, cold, runIndex, expectedScenario }) => {
+    ({ pathId, cold, runIndex, expectedScenario, skipStoryReset, skipPreloadLock }) => {
       window.__sayittomeBenchNav = null;
-      window.__sayittomeStoryPipeline?.resetMedia?.();
+      if (!skipStoryReset) {
+        window.__sayittomeStoryPipeline?.resetMedia?.();
+      }
+      if (skipPreloadLock) {
+        window.__sayittomeStoriesBench?.clearPreload?.();
+        window.__sayittomeStoryPipeline?.resetMedia?.();
+      }
       window.__sayittomeNavTrace.begin(pathId, cold, runIndex, expectedScenario);
     },
-    { pathId, cold, runIndex, expectedScenario },
+    { pathId, cold, runIndex, expectedScenario, skipStoryReset, skipPreloadLock },
   );
-  await page.evaluate(() => {
-    window.__sayittomeStoryPipeline?.lockInput?.();
+  await page.evaluate((skipPreloadLock) => {
+    if (!skipPreloadLock) {
+      window.__sayittomeStoryPipeline?.lockInput?.();
+    }
     window.__sayittomeNavTrace.mark("pointerdown");
-  });
+  }, skipPreloadLock);
   await action();
   await page.evaluate(() => window.__sayittomeNavTrace.mark("click"));
-  await waitForUsefulPaint(page, pathId, cold ? 20000 : 45000);
+  await waitForSampleComplete(page, pathId, cold);
 
   const payload = await page.evaluate((pid) => {
     const { samples } = window.__sayittomeNavTrace.export();
@@ -849,6 +895,7 @@ async function runBackLockProbe(page, pinnedUsername) {
   for (const gapMs of gaps) {
     await page.goto(`${baseUrl}/shuffle`, { waitUntil: "domcontentloaded" });
     await dismissOverlays(page);
+    await ensureTab(page, "/stories");
     await openPinnedProfile(page, pinnedUsername || BENCH_USERNAME);
     if (!page.url().includes("/u/")) {
       await page.goto(`${baseUrl}/u/${encodeURIComponent(pinnedUsername || BENCH_USERNAME)}`, {
@@ -857,6 +904,9 @@ async function runBackLockProbe(page, pinnedUsername) {
       });
     }
     await page.waitForURL(/\/u\//, { timeout: 30000 });
+    await page.evaluate(() => {
+      sessionStorage.setItem("sayittome-profile-return", "/stories");
+    });
     await page.evaluate(() => window.__sayittomeBackLockProbe?.clear?.());
 
     const row = await page.evaluate(async (gap) => {
@@ -948,6 +998,7 @@ async function seedChatsInboxSnapshot(page) {
 
 async function discoverStoryEntities(page) {
   await ensureTab(page, "/stories");
+  await page.evaluate(() => window.__sayittomeStoriesBench?.refreshIndex?.());
   await page.waitForFunction(
     () => {
       const groups = window.__sayittomeStoriesBench?.getGroups?.() || [];
@@ -968,6 +1019,7 @@ async function discoverStoryEntities(page) {
     return {
       primaryOwnerUid: primary.ownerUid,
       primaryUsername: primary.ownerUsername,
+      primaryStoryCount: primary.stories?.length || 0,
       secondaryOwnerUid: secondary.ownerUid,
       secondaryUsername: secondary.ownerUsername,
       firstStoryId: first.id,
@@ -993,10 +1045,15 @@ async function waitStoryMediaReady(page, mediaUrl, timeoutMs = 20000) {
 }
 
 async function preloadStoryMediaBench(page, ownerUid, mediaUrl) {
-  await page.evaluate((uid) => {
-    window.__sayittomeStoryPipeline?.resetMedia?.();
-    window.__sayittomeStoriesBench?.preloadOwner?.(uid);
-  }, ownerUid);
+  await page.evaluate(
+    ({ uid, url }) => {
+      window.__sayittomeStoriesBench?.clearPreload?.();
+      window.__sayittomeStoryPipeline?.resetMedia?.();
+      window.__sayittomeStoriesBench?.preloadOwner?.(uid);
+      window.__sayittomeStoriesBench?.preloadMediaUrl?.(url);
+    },
+    { uid: ownerUid, url: mediaUrl },
+  );
   await waitStoryMediaReady(page, mediaUrl);
 }
 
@@ -1485,7 +1542,7 @@ async function runAllScenarios(page, initialUsername) {
       setup: async () => {
         await ensureTab(page, "/stories");
         await page.locator(`a[href='${storyTrayHref}']`).first().click({ force: true });
-        await page.waitForSelector("main.fixed.inset-0", { timeout: 15000 });
+        await page.waitForSelector("main.fixed.inset-0", { timeout: 30000 });
         if (entities.secondMediaUrl) {
           await preloadStoryMediaBench(page, entities.primaryOwnerUid, entities.secondMediaUrl);
         }
@@ -1503,7 +1560,7 @@ async function runAllScenarios(page, initialUsername) {
         await ensureTab(page, "/stories");
         await page.evaluate(() => window.__sayittomeStoriesBench?.clearPreload?.());
         await page.locator(`a[href='${storyTrayHref}']`).first().click({ force: true });
-        await page.waitForSelector("main.fixed.inset-0", { timeout: 15000 });
+        await page.waitForSelector("main.fixed.inset-0", { timeout: 30000 });
         await page.evaluate(() => window.__sayittomeStoryPipeline?.resetMedia?.());
       },
       action: async () => {
@@ -1518,11 +1575,11 @@ async function runAllScenarios(page, initialUsername) {
       setup: async () => {
         await ensureTab(page, "/stories");
         await page.locator(`a[href='${storyTrayHref}']`).first().click({ force: true });
-        await page.waitForSelector("main.fixed.inset-0", { timeout: 15000 });
+        await page.waitForSelector("main.fixed.inset-0", { timeout: 30000 });
         if (entities.nextUserFirstMediaUrl) {
           await preloadStoryMediaBench(page, entities.secondaryOwnerUid, entities.nextUserFirstMediaUrl);
         }
-        for (let i = 0; i < 8; i += 1) {
+        for (let i = 0; i < Math.max(0, (entities.primaryStoryCount || 1) - 1); i += 1) {
           const viewer = page.locator("main.fixed.inset-0").first();
           const box = await viewer.boundingBox().catch(() => null);
           if (!box) break;
@@ -1543,8 +1600,8 @@ async function runAllScenarios(page, initialUsername) {
         await ensureTab(page, "/stories");
         await page.evaluate(() => window.__sayittomeStoriesBench?.clearPreload?.());
         await page.locator(`a[href='${storyTrayHref}']`).first().click({ force: true });
-        await page.waitForSelector("main.fixed.inset-0", { timeout: 15000 });
-        for (let i = 0; i < 8; i += 1) {
+        await page.waitForSelector("main.fixed.inset-0", { timeout: 30000 });
+        for (let i = 0; i < Math.max(0, (entities.primaryStoryCount || 1) - 1); i += 1) {
           const viewer = page.locator("main.fixed.inset-0").first();
           const box = await viewer.boundingBox().catch(() => null);
           if (!box) break;

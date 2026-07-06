@@ -11,9 +11,10 @@ import { attachStoryPipelineWindow } from "@/lib/perf/storyPipelineTrace";
 import { clearInboxMemoryCacheOnly, clearInboxSnapshotCache } from "@/lib/chat/inboxSnapshot";
 import { clearCachedFullProfile } from "@/lib/profile/profileCache";
 import { clearChatsInboxHydrationSession } from "@/hooks/useChatsInboxReady";
-import { getCachedStoryGroups, prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
-import { clearStoryPreloadCache } from "@/lib/stories/preload";
+import { getCachedStoryGroups, prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
+import { clearStoryPreloadCache, preloadStoryMedia } from "@/lib/stories/preload";
 import {
+  notifyNativePathnameChanged,
   readNativePathname,
   resolveNativeBackNavigation,
 } from "@/lib/navigation/handleNativeBack";
@@ -29,6 +30,7 @@ function NavTracePathWatcher() {
 
   useLayoutEffect(() => {
     if (!isNavTraceEnabled()) return;
+    notifyNativePathnameChanged(pathname);
     navTraceMarkDetail("pathname-changed");
 
     const path = pathname.split("?")[0].split("#")[0];
@@ -90,6 +92,19 @@ export default function NavTraceBootstrap() {
       getGroups: () => getCachedStoryGroups(),
       clearPreload: () => clearStoryPreloadCache(),
       preloadOwner: (ownerUid: string) => prefetchOwnerStories(ownerUid),
+      refreshIndex: () => refreshStoriesIndex(undefined, true),
+      preloadMediaUrl: (mediaUrl: string, storyId = "bench") => {
+        preloadStoryMedia({
+          id: storyId,
+          ownerUid: "",
+          mediaUrl,
+          mediaType: "image",
+          createdAtMs: Date.now(),
+          expiresAtMs: Date.now() + 86_400_000,
+          likeCount: 0,
+          viewCount: 0,
+        });
+      },
     };
 
     window.__sayittomeProfileCache = {

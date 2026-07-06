@@ -10,6 +10,8 @@
     "bench:after": "node scripts/nav-bench-baseline.mjs --base http://localhost:3002 --warm 5 --out scripts/nav-bench-results-after.json",
     "bench:chats-defer-before": "node scripts/nav-bench-baseline.mjs --base http://localhost:3002 --only tab→chats-B --defer-inbox 0 --warm 5 --out scripts/nav-bench-chats-defer-before.json",
     "bench:setup": "node scripts/bench-setup-account.mjs --base http://localhost:3002",
+    "bench:seed-stories": "node scripts/bench-seed-stories.mjs",
+    "bench:verify-sytm": "node scripts/verify-sytm-domain.mjs --username navbench",
     "bench:chats-defer-after": "node scripts/nav-bench-baseline.mjs --base http://localhost:3002 --only tab→chats-B --defer-inbox 1 --warm 5 --out scripts/nav-bench-chats-defer-after.json",
     "bench:verified-link-test": "node scripts/verified-link-test.mjs",
     "start": "next start",

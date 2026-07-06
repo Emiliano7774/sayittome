@@ -1,0 +1,1964 @@
+{
+  "metadata": {
+    "commit": "04da3de0eddd0e4db000083405081ac9ca3a81c3",
+    "measuredAt": "2026-07-06T08:33:38.016Z",
+    "baseUrl": "http://localhost:3002",
+    "device": "Pixel 5",
+    "viewport": {
+      "width": 393,
+      "height": 727
+    },
+    "cpuThrottle": null,
+    "warmRunsRequested": 3,
+    "traceEnabled": true,
+    "buildFlags": {
+      "NEXT_PUBLIC_NAV_TRACE": "1"
+    },
+    "cpuOnly": false,
+    "deferInboxFlag": null,
+    "chatsDeferCompare": false,
+    "methodologyNote": "La medición inicial de 530 ms para perfil cacheado era inválida. El runner eliminaba la caché en memoria y podía elegir un username distinto. Con escenario estable y cache hit verificado, la mediana real es aproximadamente 19–21 ms. Los valores 527 ms (chats) y 452 ms (settings) permanecen sospechosos hasta reproducir con esta metodología.",
+    "invalidLegacyBaselines": {
+      "shuffle→profile-cached": "530ms INVALID — cache cleared between samples / unstable username",
+      "profile→chat-cached": "30s INVALID — broken benchmark selector timeout; valid baseline ~62ms after data-nav-profile-chat instrumentation fix",
+      "tab→chats": "527ms SUSPECT — pending valid reproduction",
+      "tab→settings": "452ms SUSPECT — pending valid reproduction",
+      "tray→viewer-preloaded": "~8s SUSPECT — do not classify as network limit until preload phases verified",
+      "firestoreTimeout45s": "INVALID — broken preconditions, not Firestore latency"
+    },
+    "benchmarkFixesNotProductionOptimizations": [
+      "data-nav-profile-chat fixes measurement selector; not a UX optimization",
+      "data-nav-tab fixes shuffle bottom-nav detection; not a UX optimization"
+    ],
+    "validProfileWarmCachedMs": "19-21ms median with verified profile-cache-hit"
+  },
+  "scenarios": {
+    "tray→viewer-preloaded": {
+      "pathId": "tray→viewer-preloaded",
+      "validCount": 3,
+      "invalidCount": 0,
+      "min": 27,
+      "median": 2387,
+      "p95": 2868,
+      "max": 2868,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "story-tray-viewer-preloaded",
+        "requiredPhases": [
+          "story-media-ready-before-input"
+        ],
+        "forbiddenPhases": []
+      },
+      "invalidReasons": []
+    },
+    "tray→viewer-not-preloaded": {
+      "pathId": "tray→viewer-not-preloaded",
+      "validCount": 0,
+      "invalidCount": 3,
+      "min": null,
+      "median": 0,
+      "p95": 0,
+      "max": null,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "story-tray-viewer-not-preloaded",
+        "forbiddenPhases": [
+          "story-media-ready-before-input"
+        ]
+      },
+      "invalidReasons": [
+        {
+          "runIndex": 0,
+          "reasons": [
+            "forbidden:story-media-ready-before-input"
+          ]
+        },
+        {
+          "runIndex": 1,
+          "reasons": [
+            "forbidden:story-media-ready-before-input"
+          ]
+        },
+        {
+          "runIndex": 2,
+          "reasons": [
+            "forbidden:story-media-ready-before-input"
+          ]
+        }
+      ]
+    },
+    "mosaic→viewer-preloaded": {
+      "pathId": "mosaic→viewer-preloaded",
+      "validCount": 3,
+      "invalidCount": 0,
+      "min": 1875,
+      "median": 2368,
+      "p95": 2371,
+      "max": 2371,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "story-mosaic-viewer-preloaded",
+        "requiredPhases": [
+          "story-media-ready-before-input"
+        ]
+      },
+      "invalidReasons": []
+    }
+  },
+  "validSamples": [
+    {
+      "pathId": "tray→viewer-preloaded",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "story-tray-viewer-preloaded",
+      "phases": {
+        "pointerdown": 0.5999999940395355,
+        "click": 7.5,
+        "dest-layout": 27.19999999552965,
+        "useful-paint": 27.19999999552965
+      },
+      "detailPhases": {
+        "pathname-changed": 27
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 7,
+        "origin→dest-layout": 27,
+        "origin→useful-paint": 27,
+        "pointerdown→useful-paint": 27,
+        "click→useful-paint": 20
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 3433,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "video-url-known": 1,
+            "video-preload-requested": 1
+          },
+          "meta": {
+            "storyId": "KpViODX0Qt3tm1d5zjo1",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+            "mediaType": "video",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": false,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1"
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "tray→viewer-preloaded",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "story-tray-viewer-preloaded",
+      "phases": {
+        "pointerdown": 0.7000000029802322,
+        "click": 2860.10000000149,
+        "dest-layout": 2868.39999999851,
+        "useful-paint": 2868.39999999851
+      },
+      "detailPhases": {
+        "pathname-changed": 2868
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 2859,
+        "origin→dest-layout": 2868,
+        "origin→useful-paint": 2868,
+        "pointerdown→useful-paint": 2868,
+        "click→useful-paint": 8
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2969,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "video-url-known": 1,
+            "viewer-dom": 8
+          },
+          "meta": {
+            "storyId": "KpViODX0Qt3tm1d5zjo1",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+            "mediaType": "video",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1",
+              "videoLoadedMetadata": true,
+              "videoCanPlay": true
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "tray→viewer-preloaded",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "story-tray-viewer-preloaded",
+      "phases": {
+        "pointerdown": 0.8000000044703484,
+        "click": 2378.60000000149,
+        "dest-layout": 2387.5,
+        "useful-paint": 2387.5
+      },
+      "detailPhases": {
+        "pathname-changed": 2387
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 2378,
+        "origin→dest-layout": 2387,
+        "origin→useful-paint": 2387,
+        "pointerdown→useful-paint": 2387,
+        "click→useful-paint": 9
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2505,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "video-url-known": 1
+          },
+          "meta": {
+            "storyId": "KpViODX0Qt3tm1d5zjo1",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+            "mediaType": "video",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1",
+              "videoLoadedMetadata": true,
+              "videoCanPlay": true
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "mosaic→viewer-preloaded",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "story-mosaic-viewer-preloaded",
+      "phases": {
+        "pointerdown": 0.5999999940395355,
+        "click": 2361,
+        "dest-layout": 2368.5999999940395,
+        "useful-paint": 2368.5999999940395
+      },
+      "detailPhases": {
+        "pathname-changed": 2369
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 2360,
+        "origin→dest-layout": 2368,
+        "origin→useful-paint": 2368,
+        "pointerdown→useful-paint": 2368,
+        "click→useful-paint": 8
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2468,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "video-url-known": 0,
+            "preload-start": 0,
+            "preload-request-start": 0,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1
+          },
+          "meta": {
+            "storyId": "37af9d862115af8d00ef",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-5.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1",
+              "videoLoadedMetadata": true,
+              "videoCanPlay": true
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "mosaic→viewer-preloaded",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "story-mosaic-viewer-preloaded",
+      "phases": {
+        "pointerdown": 1.1000000014901161,
+        "click": 1857.3000000044703,
+        "dest-layout": 1876.3000000044703,
+        "useful-paint": 1876.3000000044703
+      },
+      "detailPhases": {
+        "pathname-changed": 1876
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 1856,
+        "origin→dest-layout": 1875,
+        "origin→useful-paint": 1875,
+        "pointerdown→useful-paint": 1875,
+        "click→useful-paint": 19
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1979,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "video-url-known": 1,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1
+          },
+          "meta": {
+            "storyId": "37af9d862115af8d00ef",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-5.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1",
+              "videoLoadedMetadata": true,
+              "videoCanPlay": true
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "mosaic→viewer-preloaded",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "story-mosaic-viewer-preloaded",
+      "phases": {
+        "pointerdown": 1.1000000014901161,
+        "click": 2364.60000000149,
+        "dest-layout": 2372.10000000149,
+        "useful-paint": 2372.10000000149
+      },
+      "detailPhases": {
+        "pathname-changed": 2372
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 2364,
+        "origin→dest-layout": 2371,
+        "origin→useful-paint": 2371,
+        "pointerdown→useful-paint": 2371,
+        "click→useful-paint": 8
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2480,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "video-url-known": 0,
+            "preload-start": 0,
+            "preload-request-start": 0,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1
+          },
+          "meta": {
+            "storyId": "37af9d862115af8d00ef",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-5.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1",
+              "videoLoadedMetadata": true,
+              "videoCanPlay": true
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    }
+  ],
+  "invalidSamples": [
+    {
+      "pathId": "tray→viewer-not-preloaded",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "story-tray-viewer-not-preloaded",
+      "phases": {
+        "pointerdown": 11.200000002980232,
+        "click": 2906,
+        "dest-layout": 2914.5,
+        "useful-paint": 2914.5
+      },
+      "detailPhases": {
+        "pathname-changed": 2914
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 2895,
+        "origin→dest-layout": 2903,
+        "origin→useful-paint": 2903,
+        "pointerdown→useful-paint": 2903,
+        "click→useful-paint": 9
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "forbidden:story-media-ready-before-input"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 3001,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "video-url-known": 1
+          },
+          "meta": {
+            "storyId": "KpViODX0Qt3tm1d5zjo1",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+            "mediaType": "video",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1",
+              "videoLoadedMetadata": true,
+              "videoCanPlay": true
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "tray→viewer-not-preloaded",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "story-tray-viewer-not-preloaded",
+      "phases": {
+        "pointerdown": 0.8999999985098839,
+        "click": 1868,
+        "dest-layout": 1876.7000000029802,
+        "useful-paint": 1876.7999999970198
+      },
+      "detailPhases": {
+        "pathname-changed": 1877
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 1867,
+        "origin→dest-layout": 1876,
+        "origin→useful-paint": 1876,
+        "pointerdown→useful-paint": 1876,
+        "click→useful-paint": 9
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "forbidden:story-media-ready-before-input"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1974,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "video-url-known": 1
+          },
+          "meta": {
+            "storyId": "KpViODX0Qt3tm1d5zjo1",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+            "mediaType": "video",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1",
+              "videoLoadedMetadata": true,
+              "videoCanPlay": true
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "tray→viewer-not-preloaded",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "story-tray-viewer-not-preloaded",
+      "phases": {
+        "pointerdown": 1.2000000029802322,
+        "click": 2864.2000000029802,
+        "dest-layout": 2875.8000000044703,
+        "useful-paint": 2875.8000000044703
+      },
+      "detailPhases": {
+        "pathname-changed": 2876
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 2863,
+        "origin→dest-layout": 2875,
+        "origin→useful-paint": 2875,
+        "pointerdown→useful-paint": 2875,
+        "click→useful-paint": 12
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "forbidden:story-media-ready-before-input"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2959,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 1,
+            "preload-request-start": 1,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "video-url-known": 1
+          },
+          "meta": {
+            "storyId": "KpViODX0Qt3tm1d5zjo1",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+            "mediaType": "video",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8": {
+              "url": "https://firebasestorage.googleapis.com/v0/b/sayittome-app.firebasestorage.app/o/historias%2FYO4VGz1hgHbZ0jG28uJaRnvfZsE3%2F1783240598540-1000176523.mp4?alt=media&token=27eaf58f-0293-4270-b19b-3bf6502ce9e8",
+              "mediaType": "video",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": false,
+              "ready": false,
+              "storyId": "KpViODX0Qt3tm1d5zjo1",
+              "videoLoadedMetadata": true,
+              "videoCanPlay": true
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    }
+  ],
+  "rankings": {
+    "byWarmMedian": [
+      {
+        "pathId": "mosaic→viewer-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 1875,
+        "median": 2368,
+        "p95": 2371,
+        "max": 2371,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "story-mosaic-viewer-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "tray→viewer-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 27,
+        "median": 2387,
+        "p95": 2868,
+        "max": 2868,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "story-tray-viewer-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ],
+          "forbiddenPhases": []
+        },
+        "invalidReasons": []
+      }
+    ],
+    "byP95": [
+      {
+        "pathId": "mosaic→viewer-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 1875,
+        "median": 2368,
+        "p95": 2371,
+        "max": 2371,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "story-mosaic-viewer-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "tray→viewer-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 27,
+        "median": 2387,
+        "p95": 2868,
+        "max": 2868,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "story-tray-viewer-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ],
+          "forbiddenPhases": []
+        },
+        "invalidReasons": []
+      }
+    ]
+  },
+  "backLockProbe": [
+    {
+      "gapMs": 50,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783326814179,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783326814366,
+          "pathnameBefore": "/stories",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/stories",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 80,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/u/navbench",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": false,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783326814705,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783326814926,
+          "pathnameBefore": "/stories",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/stories",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 100,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/u/navbench",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": false,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 1,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783326815289,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783326815518,
+          "pathnameBefore": "/u/navbench",
+          "backLockPath": "/u/navbench",
+          "outcome": "discarded-lock",
+          "reason": "same-path-dedupe-until-navigation"
+        }
+      ],
+      "secondDiscardedWithinGap": true
+    },
+    {
+      "gapMs": 120,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783326815857,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783326816109,
+          "pathnameBefore": "/stories",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/stories",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 150,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783326816436,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783326816721,
+          "pathnameBefore": "/stories",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/stories",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 250,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/stories",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783326817153,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783326817531,
+          "pathnameBefore": "/stories",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/stories",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    }
+  ],
+  "backLockValidation": {
+    "model": "same-path-dedupe (not global BACK_LOCK block)",
+    "rows": [
+      {
+        "gapMs": 50,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783326814179,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783326814366,
+            "pathnameBefore": "/stories",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/stories",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 80,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/u/navbench",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": false,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783326814705,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783326814926,
+            "pathnameBefore": "/stories",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/stories",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 100,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/u/navbench",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": false,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 1,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783326815289,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783326815518,
+            "pathnameBefore": "/u/navbench",
+            "backLockPath": "/u/navbench",
+            "outcome": "discarded-lock",
+            "reason": "same-path-dedupe-until-navigation"
+          }
+        ]
+      },
+      {
+        "gapMs": 120,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783326815857,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783326816109,
+            "pathnameBefore": "/stories",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/stories",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 150,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783326816436,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783326816721,
+            "pathnameBefore": "/stories",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/stories",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 250,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/stories",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783326817153,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783326817531,
+            "pathnameBefore": "/stories",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/stories",
+            "outcome": "navigate"
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "samePathBackProbe": {
+    "pathnameBefore": "/shuffle",
+    "events": [
+      {
+        "eventNo": 1,
+        "timestamp": 1783326817770,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      },
+      {
+        "eventNo": 2,
+        "timestamp": 1783326817921,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      }
+    ]
+  }
+}
