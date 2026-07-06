@@ -115,6 +115,10 @@ export function clearPendingVisualTab() {
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
   const path = normalizePath(pathname);
 
+  if (path === "/shuffle" && !isShuffleExitToMainTabPending()) {
+    return false;
+  }
+
   if (isShuffleExitToMainTabPending()) {
     return false;
   }

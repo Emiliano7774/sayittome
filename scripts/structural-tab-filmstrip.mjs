@@ -38,13 +38,21 @@ async function clickNavTab(page, tabKey) {
   }, tabKey);
 }
 
+const PRIMARY_SELECTOR = {
+  stories: "[data-nav-primary-content]",
+  chats: "[data-nav-primary-content]",
+  boost: "[data-nav-primary-content]",
+  settings: "[data-nav-settings-primary]",
+};
+
 async function sampleStructural(page) {
   return page.evaluate(() => {
-    function panel(id) {
+    function panel(id, primarySelector) {
       const el = document.getElementById(id);
       if (!el) return null;
       const r = el.getBoundingClientRect();
       const cs = getComputedStyle(el);
+      const primary = el.querySelector(primarySelector);
       return {
         exists: true,
         visibleClass: el.classList.contains("sayittome-main-tab-keepalive-visible"),
@@ -54,7 +62,21 @@ async function sampleStructural(page) {
         opacity: cs.opacity,
         zIndex: cs.zIndex,
         rect: { w: Math.round(r.width), h: Math.round(r.height) },
-        primary: Boolean(el.querySelector("[data-nav-primary-content]")),
+        primary: Boolean(primary),
+        primaryPresentable: (() => {
+          if (!primary) return false;
+          const pr = primary.getBoundingClientRect();
+          const ps = getComputedStyle(primary);
+          const text = primary.textContent?.slice(0, 240) ?? "";
+          if (/Cargando\.\.\.|Loading\.\.\./i.test(text)) return false;
+          return (
+            pr.width >= 24 &&
+            pr.height >= 24 &&
+            ps.visibility !== "hidden" &&
+            ps.display !== "none" &&
+            ps.opacity !== "0"
+          );
+        })(),
         loading: /Cargando\.\.\.|Loading\.\.\./i.test(el.textContent?.slice(0, 300) ?? ""),
       };
     }
@@ -67,10 +89,10 @@ async function sampleStructural(page) {
       htmlClasses: [...document.documentElement.classList].filter((c) => c.startsWith("sayittome-")),
       bodyBg: getComputedStyle(document.body).backgroundColor,
       panels: {
-        stories: panel("sayittome-main-tab-keepalive-stories"),
-        chats: panel("sayittome-main-tab-keepalive-chats"),
-        boost: panel("sayittome-main-tab-keepalive-boost"),
-        settings: panel("sayittome-main-tab-keepalive-settings"),
+        stories: panel("sayittome-main-tab-keepalive-stories", "[data-nav-primary-content]"),
+        chats: panel("sayittome-main-tab-keepalive-chats", "[data-nav-primary-content]"),
+        boost: panel("sayittome-main-tab-keepalive-boost", "[data-nav-primary-content]"),
+        settings: panel("sayittome-main-tab-keepalive-settings", "[data-nav-settings-primary]"),
       },
       shuffle: shuffle
         ? {
@@ -102,9 +124,9 @@ function classifyStructural(geo, fromKey, toKey) {
   const fromPrimary =
     fromKey === "shuffle"
       ? Boolean(geo.shuffle?.visible)
-      : geo.panels[fromKey]?.primary;
+      : geo.panels[fromKey]?.primaryPresentable;
   const toPrimary =
-    toKey === "shuffle" ? Boolean(geo.shuffle?.visible) : geo.panels[toKey]?.primary;
+    toKey === "shuffle" ? Boolean(geo.shuffle?.visible) : geo.panels[toKey]?.primaryPresentable;
 
   const presentedPanel = geo.panels[fromKey];
   const destPanel = geo.panels[toKey];
