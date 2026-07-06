@@ -68,7 +68,7 @@ import {
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import { markShuffleHydrated, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
-import { isShuffleFeedFrozen } from "@/lib/navigation/shuffleKeepAlive";
+import { isShuffleFeedFrozen, releaseShuffleWindowRefreshSuppression, shouldSuppressShuffleWindowRefresh } from "@/lib/navigation/shuffleKeepAlive";
 
 function readInitialShuffleState() {
   const cachedProfiles = readCachedShufflePool() ?? [];
@@ -370,7 +370,18 @@ export function useShufflePool() {
       nextFilters = filtersRef.current,
       options?: { forceWindow?: boolean },
     ) => {
-      if (shuffleFeedFrozenRef.current && options?.forceWindow !== true) {
+      if (
+        shuffleFeedFrozenRef.current &&
+        options?.forceWindow !== true
+      ) {
+        return;
+      }
+
+      if (
+        shouldSuppressShuffleWindowRefresh() &&
+        getVisibleShuffleProfiles().length > 0 &&
+        options?.forceWindow !== true
+      ) {
         return;
       }
 
@@ -527,6 +538,7 @@ export function useShufflePool() {
   );
 
   const handleShuffleClick = useCallback((event?: React.MouseEvent | Event) => {
+    releaseShuffleWindowRefreshSuppression();
     shuffleMark("shuffle-click-start");
     shuffleCount("shuffleClicks");
 

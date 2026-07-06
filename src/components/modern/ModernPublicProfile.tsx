@@ -36,6 +36,10 @@ import {
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
+import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import { stashStoryReturnTo } from "@/lib/navigation/storyReturnNav";
 import {
@@ -151,7 +155,16 @@ export default function ModernPublicProfile({
     const merged = [coverPhotoUrl, profile.fotoPrincipal, ...photos].filter(Boolean);
     return Array.from(new Set(merged));
   }, [coverPhotoUrl, profile.fotoPrincipal, profile.fotos]);
-  const profileChatHref = `/u/${encodeURIComponent(profile.username)}/chat`;
+  function openProfileChat() {
+    recordPathBeforeChatOpen();
+    const senderId = getChatAnonSenderId();
+    const chatId = buildProfileAnonChatId(senderId, profile.username);
+    prefetchChatThread(chatId);
+    fastRouterPush(
+      router,
+      `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(profile.username)}`,
+    );
+  }
 
   function openViewer(index = 0) {
     if (gallery.length === 0) return;
@@ -457,13 +470,13 @@ export default function ModernPublicProfile({
               </p>
 
               <div className="mt-5 flex flex-wrap gap-3">
-                <Link
-                  href={profileChatHref}
-                  prefetch={false}
+                <button
+                  type="button"
+                  onClick={openProfileChat}
                   className="flex-1 rounded-full bg-white px-6 py-3.5 text-center text-sm font-normal text-black"
                 >
                   {t("profile_open_chat")}
-                </Link>
+                </button>
                 {!isOwner ? <FollowButton targetUid={profile.uid} /> : null}
                 {!isOwner ? (
                   <ProfileReportButton

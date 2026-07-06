@@ -33,6 +33,7 @@ export type ProfileAnonFirestoreMessage = {
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
   viewOnce?: boolean;
+  clientId?: string;
   createdAt?: { toDate?: () => Date };
   autoModerationRequiresBlur?: boolean;
   moderationRequiresBlur?: boolean;
@@ -40,6 +41,7 @@ export type ProfileAnonFirestoreMessage = {
 
 export type ProfileAnonUiMessage = {
   id: string;
+  clientId?: string;
   text: string;
   mine: boolean;
   fromUid?: string;
@@ -240,6 +242,7 @@ export function mapFirestoreDocToProfileAnonMessage(
 
   return {
     id: docId,
+    clientId: data.clientId ? String(data.clientId) : undefined,
     text: displayText,
     mine,
     fromUid: from || undefined,

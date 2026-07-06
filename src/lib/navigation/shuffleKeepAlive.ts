@@ -11,6 +11,7 @@ function normalizePath(pathname: string) {
 let keepAliveActive = false;
 let keepAliveVersion = 0;
 let instantReturnPending = false;
+let suppressShuffleWindowRefresh = false;
 const listeners = new Set<() => void>();
 
 function notifyKeepAliveListeners() {
@@ -71,6 +72,14 @@ export function isInstantShuffleReturnDestination(pathname: string) {
   return keepAliveActive && normalizePath(pathname) === "/shuffle";
 }
 
+export function shouldSuppressShuffleWindowRefresh() {
+  return suppressShuffleWindowRefresh;
+}
+
+export function releaseShuffleWindowRefreshSuppression() {
+  suppressShuffleWindowRefresh = false;
+}
+
 function revealShuffleKeepAliveHost() {
   if (typeof document === "undefined") return;
 
@@ -87,6 +96,7 @@ export function prepareInstantShuffleReturn() {
   if (typeof document === "undefined" || !keepAliveActive) return;
 
   instantReturnPending = true;
+  suppressShuffleWindowRefresh = true;
   notifyKeepAliveListeners();
 
   document.documentElement.classList.add("sayittome-shuffle-return-pending");

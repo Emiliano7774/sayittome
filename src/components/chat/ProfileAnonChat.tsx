@@ -199,7 +199,22 @@ function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
         (message.type || "text") === (optimistic.type || "text") &&
         (message.mediaUrl || "") === (optimistic.mediaUrl || "");
 
-      if (!samePayload) return false;
+      if (samePayload) return true;
+
+      const optimisticIsMedia = (optimistic.type || "text") !== "text";
+      const loadedIsMedia = (message.type || "text") !== "text";
+      if (
+        optimisticIsMedia &&
+        loadedIsMedia &&
+        optimistic.mine &&
+        message.mine &&
+        (optimistic.status === "sending" || optimistic.status === "error")
+      ) {
+        if (optimistic.fromUid && message.fromUid) {
+          return message.fromUid === optimistic.fromUid;
+        }
+        return true;
+      }
 
       if (optimistic.status === "sending" && optimistic.mine) {
         if (optimistic.fromUid && message.fromUid) {
@@ -208,17 +223,15 @@ function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
         return message.mine;
       }
 
-      return message.mine === optimistic.mine;
+      return false;
     });
 
     if (matchIndex >= 0) {
-      if (optimistic.clientId) {
-        merged[matchIndex] = {
-          ...merged[matchIndex],
-          clientId: optimistic.clientId,
-          status: undefined,
-        };
-      }
+      merged[matchIndex] = {
+        ...merged[matchIndex],
+        ...(optimistic.clientId ? { clientId: optimistic.clientId } : {}),
+        status: undefined,
+      };
       continue;
     }
 
@@ -1304,20 +1317,24 @@ export default function ProfileAnonChat({
         source: previewSource,
         viewOnce: previewViewOnce,
         existingChatData: chatDocDataRef.current,
+        clientId,
+        autoModerationRequiresBlur: scanResult.requiresBlur,
+        moderationRequiresBlur: scanResult.requiresBlur,
       });
 
       messagePersistedRef.current = true;
       setUploadProgress(null);
     } catch (e) {
       console.error(e);
-      URL.revokeObjectURL(localPreviewUrl);
       setMessages((old) =>
         old.map((message) =>
           message.clientId === clientId ? { ...message, status: "error" } : message,
         ),
       );
       const code = String((e as { code?: string }).code || "");
-      alert(code.includes("storage") ? t("chat_upload_fail") : t("chat_save_fail"));
+      const message = String((e as Error).message || "");
+      const uploadFailed = code.includes("storage") || message.includes("storage");
+      alert(uploadFailed ? t("chat_upload_fail") : t("chat_save_fail"));
     }
   }
 

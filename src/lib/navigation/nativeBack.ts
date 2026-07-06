@@ -16,11 +16,29 @@ function normalizePath(pathname: string) {
   return path || "/";
 }
 
-/** Leave chat and return to the screen the user came from (shuffle, chats, etc.). */
+/** Leave chat and return to the screen the user came from (shuffle, profile, chats, etc.). */
 export function resolveChatBackDestination(pathname: string): string {
-  const path = normalizePath(pathname);
   stripNativeChatFullscreen();
-  return popNativeNavPath(path) || "/chats";
+  const path = normalizePath(pathname);
+
+  let dest = popNativeNavPath(path);
+  while (dest) {
+    const normalized = normalizePath(dest);
+
+    if (normalized.startsWith("/chat/")) {
+      dest = popNativeNavPath(normalized);
+      continue;
+    }
+
+    const profileChatMatch = normalized.match(/^\/u\/([^/]+)\/chat$/);
+    if (profileChatMatch) {
+      return `/u/${profileChatMatch[1]}`;
+    }
+
+    return normalized;
+  }
+
+  return "/chats";
 }
 
 /** Drop chat fullscreen shell classes so the previous tab can render with bottom nav. */
@@ -161,7 +179,7 @@ export function resolveNativeBack(pathname: string): NativeBackResult {
     stripNativeChatFullscreen();
     return {
       handled: true,
-      navigateTo: popNativeNavPath(path) || "/chats",
+      navigateTo: resolveChatBackDestination(path),
     };
   }
 

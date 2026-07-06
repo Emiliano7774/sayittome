@@ -47,6 +47,7 @@ type PersistAnonMessageInput = {
   moderationUncertain?: boolean;
   moderationScannedAt?: string;
   moderationModel?: string;
+  clientId?: string;
 };
 
 function resolveProfileAnonUnreadRecipients(input: {
@@ -199,6 +200,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
       : {}),
     ...(input.moderationScannedAt ? { moderationScannedAt: input.moderationScannedAt } : {}),
     ...(input.moderationModel ? { moderationModel: input.moderationModel } : {}),
+    ...(input.clientId ? { clientId: input.clientId } : {}),
   };
 
   const batch = writeBatch(db);

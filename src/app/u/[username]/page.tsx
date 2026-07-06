@@ -46,6 +46,11 @@ import { lookupProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile, setCachedFullProfile } from "@/lib/profile/profileCache";
 import { markProfileHydrated, shouldShowProfileLoading } from "@/hooks/useProfileReady";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
+import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
+import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
+import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { useAdaptiveUsernameFontSize } from "@/lib/profile/adaptiveUsernameSize";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import { resolveProfileMediaSourceForUrl } from "@/lib/profile/mediaSource";
@@ -550,7 +555,16 @@ export default function PublicProfilePage() {
             label="conv."
             icon={<MessageCircle size={profileUi.statIcon} fill="white" />}
             ui={profileUi}
-            onClick={() => router.push(`/u/${encodeURIComponent(profile.username)}/chat`)}
+            onClick={() => {
+              recordPathBeforeChatOpen();
+              const senderId = getChatAnonSenderId();
+              const chatId = buildProfileAnonChatId(senderId, profile.username);
+              prefetchChatThread(chatId);
+              fastRouterPush(
+                router,
+                `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(profile.username)}`,
+              );
+            }}
           />
           <StatBubble color="bg-violet-500" value={profile.seguidores || 0} label="seguidores" icon={<Users size={profileUi.statIcon} />} ui={profileUi} />
           <StatBubble
