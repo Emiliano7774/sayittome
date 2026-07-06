@@ -18,6 +18,8 @@ import SensitiveConsentBootstrap from "@/components/moderation/SensitiveConsentB
 import AnonMatchBootstrap from "@/components/anonMatch/AnonMatchBootstrap";
 import ChatNotificationPrompt from "@/components/chat/ChatNotificationPrompt";
 import ShuffleKeepAliveHost from "@/components/shuffle/ShuffleKeepAliveHost";
+import NavTraceBootstrap from "@/components/dev/NavTraceBootstrap";
+import NavTraceProfiler from "@/components/dev/NavTraceProfiler";
 
 export default function Providers({
   children,
@@ -42,8 +44,10 @@ export default function Providers({
           <AnonMatchBootstrap />
           <BoostBootstrap />
           <ChatNotificationPrompt />
+          {(process.env.NODE_ENV === "development" ||
+            process.env.NEXT_PUBLIC_NAV_TRACE === "1") && <NavTraceBootstrap />}
           <ShuffleKeepAliveHost />
-          {children}
+          <NavTraceProfiler>{children}</NavTraceProfiler>
           </ChatAlertsProvider>
         </UxModeProvider>
         </AnonMatchProvider>

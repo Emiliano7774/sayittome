@@ -41,7 +41,7 @@ export function formatClassicInboxTime(
   const sender = String(chat.lastMessageSender || "").trim();
 
   if (sender && isOwnInboxLastSender(chat, viewerId, firebaseUid)) {
-    const otherRead = isMessageSeenByOther(chat.readBy, sender, firebaseUid);
+    const otherRead = isMessageSeenByOther(chat.readBy, sender, firebaseUid, chat);
     return otherRead ? t("chats_inbox_seen", { time }) : t("chats_inbox_sent", { time });
   }
 

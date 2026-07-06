@@ -19,6 +19,9 @@ import {
   subscribeMainTabKeepAlive,
 } from "@/lib/navigation/mainTabKeepAlive";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
+import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
+import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
+import { settingsPipelineMark } from "@/lib/perf/settingsPipelineTrace";
 
 const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
   "/stories": StoriesRouteContent,
@@ -44,6 +47,19 @@ export default function MainTabKeepAliveHost() {
     const path = pathname.split("?")[0].split("#")[0];
     if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(path)) {
       markMainTabVisited(path as MainTabHref);
+    }
+
+    if (isNavTraceEnabled()) {
+      for (const href of listMainTabKeepAliveHrefs()) {
+        if (href === "/shuffle") continue;
+        if (!isMainTabPanelVisible(pathname, href)) continue;
+        navTraceMarkDetail("tab-pin");
+        navTraceMarkDetail(`tab-active-${href.slice(1)}`);
+        navTraceMarkDetail("tab-panel-visible");
+        if (href === "/chats") chatsPipelineMark("chats-panel-visible");
+        if (href === "/settings") settingsPipelineMark("settings-panel-visible");
+        break;
+      }
     }
   }, [pathname]);
 

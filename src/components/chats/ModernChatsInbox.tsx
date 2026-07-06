@@ -112,7 +112,8 @@ export default function ModernChatsInbox({
               const timeLabel = formatClassicInboxTime(chat, chatViewerId, t, uid);
               const mine = isOwnInboxLastSender(chat, chatViewerId, uid);
               const readByOther =
-                mine && isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, uid);
+                mine &&
+                isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, uid, chat);
               const cardClass =
                 "group relative z-10 flex w-full items-center gap-4 rounded-2xl border p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition active:scale-[0.99] " +
                 (selected

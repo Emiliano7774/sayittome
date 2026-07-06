@@ -1,4 +1,4 @@
-import { readInboxSnapshot } from "@/lib/chat/inboxSnapshot";
+import { readInboxSnapshotWithMeta } from "@/lib/chat/inboxSnapshot";
 
 const INBOX_HYDRATED_SESSION_KEY = "sayittome:inbox:hydrated:v1";
 
@@ -40,24 +40,46 @@ export function rememberInboxChatCount(count: number) {
   }
 }
 
-/** Full-page inbox loader only on the very first cold open with no cached rows. */
-export function shouldShowChatsInboxSkeleton(inbox: InboxGateInput) {
+export function clearChatsInboxHydrationSession() {
+  inboxHasHydratedOnce = false;
+  lastKnownInboxCount = 0;
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(INBOX_HYDRATED_SESSION_KEY);
+  }
+}
+
+/** Explain why the full-page skeleton is shown (bench diagnostics). */
+export function explainChatsInboxSkeleton(inbox: InboxGateInput) {
   const chatCount = inbox.sortedChats.length;
 
   if (chatCount > 0) {
-    rememberInboxChatCount(chatCount);
-    return false;
+    return { show: false, reason: "sorted-chats-nonempty" as const };
   }
 
-  const snapshotCount = readInboxSnapshot().length;
+  const snapshotCount = readInboxSnapshotWithMeta().chats.length;
   if (snapshotCount > 0) {
-    rememberInboxChatCount(snapshotCount);
-    return false;
+    return { show: false, reason: "snapshot-available" as const };
   }
 
   if (inboxHasHydratedOnce || readPersistedInboxHydrated() || lastKnownInboxCount > 0) {
-    return false;
+    return { show: false, reason: "session-hydrated-flag" as const };
   }
 
-  return inbox.loading;
+  if (inbox.loading) {
+    return { show: true, reason: "auth-still-loading" as const };
+  }
+
+  return { show: false, reason: "empty-not-loading" as const };
+}
+
+/** Full-page inbox loader only on the very first cold open with no cached rows. */
+export function shouldShowChatsInboxSkeleton(inbox: InboxGateInput) {
+  const gate = explainChatsInboxSkeleton(inbox);
+  if (!gate.show && inbox.sortedChats.length > 0) {
+    rememberInboxChatCount(inbox.sortedChats.length);
+  } else if (!gate.show) {
+    const snapshotCount = readInboxSnapshotWithMeta().chats.length;
+    if (snapshotCount > 0) rememberInboxChatCount(snapshotCount);
+  }
+  return gate.show;
 }

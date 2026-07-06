@@ -12,7 +12,7 @@ export default function ProfileEntryGate() {
   const isModern = uxMode === "modern";
 
   return (
-    <main className="min-h-screen bg-black pb-32 text-white">
+    <main data-nav-settings-primary className="min-h-screen bg-black pb-32 text-white">
       <div className="mx-auto w-full max-w-lg px-5 py-8">
         <header className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

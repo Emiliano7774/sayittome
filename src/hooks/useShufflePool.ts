@@ -240,10 +240,27 @@ export function useShufflePool() {
       return;
     }
 
-    if (wasFrozen && !shuffleFeedFrozen && getVisibleShuffleProfiles().length > 0) {
-      patchShuffleSlotPresence(activePoolRef.current);
+    if (wasFrozen && !shuffleFeedFrozen) {
+      const visible = getVisibleShuffleProfiles();
+      if (
+        visible.length === 0 &&
+        windowCountRef.current > 0 &&
+        activePoolRef.current.length > 0
+      ) {
+        const regularCount = Math.max(0, windowCountRef.current - featuredRef.current.length);
+        setShuffleSlotsWithFeatured(
+          featuredRef.current,
+          activePoolRef.current,
+          windowIndicesRef.current,
+          regularCount,
+          false,
+        );
+      } else if (visible.length > 0) {
+        patchShuffleSlotPresence(activePoolRef.current);
+      }
       setLoading(false);
       setListReady(true);
+      markShuffleHydrated(Math.max(visible.length, windowCountRef.current, 1));
     }
   }, [shuffleFeedFrozen]);
 
@@ -279,13 +296,20 @@ export function useShufflePool() {
       if (
         !forceReplace &&
         !excludeRecentBatches &&
-        visibleNow.length > 0 &&
         (shouldSuppressShuffleWindowRefresh() || shuffleFeedFrozenRef.current)
       ) {
-        patchShuffleSlotPresence(pool.length > 0 ? pool : activePoolRef.current);
-        setListReady(true);
-        markShuffleHydrated(visibleNow.length);
-        return;
+        if (visibleNow.length > 0) {
+          patchShuffleSlotPresence(pool.length > 0 ? pool : activePoolRef.current);
+          setListReady(true);
+          markShuffleHydrated(visibleNow.length);
+          return;
+        }
+
+        if (pool.length > 0 || activePoolRef.current.length > 0) {
+          setLoading(false);
+          setListReady(hasShuffleEverHydrated());
+          return;
+        }
       }
 
       const excludeKeys = buildWindowExcludeKeys({ excludeRecentBatches });
@@ -444,6 +468,14 @@ export function useShufflePool() {
         return;
       }
 
+      if (shouldSuppressShuffleWindowRefresh() && !forceWindow) {
+        setLoading(false);
+        if (hasShuffleEverHydrated()) {
+          setListReady(true);
+        }
+        return;
+      }
+
       applyWindowFromPool(activePoolRef.current, {
         forceReplace: forceWindow,
         resetBatchMemory: forceWindow,
@@ -477,7 +509,9 @@ export function useShufflePool() {
         mountedRef.current &&
         poolRef.current.length === 0 &&
         getVisibleShuffleProfiles().length === 0 &&
-        !hasShuffleEverHydrated()
+        !hasShuffleEverHydrated() &&
+        !shuffleFeedFrozenRef.current &&
+        !shouldSuppressShuffleWindowRefresh()
       ) {
         setLoading(true);
         setErrorText("");
@@ -794,7 +828,8 @@ export function useShufflePool() {
       poolRef.current.length > 0 &&
       getVisibleShuffleProfiles().length === 0 &&
       !shouldSuppressShuffleWindowRefresh() &&
-      !shuffleFeedFrozenRef.current
+      !shuffleFeedFrozenRef.current &&
+      !hasShuffleEverHydrated()
     ) {
       filterActivePool("", filtersRef.current);
     }
@@ -840,7 +875,7 @@ export function useShufflePool() {
             storyOwnerUidsRef.current = new Set(
               getCachedStoryGroups().map((group) => group.ownerUid),
             );
-            if (!shuffleFeedFrozenRef.current) {
+            if (!shuffleFeedFrozenRef.current && !shouldSuppressShuffleWindowRefresh()) {
               filterActivePool(search, filtersRef.current);
             }
           })

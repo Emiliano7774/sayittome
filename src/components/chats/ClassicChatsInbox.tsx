@@ -59,7 +59,8 @@ function ClassicChatRow({
   const timeLabel = formatClassicInboxTime(chat, chatViewerId, t, uid);
   const mine = isOwnInboxLastSender(chat, chatViewerId, uid);
   const readByOther =
-    mine && isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, uid);
+    mine &&
+    isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, uid, chat);
 
   const rowClass =
     "flex w-full items-center gap-3.5 border-b border-white/10 px-4 py-3.5 transition active:bg-white/[0.03] " +
@@ -144,7 +145,7 @@ export default function ClassicChatsInbox({
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
 
   return (
-    <main className="min-h-screen bg-black pb-32 text-white">
+    <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content>
       <div className="pt-[max(0.75rem,env(safe-area-inset-top))]">
         <ClassicUxModeBar className="px-4 pb-2" />
 
@@ -175,7 +176,8 @@ export default function ClassicChatsInbox({
             </p>
           </div>
         ) : (
-          sortedChats.map((chat) => {
+          <div data-nav-chats-primary>
+          {sortedChats.map((chat) => {
             const title = chatPeerTitle(chat, uid);
             const isAnonPeer = shouldShowAnonPeerInbox(chat, uid);
 
@@ -195,7 +197,8 @@ export default function ClassicChatsInbox({
               anonKey={chat.anonSessionId || chat.id}
             />
             );
-          })
+          })}
+          </div>
         )}
       </div>
     </main>

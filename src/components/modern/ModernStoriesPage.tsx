@@ -5,11 +5,14 @@ import Link from "next/link";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import StoriesHub from "@/components/stories/StoriesHub";
 import { useStoriesGroups } from "@/hooks/useStoriesGroups";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernStoriesPage() {
   const t = useT();
   const { groups, viewerUid, loading } = useStoriesGroups();
+
+  useNavUsefulPaint(!loading);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">

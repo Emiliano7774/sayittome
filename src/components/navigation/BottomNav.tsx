@@ -52,6 +52,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
               <BottomNavLink
                 key={item.id}
                 href={item.href}
+                data-nav-tab={item.id}
                 className="relative flex h-full flex-1 items-center justify-center"
                 aria-label={t("boost_nav_label")}
               >
@@ -69,6 +70,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
               <button
                 key={item.id}
                 type="button"
+                data-nav-tab="shuffle"
                 onClick={openShuffleTab}
                 className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0"
                 aria-label={t("nav_shuffle_refresh")}
@@ -87,6 +89,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
               <button
                 key={item.id}
                 type="button"
+                data-nav-tab="shuffle"
                 onClick={dispatchShuffle}
                 className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0"
                 aria-label={t("nav_shuffle_refresh")}
@@ -105,6 +108,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
             <BottomNavLink
               key={item.id}
               href={item.href}
+              data-nav-tab={item.id}
               className="relative flex h-full flex-1 items-center justify-center"
             >
               <Icon

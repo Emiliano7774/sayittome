@@ -19,6 +19,7 @@ import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { BOOST_MIN_MINUTES, BOOST_MINUTES_PER_ACTIVATION } from "@/lib/boost/constants";
 import { getReferralRewardLabel } from "@/lib/boost/format";
 
@@ -57,6 +58,8 @@ export default function ClassicBoostPage() {
       document.body.classList.remove("sayittome-boost-route");
     };
   }, [boostActive]);
+
+  useNavUsefulPaint(boostActive && !loading);
 
   return (
     <main data-scroll-root className="sayittome-boost-page min-h-screen bg-black text-white">

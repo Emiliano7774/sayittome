@@ -35,6 +35,7 @@ import ClassicAnonPresenceBubble from "@/components/chat/ClassicAnonPresenceBubb
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useMainTabShell } from "@/contexts/MainTabShellContext";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
@@ -287,6 +288,7 @@ export default function ProfileAnonChat({
     pathname.startsWith("/chat") && !shell.childrenHidden;
   const formatLastSeen = useFormatLastSeen();
   const initialProfile = readInitialTargetProfile(username);
+  useNavUsefulPaint(Boolean(chatId) && Boolean(username));
   const initialThreadActive = threadHasPriorActivity(chatId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(initialThreadActive);

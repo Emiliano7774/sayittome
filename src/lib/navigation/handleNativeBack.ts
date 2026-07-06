@@ -4,6 +4,7 @@ import {
   resolveNativeBack,
   stripNativeChatFullscreen,
 } from "@/lib/navigation/nativeBack";
+import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 
 export type NativeBackNavigation = {
   navigateTo?: string;
@@ -12,10 +13,70 @@ export type NativeBackNavigation = {
 };
 
 let backLockUntil = 0;
+let backLockPath = "";
 let pendingExitUntil = 0;
 
 const BACK_LOCK_MS = 120;
 const EXIT_CONFIRM_MS = 2000;
+
+let backLockMsOverride: number | null = null;
+
+export function setBackLockMsOverride(ms: number | null) {
+  backLockMsOverride = ms;
+}
+
+function effectiveBackLockMs() {
+  return backLockMsOverride ?? BACK_LOCK_MS;
+}
+
+function armBackLock(pathname: string, now: number) {
+  backLockUntil = now + effectiveBackLockMs();
+  backLockPath = pathname;
+}
+
+type BackLockProbeEntry = {
+  at: number;
+  gapMs?: number;
+  pathnameBefore: string;
+  pathnameAfter?: string;
+  backLockPath?: string;
+  outcome: "handled" | "discarded-lock" | "discarded-empty" | "navigate" | "hint" | "exit";
+  reason?: string;
+};
+
+const backLockProbeLog: BackLockProbeEntry[] = [];
+
+function recordBackProbe(entry: BackLockProbeEntry) {
+  if (!isNavTraceEnabled()) return;
+  backLockProbeLog.push(entry);
+  if (backLockProbeLog.length > 200) backLockProbeLog.shift();
+}
+
+export function exportBackLockProbe() {
+  return [...backLockProbeLog];
+}
+
+export function clearBackLockProbe() {
+  backLockProbeLog.length = 0;
+}
+
+if (typeof window !== "undefined") {
+  window.__sayittomeBackLockProbe = {
+    export: exportBackLockProbe,
+    clear: clearBackLockProbe,
+    setLockMs: setBackLockMsOverride,
+  };
+}
+
+declare global {
+  interface Window {
+    __sayittomeBackLockProbe?: {
+      export: typeof exportBackLockProbe;
+      clear: typeof clearBackLockProbe;
+      setLockMs: typeof setBackLockMsOverride;
+    };
+  }
+}
 
 export function readNativePathname() {
   if (typeof window === "undefined") return "/";
@@ -32,7 +93,14 @@ export function resolveNativeBackNavigation(
   const now = Date.now();
   const awaitingExitConfirm = pendingExitUntil > now;
 
-  if (!awaitingExitConfirm && now < backLockUntil) {
+  if (!awaitingExitConfirm && now < backLockUntil && pathname === backLockPath) {
+    recordBackProbe({
+      at: now,
+      pathnameBefore: pathname,
+      backLockPath,
+      outcome: "discarded-lock",
+      reason: `same-path-dedupe-${effectiveBackLockMs()}ms`,
+    });
     return {};
   }
 
@@ -44,46 +112,62 @@ export function resolveNativeBackNavigation(
     }
 
     if (result.navigateTo) {
-      backLockUntil = now + BACK_LOCK_MS;
+      armBackLock(pathname, now);
       pendingExitUntil = 0;
       stripNativeChatFullscreen();
+      recordBackProbe({
+        at: now,
+        pathnameBefore: pathname,
+        pathnameAfter: result.navigateTo,
+        backLockPath: pathname,
+        outcome: "navigate",
+      });
       return { navigateTo: result.navigateTo };
     }
 
     if (result.hintKey) {
       if (awaitingExitConfirm) {
-        backLockUntil = now + BACK_LOCK_MS;
+        armBackLock(pathname, now);
         pendingExitUntil = 0;
         return { exitApp: true };
       }
 
       pendingExitUntil = now + EXIT_CONFIRM_MS;
-      backLockUntil = now + BACK_LOCK_MS;
+      armBackLock(pathname, now);
       return { hintKey: result.hintKey };
     }
 
-    backLockUntil = now + BACK_LOCK_MS;
+    armBackLock(pathname, now);
     pendingExitUntil = 0;
     return {};
   }
 
   const destination = getNativeBackDestination(pathname);
   if (destination && destination !== pathname) {
-    backLockUntil = now + BACK_LOCK_MS;
+    armBackLock(pathname, now);
     pendingExitUntil = 0;
     stripNativeChatFullscreen();
+    recordBackProbe({
+      at: now,
+      pathnameBefore: pathname,
+      pathnameAfter: destination,
+      backLockPath: pathname,
+      outcome: "navigate",
+    });
     return { navigateTo: destination };
   }
 
   if (isNativeRootRoute(pathname)) {
     if (awaitingExitConfirm) {
-      backLockUntil = now + BACK_LOCK_MS;
+      armBackLock(pathname, now);
       pendingExitUntil = 0;
+      recordBackProbe({ at: now, pathnameBefore: pathname, outcome: "exit" });
       return { exitApp: true };
     }
 
     pendingExitUntil = now + EXIT_CONFIRM_MS;
-    backLockUntil = now + BACK_LOCK_MS;
+    armBackLock(pathname, now);
+    recordBackProbe({ at: now, pathnameBefore: pathname, outcome: "hint", reason: "native_back_exit_hint" });
     return { hintKey: "native_back_exit_hint" };
   }
 

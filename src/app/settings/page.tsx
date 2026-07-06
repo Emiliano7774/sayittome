@@ -19,6 +19,10 @@ import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
+import { useSettingsTabPaint } from "@/hooks/useSettingsTabPaint";
+import { isNavTraceEnabled } from "@/lib/perf/navTrace";
+import { settingsPipelineMark } from "@/lib/perf/settingsPipelineTrace";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
@@ -74,6 +78,7 @@ export function SettingsRouteContent() {
 
   const [loading, setLoading] = useState(() => !readSettingsProfileCache());
   const [profile, setProfile] = useState<any>(() => readSettingsProfileCache());
+  const [authKnown, setAuthKnown] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [showAnonGate, setShowAnonGate] = useState(false);
   const [coverIndex, setCoverIndex] = useState(0);
@@ -82,6 +87,9 @@ export function SettingsRouteContent() {
   const profileUi = getClassicProfileUiTokens(density);
   const formatLastSeen = useFormatLastSeen();
 
+  useSettingsTabPaint({ loading, profile, showAnonGate, authKnown: authKnown || Boolean(profile) });
+  useNavUsefulPaint(!loading && (Boolean(profile) || showAnonGate));
+
   const loadProfile = useCallback(async (user: { uid: string }) => {
     const ref = doc(db, "usuarios", user.uid);
 
@@ -89,6 +97,9 @@ export function SettingsRouteContent() {
       const cached = await getDoc(ref);
       if (cached.exists()) {
         const nextProfile = { ...cached.data(), uid: user.uid };
+        if (isNavTraceEnabled()) {
+          settingsPipelineMark("memory-profile-hit");
+        }
         setProfile(nextProfile);
         writeSettingsProfileCache(nextProfile);
         setLoading(false);
@@ -118,6 +129,7 @@ export function SettingsRouteContent() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
+      setAuthKnown(true);
       if (!user) {
         setShowAnonGate(true);
         setLoading(false);
@@ -308,7 +320,10 @@ export function SettingsRouteContent() {
 
   if (loading && !profile) {
     return (
-      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+      <main
+        data-nav-settings-primary
+        className="min-h-screen bg-black text-white flex items-center justify-center"
+      >
         <p className="text-3xl font-black">{t("settings_loading")}</p>
       </main>
     );
@@ -322,7 +337,8 @@ export function SettingsRouteContent() {
     const username = String(profile.username || profile.nombre || "usuario");
 
     return (
-      <ModernPublicProfile
+      <div data-nav-settings-primary>
+        <ModernPublicProfile
         profile={{
           uid: profile.uid,
           email: auth.currentUser?.email || profile.email,
@@ -357,12 +373,13 @@ export function SettingsRouteContent() {
         showShuffleBack={false}
         onEdit={() => fastRouterPush(router, "/settings/edit")}
         onLogout={() => void handleLogout()}
-      />
+        />
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-black text-white pb-28">
+    <main data-nav-settings-primary className="min-h-screen bg-black text-white pb-28">
       <section className="relative min-h-screen overflow-hidden px-6 sm:px-10 lg:px-16 py-10">
         {(coverPhoto || coverVideo) && (
           <div

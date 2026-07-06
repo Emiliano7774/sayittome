@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useLayoutEffect } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -45,6 +45,11 @@ import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { lookupProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedFullProfile, setCachedFullProfile } from "@/lib/profile/profileCache";
 import { markProfileHydrated, shouldShowProfileLoading } from "@/hooks/useProfileReady";
+import {
+  profilePipelineBegin,
+  profilePipelineMark,
+} from "@/lib/perf/profilePipelineTrace";
+import { navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { prefetchOwnerStories, refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
@@ -52,6 +57,7 @@ import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { useAdaptiveUsernameFontSize } from "@/lib/profile/adaptiveUsernameSize";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import { resolveProfileMediaSourceForUrl } from "@/lib/profile/mediaSource";
 import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
@@ -131,8 +137,15 @@ export default function PublicProfilePage() {
   const t = useT();
 
   useEffect(() => {
+    if (!usernameParam) return;
+    profilePipelineBegin(usernameParam);
+    navTraceMarkDetail("profile-mount");
+  }, [usernameParam]);
+
+  useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUid(user?.uid || "");
+      navTraceMarkDetail("auth-ready");
     });
 
     return () => unsub();
@@ -142,9 +155,13 @@ export default function PublicProfilePage() {
     async function load() {
       const cached = getCachedFullProfile(usernameParam);
       if (cached) {
+        profilePipelineMark("cache-hit");
+        navTraceMarkDetail("profile-cache-hit");
         setProfile(cached as Profile);
         markProfileHydrated();
         setLoading(false);
+        profilePipelineMark("set-profile", { hasProfile: true, loading: false });
+        profilePipelineMark("loading-false", { loading: false, hasProfile: true });
 
         void lookupProfileByUsername(usernameParam, true)
           .then((lookup) => {
@@ -169,10 +186,17 @@ export default function PublicProfilePage() {
         return;
       }
 
+      profilePipelineMark("cache-miss");
+      navTraceMarkDetail("profile-cache-miss");
+
+      let loadedProfile: Profile | null = null;
+
       try {
         setLoading(true);
+        profilePipelineMark("lookup-started", { method: "fetch /api/profile" });
         const lookup = await lookupProfileByUsername(usernameParam, false);
         if (lookup.usernameChanged) {
+          profilePipelineMark("username-changed");
           setUsernameChanged({
             requestedUsername: lookup.requestedUsername,
             currentUsername: lookup.currentUsername,
@@ -182,15 +206,26 @@ export default function PublicProfilePage() {
         }
 
         setUsernameChanged(null);
-        setProfile((lookup.profile as Profile | null) || null);
-        if (lookup.profile) {
-          setCachedFullProfile(usernameParam, lookup.profile);
+        loadedProfile = (lookup.profile as Profile | null) || null;
+        setProfile(loadedProfile);
+        if (loadedProfile) {
+          setCachedFullProfile(usernameParam, loadedProfile);
           markProfileHydrated();
+          profilePipelineMark("set-profile", { hasProfile: true });
+        } else {
+          profilePipelineMark("profile-not-found", { found: false });
         }
-      } catch {
+      } catch (error) {
+        profilePipelineMark("fetch-error", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         setProfile(null);
       } finally {
         setLoading(false);
+        profilePipelineMark("loading-false", {
+          loading: false,
+          hasProfile: Boolean(loadedProfile),
+        });
       }
     }
 
@@ -199,6 +234,20 @@ export default function PublicProfilePage() {
 
   const owner = useProfileOwner(profile?.uid, profile?.username || usernameParam);
   const isOwner = owner.ready && owner.isOwner;
+
+  useLayoutEffect(() => {
+    if (!usernameParam) return;
+    const cached = getCachedFullProfile(usernameParam);
+    if (cached) {
+      profilePipelineMark("cache-hit");
+      navTraceMarkDetail("profile-cache-hit");
+      navTraceMarkDetail("profile-state-ready");
+    } else {
+      navTraceMarkDetail("profile-cache-miss");
+    }
+  }, [usernameParam]);
+
+  useNavUsefulPaint(Boolean(profile) && !loading);
 
   const gallery = useMemo(() => {
     if (!profile) return [];
@@ -367,6 +416,7 @@ export default function PublicProfilePage() {
 
   if (uxMode === "modern") {
     return (
+      <div data-nav-primary-content data-nav-profile-main>
       <ModernPublicProfile
         profile={{
           uid: profile.uid,
@@ -409,6 +459,7 @@ export default function PublicProfilePage() {
           setProfile((current) => (current ? { ...current, moderationTag } : current))
         }
       />
+      </div>
     );
   }
 
@@ -425,7 +476,11 @@ export default function PublicProfilePage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-x-hidden bg-black pb-32 text-white">
+    <main
+      data-nav-primary-content
+      data-nav-profile-main
+      className="relative min-h-screen overflow-x-hidden bg-black pb-32 text-white"
+    >
       <div
         className="pointer-events-none absolute left-1/2 top-0 z-[1] w-screen max-w-none -translate-x-1/2 overflow-hidden bg-black"
         style={{ height: profileUi.heroHeight }}
@@ -758,7 +813,7 @@ function StatBubble({
   return (
     <div className="pointer-events-auto flex flex-col items-center justify-center">
       {onClick ? (
-        <button type="button" onClick={onClick} className="active:scale-95 transition">
+        <button type="button" data-nav-profile-chat onClick={onClick} className="active:scale-95 transition">
           {bubble}
         </button>
       ) : (

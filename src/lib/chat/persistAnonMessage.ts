@@ -59,7 +59,16 @@ function resolveProfileAnonUnreadRecipients(input: {
   senderId: string;
 }) {
   if (!input.isOwnerReply) {
-    return input.targetUid ? [input.targetUid] : [];
+    const recipients = new Set<string>();
+    if (input.targetUid) recipients.add(input.targetUid);
+
+    for (const id of input.participantes) {
+      if (!id.startsWith("anon_") && id !== input.messageAuthorId) {
+        recipients.add(id);
+      }
+    }
+
+    return [...recipients];
   }
 
   const recipients = new Set<string>();

@@ -9,6 +9,8 @@ yarn-debug.log*
 yarn-error.log*
 *.tsbuildinfo
 firebase-debug.log
+scripts/bench-storage-state.json
+scripts/.bench-service-account.json
 
 .firebase
 *.zip

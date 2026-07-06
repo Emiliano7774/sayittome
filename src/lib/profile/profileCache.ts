@@ -50,3 +50,11 @@ export function setCachedFullProfile(username: string, profile: unknown) {
     fetchedAt: Date.now(),
   });
 }
+
+export function clearCachedFullProfile(username?: string) {
+  if (username) {
+    fullProfileCache.delete(username.toLowerCase());
+    return;
+  }
+  fullProfileCache.clear();
+}

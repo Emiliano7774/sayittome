@@ -36,6 +36,16 @@ import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import ContentReportDialog from "@/components/moderation/ContentReportDialog";
 import type { StoryItem } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
+import { isNavTraceEnabled } from "@/lib/perf/navTrace";
+import {
+  storyPipelineBegin,
+  storyPipelineMark,
+  storyPipelineMarkImageDecodeReady,
+  storyPipelineMarkResponseReady,
+  storyPipelineMarkVideoPhase,
+  storyPipelineNoteMediaUrl,
+} from "@/lib/perf/storyPipelineTrace";
 
 type Props = {
   stories: StoryItem[];
@@ -116,9 +126,35 @@ export default function StoryViewer({
   }, [exitStoryViewer]);
 
   const current = localStories[index];
+  useNavUsefulPaint(Boolean(current));
   const resolvedOwnerUid = activeOwnerUid || ownerUid || current?.ownerUid || "";
   const resolvedOwnerUsername =
     activeOwnerUsername || ownerUsername || current?.ownerUsername || "";
+
+  useEffect(() => {
+    if (!isNavTraceEnabled() || !current) return;
+    storyPipelineBegin({
+      storyId: current.id,
+      ownerUid: resolvedOwnerUid,
+      ownerUsername: resolvedOwnerUsername,
+      mediaUrl: current.mediaUrl,
+      mediaType: current.mediaType === "video" ? "video" : current.mediaUrl ? "image" : "text",
+    });
+    storyPipelineMark("viewer-state-ready", {
+      storyId: current.id,
+      ownerUid: resolvedOwnerUid,
+      ownerUsername: resolvedOwnerUsername,
+      mediaUrl: current.mediaUrl,
+      mediaType: current.mediaType === "video" ? "video" : current.mediaUrl ? "image" : "text",
+    });
+    if (current.mediaUrl) {
+      storyPipelineNoteMediaUrl(
+        current.mediaUrl,
+        current.mediaType === "video" ? "video" : "image",
+        current.id,
+      );
+    }
+  }, [current, resolvedOwnerUid, resolvedOwnerUsername]);
   const anonymousStory = current ? isAnonymousStory(current) : false;
   const displayName = current
     ? storyDisplayName(current, t)
@@ -610,8 +646,15 @@ export default function StoryViewer({
             autoPlay
             playsInline
             muted={false}
+            onLoadedData={() => {
+              if (isNavTraceEnabled()) storyPipelineMark("viewer-dom");
+            }}
             onLoadedMetadata={(e) => {
               const el = e.currentTarget;
+              if (isNavTraceEnabled()) {
+                storyPipelineMarkVideoPhase(current.mediaUrl!, "loadedmetadata", current.id);
+                storyPipelineMarkResponseReady(current.mediaUrl!, "video", current.id);
+              }
               if (!startedRef.current && el.duration) {
                 startedRef.current = true;
                 setDoc(
@@ -619,6 +662,16 @@ export default function StoryViewer({
                   { durationMs: Math.round(el.duration * 1000) },
                   { merge: true },
                 ).catch(() => {});
+              }
+            }}
+            onCanPlay={() => {
+              if (isNavTraceEnabled()) {
+                storyPipelineMarkVideoPhase(current.mediaUrl!, "canplay", current.id);
+              }
+            }}
+            onPlaying={() => {
+              if (isNavTraceEnabled()) {
+                storyPipelineMarkVideoPhase(current.mediaUrl!, "first-frame", current.id);
               }
             }}
           />
@@ -631,6 +684,30 @@ export default function StoryViewer({
               "max-h-full max-w-full object-contain animate-[fadeIn_.28s_ease-out]",
               needsBlur && blurLocked ? "blur-2xl scale-105" : "",
             ].join(" ")}
+            onLoad={(e) => {
+              if (!isNavTraceEnabled()) return;
+              storyPipelineMark("viewer-dom");
+              const img = e.currentTarget;
+              storyPipelineMarkResponseReady(current.mediaUrl!, "image", current.id);
+              storyPipelineMarkImageDecodeReady(
+                current.mediaUrl!,
+                current.id,
+                img.complete,
+                img.naturalWidth,
+                img.naturalHeight,
+              );
+              if (typeof img.decode === "function") {
+                void img.decode().then(() => {
+                  storyPipelineMarkImageDecodeReady(
+                    current.mediaUrl!,
+                    current.id,
+                    img.complete,
+                    img.naturalWidth,
+                    img.naturalHeight,
+                  );
+                }).catch(() => undefined);
+              }
+            }}
           />
         ) : (
           <p className="px-8 text-center text-3xl font-bold">{current.texto}</p>

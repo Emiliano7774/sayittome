@@ -66,7 +66,7 @@ export function useGlobalChatAlerts() {
   const messageListenersEnabled =
     chatAlertsRouteEnabled && (!documentHidden || notificationsEnabled);
 
-  const { sortedChats, displaySortedChats, uid, loading, isAnonymousSession } = useChatsInbox({
+  const { sortedChats, displaySortedChats, uid, loading, isAnonymousSession, firestoreSynced } = useChatsInbox({
     enableInboxQueries:
       liveFirestoreEnabled || backgroundNotificationInboxEnabled,
     enableSessionChatListeners:
@@ -155,6 +155,7 @@ export function useGlobalChatAlerts() {
       loading,
       isAnonymousSession,
       inboxQueriesEnabled: inboxRouteEnabled || notificationInboxEnabled,
+      firestoreSynced,
     }),
     [
       totalUnread,
@@ -165,6 +166,7 @@ export function useGlobalChatAlerts() {
       isAnonymousSession,
       inboxRouteEnabled,
       notificationInboxEnabled,
+      firestoreSynced,
     ],
   );
 }

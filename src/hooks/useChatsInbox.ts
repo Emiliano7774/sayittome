@@ -21,6 +21,8 @@ import { hasInboxPreview, isVisibleInboxChat } from "@/lib/chat/inboxVisible";
 import { normalizeInboxChat } from "@/lib/chat/normalizeInboxChat";
 import { markChatsInboxHydrated, rememberInboxChatCount } from "@/hooks/useChatsInboxReady";
 import { readInboxSnapshot, writeInboxSnapshot } from "@/lib/chat/inboxSnapshot";
+import { isNavTraceEnabled } from "@/lib/perf/navTrace";
+import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 
 export type InboxChat = {
@@ -131,8 +133,19 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   const [sessionChats, setSessionChats] = useState<InboxChat[]>([]);
   const [sessionChatIds, setSessionChatIds] = useState<string[]>([]);
   const [anonSessionId, setAnonSessionId] = useState("");
+  const [firestoreSynced, setFirestoreSynced] = useState(false);
+  const firestoreFirstRef = useRef(false);
 
   const uid = firebaseUser?.uid || auth.currentUser?.uid || "";
+
+  useEffect(() => {
+    if (loading || !isNavTraceEnabled()) return;
+    if (uid) {
+      chatsPipelineMark("auth-ready", { authUid: uid });
+    } else {
+      chatsPipelineMark("auth-unknown");
+    }
+  }, [loading, uid]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -209,61 +222,84 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       rebuildChats();
     }
 
-    const mergeQuery = (key: string) => (snap: QuerySnapshot) => {
-      const map = new Map<string, InboxChat>();
-      for (const docSnap of snap.docs) {
-        const normalized = normalizeInboxChat({
-          id: docSnap.id,
-          ...(docSnap.data() as Omit<InboxChat, "id">),
-        });
-        if (normalized) map.set(docSnap.id, normalized);
+    let cancelled = false;
+    const unsubscribers: Array<() => void> = [];
+
+    const registerInboxQueries = () => {
+      if (cancelled) return;
+
+      const mergeQuery = (key: string) => (snap: QuerySnapshot) => {
+        if (!firestoreFirstRef.current) {
+          firestoreFirstRef.current = true;
+          setFirestoreSynced(true);
+          if (isNavTraceEnabled()) {
+            chatsPipelineMark("firestore-first-callback", { firestoreDocs: snap.docs.length });
+          }
+        }
+
+        const map = new Map<string, InboxChat>();
+        for (const docSnap of snap.docs) {
+          const normalized = normalizeInboxChat({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<InboxChat, "id">),
+          });
+          if (normalized) map.set(docSnap.id, normalized);
+        }
+        queryMapsRef.current[key] = map;
+        rebuildChats();
+        if (isNavTraceEnabled()) {
+          chatsPipelineMark("inbox-state-set");
+        }
+      };
+
+      if (isNavTraceEnabled()) {
+        chatsPipelineMark("onsnapshot-registered");
       }
-      queryMapsRef.current[key] = map;
-      rebuildChats();
+
+      const byParticipantes = query(
+        collection(db, "chats"),
+        where("participantes", "array-contains", uid),
+        limit(50),
+      );
+
+      const byOwner = query(
+        collection(db, "chats"),
+        where("anonOwnerUid", "==", uid),
+        limit(50),
+      );
+
+      const byReceptor = query(
+        collection(db, "chats"),
+        where("receptorUid", "==", uid),
+        limit(50),
+      );
+
+      const byTarget = query(
+        collection(db, "chats"),
+        where("targetUid", "==", uid),
+        limit(50),
+      );
+
+      unsubscribers.push(
+        onSnapshot(byParticipantes, mergeQuery("participantes"), (error) => {
+          console.error(error);
+        }),
+        onSnapshot(byOwner, mergeQuery("anonOwner"), (error) => {
+          console.error(error);
+        }),
+        onSnapshot(byReceptor, mergeQuery("receptor"), (error) => {
+          console.error(error);
+        }),
+        onSnapshot(byTarget, mergeQuery("target"), (error) => {
+          console.error(error);
+        }),
+      );
     };
 
-    const byParticipantes = query(
-      collection(db, "chats"),
-      where("participantes", "array-contains", uid),
-      limit(50),
-    );
-
-    const byOwner = query(
-      collection(db, "chats"),
-      where("anonOwnerUid", "==", uid),
-      limit(50),
-    );
-
-    const byReceptor = query(
-      collection(db, "chats"),
-      where("receptorUid", "==", uid),
-      limit(50),
-    );
-
-    const byTarget = query(
-      collection(db, "chats"),
-      where("targetUid", "==", uid),
-      limit(50),
-    );
-
-    const unsubA = onSnapshot(byParticipantes, mergeQuery("participantes"), (error) => {
-      console.error(error);
-    });
-    const unsubB = onSnapshot(byOwner, mergeQuery("anonOwner"), (error) => {
-      console.error(error);
-    });
-    const unsubC = onSnapshot(byReceptor, mergeQuery("receptor"), (error) => {
-      console.error(error);
-    });
-    const unsubD = onSnapshot(byTarget, mergeQuery("target"), (error) => {
-      console.error(error);
-    });
-
+    registerInboxQueries();
     return () => {
-      unsubA();
-      unsubB();
-      unsubC();
-      unsubD();
+      cancelled = true;
+      for (const unsub of unsubscribers) unsub();
     };
   }, [uid, loading, enableInboxQueries]);
 
@@ -357,7 +393,12 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   }, [enableSessionChatListeners, loading, sessionChatIds]);
 
   const sortedChats = useMemo(() => {
+    const sortStart = performance.now();
     const next = dedupeChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);
+    const sortMs = Math.round(performance.now() - sortStart);
+    if (isNavTraceEnabled() && next.length > 0) {
+      chatsPipelineMark("inbox-sort-done", { sortMs, inboxCount: next.length });
+    }
     if (next.length > 0) {
       lastSortedChatsRef.current = next;
       writeInboxSnapshot(next);
@@ -375,5 +416,6 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     sortedChats,
     displaySortedChats,
     isAnonymousSession: !uid && !loading,
+    firestoreSynced,
   };
 }

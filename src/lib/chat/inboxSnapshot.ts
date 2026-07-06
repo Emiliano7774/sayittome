@@ -8,6 +8,21 @@ type StoredInboxRow = Omit<InboxChat, "updatedAt"> & {
 };
 
 let memorySnapshot: InboxChat[] = [];
+let firstInboxSnapshotReadMeta: InboxSnapshotReadMeta | null = null;
+
+export function resetInboxSnapshotReadTrace() {
+  firstInboxSnapshotReadMeta = null;
+}
+
+export function peekFirstInboxSnapshotReadMeta() {
+  return firstInboxSnapshotReadMeta;
+}
+
+function recordFirstInboxSnapshotReadMeta(meta: InboxSnapshotReadMeta) {
+  if (firstInboxSnapshotReadMeta === null) {
+    firstInboxSnapshotReadMeta = meta;
+  }
+}
 
 function inboxUpdatedAtMs(chat: InboxChat) {
   return chat.updatedAt?.toMillis?.() ?? 0;
@@ -29,20 +44,116 @@ function chatFromRow(row: StoredInboxRow): InboxChat {
   };
 }
 
-export function readInboxSnapshot(): InboxChat[] {
-  if (memorySnapshot.length > 0) return memorySnapshot;
-  if (typeof window === "undefined") return [];
+export function clearInboxSnapshotCache() {
+  memorySnapshot = [];
+  resetInboxSnapshotReadTrace();
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function clearInboxMemoryCacheOnly() {
+  memorySnapshot = [];
+  resetInboxSnapshotReadTrace();
+}
+
+export type InboxSnapshotReadMeta = {
+  source: "memory" | "session" | "none";
+  parseMs: number;
+  bytes: number;
+  count: number;
+  accepted: boolean;
+};
+
+export function readInboxSnapshotWithMeta(): {
+  chats: InboxChat[];
+  meta: InboxSnapshotReadMeta;
+} {
+  const hadMemory = memorySnapshot.length > 0;
+
+  if (hadMemory) {
+    const meta: InboxSnapshotReadMeta = {
+      source: "memory",
+      parseMs: 0,
+      bytes: 0,
+      count: memorySnapshot.length,
+      accepted: true,
+    };
+    return { chats: memorySnapshot, meta };
+  }
+
+  if (typeof window === "undefined") {
+    const meta: InboxSnapshotReadMeta = {
+      source: "none",
+      parseMs: 0,
+      bytes: 0,
+      count: 0,
+      accepted: false,
+    };
+    recordFirstInboxSnapshotReadMeta(meta);
+    return { chats: [], meta };
+  }
 
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      const meta: InboxSnapshotReadMeta = {
+        source: "none",
+        parseMs: 0,
+        bytes: 0,
+        count: 0,
+        accepted: false,
+      };
+      recordFirstInboxSnapshotReadMeta(meta);
+      return { chats: [], meta };
+    }
+
+    const bytes = raw.length * 2;
+    const parseStart = performance.now();
     const parsed = JSON.parse(raw) as StoredInboxRow[];
-    if (!Array.isArray(parsed) || parsed.length === 0) return [];
+    const parseMs = Math.round(performance.now() - parseStart);
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      const meta: InboxSnapshotReadMeta = {
+        source: "session",
+        parseMs,
+        bytes,
+        count: 0,
+        accepted: false,
+      };
+      recordFirstInboxSnapshotReadMeta(meta);
+      return { chats: [], meta };
+    }
+
     memorySnapshot = parsed.map(chatFromRow);
-    return memorySnapshot;
+    const meta: InboxSnapshotReadMeta = {
+      source: "session",
+      parseMs,
+      bytes,
+      count: memorySnapshot.length,
+      accepted: true,
+    };
+    recordFirstInboxSnapshotReadMeta(meta);
+    return { chats: memorySnapshot, meta };
   } catch {
-    return [];
+    const meta: InboxSnapshotReadMeta = {
+      source: "session",
+      parseMs: 0,
+      bytes: 0,
+      count: 0,
+      accepted: false,
+    };
+    recordFirstInboxSnapshotReadMeta(meta);
+    return { chats: [], meta };
   }
+}
+
+export function readInboxSnapshot(): InboxChat[] {
+  return readInboxSnapshotWithMeta().chats;
 }
 
 export function writeInboxSnapshot(chats: InboxChat[]) {

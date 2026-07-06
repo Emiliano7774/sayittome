@@ -8,7 +8,8 @@ import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { assertProfileOwner } from "@/lib/profile/owner";
 import {
   copyVerifiedProfileLink,
-  getVerifiedProfileLink,
+  displayVerifiedProfileLink,
+  getVerifiedProfileUrl,
 } from "@/lib/profile/verifiedLink";
 
 type Props = {
@@ -51,11 +52,11 @@ export default function VerifiedLinkBubble({
       return;
     }
 
-    setModalLink(result.link || getVerifiedProfileLink(username));
+    setModalLink(result.link || getVerifiedProfileUrl(username));
   }
 
   async function copyFromModal() {
-    const link = modalLink || getVerifiedProfileLink(username);
+    const link = modalLink || getVerifiedProfileUrl(username);
     const result = await copyVerifiedProfileLink(username);
 
     if (result.ok) {
@@ -108,6 +109,9 @@ export default function VerifiedLinkBubble({
             <p className="text-2xl font-black">Copiá el link verificado</p>
             <p className="mt-2 text-sm text-white/55">
               Este link confirma que el perfil es oficial cuando alguien lo abre.
+            </p>
+            <p className="mt-3 text-sm font-bold text-violet-200">
+              {displayVerifiedProfileLink(username)}
             </p>
             <input
               ref={inputRef}

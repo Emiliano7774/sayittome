@@ -14,6 +14,7 @@ const ChatAlertsContext = createContext<ChatAlertsValue>({
   loading: true,
   isAnonymousSession: false,
   inboxQueriesEnabled: false,
+  firestoreSynced: false,
 });
 
 export function ChatAlertsProvider({ children }: { children: ReactNode }) {

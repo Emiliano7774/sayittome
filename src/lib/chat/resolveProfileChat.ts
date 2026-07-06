@@ -14,6 +14,8 @@ import {
 } from "@/lib/profile/profileCache";
 import { ProfileUsernameChangedError } from "@/lib/profile/usernameHistory";
 import { withTimeout } from "@/lib/async/withTimeout";
+import { isNavTraceEnabled } from "@/lib/perf/navTrace";
+import { profilePipelineMark } from "@/lib/perf/profilePipelineTrace";
 
 export class OwnerProfileInboxRedirect extends Error {
   readonly code = "owner_profile_inbox_redirect";
@@ -46,6 +48,10 @@ export async function lookupProfileByUsername(
   if (!force) {
     const cached = getCachedFullProfile(key);
     if (cached) {
+      if (isNavTraceEnabled()) {
+        profilePipelineMark("cache-hit");
+        profilePipelineMark("profile-normalized", { found: true, method: "memory-cache" });
+      }
       return {
         profile: cached as Record<string, unknown>,
         usernameChanged: false,
@@ -55,6 +61,11 @@ export async function lookupProfileByUsername(
     }
   }
 
+  if (isNavTraceEnabled()) {
+    profilePipelineMark("lookup-started", { method: "fetch /api/profile" });
+    profilePipelineMark("fetch-emitted");
+  }
+
   const res = await withTimeout(
     fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
       cache: "no-store",
@@ -62,6 +73,13 @@ export async function lookupProfileByUsername(
     12000,
     "profile_lookup_timeout",
   );
+
+  if (isNavTraceEnabled()) {
+    profilePipelineMark("fetch-response", {
+      status: res.status,
+      method: "fetch /api/profile",
+    });
+  }
   const json = await res.json();
 
   if (json?.reason === "username_changed") {
@@ -74,7 +92,17 @@ export async function lookupProfileByUsername(
   }
 
   const profile = json?.profile || null;
-  if (profile) setCachedFullProfile(key, profile);
+  if (profile) {
+    setCachedFullProfile(key, profile);
+    if (isNavTraceEnabled()) {
+      profilePipelineMark("profile-normalized", {
+        found: true,
+        method: "fetch /api/profile",
+      });
+    }
+  } else if (isNavTraceEnabled()) {
+    profilePipelineMark("profile-not-found", { found: false, status: res.status });
+  }
 
   return {
     profile,

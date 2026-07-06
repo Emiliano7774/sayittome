@@ -1,16 +1,32 @@
 import { assertProfileOwner } from "@/lib/profile/owner";
+import { normalizeUsername } from "@/lib/profile/username";
 
 export const VERIFIED_QUERY_PARAM = "verified";
 export const VERIFIED_QUERY_VALUE = "1";
+export const VERIFIED_PROFILE_PUBLIC_HOST = "sytm.me";
 
+/** Canonical public username for verified share links (no leading @). */
+export function normalizeVerifiedProfileUsername(username: string) {
+  let clean = normalizeUsername(username);
+  if (clean.startsWith("@")) clean = clean.slice(1);
+  return clean;
+}
+
+/** Visible verified link text, e.g. `sytm.me/@emiliano`. */
+export function displayVerifiedProfileLink(username: string) {
+  const slug = normalizeVerifiedProfileUsername(username).toLowerCase();
+  return `${VERIFIED_PROFILE_PUBLIC_HOST}/@${slug}`;
+}
+
+/** Canonical HTTPS URL copied to clipboard, e.g. `https://sytm.me/@emiliano`. */
+export function getVerifiedProfileUrl(username: string) {
+  return `https://${displayVerifiedProfileLink(username)}`;
+}
+
+/** @deprecated Use getVerifiedProfileUrl for copy/share. */
 export function getVerifiedProfileLink(username: string, origin?: string) {
-  const base =
-    origin ||
-    (typeof window !== "undefined" ? window.location.origin : "https://sayittome-app.web.app");
-
-  const slug = encodeURIComponent(username.trim());
-
-  return `${base}/u/${slug}?${VERIFIED_QUERY_PARAM}=${VERIFIED_QUERY_VALUE}`;
+  void origin;
+  return getVerifiedProfileUrl(username);
 }
 
 export function isVerifiedProfileLink(search?: string | URLSearchParams | null) {
@@ -60,7 +76,7 @@ export async function copyVerifiedProfileLink(username: string) {
     return { ok: false as const, link: "", denied: true as const };
   }
 
-  const link = getVerifiedProfileLink(username);
+  const link = getVerifiedProfileUrl(username);
   const ok = await writeTextToClipboard(link);
 
   if (ok) {

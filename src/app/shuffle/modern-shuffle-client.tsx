@@ -28,6 +28,7 @@ import {
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
 import { useT } from "@/contexts/LocaleContext";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 
 export default function ModernShuffleClient() {
   const shuffleActive = useMainTabRouteActive("/shuffle");
@@ -61,6 +62,8 @@ export default function ModernShuffleClient() {
       listReady: pool.listReady,
       visibleCount: visible.length,
     });
+
+  useNavUsefulPaint(shuffleActive && visible.length > 0 && !showShuffleLoading);
 
   return (
     <>

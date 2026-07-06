@@ -6,10 +6,12 @@ import StoriesHub from "@/components/stories/StoriesHub";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoriesGroups } from "@/hooks/useStoriesGroups";
 import { useT } from "@/contexts/LocaleContext";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 
 export default function ClassicStoriesPage() {
   const t = useT();
   const { groups, viewerUid, loading } = useStoriesGroups();
+  useNavUsefulPaint(!loading);
 
   return (
     <main className="min-h-screen bg-black px-5 py-8 pb-32 text-white">

@@ -9,6 +9,7 @@ import BoostRocketHero from "@/components/boost/BoostRocketHero";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
+import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { BOOST_MIN_MINUTES } from "@/lib/boost/constants";
 import { getReferralRewardLabel } from "@/lib/boost/format";
 
@@ -31,6 +32,8 @@ export default function ModernBoostPage() {
     handleActivate,
     handleCopy,
   } = useBoostActions(true);
+
+  useNavUsefulPaint(!loading);
 
   const canActivate =
     credits >= BOOST_MIN_MINUTES &&

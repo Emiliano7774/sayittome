@@ -1,6 +1,7 @@
 import { increment, serverTimestamp, type FieldValue } from "firebase/firestore";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { expandReadByIdentityKeys } from "@/lib/chat/messageReceipt";
 
 type ChatMetaSource = Partial<Pick<InboxChat, "participantes" | "targetUid" | "receptorUid">> & {
   participants?: string[];
@@ -39,7 +40,9 @@ export function buildOutgoingChatMetaPatch(
   };
 
   for (const recipientUid of recipients) {
-    patch[`readBy.${recipientUid}`] = false;
+    for (const readByKey of expandReadByIdentityKeys(recipientUid)) {
+      patch[`readBy.${readByKey}`] = false;
+    }
     patch[`unreadCounts.${recipientUid}`] = increment(1);
   }
 

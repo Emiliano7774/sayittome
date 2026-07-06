@@ -7,6 +7,7 @@ import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useChatsSelection } from "@/hooks/useChatsSelection";
 import { shouldShowChatsInboxSkeleton } from "@/hooks/useChatsInboxReady";
+import { useChatsTabPaint } from "@/hooks/useChatsTabPaint";
 import { useT } from "@/contexts/LocaleContext";
 
 function ChatsPageSkeleton() {
@@ -23,6 +24,12 @@ export default function ChatsInboxPage() {
   const { uxMode } = useUxMode();
   const inbox = useChatAlerts();
   const selection = useChatsSelection(inbox.sortedChats);
+
+  useChatsTabPaint({
+    loading: inbox.loading,
+    sortedChats: inbox.sortedChats,
+    firestoreHydrated: inbox.firestoreSynced,
+  });
 
   if (shouldShowChatsInboxSkeleton(inbox)) {
     return <ChatsPageSkeleton />;
