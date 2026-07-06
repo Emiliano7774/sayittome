@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
+import { isMainTabPrimaryReady } from "@/lib/navigation/atomicMainTabHandoff";
 import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
   isShuffleSurfacePresented,
@@ -29,8 +30,13 @@ import {
   subscribeShuffleWarmReturn,
 } from "@/lib/shuffle/shuffleWarmVisual";
 import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
+import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
 
 const HANDOFF_FRAME_BUDGET = 120;
+
+function isMainTabPath(path: string): path is MainTabHref {
+  return (MAIN_TAB_HREFS as readonly string[]).includes(path);
+}
 
 export default function ShuffleKeepAliveHost() {
   const pathname = usePathname();
@@ -104,6 +110,40 @@ export default function ShuffleKeepAliveHost() {
       startHandoffLoop();
     } else if (prev === "/shuffle" && path !== "/shuffle" && isShuffleKeepAliveActive()) {
       handoffLoopRef.current += 1;
+      const loopId = handoffLoopRef.current;
+
+      if (isMainTabPath(path)) {
+        let frames = 0;
+        let cancelled = false;
+
+        const releaseWhenMainTabReady = () => {
+          if (cancelled || handoffLoopRef.current !== loopId) return;
+          frames += 1;
+
+          if (isMainTabPrimaryReady(path)) {
+            releaseShuffleTabSurface();
+            pinShuffleWindowWhileAway();
+            clearQueuedShuffleTriggers();
+            resetShuffleGeometryStability();
+            return;
+          }
+
+          if (frames < HANDOFF_FRAME_BUDGET) {
+            requestAnimationFrame(releaseWhenMainTabReady);
+          } else {
+            releaseShuffleTabSurface();
+            pinShuffleWindowWhileAway();
+            clearQueuedShuffleTriggers();
+            resetShuffleGeometryStability();
+          }
+        };
+
+        requestAnimationFrame(releaseWhenMainTabReady);
+        return () => {
+          cancelled = true;
+        };
+      }
+
       releaseShuffleTabSurface();
       pinShuffleWindowWhileAway();
       clearQueuedShuffleTriggers();

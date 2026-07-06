@@ -354,6 +354,29 @@ html.sayittome-shuffle-handoff-pending #sayittome-main-tab-keepalive-chats {
   opacity: 1 !important;
 }
 
+html.sayittome-main-tab-handoff-pending #sayittome-main-tab-keepalive-stories,
+html.sayittome-main-tab-handoff-pending #sayittome-main-tab-keepalive-chats,
+html.sayittome-main-tab-handoff-pending #sayittome-main-tab-keepalive-boost,
+html.sayittome-main-tab-handoff-pending #sayittome-main-tab-keepalive-settings {
+  pointer-events: none;
+}
+
+html.sayittome-main-tab-handoff-pending[data-sayittome-main-tab-handoff-source="stories"]
+  #sayittome-main-tab-keepalive-stories,
+html.sayittome-main-tab-handoff-pending[data-sayittome-main-tab-handoff-source="chats"]
+  #sayittome-main-tab-keepalive-chats,
+html.sayittome-main-tab-handoff-pending[data-sayittome-main-tab-handoff-source="boost"]
+  #sayittome-main-tab-keepalive-boost,
+html.sayittome-main-tab-handoff-pending[data-sayittome-main-tab-handoff-source="settings"]
+  #sayittome-main-tab-keepalive-settings {
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 2 !important;
+  position: fixed;
+  inset: 0;
+  opacity: 1 !important;
+}
+
 html.sayittome-shuffle-handoff-pending #sayittome-shuffle-keepalive-host {
   z-index: -1 !important;
   visibility: hidden !important;

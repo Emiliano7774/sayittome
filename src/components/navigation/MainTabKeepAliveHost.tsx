@@ -2,12 +2,19 @@
 
 import type { ComponentType } from "react";
 import { usePathname } from "next/navigation";
-import { useLayoutEffect, useSyncExternalStore } from "react";
+import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import { BoostRouteContent } from "@/app/boost/page";
 import { ChatsRouteContent } from "@/app/chats/page";
 import { SettingsRouteContent } from "@/app/settings/page";
 import { StoriesRouteContent } from "@/app/stories/page";
+import {
+  commitPresentedMainTabIfReady,
+  getAtomicMainTabHandoffVersion,
+  onMainTabRouteChange,
+  seedPresentedMainTab,
+  subscribeAtomicMainTabHandoff,
+} from "@/lib/navigation/atomicMainTabHandoff";
 import {
   getMainTabKeepAliveVersion,
   getPendingVisualTab,
@@ -42,6 +49,8 @@ const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
   "/settings": SettingsRouteContent,
 };
 
+const HANDOFF_FRAME_BUDGET = 120;
+
 function resolveMainTabPanelPath(pathname: string) {
   if (isShuffleRevealDeferred()) {
     const defer = getShuffleDeferSourcePath();
@@ -54,11 +63,18 @@ function resolveMainTabPanelPath(pathname: string) {
 
 export default function MainTabKeepAliveHost() {
   const pathname = usePathname();
+  const handoffLoopRef = useRef(0);
 
   const version = useSyncExternalStore(
     subscribeMainTabKeepAlive,
     getMainTabKeepAliveVersion,
     getMainTabKeepAliveVersion,
+  );
+
+  useSyncExternalStore(
+    subscribeAtomicMainTabHandoff,
+    getAtomicMainTabHandoffVersion,
+    getAtomicMainTabHandoffVersion,
   );
 
   useSyncExternalStore(
@@ -84,8 +100,26 @@ export default function MainTabKeepAliveHost() {
 
     const path = pathname.split("?")[0].split("#")[0];
     if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(path)) {
-      markMainTabVisited(path as MainTabHref);
+      const href = path as MainTabHref;
+      markMainTabVisited(href);
+      seedPresentedMainTab(href);
+      onMainTabRouteChange(pathname);
     }
+
+    handoffLoopRef.current += 1;
+    const loopId = handoffLoopRef.current;
+    let frames = 0;
+
+    const tryCommit = () => {
+      if (handoffLoopRef.current !== loopId) return;
+      frames += 1;
+      if (commitPresentedMainTabIfReady(pathname)) return;
+      if (frames < HANDOFF_FRAME_BUDGET) {
+        requestAnimationFrame(tryCommit);
+      }
+    };
+
+    requestAnimationFrame(tryCommit);
 
     if (isNavTraceEnabled()) {
       const pending = getPendingVisualTab();
@@ -139,9 +173,11 @@ export default function MainTabKeepAliveHost() {
 }
 
 export function isMainTabRouteHandledByKeepAlive(pathname: string, href: MainTabHref) {
-  const panelPath = resolveMainTabPanelPath(pathname);
-  return (
-    shouldRenderMainTabKeepAliveHost(pathname) &&
-    isMainTabPanelVisible(panelPath, href)
-  );
+  if (!shouldRenderMainTabKeepAliveHost(pathname)) return false;
+  if (normalizeRoute(pathname) !== href) return false;
+  return shouldMountMainTabPanel(pathname, href);
+}
+
+function normalizeRoute(pathname: string) {
+  return pathname.split("?")[0].split("#")[0];
 }

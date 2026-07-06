@@ -1,4 +1,5 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
+import { getPresentedMainTab } from "@/lib/navigation/atomicMainTabHandoff";
 import {
   getShuffleDeferSourcePath,
   isShuffleRevealDeferred,
@@ -132,6 +133,11 @@ export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
     hasMainTabBeenVisited(href)
   ) {
     return true;
+  }
+
+  const presented = getPresentedMainTab(pathname);
+  if ((MAIN_TAB_HREFS as readonly string[]).includes(presented)) {
+    return presented === href;
   }
   return path === href;
 }
