@@ -25,6 +25,8 @@ scripts/nav-bench-tab-fix-check.json
 scripts/nav-bench-waterfall-results.json
 scripts/nav-bench-waterfall-v2.json
 scripts/nav-bench.mjs
+scripts/firebase-deploy-debug.log
+scripts/firebase-deploy-hosting-run.log
 scripts/nav-bench-debug.mjs
 scripts/nav-bench-isolated.mjs
 scripts/nav-bench-one.mjs
