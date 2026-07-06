@@ -82,6 +82,11 @@ export function releaseShuffleWindowRefreshSuppression() {
   suppressShuffleWindowRefresh = false;
 }
 
+/** Keep the current shuffle window while the user browses other tabs. */
+export function pinShuffleWindowWhileAway() {
+  suppressShuffleWindowRefresh = true;
+}
+
 function revealShuffleKeepAliveHost() {
   if (typeof document === "undefined") return;
 

@@ -91,6 +91,7 @@ export function useShufflePool() {
   const shuffleFeedFrozen = isShuffleFeedFrozen(pathname);
   const shuffleFeedFrozenRef = useRef(shuffleFeedFrozen);
   shuffleFeedFrozenRef.current = shuffleFeedFrozen;
+  const prevShuffleFrozenRef = useRef(shuffleFeedFrozen);
   const initialShuffleRef = useRef<ReturnType<typeof readInitialShuffleState> | null>(null);
   if (!initialShuffleRef.current) {
     initialShuffleRef.current = readInitialShuffleState();
@@ -231,6 +232,21 @@ export function useShufflePool() {
 
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
 
+  useLayoutEffect(() => {
+    const wasFrozen = prevShuffleFrozenRef.current;
+    prevShuffleFrozenRef.current = shuffleFeedFrozen;
+
+    if (!wasFrozen && shuffleFeedFrozen) {
+      return;
+    }
+
+    if (wasFrozen && !shuffleFeedFrozen && getVisibleShuffleProfiles().length > 0) {
+      patchShuffleSlotPresence(activePoolRef.current);
+      setLoading(false);
+      setListReady(true);
+    }
+  }, [shuffleFeedFrozen]);
+
   useEffect(() => {
     const closeFilters = () => setFiltersOpen(false);
     window.addEventListener("sayittome:close-filters", closeFilters);
@@ -258,6 +274,19 @@ export function useShufflePool() {
     }) => {
       const forceReplace = options?.forceReplace === true;
       const excludeRecentBatches = options?.excludeRecentBatches === true;
+      const visibleNow = getVisibleShuffleProfiles();
+
+      if (
+        !forceReplace &&
+        !excludeRecentBatches &&
+        visibleNow.length > 0 &&
+        (shouldSuppressShuffleWindowRefresh() || shuffleFeedFrozenRef.current)
+      ) {
+        patchShuffleSlotPresence(pool.length > 0 ? pool : activePoolRef.current);
+        setListReady(true);
+        markShuffleHydrated(visibleNow.length);
+        return;
+      }
 
       const excludeKeys = buildWindowExcludeKeys({ excludeRecentBatches });
       const excludeSet = excludeKeys.size > 0 ? excludeKeys : undefined;
@@ -370,21 +399,6 @@ export function useShufflePool() {
       nextFilters = filtersRef.current,
       options?: { forceWindow?: boolean },
     ) => {
-      if (
-        shuffleFeedFrozenRef.current &&
-        options?.forceWindow !== true
-      ) {
-        return;
-      }
-
-      if (
-        shouldSuppressShuffleWindowRefresh() &&
-        getVisibleShuffleProfiles().length > 0 &&
-        options?.forceWindow !== true
-      ) {
-        return;
-      }
-
       const forceWindow = options?.forceWindow === true;
       const q = needle.trim();
       const storyOwnerUids = storyOwnerUidsRef.current;
@@ -415,6 +429,21 @@ export function useShufflePool() {
           isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
         ).length,
       );
+
+      if (shuffleFeedFrozenRef.current && !forceWindow) {
+        patchShuffleSlotPresence(activePoolRef.current);
+        return;
+      }
+
+      if (
+        shouldSuppressShuffleWindowRefresh() &&
+        getVisibleShuffleProfiles().length > 0 &&
+        !forceWindow
+      ) {
+        patchShuffleSlotPresence(activePoolRef.current);
+        return;
+      }
+
       applyWindowFromPool(activePoolRef.current, {
         forceReplace: forceWindow,
         resetBatchMemory: forceWindow,
@@ -444,7 +473,12 @@ export function useShufflePool() {
 
       const timeout = window.setTimeout(() => controller.abort(), 12000);
 
-      if (mountedRef.current && poolRef.current.length === 0 && !hasShuffleEverHydrated()) {
+      if (
+        mountedRef.current &&
+        poolRef.current.length === 0 &&
+        getVisibleShuffleProfiles().length === 0 &&
+        !hasShuffleEverHydrated()
+      ) {
         setLoading(true);
         setErrorText("");
       }
@@ -502,10 +536,14 @@ export function useShufflePool() {
           });
           if (!shuffleFeedFrozenRef.current) {
             filterActivePool(q, filtersRef.current);
+          } else if (getVisibleShuffleProfiles().length > 0) {
+            patchShuffleSlotPresence(nextProfiles);
           }
         } else if (poolRef.current.length > 0) {
           if (!shuffleFeedFrozenRef.current) {
             filterActivePool(q, filtersRef.current);
+          } else if (getVisibleShuffleProfiles().length > 0) {
+            patchShuffleSlotPresence(poolRef.current);
           }
         } else {
           activePoolRef.current = [];

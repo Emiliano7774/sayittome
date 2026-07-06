@@ -1,21 +1,26 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
+import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
   clearInstantShuffleReturn,
   getShuffleKeepAliveVersion,
   isInstantShuffleReturnPending,
+  isShuffleKeepAliveActive,
   isShuffleKeepAliveVisible,
   pinShuffleKeepAlive,
+  pinShuffleWindowWhileAway,
+  prepareInstantShuffleReturn,
   shouldRenderShuffleKeepAliveHost,
   subscribeShuffleKeepAlive,
 } from "@/lib/navigation/shuffleKeepAlive";
 
 export default function ShuffleKeepAliveHost() {
   const pathname = usePathname();
+  const prevPathRef = useRef(pathname);
 
   useSyncExternalStore(
     subscribeShuffleKeepAlive,
@@ -32,10 +37,17 @@ export default function ShuffleKeepAliveHost() {
 
   useLayoutEffect(() => {
     const path = pathname.split("?")[0].split("#")[0];
-    if (
-      isShuffleKeepAliveVisible(pathname) ||
-      (path.startsWith("/u/") && !path.endsWith("/chat"))
-    ) {
+    const prev = prevPathRef.current.split("?")[0].split("#")[0];
+    prevPathRef.current = pathname;
+
+    if (path === "/shuffle" && prev !== "/shuffle" && isShuffleKeepAliveActive()) {
+      prepareInstantShuffleReturn();
+    } else if (prev === "/shuffle" && path !== "/shuffle" && isShuffleKeepAliveActive()) {
+      pinShuffleWindowWhileAway();
+      clearQueuedShuffleTriggers();
+    }
+
+    if (path === "/shuffle") {
       clearInstantShuffleReturn();
     }
   }, [pathname]);

@@ -14,6 +14,10 @@ export function registerShuffleClickHandler(handler: ShuffleHandler | null) {
   }
 }
 
+export function clearQueuedShuffleTriggers() {
+  queuedTriggers.length = 0;
+}
+
 export function triggerShuffleClick() {
   if (activeHandler) {
     activeHandler();
