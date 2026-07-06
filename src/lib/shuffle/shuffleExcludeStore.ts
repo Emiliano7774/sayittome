@@ -25,6 +25,17 @@ export function setShuffleExcludeProfiles(
     }
   }
 
+  if (next.size === excludeKeys.size) {
+    let unchanged = true;
+    for (const key of next) {
+      if (!excludeKeys.has(key)) {
+        unchanged = false;
+        break;
+      }
+    }
+    if (unchanged) return;
+  }
+
   excludeKeys = next;
   notifyExcludeListeners();
 }

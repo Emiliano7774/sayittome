@@ -1,4 +1,11 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
+import {
+  getShuffleDeferSourcePath,
+  isShuffleRevealDeferred,
+  isShuffleSurfacePresented,
+} from "@/lib/navigation/shuffleHandoffState";
+import { isShuffleKeepAliveActive } from "@/lib/navigation/shuffleKeepAlive";
+import { isVisualFirstTabsEnabled } from "@/lib/perf/instantaneityFlags";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 
 function normalizePath(pathname: string) {
@@ -65,6 +72,7 @@ export function shouldRenderMainTabKeepAliveHost(pathname: string) {
 
 /** Immediate visual target before router commits (visited tabs only). */
 export function setPendingVisualTab(href: MainTabHref | null) {
+  if (!isVisualFirstTabsEnabled()) return;
   if (pendingVisualTab === href) return;
   pendingVisualTab = href;
   notifyListeners();
@@ -81,6 +89,7 @@ export function getPendingVisualTab() {
 }
 
 export function resolveEffectiveMainTab(pathname: string) {
+  if (!isVisualFirstTabsEnabled()) return normalizePath(pathname);
   return pendingVisualTab ?? normalizePath(pathname);
 }
 
@@ -92,11 +101,39 @@ export function syncPendingVisualTabWithPathname(pathname: string) {
   }
 }
 
+export function clearPendingVisualTab() {
+  if (!pendingVisualTab) return;
+  pendingVisualTab = null;
+  notifyListeners();
+}
+
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
-  if (pendingVisualTab === href && hasMainTabBeenVisited(href)) {
+  const path = normalizePath(pathname);
+
+  if (isShuffleSurfacePresented()) {
+    return false;
+  }
+
+  if (isShuffleRevealDeferred()) {
+    return getShuffleDeferSourcePath() === href;
+  }
+
+  if (
+    isShuffleKeepAliveActive() &&
+    path === "/shuffle" &&
+    !isShuffleSurfacePresented()
+  ) {
+    return getShuffleDeferSourcePath() === href;
+  }
+
+  if (
+    isVisualFirstTabsEnabled() &&
+    pendingVisualTab === href &&
+    hasMainTabBeenVisited(href)
+  ) {
     return true;
   }
-  return normalizePath(pathname) === href;
+  return path === href;
 }
 
 export function shouldMountMainTabPanel(pathname: string, href: MainTabHref) {

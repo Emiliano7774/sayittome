@@ -12,6 +12,10 @@ import {
 import { auth, db } from "@/lib/firebase";
 import { withTimeout } from "@/lib/async/withTimeout";
 import { isRecentlyActive } from "@/lib/presence";
+import {
+  readCachedFollowingSnapshot,
+  writeCachedFollowingSnapshot,
+} from "@/lib/shuffle/shuffleChromeCache";
 
 export type FollowingProfile = {
   uid: string;
@@ -50,7 +54,7 @@ async function loadFollowingProfile(targetUid: string): Promise<FollowingProfile
 export function useFollowingProfiles() {
   const [uid, setUid] = useState("");
   const [profiles, setProfiles] = useState<FollowingProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const profileCacheRef = useRef(new Map<string, FollowingProfile>());
 
   useEffect(() => {
@@ -65,10 +69,20 @@ export function useFollowingProfiles() {
     if (!uid) {
       setProfiles([]);
       setLoading(false);
+      writeCachedFollowingSnapshot("", [], false);
       return;
     }
 
-    setLoading(true);
+    const cached = readCachedFollowingSnapshot(uid);
+    if (cached) {
+      for (const profile of cached.profiles) {
+        profileCacheRef.current.set(profile.uid, profile);
+      }
+      setProfiles(cached.profiles);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
     const ref = collection(db, "usuarios", uid, "siguiendo");
 
@@ -94,10 +108,13 @@ export function useFollowingProfiles() {
 
         setProfiles(next);
         setLoading(false);
+        writeCachedFollowingSnapshot(uid, next, true);
       },
       (error) => {
         console.error("useFollowingProfiles", error);
-        setProfiles([]);
+        if (!readCachedFollowingSnapshot(uid)) {
+          setProfiles([]);
+        }
         setLoading(false);
       },
     );

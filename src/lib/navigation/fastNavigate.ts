@@ -7,7 +7,6 @@ import { isNavTraceEnabled, navTraceMark } from "@/lib/perf/navTrace";
 import {
   beginShuffleWarmHandoff,
   clearInstantShuffleReturn,
-  commitShuffleTabReturn,
   isInstantShuffleReturnDestination,
   isShuffleKeepAliveActive,
   maybePinShuffleKeepAliveFromPath,
@@ -47,7 +46,6 @@ export function fastRouterPush(router: AppRouterInstance, href: string) {
         ghostFrameWatchInspect("fast-nav-prepare");
       }
       beginShuffleWarmHandoff(currentPath);
-      commitShuffleTabReturn();
     }
   }
 

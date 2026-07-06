@@ -10,6 +10,10 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { useT } from "@/contexts/LocaleContext";
 import { hasAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
 import { getClassicShuffleHeaderUi } from "@/lib/shuffle/classicHeaderUi";
+import {
+  readCachedAnonCardSnapshot,
+  writeCachedAnonCardSnapshot,
+} from "@/lib/shuffle/shuffleChromeCache";
 
 function hasActiveDirectChat(match: NonNullable<ReturnType<typeof useAnonMatchOptional>>) {
   return Boolean(
@@ -32,9 +36,6 @@ export default function ClassicAnonConnectCard() {
     setIncognitoMode(hasAnonLegalAcceptance());
   }, []);
 
-  const isProfileUser = Boolean(firebaseUser?.uid);
-  const isIncognitoVisitor = incognitoMode && !isProfileUser;
-
   const closeDisclaimer = useCallback(() => {
     setDisclaimerOpen(false);
   }, []);
@@ -46,11 +47,22 @@ export default function ClassicAnonConnectCard() {
     "sayittome:close-anon-disclaimer",
   );
 
-  if (!match || loading) return null;
-  if (hasActiveDirectChat(match)) return null;
-  if (!isProfileUser && !isIncognitoVisitor) return null;
+  const cached = readCachedAnonCardSnapshot();
+  const authPending = !match || loading;
 
-  const searching = match.searchSessionActive;
+  if (authPending && !cached?.show) return null;
+
+  const isProfileUser = authPending
+    ? Boolean(cached?.isProfileUser)
+    : Boolean(firebaseUser?.uid);
+  const isIncognitoVisitor = authPending
+    ? Boolean(cached?.isIncognitoVisitor)
+    : incognitoMode && !isProfileUser;
+
+  if (!authPending && hasActiveDirectChat(match)) return null;
+  if (!authPending && !isProfileUser && !isIncognitoVisitor) return null;
+
+  const searching = authPending ? Boolean(cached?.searching) : match.searchSessionActive;
   const cardTitle = isIncognitoVisitor
     ? t("anon_match_card_title_anon")
     : t("anon_match_card_title");
@@ -60,6 +72,15 @@ export default function ClassicAnonConnectCard() {
   const disclaimerBody = isIncognitoVisitor
     ? t("anon_match_disclaimer_body_anon")
     : t("anon_match_disclaimer_body");
+
+  if (!authPending) {
+    writeCachedAnonCardSnapshot({
+      show: true,
+      isIncognitoVisitor,
+      isProfileUser,
+      searching,
+    });
+  }
 
   function handleConfirmSearch() {
     closeDisclaimer();

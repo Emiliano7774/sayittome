@@ -31,6 +31,8 @@ import {
 } from "@/lib/stories/storiesIndexStore";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
+import { isShuffleKeepAliveActive } from "@/lib/navigation/shuffleKeepAlive";
+import { isShuffleSurfacePresented } from "@/lib/navigation/shuffleHandoffState";
 import { useT } from "@/contexts/LocaleContext";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 
@@ -42,6 +44,7 @@ export default function ModernShuffleClient() {
 
   useEffect(() => {
     if (!shuffleActive) return;
+    if (isShuffleKeepAliveActive() && !isShuffleSurfacePresented()) return;
     releaseChatViewportLock();
     document.body.classList.add("sayittome-shuffle-route");
     return () => {

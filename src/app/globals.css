@@ -303,12 +303,26 @@ body.sayittome-chat-open {
 .sayittome-shuffle-keepalive-frozen {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   overflow: hidden;
   overscroll-behavior: none;
   contain: strict;
   visibility: hidden;
+  opacity: 0;
+}
+
+.sayittome-shuffle-surface-prep {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.sayittome-shuffle-keepalive-frozen .sayittome-shuffle-surface-prep {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  contain: strict;
 }
 
 .sayittome-shuffle-keepalive-visible {
@@ -316,10 +330,52 @@ body.sayittome-chat-open {
   inset: 0;
   z-index: 1;
   visibility: visible;
+  opacity: 1;
   overflow: hidden;
   overscroll-behavior: none;
-  contain: none;
+  contain: layout style paint;
   pointer-events: auto;
+}
+
+html.sayittome-shuffle-handoff-pending .sayittome-main-tab-keepalive-visible {
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 2 !important;
+  position: fixed;
+  inset: 0;
+}
+
+html.sayittome-shuffle-handoff-pending #sayittome-main-tab-keepalive-chats {
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 2 !important;
+  position: fixed;
+  inset: 0;
+  opacity: 1 !important;
+}
+
+html.sayittome-shuffle-handoff-pending #sayittome-shuffle-keepalive-host {
+  z-index: -1 !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  contain: strict !important;
+}
+
+body.sayittome-shuffle-surface-active:has(
+    #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  )
+  .sayittome-main-tab-keepalive-visible {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.sayittome-shuffle-surface-active:not(
+    :has(#sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible)
+  )
+  .sayittome-main-tab-keepalive-visible {
+  visibility: visible !important;
+  pointer-events: auto !important;
 }
 
 /* One scroll surface inside shuffle — touch swipe works, no OS scrollbar chrome. */

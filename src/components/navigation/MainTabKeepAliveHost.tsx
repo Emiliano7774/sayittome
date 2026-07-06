@@ -22,8 +22,12 @@ import {
 } from "@/lib/navigation/mainTabKeepAlive";
 import {
   getShuffleDeferSourcePath,
-  getShuffleKeepAliveVersion,
+  getShuffleHandoffVersion,
   isShuffleRevealDeferred,
+  subscribeShuffleHandoffState,
+} from "@/lib/navigation/shuffleHandoffState";
+import {
+  getShuffleKeepAliveVersion,
   subscribeShuffleKeepAlive,
 } from "@/lib/navigation/shuffleKeepAlive";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
@@ -63,6 +67,12 @@ export default function MainTabKeepAliveHost() {
     getShuffleKeepAliveVersion,
   );
 
+  useSyncExternalStore(
+    subscribeShuffleHandoffState,
+    getShuffleHandoffVersion,
+    getShuffleHandoffVersion,
+  );
+
   const panelPath = resolveMainTabPanelPath(pathname);
 
   useLayoutEffect(() => {
@@ -91,7 +101,7 @@ export default function MainTabKeepAliveHost() {
         break;
       }
     }
-  }, [pathname, version]);
+  }, [pathname, version, panelPath]);
 
   if (!shouldRenderMainTabKeepAliveHost(pathname)) {
     return null;

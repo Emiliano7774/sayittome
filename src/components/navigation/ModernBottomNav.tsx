@@ -7,6 +7,7 @@ import BottomNavLink from "@/components/navigation/BottomNavLink";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { resolveEffectiveMainTab } from "@/lib/navigation/mainTabKeepAlive";
+import { beginWarmShuffleTabNavigation } from "@/lib/navigation/warmShuffleTabNavigation";
 import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 
@@ -38,7 +39,14 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
   }
 
   function openShuffleTab() {
+    beginWarmShuffleTabNavigation(pathname);
     fastRouterPush(router, "/shuffle");
+  }
+
+  function warmShuffleTab() {
+    if (pathname !== "/shuffle") {
+      beginWarmShuffleTabNavigation(pathname);
+    }
   }
 
   return (
@@ -71,6 +79,9 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
               <button
                 key={item.id}
                 type="button"
+                data-nav-tab="shuffle"
+                onPointerDown={warmShuffleTab}
+                onPointerEnter={warmShuffleTab}
                 onClick={openShuffleTab}
                 className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0"
                 aria-label={t("nav_shuffle_refresh")}

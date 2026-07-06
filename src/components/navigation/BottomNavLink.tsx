@@ -11,7 +11,6 @@ import {
 import { isMainTabHref } from "@/lib/navigation/mainTabs";
 import {
   beginShuffleWarmHandoff,
-  commitShuffleTabReturn,
   isShuffleKeepAliveActive,
   pinShuffleKeepAlive,
   pinShuffleWindowWhileAway,
@@ -41,7 +40,6 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
           ghostFrameWatchInspect("pointerdown-prepare");
         }
         beginShuffleWarmHandoff(currentPath);
-        commitShuffleTabReturn();
       }
 
       if (currentPath === "/shuffle" && href !== "/shuffle") {
@@ -50,7 +48,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       }
     }
 
-    if (isMainTabHref(href)) {
+    if (isMainTabHref(href) && href !== "/shuffle") {
       const wasVisited = hasMainTabBeenVisited(href);
       pinMainTabKeepAlive();
       markMainTabVisited(href);
