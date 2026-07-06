@@ -1,0 +1,1099 @@
+{
+  "metadata": {
+    "commit": "26dc0a48b153d0ebe98ac21470d9ce7beebb9901",
+    "measuredAt": "2026-07-06T21:00:30.160Z",
+    "baseUrl": "http://localhost:3008",
+    "device": "Pixel 5",
+    "viewport": {
+      "width": 393,
+      "height": 727
+    },
+    "cpuThrottle": null,
+    "warmRunsRequested": 5,
+    "traceEnabled": true,
+    "buildFlags": {
+      "NEXT_PUBLIC_NAV_TRACE": "1"
+    },
+    "cpuOnly": false,
+    "deferInboxFlag": null,
+    "chatsDeferCompare": false,
+    "methodologyNote": "La medición inicial de 530 ms para perfil cacheado era inválida. El runner eliminaba la caché en memoria y podía elegir un username distinto. Con escenario estable y cache hit verificado, la mediana real es aproximadamente 19–21 ms. Los valores 527 ms (chats) y 452 ms (settings) permanecen sospechosos hasta reproducir con esta metodología.",
+    "invalidLegacyBaselines": {
+      "shuffle→profile-cached": "530ms INVALID — cache cleared between samples / unstable username",
+      "profile→chat-cached": "30s INVALID — broken benchmark selector timeout; valid baseline ~62ms after data-nav-profile-chat instrumentation fix",
+      "tab→chats": "527ms SUSPECT — pending valid reproduction",
+      "tab→settings": "452ms SUSPECT — pending valid reproduction",
+      "tray→viewer-preloaded": "~8s SUSPECT — do not classify as network limit until preload phases verified",
+      "firestoreTimeout45s": "INVALID — broken preconditions, not Firestore latency"
+    },
+    "benchmarkFixesNotProductionOptimizations": [
+      "data-nav-profile-chat fixes measurement selector; not a UX optimization",
+      "data-nav-tab fixes shuffle bottom-nav detection; not a UX optimization"
+    ],
+    "validProfileWarmCachedMs": "19-21ms median with verified profile-cache-hit"
+  },
+  "scenarios": {
+    "tab→chats-A": {
+      "pathId": "tab→chats-A",
+      "validCount": 5,
+      "invalidCount": 0,
+      "min": 45,
+      "median": 45,
+      "p95": 45,
+      "max": 45,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "chatsPaint": {
+        "inputToStaleUseful": {
+          "count": 5,
+          "median": 47,
+          "p95": 47
+        },
+        "inputToFreshNetwork": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "inputToShell": {
+          "count": 5,
+          "median": 47,
+          "p95": 47
+        },
+        "pipelineStaleUseful": {
+          "count": 5,
+          "median": 0,
+          "p95": 0
+        },
+        "pipelineFreshNetwork": {
+          "count": 5,
+          "median": 1,
+          "p95": 1
+        },
+        "snapshotAccepted": {
+          "count": 5,
+          "median": 0,
+          "p95": 0
+        },
+        "firestoreFirstCallback": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        }
+      },
+      "rules": {
+        "expectedScenario": "chats-keep-alive-revisit",
+        "requiredPhases": [
+          "tab-pin",
+          "chats-chats-panel-visible"
+        ]
+      },
+      "invalidReasons": []
+    }
+  },
+  "validSamples": [
+    {
+      "pathId": "tab→chats-A",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "chats-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 2,
+        "useful-paint": 47,
+        "dest-layout": 46.6000000089407
+      },
+      "detailPhases": {
+        "tab-visual-pending": 44,
+        "tab-pin": 44,
+        "tab-active-chats": 44,
+        "tab-panel-visible": 44,
+        "chats-chats-mount": 47,
+        "chats-snapshot-read-start": 47,
+        "chats-inbox-memory-hit": 47,
+        "chats-snapshot-accepted": 47,
+        "skeleton-gate-false": 47,
+        "skeleton-reason-sorted-chats-nonempty": 47,
+        "chats-skeleton-gate-false": 47,
+        "dom-main-visible": 47,
+        "chats-inbox-primary-dom": 47,
+        "paint-shell-paint": 47,
+        "chats-shell-paint": 47,
+        "paint-stale-useful-paint": 47,
+        "chats-stale-useful-paint": 47
+      },
+      "paintTimings": {
+        "shell-paint": 47,
+        "stale-useful-paint": 47
+      },
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→useful-paint": 45,
+        "origin→dest-layout": 45,
+        "pointerdown→useful-paint": 45
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "domMainVisibleMs": 47,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-hit": 0,
+            "snapshot-accepted": 0,
+            "skeleton-gate-false": 0,
+            "inbox-primary-dom": 0,
+            "shell-paint": 0,
+            "stale-useful-paint": 0,
+            "fresh-network-paint": 1,
+            "chats-panel-visible": 16,
+            "onsnapshot-registered": 17,
+            "inbox-state-set": 20,
+            "inbox-sort-done": 20
+          },
+          "meta": {
+            "snapshotCount": 1,
+            "snapshotBytes": 0,
+            "snapshotParseMs": 0,
+            "skeletonReason": "sorted-chats-nonempty",
+            "sortMs": 0,
+            "inboxCount": 1
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4249,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    },
+    {
+      "pathId": "tab→chats-A",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "chats-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 2,
+        "useful-paint": 47,
+        "dest-layout": 46.6000000089407
+      },
+      "detailPhases": {
+        "tab-visual-pending": 44,
+        "tab-pin": 44,
+        "tab-active-chats": 44,
+        "tab-panel-visible": 44,
+        "chats-chats-mount": 47,
+        "chats-snapshot-read-start": 47,
+        "chats-inbox-memory-hit": 47,
+        "chats-snapshot-accepted": 47,
+        "skeleton-gate-false": 47,
+        "skeleton-reason-sorted-chats-nonempty": 47,
+        "chats-skeleton-gate-false": 47,
+        "dom-main-visible": 47,
+        "chats-inbox-primary-dom": 47,
+        "paint-shell-paint": 47,
+        "chats-shell-paint": 47,
+        "paint-stale-useful-paint": 47,
+        "chats-stale-useful-paint": 47
+      },
+      "paintTimings": {
+        "shell-paint": 47,
+        "stale-useful-paint": 47
+      },
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→useful-paint": 45,
+        "origin→dest-layout": 45,
+        "pointerdown→useful-paint": 45
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "domMainVisibleMs": 47,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-hit": 0,
+            "snapshot-accepted": 0,
+            "skeleton-gate-false": 0,
+            "inbox-primary-dom": 0,
+            "shell-paint": 0,
+            "stale-useful-paint": 0,
+            "fresh-network-paint": 1,
+            "chats-panel-visible": 16,
+            "onsnapshot-registered": 17,
+            "inbox-state-set": 20,
+            "inbox-sort-done": 20
+          },
+          "meta": {
+            "snapshotCount": 1,
+            "snapshotBytes": 0,
+            "snapshotParseMs": 0,
+            "skeletonReason": "sorted-chats-nonempty",
+            "sortMs": 0,
+            "inboxCount": 1
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4384,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    },
+    {
+      "pathId": "tab→chats-A",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "chats-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 2,
+        "useful-paint": 47,
+        "dest-layout": 46.6000000089407
+      },
+      "detailPhases": {
+        "tab-visual-pending": 44,
+        "tab-pin": 44,
+        "tab-active-chats": 44,
+        "tab-panel-visible": 44,
+        "chats-chats-mount": 47,
+        "chats-snapshot-read-start": 47,
+        "chats-inbox-memory-hit": 47,
+        "chats-snapshot-accepted": 47,
+        "skeleton-gate-false": 47,
+        "skeleton-reason-sorted-chats-nonempty": 47,
+        "chats-skeleton-gate-false": 47,
+        "dom-main-visible": 47,
+        "chats-inbox-primary-dom": 47,
+        "paint-shell-paint": 47,
+        "chats-shell-paint": 47,
+        "paint-stale-useful-paint": 47,
+        "chats-stale-useful-paint": 47
+      },
+      "paintTimings": {
+        "shell-paint": 47,
+        "stale-useful-paint": 47
+      },
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→useful-paint": 45,
+        "origin→dest-layout": 45,
+        "pointerdown→useful-paint": 45
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "domMainVisibleMs": 47,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-hit": 0,
+            "snapshot-accepted": 0,
+            "skeleton-gate-false": 0,
+            "inbox-primary-dom": 0,
+            "shell-paint": 0,
+            "stale-useful-paint": 0,
+            "fresh-network-paint": 1,
+            "chats-panel-visible": 16,
+            "onsnapshot-registered": 17,
+            "inbox-state-set": 20,
+            "inbox-sort-done": 20
+          },
+          "meta": {
+            "snapshotCount": 1,
+            "snapshotBytes": 0,
+            "snapshotParseMs": 0,
+            "skeletonReason": "sorted-chats-nonempty",
+            "sortMs": 0,
+            "inboxCount": 1
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4432,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    },
+    {
+      "pathId": "tab→chats-A",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "chats-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 2,
+        "useful-paint": 47,
+        "dest-layout": 46.6000000089407
+      },
+      "detailPhases": {
+        "tab-visual-pending": 44,
+        "tab-pin": 44,
+        "tab-active-chats": 44,
+        "tab-panel-visible": 44,
+        "chats-chats-mount": 47,
+        "chats-snapshot-read-start": 47,
+        "chats-inbox-memory-hit": 47,
+        "chats-snapshot-accepted": 47,
+        "skeleton-gate-false": 47,
+        "skeleton-reason-sorted-chats-nonempty": 47,
+        "chats-skeleton-gate-false": 47,
+        "dom-main-visible": 47,
+        "chats-inbox-primary-dom": 47,
+        "paint-shell-paint": 47,
+        "chats-shell-paint": 47,
+        "paint-stale-useful-paint": 47,
+        "chats-stale-useful-paint": 47
+      },
+      "paintTimings": {
+        "shell-paint": 47,
+        "stale-useful-paint": 47
+      },
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→useful-paint": 45,
+        "origin→dest-layout": 45,
+        "pointerdown→useful-paint": 45
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "domMainVisibleMs": 47,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-hit": 0,
+            "snapshot-accepted": 0,
+            "skeleton-gate-false": 0,
+            "inbox-primary-dom": 0,
+            "shell-paint": 0,
+            "stale-useful-paint": 0,
+            "fresh-network-paint": 1,
+            "chats-panel-visible": 16,
+            "onsnapshot-registered": 17,
+            "inbox-state-set": 20,
+            "inbox-sort-done": 20
+          },
+          "meta": {
+            "snapshotCount": 1,
+            "snapshotBytes": 0,
+            "snapshotParseMs": 0,
+            "skeletonReason": "sorted-chats-nonempty",
+            "sortMs": 0,
+            "inboxCount": 1
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4482,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    },
+    {
+      "pathId": "tab→chats-A",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "chats-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 2,
+        "useful-paint": 47,
+        "dest-layout": 46.6000000089407
+      },
+      "detailPhases": {
+        "tab-visual-pending": 44,
+        "tab-pin": 44,
+        "tab-active-chats": 44,
+        "tab-panel-visible": 44,
+        "chats-chats-mount": 47,
+        "chats-snapshot-read-start": 47,
+        "chats-inbox-memory-hit": 47,
+        "chats-snapshot-accepted": 47,
+        "skeleton-gate-false": 47,
+        "skeleton-reason-sorted-chats-nonempty": 47,
+        "chats-skeleton-gate-false": 47,
+        "dom-main-visible": 47,
+        "chats-inbox-primary-dom": 47,
+        "paint-shell-paint": 47,
+        "chats-shell-paint": 47,
+        "paint-stale-useful-paint": 47,
+        "chats-stale-useful-paint": 47
+      },
+      "paintTimings": {
+        "shell-paint": 47,
+        "stale-useful-paint": 47
+      },
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→useful-paint": 45,
+        "origin→dest-layout": 45,
+        "pointerdown→useful-paint": 45
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "domMainVisibleMs": 47,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-hit": 0,
+            "snapshot-accepted": 0,
+            "skeleton-gate-false": 0,
+            "inbox-primary-dom": 0,
+            "shell-paint": 0,
+            "stale-useful-paint": 0,
+            "fresh-network-paint": 1,
+            "chats-panel-visible": 16,
+            "onsnapshot-registered": 17,
+            "inbox-state-set": 20,
+            "inbox-sort-done": 20
+          },
+          "meta": {
+            "snapshotCount": 1,
+            "snapshotBytes": 0,
+            "snapshotParseMs": 0,
+            "skeletonReason": "sorted-chats-nonempty",
+            "sortMs": 0,
+            "inboxCount": 1
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4532,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    }
+  ],
+  "invalidSamples": [],
+  "rankings": {
+    "byWarmMedian": [
+      {
+        "pathId": "tab→chats-A",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 45,
+        "median": 45,
+        "p95": 45,
+        "max": 45,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "chatsPaint": {
+          "inputToStaleUseful": {
+            "count": 5,
+            "median": 47,
+            "p95": 47
+          },
+          "inputToFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "inputToShell": {
+            "count": 5,
+            "median": 47,
+            "p95": 47
+          },
+          "pipelineStaleUseful": {
+            "count": 5,
+            "median": 0,
+            "p95": 0
+          },
+          "pipelineFreshNetwork": {
+            "count": 5,
+            "median": 1,
+            "p95": 1
+          },
+          "snapshotAccepted": {
+            "count": 5,
+            "median": 0,
+            "p95": 0
+          },
+          "firestoreFirstCallback": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          }
+        },
+        "rules": {
+          "expectedScenario": "chats-keep-alive-revisit",
+          "requiredPhases": [
+            "tab-pin",
+            "chats-chats-panel-visible"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ],
+    "byP95": [
+      {
+        "pathId": "tab→chats-A",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 45,
+        "median": 45,
+        "p95": 45,
+        "max": 45,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "chatsPaint": {
+          "inputToStaleUseful": {
+            "count": 5,
+            "median": 47,
+            "p95": 47
+          },
+          "inputToFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "inputToShell": {
+            "count": 5,
+            "median": 47,
+            "p95": 47
+          },
+          "pipelineStaleUseful": {
+            "count": 5,
+            "median": 0,
+            "p95": 0
+          },
+          "pipelineFreshNetwork": {
+            "count": 5,
+            "median": 1,
+            "p95": 1
+          },
+          "snapshotAccepted": {
+            "count": 5,
+            "median": 0,
+            "p95": 0
+          },
+          "firestoreFirstCallback": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          }
+        },
+        "rules": {
+          "expectedScenario": "chats-keep-alive-revisit",
+          "requiredPhases": [
+            "tab-pin",
+            "chats-chats-panel-visible"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ]
+  },
+  "backLockProbe": [
+    {
+      "gapMs": 50,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/chats",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371626001,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/chats",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371626181,
+          "pathnameBefore": "/chats",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/chats",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 80,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/u/navbench",
+      "pathnameAfterSecond": "/u/navbench",
+      "firstBackNavigated": false,
+      "secondBackNavigated": false,
+      "eventsReceived": 2,
+      "eventsDiscarded": 1,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371626513,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/chats",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371626731,
+          "pathnameBefore": "/u/navbench",
+          "backLockPath": "/u/navbench",
+          "outcome": "discarded-lock",
+          "reason": "same-path-dedupe-until-navigation"
+        }
+      ],
+      "secondDiscardedWithinGap": true
+    },
+    {
+      "gapMs": 100,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/u/navbench",
+      "pathnameAfterSecond": "/chats",
+      "firstBackNavigated": false,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 1,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371627410,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/chats",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371627650,
+          "pathnameBefore": "/u/navbench",
+          "backLockPath": "/u/navbench",
+          "outcome": "discarded-lock",
+          "reason": "same-path-dedupe-until-navigation"
+        }
+      ],
+      "secondDiscardedWithinGap": true
+    },
+    {
+      "gapMs": 120,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/chats",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371628019,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/chats",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371628265,
+          "pathnameBefore": "/chats",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/chats",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 150,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/chats",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371628640,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/chats",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371628914,
+          "pathnameBefore": "/chats",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/chats",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 250,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/chats",
+      "pathnameAfterSecond": "/stories",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371629287,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/chats",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371629682,
+          "pathnameBefore": "/chats",
+          "pathnameAfter": "/stories",
+          "backLockPath": "/chats",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    }
+  ],
+  "backLockValidation": {
+    "model": "same-path-dedupe (not global BACK_LOCK block)",
+    "rows": [
+      {
+        "gapMs": 50,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/chats",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371626001,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/chats",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371626181,
+            "pathnameBefore": "/chats",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/chats",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 80,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/u/navbench",
+        "pathnameAfterSecond": "/u/navbench",
+        "firstBackNavigated": false,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 1,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371626513,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/chats",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371626731,
+            "pathnameBefore": "/u/navbench",
+            "backLockPath": "/u/navbench",
+            "outcome": "discarded-lock",
+            "reason": "same-path-dedupe-until-navigation"
+          }
+        ]
+      },
+      {
+        "gapMs": 100,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/u/navbench",
+        "pathnameAfterSecond": "/chats",
+        "firstBackNavigated": false,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 1,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371627410,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/chats",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371627650,
+            "pathnameBefore": "/u/navbench",
+            "backLockPath": "/u/navbench",
+            "outcome": "discarded-lock",
+            "reason": "same-path-dedupe-until-navigation"
+          }
+        ]
+      },
+      {
+        "gapMs": 120,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/chats",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371628019,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/chats",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371628265,
+            "pathnameBefore": "/chats",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/chats",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 150,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/chats",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783371628640,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/chats",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371628914,
+            "pathnameBefore": "/chats",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/chats",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 250,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/chats",
+        "pathnameAfterSecond": "/stories",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783371629287,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/chats",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371629682,
+            "pathnameBefore": "/chats",
+            "pathnameAfter": "/stories",
+            "backLockPath": "/chats",
+            "outcome": "navigate"
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "samePathBackProbe": {
+    "pathnameBefore": "/shuffle",
+    "events": [
+      {
+        "eventNo": 1,
+        "timestamp": 1783371629926,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      },
+      {
+        "eventNo": 2,
+        "timestamp": 1783371630073,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      }
+    ]
+  }
+}

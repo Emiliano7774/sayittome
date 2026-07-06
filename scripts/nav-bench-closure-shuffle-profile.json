@@ -1,0 +1,640 @@
+{
+  "metadata": {
+    "commit": "26dc0a48b153d0ebe98ac21470d9ce7beebb9901",
+    "measuredAt": "2026-07-06T20:52:57.335Z",
+    "baseUrl": "http://localhost:3008",
+    "device": "Pixel 5",
+    "viewport": {
+      "width": 393,
+      "height": 727
+    },
+    "cpuThrottle": null,
+    "warmRunsRequested": 5,
+    "traceEnabled": true,
+    "buildFlags": {
+      "NEXT_PUBLIC_NAV_TRACE": "1"
+    },
+    "cpuOnly": false,
+    "deferInboxFlag": null,
+    "chatsDeferCompare": false,
+    "methodologyNote": "La medición inicial de 530 ms para perfil cacheado era inválida. El runner eliminaba la caché en memoria y podía elegir un username distinto. Con escenario estable y cache hit verificado, la mediana real es aproximadamente 19–21 ms. Los valores 527 ms (chats) y 452 ms (settings) permanecen sospechosos hasta reproducir con esta metodología.",
+    "invalidLegacyBaselines": {
+      "shuffle→profile-cached": "530ms INVALID — cache cleared between samples / unstable username",
+      "profile→chat-cached": "30s INVALID — broken benchmark selector timeout; valid baseline ~62ms after data-nav-profile-chat instrumentation fix",
+      "tab→chats": "527ms SUSPECT — pending valid reproduction",
+      "tab→settings": "452ms SUSPECT — pending valid reproduction",
+      "tray→viewer-preloaded": "~8s SUSPECT — do not classify as network limit until preload phases verified",
+      "firestoreTimeout45s": "INVALID — broken preconditions, not Firestore latency"
+    },
+    "benchmarkFixesNotProductionOptimizations": [
+      "data-nav-profile-chat fixes measurement selector; not a UX optimization",
+      "data-nav-tab fixes shuffle bottom-nav detection; not a UX optimization"
+    ],
+    "validProfileWarmCachedMs": "19-21ms median with verified profile-cache-hit"
+  },
+  "scenarios": {
+    "shuffle→profile-cached": {
+      "pathId": "shuffle→profile-cached",
+      "validCount": 0,
+      "invalidCount": 5,
+      "min": null,
+      "median": 0,
+      "p95": 0,
+      "max": null,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "profilePipeline": {
+        "cacheHitMedian": null,
+        "stateReadyMedian": null,
+        "note": "Si median >> waterfall (~19–21 ms), revisar selector/scroll del perfil pinned en el feed, no asumir regresión de producción."
+      },
+      "rules": {
+        "expectedScenario": "profile-warm-cache-hit",
+        "requiredPhases": [
+          "profile-cache-hit"
+        ],
+        "forbiddenPhases": [
+          "profile-cache-miss"
+        ]
+      },
+      "invalidReasons": [
+        {
+          "runIndex": 0,
+          "reasons": [
+            "missing:profile-cache-hit",
+            "forbidden:profile-cache-miss"
+          ]
+        },
+        {
+          "runIndex": 1,
+          "reasons": [
+            "missing:profile-cache-hit",
+            "forbidden:profile-cache-miss"
+          ]
+        },
+        {
+          "runIndex": 2,
+          "reasons": [
+            "error:Error: profile navbench not visible on shuffle feed"
+          ]
+        },
+        {
+          "runIndex": 3,
+          "reasons": [
+            "error:Error: profile navbench not visible on shuffle feed"
+          ]
+        },
+        {
+          "runIndex": 4,
+          "reasons": [
+            "error:Error: profile navbench not visible on shuffle feed"
+          ]
+        }
+      ]
+    }
+  },
+  "validSamples": [],
+  "invalidSamples": [
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "profile-warm-cache-hit",
+      "phases": {
+        "pointerdown": 6.5,
+        "nav-start": 410,
+        "click": 412,
+        "dest-layout": 767.2999999970198,
+        "useful-paint": 767.2999999970198
+      },
+      "detailPhases": {
+        "pathname-changed": 433,
+        "profile-cache-miss": 433,
+        "profile-username-received": 441,
+        "profile-mount": 441,
+        "profile-lookup-started": 441,
+        "profile-fetch-emitted": 441,
+        "auth-ready": 442,
+        "profile-fetch-response": 765,
+        "profile-profile-normalized": 766,
+        "profile-set-profile": 766,
+        "profile-loading-false": 766,
+        "dom-main-visible": 767
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 404,
+        "origin→click": 406,
+        "origin→dest-layout": 761,
+        "origin→useful-paint": 761,
+        "pointerdown→useful-paint": 761,
+        "click→useful-paint": 355
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 767,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "missing:profile-cache-hit",
+          "forbidden:profile-cache-miss"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "navbench",
+          "phases": {
+            "username-received": 0,
+            "cache-miss": 0,
+            "lookup-started": 0,
+            "fetch-emitted": 0,
+            "fetch-response": 325,
+            "profile-normalized": 325,
+            "set-profile": 325,
+            "loading-false": 325
+          },
+          "meta": {
+            "username": "navbench",
+            "method": "fetch /api/profile",
+            "status": 200,
+            "found": true,
+            "hasProfile": true,
+            "loading": false
+          },
+          "lastPhase": "loading-false",
+          "stalledMs": 6,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "profile-warm-cache-hit",
+      "phases": {
+        "pointerdown": 6.5,
+        "nav-start": 410,
+        "click": 412,
+        "dest-layout": 767.2999999970198,
+        "useful-paint": 767.2999999970198
+      },
+      "detailPhases": {
+        "pathname-changed": 433,
+        "profile-cache-miss": 433,
+        "profile-username-received": 441,
+        "profile-mount": 441,
+        "profile-lookup-started": 441,
+        "profile-fetch-emitted": 441,
+        "auth-ready": 442,
+        "profile-fetch-response": 765,
+        "profile-profile-normalized": 766,
+        "profile-set-profile": 766,
+        "profile-loading-false": 766,
+        "dom-main-visible": 767
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 404,
+        "origin→click": 406,
+        "origin→dest-layout": 761,
+        "origin→useful-paint": 761,
+        "pointerdown→useful-paint": 761,
+        "click→useful-paint": 355
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 767,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "missing:profile-cache-hit",
+          "forbidden:profile-cache-miss"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "navbench",
+          "phases": {
+            "username-received": 0,
+            "cache-miss": 0,
+            "lookup-started": 0,
+            "fetch-emitted": 0,
+            "fetch-response": 325,
+            "profile-normalized": 325,
+            "set-profile": 325,
+            "loading-false": 325
+          },
+          "meta": {
+            "username": "navbench",
+            "method": "fetch /api/profile",
+            "status": 200,
+            "found": true,
+            "hasProfile": true,
+            "loading": false
+          },
+          "lastPhase": "loading-false",
+          "stalledMs": 299,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 2,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "error:Error: profile navbench not visible on shuffle feed"
+        ]
+      },
+      "pipeline": {
+        "chats": null,
+        "settings": null,
+        "profile": null,
+        "story": null
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 3,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "error:Error: profile navbench not visible on shuffle feed"
+        ]
+      },
+      "pipeline": {
+        "chats": null,
+        "settings": null,
+        "profile": null,
+        "story": null
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 4,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "error:Error: profile navbench not visible on shuffle feed"
+        ]
+      },
+      "pipeline": {
+        "chats": null,
+        "settings": null,
+        "profile": null,
+        "story": null
+      },
+      "storyEntities": null,
+      "navMeta": null
+    }
+  ],
+  "rankings": {
+    "byWarmMedian": [],
+    "byP95": []
+  },
+  "backLockProbe": [
+    {
+      "gapMs": 50,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/shuffle",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": false,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371173285,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 80,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/u/navbench",
+      "pathnameAfterSecond": "/u/navbench",
+      "firstBackNavigated": false,
+      "secondBackNavigated": false,
+      "eventsReceived": 2,
+      "eventsDiscarded": 1,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371173809,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371174017,
+          "pathnameBefore": "/u/navbench",
+          "backLockPath": "/u/navbench",
+          "outcome": "discarded-lock",
+          "reason": "same-path-dedupe-until-navigation"
+        }
+      ],
+      "secondDiscardedWithinGap": true
+    },
+    {
+      "gapMs": 100,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/u/navbench",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": false,
+      "secondBackNavigated": true,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371174528,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 120,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/shuffle",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": false,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371175170,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 150,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/shuffle",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": false,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371175835,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 250,
+      "pathnameBefore": "/u/navbench",
+      "pathnameAfterFirst": "/shuffle",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": true,
+      "secondBackNavigated": false,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371176466,
+          "pathnameBefore": "/u/navbench",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/navbench",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    }
+  ],
+  "backLockValidation": {
+    "model": "same-path-dedupe (not global BACK_LOCK block)",
+    "rows": [
+      {
+        "gapMs": 50,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/shuffle",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371173285,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 80,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/u/navbench",
+        "pathnameAfterSecond": "/u/navbench",
+        "firstBackNavigated": false,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 1,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371173809,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371174017,
+            "pathnameBefore": "/u/navbench",
+            "backLockPath": "/u/navbench",
+            "outcome": "discarded-lock",
+            "reason": "same-path-dedupe-until-navigation"
+          }
+        ]
+      },
+      {
+        "gapMs": 100,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/u/navbench",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": false,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371174528,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 120,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/shuffle",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371175170,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 150,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/shuffle",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": false,
+        "probeLog": [
+          {
+            "at": 1783371175835,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 250,
+        "pathnameBefore": "/u/navbench",
+        "pathnameAfterFirst": "/shuffle",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": true,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": false,
+        "probeLog": [
+          {
+            "at": 1783371176466,
+            "pathnameBefore": "/u/navbench",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/navbench",
+            "outcome": "navigate"
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "samePathBackProbe": {
+    "pathnameBefore": "/shuffle",
+    "events": [
+      {
+        "eventNo": 1,
+        "timestamp": 1783371177092,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      },
+      {
+        "eventNo": 2,
+        "timestamp": 1783371177249,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      }
+    ]
+  }
+}

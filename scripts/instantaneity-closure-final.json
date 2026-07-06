@@ -1,0 +1,178 @@
+{
+  "phase": "instantaneity-closure",
+  "measuredAt": "2026-07-06T21:00:00.000Z",
+  "commit": "26dc0a4",
+  "conclusion": "PREPARE → ACTIVATE se mantiene",
+  "conclusionDetail": "Los p95 regresivos (213 ms profile→chat, 1755 ms Boost→Settings, 1830 ms Stories→Chats chain) son muestras INVALID por contaminación de métrica useful-paint (refetch perfil, settings memory-prime, Firestore inbox cold en run 0). Reproducción fresca y p95 recalculado con muestras válidas: profile→chat p95 78 ms; Settings warm chain p95 63 ms; Stories→Chats warm p95 49 ms. No se simplificó ni revirtió speculative chat ni pendingVisualTab.",
+  "prepareActivateMaintained": true,
+  "revertedPaths": [],
+  "p95Investigation": [
+    {
+      "path": "profile→chat warm",
+      "outlierRunIndex": 2,
+      "rawP95Ms": 213,
+      "recalculatedValidP95Ms": 78,
+      "verdict": "INVALID",
+      "reason": "useful-paint contaminado por profile-fetch-response tardío (204 ms) durante navegación; no race PREPARE/ACTIVATE ni doble pipeline chat",
+      "waterfallMs": {
+        "pointerdown": 1.6,
+        "click": null,
+        "PREPARE_nav-start": 51.6,
+        "tab-panel-visible": null,
+        "pathname-changed": 214,
+        "profile-fetch-response": 204,
+        "useful-paint": 214.5
+      },
+      "freshReproduction": { "median": 60, "p95": 78, "n": 5 }
+    },
+    {
+      "path": "Boost→Settings warm (tab→settings-A run 0 / tab-chain→settings-warm run 0)",
+      "outlierRunIndex": 0,
+      "rawP95Ms": 1755,
+      "recalculatedValidP95Ms": 48,
+      "verdict": "INVALID",
+      "reason": "tab-panel-visible ~51 ms OK; useful-paint esperó settings-memory-profile-hit a 1715 ms por session-miss en primera iteración warm sin sessionStorage primed — no latencia visual del tab switch",
+      "waterfallMs": {
+        "pointerdown": 1.5,
+        "click": 55.5,
+        "tab-visual-pending": 37,
+        "tab-panel-visible": 37,
+        "settings-session-miss": 40,
+        "pathname-changed": 50,
+        "settings-settings-panel-visible": 51,
+        "settings-memory-profile-hit": 1755,
+        "useful-paint": 1756.8
+      },
+      "freshChainReproduction": { "median": 48, "p95ValidOnly": 63, "nValid": 4, "nInvalidRun0": 1 }
+    },
+    {
+      "path": "Stories→Chats warm (tab-chain→chats-warm run 0)",
+      "outlierRunIndex": 0,
+      "rawP95Ms": 1830,
+      "recalculatedValidP95Ms": 49,
+      "verdict": "INVALID",
+      "reason": "inbox-memory-miss + auth-still-loading en run 0; useful-paint midió firestore-first-callback (1829 ms) en lugar de stale-useful-paint cacheado; runs 1–4: inbox-memory-hit + stale-useful-paint a 47–49 ms",
+      "waterfallMs": {
+        "pointerdown": 1.1,
+        "click": 67.4,
+        "tab-visual-pending": 45,
+        "tab-panel-visible": 45,
+        "chats-chats-panel-visible": 62,
+        "chats-inbox-memory-miss": 48,
+        "chats-shell-paint": 1218,
+        "chats-firestore-first-callback": 1829,
+        "chats-stale-useful-paint": 1831,
+        "useful-paint": 1831
+      },
+      "resolveEffectiveMainTab": "pendingVisualTab=chats a 45 ms; useChatsTabPaint usa effectiveTab=/chats correctamente en runs válidos"
+    }
+  ],
+  "cpu4x": [
+    {
+      "path": "shuffle→profile cached",
+      "normalMedian": null,
+      "normalP95": null,
+      "cpu4xMedian": 313,
+      "cpu4xP95": 517,
+      "factorMedian": null,
+      "factorP95": null,
+      "mainThreadBusyMs": 0,
+      "commitsBeforeUsefulPaint": 1,
+      "visualGapMs": null,
+      "note": "Bench feed: navbench no visible en 40% runs; CPU4x waterfall aislado run 0 pointerdown→useful-paint 517 ms con profile-cache-hit — scroll/selector bench no regresión PREPARE"
+    },
+    {
+      "path": "profile→chat warm",
+      "normalMedian": 60,
+      "normalP95": 78,
+      "cpu4xMedian": 94,
+      "cpu4xP95": 158,
+      "factorMedian": 1.57,
+      "factorP95": 2.03,
+      "mainThreadBusyMs": 0,
+      "commitsBeforeUsefulPaint": 1
+    },
+    {
+      "path": "Stories warm tab",
+      "normalMedian": 80,
+      "normalP95": 80,
+      "cpu4xMedian": null,
+      "cpu4xP95": null,
+      "note": "CPU4x no re-ejecutado; normal post-optimización"
+    },
+    {
+      "path": "Chats warm tab (tab→chats-A)",
+      "normalMedian": 45,
+      "normalP95": 45,
+      "inputToStaleUsefulMedian": 47,
+      "cpu4xMedian": null,
+      "cpu4xP95": null
+    },
+    {
+      "path": "Stories→Chats warm (tab-chain)",
+      "normalMedian": 48,
+      "normalP95": 49,
+      "validOnlyExcludingRun0": true
+    },
+    {
+      "path": "Chats→Boost warm (tab-chain)",
+      "normalMedian": 62,
+      "normalP95": 63
+    },
+    {
+      "path": "Boost→Settings warm (tab-chain)",
+      "normalMedian": 48,
+      "normalP95": 63,
+      "validOnlyExcludingRun0": true
+    },
+    {
+      "path": "story→next preloaded",
+      "normalMedian": null,
+      "cpu4xMedian": 83,
+      "cpu4xP95": 102,
+      "mainThreadBusyMs": 0,
+      "longTasksOver50ms": 0,
+      "storyMediaBuffersNote": "Sin long tasks >50 ms bajo CPU4×; decode B no compite observablemente con frame A"
+    },
+    {
+      "path": "last story→next user preloaded",
+      "cpu4xMedian": 128,
+      "cpu4xP95": 186,
+      "mainThreadBusyMs": 0
+    }
+  ],
+  "ghostFramesWarmProd": {
+    "base": "https://sayittome-app.web.app",
+    "transitions": [
+      { "name": "Chats→Shuffle", "ghostFrameCount": 1, "loadingShellPainted": true, "blankVisualGapMs": 0, "note": "1 frame loadingShell; settled sin shell — fix aedc2ba parcialmente efectivo" },
+      { "name": "Stories→Chats", "ghostFrameCount": 1, "loadingShellPainted": false, "blankVisualGapMs": 0, "destinationTransientStatePainted": true },
+      { "name": "Chats→Boost", "ghostFrameCount": 0, "loadingShellPainted": false, "blankVisualGapMs": 0 },
+      { "name": "Boost→Settings", "ghostFrameCount": 0, "loadingShellPainted": false, "blankVisualGapMs": 0 },
+      { "name": "Settings→Stories", "ghostFrameCount": 0, "loadingShellPainted": false, "blankVisualGapMs": 0 }
+    ],
+    "warmTargetMet": false,
+    "warmTargetGap": "Chats→Shuffle y Stories→Chats aún muestran 1 ghost frame transitorio en prod"
+  },
+  "storiesPrefetchCost": {
+    "representative": false,
+    "placeholderBytes": 78,
+    "bytesPrefetched": "bench placeholders only",
+    "bytesConsumed": "bench placeholders only",
+    "wastedPrefetchBytes": "not quantifiable",
+    "wastedPrefetchRatio": "not quantifiable",
+    "imageVideoSplit": "no valid production asset samples",
+    "firestoreReadsAdded": 0,
+    "firestoreListenersAdded": 0
+  },
+  "sytmMe": {
+    "status": "BLOCKED BY EXTERNAL DNS CONFIGURATION",
+    "dns": "NXDOMAIN (nslookup 2026-07-06)",
+    "validTestUrl": "https://sytm.me/@navbench",
+    "fallbackWorks": "https://sayittome-app.web.app/@navbench → 307 /u/navbench?verified=1",
+    "displayFormat": "sytm.me/@username",
+    "copyFormat": "https://sytm.me/@username",
+    "publicLinkFunctional": false
+  },
+  "traceInert": "NEXT_PUBLIC_NAV_TRACE unset in production build; NavTraceBootstrap no-op",
+  "deploy": "No hosting deploy this closure — solo cambios en scripts/bench validation; ghost-frame fix aedc2ba pendiente deploy previo"
+}

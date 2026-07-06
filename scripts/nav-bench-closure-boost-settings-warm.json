@@ -1,0 +1,981 @@
+{
+  "metadata": {
+    "commit": "26dc0a48b153d0ebe98ac21470d9ce7beebb9901",
+    "measuredAt": "2026-07-06T20:58:04.546Z",
+    "baseUrl": "http://localhost:3008",
+    "device": "Pixel 5",
+    "viewport": {
+      "width": 393,
+      "height": 727
+    },
+    "cpuThrottle": null,
+    "warmRunsRequested": 5,
+    "traceEnabled": true,
+    "buildFlags": {
+      "NEXT_PUBLIC_NAV_TRACE": "1"
+    },
+    "cpuOnly": false,
+    "deferInboxFlag": null,
+    "chatsDeferCompare": false,
+    "methodologyNote": "La medición inicial de 530 ms para perfil cacheado era inválida. El runner eliminaba la caché en memoria y podía elegir un username distinto. Con escenario estable y cache hit verificado, la mediana real es aproximadamente 19–21 ms. Los valores 527 ms (chats) y 452 ms (settings) permanecen sospechosos hasta reproducir con esta metodología.",
+    "invalidLegacyBaselines": {
+      "shuffle→profile-cached": "530ms INVALID — cache cleared between samples / unstable username",
+      "profile→chat-cached": "30s INVALID — broken benchmark selector timeout; valid baseline ~62ms after data-nav-profile-chat instrumentation fix",
+      "tab→chats": "527ms SUSPECT — pending valid reproduction",
+      "tab→settings": "452ms SUSPECT — pending valid reproduction",
+      "tray→viewer-preloaded": "~8s SUSPECT — do not classify as network limit until preload phases verified",
+      "firestoreTimeout45s": "INVALID — broken preconditions, not Firestore latency"
+    },
+    "benchmarkFixesNotProductionOptimizations": [
+      "data-nav-profile-chat fixes measurement selector; not a UX optimization",
+      "data-nav-tab fixes shuffle bottom-nav detection; not a UX optimization"
+    ],
+    "validProfileWarmCachedMs": "19-21ms median with verified profile-cache-hit"
+  },
+  "scenarios": {
+    "tab-chain→settings-warm": {
+      "pathId": "tab-chain→settings-warm",
+      "validCount": 5,
+      "invalidCount": 0,
+      "min": 45,
+      "median": 48,
+      "p95": 1171,
+      "max": 1171,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "settings-warm-keep-alive-chain",
+        "requiredPhases": [
+          "tab-pin",
+          "tab-panel-visible"
+        ]
+      },
+      "invalidReasons": []
+    }
+  },
+  "validSamples": [
+    {
+      "pathId": "tab-chain→settings-warm",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "settings-warm-keep-alive-chain",
+      "phases": {
+        "pointerdown": 1.4000000059604645,
+        "click": 69,
+        "dest-layout": 1172.5,
+        "useful-paint": 1172.5
+      },
+      "detailPhases": {
+        "tab-visual-pending": 45,
+        "tab-pin": 45,
+        "tab-active-settings": 45,
+        "tab-panel-visible": 45,
+        "settings-settings-mount": 48,
+        "settings-session-read-start": 48,
+        "settings-session-miss": 48,
+        "settings-auth-known": 48,
+        "settings-anon-gate-false": 48,
+        "tab-active-boost": 48,
+        "pathname-changed": 63,
+        "settings-settings-panel-visible": 63,
+        "settings-memory-profile-hit": 1169,
+        "settings-loading-false": 1172,
+        "dom-main-visible": 1173,
+        "settings-settings-primary-dom": 1173,
+        "settings-useful-paint": 1173
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 68,
+        "origin→dest-layout": 1171,
+        "origin→useful-paint": 1171,
+        "pointerdown→useful-paint": 1171,
+        "click→useful-paint": 1104
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 1173,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-true": 0,
+            "chats-panel-visible": 5,
+            "auth-ready": 1367
+          },
+          "meta": {
+            "skeletonReason": "auth-still-loading",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-miss": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "settings-panel-visible": 15,
+            "memory-profile-hit": 1121,
+            "loading-false": 1125,
+            "settings-primary-dom": 1125,
+            "useful-paint": 1125
+          },
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1844,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab-chain→settings-warm",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "settings-warm-keep-alive-chain",
+      "phases": {
+        "pointerdown": 0.7000000029802322,
+        "dest-layout": 47.5,
+        "useful-paint": 47.5
+      },
+      "detailPhases": {
+        "tab-visual-pending": 44,
+        "tab-pin": 44,
+        "tab-active-settings": 44,
+        "tab-panel-visible": 44,
+        "settings-settings-mount": 47,
+        "settings-session-read-start": 47,
+        "settings-session-parsed": 47,
+        "settings-session-hit": 47,
+        "settings-auth-known": 47,
+        "settings-anon-gate-false": 47,
+        "settings-loading-false": 47,
+        "dom-main-visible": 47,
+        "settings-settings-primary-dom": 47,
+        "settings-useful-paint": 48
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 47,
+        "origin→useful-paint": 47,
+        "pointerdown→useful-paint": 47
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 47,
+      "usefulPaintLagMs": 1,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-true": 0,
+            "chats-panel-visible": 5,
+            "auth-ready": 1367
+          },
+          "meta": {
+            "skeletonReason": "auth-still-loading",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-parsed": 0,
+            "session-hit": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "loading-false": 0,
+            "settings-primary-dom": 0,
+            "useful-paint": 0,
+            "settings-panel-visible": 14
+          },
+          "meta": {
+            "sessionBytes": 1016,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1992,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab-chain→settings-warm",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "settings-warm-keep-alive-chain",
+      "phases": {
+        "pointerdown": 1,
+        "dest-layout": 45.70000000298023,
+        "useful-paint": 45.70000000298023
+      },
+      "detailPhases": {
+        "tab-visual-pending": 43,
+        "tab-pin": 43,
+        "tab-active-settings": 43,
+        "tab-panel-visible": 43,
+        "settings-settings-mount": 46,
+        "settings-session-read-start": 46,
+        "settings-session-parsed": 46,
+        "settings-session-hit": 46,
+        "settings-auth-known": 46,
+        "settings-anon-gate-false": 46,
+        "settings-loading-false": 46,
+        "dom-main-visible": 46,
+        "settings-settings-primary-dom": 46,
+        "settings-useful-paint": 46
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 45,
+        "origin→useful-paint": 45,
+        "pointerdown→useful-paint": 45
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 46,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-true": 0,
+            "chats-panel-visible": 5,
+            "auth-ready": 1367
+          },
+          "meta": {
+            "skeletonReason": "auth-still-loading",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-parsed": 0,
+            "session-hit": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "loading-false": 0,
+            "settings-primary-dom": 0,
+            "useful-paint": 0,
+            "settings-panel-visible": 16
+          },
+          "meta": {
+            "sessionBytes": 1016,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2129,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab-chain→settings-warm",
+      "cold": false,
+      "runIndex": 3,
+      "expectedScenario": "settings-warm-keep-alive-chain",
+      "phases": {
+        "pointerdown": 0.7000000029802322,
+        "dest-layout": 49,
+        "useful-paint": 49
+      },
+      "detailPhases": {
+        "tab-visual-pending": 46,
+        "tab-pin": 46,
+        "tab-active-settings": 46,
+        "tab-panel-visible": 46,
+        "settings-settings-mount": 49,
+        "settings-session-read-start": 49,
+        "settings-session-parsed": 49,
+        "settings-session-hit": 49,
+        "settings-auth-known": 49,
+        "settings-anon-gate-false": 49,
+        "settings-loading-false": 49,
+        "dom-main-visible": 49,
+        "settings-settings-primary-dom": 49,
+        "settings-useful-paint": 49
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 48,
+        "origin→useful-paint": 48,
+        "pointerdown→useful-paint": 48
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 49,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-true": 0,
+            "chats-panel-visible": 5,
+            "auth-ready": 1367
+          },
+          "meta": {
+            "skeletonReason": "auth-still-loading",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-parsed": 0,
+            "session-hit": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "loading-false": 0,
+            "settings-primary-dom": 0,
+            "useful-paint": 0,
+            "settings-panel-visible": 15
+          },
+          "meta": {
+            "sessionBytes": 1016,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2261,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab-chain→settings-warm",
+      "cold": false,
+      "runIndex": 4,
+      "expectedScenario": "settings-warm-keep-alive-chain",
+      "phases": {
+        "pointerdown": 5.299999997019768,
+        "dest-layout": 54.400000005960464,
+        "useful-paint": 54.5
+      },
+      "detailPhases": {
+        "tab-visual-pending": 51,
+        "tab-pin": 51,
+        "tab-active-settings": 51,
+        "tab-panel-visible": 51,
+        "settings-settings-mount": 54,
+        "settings-session-read-start": 54,
+        "settings-session-parsed": 54,
+        "settings-session-hit": 54,
+        "settings-auth-known": 54,
+        "settings-anon-gate-false": 54,
+        "settings-loading-false": 54,
+        "dom-main-visible": 54,
+        "settings-settings-primary-dom": 54,
+        "settings-useful-paint": 54
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 49,
+        "origin→useful-paint": 49,
+        "pointerdown→useful-paint": 49
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 54,
+      "usefulPaintLagMs": 1,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-true": 0,
+            "chats-panel-visible": 5,
+            "auth-ready": 1367
+          },
+          "meta": {
+            "skeletonReason": "auth-still-loading",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-parsed": 0,
+            "session-hit": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "loading-false": 0,
+            "settings-primary-dom": 0,
+            "useful-paint": 0,
+            "settings-panel-visible": 14
+          },
+          "meta": {
+            "sessionBytes": 1616,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 2408,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    }
+  ],
+  "invalidSamples": [],
+  "rankings": {
+    "byWarmMedian": [
+      {
+        "pathId": "tab-chain→settings-warm",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 45,
+        "median": 48,
+        "p95": 1171,
+        "max": 1171,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "settings-warm-keep-alive-chain",
+          "requiredPhases": [
+            "tab-pin",
+            "tab-panel-visible"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ],
+    "byP95": [
+      {
+        "pathId": "tab-chain→settings-warm",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 45,
+        "median": 48,
+        "p95": 1171,
+        "max": 1171,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "settings-warm-keep-alive-chain",
+          "requiredPhases": [
+            "tab-pin",
+            "tab-panel-visible"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ]
+  },
+  "backLockProbe": [
+    {
+      "gapMs": 50,
+      "pathnameBefore": "/u/cyynflores",
+      "pathnameAfterFirst": "/settings",
+      "pathnameAfterSecond": "/boost",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371480662,
+          "pathnameBefore": "/u/cyynflores",
+          "pathnameAfter": "/settings",
+          "backLockPath": "/u/cyynflores",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371480840,
+          "pathnameBefore": "/settings",
+          "pathnameAfter": "/boost",
+          "backLockPath": "/settings",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 80,
+      "pathnameBefore": "/u/cyynflores",
+      "pathnameAfterFirst": "/u/cyynflores",
+      "pathnameAfterSecond": "/settings",
+      "firstBackNavigated": false,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 1,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783371481191,
+          "pathnameBefore": "/u/cyynflores",
+          "pathnameAfter": "/settings",
+          "backLockPath": "/u/cyynflores",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371481405,
+          "pathnameBefore": "/u/cyynflores",
+          "backLockPath": "/u/cyynflores",
+          "outcome": "discarded-lock",
+          "reason": "same-path-dedupe-until-navigation"
+        }
+      ],
+      "secondDiscardedWithinGap": true
+    },
+    {
+      "gapMs": 100,
+      "pathnameBefore": "/u/cyynflores",
+      "pathnameAfterFirst": "/settings",
+      "pathnameAfterSecond": "/boost",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371481776,
+          "pathnameBefore": "/u/cyynflores",
+          "pathnameAfter": "/settings",
+          "backLockPath": "/u/cyynflores",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371482008,
+          "pathnameBefore": "/settings",
+          "pathnameAfter": "/boost",
+          "backLockPath": "/settings",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 120,
+      "pathnameBefore": "/u/cyynflores",
+      "pathnameAfterFirst": "/settings",
+      "pathnameAfterSecond": "/boost",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371482361,
+          "pathnameBefore": "/u/cyynflores",
+          "pathnameAfter": "/settings",
+          "backLockPath": "/u/cyynflores",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371482613,
+          "pathnameBefore": "/settings",
+          "pathnameAfter": "/boost",
+          "backLockPath": "/settings",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 150,
+      "pathnameBefore": "/u/cyynflores",
+      "pathnameAfterFirst": "/settings",
+      "pathnameAfterSecond": "/boost",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371482975,
+          "pathnameBefore": "/u/cyynflores",
+          "pathnameAfter": "/settings",
+          "backLockPath": "/u/cyynflores",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371483249,
+          "pathnameBefore": "/settings",
+          "pathnameAfter": "/boost",
+          "backLockPath": "/settings",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 250,
+      "pathnameBefore": "/u/cyynflores",
+      "pathnameAfterFirst": "/settings",
+      "pathnameAfterSecond": "/boost",
+      "firstBackNavigated": true,
+      "secondBackNavigated": true,
+      "eventsReceived": 2,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 2,
+      "probeLog": [
+        {
+          "at": 1783371483676,
+          "pathnameBefore": "/u/cyynflores",
+          "pathnameAfter": "/settings",
+          "backLockPath": "/u/cyynflores",
+          "outcome": "navigate"
+        },
+        {
+          "at": 1783371484062,
+          "pathnameBefore": "/settings",
+          "pathnameAfter": "/boost",
+          "backLockPath": "/settings",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    }
+  ],
+  "backLockValidation": {
+    "model": "same-path-dedupe (not global BACK_LOCK block)",
+    "rows": [
+      {
+        "gapMs": 50,
+        "pathnameBefore": "/u/cyynflores",
+        "pathnameAfterFirst": "/settings",
+        "pathnameAfterSecond": "/boost",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371480662,
+            "pathnameBefore": "/u/cyynflores",
+            "pathnameAfter": "/settings",
+            "backLockPath": "/u/cyynflores",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371480840,
+            "pathnameBefore": "/settings",
+            "pathnameAfter": "/boost",
+            "backLockPath": "/settings",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 80,
+        "pathnameBefore": "/u/cyynflores",
+        "pathnameAfterFirst": "/u/cyynflores",
+        "pathnameAfterSecond": "/settings",
+        "firstBackNavigated": false,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 1,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371481191,
+            "pathnameBefore": "/u/cyynflores",
+            "pathnameAfter": "/settings",
+            "backLockPath": "/u/cyynflores",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371481405,
+            "pathnameBefore": "/u/cyynflores",
+            "backLockPath": "/u/cyynflores",
+            "outcome": "discarded-lock",
+            "reason": "same-path-dedupe-until-navigation"
+          }
+        ]
+      },
+      {
+        "gapMs": 100,
+        "pathnameBefore": "/u/cyynflores",
+        "pathnameAfterFirst": "/settings",
+        "pathnameAfterSecond": "/boost",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371481776,
+            "pathnameBefore": "/u/cyynflores",
+            "pathnameAfter": "/settings",
+            "backLockPath": "/u/cyynflores",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371482008,
+            "pathnameBefore": "/settings",
+            "pathnameAfter": "/boost",
+            "backLockPath": "/settings",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 120,
+        "pathnameBefore": "/u/cyynflores",
+        "pathnameAfterFirst": "/settings",
+        "pathnameAfterSecond": "/boost",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783371482361,
+            "pathnameBefore": "/u/cyynflores",
+            "pathnameAfter": "/settings",
+            "backLockPath": "/u/cyynflores",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371482613,
+            "pathnameBefore": "/settings",
+            "pathnameAfter": "/boost",
+            "backLockPath": "/settings",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 150,
+        "pathnameBefore": "/u/cyynflores",
+        "pathnameAfterFirst": "/settings",
+        "pathnameAfterSecond": "/boost",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783371482975,
+            "pathnameBefore": "/u/cyynflores",
+            "pathnameAfter": "/settings",
+            "backLockPath": "/u/cyynflores",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371483249,
+            "pathnameBefore": "/settings",
+            "pathnameAfter": "/boost",
+            "backLockPath": "/settings",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 250,
+        "pathnameBefore": "/u/cyynflores",
+        "pathnameAfterFirst": "/settings",
+        "pathnameAfterSecond": "/boost",
+        "firstBackNavigated": true,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 2,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783371483676,
+            "pathnameBefore": "/u/cyynflores",
+            "pathnameAfter": "/settings",
+            "backLockPath": "/u/cyynflores",
+            "outcome": "navigate"
+          },
+          {
+            "at": 1783371484062,
+            "pathnameBefore": "/settings",
+            "pathnameAfter": "/boost",
+            "backLockPath": "/settings",
+            "outcome": "navigate"
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "samePathBackProbe": {
+    "pathnameBefore": "/shuffle",
+    "events": [
+      {
+        "eventNo": 1,
+        "timestamp": 1783371484298,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      },
+      {
+        "eventNo": 2,
+        "timestamp": 1783371484453,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      }
+    ]
+  }
+}

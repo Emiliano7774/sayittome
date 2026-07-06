@@ -116,7 +116,13 @@ const SCENARIO_RULES = {
   },
   "tab-chain→chats-warm": {
     expectedScenario: "chats-warm-keep-alive-chain",
-    requiredPhases: ["tab-pin", "tab-panel-visible"],
+    requiredPhases: [
+      "tab-pin",
+      "tab-panel-visible",
+      "chats-inbox-memory-hit",
+      "chats-stale-useful-paint",
+    ],
+    forbiddenPhases: ["chats-inbox-memory-miss", "chats-skeleton-gate-true"],
   },
   "tab-chain→boost-warm": {
     expectedScenario: "boost-warm-keep-alive-chain",
@@ -124,7 +130,8 @@ const SCENARIO_RULES = {
   },
   "tab-chain→settings-warm": {
     expectedScenario: "settings-warm-keep-alive-chain",
-    requiredPhases: ["tab-pin", "tab-panel-visible"],
+    requiredPhases: ["tab-pin", "tab-panel-visible", "settings-session-hit"],
+    forbiddenPhases: ["settings-session-miss"],
   },
   "tab-chain→stories-warm": {
     expectedScenario: "stories-warm-keep-alive-chain",
@@ -132,7 +139,8 @@ const SCENARIO_RULES = {
   },
   "tab→settings-A": {
     expectedScenario: "settings-keep-alive-revisit",
-    requiredPhases: ["tab-pin", "settings-settings-panel-visible"],
+    requiredPhases: ["tab-pin", "settings-settings-panel-visible", "settings-session-hit"],
+    forbiddenPhases: ["settings-session-miss"],
   },
   "tab→settings-B": {
     expectedScenario: "settings-first-visit-memory",
@@ -262,6 +270,15 @@ function hasPipelinePhase(pipeline, phase) {
   if (phase === "settings-session-hit" && settings["session-hit"] != null) {
     return true;
   }
+  if (phase === "settings-session-miss" && settings["session-miss"] != null) {
+    return true;
+  }
+  if (phase === "chats-stale-useful-paint" && chats["stale-useful-paint"] != null) {
+    return true;
+  }
+  if (phase === "chats-skeleton-gate-true" && chats["skeleton-gate-true"] != null) {
+    return true;
+  }
   if (phase === "settings-anon-gate-true" && settings["anon-gate-true"] != null) {
     return true;
   }
@@ -299,6 +316,44 @@ function validateSample(sample, rules = {}, pipeline = {}, navMeta = null) {
     if (hasPhase(sample, phase) || hasPipelinePhase(pipeline, phase)) {
       reasons.push(`forbidden:${phase}`);
     }
+  }
+  const profileFetchAt = pipeline?.profile?.phases?.["fetch-response"];
+  const usefulPaint = sample.phases?.["useful-paint"];
+  if (
+    typeof profileFetchAt === "number" &&
+    typeof usefulPaint === "number" &&
+    profileFetchAt > 80 &&
+    profileFetchAt >= usefulPaint - 30
+  ) {
+    reasons.push("invalid:useful-paint-contaminated-by-profile-refetch");
+  }
+  const settingsPanelAt =
+    sample.detailPhases?.["settings-settings-panel-visible"] ??
+    pipeline?.settings?.phases?.["settings-panel-visible"];
+  const settingsMemHit =
+    sample.detailPhases?.["settings-memory-profile-hit"] ??
+    pipeline?.settings?.phases?.["memory-profile-hit"];
+  if (
+    typeof settingsPanelAt === "number" &&
+    typeof settingsMemHit === "number" &&
+    settingsMemHit - settingsPanelAt > 200
+  ) {
+    reasons.push("invalid:useful-paint-waited-on-settings-memory-prime");
+  }
+  const chatsPanelAt =
+    sample.detailPhases?.["chats-chats-panel-visible"] ??
+    pipeline?.chats?.phases?.["chats-panel-visible"];
+  const firestoreCb =
+    sample.detailPhases?.["chats-firestore-first-callback"] ??
+    pipeline?.chats?.phases?.["firestore-first-callback"];
+  if (
+    typeof chatsPanelAt === "number" &&
+    typeof firestoreCb === "number" &&
+    typeof usefulPaint === "number" &&
+    usefulPaint >= firestoreCb - 5 &&
+    firestoreCb - chatsPanelAt > 200
+  ) {
+    reasons.push("invalid:useful-paint-waited-on-firestore-not-cached-inbox");
   }
   return { valid: reasons.length === 0, reasons };
 }
@@ -1354,7 +1409,18 @@ async function runAllScenarios(page, initialUsername) {
   });
   }
 
-  if (sectionEnabled("tab→stories-cold", "tab→stories-warm", "tab→boost-cold", "tab→boost-warm")) {
+  if (
+    sectionEnabled(
+      "tab→stories-cold",
+      "tab→stories-warm",
+      "tab→boost-cold",
+      "tab→boost-warm",
+      "tab-chain→chats-warm",
+      "tab-chain→boost-warm",
+      "tab-chain→settings-warm",
+      "tab-chain→stories-warm",
+    )
+  ) {
   await safeSection(all, "tab→stories-boost", async () => {
   // stories cold / warm
   await page.goto(`${baseUrl}/shuffle`, { waitUntil: "domcontentloaded" });
@@ -1410,8 +1476,10 @@ async function runAllScenarios(page, initialUsername) {
   // Warm tab chain: stories → chats → boost → settings → stories (all pre-visited)
   await ensureTab(page, "/stories");
   await ensureTab(page, "/chats");
+  await page.waitForSelector("[data-nav-chats-primary]", { timeout: 30000 }).catch(() => undefined);
   await ensureTab(page, "/boost");
   await ensureTab(page, "/settings");
+  await page.waitForSelector("[data-nav-settings-primary]", { timeout: 30000 }).catch(() => undefined);
   const warmChain = [
     { pathId: "tab-chain→chats-warm", href: "/chats", prep: async () => { await ensureTab(page, "/stories"); } },
     { pathId: "tab-chain→boost-warm", href: "/boost", prep: async () => { await ensureTab(page, "/chats"); } },
@@ -1419,6 +1487,7 @@ async function runAllScenarios(page, initialUsername) {
     { pathId: "tab-chain→stories-warm", href: "/stories", prep: async () => { await ensureTab(page, "/settings"); } },
   ];
   for (const step of warmChain) {
+    if (!sectionEnabled(step.pathId)) continue;
     all.push(
       ...(await runWarmLoop(page, step.pathId, step.prep, async () => {
         await spaTab(page, step.href);

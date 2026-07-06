@@ -1,0 +1,3962 @@
+{
+  "metadata": {
+    "commit": "26dc0a48b153d0ebe98ac21470d9ce7beebb9901",
+    "measuredAt": "2026-07-06T20:45:52.317Z",
+    "baseUrl": "http://localhost:3008",
+    "device": "Pixel 5",
+    "viewport": {
+      "width": 393,
+      "height": 727
+    },
+    "cpuThrottle": 4,
+    "warmRunsRequested": 5,
+    "traceEnabled": true,
+    "buildFlags": {
+      "NEXT_PUBLIC_NAV_TRACE": "1"
+    },
+    "cpuOnly": true,
+    "deferInboxFlag": null,
+    "chatsDeferCompare": false,
+    "methodologyNote": "La medición inicial de 530 ms para perfil cacheado era inválida. El runner eliminaba la caché en memoria y podía elegir un username distinto. Con escenario estable y cache hit verificado, la mediana real es aproximadamente 19–21 ms. Los valores 527 ms (chats) y 452 ms (settings) permanecen sospechosos hasta reproducir con esta metodología.",
+    "invalidLegacyBaselines": {
+      "shuffle→profile-cached": "530ms INVALID — cache cleared between samples / unstable username",
+      "profile→chat-cached": "30s INVALID — broken benchmark selector timeout; valid baseline ~62ms after data-nav-profile-chat instrumentation fix",
+      "tab→chats": "527ms SUSPECT — pending valid reproduction",
+      "tab→settings": "452ms SUSPECT — pending valid reproduction",
+      "tray→viewer-preloaded": "~8s SUSPECT — do not classify as network limit until preload phases verified",
+      "firestoreTimeout45s": "INVALID — broken preconditions, not Firestore latency"
+    },
+    "benchmarkFixesNotProductionOptimizations": [
+      "data-nav-profile-chat fixes measurement selector; not a UX optimization",
+      "data-nav-tab fixes shuffle bottom-nav detection; not a UX optimization"
+    ],
+    "validProfileWarmCachedMs": "19-21ms median with verified profile-cache-hit"
+  },
+  "scenarios": {
+    "shuffle→profile-cached": {
+      "pathId": "shuffle→profile-cached",
+      "validCount": 3,
+      "invalidCount": 2,
+      "min": 313,
+      "median": 313,
+      "p95": 517,
+      "max": 517,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "profilePipeline": {
+        "cacheHitMedian": 0,
+        "stateReadyMedian": null,
+        "note": "Si median >> waterfall (~19–21 ms), revisar selector/scroll del perfil pinned en el feed, no asumir regresión de producción."
+      },
+      "rules": {
+        "expectedScenario": "profile-warm-cache-hit",
+        "requiredPhases": [
+          "profile-cache-hit"
+        ],
+        "forbiddenPhases": [
+          "profile-cache-miss"
+        ]
+      },
+      "invalidReasons": [
+        {
+          "runIndex": 3,
+          "reasons": [
+            "error:Error: profile lapalacios not visible on shuffle feed"
+          ]
+        },
+        {
+          "runIndex": 4,
+          "reasons": [
+            "error:Error: profile lapalacios not visible on shuffle feed"
+          ]
+        }
+      ]
+    },
+    "shuffle→profile-cold": {
+      "pathId": "shuffle→profile-cold",
+      "validCount": 0,
+      "invalidCount": 2,
+      "min": null,
+      "median": 0,
+      "p95": 0,
+      "max": null,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "profile-cold",
+        "requiredPhases": [
+          "profile-cache-miss"
+        ],
+        "forbiddenPhases": [
+          "profile-cache-hit"
+        ]
+      },
+      "invalidReasons": [
+        {
+          "runIndex": 0,
+          "reasons": [
+            "error:Error: profile lapalacios not visible on shuffle feed"
+          ]
+        },
+        {
+          "runIndex": 1,
+          "reasons": [
+            "error:Error: profile lapalacios not visible on shuffle feed"
+          ]
+        }
+      ]
+    },
+    "profile→chat-cached": {
+      "pathId": "profile→chat-cached",
+      "validCount": 5,
+      "invalidCount": 0,
+      "min": 77,
+      "median": 94,
+      "p95": 158,
+      "max": 158,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "chat-metadata-cache-hit",
+        "requiredPhases": [],
+        "forbiddenPhases": []
+      },
+      "invalidReasons": []
+    },
+    "tab→chats-B": {
+      "pathId": "tab→chats-B",
+      "validCount": 2,
+      "invalidCount": 1,
+      "min": 297,
+      "median": 297,
+      "p95": 428,
+      "max": 428,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "chatsPaint": {
+        "inputToStaleUseful": {
+          "count": 2,
+          "median": 325,
+          "p95": 451
+        },
+        "inputToFreshNetwork": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "inputToShell": {
+          "count": 2,
+          "median": 325,
+          "p95": 451
+        },
+        "pipelineStaleUseful": {
+          "count": 2,
+          "median": 0,
+          "p95": 1
+        },
+        "pipelineFreshNetwork": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "snapshotAccepted": {
+          "count": 2,
+          "median": 0,
+          "p95": 1
+        },
+        "firestoreFirstCallback": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        }
+      },
+      "rules": {
+        "expectedScenario": "chats-first-visit-snapshot",
+        "requiredPhases": [
+          "chats-snapshot-read-start",
+          "chats-snapshot-accepted",
+          "chats-snapshot-parsed"
+        ],
+        "forbiddenPhases": [
+          "chats-inbox-memory-hit",
+          "chats-snapshot-rejected"
+        ]
+      },
+      "invalidReasons": [
+        {
+          "runIndex": 0,
+          "reasons": [
+            "missing:chats-snapshot-parsed",
+            "forbidden:chats-inbox-memory-hit"
+          ]
+        }
+      ]
+    },
+    "tab→chats-C": {
+      "pathId": "tab→chats-C",
+      "validCount": 2,
+      "invalidCount": 0,
+      "min": 170,
+      "median": 170,
+      "p95": 290,
+      "max": 290,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "chatsPaint": {
+        "inputToStaleUseful": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "inputToFreshNetwork": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "inputToShell": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "pipelineStaleUseful": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "pipelineFreshNetwork": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "snapshotAccepted": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        },
+        "firestoreFirstCallback": {
+          "count": 0,
+          "median": null,
+          "p95": null
+        }
+      },
+      "rules": {
+        "expectedScenario": "chats-first-visit-cold",
+        "forbiddenPhases": [
+          "chats-snapshot-accepted",
+          "chats-inbox-memory-hit"
+        ]
+      },
+      "invalidReasons": []
+    },
+    "tab→settings-A": {
+      "pathId": "tab→settings-A",
+      "validCount": 5,
+      "invalidCount": 0,
+      "min": 56,
+      "median": 64,
+      "p95": 87,
+      "max": 87,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "settings-keep-alive-revisit",
+        "requiredPhases": [
+          "tab-pin",
+          "settings-settings-panel-visible"
+        ]
+      },
+      "invalidReasons": []
+    },
+    "tab→settings-D": {
+      "pathId": "tab→settings-D",
+      "validCount": 2,
+      "invalidCount": 0,
+      "min": 634,
+      "median": 634,
+      "p95": 834,
+      "max": 834,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "settings-cold-no-cache",
+        "forbiddenPhases": [
+          "settings-session-hit",
+          "settings-memory-profile-hit"
+        ]
+      },
+      "invalidReasons": []
+    },
+    "story→next-preloaded": {
+      "pathId": "story→next-preloaded",
+      "validCount": 3,
+      "invalidCount": 0,
+      "min": 82,
+      "median": 83,
+      "p95": 102,
+      "max": 102,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "story-next-preloaded",
+        "requiredPhases": [
+          "story-media-ready-before-input"
+        ]
+      },
+      "invalidReasons": []
+    },
+    "last-story→next-user-preloaded": {
+      "pathId": "last-story→next-user-preloaded",
+      "validCount": 3,
+      "invalidCount": 0,
+      "min": 89,
+      "median": 128,
+      "p95": 186,
+      "max": 186,
+      "mainThreadBusyMedian": 0,
+      "longTasksOver50ms": 0,
+      "longTaskMsTotal": 0,
+      "rules": {
+        "expectedScenario": "last-story-next-user-preloaded",
+        "requiredPhases": [
+          "story-media-ready-before-input"
+        ]
+      },
+      "invalidReasons": []
+    }
+  },
+  "validSamples": [
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "profile-warm-cache-hit",
+      "phases": {
+        "pointerdown": 4.299999997019768,
+        "nav-start": 173.5,
+        "click": 277.79999999701977,
+        "dest-layout": 521.5,
+        "useful-paint": 521.5
+      },
+      "detailPhases": {
+        "pathname-changed": 518,
+        "profile-cache-hit": 521,
+        "profile-state-ready": 521,
+        "dom-main-visible": 521
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 169,
+        "origin→click": 274,
+        "origin→dest-layout": 517,
+        "origin→useful-paint": 517,
+        "pointerdown→useful-paint": 517,
+        "click→useful-paint": 244
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 521,
+      "usefulPaintLagMs": 1,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "lapalacios",
+          "phases": {
+            "username-received": 0,
+            "cache-hit": 0,
+            "set-profile": 1,
+            "loading-false": 4,
+            "lookup-started": 4,
+            "fetch-emitted": 4
+          },
+          "meta": {
+            "username": "lapalacios",
+            "hasProfile": true,
+            "loading": false,
+            "method": "fetch /api/profile"
+          },
+          "lastPhase": "fetch-emitted",
+          "stalledMs": 57,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "profile-warm-cache-hit",
+      "phases": {
+        "pointerdown": 5.200000002980232,
+        "nav-start": 253.70000000298023,
+        "click": 294.40000000596046,
+        "dest-layout": 317.6000000089407,
+        "useful-paint": 317.70000000298023
+      },
+      "detailPhases": {
+        "pathname-changed": 313,
+        "profile-cache-hit": 318,
+        "profile-state-ready": 318,
+        "dom-main-visible": 318
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 249,
+        "origin→click": 289,
+        "origin→dest-layout": 312,
+        "origin→useful-paint": 313,
+        "pointerdown→useful-paint": 313,
+        "click→useful-paint": 23
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 318,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "lapalacios",
+          "phases": {
+            "username-received": 0,
+            "cache-hit": 0,
+            "set-profile": 0,
+            "loading-false": 0,
+            "lookup-started": 0,
+            "fetch-emitted": 0
+          },
+          "meta": {
+            "username": "lapalacios",
+            "hasProfile": true,
+            "loading": false,
+            "method": "fetch /api/profile"
+          },
+          "lastPhase": "fetch-emitted",
+          "stalledMs": 19,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "profile-warm-cache-hit",
+      "phases": {
+        "pointerdown": 5.200000002980232,
+        "nav-start": 253.70000000298023,
+        "click": 294.40000000596046,
+        "dest-layout": 317.6000000089407,
+        "useful-paint": 317.70000000298023
+      },
+      "detailPhases": {
+        "pathname-changed": 313,
+        "profile-cache-hit": 318,
+        "profile-state-ready": 318,
+        "dom-main-visible": 318
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 249,
+        "origin→click": 289,
+        "origin→dest-layout": 312,
+        "origin→useful-paint": 313,
+        "pointerdown→useful-paint": 313,
+        "click→useful-paint": 23
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 318,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "lapalacios",
+          "phases": {
+            "username-received": 0,
+            "cache-hit": 0,
+            "set-profile": 0,
+            "loading-false": 0,
+            "lookup-started": 0,
+            "fetch-emitted": 0,
+            "fetch-response": 328,
+            "profile-normalized": 346
+          },
+          "meta": {
+            "username": "lapalacios",
+            "hasProfile": true,
+            "loading": false,
+            "method": "fetch /api/profile",
+            "status": 200,
+            "found": true
+          },
+          "lastPhase": "profile-normalized",
+          "stalledMs": 247,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "profile→chat-cached",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "chat-metadata-cache-hit",
+      "phases": {
+        "pointerdown": 23.099999994039536,
+        "nav-start": 68.5,
+        "dest-layout": 172.8999999910593,
+        "useful-paint": 172.8999999910593
+      },
+      "detailPhases": {
+        "profile-fetch-response": 156,
+        "pathname-changed": 171
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 45,
+        "origin→dest-layout": 150,
+        "origin→useful-paint": 150,
+        "pointerdown→useful-paint": 150
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "lapalacios",
+          "phases": {
+            "username-received": 0,
+            "cache-hit": 0,
+            "set-profile": 0,
+            "loading-false": 0,
+            "lookup-started": 0,
+            "fetch-emitted": 1,
+            "fetch-response": 215,
+            "profile-normalized": 261
+          },
+          "meta": {
+            "username": "lapalacios",
+            "hasProfile": true,
+            "loading": false,
+            "method": "fetch /api/profile",
+            "status": 200,
+            "found": true
+          },
+          "lastPhase": "profile-normalized",
+          "stalledMs": 98,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "profile→chat-cached",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "chat-metadata-cache-hit",
+      "phases": {
+        "pointerdown": 9,
+        "nav-start": 97.6000000089407,
+        "dest-layout": 167.20000000298023,
+        "useful-paint": 167.40000000596046
+      },
+      "detailPhases": {
+        "pathname-changed": 167
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 89,
+        "origin→dest-layout": 158,
+        "origin→useful-paint": 158,
+        "pointerdown→useful-paint": 158
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "lapalacios",
+          "phases": {
+            "username-received": 0,
+            "cache-hit": 0,
+            "set-profile": 1,
+            "loading-false": 1,
+            "lookup-started": 1,
+            "fetch-emitted": 1
+          },
+          "meta": {
+            "username": "lapalacios",
+            "hasProfile": true,
+            "loading": false,
+            "method": "fetch /api/profile"
+          },
+          "lastPhase": "fetch-emitted",
+          "stalledMs": 275,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "profile→chat-cached",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "chat-metadata-cache-hit",
+      "phases": {
+        "pointerdown": 3.2999999970197678,
+        "nav-start": 38.900000005960464,
+        "dest-layout": 97.5,
+        "useful-paint": 97.5
+      },
+      "detailPhases": {
+        "pathname-changed": 97
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 36,
+        "origin→dest-layout": 94,
+        "origin→useful-paint": 94,
+        "pointerdown→useful-paint": 94
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "lapalacios",
+          "phases": {
+            "username-received": 0,
+            "cache-hit": 0,
+            "set-profile": 1,
+            "loading-false": 1,
+            "lookup-started": 1,
+            "fetch-emitted": 1
+          },
+          "meta": {
+            "username": "lapalacios",
+            "hasProfile": true,
+            "loading": false,
+            "method": "fetch /api/profile"
+          },
+          "lastPhase": "fetch-emitted",
+          "stalledMs": 182,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "profile→chat-cached",
+      "cold": false,
+      "runIndex": 3,
+      "expectedScenario": "chat-metadata-cache-hit",
+      "phases": {
+        "pointerdown": 3.8999999910593033,
+        "nav-start": 36.099999994039536,
+        "dest-layout": 80.19999998807907,
+        "useful-paint": 80.3999999910593
+      },
+      "detailPhases": {
+        "profile-profile-normalized": 4,
+        "pathname-changed": 80
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 32,
+        "origin→dest-layout": 76,
+        "origin→useful-paint": 77,
+        "pointerdown→useful-paint": 77
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "lapalacios",
+          "phases": {
+            "username-received": 0,
+            "cache-hit": 0,
+            "set-profile": 1,
+            "loading-false": 1,
+            "lookup-started": 1,
+            "fetch-emitted": 1,
+            "fetch-response": 12,
+            "profile-normalized": 25
+          },
+          "meta": {
+            "username": "lapalacios",
+            "hasProfile": true,
+            "loading": false,
+            "method": "fetch /api/profile",
+            "status": 200,
+            "found": true
+          },
+          "lastPhase": "profile-normalized",
+          "stalledMs": 118,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "profile→chat-cached",
+      "cold": false,
+      "runIndex": 4,
+      "expectedScenario": "chat-metadata-cache-hit",
+      "phases": {
+        "pointerdown": 10.299999997019768,
+        "nav-start": 49.20000000298023,
+        "dest-layout": 97.70000000298023,
+        "useful-paint": 97.70000000298023
+      },
+      "detailPhases": {
+        "profile-fetch-response": 22,
+        "profile-profile-normalized": 26,
+        "pathname-changed": 97
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→nav-start": 39,
+        "origin→dest-layout": 87,
+        "origin→useful-paint": 87,
+        "pointerdown→useful-paint": 87
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "lapalacios",
+          "phases": {
+            "username-received": 0,
+            "cache-hit": 0,
+            "set-profile": 0,
+            "loading-false": 1,
+            "lookup-started": 1,
+            "fetch-emitted": 1,
+            "fetch-response": 35,
+            "profile-normalized": 38
+          },
+          "meta": {
+            "username": "lapalacios",
+            "hasProfile": true,
+            "loading": false,
+            "method": "fetch /api/profile",
+            "status": 200,
+            "found": true
+          },
+          "lastPhase": "profile-normalized",
+          "stalledMs": 122,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "tab→chats-B",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "chats-first-visit-snapshot",
+      "phases": {
+        "pointerdown": 27.599999994039536,
+        "useful-paint": 325,
+        "dest-layout": 324.79999999701977
+      },
+      "detailPhases": {
+        "tab-visual-pending": 308,
+        "tab-pin": 308,
+        "tab-active-chats": 308,
+        "tab-panel-visible": 308,
+        "chats-chats-mount": 324,
+        "chats-snapshot-read-start": 324,
+        "chats-inbox-memory-miss": 324,
+        "chats-snapshot-parsed": 324,
+        "chats-snapshot-accepted": 324,
+        "skeleton-gate-false": 324,
+        "skeleton-reason-sorted-chats-nonempty": 324,
+        "chats-skeleton-gate-false": 324,
+        "dom-main-visible": 325,
+        "chats-inbox-primary-dom": 325,
+        "paint-shell-paint": 325,
+        "chats-shell-paint": 325,
+        "paint-stale-useful-paint": 325,
+        "chats-stale-useful-paint": 325
+      },
+      "paintTimings": {
+        "shell-paint": 325,
+        "stale-useful-paint": 325
+      },
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→useful-paint": 297,
+        "origin→dest-layout": 297,
+        "pointerdown→useful-paint": 297
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "domMainVisibleMs": 325,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-parsed": 1,
+            "snapshot-accepted": 1,
+            "skeleton-gate-false": 1,
+            "inbox-primary-dom": 1,
+            "shell-paint": 1,
+            "stale-useful-paint": 1,
+            "chats-panel-visible": 57
+          },
+          "meta": {
+            "snapshotCount": 1,
+            "snapshotBytes": 848,
+            "snapshotParseMs": 0,
+            "skeletonReason": "sorted-chats-nonempty"
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1086,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    },
+    {
+      "pathId": "tab→chats-B",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "chats-first-visit-snapshot",
+      "phases": {
+        "pointerdown": 23.099999994039536,
+        "useful-paint": 451,
+        "dest-layout": 451.29999999701977
+      },
+      "detailPhases": {
+        "tab-visual-pending": 434,
+        "tab-pin": 434,
+        "tab-active-chats": 434,
+        "tab-panel-visible": 434,
+        "chats-chats-mount": 451,
+        "chats-snapshot-read-start": 451,
+        "chats-inbox-memory-miss": 451,
+        "chats-snapshot-parsed": 451,
+        "chats-snapshot-accepted": 451,
+        "skeleton-gate-false": 451,
+        "skeleton-reason-sorted-chats-nonempty": 451,
+        "chats-skeleton-gate-false": 451,
+        "dom-main-visible": 451,
+        "chats-inbox-primary-dom": 451,
+        "paint-shell-paint": 451,
+        "chats-shell-paint": 451,
+        "paint-stale-useful-paint": 451,
+        "chats-stale-useful-paint": 451
+      },
+      "paintTimings": {
+        "shell-paint": 451,
+        "stale-useful-paint": 451
+      },
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→useful-paint": 428,
+        "origin→dest-layout": 428,
+        "pointerdown→useful-paint": 428
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "domMainVisibleMs": 451,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-parsed": 0,
+            "snapshot-accepted": 0,
+            "skeleton-gate-false": 0,
+            "inbox-primary-dom": 0,
+            "shell-paint": 0,
+            "stale-useful-paint": 0,
+            "chats-panel-visible": 80
+          },
+          "meta": {
+            "snapshotCount": 1,
+            "snapshotBytes": 848,
+            "snapshotParseMs": 0,
+            "skeletonReason": "sorted-chats-nonempty"
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1147,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    },
+    {
+      "pathId": "tab→chats-C",
+      "cold": true,
+      "runIndex": 0,
+      "expectedScenario": "chats-first-visit-cold",
+      "phases": {
+        "pointerdown": 4.299999997019768,
+        "dest-layout": 174.29999999701977,
+        "useful-paint": 174.3999999910593
+      },
+      "detailPhases": {
+        "tab-visual-pending": 160,
+        "tab-pin": 160,
+        "tab-active-chats": 160,
+        "tab-panel-visible": 161,
+        "dom-main-visible": 174
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 170,
+        "origin→useful-paint": 170,
+        "pointerdown→useful-paint": 170
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 174,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-false": 0,
+            "shell-paint": 1,
+            "chats-panel-visible": 1
+          },
+          "meta": {
+            "skeletonReason": "session-hydrated-flag"
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 847,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    },
+    {
+      "pathId": "tab→chats-C",
+      "cold": true,
+      "runIndex": 1,
+      "expectedScenario": "chats-first-visit-cold",
+      "phases": {
+        "pointerdown": 71,
+        "dest-layout": 360.29999999701977,
+        "useful-paint": 360.5
+      },
+      "detailPhases": {
+        "tab-visual-pending": 343,
+        "tab-pin": 343,
+        "tab-active-chats": 343,
+        "tab-panel-visible": 343,
+        "dom-main-visible": 360
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 289,
+        "origin→useful-paint": 290,
+        "pointerdown→useful-paint": 290
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 360,
+      "usefulPaintLagMs": 1,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-false": 0,
+            "shell-paint": 1,
+            "chats-panel-visible": 1
+          },
+          "meta": {
+            "skeletonReason": "session-hydrated-flag"
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1379,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    },
+    {
+      "pathId": "tab→settings-A",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "settings-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 2.4000000059604645,
+        "dest-layout": 69.90000000596046,
+        "useful-paint": 70.1000000089407
+      },
+      "detailPhases": {
+        "tab-visual-pending": 51,
+        "tab-pin": 51,
+        "tab-active-settings": 51,
+        "tab-panel-visible": 51,
+        "settings-settings-mount": 69,
+        "settings-session-read-start": 69,
+        "settings-session-parsed": 69,
+        "settings-session-hit": 70,
+        "settings-auth-known": 70,
+        "settings-anon-gate-false": 70,
+        "settings-loading-false": 70,
+        "dom-main-visible": 70,
+        "settings-settings-primary-dom": 70,
+        "settings-useful-paint": 70
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 68,
+        "origin→useful-paint": 68,
+        "pointerdown→useful-paint": 68
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 70,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-false": 0,
+            "shell-paint": 1,
+            "chats-panel-visible": 44,
+            "auth-ready": 1089,
+            "onsnapshot-registered": 1089
+          },
+          "meta": {
+            "skeletonReason": "session-hydrated-flag",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-parsed": 0,
+            "session-hit": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "loading-false": 0,
+            "settings-primary-dom": 1,
+            "useful-paint": 1,
+            "settings-panel-visible": 54
+          },
+          "meta": {
+            "sessionBytes": 1016,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4409,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab→settings-A",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "settings-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 5.700000002980232,
+        "dest-layout": 69.29999999701977,
+        "useful-paint": 69.29999999701977
+      },
+      "detailPhases": {
+        "tab-visual-pending": 48,
+        "tab-pin": 48,
+        "tab-active-settings": 48,
+        "tab-panel-visible": 48,
+        "settings-settings-mount": 69,
+        "settings-session-read-start": 69,
+        "settings-session-parsed": 69,
+        "settings-session-hit": 69,
+        "settings-auth-known": 69,
+        "settings-anon-gate-false": 69,
+        "settings-loading-false": 69,
+        "dom-main-visible": 69,
+        "settings-settings-primary-dom": 69,
+        "settings-useful-paint": 69
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 64,
+        "origin→useful-paint": 64,
+        "pointerdown→useful-paint": 64
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 69,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-false": 0,
+            "shell-paint": 1,
+            "chats-panel-visible": 44,
+            "auth-ready": 1089,
+            "onsnapshot-registered": 1089
+          },
+          "meta": {
+            "skeletonReason": "session-hydrated-flag",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 1,
+            "session-parsed": 1,
+            "session-hit": 1,
+            "auth-known": 1,
+            "anon-gate-false": 1,
+            "loading-false": 1,
+            "settings-primary-dom": 1,
+            "useful-paint": 1,
+            "memory-profile-hit": 26,
+            "settings-panel-visible": 137
+          },
+          "meta": {
+            "sessionBytes": 1016,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4838,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab→settings-A",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "settings-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 5.899999991059303,
+        "dest-layout": 62.099999994039536,
+        "useful-paint": 62.099999994039536
+      },
+      "detailPhases": {
+        "tab-visual-pending": 43,
+        "tab-pin": 43,
+        "tab-active-settings": 43,
+        "tab-panel-visible": 43,
+        "settings-settings-mount": 61,
+        "settings-session-read-start": 62,
+        "settings-session-parsed": 62,
+        "settings-session-hit": 62,
+        "settings-auth-known": 62,
+        "settings-anon-gate-false": 62,
+        "settings-loading-false": 62,
+        "dom-main-visible": 62,
+        "settings-settings-primary-dom": 62,
+        "settings-useful-paint": 62
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 56,
+        "origin→useful-paint": 56,
+        "pointerdown→useful-paint": 56
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 62,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-false": 0,
+            "shell-paint": 1,
+            "chats-panel-visible": 44,
+            "auth-ready": 1089,
+            "onsnapshot-registered": 1089
+          },
+          "meta": {
+            "skeletonReason": "session-hydrated-flag",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-parsed": 0,
+            "session-hit": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "loading-false": 0,
+            "settings-primary-dom": 1,
+            "useful-paint": 1,
+            "settings-panel-visible": 54
+          },
+          "meta": {
+            "sessionBytes": 1616,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 5136,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab→settings-A",
+      "cold": false,
+      "runIndex": 3,
+      "expectedScenario": "settings-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 2,
+        "dest-layout": 61.19999998807907,
+        "useful-paint": 61.19999998807907
+      },
+      "detailPhases": {
+        "tab-visual-pending": 40,
+        "tab-pin": 40,
+        "tab-active-settings": 40,
+        "tab-panel-visible": 40,
+        "settings-settings-mount": 60,
+        "settings-session-read-start": 61,
+        "settings-session-parsed": 61,
+        "settings-session-hit": 61,
+        "settings-auth-known": 61,
+        "settings-anon-gate-false": 61,
+        "settings-loading-false": 61,
+        "dom-main-visible": 61,
+        "settings-settings-primary-dom": 61,
+        "settings-useful-paint": 61
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 59,
+        "origin→useful-paint": 59,
+        "pointerdown→useful-paint": 59
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 61,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-false": 0,
+            "shell-paint": 1,
+            "chats-panel-visible": 44,
+            "auth-ready": 1089,
+            "onsnapshot-registered": 1089
+          },
+          "meta": {
+            "skeletonReason": "session-hydrated-flag",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-parsed": 0,
+            "session-hit": 0,
+            "auth-known": 1,
+            "anon-gate-false": 1,
+            "loading-false": 1,
+            "settings-primary-dom": 1,
+            "useful-paint": 1,
+            "settings-panel-visible": 52
+          },
+          "meta": {
+            "sessionBytes": 1616,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 5442,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab→settings-A",
+      "cold": false,
+      "runIndex": 4,
+      "expectedScenario": "settings-keep-alive-revisit",
+      "phases": {
+        "pointerdown": 2.2999999970197678,
+        "dest-layout": 88.90000000596046,
+        "useful-paint": 88.90000000596046
+      },
+      "detailPhases": {
+        "tab-visual-pending": 68,
+        "tab-pin": 68,
+        "tab-active-settings": 68,
+        "tab-panel-visible": 68,
+        "settings-settings-mount": 88,
+        "settings-session-read-start": 88,
+        "settings-session-parsed": 88,
+        "settings-session-hit": 88,
+        "settings-auth-known": 89,
+        "settings-anon-gate-false": 89,
+        "settings-loading-false": 89,
+        "dom-main-visible": 89,
+        "settings-settings-primary-dom": 89,
+        "settings-useful-paint": 89
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 87,
+        "origin→useful-paint": 87,
+        "pointerdown→useful-paint": 87
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "domMainVisibleMs": 89,
+      "usefulPaintLagMs": 0,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-miss": 0,
+            "snapshot-rejected": 0,
+            "skeleton-gate-false": 0,
+            "shell-paint": 1,
+            "chats-panel-visible": 44,
+            "auth-ready": 1089,
+            "onsnapshot-registered": 1089
+          },
+          "meta": {
+            "skeletonReason": "session-hydrated-flag",
+            "authUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2"
+          }
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-parsed": 0,
+            "session-hit": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "loading-false": 0,
+            "settings-primary-dom": 1,
+            "useful-paint": 1,
+            "memory-profile-hit": 53,
+            "settings-panel-visible": 68
+          },
+          "meta": {
+            "sessionBytes": 1616,
+            "sessionParseMs": 0
+          }
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 5799,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab→settings-D",
+      "cold": true,
+      "runIndex": 0,
+      "expectedScenario": "settings-cold-no-cache",
+      "phases": {
+        "pointerdown": 65.6000000089407,
+        "dest-layout": 899.5,
+        "useful-paint": 899.5
+      },
+      "detailPhases": {
+        "tab-visual-pending": 876,
+        "tab-pin": 876,
+        "tab-active-settings": 876,
+        "tab-panel-visible": 876
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 834,
+        "origin→useful-paint": 834,
+        "pointerdown→useful-paint": 834
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-miss": 0,
+            "auth-known": 0,
+            "anon-gate-false": 0,
+            "settings-panel-visible": 0
+          },
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1548,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "tab→settings-D",
+      "cold": true,
+      "runIndex": 1,
+      "expectedScenario": "settings-cold-no-cache",
+      "phases": {
+        "pointerdown": 38.29999999701977,
+        "dest-layout": 672.2999999970198,
+        "useful-paint": 672.5
+      },
+      "detailPhases": {
+        "tab-visual-pending": 651,
+        "tab-pin": 651,
+        "tab-active-settings": 651,
+        "tab-panel-visible": 651
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→dest-layout": 634,
+        "origin→useful-paint": 634,
+        "pointerdown→useful-paint": 634
+      },
+      "commitsBeforeUsefulPaint": 1,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-miss": 0,
+            "auth-unknown": 0,
+            "anon-gate-false": 0,
+            "settings-panel-visible": 0
+          },
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1520,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/settings"
+      }
+    },
+    {
+      "pathId": "story→next-preloaded",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "story-next-preloaded",
+      "phases": {
+        "pointerdown": 1.5,
+        "click": 79.90000000596046,
+        "useful-paint": 103.40000000596046
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 32,
+        "story-media-url-known": 32,
+        "story-preload-start": 32,
+        "story-preload-request-start": 32,
+        "story-media-response-ready": 33,
+        "story-image-decode-ready": 33,
+        "story-media-ready-before-input": 33,
+        "story-viewer-dom": 78
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 78,
+        "origin→useful-paint": 102,
+        "pointerdown→useful-paint": 102,
+        "click→useful-paint": 24
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {
+            "settings-mount": 0,
+            "session-read-start": 0,
+            "session-miss": 0,
+            "auth-unknown": 0,
+            "anon-gate-false": 0,
+            "settings-panel-visible": 0,
+            "auth-known": 199,
+            "memory-profile-hit": 1698
+          },
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4892,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 0,
+            "preload-request-start": 0,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "viewer-dom": 46
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "story→next-preloaded",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "story-next-preloaded",
+      "phases": {
+        "pointerdown": 0.9000000059604645,
+        "click": 71.79999999701977,
+        "useful-paint": 83.40000000596046
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 26,
+        "story-media-url-known": 26,
+        "story-preload-start": 26,
+        "story-preload-request-start": 26,
+        "story-media-response-ready": 27,
+        "story-image-decode-ready": 27,
+        "story-media-ready-before-input": 27,
+        "story-viewer-dom": 71
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 71,
+        "origin→useful-paint": 83,
+        "pointerdown→useful-paint": 83,
+        "click→useful-paint": 12
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 3277,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 0,
+            "preload-request-start": 0,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "viewer-dom": 45
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "story→next-preloaded",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "story-next-preloaded",
+      "phases": {
+        "pointerdown": 1,
+        "click": 67.90000000596046,
+        "useful-paint": 83.1000000089407
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 29,
+        "story-media-url-known": 29,
+        "story-preload-start": 29,
+        "story-preload-request-start": 29,
+        "story-media-response-ready": 30,
+        "story-image-decode-ready": 30,
+        "story-media-ready-before-input": 30,
+        "story-viewer-dom": 67
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 67,
+        "origin→useful-paint": 82,
+        "pointerdown→useful-paint": 82,
+        "click→useful-paint": 15
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 3291,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "preload-start": 0,
+            "preload-request-start": 0,
+            "media-response-ready": 1,
+            "image-decode-ready": 1,
+            "media-ready-before-input": 1,
+            "viewer-dom": 38
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "last-story→next-user-preloaded",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "last-story-next-user-preloaded",
+      "phases": {
+        "pointerdown": 1.2999999970197678,
+        "click": 82.8999999910593,
+        "useful-paint": 90
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 43,
+        "story-media-url-known": 43,
+        "story-media-response-ready": 82,
+        "story-image-decode-ready": 82,
+        "story-media-ready-before-input": 82,
+        "story-viewer-dom": 82
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 82,
+        "origin→useful-paint": 89,
+        "pointerdown→useful-paint": 89,
+        "click→useful-paint": 7
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 3702,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "media-response-ready": 39,
+            "image-decode-ready": 39,
+            "media-ready-before-input": 39,
+            "viewer-dom": 39
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "last-story→next-user-preloaded",
+      "cold": false,
+      "runIndex": 1,
+      "expectedScenario": "last-story-next-user-preloaded",
+      "phases": {
+        "pointerdown": 5,
+        "click": 152,
+        "useful-paint": 190.8999999910593
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 95,
+        "story-media-url-known": 95,
+        "story-media-response-ready": 147,
+        "story-image-decode-ready": 147,
+        "story-media-ready-before-input": 147,
+        "story-viewer-dom": 148
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 147,
+        "origin→useful-paint": 186,
+        "pointerdown→useful-paint": 186,
+        "click→useful-paint": 39
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4415,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0,
+            "media-response-ready": 52,
+            "image-decode-ready": 53,
+            "media-ready-before-input": 53,
+            "viewer-dom": 53
+          },
+          "meta": {
+            "storyId": "0a44201fcc2cab09f801",
+            "ownerUid": "FIyRR30lliP275PpzAQ7qb9iFYi2",
+            "ownerUsername": "benchstory",
+            "mediaUrl": "http://localhost:3002/bench/story-7.png",
+            "mediaType": "image",
+            "imgComplete": true,
+            "naturalWidth": 10,
+            "naturalHeight": 10
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": false,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "last-story→next-user-preloaded",
+      "cold": false,
+      "runIndex": 2,
+      "expectedScenario": "last-story-next-user-preloaded",
+      "phases": {
+        "pointerdown": 3.7999999970197678,
+        "click": 91.09999999403954,
+        "useful-paint": 131.5
+      },
+      "detailPhases": {
+        "story-viewer-state-ready": 44,
+        "story-media-url-known": 44,
+        "story-media-response-ready": 89,
+        "story-image-decode-ready": 90,
+        "story-media-ready-before-input": 90,
+        "story-viewer-dom": 90,
+        "story-preload-start": 96,
+        "story-preload-request-start": 96
+      },
+      "paintTimings": {},
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→click": 87,
+        "origin→useful-paint": 128,
+        "pointerdown→useful-paint": 128,
+        "click→useful-paint": 40
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": true,
+        "reasons": []
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {},
+          "meta": {}
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 4039,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {
+            "viewer-state-ready": 0,
+            "media-url-known": 0
+          },
+          "meta": {
+            "storyId": "d399397af029005acfee",
+            "ownerUid": "opGGAEhcHMSC0rIoCdTxjmy25dW2",
+            "ownerUsername": "navbench",
+            "mediaUrl": "http://localhost:3002/bench/story-4.png",
+            "mediaType": "image"
+          },
+          "media": {
+            "http://localhost:3002/bench/story-7.png": {
+              "url": "http://localhost:3002/bench/story-7.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "0a44201fcc2cab09f801",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-6.png": {
+              "url": "http://localhost:3002/bench/story-6.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "aa612a8a93d7c1adbc7f",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-3.png": {
+              "url": "http://localhost:3002/bench/story-3.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "b5ccebcfc9588b89ebde",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-5.png": {
+              "url": "http://localhost:3002/bench/story-5.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "37af9d862115af8d00ef",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-2.png": {
+              "url": "http://localhost:3002/bench/story-2.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "178fe8b1e9cdbc5aa8b1",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-1.png": {
+              "url": "http://localhost:3002/bench/story-1.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "6d4cffb4ac6049074021",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            },
+            "http://localhost:3002/bench/story-4.png": {
+              "url": "http://localhost:3002/bench/story-4.png",
+              "mediaType": "image",
+              "preloadStarted": true,
+              "responseReady": true,
+              "decodeReady": true,
+              "ready": true,
+              "storyId": "d399397af029005acfee",
+              "imgComplete": true,
+              "naturalWidth": 10,
+              "naturalHeight": 10
+            }
+          },
+          "inputLocked": false
+        }
+      },
+      "storyEntities": null,
+      "navMeta": null
+    }
+  ],
+  "invalidSamples": [
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 3,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "error:Error: profile lapalacios not visible on shuffle feed"
+        ]
+      },
+      "pipeline": {
+        "chats": null,
+        "settings": null,
+        "profile": null,
+        "story": null
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cached",
+      "cold": false,
+      "runIndex": 4,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "error:Error: profile lapalacios not visible on shuffle feed"
+        ]
+      },
+      "pipeline": {
+        "chats": null,
+        "settings": null,
+        "profile": null,
+        "story": null
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cold",
+      "cold": true,
+      "runIndex": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "error:Error: profile lapalacios not visible on shuffle feed"
+        ]
+      },
+      "pipeline": {
+        "chats": null,
+        "settings": null,
+        "profile": null,
+        "story": null
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "shuffle→profile-cold",
+      "cold": true,
+      "runIndex": 1,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "error:Error: profile lapalacios not visible on shuffle feed"
+        ]
+      },
+      "pipeline": {
+        "chats": null,
+        "settings": null,
+        "profile": null,
+        "story": null
+      },
+      "storyEntities": null,
+      "navMeta": null
+    },
+    {
+      "pathId": "tab→chats-B",
+      "cold": false,
+      "runIndex": 0,
+      "expectedScenario": "chats-first-visit-snapshot",
+      "phases": {
+        "pointerdown": 34.70000000298023,
+        "useful-paint": 498,
+        "dest-layout": 497.70000000298023
+      },
+      "detailPhases": {
+        "tab-pin": 460,
+        "tab-active-stories": 460,
+        "tab-panel-visible": 460,
+        "tab-visual-pending": 477,
+        "tab-active-chats": 477,
+        "chats-chats-mount": 497,
+        "chats-snapshot-read-start": 497,
+        "chats-inbox-memory-hit": 497,
+        "chats-snapshot-accepted": 497,
+        "skeleton-gate-false": 497,
+        "skeleton-reason-sorted-chats-nonempty": 497,
+        "chats-skeleton-gate-false": 497,
+        "dom-main-visible": 497,
+        "chats-inbox-primary-dom": 498,
+        "paint-shell-paint": 498,
+        "chats-shell-paint": 498,
+        "paint-stale-useful-paint": 498,
+        "chats-stale-useful-paint": 498
+      },
+      "paintTimings": {
+        "shell-paint": 498,
+        "stale-useful-paint": 498
+      },
+      "phaseDeltas": {
+        "origin→pointerdown": 0,
+        "origin→useful-paint": 463,
+        "origin→dest-layout": 463,
+        "pointerdown→useful-paint": 463
+      },
+      "commitsBeforeUsefulPaint": 0,
+      "longTasks": [],
+      "domMainVisibleMs": 497,
+      "usefulPaintLagMs": 1,
+      "mainThreadBusyMs": 0,
+      "validation": {
+        "valid": false,
+        "reasons": [
+          "missing:chats-snapshot-parsed",
+          "forbidden:chats-inbox-memory-hit"
+        ]
+      },
+      "pipeline": {
+        "chats": {
+          "phases": {
+            "chats-mount": 0,
+            "snapshot-read-start": 0,
+            "inbox-memory-hit": 0,
+            "snapshot-accepted": 0,
+            "skeleton-gate-false": 0,
+            "inbox-primary-dom": 1,
+            "shell-paint": 1,
+            "stale-useful-paint": 1,
+            "chats-panel-visible": 69
+          },
+          "meta": {
+            "snapshotCount": 1,
+            "snapshotBytes": 0,
+            "snapshotParseMs": 0,
+            "skeletonReason": "sorted-chats-nonempty"
+          }
+        },
+        "settings": {
+          "phases": {},
+          "meta": {}
+        },
+        "profile": {
+          "username": "",
+          "phases": {},
+          "meta": {
+            "username": ""
+          },
+          "lastPhase": "none",
+          "stalledMs": 1172,
+          "timedOut": false
+        },
+        "story": {
+          "phases": {},
+          "meta": {},
+          "media": {},
+          "inputLocked": true
+        }
+      },
+      "storyEntities": null,
+      "navMeta": {
+        "ok": true,
+        "method": "spa-click",
+        "usedGotoFallback": false,
+        "href": "/chats"
+      }
+    }
+  ],
+  "rankings": {
+    "byWarmMedian": [
+      {
+        "pathId": "tab→settings-A",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 56,
+        "median": 64,
+        "p95": 87,
+        "max": 87,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "settings-keep-alive-revisit",
+          "requiredPhases": [
+            "tab-pin",
+            "settings-settings-panel-visible"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "story→next-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 82,
+        "median": 83,
+        "p95": 102,
+        "max": 102,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "story-next-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "profile→chat-cached",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 77,
+        "median": 94,
+        "p95": 158,
+        "max": 158,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "chat-metadata-cache-hit",
+          "requiredPhases": [],
+          "forbiddenPhases": []
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "last-story→next-user-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 89,
+        "median": 128,
+        "p95": 186,
+        "max": 186,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "last-story-next-user-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "tab→chats-C",
+        "validCount": 2,
+        "invalidCount": 0,
+        "min": 170,
+        "median": 170,
+        "p95": 290,
+        "max": 290,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "chatsPaint": {
+          "inputToStaleUseful": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "inputToFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "inputToShell": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "pipelineStaleUseful": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "pipelineFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "snapshotAccepted": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "firestoreFirstCallback": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          }
+        },
+        "rules": {
+          "expectedScenario": "chats-first-visit-cold",
+          "forbiddenPhases": [
+            "chats-snapshot-accepted",
+            "chats-inbox-memory-hit"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "tab→chats-B",
+        "validCount": 2,
+        "invalidCount": 1,
+        "min": 297,
+        "median": 297,
+        "p95": 428,
+        "max": 428,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "chatsPaint": {
+          "inputToStaleUseful": {
+            "count": 2,
+            "median": 325,
+            "p95": 451
+          },
+          "inputToFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "inputToShell": {
+            "count": 2,
+            "median": 325,
+            "p95": 451
+          },
+          "pipelineStaleUseful": {
+            "count": 2,
+            "median": 0,
+            "p95": 1
+          },
+          "pipelineFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "snapshotAccepted": {
+            "count": 2,
+            "median": 0,
+            "p95": 1
+          },
+          "firestoreFirstCallback": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          }
+        },
+        "rules": {
+          "expectedScenario": "chats-first-visit-snapshot",
+          "requiredPhases": [
+            "chats-snapshot-read-start",
+            "chats-snapshot-accepted",
+            "chats-snapshot-parsed"
+          ],
+          "forbiddenPhases": [
+            "chats-inbox-memory-hit",
+            "chats-snapshot-rejected"
+          ]
+        },
+        "invalidReasons": [
+          {
+            "runIndex": 0,
+            "reasons": [
+              "missing:chats-snapshot-parsed",
+              "forbidden:chats-inbox-memory-hit"
+            ]
+          }
+        ]
+      },
+      {
+        "pathId": "shuffle→profile-cached",
+        "validCount": 3,
+        "invalidCount": 2,
+        "min": 313,
+        "median": 313,
+        "p95": 517,
+        "max": 517,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "profilePipeline": {
+          "cacheHitMedian": 0,
+          "stateReadyMedian": null,
+          "note": "Si median >> waterfall (~19–21 ms), revisar selector/scroll del perfil pinned en el feed, no asumir regresión de producción."
+        },
+        "rules": {
+          "expectedScenario": "profile-warm-cache-hit",
+          "requiredPhases": [
+            "profile-cache-hit"
+          ],
+          "forbiddenPhases": [
+            "profile-cache-miss"
+          ]
+        },
+        "invalidReasons": [
+          {
+            "runIndex": 3,
+            "reasons": [
+              "error:Error: profile lapalacios not visible on shuffle feed"
+            ]
+          },
+          {
+            "runIndex": 4,
+            "reasons": [
+              "error:Error: profile lapalacios not visible on shuffle feed"
+            ]
+          }
+        ]
+      },
+      {
+        "pathId": "tab→settings-D",
+        "validCount": 2,
+        "invalidCount": 0,
+        "min": 634,
+        "median": 634,
+        "p95": 834,
+        "max": 834,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "settings-cold-no-cache",
+          "forbiddenPhases": [
+            "settings-session-hit",
+            "settings-memory-profile-hit"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ],
+    "byP95": [
+      {
+        "pathId": "tab→settings-A",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 56,
+        "median": 64,
+        "p95": 87,
+        "max": 87,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "settings-keep-alive-revisit",
+          "requiredPhases": [
+            "tab-pin",
+            "settings-settings-panel-visible"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "story→next-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 82,
+        "median": 83,
+        "p95": 102,
+        "max": 102,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "story-next-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "profile→chat-cached",
+        "validCount": 5,
+        "invalidCount": 0,
+        "min": 77,
+        "median": 94,
+        "p95": 158,
+        "max": 158,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "chat-metadata-cache-hit",
+          "requiredPhases": [],
+          "forbiddenPhases": []
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "last-story→next-user-preloaded",
+        "validCount": 3,
+        "invalidCount": 0,
+        "min": 89,
+        "median": 128,
+        "p95": 186,
+        "max": 186,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "last-story-next-user-preloaded",
+          "requiredPhases": [
+            "story-media-ready-before-input"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "tab→chats-C",
+        "validCount": 2,
+        "invalidCount": 0,
+        "min": 170,
+        "median": 170,
+        "p95": 290,
+        "max": 290,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "chatsPaint": {
+          "inputToStaleUseful": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "inputToFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "inputToShell": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "pipelineStaleUseful": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "pipelineFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "snapshotAccepted": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "firestoreFirstCallback": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          }
+        },
+        "rules": {
+          "expectedScenario": "chats-first-visit-cold",
+          "forbiddenPhases": [
+            "chats-snapshot-accepted",
+            "chats-inbox-memory-hit"
+          ]
+        },
+        "invalidReasons": []
+      },
+      {
+        "pathId": "tab→chats-B",
+        "validCount": 2,
+        "invalidCount": 1,
+        "min": 297,
+        "median": 297,
+        "p95": 428,
+        "max": 428,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "chatsPaint": {
+          "inputToStaleUseful": {
+            "count": 2,
+            "median": 325,
+            "p95": 451
+          },
+          "inputToFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "inputToShell": {
+            "count": 2,
+            "median": 325,
+            "p95": 451
+          },
+          "pipelineStaleUseful": {
+            "count": 2,
+            "median": 0,
+            "p95": 1
+          },
+          "pipelineFreshNetwork": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          },
+          "snapshotAccepted": {
+            "count": 2,
+            "median": 0,
+            "p95": 1
+          },
+          "firestoreFirstCallback": {
+            "count": 0,
+            "median": null,
+            "p95": null
+          }
+        },
+        "rules": {
+          "expectedScenario": "chats-first-visit-snapshot",
+          "requiredPhases": [
+            "chats-snapshot-read-start",
+            "chats-snapshot-accepted",
+            "chats-snapshot-parsed"
+          ],
+          "forbiddenPhases": [
+            "chats-inbox-memory-hit",
+            "chats-snapshot-rejected"
+          ]
+        },
+        "invalidReasons": [
+          {
+            "runIndex": 0,
+            "reasons": [
+              "missing:chats-snapshot-parsed",
+              "forbidden:chats-inbox-memory-hit"
+            ]
+          }
+        ]
+      },
+      {
+        "pathId": "shuffle→profile-cached",
+        "validCount": 3,
+        "invalidCount": 2,
+        "min": 313,
+        "median": 313,
+        "p95": 517,
+        "max": 517,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "profilePipeline": {
+          "cacheHitMedian": 0,
+          "stateReadyMedian": null,
+          "note": "Si median >> waterfall (~19–21 ms), revisar selector/scroll del perfil pinned en el feed, no asumir regresión de producción."
+        },
+        "rules": {
+          "expectedScenario": "profile-warm-cache-hit",
+          "requiredPhases": [
+            "profile-cache-hit"
+          ],
+          "forbiddenPhases": [
+            "profile-cache-miss"
+          ]
+        },
+        "invalidReasons": [
+          {
+            "runIndex": 3,
+            "reasons": [
+              "error:Error: profile lapalacios not visible on shuffle feed"
+            ]
+          },
+          {
+            "runIndex": 4,
+            "reasons": [
+              "error:Error: profile lapalacios not visible on shuffle feed"
+            ]
+          }
+        ]
+      },
+      {
+        "pathId": "tab→settings-D",
+        "validCount": 2,
+        "invalidCount": 0,
+        "min": 634,
+        "median": 634,
+        "p95": 834,
+        "max": 834,
+        "mainThreadBusyMedian": 0,
+        "longTasksOver50ms": 0,
+        "longTaskMsTotal": 0,
+        "rules": {
+          "expectedScenario": "settings-cold-no-cache",
+          "forbiddenPhases": [
+            "settings-session-hit",
+            "settings-memory-profile-hit"
+          ]
+        },
+        "invalidReasons": []
+      }
+    ]
+  },
+  "backLockProbe": [
+    {
+      "gapMs": 50,
+      "pathnameBefore": "/u/lapalacios",
+      "pathnameAfterFirst": "/u/lapalacios",
+      "pathnameAfterSecond": "/u/lapalacios",
+      "firstBackNavigated": false,
+      "secondBackNavigated": false,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783370737886,
+          "pathnameBefore": "/u/lapalacios",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/lapalacios",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 80,
+      "pathnameBefore": "/u/lapalacios",
+      "pathnameAfterFirst": "/u/lapalacios",
+      "pathnameAfterSecond": "/u/lapalacios",
+      "firstBackNavigated": false,
+      "secondBackNavigated": false,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783370740758,
+          "pathnameBefore": "/u/lapalacios",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/lapalacios",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 100,
+      "pathnameBefore": "/u/lapalacios",
+      "pathnameAfterFirst": "/u/lapalacios",
+      "pathnameAfterSecond": "/u/lapalacios",
+      "firstBackNavigated": false,
+      "secondBackNavigated": false,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783370742665,
+          "pathnameBefore": "/u/lapalacios",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/lapalacios",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 120,
+      "pathnameBefore": "/u/lapalacios",
+      "pathnameAfterFirst": "/u/lapalacios",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": false,
+      "secondBackNavigated": true,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783370745045,
+          "pathnameBefore": "/u/lapalacios",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/lapalacios",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 150,
+      "pathnameBefore": "/u/lapalacios",
+      "pathnameAfterFirst": "/u/lapalacios",
+      "pathnameAfterSecond": "/u/lapalacios",
+      "firstBackNavigated": false,
+      "secondBackNavigated": false,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783370748070,
+          "pathnameBefore": "/u/lapalacios",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/lapalacios",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    },
+    {
+      "gapMs": 250,
+      "pathnameBefore": "/u/lapalacios",
+      "pathnameAfterFirst": "/u/lapalacios",
+      "pathnameAfterSecond": "/shuffle",
+      "firstBackNavigated": false,
+      "secondBackNavigated": true,
+      "eventsReceived": 1,
+      "eventsDiscarded": 0,
+      "eventsNavigated": 1,
+      "probeLog": [
+        {
+          "at": 1783370750652,
+          "pathnameBefore": "/u/lapalacios",
+          "pathnameAfter": "/shuffle",
+          "backLockPath": "/u/lapalacios",
+          "outcome": "navigate"
+        }
+      ],
+      "secondDiscardedWithinGap": false
+    }
+  ],
+  "backLockValidation": {
+    "model": "same-path-dedupe (not global BACK_LOCK block)",
+    "rows": [
+      {
+        "gapMs": 50,
+        "pathnameBefore": "/u/lapalacios",
+        "pathnameAfterFirst": "/u/lapalacios",
+        "pathnameAfterSecond": "/u/lapalacios",
+        "firstBackNavigated": false,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783370737886,
+            "pathnameBefore": "/u/lapalacios",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/lapalacios",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 80,
+        "pathnameBefore": "/u/lapalacios",
+        "pathnameAfterFirst": "/u/lapalacios",
+        "pathnameAfterSecond": "/u/lapalacios",
+        "firstBackNavigated": false,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783370740758,
+            "pathnameBefore": "/u/lapalacios",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/lapalacios",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 100,
+        "pathnameBefore": "/u/lapalacios",
+        "pathnameAfterFirst": "/u/lapalacios",
+        "pathnameAfterSecond": "/u/lapalacios",
+        "firstBackNavigated": false,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783370742665,
+            "pathnameBefore": "/u/lapalacios",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/lapalacios",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 120,
+        "pathnameBefore": "/u/lapalacios",
+        "pathnameAfterFirst": "/u/lapalacios",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": false,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": null,
+        "probeLog": [
+          {
+            "at": 1783370745045,
+            "pathnameBefore": "/u/lapalacios",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/lapalacios",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 150,
+        "pathnameBefore": "/u/lapalacios",
+        "pathnameAfterFirst": "/u/lapalacios",
+        "pathnameAfterSecond": "/u/lapalacios",
+        "firstBackNavigated": false,
+        "secondBackNavigated": false,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": false,
+        "probeLog": [
+          {
+            "at": 1783370748070,
+            "pathnameBefore": "/u/lapalacios",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/lapalacios",
+            "outcome": "navigate"
+          }
+        ]
+      },
+      {
+        "gapMs": 250,
+        "pathnameBefore": "/u/lapalacios",
+        "pathnameAfterFirst": "/u/lapalacios",
+        "pathnameAfterSecond": "/shuffle",
+        "firstBackNavigated": false,
+        "secondBackNavigated": true,
+        "eventsDiscarded": 0,
+        "eventsNavigated": 1,
+        "samePathDuplicateOk": false,
+        "changedPathSecondBackOk": true,
+        "probeLog": [
+          {
+            "at": 1783370750652,
+            "pathnameBefore": "/u/lapalacios",
+            "pathnameAfter": "/shuffle",
+            "backLockPath": "/u/lapalacios",
+            "outcome": "navigate"
+          }
+        ]
+      }
+    ],
+    "passed": false
+  },
+  "samePathBackProbe": {
+    "pathnameBefore": "/shuffle",
+    "events": [
+      {
+        "eventNo": 1,
+        "timestamp": 1783370751995,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      },
+      {
+        "eventNo": 2,
+        "timestamp": 1783370752232,
+        "pathnameBefore": "/shuffle",
+        "backLockPath": "/shuffle",
+        "pathnameAfter": "/shuffle",
+        "outcome": "none",
+        "reason": null
+      }
+    ]
+  }
+}
