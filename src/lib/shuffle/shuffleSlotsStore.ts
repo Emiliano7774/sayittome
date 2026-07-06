@@ -144,6 +144,10 @@ export function patchShuffleProfileBlurFlags(
   scheduleFlush();
 }
 
+export function flushShuffleSlotsSync() {
+  scheduleFlush({ sync: true });
+}
+
 export function resetShuffleWindowSlots() {
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     if (slots[slot] !== null) {

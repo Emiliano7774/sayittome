@@ -1,5 +1,11 @@
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
+import { hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
 import { pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
+import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
+import {
+  isShuffleWarmVisualReady,
+  prepareShuffleWarmTabReturn,
+} from "@/lib/shuffle/shuffleWarmVisual";
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 
 function normalizePath(pathname: string) {
@@ -12,6 +18,8 @@ let keepAliveActive = false;
 let keepAliveVersion = 0;
 let instantReturnPending = false;
 let suppressShuffleWindowRefresh = false;
+let shuffleRevealDeferred = false;
+let deferSourcePath = "/chats";
 const listeners = new Set<() => void>();
 
 function notifyKeepAliveListeners() {
@@ -94,17 +102,70 @@ function revealShuffleKeepAliveHost() {
   host.setAttribute("aria-hidden", "false");
 }
 
-/** Tab return: keep the pinned window without the chat-back pending overlay. */
+export function clearShuffleRevealDeferred() {
+  if (!shuffleRevealDeferred) return;
+  shuffleRevealDeferred = false;
+  notifyKeepAliveListeners();
+}
+
+export function isShuffleRevealDeferred() {
+  return shuffleRevealDeferred;
+}
+
+export function getShuffleDeferSourcePath() {
+  return deferSourcePath;
+}
+
+/** PREPARE before router commits — keep origin tab visible until shuffle has a valid frame. */
+export function beginShuffleWarmHandoff(fromPath?: string) {
+  if (typeof window === "undefined" || !keepAliveActive) return;
+
+  if (fromPath) {
+    deferSourcePath = fromPath;
+  }
+
+  prepareShuffleWarmTabReturn();
+
+  const ready =
+    isShuffleWarmVisualReady() && getVisibleShuffleProfiles().length > 0;
+
+  if (ready) {
+    clearShuffleRevealDeferred();
+    notifyKeepAliveListeners();
+    return;
+  }
+
+  shuffleRevealDeferred = true;
+  notifyKeepAliveListeners();
+}
+
+/** Tab return: restore valid shuffle frame before router commits. */
 export function commitShuffleTabReturn() {
   if (typeof window === "undefined" || !keepAliveActive) return;
 
   suppressShuffleWindowRefresh = true;
   releaseChatViewportLock();
   document.body.classList.add("sayittome-shuffle-route");
-  if (typeof window !== "undefined") {
-    window.scrollTo(0, 0);
+  window.scrollTo(0, 0);
+  prepareShuffleWarmTabReturn();
+
+  if (
+    isShuffleWarmVisualReady() &&
+    getVisibleShuffleProfiles().length > 0
+  ) {
+    clearShuffleRevealDeferred();
   }
+
   notifyKeepAliveListeners();
+}
+
+export function canShowShuffleKeepAliveSurface(pathname: string) {
+  if (isInstantShuffleReturnPending()) return true;
+  if (!isShuffleKeepAliveVisible(pathname)) return false;
+  if (shuffleRevealDeferred) return false;
+  if (!keepAliveActive) return true;
+  if (!hasShuffleEverHydrated()) return true;
+  return getVisibleShuffleProfiles().length > 0;
 }
 
 /** Reveal the pinned shuffle before chat unmounts so back feels instant. */

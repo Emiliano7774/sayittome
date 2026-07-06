@@ -10,9 +10,17 @@ import {
 } from "@/lib/navigation/mainTabKeepAlive";
 import { isMainTabHref } from "@/lib/navigation/mainTabs";
 import {
+  beginShuffleWarmHandoff,
+  commitShuffleTabReturn,
+  isShuffleKeepAliveActive,
   pinShuffleKeepAlive,
   pinShuffleWindowWhileAway,
 } from "@/lib/navigation/shuffleKeepAlive";
+import { isNavTraceEnabled } from "@/lib/perf/navTrace";
+import {
+  ghostFrameWatchBegin,
+  ghostFrameWatchInspect,
+} from "@/lib/perf/ghostFrameTrace";
 
 type Props = {
   href: string;
@@ -26,6 +34,16 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
   function warmTab() {
     if (typeof window !== "undefined") {
       const currentPath = window.location.pathname.split("?")[0].split("#")[0];
+
+      if (href === "/shuffle" && currentPath !== "/shuffle" && isShuffleKeepAliveActive()) {
+        if (isNavTraceEnabled()) {
+          ghostFrameWatchBegin(`warm:${currentPath}->/shuffle`);
+          ghostFrameWatchInspect("pointerdown-prepare");
+        }
+        beginShuffleWarmHandoff(currentPath);
+        commitShuffleTabReturn();
+      }
+
       if (currentPath === "/shuffle" && href !== "/shuffle") {
         pinShuffleKeepAlive();
         pinShuffleWindowWhileAway();

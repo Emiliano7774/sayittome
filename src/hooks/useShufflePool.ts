@@ -68,7 +68,15 @@ import {
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import { markShuffleHydrated, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
-import { isShuffleFeedFrozen, releaseShuffleWindowRefreshSuppression, shouldSuppressShuffleWindowRefresh } from "@/lib/navigation/shuffleKeepAlive";
+import {
+  capturePinnedShuffleWindow,
+  restorePinnedShuffleWindowSync,
+} from "@/lib/shuffle/shufflePinnedWindow";
+import {
+  isShuffleFeedFrozen,
+  releaseShuffleWindowRefreshSuppression,
+  shouldSuppressShuffleWindowRefresh,
+} from "@/lib/navigation/shuffleKeepAlive";
 
 function readInitialShuffleState() {
   const cachedProfiles = readCachedShufflePool() ?? [];
@@ -237,10 +245,18 @@ export function useShufflePool() {
     prevShuffleFrozenRef.current = shuffleFeedFrozen;
 
     if (!wasFrozen && shuffleFeedFrozen) {
+      const regularCount = Math.max(0, windowCountRef.current - featuredRef.current.length);
+      capturePinnedShuffleWindow(
+        featuredRef.current,
+        activePoolRef.current,
+        windowIndicesRef.current,
+        regularCount,
+      );
       return;
     }
 
     if (wasFrozen && !shuffleFeedFrozen) {
+      restorePinnedShuffleWindowSync();
       const visible = getVisibleShuffleProfiles();
       const pinnedWindow =
         shouldSuppressShuffleWindowRefresh() &&

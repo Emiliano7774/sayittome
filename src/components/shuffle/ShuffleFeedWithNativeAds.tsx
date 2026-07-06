@@ -49,6 +49,7 @@ export default function ShuffleFeedWithNativeAds({
       key={windowGeneration}
       className={className}
       data-shuffle-list
+      data-nav-shuffle-primary
       data-stm-no-polish
     >
       {Array.from({ length: itemCount }, (_, index) => {

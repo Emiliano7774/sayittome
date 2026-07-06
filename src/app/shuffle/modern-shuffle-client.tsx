@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
 import ModernShuffleGrid from "@/components/modern/ModernShuffleGrid";
@@ -14,12 +14,16 @@ import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptySt
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ModernShuffleGlassToolbar from "@/components/shuffle/ModernShuffleGlassToolbar";
 import { useShufflePool } from "@/hooks/useShufflePool";
-import { shouldShowShuffleLoading, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
+import { hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
 import {
   getShuffleSlotsVersion,
   getVisibleShuffleProfiles,
   subscribeAllShuffleSlots,
 } from "@/lib/shuffle/shuffleSlotsStore";
+import {
+  shouldPaintShuffleLoadingShell,
+  traceShuffleVisualCommit,
+} from "@/lib/shuffle/shuffleWarmVisual";
 import {
   getCachedStoryGroups,
   getStoriesIndexVersion,
@@ -53,15 +57,21 @@ export default function ModernShuffleClient() {
   const profileCount = pool.profilesCreated || pool.livePeopleCount;
   const filtersBlockResults =
     pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery;
-  const showShuffleLoading =
-    visible.length === 0 &&
-    !pool.listReady &&
-    !hasShuffleEverHydrated() &&
-    shouldShowShuffleLoading({
-      loading: pool.loading,
-      listReady: pool.listReady,
+  const showShuffleLoading = shouldPaintShuffleLoadingShell({
+    loading: pool.loading,
+    listReady: pool.listReady,
+    visibleCount: visible.length,
+  });
+  const showShuffleFeed =
+    visible.length > 0 || pool.listReady || hasShuffleEverHydrated();
+
+  useLayoutEffect(() => {
+    traceShuffleVisualCommit("modern-shuffle-render", {
+      showLoadingShell: showShuffleLoading,
       visibleCount: visible.length,
+      listReady: pool.listReady,
     });
+  });
 
   useNavUsefulPaint(shuffleActive && visible.length > 0 && !showShuffleLoading, "/shuffle");
 
@@ -115,10 +125,13 @@ export default function ModernShuffleClient() {
         />
 
         {showShuffleLoading ? (
-          <div className="flex h-[50vh] items-center justify-center">
+          <div
+            className="flex h-[50vh] items-center justify-center"
+            data-loading-shell
+          >
             <p className="text-2xl font-black text-white/35">{t("common_loading")}</p>
           </div>
-        ) : visible.length > 0 || pool.listReady || hasShuffleEverHydrated() ? (
+        ) : showShuffleFeed ? (
           <div className="mt-5" onClick={pool.handleListClick}>
             <ModernShuffleGrid />
           </div>

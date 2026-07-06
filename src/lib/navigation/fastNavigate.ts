@@ -5,6 +5,7 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import { isNavTraceEnabled, navTraceMark } from "@/lib/perf/navTrace";
 import {
+  beginShuffleWarmHandoff,
   clearInstantShuffleReturn,
   commitShuffleTabReturn,
   isInstantShuffleReturnDestination,
@@ -13,6 +14,10 @@ import {
   pinShuffleWindowWhileAway,
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
+import {
+  ghostFrameWatchBegin,
+  ghostFrameWatchInspect,
+} from "@/lib/perf/ghostFrameTrace";
 
 function pinShuffleWindowIfNeeded(currentPath: string) {
   if (currentPath === "/shuffle" || isShuffleKeepAliveActive()) {
@@ -37,6 +42,11 @@ export function fastRouterPush(router: AppRouterInstance, href: string) {
     pinShuffleWindowIfNeeded(currentPath);
 
     if (isInstantShuffleReturnDestination(href)) {
+      if (isNavTraceEnabled()) {
+        ghostFrameWatchBegin(`warm:${currentPath}->/shuffle`);
+        ghostFrameWatchInspect("fast-nav-prepare");
+      }
+      beginShuffleWarmHandoff(currentPath);
       commitShuffleTabReturn();
     }
   }

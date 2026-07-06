@@ -6,17 +6,25 @@ import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
 import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
+  canShowShuffleKeepAliveSurface,
   clearInstantShuffleReturn,
   commitShuffleTabReturn,
+  clearShuffleRevealDeferred,
   getShuffleKeepAliveVersion,
   isInstantShuffleReturnPending,
   isShuffleKeepAliveActive,
-  isShuffleKeepAliveVisible,
   pinShuffleKeepAlive,
   pinShuffleWindowWhileAway,
   shouldRenderShuffleKeepAliveHost,
   subscribeShuffleKeepAlive,
 } from "@/lib/navigation/shuffleKeepAlive";
+import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
+import {
+  getShuffleWarmReturnVersion,
+  isShuffleWarmVisualReady,
+  subscribeShuffleWarmReturn,
+} from "@/lib/shuffle/shuffleWarmVisual";
+import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
 
 export default function ShuffleKeepAliveHost() {
   const pathname = usePathname();
@@ -28,8 +36,14 @@ export default function ShuffleKeepAliveHost() {
     getShuffleKeepAliveVersion,
   );
 
+  useSyncExternalStore(
+    subscribeShuffleWarmReturn,
+    getShuffleWarmReturnVersion,
+    getShuffleWarmReturnVersion,
+  );
+
   const visible =
-    isShuffleKeepAliveVisible(pathname) || isInstantShuffleReturnPending();
+    canShowShuffleKeepAliveSurface(pathname) || isInstantShuffleReturnPending();
 
   useLayoutEffect(() => {
     pinShuffleKeepAlive();
@@ -59,6 +73,16 @@ export default function ShuffleKeepAliveHost() {
 
     if (path === "/shuffle" && isInstantShuffleReturnPending()) {
       requestAnimationFrame(() => clearInstantShuffleReturn());
+    }
+
+    if (
+      path === "/shuffle" &&
+      isShuffleWarmVisualReady() &&
+      getVisibleShuffleProfiles().length > 0
+    ) {
+      clearShuffleRevealDeferred();
+      ghostFrameWatchInspect("shuffle-warm-ready");
+      requestAnimationFrame(() => ghostFrameWatchEnd());
     }
   }, [pathname]);
 

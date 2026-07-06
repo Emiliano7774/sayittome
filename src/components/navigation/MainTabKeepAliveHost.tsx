@@ -2,7 +2,7 @@
 
 import type { ComponentType } from "react";
 import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
+import { useLayoutEffect, useSyncExternalStore } from "react";
 
 import { BoostRouteContent } from "@/app/boost/page";
 import { ChatsRouteContent } from "@/app/chats/page";
@@ -20,6 +20,12 @@ import {
   subscribeMainTabKeepAlive,
   syncPendingVisualTabWithPathname,
 } from "@/lib/navigation/mainTabKeepAlive";
+import {
+  getShuffleDeferSourcePath,
+  getShuffleKeepAliveVersion,
+  isShuffleRevealDeferred,
+  subscribeShuffleKeepAlive,
+} from "@/lib/navigation/shuffleKeepAlive";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
@@ -32,6 +38,16 @@ const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
   "/settings": SettingsRouteContent,
 };
 
+function resolveMainTabPanelPath(pathname: string) {
+  if (isShuffleRevealDeferred()) {
+    const defer = getShuffleDeferSourcePath();
+    if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(defer)) {
+      return defer;
+    }
+  }
+  return pathname.split("?")[0].split("#")[0];
+}
+
 export default function MainTabKeepAliveHost() {
   const pathname = usePathname();
 
@@ -40,6 +56,14 @@ export default function MainTabKeepAliveHost() {
     getMainTabKeepAliveVersion,
     getMainTabKeepAliveVersion,
   );
+
+  useSyncExternalStore(
+    subscribeShuffleKeepAlive,
+    getShuffleKeepAliveVersion,
+    getShuffleKeepAliveVersion,
+  );
+
+  const panelPath = resolveMainTabPanelPath(pathname);
 
   useLayoutEffect(() => {
     syncPendingVisualTabWithPathname(pathname);
@@ -58,7 +82,7 @@ export default function MainTabKeepAliveHost() {
       if (pending) navTraceMarkDetail("tab-visual-pending");
       for (const href of listMainTabKeepAliveHrefs()) {
         if (href === "/shuffle") continue;
-        if (!isMainTabPanelVisible(pathname, href)) continue;
+        if (!isMainTabPanelVisible(panelPath, href)) continue;
         navTraceMarkDetail("tab-pin");
         navTraceMarkDetail(`tab-active-${href.slice(1)}`);
         navTraceMarkDetail("tab-panel-visible");
@@ -79,9 +103,9 @@ export default function MainTabKeepAliveHost() {
         .filter((href): href is Exclude<MainTabHref, "/shuffle"> => href !== "/shuffle")
         .map((href) => {
           const Panel = PANELS[href];
-          const visible = isMainTabPanelVisible(pathname, href);
+          const visible = isMainTabPanelVisible(panelPath, href);
 
-          if (!shouldMountMainTabPanel(pathname, href)) {
+          if (!shouldMountMainTabPanel(panelPath, href)) {
             return null;
           }
 
@@ -105,8 +129,9 @@ export default function MainTabKeepAliveHost() {
 }
 
 export function isMainTabRouteHandledByKeepAlive(pathname: string, href: MainTabHref) {
+  const panelPath = resolveMainTabPanelPath(pathname);
   return (
     shouldRenderMainTabKeepAliveHost(pathname) &&
-    isMainTabPanelVisible(pathname, href)
+    isMainTabPanelVisible(panelPath, href)
   );
 }
