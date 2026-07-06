@@ -180,6 +180,8 @@ body.sayittome-native-shell.sayittome-ad-banner-visible {
 
 body.sayittome-shuffle-route {
   --sayittome-ad-banner-height: 0px;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body.sayittome-shuffle-route.sayittome-ad-banner-visible {
@@ -314,11 +316,29 @@ body.sayittome-chat-open {
   inset: 0;
   z-index: 1;
   visibility: visible;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: none;
   contain: none;
   pointer-events: auto;
+}
+
+/* One scroll surface inside shuffle — touch swipe works, no OS scrollbar chrome. */
+#sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible main[data-scroll-root] {
+  height: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  main[data-scroll-root]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 html.sayittome-shuffle-return-pending ::view-transition-old(root),
