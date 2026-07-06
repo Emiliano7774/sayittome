@@ -94,6 +94,16 @@ function revealShuffleKeepAliveHost() {
   host.setAttribute("aria-hidden", "false");
 }
 
+/** Tab return: keep the pinned window without the chat-back pending overlay. */
+export function commitShuffleTabReturn() {
+  if (typeof window === "undefined" || !keepAliveActive) return;
+
+  suppressShuffleWindowRefresh = true;
+  releaseChatViewportLock();
+  document.body.classList.add("sayittome-shuffle-route");
+  notifyKeepAliveListeners();
+}
+
 /** Reveal the pinned shuffle before chat unmounts so back feels instant. */
 export function prepareInstantShuffleReturn() {
   if (typeof document === "undefined" || !keepAliveActive) return;
@@ -107,13 +117,6 @@ export function prepareInstantShuffleReturn() {
   revealShuffleKeepAliveHost();
   stripNativeChatFullscreen();
   releaseChatViewportLock();
-}
-
-/** Tab return: reveal instantly and keep the pinned window (no reshuffle). */
-export function commitShuffleTabReturn() {
-  if (typeof window === "undefined" || !keepAliveActive) return;
-  suppressShuffleWindowRefresh = true;
-  prepareInstantShuffleReturn();
 }
 
 export function clearInstantShuffleReturn() {

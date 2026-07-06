@@ -57,7 +57,7 @@ export default function ShuffleKeepAliveHost() {
       pinShuffleWindowWhileAway();
     }
 
-    if (path === "/shuffle") {
+    if (path === "/shuffle" && isInstantShuffleReturnPending()) {
       requestAnimationFrame(() => clearInstantShuffleReturn());
     }
   }, [pathname]);

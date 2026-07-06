@@ -310,9 +310,15 @@ body.sayittome-chat-open {
 }
 
 .sayittome-shuffle-keepalive-visible {
-  position: relative;
-  z-index: auto;
+  position: fixed;
+  inset: 0;
+  z-index: 1;
   visibility: visible;
+  overflow: auto;
+  overscroll-behavior: none;
+  contain: none;
+  pointer-events: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 html.sayittome-shuffle-return-pending ::view-transition-old(root),
