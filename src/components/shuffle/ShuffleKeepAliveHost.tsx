@@ -9,11 +9,12 @@ import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
   beginShuffleExitToMainTab,
   clearShuffleExitToMainTab,
+  getShuffleHandoffVersion,
   isShuffleSurfacePresented,
+  subscribeShuffleHandoffState,
 } from "@/lib/navigation/shuffleHandoffState";
 import {
   activateShuffleTabSurface,
-  abortShuffleWarmHandoff,
   canShowShuffleKeepAliveSurface,
   clearInstantShuffleReturn,
   enterColdShufflePresentation,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/navigation/shuffleKeepAlive";
 import {
   getShuffleWarmReturnVersion,
+  canActivateShuffleWarmHandoff,
   observeShuffleGeometryStability,
   resetShuffleGeometryStability,
   sampleShuffleHandoffGeometry,
@@ -62,6 +64,12 @@ export default function ShuffleKeepAliveHost() {
     subscribeShuffleWarmReturn,
     getShuffleWarmReturnVersion,
     getShuffleWarmReturnVersion,
+  );
+
+  useSyncExternalStore(
+    subscribeShuffleHandoffState,
+    getShuffleHandoffVersion,
+    getShuffleHandoffVersion,
   );
 
   const visible =
@@ -105,14 +113,21 @@ export default function ShuffleKeepAliveHost() {
         frames += 1;
 
         if (!isValidWarmShuffleHandoffActive()) {
-          abortShuffleWarmHandoff();
+          activateShuffleTabSurface({ force: true });
+          requestAnimationFrame(() => ghostFrameWatchEnd());
+          return;
+        }
+
+        if (canActivateShuffleWarmHandoff()) {
+          activateShuffleTabSurface();
+          requestAnimationFrame(() => ghostFrameWatchEnd());
           return;
         }
 
         const geometry = sampleShuffleHandoffGeometry();
-        const slotCount = Math.max(geometry?.domSlots ?? 0, geometry?.prepDomSlots ?? 0);
-        if (frames > 6 && slotCount < 3) {
-          abortShuffleWarmHandoff();
+        if (geometry && geometry.prepDomSlots >= 3) {
+          activateShuffleTabSurface({ force: true });
+          requestAnimationFrame(() => ghostFrameWatchEnd());
           return;
         }
 
@@ -128,7 +143,8 @@ export default function ShuffleKeepAliveHost() {
         if (frames < HANDOFF_FRAME_BUDGET) {
           requestAnimationFrame(tryActivate);
         } else {
-          abortShuffleWarmHandoff();
+          activateShuffleTabSurface({ force: true });
+          requestAnimationFrame(() => ghostFrameWatchEnd());
         }
       };
 
@@ -140,8 +156,8 @@ export default function ShuffleKeepAliveHost() {
 
       if (!isShuffleSurfacePresented()) {
         if (prev !== "/shuffle") {
-          const started = warmHandoff || prepareShuffleTabReturn();
-          if (started && hasRestorableWarmShuffleState()) {
+          if (hasRestorableWarmShuffleState()) {
+            prepareShuffleTabReturn();
             startHandoffLoop();
           } else {
             enterColdShufflePresentation();

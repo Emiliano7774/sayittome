@@ -31,8 +31,14 @@ import {
   resetShuffleGeometryStability,
   setShuffleHandoffPreparing,
 } from "@/lib/shuffle/shuffleWarmVisual";
+import { hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
+import { readCachedShufflePool } from "@/lib/shuffle/shuffleClientCache";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
-import { peekPinnedShuffleWindowCount } from "@/lib/shuffle/shufflePinnedWindow";
+import {
+  peekPinnedShuffleWindowCount,
+  restorePinnedShuffleWindowSync,
+} from "@/lib/shuffle/shufflePinnedWindow";
+import { sampleShuffleHandoffGeometry } from "@/lib/shuffle/shuffleWarmVisual";
 
 export {
   getShuffleDeferSourcePath,
@@ -74,15 +80,42 @@ export function isShuffleKeepAliveActive() {
 export function reconcileStaleShuffleHandoffState() {
   if (typeof window === "undefined") return;
   if (normalizePath(window.location.pathname) !== "/shuffle") return;
-  if (isValidWarmShuffleHandoffActive()) return;
 
   const pendingDom = document.documentElement.classList.contains("sayittome-shuffle-handoff-pending");
-  if (
-    pendingDom ||
-    isShuffleRevealDeferred() ||
-    !isShuffleSurfacePresented()
-  ) {
+
+  if (pendingDom && !isShuffleSurfacePresented()) {
+    if (canActivateShuffleWarmHandoff()) {
+      activateShuffleTabSurface();
+      return;
+    }
+    if (isShuffleRevealDeferred() && shuffleHandoffPendingAgeMs() < 500) return;
+    if (hasRestorableWarmShuffleState() || hasShuffleEverHydrated()) {
+      activateShuffleTabSurface({ force: true });
+      return;
+    }
+    enterColdShufflePresentation({ force: true });
+    return;
+  }
+
+  if (isValidWarmShuffleHandoffActive()) return;
+
+  if (hasRestorableWarmShuffleState() && !isShuffleSurfacePresented()) {
+    activateShuffleTabSurface({ force: true });
+    return;
+  }
+
+  if (pendingDom && !hasRestorableWarmShuffleState()) {
     enterColdShufflePresentation();
+    return;
+  }
+
+  if (isShuffleRevealDeferred() && !hasRestorableWarmShuffleState()) {
+    enterColdShufflePresentation();
+    return;
+  }
+
+  if (pendingDom && isShuffleSurfacePresented()) {
+    reconcileOrphanedShuffleHandoffDom();
   }
 }
 
@@ -148,6 +181,27 @@ export function pinShuffleWindowWhileAway() {
 }
 
 let staleHandoffSweepId = 0;
+let shuffleHandoffPendingSince = 0;
+
+function markShuffleHandoffPendingDom() {
+  if (typeof document === "undefined") return;
+  if (!document.documentElement.classList.contains("sayittome-shuffle-handoff-pending")) {
+    shuffleHandoffPendingSince = performance.now();
+  }
+  document.documentElement.classList.add("sayittome-shuffle-handoff-pending");
+  scheduleStaleHandoffSweep();
+}
+
+function clearShuffleHandoffPendingDom() {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.remove("sayittome-shuffle-handoff-pending");
+  shuffleHandoffPendingSince = 0;
+}
+
+function shuffleHandoffPendingAgeMs() {
+  if (!shuffleHandoffPendingSince) return 0;
+  return Math.max(0, Math.round(performance.now() - shuffleHandoffPendingSince));
+}
 
 function scheduleStaleHandoffSweep() {
   if (typeof window === "undefined" || staleHandoffSweepId) return;
@@ -158,21 +212,25 @@ function scheduleStaleHandoffSweep() {
     reconcileStaleShuffleHandoffState();
 
     const pendingDom = document.documentElement.classList.contains("sayittome-shuffle-handoff-pending");
-    if (pendingDom && !isValidWarmShuffleHandoffActive()) {
-      scheduleStaleHandoffSweep();
+    if (!pendingDom || isShuffleSurfacePresented()) return;
+
+    if (canActivateShuffleWarmHandoff()) {
+      activateShuffleTabSurface();
+      return;
     }
+
+    if (isValidWarmShuffleHandoffActive() && shuffleHandoffPendingAgeMs() < 500) {
+      scheduleStaleHandoffSweep();
+      return;
+    }
+
+    if (hasRestorableWarmShuffleState() || hasShuffleEverHydrated()) {
+      activateShuffleTabSurface({ force: true });
+      return;
+    }
+
+    enterColdShufflePresentation({ force: true });
   });
-}
-
-function markShuffleHandoffPendingDom() {
-  if (typeof document === "undefined") return;
-  document.documentElement.classList.add("sayittome-shuffle-handoff-pending");
-  scheduleStaleHandoffSweep();
-}
-
-function clearShuffleHandoffPendingDom() {
-  if (typeof document === "undefined") return;
-  document.documentElement.classList.remove("sayittome-shuffle-handoff-pending");
 }
 
 export function reconcileOrphanedShuffleHandoffDom() {
@@ -214,20 +272,63 @@ export function finishShuffleHandoffPreparing() {
 }
 
 export function hasRestorableWarmShuffleState() {
-  return (
-    getVisibleShuffleProfiles().length >= 3 ||
-    peekPinnedShuffleWindowCount() >= 3
-  );
+  if (getVisibleShuffleProfiles().length >= 3) return true;
+  if (peekPinnedShuffleWindowCount() >= 3) return true;
+
+  const cached = readCachedShufflePool();
+  if (cached && cached.length >= 3) return true;
+
+  return hasShuffleEverHydrated() && peekPinnedShuffleWindowCount() > 0;
 }
 
 /** Warm handoff may retain source only while deferred reveal has restorable shuffle slots. */
 export function isValidWarmShuffleHandoffActive() {
-  return isShuffleRevealDeferred() && hasRestorableWarmShuffleState();
+  if (!isShuffleRevealDeferred()) return false;
+  if (hasRestorableWarmShuffleState()) return true;
+  return hasShuffleEverHydrated();
+}
+
+function presentShuffleAfterWarmRestore() {
+  if (!canActivateShuffleWarmHandoff()) return false;
+
+  revealShuffleKeepAliveHostSync();
+  presentShuffleSurface();
+  finishShuffleHandoffPreparing();
+  clearShuffleHandoffPendingDom();
+  document.body.classList.add("sayittome-shuffle-route");
+  document.body.classList.add("sayittome-shuffle-surface-active");
+  window.scrollTo(0, 0);
+  notifyKeepAliveListeners();
+  return true;
 }
 
 /** Cold / aborted exit — clear pending retention and present Shuffle normally. */
-export function enterColdShufflePresentation() {
+export function enterColdShufflePresentation(options?: { force?: boolean }) {
   if (typeof window === "undefined") return;
+
+  restorePinnedShuffleWindowSync();
+
+  if (
+    !options?.force &&
+    isShuffleKeepAliveActive() &&
+    hasRestorableWarmShuffleState() &&
+    !isShuffleSurfacePresented()
+  ) {
+    prepareShuffleTabReturn();
+    return;
+  }
+
+  if (
+    !options?.force &&
+    isShuffleKeepAliveActive() &&
+    hasShuffleEverHydrated() &&
+    !isShuffleSurfacePresented() &&
+    !isShuffleRevealDeferred()
+  ) {
+    prepareShuffleWarmTabReturn();
+    if (presentShuffleAfterWarmRestore()) return;
+    return;
+  }
 
   clearShuffleHandoffPendingDom();
   clearShuffleHandoffState();
@@ -238,6 +339,8 @@ export function enterColdShufflePresentation() {
   suppressShuffleWindowRefresh = false;
   prepareShuffleWarmTabReturn();
 
+  if (!options?.force && presentShuffleAfterWarmRestore()) return;
+
   revealShuffleKeepAliveHostSync();
   presentShuffleSurface();
   document.body.classList.add("sayittome-shuffle-route");
@@ -247,13 +350,21 @@ export function enterColdShufflePresentation() {
 }
 
 export function abortShuffleWarmHandoff() {
-  enterColdShufflePresentation();
+  enterColdShufflePresentation({ force: true });
 }
 
 /** PREPARE before router commits — keep origin tab visible until shuffle has a valid frame. */
 export function beginShuffleWarmHandoff(fromPath?: string) {
-  if (typeof window === "undefined" || !keepAliveActive) return false;
-  if (peekPinnedShuffleWindowCount() < 3 && getVisibleShuffleProfiles().length < 3) return false;
+  if (typeof window === "undefined") return false;
+
+  if (!keepAliveActive) {
+    restorePinnedShuffleWindowSync();
+    if (!hasRestorableWarmShuffleState() && !hasShuffleEverHydrated()) return false;
+    pinShuffleKeepAlive();
+  }
+
+  restorePinnedShuffleWindowSync();
+  if (!hasRestorableWarmShuffleState() && !hasShuffleEverHydrated()) return false;
 
   clearPendingVisualTab();
   resetShuffleGeometryStability();
