@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
 import { commitPresentedMainTabIfReady, isMainTabPrimaryReady } from "@/lib/navigation/atomicMainTabHandoff";
@@ -13,15 +13,20 @@ import {
 } from "@/lib/navigation/shuffleHandoffState";
 import {
   activateShuffleTabSurface,
+  abortShuffleWarmHandoff,
   canShowShuffleKeepAliveSurface,
   clearInstantShuffleReturn,
+  enterColdShufflePresentation,
   getShuffleKeepAliveVersion,
+  hasRestorableWarmShuffleState,
   isInstantShuffleReturnPending,
   isShuffleKeepAliveActive,
   isShuffleSourceRetainedForMainTabExit,
+  isValidWarmShuffleHandoffActive,
   pinShuffleKeepAlive,
   pinShuffleWindowWhileAway,
   prepareShuffleTabReturn,
+  reconcileOrphanedShuffleHandoffDom,
   releaseShuffleTabSurface,
   shouldRenderShuffleKeepAliveHost,
   subscribeShuffleKeepAlive,
@@ -30,6 +35,7 @@ import {
   getShuffleWarmReturnVersion,
   observeShuffleGeometryStability,
   resetShuffleGeometryStability,
+  sampleShuffleHandoffGeometry,
   subscribeShuffleWarmReturn,
 } from "@/lib/shuffle/shuffleWarmVisual";
 import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
@@ -67,6 +73,19 @@ export default function ShuffleKeepAliveHost() {
     pinShuffleKeepAlive();
   }, []);
 
+  useEffect(() => {
+    function onPageShow(event: PageTransitionEvent) {
+      if (!event.persisted) return;
+      const path = pathname.split("?")[0].split("#")[0];
+      if (path !== "/shuffle") return;
+      if (isValidWarmShuffleHandoffActive()) return;
+      enterColdShufflePresentation();
+    }
+
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [pathname]);
+
   useLayoutEffect(() => {
     const path = pathname.split("?")[0].split("#")[0];
     const prev = prevPathRef.current.split("?")[0].split("#")[0];
@@ -85,6 +104,18 @@ export default function ShuffleKeepAliveHost() {
         if (handoffLoopRef.current !== loopId) return;
         frames += 1;
 
+        if (!isValidWarmShuffleHandoffActive()) {
+          abortShuffleWarmHandoff();
+          return;
+        }
+
+        const geometry = sampleShuffleHandoffGeometry();
+        const slotCount = Math.max(geometry?.domSlots ?? 0, geometry?.prepDomSlots ?? 0);
+        if (frames > 6 && slotCount < 3) {
+          abortShuffleWarmHandoff();
+          return;
+        }
+
         const stable = observeShuffleGeometryStability();
         ghostFrameWatchInspect(stable ? "shuffle-geometry-stable" : `shuffle-geometry-wait:${frames}`);
 
@@ -96,23 +127,35 @@ export default function ShuffleKeepAliveHost() {
 
         if (frames < HANDOFF_FRAME_BUDGET) {
           requestAnimationFrame(tryActivate);
+        } else {
+          abortShuffleWarmHandoff();
         }
       };
 
       requestAnimationFrame(tryActivate);
     }
 
-    if (
-      path === "/shuffle" &&
-      isShuffleKeepAliveActive() &&
-      !isShuffleSurfacePresented()
-    ) {
-      if (prev !== "/shuffle") {
-        prepareShuffleTabReturn();
-      } else if (!isInstantShuffleReturnPending()) {
-        prepareShuffleTabReturn();
+    if (path === "/shuffle" && isShuffleKeepAliveActive()) {
+      const warmHandoff = isValidWarmShuffleHandoffActive();
+
+      if (!isShuffleSurfacePresented()) {
+        if (prev !== "/shuffle") {
+          const started = warmHandoff || prepareShuffleTabReturn();
+          if (started && hasRestorableWarmShuffleState()) {
+            startHandoffLoop();
+          } else {
+            enterColdShufflePresentation();
+          }
+        } else if (!isInstantShuffleReturnPending()) {
+          if (warmHandoff) {
+            startHandoffLoop();
+          } else {
+            enterColdShufflePresentation();
+          }
+        }
+      } else {
+        reconcileOrphanedShuffleHandoffDom();
       }
-      startHandoffLoop();
     } else if (prev === "/shuffle" && path !== "/shuffle" && isShuffleKeepAliveActive()) {
       handoffLoopRef.current += 1;
       const loopId = handoffLoopRef.current;

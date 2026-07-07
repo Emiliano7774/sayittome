@@ -69,6 +69,7 @@ const LOADING_TEXT_RE = /Cargando\.\.\.|Loading\.\.\./i;
 export type ShuffleGeometrySample = {
   at: number;
   paintedSlots: number;
+  prepDomSlots: number;
   domSlots: number;
   firstSlotKey: string;
   firstSlotRect: { x: number; y: number; w: number; h: number } | null;
@@ -88,10 +89,14 @@ export type ShuffleGeometrySample = {
   prepOpacity: string;
 };
 
-function countPaintedShuffleFeedItems(host: ParentNode) {
+function countPrepDomSlots(host: ParentNode) {
   const list = host.querySelector("[data-shuffle-list]");
   if (!list) return 0;
   return list.querySelectorAll(":scope > *:not(.sayittome-nav-scroll-spacer)").length;
+}
+
+function countPaintedShuffleFeedItems(host: ParentNode) {
+  return countPrepDomSlots(host);
 }
 
 function firstVisibleSlotSummary(host: ParentNode) {
@@ -101,21 +106,19 @@ function firstVisibleSlotSummary(host: ParentNode) {
   const slot = list.querySelector(":scope > *:not(.sayittome-nav-scroll-spacer)");
   if (!slot) return { key: "", rect: null };
 
-  const rect = slot.getBoundingClientRect();
+  const el = slot as HTMLElement;
+  const layoutRect = el.getBoundingClientRect();
+  const w = Math.max(el.offsetWidth, Math.round(layoutRect.width));
+  const h = Math.max(el.offsetHeight, Math.round(layoutRect.height));
   const key =
     slot.getAttribute("data-username") ||
     slot.getAttribute("data-profile-uid") ||
     slot.getAttribute("data-slot-index") ||
-    slot.className.slice(0, 40);
+    "";
 
   return {
     key,
-    rect: {
-      x: Math.round(rect.x),
-      y: Math.round(rect.y),
-      w: Math.round(rect.width),
-      h: Math.round(rect.height),
-    },
+    rect: { x: Math.round(layoutRect.x), y: Math.round(layoutRect.y), w, h },
   };
 }
 
@@ -148,7 +151,11 @@ export function sampleShuffleHandoffGeometry(): ShuffleGeometrySample | null {
   const prep = host.querySelector(".sayittome-shuffle-surface-prep") ?? host;
   const scrollRoot = prep.querySelector("main[data-scroll-root]");
   const feed = prep.querySelector("[data-shuffle-list], [data-nav-shuffle-primary]");
+  const feedEl = feed as HTMLElement | null;
   const feedRect = feed?.getBoundingClientRect();
+  const feedW = Math.max(feedEl?.offsetWidth ?? 0, Math.round(feedRect?.width ?? 0));
+  const feedH = Math.max(feedEl?.offsetHeight ?? 0, Math.round(feedRect?.height ?? 0));
+  const prepDomSlots = countPrepDomSlots(prep);
   const hostRect = host.getBoundingClientRect();
   const hostStyle = getComputedStyle(host);
   const prepStyle = getComputedStyle(prep);
@@ -157,13 +164,12 @@ export function sampleShuffleHandoffGeometry(): ShuffleGeometrySample | null {
 
   return {
     at: Math.round(performance.now()),
-    paintedSlots: countPaintedShuffleFeedItems(prep),
+    paintedSlots: prepDomSlots,
+    prepDomSlots,
     domSlots: getVisibleShuffleProfiles().length,
     firstSlotKey: slot.key,
     firstSlotRect: slot.rect,
-    feedRect: feedRect
-      ? { w: Math.round(feedRect.width), h: Math.round(feedRect.height) }
-      : null,
+    feedRect: feedW > 0 || feedH > 0 ? { w: feedW, h: feedH } : null,
     scrollTop: scrollRoot?.scrollTop ?? 0,
     loadingShellDom: Boolean(prep.querySelector("[data-loading-shell]")),
     loadingTextInHost: loadingTextPaths.length > 0,
@@ -196,15 +202,23 @@ function rectNear(
   );
 }
 
-export function isShuffleGeometrySampleStable(
+export function isShufflePrepGeometryStable(
   previous: ShuffleGeometrySample | null,
   next: ShuffleGeometrySample | null,
 ) {
   if (!previous || !next) return false;
-  if (next.loadingShellDom || next.loadingTextInHost) return false;
-  if (next.paintedSlots <= 0 || next.domSlots <= 0) return false;
+  if (next.loadingShellDom) return false;
+
+  const slotCount = Math.max(next.domSlots, next.prepDomSlots);
+  if (slotCount < 3) return false;
   if (!next.firstSlotRect || next.firstSlotRect.w < 24 || next.firstSlotRect.h < 24) return false;
-  if (!next.feedRect || next.feedRect.h < MIN_FEED_HEIGHT) return false;
+
+  const prepHidden =
+    next.hostVisibility === "hidden" ||
+    next.prepVisibility === "hidden" ||
+    parseFloat(next.hostOpacity) < 0.05;
+  const minFeedHeight = prepHidden ? 48 : MIN_FEED_HEIGHT;
+  if (!next.feedRect || next.feedRect.h < minFeedHeight) return false;
   if (next.firstSlotKey !== previous.firstSlotKey) return false;
   if (next.scrollTop !== previous.scrollTop) return false;
   if (!rectNear(previous.firstSlotRect, next.firstSlotRect)) return false;
@@ -216,6 +230,14 @@ export function isShuffleGeometrySampleStable(
     return false;
   }
   return true;
+}
+
+/** @deprecated Use isShufflePrepGeometryStable for warm handoff PREP. */
+export function isShuffleGeometrySampleStable(
+  previous: ShuffleGeometrySample | null,
+  next: ShuffleGeometrySample | null,
+) {
+  return isShufflePrepGeometryStable(previous, next);
 }
 
 let lastGeometrySample: ShuffleGeometrySample | null = null;
@@ -231,7 +253,7 @@ export function observeShuffleGeometryStability(): boolean {
   const sample = sampleShuffleHandoffGeometry();
   if (!sample) return false;
 
-  const stable = isShuffleGeometrySampleStable(lastGeometrySample, sample);
+  const stable = isShufflePrepGeometryStable(lastGeometrySample, sample);
   lastGeometrySample = sample;
   if (stable) {
     stableGeometrySample = sample;
@@ -246,9 +268,15 @@ export function getStableShuffleGeometrySample() {
   return stableGeometrySample;
 }
 
-/** True when hidden prep surface has stable painted feed geometry. */
+/** True when hidden prep surface has stable DOM/layout geometry (not paint). */
 export function isShuffleVisualHandoffReady() {
   return stableGeometrySample !== null;
+}
+
+export function canActivateShuffleWarmHandoff() {
+  const sample = sampleShuffleHandoffGeometry();
+  if (!sample) return false;
+  return Math.max(sample.domSlots, sample.prepDomSlots) >= 3;
 }
 
 export function countPaintedShuffleSlots() {

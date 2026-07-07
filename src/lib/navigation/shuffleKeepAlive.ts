@@ -19,11 +19,20 @@ import {
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import {
+  beginNavCaptureSequence,
+  markNavCaptureDetail,
+  setNavCapturePhase,
+  setNavCaptureSurface,
+} from "@/lib/perf/navCaptureDiag";
+import {
   isShuffleVisualHandoffReady,
+  canActivateShuffleWarmHandoff,
   prepareShuffleWarmTabReturn,
   resetShuffleGeometryStability,
   setShuffleHandoffPreparing,
 } from "@/lib/shuffle/shuffleWarmVisual";
+import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
+import { peekPinnedShuffleWindowCount } from "@/lib/shuffle/shufflePinnedWindow";
 
 export {
   getShuffleDeferSourcePath,
@@ -62,12 +71,36 @@ export function isShuffleKeepAliveActive() {
   return keepAliveActive;
 }
 
+export function reconcileStaleShuffleHandoffState() {
+  if (typeof window === "undefined") return;
+  if (normalizePath(window.location.pathname) !== "/shuffle") return;
+  if (isValidWarmShuffleHandoffActive()) return;
+
+  const pendingDom = document.documentElement.classList.contains("sayittome-shuffle-handoff-pending");
+  if (
+    pendingDom ||
+    isShuffleRevealDeferred() ||
+    !isShuffleSurfacePresented()
+  ) {
+    enterColdShufflePresentation();
+  }
+}
+
+function reconcileShuffleRouteEntry() {
+  reconcileStaleShuffleHandoffState();
+}
+
 /** Pin the shuffle tree before leaving /shuffle so it stays mounted under chat/profile. */
 export function pinShuffleKeepAlive() {
-  if (keepAliveActive) return;
-  keepAliveActive = true;
-  pinMainTabKeepAlive();
-  notifyKeepAliveListeners();
+  const wasActive = keepAliveActive;
+  if (!keepAliveActive) {
+    keepAliveActive = true;
+    pinMainTabKeepAlive();
+    notifyKeepAliveListeners();
+  }
+  if (!wasActive || normalizePath(window.location?.pathname ?? "") === "/shuffle") {
+    reconcileShuffleRouteEntry();
+  }
 }
 
 export function maybePinShuffleKeepAliveFromPath(pathname: string) {
@@ -114,14 +147,39 @@ export function pinShuffleWindowWhileAway() {
   suppressShuffleWindowRefresh = true;
 }
 
+let staleHandoffSweepId = 0;
+
+function scheduleStaleHandoffSweep() {
+  if (typeof window === "undefined" || staleHandoffSweepId) return;
+  staleHandoffSweepId = requestAnimationFrame(function sweepStaleHandoff() {
+    staleHandoffSweepId = 0;
+    if (normalizePath(window.location.pathname) !== "/shuffle") return;
+
+    reconcileStaleShuffleHandoffState();
+
+    const pendingDom = document.documentElement.classList.contains("sayittome-shuffle-handoff-pending");
+    if (pendingDom && !isValidWarmShuffleHandoffActive()) {
+      scheduleStaleHandoffSweep();
+    }
+  });
+}
+
 function markShuffleHandoffPendingDom() {
   if (typeof document === "undefined") return;
   document.documentElement.classList.add("sayittome-shuffle-handoff-pending");
+  scheduleStaleHandoffSweep();
 }
 
 function clearShuffleHandoffPendingDom() {
   if (typeof document === "undefined") return;
   document.documentElement.classList.remove("sayittome-shuffle-handoff-pending");
+}
+
+export function reconcileOrphanedShuffleHandoffDom() {
+  if (typeof document === "undefined") return;
+  if (!document.documentElement.classList.contains("sayittome-shuffle-handoff-pending")) return;
+  if (isValidWarmShuffleHandoffActive()) return;
+  clearShuffleHandoffPendingDom();
 }
 
 function revealShuffleKeepAliveHostSync() {
@@ -155,9 +213,47 @@ export function finishShuffleHandoffPreparing() {
   setShuffleHandoffPreparing(false);
 }
 
+export function hasRestorableWarmShuffleState() {
+  return (
+    getVisibleShuffleProfiles().length >= 3 ||
+    peekPinnedShuffleWindowCount() >= 3
+  );
+}
+
+/** Warm handoff may retain source only while deferred reveal has restorable shuffle slots. */
+export function isValidWarmShuffleHandoffActive() {
+  return isShuffleRevealDeferred() && hasRestorableWarmShuffleState();
+}
+
+/** Cold / aborted exit — clear pending retention and present Shuffle normally. */
+export function enterColdShufflePresentation() {
+  if (typeof window === "undefined") return;
+
+  clearShuffleHandoffPendingDom();
+  clearShuffleHandoffState();
+  finishShuffleHandoffPreparing();
+  resetAtomicVisualHandoff();
+  resetShuffleGeometryStability();
+  releaseShuffleWindowRefreshSuppression();
+  suppressShuffleWindowRefresh = false;
+  prepareShuffleWarmTabReturn();
+
+  revealShuffleKeepAliveHostSync();
+  presentShuffleSurface();
+  document.body.classList.add("sayittome-shuffle-route");
+  document.body.classList.add("sayittome-shuffle-surface-active");
+  window.scrollTo(0, 0);
+  notifyKeepAliveListeners();
+}
+
+export function abortShuffleWarmHandoff() {
+  enterColdShufflePresentation();
+}
+
 /** PREPARE before router commits — keep origin tab visible until shuffle has a valid frame. */
 export function beginShuffleWarmHandoff(fromPath?: string) {
-  if (typeof window === "undefined" || !keepAliveActive) return;
+  if (typeof window === "undefined" || !keepAliveActive) return false;
+  if (peekPinnedShuffleWindowCount() < 3 && getVisibleShuffleProfiles().length < 3) return false;
 
   clearPendingVisualTab();
   resetShuffleGeometryStability();
@@ -166,24 +262,29 @@ export function beginShuffleWarmHandoff(fromPath?: string) {
   beginShuffleRevealDeferred(fromPath || "/chats");
   setShuffleHandoffPreparing(true);
   markShuffleHandoffPendingDom();
+  beginNavCaptureSequence("chats-to-shuffle");
+  setNavCapturePhase("PREPARING_SHUFFLE", fromPath || "/chats");
+  setNavCaptureSurface("CHATS", "source-retained");
 
   if (isNavTraceEnabled()) {
     navTraceMarkDetail("shuffle-handoff-prepare");
   }
 
   notifyKeepAliveListeners();
+  return true;
 }
-
-/** PREPARE on route commit — restore slots while origin tab stays visible. */
-export function prepareShuffleTabReturn() {
-  if (typeof window === "undefined" || !keepAliveActive) return;
+export function prepareShuffleTabReturn(): boolean {
+  if (typeof window === "undefined" || !keepAliveActive) return false;
+  if (!hasRestorableWarmShuffleState()) return false;
 
   suppressShuffleWindowRefresh = true;
   releaseChatViewportLock();
   resetShuffleGeometryStability();
   beginAtomicVisualHandoff();
   prepareShuffleWarmTabReturn();
-  beginShuffleRevealDeferred(getShuffleDeferSourcePath());
+  if (!isShuffleRevealDeferred()) {
+    beginShuffleRevealDeferred(getShuffleDeferSourcePath());
+  }
   setShuffleHandoffPreparing(true);
   markShuffleHandoffPendingDom();
 
@@ -192,23 +293,32 @@ export function prepareShuffleTabReturn() {
   }
 
   notifyKeepAliveListeners();
+  return true;
 }
 
 /** ATOMIC ACTIVATE — single sync block: reveal shuffle, then hide source. */
 export function activateShuffleTabSurface(options?: { force?: boolean }) {
   if (typeof window === "undefined") return;
-  if (!options?.force && !isShuffleVisualHandoffReady()) return;
+  const warmReady = canActivateShuffleWarmHandoff();
+  if (!options?.force && !warmReady && !isShuffleVisualHandoffReady()) return;
 
   markAtomicVisualHandoffReady();
 
   const revealed = revealShuffleKeepAliveHostSync();
   if (!revealed && !options?.force) return;
 
+  setNavCapturePhase("SWAPPING_SHUFFLE");
+  markNavCaptureDetail("imperative-reveal-shuffle-host");
+
   presentShuffleSurface();
   finishShuffleHandoffPreparing();
   commitAtomicVisualHandoff();
+  setNavCapturePhase("SHUFFLE_PRESENTED");
+  setNavCaptureSurface("SHUFFLE");
 
+  markNavCaptureDetail("body-class-shuffle-route");
   document.body.classList.add("sayittome-shuffle-route");
+  markNavCaptureDetail("body-class-shuffle-surface-active");
   document.body.classList.add("sayittome-shuffle-surface-active");
   clearShuffleHandoffPendingDom();
   window.scrollTo(0, 0);
@@ -277,4 +387,20 @@ export function clearInstantShuffleReturn() {
   instantReturnPending = false;
   notifyKeepAliveListeners();
   document.documentElement.classList.remove("sayittome-shuffle-return-pending");
+}
+
+if (typeof window !== "undefined") {
+  const runStaleHandoffReconcile = () => {
+    reconcileStaleShuffleHandoffState();
+    scheduleStaleHandoffSweep();
+  };
+
+  queueMicrotask(runStaleHandoffReconcile);
+  window.addEventListener("pageshow", runStaleHandoffReconcile);
+  window.addEventListener("focus", runStaleHandoffReconcile);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      runStaleHandoffReconcile();
+    }
+  });
 }

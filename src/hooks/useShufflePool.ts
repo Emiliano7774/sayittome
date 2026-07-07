@@ -77,6 +77,7 @@ import {
   releaseShuffleWindowRefreshSuppression,
   shouldSuppressShuffleWindowRefresh,
 } from "@/lib/navigation/shuffleKeepAlive";
+import { isShuffleRevealDeferred } from "@/lib/navigation/shuffleHandoffState";
 
 function readInitialShuffleState() {
   const cachedProfiles = readCachedShufflePool() ?? [];
@@ -244,6 +245,10 @@ export function useShufflePool() {
     const wasFrozen = prevShuffleFrozenRef.current;
     prevShuffleFrozenRef.current = shuffleFeedFrozen;
 
+    if (isShuffleRevealDeferred() && getVisibleShuffleProfiles().length === 0) {
+      restorePinnedShuffleWindowSync();
+    }
+
     if (!wasFrozen && shuffleFeedFrozen) {
       const regularCount = Math.max(0, windowCountRef.current - featuredRef.current.length);
       capturePinnedShuffleWindow(
@@ -252,6 +257,9 @@ export function useShufflePool() {
         windowIndicesRef.current,
         regularCount,
       );
+      if (isShuffleRevealDeferred() && getVisibleShuffleProfiles().length === 0) {
+        restorePinnedShuffleWindowSync();
+      }
       return;
     }
 
