@@ -249,6 +249,7 @@ export function canShowShuffleKeepAliveSurface(pathname: string) {
   if (!isShuffleKeepAliveVisible(pathname)) return false;
   if (isShuffleRevealDeferred()) return false;
   if (!keepAliveActive) return true;
+  if (isShuffleKeepAliveVisible(pathname) && isShuffleSurfacePresented()) return true;
   if (!isShuffleSurfacePresented()) return false;
   if (!isShuffleVisualHandoffReady()) return false;
   return true;
