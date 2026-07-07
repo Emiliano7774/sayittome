@@ -7,15 +7,11 @@ import { useEffect, useState } from "react";
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
   isMonetagBodyBlocked,
-  shouldLoadMonetagInPagePush,
   shouldLoadMonetagVignette,
 } from "@/lib/monetization/adSurfaces";
 import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
 import { logMonetag } from "@/lib/monetization/monetagDev";
-import {
-  MONETAG_IN_PAGE_PUSH,
-  MONETAG_VIGNETTE_BANNER,
-} from "@/lib/monetization/monetagZones";
+import { MONETAG_VIGNETTE_BANNER } from "@/lib/monetization/monetagZones";
 
 declare global {
   interface Window {
@@ -24,7 +20,7 @@ declare global {
 }
 
 /**
- * Monetag — In-Page Push + Vignette Banner (web only).
+ * Monetag — Vignette Banner (web only).
  * Never loads on login/register/admin/chat or sensitive overlays.
  */
 export default function MonetagScripts() {
@@ -59,18 +55,16 @@ export default function MonetagScripts() {
     return null;
   }
 
-  const enabled = shouldLoadMonetagInPagePush(pathname) && !uiBlocked;
   const vignetteEnabled =
     shouldLoadMonetagVignette(pathname) && !uiBlocked && nativeVignetteReady;
 
   useEffect(() => {
-    logMonetag(enabled ? "global-enabled" : "global-blocked", {
+    logMonetag(vignetteEnabled ? "vignette-enabled" : "vignette-blocked", {
       pathname,
       uiBlocked,
       vignetteEnabled,
-      inPagePush: enabled,
     });
-  }, [enabled, pathname, uiBlocked, vignetteEnabled]);
+  }, [pathname, uiBlocked, vignetteEnabled]);
 
   useEffect(() => {
     if (!vignetteEnabled) {
@@ -89,9 +83,7 @@ export default function MonetagScripts() {
     if (process.env.NODE_ENV !== "development") return;
 
     const report = () => {
-      const scripts = document.querySelectorAll(
-        'script[src*="nap5k"], script[src*="n6wxm"]',
-      ).length;
+      const scripts = document.querySelectorAll('script[src*="n6wxm"]').length;
       logMonetag("dev-check", {
         pathname,
         scriptCount: scripts,
@@ -102,47 +94,33 @@ export default function MonetagScripts() {
 
     const timer = window.setTimeout(report, 2500);
     return () => window.clearTimeout(timer);
-  }, [pathname, enabled, vignetteEnabled]);
+  }, [pathname, vignetteEnabled]);
 
-  if (!enabled) {
+  if (!vignetteEnabled) {
     return null;
   }
 
   return (
     <>
       <Script
-        id="monetag-inpage-push-zone"
+        id="monetag-vignette-init"
         strategy="lazyOnload"
         dangerouslySetInnerHTML={{
           __html: `window.sayittomeMonetagLoaded=window.sayittomeMonetagLoaded||{};`,
         }}
       />
       <Script
-        id="monetag-inpage-push"
-        src={MONETAG_IN_PAGE_PUSH.src}
+        id="monetag-vignette-banner"
+        src={MONETAG_VIGNETTE_BANNER.src}
         strategy="lazyOnload"
         data-cfasync="false"
-        data-zone={MONETAG_IN_PAGE_PUSH.zoneId}
+        data-zone={MONETAG_VIGNETTE_BANNER.zoneId}
         onLoad={() => {
           window.sayittomeMonetagLoaded = window.sayittomeMonetagLoaded || {};
-          window.sayittomeMonetagLoaded.inPagePush = true;
-          logMonetag("in-page-push-loaded", { zone: MONETAG_IN_PAGE_PUSH.zoneId });
+          window.sayittomeMonetagLoaded.vignette = true;
+          logMonetag("vignette-loaded", { zone: MONETAG_VIGNETTE_BANNER.zoneId });
         }}
       />
-      {vignetteEnabled ? (
-        <Script
-          id="monetag-vignette-banner"
-          src={MONETAG_VIGNETTE_BANNER.src}
-          strategy="lazyOnload"
-          data-cfasync="false"
-          data-zone={MONETAG_VIGNETTE_BANNER.zoneId}
-          onLoad={() => {
-            window.sayittomeMonetagLoaded = window.sayittomeMonetagLoaded || {};
-            window.sayittomeMonetagLoaded.vignette = true;
-            logMonetag("vignette-loaded", { zone: MONETAG_VIGNETTE_BANNER.zoneId });
-          }}
-        />
-      ) : null}
     </>
   );
 }

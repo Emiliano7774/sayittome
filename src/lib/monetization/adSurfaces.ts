@@ -1,4 +1,3 @@
-import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
 
 /** Routes where third-party ad scripts must not load (chat, auth, admin). */
@@ -54,24 +53,8 @@ export function shouldLoadWebAds(pathname: string) {
   return isBaseMonetagAllowed(pathname);
 }
 
-/**
- * Global Monetag In-Page Push.
- * Web shuffle uses inline feed slots instead; native APK still gets global IPP on shuffle.
- */
-export function shouldLoadMonetagInPagePush(pathname: string) {
-  if (!isBaseMonetagAllowed(pathname)) {
-    return false;
-  }
-
-  if (isShuffleRoute(pathname) && !isNativeAppShell()) {
-    return false;
-  }
-
-  return true;
-}
-
 export function shouldLoadMonetagVignette(pathname: string) {
-  if (!shouldLoadMonetagInPagePush(pathname)) {
+  if (!isBaseMonetagAllowed(pathname)) {
     return false;
   }
 
@@ -86,13 +69,5 @@ export function shouldLoadMonetagVignette(pathname: string) {
     return false;
   }
 
-  return true;
-}
-
-/** Inline Monetag slots inside shuffle feed (web browser only). */
-export function shouldLoadMonetagShuffleInline(pathname: string) {
-  if (!isBaseMonetagAllowed(pathname)) return false;
-  if (!isShuffleRoute(pathname)) return false;
-  if (isNativeAppShell()) return false;
   return true;
 }

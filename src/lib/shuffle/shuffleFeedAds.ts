@@ -1,18 +1,13 @@
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { areFeedAdsEnabled, SHUFFLE_FEED_AD_INTERVAL } from "@/lib/monetization/ads";
 import {
-  isMonetagWebEnabled,
   SHUFFLE_MONETAG_AD_INTERVAL,
 } from "@/lib/monetization/monetagConfig";
 
 const SHUFFLE_AD_INTERVAL = SHUFFLE_MONETAG_AD_INTERVAL;
 
-export function shouldShowShuffleMonetagAds(profileCount: number) {
-  return (
-    isMonetagWebEnabled() &&
-    !isNativeAppShell() &&
-    profileCount >= SHUFFLE_MONETAG_AD_INTERVAL
-  );
+export function shouldShowShuffleMonetagAds(_profileCount: number) {
+  return false;
 }
 
 export function shouldShowShuffleNativeAds(profileCount: number) {
