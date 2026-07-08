@@ -72,7 +72,7 @@ export function shouldLoadWebAds(pathname: string) {
 }
 
 /**
- * Vignette-eligible surfaces (zone 11011520).
+ * Vignette-eligible surfaces (Monetag vignette zones).
  * Includes /shuffle and main tabs; excludes auth, admin, and chat surfaces.
  */
 export function isVignetteSurfaceEligible(pathname: string) {

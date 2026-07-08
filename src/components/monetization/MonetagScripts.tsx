@@ -11,23 +11,52 @@ import {
 } from "@/lib/monetization/adSurfaces";
 import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
 import { logMonetag } from "@/lib/monetization/monetagDev";
-import { MONETAG_VIGNETTE_BANNER } from "@/lib/monetization/monetagZones";
+import {
+  MONETAG_PUSH_ZONE,
+  MONETAG_VIGNETTE_ZONES,
+  officialVignetteIife,
+  type MonetagVignetteZoneId,
+} from "@/lib/monetization/monetagZones";
 import {
   attachVignetteExposureAuditExports,
+  tryRecordMonetagZoneExposure,
   tryRecordVignetteExposure,
 } from "@/lib/monetization/vignetteExposureAudit";
 
 declare global {
   interface Window {
-    sayittomeMonetagLoaded?: Record<string, boolean>;
+    sayittomeMonetagLoaded?: {
+      loadedVignetteZones?: Partial<Record<MonetagVignetteZoneId, boolean>>;
+      loadedPushZones?: Partial<Record<string, boolean>>;
+      /** @deprecated Use loadedVignetteZones["11011520"] */
+      vignette?: boolean;
+    };
     exportVignetteExposureAudit?: () => unknown[];
     exportVignetteOpportunityAudit?: () => unknown[];
+    exportMonetagExposureAudit?: () => unknown[];
   }
 }
 
+function markVignetteZoneLoaded(zoneId: MonetagVignetteZoneId) {
+  window.sayittomeMonetagLoaded = window.sayittomeMonetagLoaded || {};
+  window.sayittomeMonetagLoaded.loadedVignetteZones =
+    window.sayittomeMonetagLoaded.loadedVignetteZones || {};
+  window.sayittomeMonetagLoaded.loadedVignetteZones[zoneId] = true;
+  if (zoneId === "11011520") {
+    window.sayittomeMonetagLoaded.vignette = true;
+  }
+}
+
+function markPushZoneLoaded(zoneId: string) {
+  window.sayittomeMonetagLoaded = window.sayittomeMonetagLoaded || {};
+  window.sayittomeMonetagLoaded.loadedPushZones =
+    window.sayittomeMonetagLoaded.loadedPushZones || {};
+  window.sayittomeMonetagLoaded.loadedPushZones[zoneId] = true;
+}
+
 /**
- * Monetag Vignette Banner (zone 11011520, web only).
- * Official script lifecycle only — Monetag controls real ad frequency.
+ * Monetag web zones (Vignette 11011520/11255233/11255234 + Push 11255229).
+ * Official script lifecycle only — Monetag controls real delivery frequency.
  */
 export default function MonetagScripts() {
   const pathname = usePathname();
@@ -70,6 +99,7 @@ export default function MonetagScripts() {
   const surfaceEligible = isVignetteSurfaceEligible(pathname);
   const vignetteEnabled =
     surfaceEligible && !uiBlocked && nativeVignetteReady;
+  const pushEnabled = !isNativeAppShell();
 
   useEffect(() => {
     if (!isMonetagWebEnabled()) return;
@@ -124,8 +154,9 @@ export default function MonetagScripts() {
       uiBlocked,
       vignetteEnabled,
       surfaceEligible,
+      pushEnabled,
     });
-  }, [pathname, uiBlocked, vignetteEnabled, surfaceEligible]);
+  }, [pathname, uiBlocked, vignetteEnabled, surfaceEligible, pushEnabled]);
 
   useEffect(() => {
     if (!vignetteEnabled) {
@@ -157,38 +188,84 @@ export default function MonetagScripts() {
     return () => window.clearTimeout(timer);
   }, [pathname, vignetteEnabled]);
 
-  if (!vignetteEnabled) {
-    return null;
-  }
+  const buildExposureInput = () => ({
+    pathname,
+    documentHidden: typeof document !== "undefined" ? document.hidden : false,
+    overlayBlocked: uiBlocked,
+    nativeVignetteReady,
+  });
 
   return (
     <>
       <Script
-        id="monetag-vignette-init"
+        id="monetag-loaded-init"
         strategy="lazyOnload"
         dangerouslySetInnerHTML={{
-          __html: `window.sayittomeMonetagLoaded=window.sayittomeMonetagLoaded||{};`,
+          __html:
+            "window.sayittomeMonetagLoaded=window.sayittomeMonetagLoaded||{};window.sayittomeMonetagLoaded.loadedVignetteZones=window.sayittomeMonetagLoaded.loadedVignetteZones||{};window.sayittomeMonetagLoaded.loadedPushZones=window.sayittomeMonetagLoaded.loadedPushZones||{};",
         }}
       />
-      <Script
-        id="monetag-vignette-banner"
-        src={MONETAG_VIGNETTE_BANNER.src}
-        strategy="lazyOnload"
-        data-cfasync="false"
-        data-zone={MONETAG_VIGNETTE_BANNER.zoneId}
-        onLoad={() => {
-          window.sayittomeMonetagLoaded = window.sayittomeMonetagLoaded || {};
-          window.sayittomeMonetagLoaded.vignette = true;
-          logMonetag("vignette-loaded", { zone: MONETAG_VIGNETTE_BANNER.zoneId });
-          tryRecordVignetteExposure({
-            pathname,
-            trigger: "script-on-load",
-            documentHidden: document.hidden,
-            overlayBlocked: uiBlocked,
-            nativeVignetteReady,
-          });
-        }}
-      />
+
+      {vignetteEnabled &&
+        MONETAG_VIGNETTE_ZONES.map((zone) => {
+          if (zone.integration === "next-script") {
+            return (
+              <Script
+                key={zone.zoneId}
+                id={zone.scriptId}
+                src={zone.src}
+                strategy="lazyOnload"
+                data-cfasync="false"
+                data-zone={zone.zoneId}
+                onLoad={() => {
+                  markVignetteZoneLoaded(zone.zoneId);
+                  logMonetag("vignette-loaded", { zone: zone.zoneId });
+                  tryRecordMonetagZoneExposure(zone.zoneId, {
+                    ...buildExposureInput(),
+                    trigger: "script-on-load",
+                  });
+                }}
+              />
+            );
+          }
+
+          return (
+            <Script
+              key={zone.zoneId}
+              id={zone.scriptId}
+              strategy="lazyOnload"
+              dangerouslySetInnerHTML={{
+                __html: officialVignetteIife(zone.zoneId),
+              }}
+              onLoad={() => {
+                markVignetteZoneLoaded(zone.zoneId);
+                logMonetag("vignette-iife-installed", { zone: zone.zoneId });
+                tryRecordMonetagZoneExposure(zone.zoneId, {
+                  ...buildExposureInput(),
+                  trigger: "script-on-load",
+                });
+              }}
+            />
+          );
+        })}
+
+      {pushEnabled ? (
+        <Script
+          id={MONETAG_PUSH_ZONE.scriptId}
+          src={MONETAG_PUSH_ZONE.src}
+          strategy="lazyOnload"
+          data-cfasync="false"
+          async
+          onLoad={() => {
+            markPushZoneLoaded(MONETAG_PUSH_ZONE.zoneId);
+            logMonetag("push-loaded", { zone: MONETAG_PUSH_ZONE.zoneId });
+            tryRecordMonetagZoneExposure(MONETAG_PUSH_ZONE.zoneId, {
+              ...buildExposureInput(),
+              trigger: "script-on-load",
+            });
+          }}
+        />
+      ) : null}
     </>
   );
 }

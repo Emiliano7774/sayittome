@@ -4,7 +4,12 @@ import {
   resolveVignetteSurface,
 } from "@/lib/monetization/adSurfaces";
 import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
-import { MONETAG_VIGNETTE_BANNER } from "@/lib/monetization/monetagZones";
+import {
+  MONETAG_PUSH_ZONE,
+  MONETAG_VIGNETTE_SRC,
+  MONETAG_VIGNETTE_ZONES,
+  type MonetagVignetteZoneId,
+} from "@/lib/monetization/monetagZones";
 
 export type VignetteLifecycleTrigger =
   | "initial-surface"
@@ -12,6 +17,8 @@ export type VignetteLifecycleTrigger =
   | "visibility-restored"
   | "overlay-change"
   | "script-on-load";
+
+export type MonetagExposureFormat = "vignette" | "push";
 
 export type VignetteExposureInput = {
   pathname: string;
@@ -36,9 +43,12 @@ export type VignetteExposureSnapshot = {
   scriptElementExists: boolean;
   scriptLoadedKnown: boolean;
   zoneId: string;
+  format: MonetagExposureFormat;
+  serviceWorkerExpected: boolean;
+  serviceWorkerAvailable: boolean;
 };
 
-const RING_MAX = 120;
+const RING_MAX = 240;
 const RING_KEY = "__vignetteExposureAuditRing";
 const SESSION_ENABLED_KEY = "sayittome:vignette-exposure-audit-session";
 
@@ -79,14 +89,35 @@ function persistAuditSession() {
   }
 }
 
-function scriptElementExists() {
+function vignetteScriptElementExists(zoneId: MonetagVignetteZoneId) {
   if (typeof document === "undefined") return false;
-  return Boolean(document.querySelector('script[src*="n6wxm.com/vignette.min.js"]'));
+  return Boolean(
+    document.querySelector(`script[data-zone="${zoneId}"][src="${MONETAG_VIGNETTE_SRC}"]`) ||
+      document.querySelector(`script#${MONETAG_VIGNETTE_ZONES.find((zone) => zone.zoneId === zoneId)?.scriptId ?? ""}`),
+  );
 }
 
-function scriptLoadedKnown() {
+function pushScriptElementExists() {
+  if (typeof document === "undefined") return false;
+  return Boolean(
+    document.querySelector(`script[src="${MONETAG_PUSH_ZONE.src}"]`) ||
+      document.getElementById(MONETAG_PUSH_ZONE.scriptId),
+  );
+}
+
+function vignetteScriptLoadedKnown(zoneId: MonetagVignetteZoneId) {
   if (typeof window === "undefined") return false;
-  return window.sayittomeMonetagLoaded?.vignette === true;
+  return window.sayittomeMonetagLoaded?.loadedVignetteZones?.[zoneId] === true;
+}
+
+function pushScriptLoadedKnown() {
+  if (typeof window === "undefined") return false;
+  return window.sayittomeMonetagLoaded?.loadedPushZones?.[MONETAG_PUSH_ZONE.zoneId] === true;
+}
+
+function serviceWorkerApiAvailable() {
+  if (typeof navigator === "undefined") return false;
+  return "serviceWorker" in navigator;
 }
 
 export function isVignetteExposureAuditEnabled() {
@@ -102,11 +133,10 @@ export function isVignetteExposureAuditEnabled() {
   }
 }
 
-/**
- * Describes whether our integration allows the official vignette script to be present.
- * Does NOT communicate with Monetag and does not control ad delivery frequency.
- */
-export function evaluateVignetteExposure(input: VignetteExposureInput): VignetteExposureSnapshot {
+function evaluateVignetteZoneExposure(
+  zoneId: MonetagVignetteZoneId,
+  input: VignetteExposureInput,
+): VignetteExposureSnapshot {
   const timestamp = input.now ?? Date.now();
   const pathname = String(input.pathname || "/");
   const surface = resolveVignetteSurface(pathname);
@@ -145,10 +175,66 @@ export function evaluateVignetteExposure(input: VignetteExposureInput): Vignette
     overlayBlocked,
     monetagWebEnabled,
     nativeVignetteReady,
-    scriptElementExists: scriptElementExists(),
-    scriptLoadedKnown: scriptLoadedKnown(),
-    zoneId: MONETAG_VIGNETTE_BANNER.zoneId,
+    scriptElementExists: vignetteScriptElementExists(zoneId),
+    scriptLoadedKnown: vignetteScriptLoadedKnown(zoneId),
+    zoneId,
+    format: "vignette",
+    serviceWorkerExpected: false,
+    serviceWorkerAvailable: false,
   };
+}
+
+function evaluatePushZoneExposure(input: VignetteExposureInput): VignetteExposureSnapshot {
+  const timestamp = input.now ?? Date.now();
+  const pathname = String(input.pathname || "/");
+  const surface = resolveVignetteSurface(pathname);
+  const documentHidden = input.documentHidden ?? (typeof document !== "undefined" && document.hidden);
+  const monetagWebEnabled = isMonetagWebEnabled();
+
+  let blockedReason: string | null = null;
+  let vignetteEligible = false;
+
+  if (!monetagWebEnabled) {
+    blockedReason = "monetag-disabled";
+  } else if (documentHidden) {
+    blockedReason = "document-hidden";
+  } else {
+    vignetteEligible = true;
+  }
+
+  return {
+    timestamp,
+    pathname,
+    surface,
+    trigger: input.trigger,
+    vignetteEligible,
+    blockedReason,
+    documentHidden,
+    overlayBlocked: false,
+    monetagWebEnabled,
+    nativeVignetteReady: true,
+    scriptElementExists: pushScriptElementExists(),
+    scriptLoadedKnown: pushScriptLoadedKnown(),
+    zoneId: MONETAG_PUSH_ZONE.zoneId,
+    format: "push",
+    serviceWorkerExpected: true,
+    serviceWorkerAvailable: serviceWorkerApiAvailable(),
+  };
+}
+
+/**
+ * Describes whether our integration allows the official Monetag scripts to be present.
+ * Does NOT communicate with Monetag and does not control ad delivery frequency.
+ */
+export function evaluateVignetteExposure(input: VignetteExposureInput): VignetteExposureSnapshot {
+  return evaluateVignetteZoneExposure(MONETAG_VIGNETTE_ZONES[0].zoneId, input);
+}
+
+export function evaluateMonetagExposureSnapshots(input: VignetteExposureInput): VignetteExposureSnapshot[] {
+  const vignetteSnapshots = MONETAG_VIGNETTE_ZONES.map((zone) =>
+    evaluateVignetteZoneExposure(zone.zoneId, input),
+  );
+  return [...vignetteSnapshots, evaluatePushZoneExposure(input)];
 }
 
 export function recordVignetteExposureAudit(snapshot: VignetteExposureSnapshot) {
@@ -157,12 +243,26 @@ export function recordVignetteExposureAudit(snapshot: VignetteExposureSnapshot) 
   writeRing();
 
   if (process.env.NODE_ENV === "development") {
-    console.info("[vignette-exposure]", snapshot);
+    console.info("[monetag-exposure]", snapshot);
   }
 }
 
 export function tryRecordVignetteExposure(input: VignetteExposureInput): VignetteExposureSnapshot {
-  const snapshot = evaluateVignetteExposure(input);
+  const snapshots = evaluateMonetagExposureSnapshots(input);
+  for (const snapshot of snapshots) {
+    recordVignetteExposureAudit(snapshot);
+  }
+  return snapshots[0];
+}
+
+export function tryRecordMonetagZoneExposure(
+  zoneId: string,
+  input: VignetteExposureInput,
+): VignetteExposureSnapshot {
+  const snapshot =
+    zoneId === MONETAG_PUSH_ZONE.zoneId
+      ? evaluatePushZoneExposure(input)
+      : evaluateVignetteZoneExposure(zoneId as MonetagVignetteZoneId, input);
   recordVignetteExposureAudit(snapshot);
   return snapshot;
 }
@@ -188,9 +288,11 @@ export function attachVignetteExposureAuditExports() {
   const win = window as unknown as {
     exportVignetteExposureAudit?: () => VignetteExposureSnapshot[];
     exportVignetteOpportunityAudit?: () => VignetteExposureSnapshot[];
+    exportMonetagExposureAudit?: () => VignetteExposureSnapshot[];
     __resetVignetteExposureAudit?: () => void;
   };
   win.exportVignetteExposureAudit = exportVignetteExposureAudit;
   win.exportVignetteOpportunityAudit = exportVignetteExposureAudit;
+  win.exportMonetagExposureAudit = exportVignetteExposureAudit;
   win.__resetVignetteExposureAudit = resetVignetteExposureAudit;
 }
