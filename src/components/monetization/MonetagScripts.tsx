@@ -2,26 +2,32 @@
 
 import Script from "next/script";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
   isMonetagBodyBlocked,
-  shouldLoadMonetagVignette,
+  isVignetteSurfaceEligible,
 } from "@/lib/monetization/adSurfaces";
 import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
 import { logMonetag } from "@/lib/monetization/monetagDev";
 import { MONETAG_VIGNETTE_BANNER } from "@/lib/monetization/monetagZones";
+import {
+  attachVignetteExposureAuditExports,
+  tryRecordVignetteExposure,
+} from "@/lib/monetization/vignetteExposureAudit";
 
 declare global {
   interface Window {
     sayittomeMonetagLoaded?: Record<string, boolean>;
+    exportVignetteExposureAudit?: () => unknown[];
+    exportVignetteOpportunityAudit?: () => unknown[];
   }
 }
 
 /**
- * Monetag — Vignette Banner (web only).
- * Never loads on login/register/admin/chat or sensitive overlays.
+ * Monetag Vignette Banner (zone 11011520, web only).
+ * Official script lifecycle only — Monetag controls real ad frequency.
  */
 export default function MonetagScripts() {
   const pathname = usePathname();
@@ -29,6 +35,12 @@ export default function MonetagScripts() {
   const [nativeVignetteReady, setNativeVignetteReady] = useState(
     () => typeof window !== "undefined" && !isNativeAppShell(),
   );
+  const lastPathnameRef = useRef<string | null>(null);
+  const initialRecordedRef = useRef(false);
+
+  useEffect(() => {
+    attachVignetteExposureAuditExports();
+  }, []);
 
   useEffect(() => {
     if (!isNativeAppShell()) return;
@@ -55,16 +67,65 @@ export default function MonetagScripts() {
     return null;
   }
 
+  const surfaceEligible = isVignetteSurfaceEligible(pathname);
   const vignetteEnabled =
-    shouldLoadMonetagVignette(pathname) && !uiBlocked && nativeVignetteReady;
+    surfaceEligible && !uiBlocked && nativeVignetteReady;
+
+  useEffect(() => {
+    if (!isMonetagWebEnabled()) return;
+
+    const record = (trigger: "initial-surface" | "pathname-commit" | "overlay-change") => {
+      tryRecordVignetteExposure({
+        pathname,
+        trigger,
+        documentHidden: document.hidden,
+        overlayBlocked: uiBlocked,
+        nativeVignetteReady,
+      });
+    };
+
+    if (!initialRecordedRef.current) {
+      initialRecordedRef.current = true;
+      record("initial-surface");
+      lastPathnameRef.current = pathname;
+      return;
+    }
+
+    if (lastPathnameRef.current !== pathname) {
+      lastPathnameRef.current = pathname;
+      record("pathname-commit");
+      return;
+    }
+
+    record("overlay-change");
+  }, [pathname, uiBlocked, nativeVignetteReady]);
+
+  useEffect(() => {
+    if (!isMonetagWebEnabled()) return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      tryRecordVignetteExposure({
+        pathname,
+        trigger: "visibility-restored",
+        documentHidden: false,
+        overlayBlocked: uiBlocked,
+        nativeVignetteReady,
+      });
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [pathname, uiBlocked, nativeVignetteReady]);
 
   useEffect(() => {
     logMonetag(vignetteEnabled ? "vignette-enabled" : "vignette-blocked", {
       pathname,
       uiBlocked,
       vignetteEnabled,
+      surfaceEligible,
     });
-  }, [pathname, uiBlocked, vignetteEnabled]);
+  }, [pathname, uiBlocked, vignetteEnabled, surfaceEligible]);
 
   useEffect(() => {
     if (!vignetteEnabled) {
@@ -119,6 +180,13 @@ export default function MonetagScripts() {
           window.sayittomeMonetagLoaded = window.sayittomeMonetagLoaded || {};
           window.sayittomeMonetagLoaded.vignette = true;
           logMonetag("vignette-loaded", { zone: MONETAG_VIGNETTE_BANNER.zoneId });
+          tryRecordVignetteExposure({
+            pathname,
+            trigger: "script-on-load",
+            documentHidden: document.hidden,
+            overlayBlocked: uiBlocked,
+            nativeVignetteReady,
+          });
         }}
       />
     </>

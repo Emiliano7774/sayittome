@@ -21,6 +21,24 @@ export function isShuffleRoute(pathname: string) {
   return path === "/shuffle" || path.startsWith("/shuffle/");
 }
 
+function normalizePathname(pathname: string) {
+  const path = String(pathname || "/").split("?")[0].split("#")[0];
+  if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
+  return path || "/";
+}
+
+/** Human-readable surface label for vignette opportunity diagnostics. */
+export function resolveVignetteSurface(pathname: string) {
+  const path = normalizePathname(pathname);
+  if (path === "/") return "home";
+  if (isShuffleRoute(path)) return "shuffle";
+  if (path === "/stories" || path.startsWith("/stories/")) return "stories";
+  if (path === "/boost" || path.startsWith("/boost/")) return "boost";
+  if (path === "/settings" || path.startsWith("/settings/")) return "settings";
+  if (path.startsWith("/u/")) return "profile";
+  return "other";
+}
+
 export function isMonetagBodyBlocked() {
   if (typeof document === "undefined") return false;
   return BLOCKED_BODY_CLASSES.some((className) =>
@@ -53,12 +71,12 @@ export function shouldLoadWebAds(pathname: string) {
   return isBaseMonetagAllowed(pathname);
 }
 
-export function shouldLoadMonetagVignette(pathname: string) {
+/**
+ * Vignette-eligible surfaces (zone 11011520).
+ * Includes /shuffle and main tabs; excludes auth, admin, and chat surfaces.
+ */
+export function isVignetteSurfaceEligible(pathname: string) {
   if (!isBaseMonetagAllowed(pathname)) {
-    return false;
-  }
-
-  if (isShuffleRoute(pathname)) {
     return false;
   }
 
@@ -70,4 +88,9 @@ export function shouldLoadMonetagVignette(pathname: string) {
   }
 
   return true;
+}
+
+/** @deprecated Alias — use isVignetteSurfaceEligible */
+export function shouldLoadMonetagVignette(pathname: string) {
+  return isVignetteSurfaceEligible(pathname);
 }
