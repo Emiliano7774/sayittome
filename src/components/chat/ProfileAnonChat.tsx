@@ -64,6 +64,7 @@ import {
   type ProfileAnonFirestoreMessage,
 } from "@/lib/chat/profileAnonMessageAuthor";
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isProfileAnonMessageUnreadForViewer } from "@/lib/chat/incomingChatActivity";
 import { inboxChatFromFirestore, markChatAsRead } from "@/lib/chat/unread";
 import {
   formatAnonSessionLabel,
@@ -1653,6 +1654,12 @@ export default function ProfileAnonChat({
                 message.type === "text"
                   ? parseVerifiedProfileLinkInText(message.text)
                   : null;
+              const messageUnread = isProfileAnonMessageUnreadForViewer(
+                message,
+                viewerId,
+                currentUid,
+                chatMetaRef.current ?? undefined,
+              );
               return (
               <div
                 key={messageRowKey(message)}
@@ -1685,7 +1692,7 @@ export default function ProfileAnonChat({
               >
                 <div
                   onDoubleClick={() => setReplyingTo(message)}
-                  className={chatBubbleShellClass(isClassic, message.mine)}
+                  className={chatBubbleShellClass(isClassic, message.mine, messageUnread)}
                 >
                   {message.reply && (
                     <div className={`mb-2 rounded-md bg-black/30 px-3 py-2 ${isClassic ? "text-sm" : "text-base"} text-zinc-300`}>
@@ -1776,7 +1783,7 @@ export default function ProfileAnonChat({
                     <ChatMessageText
                       text={message.text}
                       verifiedLink={verifiedProfileLink}
-                      className={chatBubbleTextClass(isClassic)}
+                      className={chatBubbleTextClass(isClassic, messageUnread)}
                     />
                   )}
 

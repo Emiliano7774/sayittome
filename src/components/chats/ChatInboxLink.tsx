@@ -10,9 +10,10 @@ type Props = {
   href: string;
   className?: string;
   children: React.ReactNode;
+  "data-nav-chat-row"?: boolean;
 };
 
-export default function ChatInboxLink({ href, className, children }: Props) {
+export default function ChatInboxLink({ href, className, children, ...rest }: Props) {
   const router = useRouter();
   const chatId = decodeURIComponent(href.split("/chat/")[1]?.split("?")[0] || "");
 
@@ -31,6 +32,7 @@ export default function ChatInboxLink({ href, className, children }: Props) {
     <a
       href={href}
       className={className}
+      {...rest}
       onPointerEnter={warmThread}
       onPointerDown={warmThread}
       onClick={openChat}

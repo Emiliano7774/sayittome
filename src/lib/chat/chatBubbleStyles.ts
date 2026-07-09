@@ -1,4 +1,8 @@
-export function chatBubbleShellClass(isClassic: boolean, mine: boolean) {
+export function chatBubbleShellClass(
+  isClassic: boolean,
+  mine: boolean,
+  unreadIncoming = false,
+) {
   const shape = isClassic
     ? mine
       ? "rounded-lg rounded-br-sm"
@@ -15,15 +19,20 @@ export function chatBubbleShellClass(isClassic: boolean, mine: boolean) {
     ? isClassic
       ? "bg-violet-600 text-white shadow-[0_0_18px_rgba(139,92,246,0.22)]"
       : "bg-violet-500/80 text-white"
-    : isClassic
-      ? "border border-white/10 bg-[#111111] text-zinc-200"
-      : "bg-[#0c0c0d] text-white";
+    : unreadIncoming
+      ? isClassic
+        ? "border border-orange-400/35 bg-[#17120d] text-white shadow-[0_0_18px_rgba(249,115,22,0.18)]"
+        : "border border-orange-400/30 bg-[#14100c] text-white shadow-[0_0_20px_rgba(249,115,22,0.14)]"
+      : isClassic
+        ? "border border-white/10 bg-[#111111] text-zinc-200"
+        : "bg-[#0c0c0d] text-white";
 
-  return [size, shape, colors, "font-normal"].join(" ");
+  const weight = unreadIncoming && !mine ? "" : "font-normal";
+  return [size, shape, colors, weight].filter(Boolean).join(" ");
 }
 
-export function chatBubbleTextClass(isClassic: boolean) {
-  return isClassic
-    ? "text-sm font-normal leading-snug"
-    : "text-[15px] font-normal leading-snug";
+export function chatBubbleTextClass(isClassic: boolean, unreadIncoming = false) {
+  const base = isClassic ? "text-sm leading-snug" : "text-[15px] leading-snug";
+  if (unreadIncoming) return `${base} font-black tracking-[-0.01em]`;
+  return `${base} font-normal`;
 }

@@ -85,7 +85,7 @@ function ClassicChatRow({
       <div className="min-w-0 flex-1">
         <p
           className={`truncate text-[17px] tracking-[-0.02em] ${
-            unread > 0 ? "font-semibold text-white" : "font-semibold text-white/45"
+            unread > 0 ? "font-black text-white" : "font-semibold text-white/45"
           }`}
         >
           {title}
@@ -100,7 +100,7 @@ function ClassicChatRow({
           ) : null}
           <span
             className={`truncate ${
-              unread > 0 ? "font-medium text-white/85" : "font-medium text-white/32"
+              unread > 0 ? "font-black text-white" : "font-medium text-white/32"
             }`}
           >
             {chat.lastMessage || t("chats_no_messages")}
