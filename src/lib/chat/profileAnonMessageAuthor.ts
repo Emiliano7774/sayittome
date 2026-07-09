@@ -1,4 +1,4 @@
-import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
+import { getChatAnonSenderId, getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 
 export type ProfileAnonSenderKind = "anon" | "profile";
 
@@ -149,23 +149,33 @@ export function resolveProfileAnonMessageMine(input: {
   isOwnerViewing: boolean;
   ownerUid?: string;
 }) {
+  const from = String(input.from || "").trim();
   const kind = resolveProfileAnonSenderKind({
     senderKind: input.senderKind,
-    from: input.from,
+    from,
     threadAnonId: input.threadAnonId,
     profileUid: input.profileUid,
     messageProfileUid: input.messageProfileUid,
   });
 
-  if (kind === "unknown") {
+  if (input.isOwnerViewing) {
+    if (kind === "profile") return true;
+    if (input.ownerUid && from === input.ownerUid) return true;
+    if (isProfileReplyAuthorId(from)) return true;
     return false;
   }
 
-  if (input.isOwnerViewing) {
-    return kind === "profile";
-  }
+  if (kind === "profile") return false;
 
-  return kind === "anon";
+  const threadAnon = String(input.threadAnonId || "").trim();
+  const liveAnon = getChatAnonSenderId();
+  const visitorUid = String(input.ownerUid || "").trim();
+
+  if (visitorUid && from === visitorUid) return true;
+  if (threadAnon && from === threadAnon) return true;
+  if (liveAnon.startsWith("anon_") && from === liveAnon) return true;
+
+  return kind === "anon" && from.startsWith("anon_");
 }
 
 export function firestoreMessageAuthorId(data: ProfileAnonFirestoreMessage) {

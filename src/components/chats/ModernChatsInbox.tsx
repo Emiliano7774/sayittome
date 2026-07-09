@@ -40,7 +40,7 @@ export default function ModernChatsInbox({
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
 
   return (
-    <main className="min-h-screen bg-black pb-32 text-white">
+    <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content>
       <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6">
         {selection.selectionMode ? (
           <ChatsSelectionToolbar
@@ -97,7 +97,7 @@ export default function ModernChatsInbox({
             </Link>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3" data-nav-chats-primary>
             {sortedChats.map((chat) => {
               const chatViewerId = resolveChatViewerId(chat, uid);
               const unread = chatUnreadCountForViewer(chat, uid);
@@ -119,7 +119,7 @@ export default function ModernChatsInbox({
                 (selected
                   ? "border-violet-500/40 bg-violet-500/10"
                   : unread > 0
-                    ? "border-orange-500/25 bg-[#141414] hover:border-orange-500/35"
+                    ? "border-violet-500/30 bg-violet-500/[0.06] hover:border-violet-500/40"
                     : "border-white/8 bg-[#0c0c0c]/90 hover:border-violet-500/25 hover:bg-[#121212]");
 
               const inner = (
@@ -143,7 +143,7 @@ export default function ModernChatsInbox({
                   <div className="min-w-0 flex-1">
                     <p
                       className={`truncate text-lg ${
-                        unread > 0 ? "font-black text-white" : "font-bold text-white/45"
+                        unread > 0 ? "font-semibold text-white" : "font-bold text-white/45"
                       }`}
                     >
                       {title}
@@ -158,7 +158,7 @@ export default function ModernChatsInbox({
                       ) : null}
                       <span
                         className={`truncate ${
-                          unread > 0 ? "font-black text-white" : "font-semibold text-white/30"
+                          unread > 0 ? "font-medium text-white/85" : "font-semibold text-white/30"
                         }`}
                       >
                         {chat.lastMessage || t("chats_no_messages")}
@@ -184,6 +184,7 @@ export default function ModernChatsInbox({
                   <button
                     key={chat.id}
                     type="button"
+                    data-nav-chat-row
                     onClick={() => selection.toggleChat(chat.id)}
                     className={`${cardClass} w-full text-left`}
                   >
@@ -193,7 +194,7 @@ export default function ModernChatsInbox({
               }
 
               return (
-                <ChatInboxLink key={chat.id} href={chatHref(chat)} className={cardClass}>
+                <ChatInboxLink key={chat.id} href={chatHref(chat)} className={cardClass} data-nav-chat-row>
                   {inner}
                 </ChatInboxLink>
               );

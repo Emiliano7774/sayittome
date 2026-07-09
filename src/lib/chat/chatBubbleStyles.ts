@@ -19,9 +19,11 @@ export function chatBubbleShellClass(isClassic: boolean, mine: boolean) {
       ? "border border-white/10 bg-[#111111] text-zinc-200"
       : "bg-[#0c0c0d] text-white";
 
-  return [size, shape, colors].join(" ");
+  return [size, shape, colors, "font-normal"].join(" ");
 }
 
 export function chatBubbleTextClass(isClassic: boolean) {
-  return isClassic ? "text-sm leading-snug" : "text-[15px] leading-snug";
+  return isClassic
+    ? "text-sm font-normal leading-snug"
+    : "text-[15px] font-normal leading-snug";
 }
