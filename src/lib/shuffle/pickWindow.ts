@@ -4,8 +4,13 @@ import {
 } from "@/lib/shuffle/dedupeProfiles";
 
 export const SHUFFLE_WINDOW_SIZE = 35;
-/** Shuffle rounds to remember before a profile can reappear. */
-export const SHUFFLE_BATCH_MEMORY = 5;
+/**
+ * Shuffle rounds to remember before a profile can reappear.
+ * Cap for full windows without reuse: floor((poolSize - WINDOW) / WINDOW).
+ * With ~340 profiles and WINDOW=35 → floor((340 - 35) / 35) = 8
+ * (excludes up to ~280 recent profiles, leaves ≥60 to fill the next window).
+ */
+export const SHUFFLE_BATCH_MEMORY = 8;
 
 /** Partial shuffle: O(k) con k=35, sin barajar el pool completo. */
 export function pickRandomWindowIndices(
