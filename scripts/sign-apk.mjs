@@ -62,6 +62,10 @@ function findApksigner() {
 }
 
 if (!fs.existsSync(unsignedApk)) {
+  if (fs.existsSync(signedApk)) {
+    console.log("APK ya firmada:", signedApk);
+    process.exit(0);
+  }
   console.error("APK sin firmar no encontrada:", unsignedApk);
   process.exit(1);
 }
