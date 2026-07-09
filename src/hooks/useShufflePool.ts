@@ -70,6 +70,7 @@ import {
 import { markShuffleHydrated, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
 import {
   capturePinnedShuffleWindow,
+  peekPinnedShuffleWindowCount,
   restorePinnedShuffleWindowSync,
 } from "@/lib/shuffle/shufflePinnedWindow";
 import {
@@ -83,7 +84,13 @@ function readInitialShuffleState() {
   const cachedProfiles = readCachedShufflePool() ?? [];
   const cachedStats = readCachedShuffleStats();
   const visible = getVisibleShuffleProfiles();
-  const hasContent = cachedProfiles.length > 0 || visible.length > 0;
+  const pinnedCount = peekPinnedShuffleWindowCount();
+  const warmRestorable =
+    visible.length >= 3 ||
+    cachedProfiles.length >= 3 ||
+    pinnedCount >= 3 ||
+    hasShuffleEverHydrated();
+  const hasContent = cachedProfiles.length > 0 || visible.length > 0 || warmRestorable;
 
   return {
     cachedProfiles,
@@ -560,7 +567,8 @@ export function useShufflePool() {
       try {
         const params = new URLSearchParams({
           pool: "full",
-          shuffle: "0",
+          // Shuffle pool order on the server so cold restores never share a fixed prefix.
+          shuffle: q ? "0" : "1",
         });
         if (q) params.set("q", q);
         if (force) params.set("force", "1");
@@ -893,8 +901,14 @@ export function useShufflePool() {
 
     if (cachedProfiles?.length) {
       applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
-      if (getVisibleShuffleProfiles().length === 0) {
-        filterActivePool("", filtersRef.current);
+      const visible = getVisibleShuffleProfiles();
+      if (visible.length === 0) {
+        // Cold entry: deal a fresh random 35 and reset batch memory.
+        clearBatchMemory();
+        filterActivePool("", filtersRef.current, { forceWindow: true });
+      } else if (recentBatchKeysQueueRef.current.length === 0) {
+        // Warm/pinned or cache-restore already painted — seed memory, don't reshuffle.
+        rememberBatchMemory(visible, { resetBatchMemory: true });
       }
     }
 
@@ -906,7 +920,7 @@ export function useShufflePool() {
       totalLiveRef.current = cachedStats.totalLive;
     }
 
-    void loadProfiles({ q: "", force: !cachedProfiles?.length });
+    void loadProfiles({ q: "", force: true });
 
     const scheduleStoriesIndex = () => {
       const run = () =>

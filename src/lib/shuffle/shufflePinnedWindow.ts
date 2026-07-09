@@ -1,5 +1,9 @@
 import { markShuffleHydrated, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
-import { SHUFFLE_WINDOW_SIZE } from "@/lib/shuffle/pickWindow";
+import { readCachedShufflePool } from "@/lib/shuffle/shuffleClientCache";
+import {
+  pickRandomUniqueWindowIndices,
+  SHUFFLE_WINDOW_SIZE,
+} from "@/lib/shuffle/pickWindow";
 import {
   getVisibleShuffleProfiles,
   setShuffleSlotsWithFeatured,
@@ -15,6 +19,33 @@ type PinnedWindow = {
 };
 
 let pinned: PinnedWindow | null = null;
+const cacheRestoreScratch: number[] = [];
+const cacheRestoreIndices = new Int32Array(SHUFFLE_WINDOW_SIZE);
+
+function restoreFromCachedPoolSync() {
+  const cached = readCachedShufflePool();
+  if (!cached || cached.length < 3) return false;
+
+  // Cold restore must deal a fresh random window — never the cached pool prefix.
+  const count = pickRandomUniqueWindowIndices(
+    cached,
+    cacheRestoreScratch,
+    cacheRestoreIndices,
+    SHUFFLE_WINDOW_SIZE,
+  );
+  if (count < 3) return false;
+
+  setShuffleSlotsWithFeatured([], cached, cacheRestoreIndices, count, false);
+  flushShuffleSlotsSync();
+
+  const restored = getVisibleShuffleProfiles();
+  if (restored.length > 0) {
+    markShuffleHydrated(restored.length);
+    return true;
+  }
+
+  return false;
+}
 
 export function capturePinnedShuffleWindow(
   featured: ShuffleProfile[],
@@ -22,13 +53,15 @@ export function capturePinnedShuffleWindow(
   indices: Int32Array,
   count: number,
 ) {
-  if (count <= 0 && getVisibleShuffleProfiles().length === 0) return;
+  const visibleCount = getVisibleShuffleProfiles().length;
+  const effectiveCount = Math.max(count, visibleCount);
+  if (effectiveCount <= 0 && visibleCount === 0) return;
 
   pinned = {
     featured: featured.map((row) => ({ ...row })),
     pool: pool.map((row) => ({ ...row })),
     indices: new Int32Array(indices),
-    count: Math.max(0, Math.min(count, SHUFFLE_WINDOW_SIZE)),
+    count: Math.max(0, Math.min(effectiveCount, SHUFFLE_WINDOW_SIZE)),
   };
 }
 
@@ -41,6 +74,7 @@ export function restorePinnedShuffleWindowSync() {
   }
 
   if (!pinned) {
+    if (restoreFromCachedPoolSync()) return true;
     return hasShuffleEverHydrated();
   }
 
@@ -67,5 +101,7 @@ export function hasShuffleWarmVisualReady() {
 }
 
 export function peekPinnedShuffleWindowCount() {
-  return pinned?.count ?? 0;
+  if (pinned?.count) return pinned.count;
+  const cached = readCachedShufflePool();
+  return cached ? Math.min(SHUFFLE_WINDOW_SIZE, cached.length) : 0;
 }
