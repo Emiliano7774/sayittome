@@ -2,12 +2,16 @@
 
 import { useEffect, useRef } from "react";
 
+import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isIncomingMessageFromDoc } from "@/lib/chat/incomingChatActivity";
+import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
 import { bindWhipSoundUnlock, notifyIncomingChatMessage, playIncomingWhipSound } from "@/lib/chat/whipSound";
 
 type IncomingMessage = {
   id: string;
   mine?: boolean;
   fromUid?: string;
+  senderKind?: string;
   text?: string;
 };
 
@@ -15,6 +19,9 @@ export function useIncomingMessageWhip(
   messages: IncomingMessage[],
   currentViewerId: string,
   enabled = true,
+  chatId = "",
+  firebaseUid = "",
+  chat?: InboxChat,
 ) {
   const firstLoadRef = useRef(true);
   const lastIncomingIdRef = useRef<string | null>(null);
@@ -31,7 +38,15 @@ export function useIncomingMessageWhip(
     const isIncoming =
       last.mine !== true &&
       Boolean(currentViewerId) &&
-      (!last.fromUid || String(last.fromUid) !== currentViewerId);
+      isIncomingMessageFromDoc(
+        {
+          fromUid: last.fromUid,
+          senderKind: last.senderKind,
+        },
+        currentViewerId,
+        firebaseUid,
+        chat,
+      );
 
     if (firstLoadRef.current) {
       firstLoadRef.current = false;
@@ -41,11 +56,19 @@ export function useIncomingMessageWhip(
 
     if (isIncoming && lastIncomingIdRef.current !== last.id) {
       lastIncomingIdRef.current = last.id;
-      playIncomingWhipSound();
-      notifyIncomingChatMessage({
-        title: "Nuevo mensaje",
-        body: String(last.text || "").trim(),
+      tryAlertIncomingMessage({
+        chatId,
+        messageId: last.id,
+        incoming: true,
+        suppress: false,
+        onAlert: () => {
+          playIncomingWhipSound();
+          notifyIncomingChatMessage({
+            title: "Nuevo mensaje",
+            body: String(last.text || "").trim(),
+          });
+        },
       });
     }
-  }, [messages, currentViewerId, enabled]);
+  }, [messages, currentViewerId, enabled, chatId, firebaseUid, chat]);
 }

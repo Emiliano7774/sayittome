@@ -45,6 +45,14 @@ export default function ClassicAnonPresenceBubble({ session }: Props) {
           {t("chat_anon_classic_body")}
         </p>
 
+        <p className="relative mt-3 text-sm leading-6 text-white/48">
+          {t("chat_anon_message_delivery")}
+        </p>
+
+        <p className="relative mt-2 text-xs leading-5 text-white/30">
+          {t("chat_anon_reply_alert")}
+        </p>
+
         <p className="relative mt-4 border-t border-white/[0.06] pt-3 text-[11px] leading-5 text-white/22">
           {t("chat_anon_you_are", { session })}
         </p>

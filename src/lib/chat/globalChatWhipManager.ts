@@ -9,7 +9,9 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 
+import type { InboxChat } from "@/hooks/useChatsInbox";
 import { isIncomingMessageFromDoc } from "@/lib/chat/incomingChatActivity";
+import { resolveChatViewerId } from "@/lib/chat/inboxPeerTitle";
 import {
   getSessionChatIds,
   SESSION_CHATS_CHANGED_EVENT,
@@ -24,6 +26,7 @@ type WhipContext = {
   firebaseUid: string;
   getActiveChatId: () => string;
   getChatLabel: (chatId: string) => string;
+  getChatById: (chatId: string) => InboxChat | undefined;
 };
 
 function sameIdSet(a: Set<string>, b: Set<string>) {
@@ -161,10 +164,15 @@ class GlobalChatWhipManager {
         };
 
         const body = String(data.text || data.texto || "").trim();
+        const chat = ctx.getChatById(chatId);
+        const viewerId = chat
+          ? resolveChatViewerId(chat, ctx.firebaseUid)
+          : ctx.viewerId;
         const incoming = isIncomingMessageFromDoc(
           data,
-          ctx.viewerId,
+          viewerId,
           ctx.firebaseUid,
+          chat,
         );
         const activeChatId = ctx.getActiveChatId();
         const viewingActiveChat = activeChatId === chatId && !document.hidden;

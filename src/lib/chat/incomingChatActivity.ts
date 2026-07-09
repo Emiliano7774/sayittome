@@ -2,7 +2,11 @@ import type { InboxChat } from "@/hooks/useChatsInbox";
 import { isProfileAnonChatId, parseProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { profileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
-import { isIncomingAnonChatForOwner } from "@/lib/chat/inboxPeerTitle";
+import {
+  isAnonVisitorProfileChat,
+  isIncomingAnonChatForOwner,
+} from "@/lib/chat/inboxPeerTitle";
+import { isProfileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
 
 export function collectViewerSenderIds(
   chat: InboxChat,
@@ -83,7 +87,31 @@ export function wasChatReadOnServer(
     return true;
   }
 
+  const sender = String(chat.lastMessageSender || "").trim();
   const readBy = chat.readBy || {};
+  const incomingForViewer =
+    isIncomingProfileReplyForAnonVisitor(sender, viewerId, firebaseUid, chat) ||
+    isIncomingAnonMessageForProfileOwner(sender, firebaseUid, chat);
+
+  if (incomingForViewer) {
+    const viewerIds = [...collectViewerSenderIds(chat, viewerId, firebaseUid)];
+
+    for (const id of viewerIds) {
+      const unread = chat.unreadCounts?.[id];
+      if (typeof unread === "number" && unread > 0) return false;
+      if (readBy[id] === false) return false;
+    }
+
+    // Stale readBy=true from the visitor's own last send must not hide a profile reply.
+    const explicitlyRead = viewerIds.some(
+      (id) =>
+        readBy[id] === true &&
+        typeof chat.unreadCounts?.[id] === "number" &&
+        chat.unreadCounts[id] === 0,
+    );
+    return explicitlyRead;
+  }
+
   if (readBy[viewerId] === true) return true;
 
   for (const id of collectViewerSenderIds(chat, viewerId, firebaseUid)) {
@@ -99,6 +127,30 @@ export function wasChatReadOnServer(
   return false;
 }
 
+export function isIncomingProfileReplyForAnonVisitor(
+  sender: string,
+  viewerId: string,
+  firebaseUid = "",
+  chat?: InboxChat,
+) {
+  const from = String(sender || "").trim();
+  if (!from || !isProfileReplyAuthorId(from)) return false;
+  if (viewerId.startsWith("anon_")) return true;
+  if (chat && isAnonVisitorProfileChat(chat, firebaseUid)) return true;
+  return false;
+}
+
+export function isIncomingAnonMessageForProfileOwner(
+  sender: string,
+  firebaseUid = "",
+  chat?: InboxChat,
+) {
+  const from = String(sender || "").trim();
+  if (!from.startsWith("anon_") || !firebaseUid) return false;
+  if (chat) return isIncomingAnonChatForOwner(chat, firebaseUid);
+  return true;
+}
+
 export function isIncomingChatActivity(
   chat: InboxChat,
   viewerId: string,
@@ -107,6 +159,12 @@ export function isIncomingChatActivity(
   const preview = String(chat.lastMessage || "").trim();
   const sender = String(chat.lastMessageSender || "").trim();
   if (!preview || !sender || !viewerId) return false;
+  if (isIncomingProfileReplyForAnonVisitor(sender, viewerId, firebaseUid, chat)) {
+    return true;
+  }
+  if (isIncomingAnonMessageForProfileOwner(sender, firebaseUid, chat)) {
+    return true;
+  }
   return !isOwnInboxLastSender(chat, viewerId, firebaseUid);
 }
 
@@ -126,6 +184,56 @@ export function isIncomingMessageFromDoc(
   chat?: InboxChat,
 ) {
   const from = String(data.fromUid || data.ownerId || data.senderUid || "");
+  const senderKind = String(data.senderKind || "").trim();
   if (!from || !viewerId) return false;
+
+  if (senderKind === "profile" || isProfileReplyAuthorId(from)) {
+    return isIncomingProfileReplyForAnonVisitor(from, viewerId, firebaseUid, chat);
+  }
+
+  if (senderKind === "anon" || from.startsWith("anon_")) {
+    if (isIncomingAnonMessageForProfileOwner(from, firebaseUid, chat)) {
+      return true;
+    }
+  }
+
   return !isOwnChatSender(from, viewerId, firebaseUid, chat);
+}
+
+export function isProfileAnonMessageUnreadForViewer(
+  message: {
+    mine?: boolean;
+    readBy?: Record<string, boolean>;
+    fromUid?: string;
+    senderKind?: string;
+  },
+  viewerId: string,
+  firebaseUid = "",
+  chat?: InboxChat,
+) {
+  if (message.mine) return false;
+  if (!viewerId) return false;
+
+  const from = String(message.fromUid || "").trim();
+  const incoming = isIncomingMessageFromDoc(
+    {
+      fromUid: from,
+      senderKind: message.senderKind,
+    },
+    viewerId,
+    firebaseUid,
+    chat,
+  );
+  if (!incoming) return false;
+
+  const readBy = message.readBy || {};
+  if (readBy[viewerId] === true) return false;
+
+  for (const id of chat
+    ? collectViewerSenderIds(chat, viewerId, firebaseUid)
+    : [viewerId, firebaseUid].filter(Boolean)) {
+    if (readBy[id] === true) return false;
+  }
+
+  return true;
 }

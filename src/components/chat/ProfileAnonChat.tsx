@@ -64,6 +64,7 @@ import {
   type ProfileAnonFirestoreMessage,
 } from "@/lib/chat/profileAnonMessageAuthor";
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isProfileAnonMessageUnreadForViewer } from "@/lib/chat/incomingChatActivity";
 import { inboxChatFromFirestore, markChatAsRead } from "@/lib/chat/unread";
 import {
   formatAnonSessionLabel,
@@ -84,6 +85,7 @@ import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
+import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
@@ -447,6 +449,10 @@ export default function ProfileAnonChat({
     if (!ctx.chatId || !ctx.authReady || !chat) return;
     if (typeof document !== "undefined" && document.hidden) return;
 
+    const activeMatch = pathname.match(/\/chat\/([^/?#]+)/);
+    const activeChatId = activeMatch ? decodeURIComponent(activeMatch[1]) : "";
+    if (activeChatId !== ctx.chatId) return;
+
     const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
     const profileOwnerUid = ctx.targetUid || ctx.chatOwnerUid;
     const ownerViewing = Boolean(
@@ -747,6 +753,15 @@ export default function ProfileAnonChat({
     !isOwnerViewing &&
     !showClassicIntro &&
     !(showAnonIdentityNotice && hasChatActivity);
+  const whipViewerId = isOwnerViewing ? currentUid : anonSenderId;
+  useIncomingMessageWhip(
+    messages,
+    whipViewerId,
+    Boolean(whipViewerId),
+    chatId,
+    currentUid,
+    chatMetaRef.current ?? undefined,
+  );
   const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
   const displayPeerName = isOwnerViewing
     ? formatAnonSessionLabel(anonSenderId)
@@ -862,6 +877,11 @@ export default function ProfileAnonChat({
             return;
           }
 
+          const activeMatch = pathname.match(/\/chat\/([^/?#]+)/);
+          const activeChatId = activeMatch ? decodeURIComponent(activeMatch[1]) : "";
+          if (activeChatId !== chatId) return;
+          if (typeof document !== "undefined" && document.hidden) return;
+
           const batch = writeBatch(db);
           let pendingMarks = 0;
 
@@ -895,7 +915,7 @@ export default function ProfileAnonChat({
       }
       unsub();
     };
-  }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid]);
+  }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid, pathname]);
 
   useEffect(() => {
     if (!chatId || !authReady) return;
@@ -1580,6 +1600,14 @@ export default function ProfileAnonChat({
                 <p className="mt-3 text-base text-zinc-400">
                   {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
                 </p>
+
+                <p className="mt-4 text-sm leading-6 text-zinc-500">
+                  {t("chat_anon_message_delivery")}
+                </p>
+
+                <p className="mt-2 text-xs leading-5 text-zinc-400">
+                  {t("chat_anon_reply_alert")}
+                </p>
               </div>
             </div>
           </div>
@@ -1620,11 +1648,18 @@ export default function ProfileAnonChat({
                 firebaseUid: currentUid,
                 isSending: message.status === "sending",
                 hasError: message.status === "error",
+                chat: chatMetaRef.current ?? undefined,
               });
               const verifiedProfileLink =
                 message.type === "text"
                   ? parseVerifiedProfileLinkInText(message.text)
                   : null;
+              const messageUnread = isProfileAnonMessageUnreadForViewer(
+                message,
+                viewerId,
+                currentUid,
+                chatMetaRef.current ?? undefined,
+              );
 
               return (
               <div
@@ -1658,7 +1693,7 @@ export default function ProfileAnonChat({
               >
                 <div
                   onDoubleClick={() => setReplyingTo(message)}
-                  className={chatBubbleShellClass(isClassic, message.mine)}
+                  className={chatBubbleShellClass(isClassic, message.mine, messageUnread)}
                 >
                   {message.reply && (
                     <div className={`mb-2 rounded-md bg-black/30 px-3 py-2 ${isClassic ? "text-sm" : "text-base"} text-zinc-300`}>
@@ -1749,7 +1784,7 @@ export default function ProfileAnonChat({
                     <ChatMessageText
                       text={message.text}
                       verifiedLink={verifiedProfileLink}
-                      className={chatBubbleTextClass(isClassic)}
+                      className={chatBubbleTextClass(isClassic, messageUnread)}
                     />
                   )}
 

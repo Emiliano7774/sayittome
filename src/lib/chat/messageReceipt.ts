@@ -169,6 +169,7 @@ export function resolveMessageReceiptStatus({
   firebaseUid = "",
   isSending = false,
   hasError = false,
+  chat,
 }: {
   mine: boolean;
   readBy?: Record<string, boolean>;
@@ -176,10 +177,11 @@ export function resolveMessageReceiptStatus({
   firebaseUid?: string;
   isSending?: boolean;
   hasError?: boolean;
+  chat?: ChatReadContext;
 }): MessageReceiptStatus | null {
   if (!mine) return null;
   if (hasError) return "error";
   if (isSending) return "sending";
-  if (isMessageSeenByOther(readBy, senderId, firebaseUid)) return "seen";
+  if (isMessageSeenByOther(readBy, senderId, firebaseUid, chat)) return "seen";
   return "delivered";
 }

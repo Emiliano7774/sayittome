@@ -121,6 +121,10 @@ export function useGlobalChatAlerts() {
         );
         return chat ? chatPeerTitle(chat, firebaseUid) : "Nuevo mensaje";
       },
+      getChatById: (chatId) =>
+        sortedChatsRef.current.find(
+          (row) => row.id === chatId || row.canonicalChatId === chatId,
+        ),
     });
   }, [viewerId, firebaseUid]);
 

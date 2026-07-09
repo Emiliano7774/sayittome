@@ -490,6 +490,10 @@ const es = {
   chat_anon_classic_invisible: "Estás invisible",
   chat_anon_classic_body:
     "Hablás sin mostrar tu identidad. La otra persona no sabe quién sos; este chat vive solo en esta sesión.",
+  chat_anon_message_delivery:
+    "Tu mensaje le llega aunque no sepan quién sos. Debajo vas a ver ✓ Entregado cuando lo reciban y ✓✓ Visto si lo leen.",
+  chat_anon_reply_alert:
+    "Si te responden mientras estás en otra parte de la app, te avisamos con un sonido.",
   chat_bomb: "Bomba",
   chat_verified_link_badge: "Link verificado",
   chat_verified_link_open: "Abrir perfil verificado de @{username}",
@@ -1234,6 +1238,10 @@ const en: Record<keyof typeof es, string> = {
   chat_anon_classic_invisible: "You are invisible",
   chat_anon_classic_body:
     "You are messaging without revealing your identity. The other person does not know who you are; this chat lives only in this session.",
+  chat_anon_message_delivery:
+    "Your message still reaches them without revealing who you are. Below you will see ✓ Delivered when they receive it and ✓✓ Seen when they read it.",
+  chat_anon_reply_alert:
+    "If they reply while you are elsewhere in the app, we alert you with a sound.",
   chat_bomb: "Bomb",
   chat_verified_link_badge: "Verified link",
   chat_verified_link_open: "Open verified profile for @{username}",
