@@ -5,6 +5,9 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
@@ -27,6 +30,18 @@ public class MainActivity extends BridgeActivity {
 
         WebView webView = getBridge().getWebView();
         if (webView == null) return;
+
+        // Android 15+ (targetSdk 35+) enforces edge-to-edge, so the WebView draws behind the
+        // status bar and the gesture/navigation bar. Pad the WebView by the system-bar insets so
+        // app content (e.g. the chat composer) is never hidden under the Android navigation bar.
+        // This also makes CSS env(safe-area-inset-*) resolve to 0 inside the fitted WebView, so
+        // the existing safe-area padding does not double up.
+        ViewCompat.setOnApplyWindowInsetsListener(webView, (view, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(webView);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
