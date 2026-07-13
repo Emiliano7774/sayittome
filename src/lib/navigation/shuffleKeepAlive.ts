@@ -1,4 +1,5 @@
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
+import { hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
 import {
   beginAtomicVisualHandoff,
   commitAtomicVisualHandoff,
@@ -17,6 +18,29 @@ import {
   presentShuffleSurface,
 } from "@/lib/navigation/shuffleHandoffState";
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
+import {
+  isInternalMainTabToShuffleTransitionActive,
+  getMainTabToShufflePhase,
+  getMainTabToShuffleTransaction,
+  getMainTabToShufflePresentationLatchNavSeq,
+  isMainTabToShufflePresentationLatchActive,
+  isPostSettleRouteBridgeActive,
+  getActiveSlideFailsafeTimerIdForDiag,
+  recordLegacyPresentationBlocked,
+  shouldBlockLegacyShufflePresentation,
+  isMainTabToShufflePresentationOwned,
+} from "@/lib/navigation/mainTabToShuffleTransition";
+import {
+  emitLegacyRevealAttempt,
+  emitLegacyRevealBlocked,
+  emitLegacyRevealExecuted,
+  isMainTabShuffleLifecycleDiagEnabled,
+  noteShuffleHostObserved,
+  observeHostElement,
+} from "@/lib/perf/mainTabShuffleLifecycleDiag";
+import {
+  traceSlideDomWrite,
+} from "@/lib/perf/mainTabShuffleSlideDomWriteDiag";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import {
   beginNavCaptureSequence,
@@ -25,20 +49,28 @@ import {
   setNavCaptureSurface,
 } from "@/lib/perf/navCaptureDiag";
 import {
-  isShuffleVisualHandoffReady,
   canActivateShuffleWarmHandoff,
+  canRevealWarmShuffleHost,
+  isShuffleVisualHandoffReady,
   prepareShuffleWarmTabReturn,
   resetShuffleGeometryStability,
   setShuffleHandoffPreparing,
+  sampleShuffleHandoffGeometry,
+  isShuffleHandoffPreparing,
 } from "@/lib/shuffle/shuffleWarmVisual";
-import { hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
+import {
+  abortShuffleDestinationWarmIntent,
+  beginShuffleDestinationWarmIntent,
+  countDurableRestorableWarmSlots,
+  isShuffleDestinationWarmIntentActive,
+  settleShuffleDestinationWarmIntent,
+} from "@/lib/shuffle/shuffleWarmHopIntent";
 import { readCachedShufflePool } from "@/lib/shuffle/shuffleClientCache";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 import {
   peekPinnedShuffleWindowCount,
   restorePinnedShuffleWindowSync,
 } from "@/lib/shuffle/shufflePinnedWindow";
-import { sampleShuffleHandoffGeometry } from "@/lib/shuffle/shuffleWarmVisual";
 
 export {
   getShuffleDeferSourcePath,
@@ -79,6 +111,7 @@ export function isShuffleKeepAliveActive() {
 
 export function reconcileStaleShuffleHandoffState() {
   if (typeof window === "undefined") return;
+  if (isInternalMainTabToShuffleTransitionActive()) return;
   if (normalizePath(window.location.pathname) !== "/shuffle") return;
 
   const pendingDom = document.documentElement.classList.contains("sayittome-shuffle-handoff-pending");
@@ -88,19 +121,20 @@ export function reconcileStaleShuffleHandoffState() {
       activateShuffleTabSurface();
       return;
     }
-    if (isShuffleRevealDeferred() && shuffleHandoffPendingAgeMs() < 500) return;
-    if (hasRestorableWarmShuffleState() || hasShuffleEverHydrated()) {
-      activateShuffleTabSurface({ force: true });
+    if (isShuffleRevealDeferred() || isValidWarmShuffleHandoffActive()) {
+      scheduleStaleHandoffSweep();
       return;
     }
-    enterColdShufflePresentation({ force: true });
+    if (!hasRestorableWarmShuffleState()) {
+      enterColdShufflePresentation();
+    }
     return;
   }
 
   if (isValidWarmShuffleHandoffActive()) return;
 
   if (hasRestorableWarmShuffleState() && !isShuffleSurfacePresented()) {
-    activateShuffleTabSurface({ force: true });
+    scheduleStaleHandoffSweep();
     return;
   }
 
@@ -182,6 +216,61 @@ export function pinShuffleWindowWhileAway() {
 
 let staleHandoffSweepId = 0;
 let shuffleHandoffPendingSince = 0;
+let shuffleNavSeq = 0;
+
+type ShuffleRevealAuditEntry = {
+  navSeq: number;
+  caller: string;
+  monoMs: number;
+  tree: "FEED" | "LOADING" | "EMPTY";
+  prepDomSlots: number;
+  loadingShellDom: boolean;
+  revealed: boolean;
+};
+
+const shuffleRevealAudit: ShuffleRevealAuditEntry[] = [];
+
+function monoMsNow() {
+  return Math.round(performance.timeOrigin + performance.now());
+}
+
+function classifyShuffleHostTree(sample: ReturnType<typeof sampleShuffleHandoffGeometry>) {
+  if (!sample) return "EMPTY" as const;
+  if (sample.loadingShellDom) return "LOADING" as const;
+  if (sample.prepDomSlots >= 3) return "FEED" as const;
+  return "EMPTY" as const;
+}
+
+function auditShuffleRevealAttempt(caller: string, revealed: boolean) {
+  const sample = sampleShuffleHandoffGeometry();
+  shuffleRevealAudit.push({
+    navSeq: shuffleNavSeq,
+    caller,
+    monoMs: monoMsNow(),
+    tree: classifyShuffleHostTree(sample),
+    prepDomSlots: sample?.prepDomSlots ?? 0,
+    loadingShellDom: sample?.loadingShellDom ?? false,
+    revealed,
+  });
+  if (shuffleRevealAudit.length > 48) shuffleRevealAudit.shift();
+
+  if (
+    !revealed &&
+    sample?.loadingShellDom &&
+    (isShuffleRevealDeferred() || isShuffleHandoffPreparing() || isValidWarmShuffleHandoffActive()) &&
+    isNavTraceEnabled()
+  ) {
+    navTraceMarkDetail("WARM_REVEAL_BLOCKED_LOADING_TREE");
+  }
+}
+
+export function getShuffleNavSeq() {
+  return shuffleNavSeq;
+}
+
+export function exportShuffleRevealAudit() {
+  return [...shuffleRevealAudit];
+}
 
 function markShuffleHandoffPendingDom() {
   if (typeof document === "undefined") return;
@@ -194,13 +283,12 @@ function markShuffleHandoffPendingDom() {
 
 function clearShuffleHandoffPendingDom() {
   if (typeof document === "undefined") return;
+  if (isMainTabToShufflePresentationOwned()) {
+    recordLegacyPresentationBlocked("clearShuffleHandoffPendingDom");
+    return;
+  }
   document.documentElement.classList.remove("sayittome-shuffle-handoff-pending");
   shuffleHandoffPendingSince = 0;
-}
-
-function shuffleHandoffPendingAgeMs() {
-  if (!shuffleHandoffPendingSince) return 0;
-  return Math.max(0, Math.round(performance.now() - shuffleHandoffPendingSince));
 }
 
 function scheduleStaleHandoffSweep() {
@@ -219,17 +307,14 @@ function scheduleStaleHandoffSweep() {
       return;
     }
 
-    if (isValidWarmShuffleHandoffActive() && shuffleHandoffPendingAgeMs() < 500) {
+    if (isValidWarmShuffleHandoffActive() || isShuffleRevealDeferred()) {
       scheduleStaleHandoffSweep();
       return;
     }
 
-    if (hasRestorableWarmShuffleState() || hasShuffleEverHydrated()) {
-      activateShuffleTabSurface({ force: true });
-      return;
+    if (!hasRestorableWarmShuffleState()) {
+      enterColdShufflePresentation({ force: true });
     }
-
-    enterColdShufflePresentation({ force: true });
   });
 }
 
@@ -240,15 +325,99 @@ export function reconcileOrphanedShuffleHandoffDom() {
   clearShuffleHandoffPendingDom();
 }
 
-function revealShuffleKeepAliveHostSync() {
+function legacyRevealBlockReason(microSlideSettle?: boolean) {
+  if (microSlideSettle) return null;
+  if (getMainTabToShufflePhase() === "settled") return null;
+  if (!shouldBlockLegacyShufflePresentation()) return null;
+  if (isMainTabToShufflePresentationLatchActive()) return "presentation-latch-active";
+  if (isPostSettleRouteBridgeActive()) return "post-settle-bridge-active";
+  const phase = getMainTabToShufflePhase();
+  if (phase !== "idle" && phase !== "aborted") return `phase-${phase}`;
+  return "pinned-soft-commit-tx";
+}
+
+function recordLegacyRevealLifecycle(
+  caller: string,
+  options?: { microSlideSettle?: boolean; executed?: boolean; blockedReason?: string | null },
+) {
+  if (!isMainTabShuffleLifecycleDiagEnabled()) return;
+  const tx = getMainTabToShuffleTransaction();
+  const pathname = window.location.pathname.split("?")[0].split("#")[0];
+  const blockReason =
+    options?.blockedReason ?? legacyRevealBlockReason(options?.microSlideSettle);
+  const shouldBlock = Boolean(blockReason);
+  emitLegacyRevealAttempt({
+    caller,
+    pathname,
+    transactionId: tx?.transactionId ?? null,
+    phase: getMainTabToShufflePhase(),
+    navSeq: tx?.navSeq ?? 0,
+    presentationLatchNavSeq: getMainTabToShufflePresentationLatchNavSeq(),
+    presentationLatchActive: isMainTabToShufflePresentationLatchActive(),
+    postSettleBridgeActive: isPostSettleRouteBridgeActive(),
+    shouldBlockLegacyShufflePresentation: shouldBlock,
+    blockReason,
+    shuffleHostInstanceId: noteShuffleHostObserved(
+      document.getElementById("sayittome-shuffle-keepalive-host"),
+      `${caller}-attempt`,
+    ),
+    slideFailsafeTimerId: getActiveSlideFailsafeTimerIdForDiag(),
+  });
+  if (options?.executed) {
+    emitLegacyRevealExecuted({
+      caller,
+      pathname,
+      transactionId: tx?.transactionId ?? null,
+      phase: getMainTabToShufflePhase(),
+      navSeq: tx?.navSeq ?? 0,
+      shuffleHostInstanceId: noteShuffleHostObserved(
+        document.getElementById("sayittome-shuffle-keepalive-host"),
+        `${caller}-executed`,
+      ),
+    });
+  } else if (shouldBlock && blockReason) {
+    emitLegacyRevealBlocked({
+      caller,
+      pathname,
+      transactionId: tx?.transactionId ?? null,
+      phase: getMainTabToShufflePhase(),
+      navSeq: tx?.navSeq ?? 0,
+      blockReason,
+    });
+  }
+}
+
+function revealShuffleKeepAliveHostSync(caller = "revealShuffleKeepAliveHostSync") {
   if (typeof document === "undefined") return false;
 
+  if (shouldBlockLegacyShufflePresentation()) {
+    recordLegacyRevealLifecycle(caller, { blockedReason: legacyRevealBlockReason() });
+    recordLegacyPresentationBlocked(caller);
+    auditShuffleRevealAttempt(caller, false);
+    return false;
+  }
+
+  const warmHop =
+    isShuffleDestinationWarmIntentActive() ||
+    isShuffleRevealDeferred() ||
+    isShuffleHandoffPreparing() ||
+    isValidWarmShuffleHandoffActive();
+  if (warmHop && !canRevealWarmShuffleHost()) {
+    auditShuffleRevealAttempt(caller, false);
+    return false;
+  }
+
   const host = document.getElementById("sayittome-shuffle-keepalive-host");
-  if (!host) return false;
+  if (!host) {
+    auditShuffleRevealAttempt(caller, false);
+    return false;
+  }
 
   host.classList.remove("sayittome-shuffle-keepalive-frozen");
   host.classList.add("sayittome-shuffle-keepalive-visible");
   host.setAttribute("aria-hidden", "false");
+  auditShuffleRevealAttempt(caller, true);
+  recordLegacyRevealLifecycle(caller, { executed: true });
   return true;
 }
 
@@ -259,8 +428,101 @@ function freezeShuffleKeepAliveHostSync() {
   if (!host) return;
 
   host.classList.remove("sayittome-shuffle-keepalive-visible");
+  host.classList.remove("sayittome-route-bridge-shuffle-owner");
   host.classList.add("sayittome-shuffle-keepalive-frozen");
   host.setAttribute("aria-hidden", "true");
+}
+
+/** Keep prep shuffle host physically presentable while canonical owner is route_bridge. */
+export function keepPresentedShuffleSurfaceForRouteBridge() {
+  if (typeof document === "undefined") return false;
+
+  const host = document.getElementById("sayittome-shuffle-keepalive-host");
+  if (!host) return false;
+
+  host.classList.remove("sayittome-shuffle-keepalive-frozen");
+  host.classList.add("sayittome-shuffle-keepalive-visible");
+  host.classList.add("sayittome-route-bridge-shuffle-owner");
+  host.setAttribute("aria-hidden", "false");
+  const tx = getMainTabToShuffleTransaction();
+  traceSlideDomWrite(
+    {
+      writerId: "BRIDGE_OWNER_NORMALIZE_TRANSFORM",
+      caller: "keepPresentedShuffleSurfaceForRouteBridge",
+      transactionId: tx?.transactionId ?? null,
+      phase: tx?.phase ?? getMainTabToShufflePhase(),
+      navSeq: tx?.navSeq ?? 0,
+      nodeRole: "host",
+      nodeInstanceId: observeHostElement(host),
+      property: "transform",
+      intendedValue: "none",
+    },
+    host,
+    (el) => {
+      el.style.transform = "none";
+    },
+  );
+  traceSlideDomWrite(
+    {
+      writerId: "BRIDGE_OWNER_NORMALIZE_TRANSITION",
+      caller: "keepPresentedShuffleSurfaceForRouteBridge",
+      transactionId: tx?.transactionId ?? null,
+      phase: tx?.phase ?? getMainTabToShufflePhase(),
+      navSeq: tx?.navSeq ?? 0,
+      nodeRole: "host",
+      nodeInstanceId: observeHostElement(host),
+      property: "transition",
+      intendedValue: "none",
+    },
+    host,
+    (el) => {
+      el.style.transition = "none";
+    },
+  );
+  host.style.removeProperty("will-change");
+
+  document.documentElement.setAttribute("data-post-settle-route-bridge", "1");
+  document.body.classList.add("sayittome-shuffle-route");
+  document.body.classList.add("sayittome-shuffle-surface-active");
+
+  notifyKeepAliveListeners();
+  return true;
+}
+
+/** Hide prep owner only after final route surface owns presentation. */
+export function releasePresentedShuffleOwnerSurface() {
+  if (typeof document === "undefined") return;
+
+  const host = document.getElementById("sayittome-shuffle-keepalive-host");
+  if (host) {
+    const tx = getMainTabToShuffleTransaction();
+    host.classList.remove("sayittome-route-bridge-shuffle-owner");
+    host.classList.remove("sayittome-slide-shuffle-active");
+    if (host instanceof HTMLElement) {
+      traceSlideDomWrite(
+        {
+          writerId: "BRIDGE_RELEASE_CLEAR_TRANSFORM",
+          caller: "releasePresentedShuffleOwnerSurface",
+          transactionId: tx?.transactionId ?? null,
+          phase: tx?.phase ?? getMainTabToShufflePhase(),
+          navSeq: tx?.navSeq ?? 0,
+          nodeRole: "host",
+          nodeInstanceId: observeHostElement(host),
+          property: "transform",
+          intendedValue: null,
+        },
+        host,
+        (el) => {
+          el.style.removeProperty("transition");
+          el.style.removeProperty("transform");
+          el.style.removeProperty("will-change");
+        },
+      );
+    }
+  }
+
+  freezeShuffleKeepAliveHostSync();
+  notifyKeepAliveListeners();
 }
 
 function revealShuffleKeepAliveHost() {
@@ -273,7 +535,7 @@ export function finishShuffleHandoffPreparing() {
 
 export function hasRestorableWarmShuffleState() {
   if (getVisibleShuffleProfiles().length >= 3) return true;
-  if (peekPinnedShuffleWindowCount() >= 3) return true;
+  if (countDurableRestorableWarmSlots() >= 3) return true;
 
   const cached = readCachedShufflePool();
   if (cached && cached.length >= 3) return true;
@@ -289,12 +551,13 @@ export function isValidWarmShuffleHandoffActive() {
 }
 
 function presentShuffleAfterWarmRestore() {
-  if (!canActivateShuffleWarmHandoff()) return false;
+  if (!canRevealWarmShuffleHost()) return false;
 
-  revealShuffleKeepAliveHostSync();
+  if (!revealShuffleKeepAliveHostSync("presentShuffleAfterWarmRestore")) return false;
   presentShuffleSurface();
   finishShuffleHandoffPreparing();
   clearShuffleHandoffPendingDom();
+  settleShuffleDestinationWarmIntent();
   document.body.classList.add("sayittome-shuffle-route");
   document.body.classList.add("sayittome-shuffle-surface-active");
   window.scrollTo(0, 0);
@@ -305,6 +568,16 @@ function presentShuffleAfterWarmRestore() {
 /** Cold / aborted exit — clear pending retention and present Shuffle normally. */
 export function enterColdShufflePresentation(options?: { force?: boolean }) {
   if (typeof window === "undefined") return;
+
+  if (shouldBlockLegacyShufflePresentation()) {
+    recordLegacyPresentationBlocked("enterColdShufflePresentation");
+    return;
+  }
+
+  if (!options?.force && isShuffleDestinationWarmIntentActive()) {
+    prepareShuffleTabReturn();
+    return;
+  }
 
   restorePinnedShuffleWindowSync();
 
@@ -333,6 +606,7 @@ export function enterColdShufflePresentation(options?: { force?: boolean }) {
   clearShuffleHandoffPendingDom();
   clearShuffleHandoffState();
   finishShuffleHandoffPreparing();
+  abortShuffleDestinationWarmIntent();
   resetAtomicVisualHandoff();
   resetShuffleGeometryStability();
   releaseShuffleWindowRefreshSuppression();
@@ -341,7 +615,12 @@ export function enterColdShufflePresentation(options?: { force?: boolean }) {
 
   if (!options?.force && presentShuffleAfterWarmRestore()) return;
 
-  revealShuffleKeepAliveHostSync();
+  if (hasRestorableWarmShuffleState() || hasShuffleEverHydrated()) {
+    prepareShuffleTabReturn();
+    return;
+  }
+
+  if (!revealShuffleKeepAliveHostSync("enterColdShufflePresentation")) return;
   presentShuffleSurface();
   document.body.classList.add("sayittome-shuffle-route");
   document.body.classList.add("sayittome-shuffle-surface-active");
@@ -350,6 +629,10 @@ export function enterColdShufflePresentation(options?: { force?: boolean }) {
 }
 
 export function abortShuffleWarmHandoff() {
+  if (hasRestorableWarmShuffleState() || hasShuffleEverHydrated()) {
+    prepareShuffleTabReturn();
+    return;
+  }
   enterColdShufflePresentation({ force: true });
 }
 
@@ -357,14 +640,24 @@ export function abortShuffleWarmHandoff() {
 export function beginShuffleWarmHandoff(fromPath?: string) {
   if (typeof window === "undefined") return false;
 
+  shuffleNavSeq += 1;
+  const durableRestorable = countDurableRestorableWarmSlots();
+  const destinationWarm = durableRestorable >= 3 || hasShuffleEverHydrated();
+  beginShuffleDestinationWarmIntent(shuffleNavSeq, durableRestorable);
+
+  restorePinnedShuffleWindowSync();
   if (!keepAliveActive) {
-    restorePinnedShuffleWindowSync();
-    if (!hasRestorableWarmShuffleState() && !hasShuffleEverHydrated()) return false;
+    if (!destinationWarm) {
+      abortShuffleDestinationWarmIntent();
+      return false;
+    }
     pinShuffleKeepAlive();
   }
 
-  restorePinnedShuffleWindowSync();
-  if (!hasRestorableWarmShuffleState() && !hasShuffleEverHydrated()) return false;
+  if (!destinationWarm) {
+    abortShuffleDestinationWarmIntent();
+    return false;
+  }
 
   clearPendingVisualTab();
   resetShuffleGeometryStability();
@@ -388,6 +681,7 @@ export function prepareShuffleTabReturn(): boolean {
   if (typeof window === "undefined" || !keepAliveActive) return false;
   if (!hasRestorableWarmShuffleState()) return false;
 
+  restorePinnedShuffleWindowSync();
   suppressShuffleWindowRefresh = true;
   releaseChatViewportLock();
   resetShuffleGeometryStability();
@@ -408,21 +702,47 @@ export function prepareShuffleTabReturn(): boolean {
 }
 
 /** ATOMIC ACTIVATE — single sync block: reveal shuffle, then hide source. */
-export function activateShuffleTabSurface(options?: { force?: boolean }) {
+export function activateShuffleTabSurface(options?: { microSlideSettle?: boolean }) {
   if (typeof window === "undefined") return;
-  const warmReady = canActivateShuffleWarmHandoff();
-  if (!options?.force && !warmReady && !isShuffleVisualHandoffReady()) return;
+
+  recordLegacyRevealLifecycle("activateShuffleTabSurface", {
+    microSlideSettle: options?.microSlideSettle,
+  });
+
+  if (
+    !options?.microSlideSettle &&
+    getMainTabToShufflePhase() !== "settled" &&
+    shouldBlockLegacyShufflePresentation()
+  ) {
+    recordLegacyPresentationBlocked("activateShuffleTabSurface");
+    return;
+  }
+
+  restorePinnedShuffleWindowSync();
+
+  const warmHop =
+    isShuffleDestinationWarmIntentActive() ||
+    isShuffleRevealDeferred() ||
+    isShuffleHandoffPreparing() ||
+    isValidWarmShuffleHandoffActive();
+  if (warmHop) {
+    if (!canActivateShuffleWarmHandoff()) return;
+  } else if (!isShuffleVisualHandoffReady() && !canActivateShuffleWarmHandoff()) {
+    return;
+  }
 
   markAtomicVisualHandoffReady();
 
-  const revealed = revealShuffleKeepAliveHostSync();
-  if (!revealed && !options?.force) return;
+  if (!revealShuffleKeepAliveHostSync("activateShuffleTabSurface")) return;
 
   setNavCapturePhase("SWAPPING_SHUFFLE");
   markNavCaptureDetail("imperative-reveal-shuffle-host");
 
   presentShuffleSurface();
   finishShuffleHandoffPreparing();
+  if (!options?.microSlideSettle) {
+    settleShuffleDestinationWarmIntent();
+  }
   commitAtomicVisualHandoff();
   setNavCapturePhase("SHUFFLE_PRESENTED");
   setNavCaptureSurface("SHUFFLE");
@@ -465,6 +785,12 @@ export function commitShuffleTabReturn() {
 }
 
 export function canShowShuffleKeepAliveSurface(pathname: string) {
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.hasAttribute("data-post-settle-route-bridge")
+  ) {
+    return true;
+  }
   if (isInstantShuffleReturnPending()) return true;
   if (isShuffleSourceRetainedForMainTabExit()) return true;
   if (!isShuffleKeepAliveVisible(pathname)) return false;

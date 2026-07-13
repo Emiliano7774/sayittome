@@ -1,7 +1,15 @@
 import { hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
 import { isShuffleRevealDeferred } from "@/lib/navigation/shuffleHandoffState";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
+import { isShuffleDestinationWarmIntentActive } from "@/lib/shuffle/shuffleWarmHopIntent";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
+import {
+  isMainTabToShufflePresentationLatchActive,
+  isMainTabToShufflePresentationOwned,
+} from "@/lib/navigation/mainTabToShuffleTransition";
+import {
+  mayPresentShuffleLoading,
+} from "@/lib/shuffle/shuffleLoadingPresentationGate";
 import {
   hasShuffleWarmVisualReady,
   peekPinnedShuffleWindowCount,
@@ -20,6 +28,13 @@ export function isShuffleKeepAliveHostMounted() {
 let shuffleHandoffPreparing = false;
 
 export function setShuffleHandoffPreparing(value: boolean) {
+  if (
+    (isMainTabToShufflePresentationOwned() || isMainTabToShufflePresentationLatchActive()) &&
+    value === false
+  ) {
+    // Keep legacy preparing true while slide owner is active; prevents main-tab keepalive from unmounting source.
+    return;
+  }
   shuffleHandoffPreparing = value;
 }
 
@@ -63,6 +78,7 @@ export type ShuffleLoadingGateInput = {
 
 /** Warm keep-alive / handoff must never paint the cold loading shell. */
 export function hasWarmShufflePresentationHint() {
+  if (isShuffleDestinationWarmIntentActive()) return true;
   if (shuffleHandoffPreparing) return true;
   if (isShuffleRevealDeferred()) return true;
   if (getVisibleShuffleProfiles().length >= 3) return true;
@@ -73,16 +89,18 @@ export function hasWarmShufflePresentationHint() {
 
 /** Cold-only full-page loader. Warm keep-alive must never paint this shell. */
 export function shouldPaintShuffleLoadingShell(input: ShuffleLoadingGateInput) {
-  if (isWarmShuffleKeepAliveMounted()) return false;
-  if (isShuffleRevealDeferred()) return false;
-  if (shuffleHandoffPreparing) return false;
-  if (hasWarmShufflePresentationHint()) return false;
-  if (hasShuffleEverHydrated()) return false;
-  if (input.visibleCount > 0) return false;
-  if (input.listReady) return false;
-  if (hasShuffleWarmVisualReady()) return false;
+  const requested =
+    !isWarmShuffleKeepAliveMounted() &&
+    !isShuffleRevealDeferred() &&
+    !shuffleHandoffPreparing &&
+    !hasWarmShufflePresentationHint() &&
+    !hasShuffleEverHydrated() &&
+    input.visibleCount === 0 &&
+    !input.listReady &&
+    !hasShuffleWarmVisualReady() &&
+    input.loading;
 
-  return input.loading;
+  return mayPresentShuffleLoading(input, Boolean(requested), "shouldPaintShuffleLoadingShell");
 }
 
 export function shouldPresentWarmShuffleFeed(input: ShuffleLoadingGateInput) {
@@ -301,8 +319,14 @@ export function isShuffleVisualHandoffReady() {
 export function canActivateShuffleWarmHandoff() {
   const sample = sampleShuffleHandoffGeometry();
   if (!sample) return false;
-  if (sample.prepDomSlots >= 3) return true;
-  return sample.domSlots >= 3 && !sample.loadingTextInHost;
+  if (sample.loadingShellDom) return false;
+  if (sample.prepDomSlots < 3) return false;
+  return true;
+}
+
+/** Warm reveal requires feed DOM ready — no loading shell, >=3 slots. */
+export function canRevealWarmShuffleHost() {
+  return canActivateShuffleWarmHandoff();
 }
 
 export function countPaintedShuffleSlots() {

@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
+import NativeAwareLink from "@/components/navigation/NativeAwareLink";
 import ModernShuffleGrid from "@/components/modern/ModernShuffleGrid";
 import ModernStoriesBar from "@/components/modern/ModernStoriesBar";
 import ModernAnonConnectCard from "@/components/anonMatch/ModernAnonConnectCard";
@@ -14,26 +14,26 @@ import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptySt
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ModernShuffleGlassToolbar from "@/components/shuffle/ModernShuffleGlassToolbar";
 import { useShufflePool } from "@/hooks/useShufflePool";
-import { hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
 import {
   getShuffleSlotsVersion,
   getVisibleShuffleProfiles,
   subscribeAllShuffleSlots,
 } from "@/lib/shuffle/shuffleSlotsStore";
 import {
-  shouldPaintShuffleLoadingShell,
   traceShuffleVisualCommit,
 } from "@/lib/shuffle/shuffleWarmVisual";
+import { deriveShufflePresentation } from "@/lib/shuffle/shufflePresentation";
+import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
+import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
+import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
+import { isShuffleKeepAliveActive } from "@/lib/navigation/shuffleKeepAlive";
+import { isShuffleRevealDeferred, isShuffleSurfacePresented } from "@/lib/navigation/shuffleHandoffState";
+import { useT } from "@/contexts/LocaleContext";
 import {
   getCachedStoryGroups,
   getStoriesIndexVersion,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
-import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
-import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
-import { isShuffleKeepAliveActive } from "@/lib/navigation/shuffleKeepAlive";
-import { isShuffleSurfacePresented } from "@/lib/navigation/shuffleHandoffState";
-import { useT } from "@/contexts/LocaleContext";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 
 export default function ModernShuffleClient() {
@@ -55,18 +55,25 @@ export default function ModernShuffleClient() {
   useSyncExternalStore(subscribeAllShuffleSlots, getShuffleSlotsVersion, getShuffleSlotsVersion);
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
 
+  useLayoutEffect(() => {
+    if (isShuffleRevealDeferred()) {
+      restorePinnedShuffleWindowSync();
+    }
+  });
+
   const visible = getVisibleShuffleProfiles();
   const withStories = getCachedStoryGroups().length;
   const profileCount = pool.profilesCreated || pool.livePeopleCount;
   const filtersBlockResults =
     pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery;
-  const showShuffleLoading = shouldPaintShuffleLoadingShell({
+  const gateInput = {
     loading: pool.loading,
     listReady: pool.listReady,
     visibleCount: visible.length,
-  });
-  const showShuffleFeed =
-    visible.length > 0 || pool.listReady || hasShuffleEverHydrated();
+    poolProfileCount: pool.poolSize,
+  };
+  const presentation = deriveShufflePresentation(gateInput);
+  const { showShuffleLoading, showShuffleFeed } = presentation;
 
   useLayoutEffect(() => {
     traceShuffleVisualCommit("modern-shuffle-render", {
@@ -88,13 +95,13 @@ export default function ModernShuffleClient() {
           subtitle={t("shuffle_subtitle")}
           actions={
             <>
-              <Link
+              <NativeAwareLink
                 href="/stories/new"
                 className="rounded-full bg-violet-600 px-5 py-2.5 text-sm font-black shadow-[0_0_30px_rgba(124,58,237,.35)]"
               >
                 {t("shuffle_new_story")}
-              </Link>
-              <Link
+              </NativeAwareLink>
+              <NativeAwareLink
                 href="/chats"
                 className="relative rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-black"
               >
@@ -102,7 +109,7 @@ export default function ModernShuffleClient() {
                 {totalUnread > 0 ? (
                   <ChatPendingIndicator className="-right-0.5 -top-0.5" />
                 ) : null}
-              </Link>
+              </NativeAwareLink>
             </>
           }
         />

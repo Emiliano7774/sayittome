@@ -273,7 +273,11 @@ main[data-scroll-root].sayittome-shuffle-scroll-classic {
 body.sayittome-chat-open nav.fixed.bottom-0,
 body.sayittome-chat-open .sayittome-bottom-nav,
 body.sayittome-chat-open .fixed.bottom-0.left-0.right-0,
-body.sayittome-chat-open .fixed.inset-x-0.bottom-0 {
+body.sayittome-chat-open .fixed.inset-x-0.bottom-0,
+body:has(.sayittome-chat-shell) nav.fixed.bottom-0,
+body:has(.sayittome-chat-shell) .sayittome-bottom-nav,
+body:has(.sayittome-chat-shell) .fixed.bottom-0.left-0.right-0,
+body:has(.sayittome-chat-shell) .fixed.inset-x-0.bottom-0 {
   display: none !important;
 }
 
@@ -394,6 +398,119 @@ html.sayittome-shuffle-handoff-pending #sayittome-shuffle-keepalive-host {
   opacity: 0 !important;
   pointer-events: none !important;
   contain: strict !important;
+}
+
+/* Main-tab → Shuffle micro-slide (transform-only, 110ms) */
+html[data-main-tab-shuffle-slide="preparing"],
+html[data-main-tab-shuffle-slide="armed"],
+html[data-main-tab-shuffle-slide="running"] {
+  background-color: #171717;
+}
+
+html[data-main-tab-shuffle-slide="preparing"] .sayittome-slide-source-active {
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+html[data-main-tab-shuffle-slide="preparing"][data-main-tab-shuffle-source="chats"]
+  #sayittome-main-tab-keepalive-chats,
+html[data-main-tab-shuffle-slide="armed"][data-main-tab-shuffle-source="chats"]
+  #sayittome-main-tab-keepalive-chats,
+html[data-main-tab-shuffle-slide="running"][data-main-tab-shuffle-source="chats"]
+  #sayittome-main-tab-keepalive-chats,
+html[data-main-tab-shuffle-slide="preparing"][data-main-tab-shuffle-source="stories"]
+  #sayittome-main-tab-keepalive-stories,
+html[data-main-tab-shuffle-slide="armed"][data-main-tab-shuffle-source="stories"]
+  #sayittome-main-tab-keepalive-stories,
+html[data-main-tab-shuffle-slide="running"][data-main-tab-shuffle-source="stories"]
+  #sayittome-main-tab-keepalive-stories,
+html[data-main-tab-shuffle-slide="preparing"][data-main-tab-shuffle-source="boost"]
+  #sayittome-main-tab-keepalive-boost,
+html[data-main-tab-shuffle-slide="armed"][data-main-tab-shuffle-source="boost"]
+  #sayittome-main-tab-keepalive-boost,
+html[data-main-tab-shuffle-slide="running"][data-main-tab-shuffle-source="boost"]
+  #sayittome-main-tab-keepalive-boost,
+html[data-main-tab-shuffle-slide="preparing"][data-main-tab-shuffle-source="settings"]
+  #sayittome-main-tab-keepalive-settings,
+html[data-main-tab-shuffle-slide="armed"][data-main-tab-shuffle-source="settings"]
+  #sayittome-main-tab-keepalive-settings,
+html[data-main-tab-shuffle-slide="running"][data-main-tab-shuffle-source="settings"]
+  #sayittome-main-tab-keepalive-settings {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 2 !important;
+  position: fixed !important;
+  inset: 0 !important;
+}
+
+html[data-main-tab-shuffle-slide="armed"] #sayittome-shuffle-keepalive-host,
+html[data-main-tab-shuffle-slide="running"] #sayittome-shuffle-keepalive-host {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  z-index: 1 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  contain: layout style paint;
+}
+
+html[data-main-tab-shuffle-slide="armed"] #sayittome-shuffle-keepalive-host .sayittome-shuffle-surface-prep,
+html[data-main-tab-shuffle-slide="running"] #sayittome-shuffle-keepalive-host .sayittome-shuffle-surface-prep {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+}
+
+html[data-main-tab-shuffle-slide="armed"] .sayittome-slide-source-active,
+html[data-main-tab-shuffle-slide="running"] .sayittome-slide-source-active {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  z-index: 2 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  contain: layout style paint;
+}
+
+html[data-main-tab-shuffle-slide="running"] .sayittome-slide-source-active,
+html[data-main-tab-shuffle-slide="running"] #sayittome-shuffle-keepalive-host {
+  will-change: transform;
+}
+
+/* ROUTE_BRIDGE_OWNER_OVERRIDES_FROZEN_VISIBILITY — prep host stays presentable until final handoff. */
+html[data-post-settle-route-bridge] #sayittome-shuffle-keepalive-host,
+html[data-post-settle-route-bridge] #sayittome-shuffle-keepalive-host.sayittome-route-bridge-shuffle-owner,
+html[data-post-settle-route-bridge] #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-frozen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  z-index: 1 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  transition: none !important;
+  contain: layout style paint;
+  backface-visibility: hidden;
+}
+
+html[data-post-settle-route-bridge] #sayittome-shuffle-keepalive-host .sayittome-shuffle-surface-prep {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 body.sayittome-shuffle-surface-active:has(

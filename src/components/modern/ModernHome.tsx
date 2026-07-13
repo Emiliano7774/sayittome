@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-
 import HeaderControls from "@/components/HeaderControls";
 import EnterShuffleButton from "@/components/legal/EnterShuffleButton";
+import NativeAwareLink from "@/components/navigation/NativeAwareLink";
 import ApkDownloadSection from "@/components/monetization/ApkDownloadSection";
 import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { useT } from "@/contexts/LocaleContext";
@@ -40,12 +39,12 @@ export default function ModernHome() {
             </p>
 
             <div className="mt-10 flex flex-wrap gap-4">
-              <Link
+              <NativeAwareLink
                 href="/register"
                 className="rounded-full bg-white px-8 py-4 text-sm font-normal text-black"
               >
                 {t("home_create_profile")}
-              </Link>
+              </NativeAwareLink>
 
               <EnterShuffleButton
                 label={t("home_go_shuffle")}

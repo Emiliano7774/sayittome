@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { onAuthStateChanged } from "firebase/auth";
 
 import StoriesTray from "@/components/stories/StoriesTray";
+import NativeAwareLink from "@/components/navigation/NativeAwareLink";
 import { auth } from "@/lib/firebase";
 import { resolveStoryViewerId } from "@/lib/stories/anonStories";
 import {
@@ -62,12 +62,12 @@ export default function ModernStoriesBar({ compact = false }: Props) {
       <StoriesTray groups={groups} />
 
       <div className="mt-3 flex justify-end">
-        <Link
+        <NativeAwareLink
           href="/stories/new"
           className="rounded-full bg-violet-600 px-4 py-2 text-xs font-black text-white shadow-[0_0_24px_rgba(124,58,237,.35)]"
         >
           + Historia
-        </Link>
+        </NativeAwareLink>
       </div>
     </section>
   );

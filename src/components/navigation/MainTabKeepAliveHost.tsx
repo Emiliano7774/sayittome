@@ -34,9 +34,18 @@ import {
   subscribeShuffleHandoffState,
 } from "@/lib/navigation/shuffleHandoffState";
 import {
+  getMainTabToShuffleTransaction,
+  isMainTabToShufflePresentationOwned,
+} from "@/lib/navigation/mainTabToShuffleTransition";
+import {
   getShuffleKeepAliveVersion,
   subscribeShuffleKeepAlive,
 } from "@/lib/navigation/shuffleKeepAlive";
+import {
+  getCurrentMainTabPathname,
+  getMainTabInternalPathnameVersion,
+  subscribeMainTabPathname,
+} from "@/lib/navigation/mainTabInternalPathnameStore";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
@@ -52,6 +61,10 @@ const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
 const HANDOFF_FRAME_BUDGET = 120;
 
 function resolveMainTabPanelPath(pathname: string) {
+  if (isMainTabToShufflePresentationOwned()) {
+    const source = getMainTabToShuffleTransaction()?.source;
+    if (source) return `/${source}`;
+  }
   if (isShuffleRevealDeferred()) {
     const defer = getShuffleDeferSourcePath();
     if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(defer)) {
@@ -62,7 +75,13 @@ function resolveMainTabPanelPath(pathname: string) {
 }
 
 export default function MainTabKeepAliveHost() {
-  const pathname = usePathname();
+  const nextPathname = usePathname();
+  useSyncExternalStore(
+    subscribeMainTabPathname,
+    getMainTabInternalPathnameVersion,
+    getMainTabInternalPathnameVersion,
+  );
+  const pathname = getCurrentMainTabPathname(nextPathname);
   const handoffLoopRef = useRef(0);
 
   const version = useSyncExternalStore(

@@ -17,9 +17,12 @@ import StoriesBootstrap from "@/components/stories/StoriesBootstrap";
 import SensitiveConsentBootstrap from "@/components/moderation/SensitiveConsentBootstrap";
 import AnonMatchBootstrap from "@/components/anonMatch/AnonMatchBootstrap";
 import ChatNotificationPrompt from "@/components/chat/ChatNotificationPrompt";
+import NavCaptureDiagBootstrap from "@/components/dev/NavCaptureDiagBootstrap";
+import NavInputDiagBootstrap from "@/components/dev/NavInputDiagBootstrap";
 import ShuffleKeepAliveHost from "@/components/shuffle/ShuffleKeepAliveHost";
 import NavTraceBootstrap from "@/components/dev/NavTraceBootstrap";
 import NavTraceProfiler from "@/components/dev/NavTraceProfiler";
+import MainTabToShuffleSlideStage from "@/components/navigation/MainTabToShuffleSlideStage";
 
 export default function Providers({
   children,
@@ -44,8 +47,11 @@ export default function Providers({
           <AnonMatchBootstrap />
           <BoostBootstrap />
           <ChatNotificationPrompt />
+          <NavCaptureDiagBootstrap />
+          <NavInputDiagBootstrap />
           {(process.env.NODE_ENV === "development" ||
             process.env.NEXT_PUBLIC_NAV_TRACE === "1") && <NavTraceBootstrap />}
+          <MainTabToShuffleSlideStage />
           <ShuffleKeepAliveHost />
           <NavTraceProfiler>{children}</NavTraceProfiler>
           </ChatAlertsProvider>

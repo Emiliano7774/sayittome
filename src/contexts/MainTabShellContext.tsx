@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useSyncExternalStore } from "react";
 
 import {
   isMainTabHref,
@@ -20,8 +21,19 @@ import {
   OPEN_MAIN_TAB_EVENT,
 } from "@/lib/navigation/mainTabShellBridge";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
+import {
+  hardNavigate,
+  shouldHardNavigatePath,
+} from "@/lib/navigation/hardNavigate";
 import { pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
 import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
+import {
+  getCurrentMainTabPathname,
+  getMainTabInternalPathnameVersion,
+  resetMainTabHistoryPathnameStore,
+  subscribeMainTabPathname,
+} from "@/lib/navigation/mainTabInternalPathnameStore";
 import MainTabKeepAliveHost from "@/components/navigation/MainTabKeepAliveHost";
 
 type MainTabShellContextValue = {
@@ -49,14 +61,20 @@ export function MainTabShellProvider({
   chrome?: ReactNode;
 }) {
   const nextPathname = usePathname();
+  useSyncExternalStore(
+    subscribeMainTabPathname,
+    getMainTabInternalPathnameVersion,
+    getMainTabInternalPathnameVersion,
+  );
+  const resolvedPathname = getCurrentMainTabPathname(nextPathname);
   const router = useRouter();
   const [shellTab, setShellTab] = useState<MainTabHref | null>(null);
   const shellMountedTabs = useMemo(() => new Set<MainTabHref>(), []);
 
   useEffect(() => {
-    if (isMainTabHref(nextPathname)) return;
+    if (isMainTabHref(resolvedPathname)) return;
     setShellTab(null);
-  }, [nextPathname]);
+  }, [resolvedPathname]);
 
   useEffect(() => {
     window.__sayittomeActiveShellTab = shellTab;
@@ -71,13 +89,18 @@ export function MainTabShellProvider({
   const openMainTab = useCallback(
     (href: MainTabHref) => {
       setShellTab(null);
-      if (href === nextPathname) return;
+      resetMainTabHistoryPathnameStore("open-main-tab");
+      if (href === resolvedPathname) return;
       pinMainTabKeepAlive();
       recordNativeNavPath(href);
       releaseChatViewportLock();
+      if (isNativeAppShell() && shouldHardNavigatePath(href)) {
+        hardNavigate(href);
+        return;
+      }
       router.push(href);
     },
-    [nextPathname, router],
+    [resolvedPathname, router],
   );
 
   useEffect(() => {
@@ -102,7 +125,7 @@ export function MainTabShellProvider({
 
   const activeShellTab = shellTab;
   const childrenHidden = activeShellTab !== null;
-  const effectivePathname = activeShellTab ?? nextPathname;
+  const effectivePathname = activeShellTab ?? resolvedPathname;
 
   const value = useMemo<MainTabShellContextValue>(
     () => ({
@@ -147,11 +170,23 @@ export function useMainTabShell() {
 
 export function useEffectivePathname() {
   const shell = useContext(MainTabShellContext);
-  const pathname = usePathname();
+  const nextPathname = usePathname();
+  useSyncExternalStore(
+    subscribeMainTabPathname,
+    getMainTabInternalPathnameVersion,
+    getMainTabInternalPathnameVersion,
+  );
+  const pathname = getCurrentMainTabPathname(nextPathname);
   return shell?.effectivePathname ?? pathname;
 }
 
 export function useMainTabRouteActive(href: MainTabHref) {
-  const pathname = usePathname();
+  const nextPathname = usePathname();
+  useSyncExternalStore(
+    subscribeMainTabPathname,
+    getMainTabInternalPathnameVersion,
+    getMainTabInternalPathnameVersion,
+  );
+  const pathname = getCurrentMainTabPathname(nextPathname);
   return pathname === href;
 }

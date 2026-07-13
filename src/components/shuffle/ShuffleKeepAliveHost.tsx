@@ -37,9 +37,15 @@ import {
   canActivateShuffleWarmHandoff,
   observeShuffleGeometryStability,
   resetShuffleGeometryStability,
-  sampleShuffleHandoffGeometry,
   subscribeShuffleWarmReturn,
 } from "@/lib/shuffle/shuffleWarmVisual";
+import { isInternalMainTabToShuffleTransitionActive } from "@/lib/navigation/mainTabToShuffleTransition";
+import {
+  getCurrentMainTabPathname,
+  getMainTabInternalPathnameVersion,
+  subscribeMainTabPathname,
+} from "@/lib/navigation/mainTabInternalPathnameStore";
+import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
 import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
 import { isMainTabHref, type MainTabHref } from "@/lib/navigation/mainTabs";
 
@@ -50,7 +56,13 @@ function isMainTabPath(path: string): path is Exclude<MainTabHref, "/shuffle"> {
 }
 
 export default function ShuffleKeepAliveHost() {
-  const pathname = usePathname();
+  const nextPathname = usePathname();
+  useSyncExternalStore(
+    subscribeMainTabPathname,
+    getMainTabInternalPathnameVersion,
+    getMainTabInternalPathnameVersion,
+  );
+  const pathname = getCurrentMainTabPathname(nextPathname);
   const prevPathRef = useRef(pathname);
   const handoffLoopRef = useRef(0);
 
@@ -101,6 +113,7 @@ export default function ShuffleKeepAliveHost() {
 
     if (path === "/shuffle") {
       pinShuffleKeepAlive();
+      restorePinnedShuffleWindowSync();
     }
 
     function startHandoffLoop() {
@@ -112,9 +125,12 @@ export default function ShuffleKeepAliveHost() {
         if (handoffLoopRef.current !== loopId) return;
         frames += 1;
 
+        restorePinnedShuffleWindowSync();
+
         if (!isValidWarmShuffleHandoffActive()) {
-          activateShuffleTabSurface({ force: true });
-          requestAnimationFrame(() => ghostFrameWatchEnd());
+          if (hasRestorableWarmShuffleState()) {
+            prepareShuffleTabReturn();
+          }
           return;
         }
 
@@ -124,17 +140,10 @@ export default function ShuffleKeepAliveHost() {
           return;
         }
 
-        const geometry = sampleShuffleHandoffGeometry();
-        if (geometry && geometry.prepDomSlots >= 3) {
-          activateShuffleTabSurface({ force: true });
-          requestAnimationFrame(() => ghostFrameWatchEnd());
-          return;
-        }
-
         const stable = observeShuffleGeometryStability();
         ghostFrameWatchInspect(stable ? "shuffle-geometry-stable" : `shuffle-geometry-wait:${frames}`);
 
-        if (stable) {
+        if (stable && canActivateShuffleWarmHandoff()) {
           activateShuffleTabSurface();
           requestAnimationFrame(() => ghostFrameWatchEnd());
           return;
@@ -142,9 +151,6 @@ export default function ShuffleKeepAliveHost() {
 
         if (frames < HANDOFF_FRAME_BUDGET) {
           requestAnimationFrame(tryActivate);
-        } else {
-          activateShuffleTabSurface({ force: true });
-          requestAnimationFrame(() => ghostFrameWatchEnd());
         }
       };
 
@@ -152,6 +158,10 @@ export default function ShuffleKeepAliveHost() {
     }
 
     if (path === "/shuffle" && isShuffleKeepAliveActive()) {
+      if (isInternalMainTabToShuffleTransitionActive()) {
+        return;
+      }
+
       const warmHandoff = isValidWarmShuffleHandoffActive();
 
       if (!isShuffleSurfacePresented()) {

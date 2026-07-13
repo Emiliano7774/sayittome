@@ -4,6 +4,10 @@ import {
   resolveNativeBack,
   stripNativeChatFullscreen,
 } from "@/lib/navigation/nativeBack";
+import {
+  abortMainTabToShuffleTransition,
+  isInternalMainTabToShuffleTransitionActive,
+} from "@/lib/navigation/mainTabToShuffleTransition";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 
 export type NativeBackNavigation = {
@@ -102,6 +106,10 @@ export function resetNativeBackExitTimer() {
 export function resolveNativeBackNavigation(
   pathname = readNativePathname(),
 ): NativeBackNavigation | null {
+  if (isInternalMainTabToShuffleTransitionActive()) {
+    abortMainTabToShuffleTransition("hardware-back");
+  }
+
   const now = Date.now();
   const awaitingExitConfirm = pendingExitUntil > now;
 

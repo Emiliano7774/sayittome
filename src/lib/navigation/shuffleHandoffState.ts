@@ -1,4 +1,5 @@
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
+import { isMainTabToShufflePresentationOwned } from "@/lib/navigation/mainTabToShuffleTransition";
 
 let shuffleRevealDeferred = false;
 let deferSourcePath = "/chats";
@@ -41,12 +42,14 @@ export function beginShuffleRevealDeferred(sourcePath: string) {
 }
 
 export function presentShuffleSurface() {
+  if (isMainTabToShufflePresentationOwned()) return;
   shuffleRevealDeferred = false;
   shuffleSurfacePresented = true;
   notify();
 }
 
 export function clearShuffleHandoffState() {
+  if (isMainTabToShufflePresentationOwned()) return;
   if (!shuffleRevealDeferred && !shuffleSurfacePresented && !shuffleExitMainTabTarget) return;
   shuffleRevealDeferred = false;
   shuffleSurfacePresented = false;

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
   hasMainTabBeenVisited,
   markMainTabVisited,
@@ -15,6 +16,14 @@ import {
   pinShuffleKeepAlive,
   pinShuffleWindowWhileAway,
 } from "@/lib/navigation/shuffleKeepAlive";
+import {
+  abortMainTabToShuffleTransition,
+  beginInternalMainTabToShuffleTransition,
+  blockMainTabNavigationDuringSlide,
+  isInternalMainTabToShuffleTransitionActive,
+  pathToMainTabShuffleSource,
+} from "@/lib/navigation/mainTabToShuffleTransition";
+import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import {
   ghostFrameWatchBegin,
@@ -34,10 +43,23 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     if (typeof window !== "undefined") {
       const currentPath = window.location.pathname.split("?")[0].split("#")[0];
 
-      if (href === "/shuffle" && currentPath !== "/shuffle" && isShuffleKeepAliveActive()) {
+      if (blockMainTabNavigationDuringSlide()) {
+        return;
+      }
+
+      if (href !== "/shuffle" && isInternalMainTabToShuffleTransitionActive()) {
+        abortMainTabToShuffleTransition("navigation-replaced");
+      }
+
+      if (href === "/shuffle" && currentPath !== "/shuffle") {
+        pinShuffleKeepAlive();
         if (isNavTraceEnabled()) {
           ghostFrameWatchBegin(`warm:${currentPath}->/shuffle`);
           ghostFrameWatchInspect("pointerdown-prepare");
+        }
+        const source = pathToMainTabShuffleSource(currentPath);
+        if (isMainTabToShuffleMicroSlideEnabled() && source) {
+          beginInternalMainTabToShuffleTransition(source);
         }
         beginShuffleWarmHandoff(currentPath);
       }
@@ -59,15 +81,27 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
   }
 
   return (
-    <Link
-      href={href}
-      className={className}
-      prefetch
-      onPointerDown={warmTab}
-      onPointerEnter={warmTab}
-      {...rest}
-    >
-      {children}
-    </Link>
+    isNativeAppShell() ? (
+      <a
+        href={href}
+        className={className}
+        onPointerDown={warmTab}
+        onPointerEnter={warmTab}
+        {...rest}
+      >
+        {children}
+      </a>
+    ) : (
+      <Link
+        href={href}
+        className={className}
+        prefetch
+        onPointerDown={warmTab}
+        onPointerEnter={warmTab}
+        {...rest}
+      >
+        {children}
+      </Link>
+    )
   );
 }

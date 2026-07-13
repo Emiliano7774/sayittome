@@ -2,13 +2,24 @@
 
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import { useSyncExternalStore } from "react";
 
 import BottomNavLink from "@/components/navigation/BottomNavLink";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { resolveEffectiveMainTab } from "@/lib/navigation/mainTabKeepAlive";
-import { beginWarmShuffleTabNavigation } from "@/lib/navigation/warmShuffleTabNavigation";
+import {
+  getCurrentMainTabPathname,
+  getMainTabInternalPathnameVersion,
+  subscribeMainTabPathname,
+} from "@/lib/navigation/mainTabInternalPathnameStore";
+import {
+  beginWarmShuffleTabNavigation,
+  completeWarmShuffleTabNavigation,
+  prepareMainTabToShuffleNavigation,
+} from "@/lib/navigation/warmShuffleTabNavigation";
+import { blockMainTabNavigationDuringSlide, getMainTabToShufflePhase } from "@/lib/navigation/mainTabToShuffleTransition";
 import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
 
 type NavItem =
@@ -21,7 +32,13 @@ type Props = {
 };
 
 export default function BottomNav({ unreadCount = 0 }: Props) {
-  const pathname = usePathname();
+  const nextPathname = usePathname();
+  useSyncExternalStore(
+    subscribeMainTabPathname,
+    getMainTabInternalPathnameVersion,
+    getMainTabInternalPathnameVersion,
+  );
+  const pathname = getCurrentMainTabPathname(nextPathname);
   const effectiveTab = resolveEffectiveMainTab(pathname);
   const router = useRouter();
   const t = useT();
@@ -39,18 +56,45 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
   }
 
   function openShuffleTab() {
-    beginWarmShuffleTabNavigation(pathname);
-    fastRouterPush(router, "/shuffle");
+    if (blockMainTabNavigationDuringSlide()) return;
+    if (getMainTabToShufflePhase() !== "preparing") {
+      beginWarmShuffleTabNavigation(pathname, { triggerType: "user-main-tab-click" });
+    }
+    completeWarmShuffleTabNavigation(router, fastRouterPush, pathname);
   }
 
-  function warmShuffleTab() {
+  function warmShuffleTabPointerDown() {
+    if (blockMainTabNavigationDuringSlide()) {
+      prepareMainTabToShuffleNavigation(pathname, {
+        blockedDuringSlide: true,
+        triggerType: "user-main-tab-pointerdown",
+      });
+      return;
+    }
     if (pathname !== "/shuffle") {
-      beginWarmShuffleTabNavigation(pathname);
+      prepareMainTabToShuffleNavigation(pathname, { triggerType: "user-main-tab-pointerdown" });
+    }
+  }
+
+  function warmShuffleTabPointerEnter() {
+    // Keepalive warm only — never begin micro-slide from hover/remount after popstate.
+    if (blockMainTabNavigationDuringSlide()) {
+      prepareMainTabToShuffleNavigation(pathname, {
+        blockedDuringSlide: true,
+        triggerType: "pointerenter-warm",
+      });
+      return;
+    }
+    if (pathname !== "/shuffle") {
+      prepareMainTabToShuffleNavigation(pathname, { triggerType: "pointerenter-warm" });
     }
   }
 
   return (
-    <div className="sayittome-bottom-nav fixed bottom-0 left-0 right-0 z-[9999] border-t border-white/[0.04] bg-[#171717]/96 backdrop-blur-2xl">
+    <div
+      className="sayittome-bottom-nav fixed bottom-0 left-0 right-0 z-[9999] border-t border-white/[0.04] bg-[#171717]/96 backdrop-blur-2xl"
+      data-bottom-nav-implementation="classic"
+    >
       <div className="sayittome-bottom-nav-inner flex w-full items-center justify-around px-[max(22px,4vw)]">
         {items.map((item) => {
           const Icon = item.icon;
@@ -81,8 +125,8 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
                 key={item.id}
                 type="button"
                 data-nav-tab="shuffle"
-                onPointerDown={warmShuffleTab}
-                onPointerEnter={warmShuffleTab}
+                onPointerDown={warmShuffleTabPointerDown}
+                onPointerEnter={warmShuffleTabPointerEnter}
                 onClick={openShuffleTab}
                 className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0"
                 aria-label={t("nav_shuffle_refresh")}

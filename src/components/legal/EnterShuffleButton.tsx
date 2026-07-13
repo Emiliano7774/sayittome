@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import AnonymousEntryLegalModal from "@/components/legal/AnonymousEntryLegalModal";
 import { enterAnonymousMode } from "@/lib/auth/enterAnonymousMode";
+import { hardNavigate, shouldHardNavigate } from "@/lib/navigation/hardNavigate";
 
 type Props = {
   className?: string;
@@ -27,6 +28,10 @@ export default function EnterShuffleButton({
     try {
       await enterAnonymousMode();
       setOpen(false);
+      if (shouldHardNavigate()) {
+        hardNavigate("/shuffle");
+        return;
+      }
       router.push("/shuffle");
     } finally {
       setBusy(false);

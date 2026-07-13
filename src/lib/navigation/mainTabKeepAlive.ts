@@ -10,6 +10,10 @@ import {
   isShuffleSurfacePresented,
 } from "@/lib/navigation/shuffleHandoffState";
 import { isShuffleKeepAliveActive } from "@/lib/navigation/shuffleKeepAlive";
+import {
+  getMainTabToShuffleTransaction,
+  isMainTabToShufflePresentationOwned,
+} from "@/lib/navigation/mainTabToShuffleTransition";
 import { isVisualFirstTabsEnabled } from "@/lib/perf/instantaneityFlags";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 
@@ -114,6 +118,13 @@ export function clearPendingVisualTab() {
 
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
   const path = normalizePath(pathname);
+
+  if (isMainTabToShufflePresentationOwned()) {
+    const source = getMainTabToShuffleTransaction()?.source;
+    if (source) {
+      return href === (`/${source}` as MainTabHref);
+    }
+  }
 
   if (path === "/shuffle" && !isShuffleExitToMainTabPending()) {
     return false;
