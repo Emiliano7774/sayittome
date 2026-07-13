@@ -10,6 +10,7 @@ import {
   markShuffleRouteCommittedNow,
   resetShuffleRouteCommittedMarker,
 } from "@/lib/navigation/postSettleBridgeDiagJitter";
+import { getShufflePoolWarmState } from "@/lib/shuffle/shufflePoolWarmup";
 import { sampleShuffleHandoffGeometry, type ShuffleGeometrySample } from "@/lib/shuffle/shuffleWarmVisual";
 
 const LOADING_TEXT_RE = /^(Cargando\.\.\.|Loading\.\.\.|Caricamento\.\.\.|Laden\.\.\.)$/i;
@@ -406,6 +407,82 @@ export function getShuffleDestinationReadiness() {
 
 export function getFinalShuffleRoutePresentationReadiness() {
   return evaluateFinalShuffleRoutePresentationReadiness();
+}
+
+export type ShuffleDestinationVisualReadiness = {
+  ready: boolean;
+  hasLoadingShell: boolean;
+  showShuffleLoading: boolean;
+  hasShuffleList: boolean;
+  slotCount: number;
+  geometryValid: boolean;
+  loadingTextVisibleInDestination: boolean;
+  poolWarmState: "ready" | "warming" | "empty" | "unknown";
+  reason: string;
+};
+
+/**
+ * Live destination visual readiness for the no-loading mid-slide contract.
+ * Prefer prep surface (pre-slide); includes pool warm state.
+ */
+export function getShuffleDestinationVisualReadiness(): ShuffleDestinationVisualReadiness {
+  const base = evaluateShuffleDestinationReadiness();
+  const prep = resolvePrepSurfaceRoot();
+  const hasLoadingShell = countVisibleLoadingShells(prep) > 0;
+  const loadingTextVisibleInDestination = hasVisibleLoadingText(prep);
+  const hasShuffleList = Boolean(prep?.querySelector("[data-shuffle-list]"));
+  const slotCount = base.domSlots;
+  const geometryValid =
+    base.ready ||
+    (base.reason !== "slot-geometry" &&
+      base.reason !== "feed-geometry" &&
+      base.reason !== "surface-missing" &&
+      base.reason !== "host-missing" &&
+      slotCount >= 3 &&
+      !hasLoadingShell &&
+      !loadingTextVisibleInDestination &&
+      hasShuffleList);
+
+  let poolWarmState: ShuffleDestinationVisualReadiness["poolWarmState"] = "unknown";
+  try {
+    poolWarmState = getShufflePoolWarmState();
+  } catch {
+    poolWarmState = "unknown";
+  }
+
+  const showShuffleLoading = hasLoadingShell || loadingTextVisibleInDestination;
+  const ready =
+    base.ready &&
+    !hasLoadingShell &&
+    !loadingTextVisibleInDestination &&
+    hasShuffleList &&
+    slotCount >= 3 &&
+    poolWarmState !== "empty";
+
+  let reason = base.reason || (ready ? "ready" : "not-ready");
+  if (hasLoadingShell) reason = "loading-shell";
+  else if (loadingTextVisibleInDestination) reason = "loading-text";
+  else if (!hasShuffleList) reason = "no-feed-list";
+  else if (slotCount < 3) reason = "domSlots<3";
+  else if (poolWarmState === "warming") reason = "pool-warming";
+  else if (poolWarmState === "empty") reason = "pool-empty";
+
+  return {
+    ready,
+    hasLoadingShell,
+    showShuffleLoading,
+    hasShuffleList,
+    slotCount,
+    geometryValid: ready || geometryValid,
+    loadingTextVisibleInDestination,
+    poolWarmState,
+    reason,
+  };
+}
+
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__sayittomeGetShuffleDestinationVisualReadiness =
+    getShuffleDestinationVisualReadiness;
 }
 
 let stableReadinessStreak = 0;

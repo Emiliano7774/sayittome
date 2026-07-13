@@ -66,11 +66,13 @@ import {
   settleShuffleDestinationWarmIntent,
 } from "@/lib/shuffle/shuffleWarmHopIntent";
 import { readCachedShufflePool } from "@/lib/shuffle/shuffleClientCache";
+import { ensureShufflePoolWarmForMicroSlide } from "@/lib/shuffle/shufflePoolWarmup";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 import {
   peekPinnedShuffleWindowCount,
   restorePinnedShuffleWindowSync,
 } from "@/lib/shuffle/shufflePinnedWindow";
+import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 
 export {
   getShuffleDeferSourcePath,
@@ -643,18 +645,28 @@ export function beginShuffleWarmHandoff(fromPath?: string) {
   shuffleNavSeq += 1;
   const durableRestorable = countDurableRestorableWarmSlots();
   const destinationWarm = durableRestorable >= 3 || hasShuffleEverHydrated();
-  beginShuffleDestinationWarmIntent(shuffleNavSeq, durableRestorable);
+  const microSlideColdWarmup =
+    isMainTabToShuffleMicroSlideEnabled() && isInternalMainTabToShuffleTransitionActive();
+
+  if (microSlideColdWarmup) {
+    beginShuffleDestinationWarmIntent(shuffleNavSeq, durableRestorable, {
+      allowColdWarmup: true,
+    });
+    void ensureShufflePoolWarmForMicroSlide();
+  } else {
+    beginShuffleDestinationWarmIntent(shuffleNavSeq, durableRestorable);
+  }
 
   restorePinnedShuffleWindowSync();
   if (!keepAliveActive) {
-    if (!destinationWarm) {
+    if (!destinationWarm && !microSlideColdWarmup) {
       abortShuffleDestinationWarmIntent();
       return false;
     }
     pinShuffleKeepAlive();
   }
 
-  if (!destinationWarm) {
+  if (!destinationWarm && !microSlideColdWarmup) {
     abortShuffleDestinationWarmIntent();
     return false;
   }

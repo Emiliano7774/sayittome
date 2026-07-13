@@ -161,6 +161,8 @@ export type ShuffleLoadingGateComputeInput = {
   handoffPreparing: boolean;
   directColdEntry: boolean;
   warmKeepAliveActive: boolean;
+  /** Active micro-slide transaction phases that must never present loading. */
+  noLoadingMidSlideContractActive?: boolean;
 };
 
 /** Pure gate — testable without DOM. */
@@ -175,13 +177,18 @@ export function computeMayPresentShuffleLoading(input: ShuffleLoadingGateCompute
   if (
     input.directColdEntry &&
     !input.presentationOwned &&
-    !input.presentationLatchActive
+    !input.presentationLatchActive &&
+    !input.noLoadingMidSlideContractActive
   ) {
     return { mayPresent: true, blockReason: "direct-cold-entry" };
   }
 
   if (!input.microSlideEnabled) {
     return { mayPresent: true, blockReason: "micro-slide-disabled" };
+  }
+
+  if (input.noLoadingMidSlideContractActive) {
+    return { mayPresent: false, blockReason: "no-loading-mid-slide-contract" };
   }
 
   if (input.presentationOwned || input.presentationLatchActive) {
@@ -231,6 +238,19 @@ export function mayPresentShuffleLoading(
   const presentationOwned = isMainTabToShufflePresentationOwned();
   const presentationLatchActive = isMainTabToShufflePresentationLatchActive();
   const tx = getMainTabToShuffleTransaction();
+  const phase = getMainTabToShufflePhase();
+  const noLoadingMidSlideContractActive =
+    isMainTabToShuffleMicroSlideEnabled() &&
+    (presentationOwned ||
+      presentationLatchActive ||
+      (tx != null &&
+        tx.phase !== "idle" &&
+        tx.phase !== "aborted" &&
+        (phase === "preparing" ||
+          phase === "armed" ||
+          phase === "sliding" ||
+          phase === "settled" ||
+          phase === "route_bridge")));
 
   const decision = computeMayPresentShuffleLoading({
     microSlideEnabled: isMainTabToShuffleMicroSlideEnabled(),
@@ -243,6 +263,7 @@ export function mayPresentShuffleLoading(
     handoffPreparing: isShuffleHandoffPreparing(),
     directColdEntry: directCold,
     warmKeepAliveActive: isShuffleKeepAliveSurfaceVisible(),
+    noLoadingMidSlideContractActive,
   });
 
   if (requestedShowShuffleLoading) {

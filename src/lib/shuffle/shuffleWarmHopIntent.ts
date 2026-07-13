@@ -23,17 +23,25 @@ export function hasDurableRestorableWarmShuffle(): boolean {
 let warmHopNavSeq: number | null = null;
 let warmHopRestorableSlots = 0;
 let warmHopActive = false;
+/** Fresh/anon micro-slide: intent held while pool warms even before durable slots exist. */
+let warmHopColdWarmup = false;
 
 /** INVARIANT 0 — register before router commits when hop target is restorable. */
-export function beginShuffleDestinationWarmIntent(navSeq: number, restorableSlots?: number) {
+export function beginShuffleDestinationWarmIntent(
+  navSeq: number,
+  restorableSlots?: number,
+  options?: { allowColdWarmup?: boolean },
+) {
   const durable = restorableSlots ?? countDurableRestorableWarmSlots();
-  if (durable < 3 && !hasShuffleEverHydrated()) {
+  const allowCold = options?.allowColdWarmup === true;
+  if (durable < 3 && !hasShuffleEverHydrated() && !allowCold) {
     abortShuffleDestinationWarmIntent();
     return false;
   }
 
   warmHopNavSeq = navSeq;
   warmHopRestorableSlots = Math.max(durable, hasShuffleEverHydrated() ? 3 : 0);
+  warmHopColdWarmup = allowCold && durable < 3 && !hasShuffleEverHydrated();
   warmHopActive = true;
   return true;
 }
@@ -42,17 +50,22 @@ export function settleShuffleDestinationWarmIntent() {
   warmHopActive = false;
   warmHopNavSeq = null;
   warmHopRestorableSlots = 0;
+  warmHopColdWarmup = false;
 }
 
 export function abortShuffleDestinationWarmIntent() {
   warmHopActive = false;
   warmHopNavSeq = null;
   warmHopRestorableSlots = 0;
+  warmHopColdWarmup = false;
 }
 
-/** True for the current Chats→Shuffle hop once restorable warm was proven at pointerdown. */
+/**
+ * True for the current Chats→Shuffle hop once restorable warm was proven at pointerdown,
+ * or while a micro-slide cold-warmup intent is held (no-loading mid-slide contract).
+ */
 export function isShuffleDestinationWarmIntentActive() {
-  return warmHopActive && warmHopRestorableSlots >= 3;
+  return warmHopActive && (warmHopRestorableSlots >= 3 || warmHopColdWarmup);
 }
 
 export function getShuffleDestinationWarmIntent() {
@@ -60,5 +73,6 @@ export function getShuffleDestinationWarmIntent() {
     active: warmHopActive,
     navSeq: warmHopNavSeq,
     restorableSlots: warmHopRestorableSlots,
+    coldWarmup: warmHopColdWarmup,
   };
 }

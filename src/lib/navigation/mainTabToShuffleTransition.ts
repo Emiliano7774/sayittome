@@ -4,6 +4,7 @@ import {
 } from "@/lib/navigation/shuffleKeepAlive";
 import {
   getShuffleDestinationReadiness,
+  getShuffleDestinationVisualReadiness,
   getFinalShuffleRoutePresentationReadiness,
   observeFinalShuffleRoutePresentationReadinessStable,
   observeShuffleDestinationReadinessStable,
@@ -11,6 +12,7 @@ import {
   resetShuffleDestinationReadinessStability,
   type FinalShuffleRoutePresentationReadiness,
 } from "@/lib/navigation/shuffleDestinationReadiness";
+import { isShufflePoolWarmupInFlight } from "@/lib/shuffle/shufflePoolWarmup";
 import {
   getMainTabShufflePresentationRuntime,
   getMainTabShufflePresentationRuntimeInstanceId,
@@ -226,6 +228,33 @@ const TAB_INDEX: Record<MainTabSurface, number> = {
 };
 
 const PREP_FRAME_BUDGET = 120;
+/** Extra budget while fresh/anon pool warmup is in flight (no-loading contract). */
+const PREP_FRAME_BUDGET_WITH_WARMUP = 360;
+
+/** Deferred /shuffle route commit — flush only when destination is no-loading ready. */
+let pendingMicroSlideRouteCommit: (() => void) | null = null;
+
+export function registerDeferredMicroSlideRouteCommit(commit: () => void) {
+  pendingMicroSlideRouteCommit = commit;
+}
+
+export function clearDeferredMicroSlideRouteCommit(_reason?: string) {
+  pendingMicroSlideRouteCommit = null;
+}
+
+function flushDeferredMicroSlideRouteCommit() {
+  const commit = pendingMicroSlideRouteCommit;
+  pendingMicroSlideRouteCommit = null;
+  if (!commit) return;
+  pushTrace("NAVIGATION_COMMIT_NOTIFIED", {
+    note: "MICRO_SLIDE_READY_AFTER_WARMUP:route-commit-flushed",
+  });
+  commit();
+}
+
+function getPrepFrameBudget() {
+  return isShufflePoolWarmupInFlight() ? PREP_FRAME_BUDGET_WITH_WARMUP : PREP_FRAME_BUDGET;
+}
 /** Prod gap latch→route commit ~597ms; recovery ~794ms — 1800ms margin. */
 const POST_SETTLE_BRIDGE_FAILSAFE_MS = 1800;
 const POST_SETTLE_BRIDGE_FAILSAFE_RETRY_MS = 400;
@@ -3242,6 +3271,10 @@ function startReadinessLoop() {
   let frames = 0;
   resetShuffleDestinationReadinessStability();
   pushTrace("READINESS_LOOP_STARTED");
+  pushTrace("READINESS_SAMPLE", {
+    note: "MICRO_SLIDE_WAITING_FOR_SHUFFLE_READY",
+    readiness: getShuffleDestinationReadiness(),
+  });
 
   const tick = () => {
     const currentRuntime = rt();
@@ -3251,16 +3284,48 @@ function startReadinessLoop() {
 
     frames += 1;
     const readiness = getShuffleDestinationReadiness();
+    const visual = getShuffleDestinationVisualReadiness();
     if (frames === 1 || frames % 4 === 0) {
-      pushTrace("READINESS_SAMPLE", { readiness });
+      pushTrace("READINESS_SAMPLE", {
+        readiness,
+        note: visual.ready
+          ? "visual-ready"
+          : `MICRO_SLIDE_DESTINATION_NOT_READY_NO_LOADING_CONTRACT_HELD:${visual.reason}`,
+      });
     }
 
-    if (observeShuffleDestinationReadinessStable()) {
+    if (visual.hasLoadingShell) {
+      if (frames === 1 || frames % 8 === 0) {
+        pushTrace("LEGACY_PRESENTATION_BLOCKED_BY_SLIDE_OWNER", {
+          note: "MICRO_SLIDE_BLOCKED_DESTINATION_LOADING_SHELL",
+        });
+      }
+    } else if (visual.loadingTextVisibleInDestination) {
+      if (frames === 1 || frames % 8 === 0) {
+        pushTrace("LEGACY_PRESENTATION_BLOCKED_BY_SLIDE_OWNER", {
+          note: "MICRO_SLIDE_BLOCKED_DESTINATION_LOADING_TEXT",
+        });
+      }
+    }
+
+    if (
+      observeShuffleDestinationReadinessStable() &&
+      visual.ready &&
+      !visual.hasLoadingShell &&
+      !visual.loadingTextVisibleInDestination &&
+      visual.slotCount >= 3
+    ) {
+      // No-loading contract: commit route only once destination can present without loading.
+      flushDeferredMicroSlideRouteCommit();
+
       tx.destinationReadyAtMono = monoMs();
       tx.phase = "armed";
       touchSoftCommitTxPin("armed");
       syncPresentationOwnerFromState(currentRuntime);
-      pushTrace("DESTINATION_READY", { readiness });
+      pushTrace("DESTINATION_READY", {
+        readiness,
+        note: visual.poolWarmState === "ready" ? "MICRO_SLIDE_READY_AFTER_WARMUP" : undefined,
+      });
       pushTrace("PHASE_ARMED", { readiness });
       notify();
       applyArmedDomState();
@@ -3273,12 +3338,29 @@ function startReadinessLoop() {
       requestAnimationFrame(() => {
         const armed = rt().activeTx;
         if (!armed || armed.phase !== "armed") return;
+        const recheck = getShuffleDestinationVisualReadiness();
+        if (
+          !recheck.ready ||
+          recheck.hasLoadingShell ||
+          recheck.loadingTextVisibleInDestination
+        ) {
+          pushTrace("ABORTED", {
+            note: `MICRO_SLIDE_BLOCKED_DESTINATION_LOADING_SHELL:pre-slide-recheck:${recheck.reason}`,
+          });
+          abortMainTabToShuffleTransition("no-loading-contract-pre-slide");
+          return;
+        }
         startSlideAnimation();
       });
       return;
     }
 
-    if (frames >= PREP_FRAME_BUDGET) {
+    if (frames >= getPrepFrameBudget()) {
+      clearDeferredMicroSlideRouteCommit("prep-timeout");
+      pushTrace("ABORTED", {
+        note: "MICRO_SLIDE_NO_LOADING_CONTRACT_TIMEOUT",
+        readiness,
+      });
       abortMainTabToShuffleTransition("prep-timeout");
       return;
     }
@@ -3476,6 +3558,7 @@ export function abortMainTabToShuffleTransition(reason: string) {
   const runtime = rt();
   const tx = runtime.activeTx;
   if (!tx) {
+    clearDeferredMicroSlideRouteCommit(reason || "manual-abort");
     clearSoftCommitTxPin(reason || "manual-abort", {
       moduleInstanceId: TRANSITION_MODULE_INSTANCE_ID,
       runtimeInstanceId: runtime.runtimeInstanceId,
@@ -3483,6 +3566,7 @@ export function abortMainTabToShuffleTransition(reason: string) {
     });
     return;
   }
+  clearDeferredMicroSlideRouteCommit(reason || "abort");
   tx.phase = "aborted";
   tx.abortReason = reason;
   syncPresentationOwnerFromState(runtime);

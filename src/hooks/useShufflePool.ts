@@ -974,6 +974,21 @@ export function useShufflePool() {
     window.addEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
     window.addEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
 
+    function onPoolWarmed() {
+      if (!mountedRef.current) return;
+      const warmed = readCachedShufflePool();
+      const warmedStats = readCachedShuffleStats();
+      if (!warmed?.length) return;
+      applyPool(warmed, warmedStats?.totalLive || warmed.length);
+      if (!shuffleFeedFrozenRef.current) {
+        filterActivePool(searchRef.current.trim(), filtersRef.current, { forceWindow: true });
+      }
+      setLoading(false);
+      setListReady(true);
+      setErrorText("");
+    }
+    window.addEventListener("sayittome:shuffle-pool-warmed", onPoolWarmed);
+
     const presenceTimer = window.setInterval(() => {
       if (poolRef.current.length === 0) return;
 
@@ -1009,10 +1024,11 @@ export function useShufflePool() {
       window.clearInterval(poolSyncTimer);
       window.removeEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
       window.removeEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
+      window.removeEventListener("sayittome:shuffle-pool-warmed", onPoolWarmed);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
       abortRef.current?.abort();
     };
-  }, [filterActivePool, loadProfiles]);
+  }, [applyPool, filterActivePool, loadProfiles]);
 
   useEffect(() => {
     let cancelled = false;
