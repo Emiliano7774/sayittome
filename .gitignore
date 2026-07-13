@@ -9,7 +9,17 @@ yarn-debug.log*
 yarn-error.log*
 *.tsbuildinfo
 firebase-debug.log
+.checkpoints/
 scripts/bench-storage-state.json
+scripts/.auth-capture-profile/
+scripts/.auth-capture-profile*/
+**/.auth-capture-profile*/
+scripts/ghost-filmstrip-out/
+**/ghost-filmstrip-out/
+.playwright/
+test-results/
+*.har
+*.trace.zip
 scripts/.bench-service-account.json
 # Local nav-bench run outputs (tracked baseline JSON files remain in git)
 scripts/nav-bench-results*.json
