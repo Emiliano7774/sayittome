@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dev-only instantaneity feature flags for bisecting ghost-frame regressions.
  * Production always uses the safe defaults below (visual-first tabs OFF).
  */
@@ -13,7 +13,7 @@ const PRODUCTION_DEFAULTS: Record<InstantaneityFlag, boolean> = {
   PROFILE_CHAT_WARMUP: true,
   VISUAL_FIRST_TABS: false,
   STORY_MEDIA_BUFFERS: true,
-  MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE: false,
+  MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE: true,
 };
 
 const DEV_DEFAULTS: Record<InstantaneityFlag, boolean> = {
