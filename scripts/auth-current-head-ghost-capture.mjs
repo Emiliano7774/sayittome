@@ -80,6 +80,7 @@ import {
 import {
   armProdTrueInputWithContext,
   collectProdTrueArmContextFromPage,
+  refreshOuterArmContextForHop,
 } from "./prod-true-arm-context.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1826,14 +1827,16 @@ async function collectProdTrueArmInputs(page) {
       typeof window.__getMainTabToShuffleCommitNavigationMode === "function"
         ? window.__getMainTabToShuffleCommitNavigationMode("/shuffle")
         : null;
-    const trace = window.__mainTabToShuffleTraceExport?.() ?? [];
-    const transactionActive = trace.some(
-      (entry) =>
-        entry?.activeTxPresent === true ||
-        entry?.phase === "preparing" ||
-        entry?.phase === "running" ||
-        entry?.phase === "armed",
-    );
+    const liveTx =
+      typeof window.__mainTabToShuffleTxExport === "function"
+        ? window.__mainTabToShuffleTxExport()
+        : null;
+    const pinDiag =
+      typeof window.__exportSoftCommitTxPinDiag === "function"
+        ? window.__exportSoftCommitTxPinDiag()
+        : null;
+    const activePin = pinDiag?.activePin ?? null;
+    const transactionActive = Boolean(liveTx) || Boolean(activePin);
     const effective = mode?.effectiveCommitNavigationMode ?? null;
     return {
       microSlideBuildFlag: activation?.microSlideBuildFlag === true,
@@ -1843,6 +1846,8 @@ async function collectProdTrueArmInputs(page) {
       validForCapture: validate?.validForCapture === true,
       blockingModalCount: validate?.modals?.blocking?.length ?? 0,
       transactionActive,
+      liveActiveTxId: liveTx?.txId ?? liveTx?.id ?? null,
+      livePinId: activePin?.txId ?? activePin?.id ?? null,
       pathname: location.pathname,
       serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
       serviceWorkerScriptUrl: navigator.serviceWorker?.controller?.scriptURL ?? null,
@@ -1852,6 +1857,51 @@ async function collectProdTrueArmInputs(page) {
       microSlideSoftOverrideApplies: mode?.microSlideSoftOverrideApplies === true,
     };
   });
+}
+
+/**
+ * After a successful hop, wait until live runtime tx + soft-commit pin are idle
+ * before the next source arm. Fail closed with an explicit class (not arm divergence).
+ */
+async function waitCanonicalMicroSlideIdle(page, { timeoutMs = 10000, label = "post-hop" } = {}) {
+  const started = Date.now();
+  let last = null;
+  while (Date.now() - started < timeoutMs) {
+    last = await page.evaluate(() => {
+      const liveTx =
+        typeof window.__mainTabToShuffleTxExport === "function"
+          ? window.__mainTabToShuffleTxExport()
+          : null;
+      const pinDiag =
+        typeof window.__exportSoftCommitTxPinDiag === "function"
+          ? window.__exportSoftCommitTxPinDiag()
+          : null;
+      const activePin = pinDiag?.activePin ?? null;
+      return {
+        idle: !liveTx && !activePin,
+        liveActiveTxId: liveTx?.txId ?? liveTx?.id ?? null,
+        livePinId: activePin?.txId ?? activePin?.id ?? null,
+        pathname: location.pathname,
+      };
+    });
+    if (last?.idle === true) {
+      return {
+        ok: true,
+        event: null,
+        label,
+        waitedMs: Date.now() - started,
+        ...last,
+      };
+    }
+    await page.waitForTimeout(40);
+  }
+  return {
+    ok: false,
+    event: "SMOKE_SERIES_POST_HOP_CANONICAL_IDLE_TIMEOUT",
+    label,
+    waitedMs: Date.now() - started,
+    ...(last || {}),
+  };
 }
 
 function loadOuterArmContextFromDisk() {
@@ -2438,13 +2488,42 @@ async function runSingleHop(page, cdp, hopDir, hopNum, { sourceTab = "chats", ne
     : null;
 
   if (prodTrueActivationMode && (isProductionHostname(captureHostname()) || dryRunNoInput)) {
+    const idleBeforeArm = await waitCanonicalMicroSlideIdle(page, {
+      timeoutMs: 10000,
+      label: `pre-arm-${sourceTab}`,
+    });
+    fs.writeFileSync(
+      path.join(hopDir, "pre-arm-canonical-idle.json"),
+      JSON.stringify(idleBeforeArm, null, 2),
+    );
+    if (!idleBeforeArm.ok) {
+      const timeoutReport = {
+        hopNum,
+        sourceTab,
+        hopDir,
+        hopSequenceId,
+        PROD_TRUE_INPUT_ARMED: false,
+        PROD_TRUE_INPUT_ARM_REJECTED: true,
+        SMOKE_SERIES_POST_HOP_CANONICAL_IDLE_TIMEOUT: true,
+        event: "SMOKE_SERIES_POST_HOP_CANONICAL_IDLE_TIMEOUT",
+        idleBeforeArm,
+        pointerdownCount: 0,
+        logicalInputCount: 0,
+        RELEASE_HOP_CLEAN: false,
+        COMPLETE_HOP_CAPTURE: false,
+        leg2Status: "SMOKE_SERIES_POST_HOP_CANONICAL_IDLE_TIMEOUT",
+      };
+      fs.writeFileSync(path.join(hopDir, "hop-report.json"), JSON.stringify(timeoutReport, null, 2));
+      return timeoutReport;
+    }
+
     const jitterReport = buildDiagnosticTimingJitterReport({
       hostname: captureHostname(),
       explicitJitterFlag: explicitDiagTimingJitter,
       routeCommitDelayMs: 0,
       finalDomReadinessDelayMs: 0,
     });
-    const outerArmContext = loadOuterArmContextFromDisk();
+    const outerArmContextRaw = loadOuterArmContextFromDisk();
     const captureArmContext = await collectProdTrueArmContextFromPage(page, {
       sourceTab,
       destinationPath: "/shuffle",
@@ -2455,17 +2534,24 @@ async function runSingleHop(page, cdp, hopDir, hopNum, { sourceTab = "chats", ne
       prodTrueActivationMode: true,
       productionFlagTrueVerified:
         prodTrueVerifiedFlag ||
-        outerArmContext?.productionFlagTrueVerified === true,
+        outerArmContextRaw?.productionFlagTrueVerified === true,
       expectedBuildIdentity: prodTrueExpectedBuildIdentity,
       zeroJitter: jitterReport.diagnosticTimingJitterEnabled !== true,
       diagnosticTimingJitterActive: jitterReport.diagnosticTimingJitterEnabled === true,
       routeCommitDelayMs: jitterReport.routeCommitDelayMs ?? 0,
       navcaptureTimingJitterMs: 0,
       deliveryPreflightInputForbidden: false,
-      deliveryVerifiedByLiveRelease: outerArmContext?.deliveryVerifiedByLiveRelease === true,
+      deliveryVerifiedByLiveRelease: outerArmContextRaw?.deliveryVerifiedByLiveRelease === true,
       deliveryVerifiedBySwBypassClient:
-        outerArmContext?.deliveryVerifiedBySwBypassClient === true,
+        outerArmContextRaw?.deliveryVerifiedBySwBypassClient === true,
     });
+
+    // Multi-source series: never compare a stale static outer (e.g. sourceTab=chats)
+    // against the next hop. Refresh hop-live fields from the fresh capture read.
+    const outerArmContext = refreshOuterArmContextForHop(
+      outerArmContextRaw,
+      captureArmContext,
+    );
 
     // Prefer page-derived soft-nav; if outer provided, consistency check is mandatory when present.
     const armPipeline = armProdTrueInputWithContext({
@@ -2475,11 +2561,19 @@ async function runSingleHop(page, cdp, hopDir, hopNum, { sourceTab = "chats", ne
     });
     armPipeline.captureArmContext = captureArmContext;
     armPipeline.outerArmContext = outerArmContext;
+    armPipeline.outerArmContextRaw = outerArmContextRaw;
+    armPipeline.outerArmRefreshedForHop = Boolean(outerArmContextRaw);
 
     fs.writeFileSync(
       path.join(hopDir, "capture-arm-context.json"),
       JSON.stringify(captureArmContext, null, 2),
     );
+    if (outerArmContextRaw) {
+      fs.writeFileSync(
+        path.join(hopDir, "outer-arm-context-raw.json"),
+        JSON.stringify(outerArmContextRaw, null, 2),
+      );
+    }
     if (outerArmContext) {
       fs.writeFileSync(
         path.join(hopDir, "outer-arm-context.json"),
@@ -2498,6 +2592,12 @@ async function runSingleHop(page, cdp, hopDir, hopNum, { sourceTab = "chats", ne
           event: armPipeline.event,
           consistency: armPipeline.consistency,
           armEvaluation: armPipeline.armEvaluation,
+          outerArmRefreshedForHop: armPipeline.outerArmRefreshedForHop === true,
+          liveActiveTxId: captureArmContext.liveActiveTxId ?? null,
+          livePinId: captureArmContext.livePinId ?? null,
+          historicalTraceWouldHaveMarkedActive:
+            captureArmContext.historicalTraceWouldHaveMarkedActive === true,
+          transactionActiveSource: captureArmContext.transactionActiveSource ?? null,
         },
         null,
         2,
@@ -3921,6 +4021,29 @@ async function runCapturePass({ browserLabel, runOutDir }) {
         }
       }
       hops.push({ ...hopReport, rawFirstAttempt: true });
+      if (
+        hopReport.RELEASE_HOP_CLEAN === true &&
+        hop < hopSources.length &&
+        (prodTrueActivationMode || nativeLifecycleNoScreencastMode || releaseMode)
+      ) {
+        const idleAfterHop = await waitCanonicalMicroSlideIdle(page, {
+          timeoutMs: 10000,
+          label: `post-hop-${sourceTab}`,
+        });
+        fs.writeFileSync(
+          path.join(hopDir, "post-hop-canonical-idle.json"),
+          JSON.stringify(idleAfterHop, null, 2),
+        );
+        if (!idleAfterHop.ok) {
+          hopReport = {
+            ...hopReport,
+            SMOKE_SERIES_POST_HOP_CANONICAL_IDLE_TIMEOUT: true,
+            postHopCanonicalIdle: idleAfterHop,
+            RELEASE_HOP_CLEAN: false,
+          };
+          hops[hops.length - 1] = { ...hopReport, rawFirstAttempt: true };
+        }
+      }
       const hopFailed = visualSpotCheckMode
         ? !hopReport.VISUAL_SPOT_CHECK_CLEAN
         : nativeLifecycleNoScreencastMode

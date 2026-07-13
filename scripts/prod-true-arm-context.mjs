@@ -190,6 +190,83 @@ function identitiesMatch(expected, runtime) {
 }
 
 /**
+ * Live transactionActive must come from runtime tx / active pin — never from
+ * historical trace ring phases (archived preparing/running/armed/sliding).
+ * Multi-hop smoke leaves prior-hop phases in the ring; scanning them caused
+ * OUTER_CAPTURE_ARM_DIVERGENCE after a clean Chats hop.
+ */
+export function deriveLiveTransactionActive({ liveTx = null, activePin = null, trace = null } = {}) {
+  const historicalTraceWouldHaveMarkedActive = Array.isArray(trace)
+    ? trace.some(
+        (entry) =>
+          entry?.activeTxPresent === true ||
+          entry?.phase === "preparing" ||
+          entry?.phase === "running" ||
+          entry?.phase === "armed" ||
+          entry?.phase === "sliding",
+      )
+    : false;
+  const liveActiveTxId =
+    liveTx?.txId ?? liveTx?.id ?? liveTx?.transactionId ?? (liveTx ? String(liveTx) : null);
+  const livePinId = activePin?.txId ?? activePin?.id ?? (activePin ? "active-pin" : null);
+  const transactionActive = Boolean(liveTx) || Boolean(activePin);
+  return {
+    transactionActive,
+    liveActiveTxId: liveActiveTxId ?? null,
+    livePinId: livePinId ?? null,
+    historicalTraceWouldHaveMarkedActive,
+    transactionActiveSource: "live-runtime",
+    /**
+     * True when a historical-trace scan would have armed false-positive
+     * activity while live runtime is idle.
+     */
+    archivedTxWouldFalselyAppearActive:
+      historicalTraceWouldHaveMarkedActive === true && transactionActive !== true,
+  };
+}
+
+/** Hop-scoped fields that must be refreshed onto outer before outer/capture compare. */
+export const OUTER_ARM_HOP_REFRESH_FIELDS = [
+  "sourceTab",
+  "destinationPath",
+  "transactionActive",
+  "effectiveCommitNavigationMode",
+  "softNavigationToShuffleAvailable",
+  "historyNavigationToShuffleAvailable",
+  "nativeShellHardNavWouldNormallyApply",
+  "microSlideSoftOverrideApplies",
+  "microSlideHistoryOverrideApplies",
+  "microSlideCommitOverrideApplies",
+  "allowedCommitModeForMicroSlide",
+  "runtimeBuildIdentity",
+  "microSlideBuildFlag",
+  "microSlideRuntimeEnabled",
+  "authenticatedUiEvidence",
+  "validForCapture",
+  "blockingModalCount",
+];
+
+/**
+ * Never reuse a static outer snapshot across multi-source smoke hops.
+ * Keep delivery-verified invariants from outer; refresh hop-live fields from capture.
+ */
+export function refreshOuterArmContextForHop(outer, capture) {
+  if (!outer) return null;
+  if (!capture || typeof capture !== "object") return { ...outer };
+  const refreshed = { ...outer };
+  for (const field of OUTER_ARM_HOP_REFRESH_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(capture, field)) {
+      refreshed[field] = capture[field];
+    }
+  }
+  refreshed.runtimeIdentityMatch = identitiesMatch(
+    refreshed.expectedBuildIdentity,
+    refreshed.runtimeBuildIdentity,
+  );
+  return refreshed;
+}
+
+/**
  * Compare outer vs capture critical fields. Divergence → no input.
  */
 export function compareOuterCaptureArmContexts(outer, capture) {
@@ -347,7 +424,16 @@ export async function collectProdTrueArmContextFromPage(
       typeof window.__mainTabToShuffleTraceExport === "function"
         ? window.__mainTabToShuffleTraceExport()
         : [];
-    const transactionActive = Array.isArray(trace)
+    const liveTx =
+      typeof window.__mainTabToShuffleTxExport === "function"
+        ? window.__mainTabToShuffleTxExport()
+        : null;
+    const pinDiag =
+      typeof window.__exportSoftCommitTxPinDiag === "function"
+        ? window.__exportSoftCommitTxPinDiag()
+        : null;
+    const activePin = pinDiag?.activePin ?? null;
+    const historicalTraceWouldHaveMarkedActive = Array.isArray(trace)
       ? trace.some(
           (entry) =>
             entry?.activeTxPresent === true ||
@@ -357,6 +443,8 @@ export async function collectProdTrueArmContextFromPage(
             entry?.phase === "sliding",
         )
       : false;
+    // LIVE only — do not use historicalTraceWouldHaveMarkedActive for arming.
+    const transactionActive = Boolean(liveTx) || Boolean(activePin);
 
     const effective = mode?.effectiveCommitNavigationMode ?? null;
     return {
@@ -370,6 +458,10 @@ export async function collectProdTrueArmContextFromPage(
       validForCapture: validate?.validForCapture !== false,
       blockingModalCount: validate?.modals?.blocking?.length ?? 0,
       transactionActive,
+      liveActiveTxId: liveTx?.txId ?? liveTx?.id ?? null,
+      livePinId: activePin?.txId ?? activePin?.id ?? null,
+      historicalTraceWouldHaveMarkedActive,
+      transactionActiveSource: "live-runtime",
       pathname: location.pathname,
       serviceWorkerController: Boolean(navigator.serviceWorker?.controller),
       serviceWorkerScriptUrl: navigator.serviceWorker?.controller?.scriptURL ?? null,
@@ -385,7 +477,7 @@ export async function collectProdTrueArmContextFromPage(
     };
   }, destinationPath);
 
-  return buildProdTrueArmContext({
+  const ctx = buildProdTrueArmContext({
     hostname,
     prodTrueActivationMode,
     productionFlagTrueVerified,
@@ -418,4 +510,11 @@ export async function collectProdTrueArmContextFromPage(
     deliveryVerifiedBySwBypassClient,
     _pageExtras: fromPage,
   });
+  // Diagnostics (not required for completeness / outer match).
+  ctx.liveActiveTxId = fromPage.liveActiveTxId ?? null;
+  ctx.livePinId = fromPage.livePinId ?? null;
+  ctx.historicalTraceWouldHaveMarkedActive =
+    fromPage.historicalTraceWouldHaveMarkedActive === true;
+  ctx.transactionActiveSource = fromPage.transactionActiveSource ?? "live-runtime";
+  return ctx;
 }

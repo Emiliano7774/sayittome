@@ -9,6 +9,8 @@ import {
   buildProdTrueArmContext,
   armProdTrueInputWithContext,
   compareOuterCaptureArmContexts,
+  deriveLiveTransactionActive,
+  refreshOuterArmContextForHop,
   PROD_TRUE_ARM_CONTEXT_REQUIRED_FIELDS,
 } from "./prod-true-arm-context.mjs";
 
@@ -350,6 +352,63 @@ const CASES = [
       assert.equal(pipe.PROD_TRUE_INPUT_ARMED, true);
       assert.equal(pipe.consistency.OUTER_CAPTURE_ARM_CONTEXT_MATCH, true);
       assert.equal(pipe.OUTER_CAPTURE_ARM_DIVERGENCE, false);
+    },
+  },
+  {
+    name: "archived-trace-not-live-transactionActive",
+    run: () => {
+      const derived = deriveLiveTransactionActive({
+        liveTx: null,
+        activePin: null,
+        trace: [
+          { activeTxPresent: true, phase: "preparing" },
+          { activeTxPresent: true, phase: "sliding" },
+          { activeTxPresent: false, phase: "settled" },
+        ],
+      });
+      assert.equal(derived.transactionActive, false);
+      assert.equal(derived.historicalTraceWouldHaveMarkedActive, true);
+      assert.equal(derived.archivedTxWouldFalselyAppearActive, true);
+    },
+  },
+  {
+    name: "live-tx-or-pin-marks-active",
+    run: () => {
+      assert.equal(
+        deriveLiveTransactionActive({ liveTx: { txId: "tx-1" }, activePin: null }).transactionActive,
+        true,
+      );
+      assert.equal(
+        deriveLiveTransactionActive({ liveTx: null, activePin: { txId: "tx-1" } }).transactionActive,
+        true,
+      );
+    },
+  },
+  {
+    name: "refresh-outer-per-hop-clears-stale-sourceTab-divergence",
+    run: () => {
+      const staleOuter = buildProdTrueArmContext({
+        ...VALID_PARTIAL,
+        sourceTab: "chats",
+        transactionActive: false,
+      });
+      const capture = buildProdTrueArmContext({
+        ...VALID_PARTIAL,
+        sourceTab: "settings",
+        transactionActive: false,
+      });
+      const rawCompare = compareOuterCaptureArmContexts(staleOuter, capture);
+      assert.equal(rawCompare.OUTER_CAPTURE_ARM_CONTEXT_MATCH, false);
+      assert.ok(rawCompare.mismatches.includes("sourceTab"));
+      const refreshed = refreshOuterArmContextForHop(staleOuter, capture);
+      const pipe = armProdTrueInputWithContext({
+        context: capture,
+        evaluateProdTrueInputArm,
+        outerContext: refreshed,
+      });
+      assert.equal(pipe.OUTER_CAPTURE_ARM_DIVERGENCE, false);
+      assert.equal(pipe.PROD_TRUE_INPUT_ARMED, true);
+      assert.equal(refreshed.sourceTab, "settings");
     },
   },
 ];
