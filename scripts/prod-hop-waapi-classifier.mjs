@@ -172,6 +172,8 @@ function evaluateNoScreencastVisual(hopReport) {
       PRESENTED_NONE_CRITICAL:
         hopReport?.presentedNoneCritical ?? hopReport?.presentedNoneEvaluationStatus ?? null,
       NO_FAKE_VISUAL_ZEROS: true,
+      NO_LOADING_MID_SLIDE_VISUAL_GATE: hopReport?.NO_LOADING_MID_SLIDE_VISUAL_GATE ?? null,
+      PERMANENT_ROLLOUT_REQUIRES_PIXEL_VISUAL_FOR_NO_LOADING: true,
     };
   }
 
@@ -199,6 +201,10 @@ function evaluateNoScreencastVisual(hopReport) {
     NO_FAKE_VISUAL_ZEROS: !fakeZero,
     PROD_HOP_CLASSIFIER_NO_SCREENCAST_NOT_EVALUATED:
       String(black).includes("NOT_EVALUATED") && String(presented).includes("NOT_EVALUATED"),
+    // No-loading mid-slide contract: NO_SCREENCAST must never claim visual clean.
+    NO_LOADING_MID_SLIDE_VISUAL_GATE: "NOT_EVALUATED_BY_NO_SCREENCAST_PROVIDER",
+    PERMANENT_ROLLOUT_NO_LOADING_VISUAL_ELIGIBLE: false,
+    PERMANENT_ROLLOUT_REQUIRES_PIXEL_VISUAL_FOR_NO_LOADING: true,
   };
 }
 
