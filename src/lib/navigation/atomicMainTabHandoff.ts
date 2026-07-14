@@ -1,6 +1,9 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
 import {
+  beginBoostPostCommitStabilityTracking,
+  clearBoostPostCommitStabilityTracking,
   getTabDestinationVisualReadiness,
+  isBoostPostCommitStabilityTrackingActive,
   isTabDestinationVisualReady,
   isTabShellNoLoadingTransitionContractActive,
   resetTabDestinationReadinessStability,
@@ -81,6 +84,13 @@ export function onMainTabRouteChange(pathname: string) {
     ) {
       handoffTarget = next;
       resetTabDestinationReadinessStability(next);
+      if (next === "/boost") {
+        beginBoostPostCommitStabilityTracking({
+          source: presentedTab,
+          destination: next,
+          via: "same-tab-retain",
+        });
+      }
       markMainTabHandoffPendingDom(true);
       traceTabShellNoLoading("TAB_HANDOFF_SOURCE_FREEZE_RETAINED", {
         source: presentedTab,
@@ -103,6 +113,18 @@ export function onMainTabRouteChange(pathname: string) {
 
   handoffTarget = next;
   resetTabDestinationReadinessStability(next);
+  if (next === "/boost" && isTabShellNoLoadingTransitionContractActive()) {
+    beginBoostPostCommitStabilityTracking({
+      source: presentedTab,
+      destination: next,
+      via: "onMainTabRouteChange",
+    });
+  } else if (isBoostPostCommitStabilityTrackingActive()) {
+    clearBoostPostCommitStabilityTracking({
+      via: "onMainTabRouteChange-left-boost",
+      destination: next,
+    });
+  }
   if (isTabShellNoLoadingTransitionContractActive()) {
     traceTabShellNoLoading("TAB_SHELL_NO_LOADING_SOURCE_FROZEN", {
       source: presentedTab,
@@ -194,6 +216,9 @@ export function commitPresentedMainTabIfReady(pathname: string) {
           traceTabShellNoLoading("TAB_HANDOFF_BOOST_LOADING_BLOCKED", {
             reason: visual.reason,
           });
+          traceTabShellNoLoading("TAB_HANDOFF_RELEASE_BLOCKED_BY_BOOST_LOADING", {
+            reason: visual.reason,
+          });
         }
       }
       return false;
@@ -202,8 +227,12 @@ export function commitPresentedMainTabIfReady(pathname: string) {
     return false;
   }
 
+  const committedBoost = handoffTarget === "/boost";
   presentedTab = handoffTarget;
   handoffTarget = null;
+  if (committedBoost) {
+    clearBoostPostCommitStabilityTracking({ via: "commitPresentedMainTabIfReady" });
+  }
   if (isTabShellNoLoadingTransitionContractActive()) {
     traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", { destination: path });
     if (path === "/chats") {

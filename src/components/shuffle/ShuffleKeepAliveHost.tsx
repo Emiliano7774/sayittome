@@ -15,6 +15,7 @@ import {
   subscribeShuffleHandoffState,
 } from "@/lib/navigation/shuffleHandoffState";
 import {
+  beginBoostPostCommitStabilityTracking,
   getTabDestinationVisualReadiness,
   isTabShellNoLoadingTransitionContractActive,
   resetTabDestinationReadinessStability,
@@ -79,11 +80,17 @@ function armShuffleExitNoLoadingWatchdog(
 
     const visual = getTabDestinationVisualReadiness(path);
     const safe =
-      visual.ready ||
-      (!visual.hasLoadingShell &&
-        !visual.hasVisibleLoadingText &&
-        visual.hasContentRoot &&
-        visual.geometryValid);
+      path === "/boost"
+        ? visual.ready &&
+          visual.stableFramesReady &&
+          !visual.hasLoadingShell &&
+          !visual.hasVisibleLoadingText &&
+          visual.geometryValid
+        : visual.ready ||
+          (!visual.hasLoadingShell &&
+            !visual.hasVisibleLoadingText &&
+            visual.hasContentRoot &&
+            visual.geometryValid);
 
     if (safe) {
       const committed = commitPresentedMainTabIfReady(pathnameForCommit);
@@ -94,6 +101,13 @@ function armShuffleExitNoLoadingWatchdog(
           visual,
           via: "module-exit-watchdog",
         });
+        if (path === "/boost") {
+          traceTabShellNoLoading("TAB_HANDOFF_RELEASE_BLOCKED_BY_BOOST_LOADING", {
+            frames,
+            reason: visual.reason,
+            via: "module-exit-watchdog",
+          });
+        }
         if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
           requestAnimationFrame(tick);
         }
@@ -199,11 +213,17 @@ export default function ShuffleKeepAliveHost() {
       if (!isShuffleExitToMainTabPending()) return;
       const visual = getTabDestinationVisualReadiness(path);
       const safe =
-        visual.ready ||
-        (!visual.hasLoadingShell &&
-          !visual.hasVisibleLoadingText &&
-          visual.hasContentRoot &&
-          visual.geometryValid);
+        path === "/boost"
+          ? visual.ready &&
+            visual.stableFramesReady &&
+            !visual.hasLoadingShell &&
+            !visual.hasVisibleLoadingText &&
+            visual.geometryValid
+          : visual.ready ||
+            (!visual.hasLoadingShell &&
+              !visual.hasVisibleLoadingText &&
+              visual.hasContentRoot &&
+              visual.geometryValid);
       if (safe) {
         const committed = commitPresentedMainTabIfReady(pathname);
         if (!committed) {
@@ -213,6 +233,13 @@ export default function ShuffleKeepAliveHost() {
             visual,
             via: "exit-recovery-effect",
           });
+          if (path === "/boost") {
+            traceTabShellNoLoading("TAB_HANDOFF_RELEASE_BLOCKED_BY_BOOST_LOADING", {
+              frames,
+              reason: visual.reason,
+              via: "exit-recovery-effect",
+            });
+          }
           if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
             requestAnimationFrame(tick);
           }
@@ -329,6 +356,13 @@ export default function ShuffleKeepAliveHost() {
         beginShuffleExitToMainTab(path);
         resetTabDestinationReadinessStability(path);
         if (contractActive) {
+          if (path === "/boost") {
+            beginBoostPostCommitStabilityTracking({
+              source: "/shuffle",
+              destination: path,
+              via: "shuffle-exit-layout",
+            });
+          }
           armShuffleExitNoLoadingWatchdog(path, pathname);
           traceTabShellNoLoading("TAB_SHELL_NO_LOADING_SOURCE_FROZEN", {
             source: "/shuffle",
@@ -411,8 +445,9 @@ export default function ShuffleKeepAliveHost() {
             }
             // Safe settle: destination has no loading chrome — complete reveal even
             // without full stable-frame readiness so the shell does not latch forever.
-            // Still require a successful presentation commit before clearing freeze.
+            // Boost is excluded: post-commit stability must pass (no soft settle).
             if (
+              path !== "/boost" &&
               !visual.hasLoadingShell &&
               !visual.hasVisibleLoadingText &&
               visual.hasContentRoot &&
@@ -441,6 +476,13 @@ export default function ShuffleKeepAliveHost() {
               clearQueuedShuffleTriggers();
               resetShuffleGeometryStability();
               return;
+            }
+            if (path === "/boost") {
+              traceTabShellNoLoading("TAB_HANDOFF_RELEASE_BLOCKED_BY_BOOST_LOADING", {
+                frames,
+                reason: visual.reason,
+                via: "soft-timeout-no-boost-soft-settle",
+              });
             }
             // Still not safe — keep polling until absolute budget.
             if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
