@@ -5,6 +5,7 @@
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { getShuffleDestinationVisualReadiness } from "@/lib/navigation/shuffleDestinationReadiness";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
+import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppress";
 import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 
 export type TabDestinationVisualReadiness = {
@@ -25,9 +26,12 @@ const STABLE_FRAMES_REQUIRED = 2;
 /** Auth destinations need post-route-commit stability beyond pre-commit ready. */
 const POST_AUTH_STABLE_FRAMES = 3;
 const POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 3;
-/** Boost needs a slightly longer pre-reveal sample than Chats, without latching forever. */
-const BOOST_POST_AUTH_STABLE_FRAMES = 3;
-const BOOST_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 3;
+/**
+ * Fresh-anon exact sequences remount Boost after prior hops (incl. Boost→Shuffle
+ * earlier in the same 8-dir). Match Chats pre-reveal sample strength.
+ */
+const BOOST_POST_AUTH_STABLE_FRAMES = 4;
+const BOOST_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 4;
 /**
  * Fresh-anon exact sequences remount Chats after prior hops / context rebind;
  * require a slightly longer pre-reveal sample than generic post-auth tabs.
@@ -378,17 +382,23 @@ export function beginTabPostAuthStabilityTracking(
   detail?: unknown,
 ) {
   const t = postAuthByTab[tab];
+  // Preserve an in-flight post-reveal guard (sequence rebind must not cancel it).
+  const keepPostReveal =
+    tab === "/boost" && t.active && t.postRevealClearPending;
   t.active = true;
   t.frames = 0;
   t.stableStreak = 0;
   t.sawReady = false;
   t.loadingReboundSeen = false;
-  t.postRevealHoldFrames = 0;
-  t.postRevealClearPending = false;
+  if (!keepPostReveal) {
+    t.postRevealHoldFrames = 0;
+    t.postRevealClearPending = false;
+  }
   resetTabDestinationReadinessStability(tab);
   syncTabPostAuthSettleDataset();
 
   if (tab === "/boost") {
+    armBoostSequenceHandoffSuppress(520);
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_STABILITY_WAIT", detail);
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
@@ -396,8 +406,14 @@ export function beginTabPostAuthStabilityTracking(
     });
     traceTabShellNoLoading("TAB_HANDOFF_SEQUENCE_BOOST_REENTRY_STABLE", {
       phase: "begin",
+      keepPostReveal,
       ...((detail && typeof detail === "object" ? detail : { detail }) as object),
     });
+    if (keepPostReveal) {
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP", {
+        via: "begin-preserve-post-reveal",
+      });
+    }
   } else if (tab === "/chats") {
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
@@ -468,12 +484,21 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         : 0;
 
   if (tab === "/boost") {
+    armBoostSequenceHandoffSuppress(Math.max(requiredMs + 360, 520));
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_START", {
       requiredFrames,
       requiredMs,
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_GUARD_START", {
+      requiredFrames,
+      requiredMs,
+      ...(typeof detail === "object" && detail ? detail : { detail }),
+    });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_SETTLE_CSS_HELD", {
+      phase: "post-reveal-guard",
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_HELD", {
       phase: "post-reveal-guard",
     });
   } else if (tab === "/chats") {
@@ -523,12 +548,20 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       postAuthByTab[tab].postRevealHoldFrames = 0;
       postAuthByTab[tab].postRevealHoldStartedAt = Date.now();
       if (tab === "/boost") {
+        armBoostSequenceHandoffSuppress(400);
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_BLOCKED", {
+          tab,
+          gateState,
+        });
+        traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_BLOCKED", {
           tab,
           gateState,
         });
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
           tab,
+        });
+        traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_HELD", {
+          phase: "rebound-extend",
         });
       } else if (tab === "/chats") {
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_BLOCKED", {
@@ -552,6 +585,11 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
     if (tab === "/boost") {
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_GATE_VISUAL_STABLE", { gateState });
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_MAIN_LOADING_TEXT_STABLE_ABSENT", {});
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_MAIN_LOADING_TEXT_STABLE_ABSENT", {});
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_GATE_LATCH_STABLE", {
+        gateState,
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+      });
     } else if (tab === "/chats" && !loading) {
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_MAIN_LOADING_TEXT_STABLE_ABSENT", {});
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_READY_STABLE", {
@@ -569,12 +607,23 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
     }
 
     if (tab === "/boost") {
+      // Keep eligibility latch through sequence remount after settle CSS clears.
+      armBoostSequenceHandoffSuppress(360);
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
         boostMaxExceeded: maxHoldExceeded,
       });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_GUARD_READY", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+        maxHoldExceeded,
+      });
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_SETTLE_CSS_RELEASED_AFTER_GUARD", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_RELEASED_AFTER_GUARD", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
       });
@@ -582,6 +631,11 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
       });
+      traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_BOOST_SEQUENCE_READY", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+      });
+      clearShuffleExitToMainTab();
     } else if (tab === "/chats") {
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
@@ -1002,6 +1056,15 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_BOOST_GATE_VISUAL_STABLE"
   | "TAB_HANDOFF_BOOST_MAIN_LOADING_TEXT_STABLE_ABSENT"
   | "TAB_HANDOFF_SHUFFLE_BOOST_PROD_TARGETED_READY"
+  | "TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_GUARD_START"
+  | "TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_GUARD_READY"
+  | "TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_BLOCKED"
+  | "TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_HELD"
+  | "TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_RELEASED_AFTER_GUARD"
+  | "TAB_HANDOFF_BOOST_SEQUENCE_GATE_LATCH_STABLE"
+  | "TAB_HANDOFF_BOOST_SEQUENCE_MAIN_LOADING_TEXT_STABLE_ABSENT"
+  | "TAB_HANDOFF_SHUFFLE_BOOST_SEQUENCE_READY"
+  | "TAB_HANDOFF_BOOST_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP"
   | "TAB_HANDOFF_EXIT_WATCHDOG_FORCE_PRESENT_NO_LOADING";
 
 const diagRing: Array<{ at: number; event: TabShellNoLoadingDiagEvent; detail?: unknown }> =

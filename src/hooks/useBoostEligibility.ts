@@ -2,6 +2,14 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { resolveBoostAccessState, type BoostAccessState } from "@/lib/boost/boostEligibility";
+import {
+  isBoostSequenceHandoffSuppressActive,
+} from "@/lib/boost/boostHandoffSuppress";
+
+export {
+  armBoostSequenceHandoffSuppress,
+  isBoostSequenceHandoffSuppressActive,
+} from "@/lib/boost/boostHandoffSuppress";
 
 /**
  * Once Boost has resolved a non-loading gate (guest/ready/incomplete), suppress
@@ -11,18 +19,28 @@ import { resolveBoostAccessState, type BoostAccessState } from "@/lib/boost/boos
  * Also optimistically treat unresolved auth as guest during handoff when there is
  * no signed-in user yet — avoids a stuck Shuffle→Boost exit freeze while Auth
  * finishes its first tick (prod/native timing).
+ *
+ * Fresh-anon exact sequences can remount Boost loading text *after* settle CSS
+ * clears (targeted isolated Shuffle→Boost often finishes inside the guard). Keep
+ * a short post-guard grace so sequence reentry cannot flash "Cargando...".
+ * Direct cold /boost never arms this window.
  */
 let lastNonLoadingBoostAccessState: Exclude<BoostAccessState, "loading"> | null =
   null;
 
 function isBoostHandoffSettleActive() {
   if (typeof document === "undefined") return false;
+  if (isBoostSequenceHandoffSuppressActive()) return true;
   const html = document.documentElement;
+  const slide = html.dataset.mainTabShuffleSlide;
   return (
     html.dataset.boostPostCommitSettle === "1" ||
     html.dataset.tabPostAuthSettle === "1" ||
     html.classList.contains("sayittome-main-tab-handoff-pending") ||
-    html.classList.contains("sayittome-shuffle-exit-handoff-pending")
+    html.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
+    slide === "preparing" ||
+    slide === "armed" ||
+    slide === "running"
   );
 }
 

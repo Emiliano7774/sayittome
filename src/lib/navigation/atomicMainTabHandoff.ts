@@ -125,8 +125,19 @@ export function onMainTabRouteChange(pathname: string) {
       });
     }
     // Leaving an auth destination: clear other settle trackers.
+    // Never clear the Boost post-reveal guard while Boost is the destination.
     for (const tab of ["/boost", "/chats", "/shuffle"] as const) {
       if (tab !== next && isTabPostAuthStabilityTrackingActive(tab)) {
+        if (
+          next === "/boost" &&
+          tab !== "/boost" &&
+          isTabPostAuthStabilityTrackingActive("/boost")
+        ) {
+          traceTabShellNoLoading("TAB_HANDOFF_BOOST_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP", {
+            clearedTab: tab,
+            destination: next,
+          });
+        }
         clearTabPostAuthStabilityTracking(tab, {
           via: "onMainTabRouteChange-left-destination",
           destination: next,
