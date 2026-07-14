@@ -21,18 +21,83 @@ export type TabDestinationVisualReadiness = {
 
 const LOADING_TEXT_RE = /Cargando(?:\.\.\.)?|Loading(?:\.\.\.)?/i;
 const STABLE_FRAMES_REQUIRED = 2;
-/** Boost sequential re-entry needs post-route-commit stability beyond pre-commit ready. */
-const BOOST_POST_COMMIT_STABLE_FRAMES = 3;
-const BOOST_MIN_FRAMES_AFTER_HANDOFF = 3;
+/** Auth destinations need post-route-commit stability beyond pre-commit ready. */
+const POST_AUTH_STABLE_FRAMES = 3;
+const POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 3;
+/** Keep CSS settle after reveal so auth rebounds cannot flash "Cargando...". */
+const POST_REVEAL_SETTLE_HOLD_FRAMES = 5;
+
+type PostAuthTab = "/boost" | "/chats" | "/shuffle";
 
 const stableStreakByTab = new Map<MainTabHref, number>();
 const lastReadySignatureByTab = new Map<MainTabHref, string>();
 
-let boostHandoffActive = false;
-let boostHandoffFrames = 0;
-let boostPostCommitStableStreak = 0;
-let boostSawReadyDuringHandoff = false;
-let boostLoadingReboundSeen = false;
+type PostAuthTracker = {
+  active: boolean;
+  frames: number;
+  stableStreak: number;
+  sawReady: boolean;
+  loadingReboundSeen: boolean;
+  postRevealHoldFrames: number;
+  postRevealClearPending: boolean;
+};
+
+const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
+  "/boost": {
+    active: false,
+    frames: 0,
+    stableStreak: 0,
+    sawReady: false,
+    loadingReboundSeen: false,
+    postRevealHoldFrames: 0,
+    postRevealClearPending: false,
+  },
+  "/chats": {
+    active: false,
+    frames: 0,
+    stableStreak: 0,
+    sawReady: false,
+    loadingReboundSeen: false,
+    postRevealHoldFrames: 0,
+    postRevealClearPending: false,
+  },
+  "/shuffle": {
+    active: false,
+    frames: 0,
+    stableStreak: 0,
+    sawReady: false,
+    loadingReboundSeen: false,
+    postRevealHoldFrames: 0,
+    postRevealClearPending: false,
+  },
+};
+
+function isPostAuthTab(tab: MainTabHref | string): tab is PostAuthTab {
+  return tab === "/boost" || tab === "/chats" || tab === "/shuffle";
+}
+
+function settleDatasetKey(tab: PostAuthTab): string {
+  if (tab === "/boost") return "boostPostCommitSettle";
+  if (tab === "/chats") return "chatsPostAuthSettle";
+  return "shufflePostAuthSettle";
+}
+
+function syncTabPostAuthSettleDataset() {
+  if (typeof document === "undefined") return;
+  const html = document.documentElement;
+  let any = false;
+  for (const tab of Object.keys(postAuthByTab) as PostAuthTab[]) {
+    const key = settleDatasetKey(tab);
+    if (postAuthByTab[tab].active) {
+      html.dataset[key] = "1";
+      any = true;
+    } else {
+      delete html.dataset[key];
+    }
+  }
+  if (any) html.dataset.tabPostAuthSettle = "1";
+  else delete html.dataset.tabPostAuthSettle;
+}
 
 function normalizeTab(tab: MainTabHref | string): MainTabHref | null {
   const path = String(tab || "").split("?")[0].split("#")[0];
@@ -249,55 +314,195 @@ export function resetTabDestinationReadinessStability(tab?: MainTabHref) {
   if (tab) {
     stableStreakByTab.delete(tab);
     lastReadySignatureByTab.delete(tab);
-    if (tab === "/boost") {
-      boostPostCommitStableStreak = 0;
-      boostSawReadyDuringHandoff = false;
+    if (isPostAuthTab(tab)) {
+      postAuthByTab[tab].stableStreak = 0;
+      postAuthByTab[tab].sawReady = false;
     }
     return;
   }
   stableStreakByTab.clear();
   lastReadySignatureByTab.clear();
-  boostPostCommitStableStreak = 0;
-  boostSawReadyDuringHandoff = false;
+  for (const t of Object.keys(postAuthByTab) as PostAuthTab[]) {
+    postAuthByTab[t].stableStreak = 0;
+    postAuthByTab[t].sawReady = false;
+  }
 }
 
-/** Start Boost-only post-commit stability window for internal tab handoffs. */
-export function beginBoostPostCommitStabilityTracking(detail?: unknown) {
-  boostHandoffActive = true;
-  boostHandoffFrames = 0;
-  boostPostCommitStableStreak = 0;
-  boostSawReadyDuringHandoff = false;
-  boostLoadingReboundSeen = false;
-  resetTabDestinationReadinessStability("/boost");
-  if (typeof document !== "undefined") {
-    document.documentElement.dataset.boostPostCommitSettle = "1";
-  }
-  traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_STABILITY_WAIT", detail);
-  traceTabShellNoLoading("TAB_HANDOFF_SEQUENCE_BOOST_REENTRY_STABLE", {
-    phase: "begin",
-    ...((detail && typeof detail === "object" ? detail : { detail }) as object),
-  });
+function resetPostAuthTracker(tab: PostAuthTab) {
+  const t = postAuthByTab[tab];
+  t.active = false;
+  t.frames = 0;
+  t.stableStreak = 0;
+  t.sawReady = false;
+  t.loadingReboundSeen = false;
+  t.postRevealHoldFrames = 0;
+  t.postRevealClearPending = false;
 }
 
-export function clearBoostPostCommitStabilityTracking(detail?: unknown) {
-  boostHandoffActive = false;
-  boostHandoffFrames = 0;
-  boostPostCommitStableStreak = 0;
-  boostSawReadyDuringHandoff = false;
-  boostLoadingReboundSeen = false;
-  if (typeof document !== "undefined") {
-    delete document.documentElement.dataset.boostPostCommitSettle;
-  }
-  if (detail !== undefined) {
+/** Start post-auth / post-commit stability window for logged-in tab handoffs. */
+export function beginTabPostAuthStabilityTracking(
+  tab: PostAuthTab,
+  detail?: unknown,
+) {
+  const t = postAuthByTab[tab];
+  t.active = true;
+  t.frames = 0;
+  t.stableStreak = 0;
+  t.sawReady = false;
+  t.loadingReboundSeen = false;
+  t.postRevealHoldFrames = 0;
+  t.postRevealClearPending = false;
+  resetTabDestinationReadinessStability(tab);
+  syncTabPostAuthSettleDataset();
+
+  if (tab === "/boost") {
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_STABILITY_WAIT", detail);
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_COMMIT_STABILITY_READY", {
+      phase: "begin",
+      ...(typeof detail === "object" && detail ? detail : { detail }),
+    });
     traceTabShellNoLoading("TAB_HANDOFF_SEQUENCE_BOOST_REENTRY_STABLE", {
-      phase: "clear",
+      phase: "begin",
+      ...((detail && typeof detail === "object" ? detail : { detail }) as object),
+    });
+  } else if (tab === "/chats") {
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY", {
+      phase: "begin",
+      ...(typeof detail === "object" && detail ? detail : { detail }),
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_AUTH_READY", {
+      phase: "begin-wait",
+      ...(typeof detail === "object" && detail ? detail : { detail }),
+    });
+  } else {
+    traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_COMMIT_STABILITY_WAIT", detail);
+    traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_AUTH_READY", {
+      phase: "begin-wait",
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
   }
 }
 
+export function clearTabPostAuthStabilityTracking(
+  tab: PostAuthTab,
+  detail?: unknown,
+) {
+  resetPostAuthTracker(tab);
+  syncTabPostAuthSettleDataset();
+  if (detail !== undefined) {
+    if (tab === "/boost") {
+      traceTabShellNoLoading("TAB_HANDOFF_SEQUENCE_BOOST_REENTRY_STABLE", {
+        phase: "clear",
+        ...(typeof detail === "object" && detail ? detail : { detail }),
+      });
+    }
+  }
+}
+
+/**
+ * After a successful reveal commit, keep settle CSS for a short post-reveal
+ * window so auth/data rebounds cannot flash loading text.
+ */
+export function scheduleClearTabPostAuthStabilityAfterReveal(
+  tab: PostAuthTab,
+  detail?: unknown,
+) {
+  const t = postAuthByTab[tab];
+  if (!t.active) return;
+  t.postRevealClearPending = true;
+  t.postRevealHoldFrames = 0;
+
+  const tick = () => {
+    if (!postAuthByTab[tab].active || !postAuthByTab[tab].postRevealClearPending) {
+      return;
+    }
+    const host =
+      typeof document !== "undefined"
+        ? tab === "/shuffle"
+          ? document.getElementById("sayittome-shuffle-keepalive-host")
+          : document.getElementById(`sayittome-main-tab-keepalive-${tab.slice(1)}`)
+        : null;
+    const loading =
+      detectVisibleLoadingText(host, { ignoreHandoffHide: true }) ||
+      countVisibleLoadingShells(host, { ignoreHandoffHide: true }) > 0 ||
+      (tab === "/boost" &&
+        readBoostAccessGateState(host as HTMLElement | null) === "loading") ||
+      detectOrphanMainLoadingText();
+
+    if (loading) {
+      postAuthByTab[tab].postRevealHoldFrames = 0;
+      if (tab === "/boost") {
+        traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
+          tab,
+        });
+      } else if (tab === "/chats") {
+        traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
+          tab,
+        });
+      } else {
+        traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
+          tab,
+        });
+      }
+      requestAnimationFrame(tick);
+      return;
+    }
+
+    postAuthByTab[tab].postRevealHoldFrames += 1;
+    if (postAuthByTab[tab].postRevealHoldFrames < POST_REVEAL_SETTLE_HOLD_FRAMES) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    clearTabPostAuthStabilityTracking(tab, {
+      via: "post-reveal-hold",
+      ...(typeof detail === "object" && detail ? detail : { detail }),
+    });
+  };
+  requestAnimationFrame(tick);
+}
+
+/** Start Boost-only post-commit stability window for internal tab handoffs. */
+export function beginBoostPostCommitStabilityTracking(detail?: unknown) {
+  beginTabPostAuthStabilityTracking("/boost", detail);
+}
+
+export function clearBoostPostCommitStabilityTracking(detail?: unknown) {
+  clearTabPostAuthStabilityTracking("/boost", detail);
+}
+
 export function isBoostPostCommitStabilityTrackingActive() {
-  return boostHandoffActive;
+  return postAuthByTab["/boost"].active;
+}
+
+export function isTabPostAuthStabilityTrackingActive(tab: PostAuthTab) {
+  return postAuthByTab[tab].active;
+}
+
+function detectOrphanMainLoadingText() {
+  if (typeof document === "undefined") return false;
+  // Body-level loading outside destination host (auth chrome / orphan keepalives).
+  const roots = [
+    document.body,
+  ];
+  for (const root of roots) {
+    for (const el of root.querySelectorAll("[data-nav-loading-copy]")) {
+      if (!isElementVisuallyPresent(el)) continue;
+      // Ignore copies still inside a CSS-hidden handoff destination host.
+      const host = el.closest("[id^='sayittome-main-tab-keepalive-'], #sayittome-shuffle-keepalive-host");
+      if (host) {
+        const cs = getComputedStyle(host);
+        if (
+          cs.visibility === "hidden" ||
+          cs.display === "none" ||
+          parseFloat(cs.opacity || "1") < 0.04
+        ) {
+          continue;
+        }
+      }
+      return true;
+    }
+  }
+  return false;
 }
 
 function readBoostAccessGateState(
@@ -321,71 +526,133 @@ function readBoostAccessGateState(
   return "unknown";
 }
 
-function evaluateBoostPostCommitStability(
+function evaluatePostAuthStability(
+  tab: PostAuthTab,
   base: Omit<TabDestinationVisualReadiness, "stableFramesReady">,
   host: HTMLElement | null,
 ): { stable: boolean; reason: string } {
-  if (!boostHandoffActive) {
-    return { stable: true, reason: "boost-handoff-inactive" };
+  const t = postAuthByTab[tab];
+  if (!t.active) {
+    return { stable: true, reason: `${tab}-handoff-inactive` };
   }
 
-  boostHandoffFrames += 1;
-  const gateState = readBoostAccessGateState(host);
+  t.frames += 1;
+  const gateState = tab === "/boost" ? readBoostAccessGateState(host) : "ready";
   const gateLoading = gateState === "loading";
+  const orphanLoading = tab === "/shuffle" ? detectOrphanMainLoadingText() : false;
   const loading =
-    base.hasVisibleLoadingText || base.hasLoadingShell || gateLoading;
+    base.hasVisibleLoadingText ||
+    base.hasLoadingShell ||
+    gateLoading ||
+    orphanLoading;
 
   if (loading) {
-    if (boostSawReadyDuringHandoff) {
-      boostLoadingReboundSeen = true;
-      traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_LOADING_REBOUND_BLOCKED", {
-        frames: boostHandoffFrames,
-        gateState,
-        reason: base.reason,
-      });
+    if (t.sawReady) {
+      t.loadingReboundSeen = true;
+      if (tab === "/boost") {
+        traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_LOADING_REBOUND_BLOCKED", {
+          frames: t.frames,
+          gateState,
+          reason: base.reason,
+        });
+      } else if (tab === "/chats") {
+        traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_LOADING_BLOCKED", {
+          frames: t.frames,
+          reason: base.reason,
+        });
+        traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
+          frames: t.frames,
+          phase: "pre-commit",
+        });
+      } else {
+        traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_AUTH_LOADING_BLOCKED", {
+          frames: t.frames,
+          reason: base.reason,
+          orphanLoading,
+        });
+        traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
+          frames: t.frames,
+          phase: "pre-commit",
+        });
+      }
     }
     if (gateLoading) {
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_GATE_LOADING_TEXT_BLOCKED", {
-        frames: boostHandoffFrames,
+        frames: t.frames,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_GATE_LOADING_BLOCKED", {
+        frames: t.frames,
       });
     }
-    boostPostCommitStableStreak = 0;
+    t.stableStreak = 0;
     return {
       stable: false,
-      reason: gateLoading ? "boost-gate-loading" : "boost-loading",
+      reason: gateLoading
+        ? "boost-gate-loading"
+        : orphanLoading
+          ? "orphan-loading"
+          : `${tab.slice(1)}-loading`,
     };
   }
 
   if (!base.ready) {
-    boostPostCommitStableStreak = 0;
-    return { stable: false, reason: base.reason || "boost-not-ready" };
+    t.stableStreak = 0;
+    return { stable: false, reason: base.reason || `${tab.slice(1)}-not-ready` };
   }
 
-  if (boostHandoffFrames < BOOST_MIN_FRAMES_AFTER_HANDOFF) {
-    return { stable: false, reason: "boost-min-frames" };
+  if (t.frames < POST_AUTH_MIN_FRAMES_AFTER_HANDOFF) {
+    return { stable: false, reason: `${tab.slice(1)}-min-frames` };
   }
 
-  boostSawReadyDuringHandoff = true;
-  boostPostCommitStableStreak += 1;
+  t.sawReady = true;
+  t.stableStreak += 1;
 
-  const required = boostLoadingReboundSeen
-    ? BOOST_POST_COMMIT_STABLE_FRAMES + 2
-    : BOOST_POST_COMMIT_STABLE_FRAMES;
+  const required = t.loadingReboundSeen
+    ? POST_AUTH_STABLE_FRAMES + 2
+    : POST_AUTH_STABLE_FRAMES;
 
-  if (boostPostCommitStableStreak < required) {
-    return { stable: false, reason: "boost-post-commit-stable-frames" };
+  if (t.stableStreak < required) {
+    return { stable: false, reason: `${tab.slice(1)}-post-auth-stable-frames` };
   }
 
-  if (boostLoadingReboundSeen) {
-    boostLoadingReboundSeen = false;
+  if (t.loadingReboundSeen) {
+    t.loadingReboundSeen = false;
   }
 
-  traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_STABILITY_READY", {
-    frames: boostHandoffFrames,
-    stableStreak: boostPostCommitStableStreak,
-    gateState,
-  });
-  return { stable: true, reason: "boost-post-commit-stable" };
+  if (tab === "/boost") {
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_STABILITY_READY", {
+      frames: t.frames,
+      stableStreak: t.stableStreak,
+      gateState,
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_GATE_READY", { gateState });
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_COMMIT_STABILITY_READY", {
+      frames: t.frames,
+    });
+  } else if (tab === "/chats") {
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_READY", {
+      frames: t.frames,
+      stableStreak: t.stableStreak,
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY", {
+      frames: t.frames,
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_AUTH_READY", { frames: t.frames });
+  } else {
+    traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_COMMIT_STABILITY_READY", {
+      frames: t.frames,
+      stableStreak: t.stableStreak,
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_AUTH_READY", { frames: t.frames });
+  }
+  return { stable: true, reason: `${tab.slice(1)}-post-auth-stable` };
+}
+
+function evaluateBoostPostCommitStability(
+  base: Omit<TabDestinationVisualReadiness, "stableFramesReady">,
+  host: HTMLElement | null,
+): { stable: boolean; reason: string } {
+  return evaluatePostAuthStability("/boost", base, host);
 }
 
 /** Whether the bidirectional no-loading presentation contract is active. */
@@ -425,8 +692,38 @@ export function getTabDestinationVisualReadiness(
       warmState: shuffle.poolWarmState,
       reason: shuffle.reason,
     };
-    const stableFramesReady = updateStableFrames("/shuffle", base);
-    return { ...base, stableFramesReady, ready: base.ready && stableFramesReady };
+    let stableFramesReady = updateStableFrames("/shuffle", base);
+    let ready = base.ready && stableFramesReady;
+    let reason = !base.ready
+      ? base.reason
+      : stableFramesReady
+        ? "ready"
+        : "stable-frames";
+
+    if (
+      isMainTabToShuffleMicroSlideEnabled() &&
+      postAuthByTab["/shuffle"].active
+    ) {
+      const host =
+        typeof document !== "undefined"
+          ? document.getElementById("sayittome-shuffle-keepalive-host")
+          : null;
+      const post = evaluatePostAuthStability("/shuffle", base, host);
+      if (!post.stable) {
+        stableFramesReady = false;
+        ready = false;
+        reason = post.reason;
+        traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_COMMIT_STABILITY_WAIT", {
+          reason: post.reason,
+          frames: postAuthByTab["/shuffle"].frames,
+        });
+      } else if (base.ready && stableFramesReady) {
+        ready = true;
+        reason = "ready";
+      }
+    }
+
+    return { ...base, stableFramesReady, ready, reason };
   }
 
   const base = evaluateNonShuffleReadiness(tab);
@@ -439,23 +736,27 @@ export function getTabDestinationVisualReadiness(
       : "stable-frames";
 
   if (
-    tab === "/boost" &&
     isMainTabToShuffleMicroSlideEnabled() &&
-    boostHandoffActive
+    isPostAuthTab(tab) &&
+    postAuthByTab[tab].active
   ) {
     const host =
       typeof document !== "undefined"
-        ? (document.getElementById("sayittome-main-tab-keepalive-boost") as HTMLElement | null)
+        ? (document.getElementById(
+            `sayittome-main-tab-keepalive-${tab.slice(1)}`,
+          ) as HTMLElement | null)
         : null;
-    const post = evaluateBoostPostCommitStability(base, host);
+    const post = evaluatePostAuthStability(tab, base, host);
     if (!post.stable) {
       stableFramesReady = false;
       ready = false;
       reason = post.reason;
-      traceTabShellNoLoading("TAB_HANDOFF_BOOST_REVEAL_DELAYED_UNTIL_STABLE", {
-        reason: post.reason,
-        frames: boostHandoffFrames,
-      });
+      if (tab === "/boost") {
+        traceTabShellNoLoading("TAB_HANDOFF_BOOST_REVEAL_DELAYED_UNTIL_STABLE", {
+          reason: post.reason,
+          frames: postAuthByTab["/boost"].frames,
+        });
+      }
     } else if (base.ready && stableFramesReady) {
       ready = true;
       reason = "ready";
@@ -493,6 +794,16 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_EXIT_WATCHDOG_BLOCKED_LOADING_RELEASE"
   | "TAB_HANDOFF_DESTINATION_EMPTY_STATE_READY"
   | "TAB_HANDOFF_CHATS_READY"
+  | "TAB_HANDOFF_CHATS_AUTH_READY"
+  | "TAB_HANDOFF_CHATS_INBOX_READY"
+  | "TAB_HANDOFF_CHATS_INBOX_LOADING_BLOCKED"
+  | "TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY"
+  | "TAB_HANDOFF_CHATS_POST_REVEAL_LOADING_REBOUND_BLOCKED"
+  | "TAB_HANDOFF_SHUFFLE_AUTH_READY"
+  | "TAB_HANDOFF_SHUFFLE_AUTH_LOADING_BLOCKED"
+  | "TAB_HANDOFF_SHUFFLE_POST_COMMIT_STABILITY_WAIT"
+  | "TAB_HANDOFF_SHUFFLE_POST_COMMIT_STABILITY_READY"
+  | "TAB_HANDOFF_SHUFFLE_POST_REVEAL_LOADING_REBOUND_BLOCKED"
   | "TAB_HANDOFF_BOOST_READY"
   | "TAB_HANDOFF_BOOST_LOADING_BLOCKED"
   | "TAB_HANDOFF_BOOST_GATE_READY"
@@ -504,7 +815,11 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_BOOST_REVEAL_DELAYED_UNTIL_STABLE"
   | "TAB_HANDOFF_RELEASE_BLOCKED_BY_BOOST_LOADING"
   | "TAB_HANDOFF_SEQUENCE_BOOST_REENTRY_STABLE"
-  | "TAB_HANDOFF_DIRECT_COLD_BOOST_LOADING_ALLOWED";
+  | "TAB_HANDOFF_DIRECT_COLD_BOOST_LOADING_ALLOWED"
+  | "TAB_HANDOFF_BOOST_AUTH_GATE_READY"
+  | "TAB_HANDOFF_BOOST_AUTH_GATE_LOADING_BLOCKED"
+  | "TAB_HANDOFF_BOOST_AUTH_POST_COMMIT_STABILITY_READY"
+  | "TAB_HANDOFF_BOOST_AUTH_POST_REVEAL_LOADING_REBOUND_BLOCKED";
 
 const diagRing: Array<{ at: number; event: TabShellNoLoadingDiagEvent; detail?: unknown }> =
   [];

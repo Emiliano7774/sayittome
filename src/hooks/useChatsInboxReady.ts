@@ -65,6 +65,18 @@ export function explainChatsInboxSkeleton(inbox: InboxGateInput) {
     return { show: false, reason: "session-hydrated-flag" as const };
   }
 
+  // During internal tab handoffs, never mount the full-page skeleton on a
+  // transient auth.loading flicker — keep the prior empty/content surface.
+  if (
+    typeof document !== "undefined" &&
+    (document.documentElement.classList.contains("sayittome-main-tab-handoff-pending") ||
+      document.documentElement.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
+      document.documentElement.dataset.chatsPostAuthSettle === "1" ||
+      document.documentElement.dataset.tabPostAuthSettle === "1")
+  ) {
+    return { show: false, reason: "handoff-suppress-skeleton" as const };
+  }
+
   if (inbox.loading) {
     return { show: true, reason: "auth-still-loading" as const };
   }
@@ -79,7 +91,17 @@ export function shouldShowChatsInboxSkeleton(inbox: InboxGateInput) {
     rememberInboxChatCount(inbox.sortedChats.length);
   } else if (!gate.show) {
     const snapshotCount = readInboxSnapshotWithMeta().chats.length;
-    if (snapshotCount > 0) rememberInboxChatCount(snapshotCount);
+    if (snapshotCount > 0) {
+      rememberInboxChatCount(snapshotCount);
+    } else if (
+      gate.reason === "empty-not-loading" ||
+      gate.reason === "handoff-suppress-skeleton" ||
+      gate.reason === "session-hydrated-flag"
+    ) {
+      // Settled empty inbox must count as hydrated so a later auth.loading
+      // flicker cannot remount the full-page "Cargando..." skeleton after reveal.
+      markChatsInboxHydrated(0);
+    }
   }
   return gate.show;
 }

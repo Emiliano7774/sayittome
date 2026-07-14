@@ -15,7 +15,7 @@ import {
   subscribeShuffleHandoffState,
 } from "@/lib/navigation/shuffleHandoffState";
 import {
-  beginBoostPostCommitStabilityTracking,
+  beginTabPostAuthStabilityTracking,
   getTabDestinationVisualReadiness,
   isTabShellNoLoadingTransitionContractActive,
   resetTabDestinationReadinessStability,
@@ -62,6 +62,33 @@ const NO_LOADING_EXIT_FRAME_BUDGET = 360;
 /** Keep polling after soft timeout so a late-ready destination can still release. */
 const NO_LOADING_EXIT_ABSOLUTE_BUDGET = 900;
 
+/** Auth destinations must not soft-settle into loading after reveal. */
+function requiresStrictPostAuthExit(path: string) {
+  return path === "/boost" || path === "/chats";
+}
+
+function isStrictNoLoadingReady(
+  path: Exclude<MainTabHref, "/shuffle">,
+  visual: ReturnType<typeof getTabDestinationVisualReadiness>,
+) {
+  if (requiresStrictPostAuthExit(path)) {
+    return (
+      visual.ready &&
+      visual.stableFramesReady &&
+      !visual.hasLoadingShell &&
+      !visual.hasVisibleLoadingText &&
+      visual.geometryValid
+    );
+  }
+  return (
+    visual.ready ||
+    (!visual.hasLoadingShell &&
+      !visual.hasVisibleLoadingText &&
+      visual.hasContentRoot &&
+      visual.geometryValid)
+  );
+}
+
 /** Module-level watchdog survives React effect cancellation / remounts. */
 let exitNoLoadingWatchdogToken = 0;
 
@@ -79,18 +106,7 @@ function armShuffleExitNoLoadingWatchdog(
     frames += 1;
 
     const visual = getTabDestinationVisualReadiness(path);
-    const safe =
-      path === "/boost"
-        ? visual.ready &&
-          visual.stableFramesReady &&
-          !visual.hasLoadingShell &&
-          !visual.hasVisibleLoadingText &&
-          visual.geometryValid
-        : visual.ready ||
-          (!visual.hasLoadingShell &&
-            !visual.hasVisibleLoadingText &&
-            visual.hasContentRoot &&
-            visual.geometryValid);
+    const safe = isStrictNoLoadingReady(path, visual);
 
     if (safe) {
       const committed = commitPresentedMainTabIfReady(pathnameForCommit);
@@ -212,18 +228,7 @@ export default function ShuffleKeepAliveHost() {
       frames += 1;
       if (!isShuffleExitToMainTabPending()) return;
       const visual = getTabDestinationVisualReadiness(path);
-      const safe =
-        path === "/boost"
-          ? visual.ready &&
-            visual.stableFramesReady &&
-            !visual.hasLoadingShell &&
-            !visual.hasVisibleLoadingText &&
-            visual.geometryValid
-          : visual.ready ||
-            (!visual.hasLoadingShell &&
-              !visual.hasVisibleLoadingText &&
-              visual.hasContentRoot &&
-              visual.geometryValid);
+      const safe = isStrictNoLoadingReady(path, visual);
       if (safe) {
         const committed = commitPresentedMainTabIfReady(pathname);
         if (!committed) {
@@ -356,8 +361,8 @@ export default function ShuffleKeepAliveHost() {
         beginShuffleExitToMainTab(path);
         resetTabDestinationReadinessStability(path);
         if (contractActive) {
-          if (path === "/boost") {
-            beginBoostPostCommitStabilityTracking({
+          if (path === "/boost" || path === "/chats") {
+            beginTabPostAuthStabilityTracking(path, {
               source: "/shuffle",
               destination: path,
               via: "shuffle-exit-layout",
@@ -445,9 +450,9 @@ export default function ShuffleKeepAliveHost() {
             }
             // Safe settle: destination has no loading chrome — complete reveal even
             // without full stable-frame readiness so the shell does not latch forever.
-            // Boost is excluded: post-commit stability must pass (no soft settle).
+            // Boost/Chats are excluded: post-auth stability must pass (no soft settle).
             if (
-              path !== "/boost" &&
+              !requiresStrictPostAuthExit(path) &&
               !visual.hasLoadingShell &&
               !visual.hasVisibleLoadingText &&
               visual.hasContentRoot &&

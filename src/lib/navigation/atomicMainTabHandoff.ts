@@ -1,12 +1,15 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
 import {
-  beginBoostPostCommitStabilityTracking,
+  beginTabPostAuthStabilityTracking,
   clearBoostPostCommitStabilityTracking,
+  clearTabPostAuthStabilityTracking,
   getTabDestinationVisualReadiness,
   isBoostPostCommitStabilityTrackingActive,
   isTabDestinationVisualReady,
+  isTabPostAuthStabilityTrackingActive,
   isTabShellNoLoadingTransitionContractActive,
   resetTabDestinationReadinessStability,
+  scheduleClearTabPostAuthStabilityAfterReveal,
   traceTabShellNoLoading,
 } from "@/lib/navigation/tabDestinationReadiness";
 import { isShuffleExitToMainTabPending } from "@/lib/navigation/shuffleHandoffState";
@@ -84,8 +87,8 @@ export function onMainTabRouteChange(pathname: string) {
     ) {
       handoffTarget = next;
       resetTabDestinationReadinessStability(next);
-      if (next === "/boost") {
-        beginBoostPostCommitStabilityTracking({
+      if (next === "/boost" || next === "/chats" || next === "/shuffle") {
+        beginTabPostAuthStabilityTracking(next, {
           source: presentedTab,
           destination: next,
           via: "same-tab-retain",
@@ -113,12 +116,23 @@ export function onMainTabRouteChange(pathname: string) {
 
   handoffTarget = next;
   resetTabDestinationReadinessStability(next);
-  if (next === "/boost" && isTabShellNoLoadingTransitionContractActive()) {
-    beginBoostPostCommitStabilityTracking({
-      source: presentedTab,
-      destination: next,
-      via: "onMainTabRouteChange",
-    });
+  if (isTabShellNoLoadingTransitionContractActive()) {
+    if (next === "/boost" || next === "/chats" || next === "/shuffle") {
+      beginTabPostAuthStabilityTracking(next, {
+        source: presentedTab,
+        destination: next,
+        via: "onMainTabRouteChange",
+      });
+    }
+    // Leaving an auth destination: clear other settle trackers.
+    for (const tab of ["/boost", "/chats", "/shuffle"] as const) {
+      if (tab !== next && isTabPostAuthStabilityTrackingActive(tab)) {
+        clearTabPostAuthStabilityTracking(tab, {
+          via: "onMainTabRouteChange-left-destination",
+          destination: next,
+        });
+      }
+    }
   } else if (isBoostPostCommitStabilityTrackingActive()) {
     clearBoostPostCommitStabilityTracking({
       via: "onMainTabRouteChange-left-boost",
@@ -227,20 +241,32 @@ export function commitPresentedMainTabIfReady(pathname: string) {
     return false;
   }
 
-  const committedBoost = handoffTarget === "/boost";
+  const committedTab = handoffTarget;
   presentedTab = handoffTarget;
   handoffTarget = null;
-  if (committedBoost) {
-    clearBoostPostCommitStabilityTracking({ via: "commitPresentedMainTabIfReady" });
+  if (
+    committedTab === "/boost" ||
+    committedTab === "/chats" ||
+    committedTab === "/shuffle"
+  ) {
+    // Keep settle CSS through a short post-reveal window; do not clear immediately.
+    scheduleClearTabPostAuthStabilityAfterReveal(committedTab, {
+      via: "commitPresentedMainTabIfReady",
+    });
   }
   if (isTabShellNoLoadingTransitionContractActive()) {
     traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", { destination: path });
     if (path === "/chats") {
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_READY", { destination: path });
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_AUTH_READY", { destination: path });
     }
     if (path === "/boost") {
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_READY", { destination: path });
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_GATE_READY", { destination: path });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_GATE_READY", { destination: path });
+    }
+    if (path === "/shuffle") {
+      traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_AUTH_READY", { destination: path });
     }
     traceTabShellNoLoading("TAB_HANDOFF_ROUTE_STATE_ALIGNED", {
       destination: path,
