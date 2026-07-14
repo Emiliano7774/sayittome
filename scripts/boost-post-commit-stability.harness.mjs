@@ -126,9 +126,9 @@ function simulateBoostPostCommitStability({
 }
 
 {
-  // Soft settle must not classify boost loading as clean.
-  function boostSoftSettleAllowed(path, visual) {
-    if (path === "/boost") return false;
+  // Soft settle must not classify boost/chats auth loading as clean.
+  function strictPostAuthSoftSettleAllowed(path, visual) {
+    if (path === "/boost" || path === "/chats") return false;
     return (
       !visual.hasLoadingShell &&
       !visual.hasVisibleLoadingText &&
@@ -138,7 +138,7 @@ function simulateBoostPostCommitStability({
   }
   check(
     "NO_BOOST_SOFT_SETTLE: boost blocked",
-    boostSoftSettleAllowed("/boost", {
+    strictPostAuthSoftSettleAllowed("/boost", {
       hasLoadingShell: false,
       hasVisibleLoadingText: false,
       hasContentRoot: true,
@@ -146,8 +146,17 @@ function simulateBoostPostCommitStability({
     }) === false,
   );
   check(
-    "NO_BOOST_SOFT_SETTLE: chats still allowed",
-    boostSoftSettleAllowed("/chats", {
+    "NO_CHATS_SOFT_SETTLE: chats blocked",
+    strictPostAuthSoftSettleAllowed("/chats", {
+      hasLoadingShell: false,
+      hasVisibleLoadingText: false,
+      hasContentRoot: true,
+      geometryValid: true,
+    }) === false,
+  );
+  check(
+    "SOFT_SETTLE: settings still allowed when no loading",
+    strictPostAuthSoftSettleAllowed("/settings", {
       hasLoadingShell: false,
       hasVisibleLoadingText: false,
       hasContentRoot: true,
