@@ -392,6 +392,54 @@ html.sayittome-shuffle-exit-handoff-pending #sayittome-shuffle-keepalive-host {
   inset: 0;
 }
 
+/* Keep destination main-tab panels hidden while Shuffle exit handoff waits for readiness. */
+html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-stories,
+html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-chats,
+html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-boost,
+html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-settings {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Never present loading chrome as the frozen/moving surface during tab-shell handoffs. */
+html.sayittome-main-tab-handoff-pending [data-loading-shell],
+html.sayittome-shuffle-exit-handoff-pending [data-loading-shell],
+html.sayittome-main-tab-handoff-pending [data-nav-loading-copy],
+html.sayittome-shuffle-exit-handoff-pending [data-nav-loading-copy],
+html[data-main-tab-shuffle-slide="preparing"] [data-loading-shell],
+html[data-main-tab-shuffle-slide="armed"] [data-loading-shell],
+html[data-main-tab-shuffle-slide="running"] [data-loading-shell],
+html[data-main-tab-shuffle-slide="preparing"] [data-nav-loading-copy],
+html[data-main-tab-shuffle-slide="armed"] [data-nav-loading-copy],
+html[data-main-tab-shuffle-slide="running"] [data-nav-loading-copy] {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Frozen keepalives must not leak loading chrome even if visibility inheritance races. */
+.sayittome-main-tab-keepalive-frozen [data-loading-shell],
+.sayittome-main-tab-keepalive-frozen [data-nav-loading-copy],
+.sayittome-shuffle-keepalive-frozen [data-loading-shell],
+.sayittome-shuffle-keepalive-frozen [data-nav-loading-copy] {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* While Shuffle is the presented surface, suppress main-tab loading chrome entirely. */
+html:has(#sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible)
+  [id^="sayittome-main-tab-keepalive-"]
+  [data-loading-shell],
+html:has(#sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible)
+  [id^="sayittome-main-tab-keepalive-"]
+  [data-nav-loading-copy] {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 html.sayittome-shuffle-handoff-pending #sayittome-shuffle-keepalive-host {
   z-index: -1 !important;
   visibility: hidden !important;

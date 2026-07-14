@@ -10,9 +10,16 @@ import {
   beginShuffleExitToMainTab,
   clearShuffleExitToMainTab,
   getShuffleHandoffVersion,
+  isShuffleExitToMainTabPending,
   isShuffleSurfacePresented,
   subscribeShuffleHandoffState,
 } from "@/lib/navigation/shuffleHandoffState";
+import {
+  getTabDestinationVisualReadiness,
+  isTabShellNoLoadingTransitionContractActive,
+  resetTabDestinationReadinessStability,
+  traceTabShellNoLoading,
+} from "@/lib/navigation/tabDestinationReadiness";
 import {
   activateShuffleTabSurface,
   canShowShuffleKeepAliveSurface,
@@ -50,6 +57,64 @@ import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFram
 import { isMainTabHref, type MainTabHref } from "@/lib/navigation/mainTabs";
 
 const HANDOFF_FRAME_BUDGET = 120;
+const NO_LOADING_EXIT_FRAME_BUDGET = 360;
+/** Keep polling after soft timeout so a late-ready destination can still release. */
+const NO_LOADING_EXIT_ABSOLUTE_BUDGET = 900;
+
+/** Module-level watchdog survives React effect cancellation / remounts. */
+let exitNoLoadingWatchdogToken = 0;
+
+function armShuffleExitNoLoadingWatchdog(
+  path: Exclude<MainTabHref, "/shuffle">,
+  pathnameForCommit: string,
+) {
+  exitNoLoadingWatchdogToken += 1;
+  const token = exitNoLoadingWatchdogToken;
+  let frames = 0;
+
+  const tick = () => {
+    if (token !== exitNoLoadingWatchdogToken) return;
+    if (!isShuffleExitToMainTabPending()) return;
+    frames += 1;
+
+    const visual = getTabDestinationVisualReadiness(path);
+    const safe =
+      visual.ready ||
+      (!visual.hasLoadingShell &&
+        !visual.hasVisibleLoadingText &&
+        visual.hasContentRoot &&
+        visual.geometryValid);
+
+    if (safe) {
+      commitPresentedMainTabIfReady(pathnameForCommit);
+      releaseShuffleTabSurface();
+      clearShuffleExitToMainTab();
+      pinShuffleWindowWhileAway();
+      clearQueuedShuffleTriggers();
+      resetShuffleGeometryStability();
+      traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", {
+        source: "/shuffle",
+        destination: path,
+        frames,
+        via: "module-exit-watchdog",
+      });
+      return;
+    }
+
+    if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
+      requestAnimationFrame(tick);
+    } else {
+      traceTabShellNoLoading("TAB_SHELL_NO_LOADING_DESTINATION_READY_TIMEOUT", {
+        destination: path,
+        frames,
+        visual,
+        via: "module-exit-watchdog",
+      });
+    }
+  };
+
+  requestAnimationFrame(tick);
+}
 
 function isMainTabPath(path: string): path is Exclude<MainTabHref, "/shuffle"> {
   return isMainTabHref(path) && path !== "/shuffle";
@@ -104,6 +169,52 @@ export default function ShuffleKeepAliveHost() {
 
     window.addEventListener("pageshow", onPageShow);
     return () => window.removeEventListener("pageshow", onPageShow);
+  }, [pathname]);
+
+  // Recovery: if an exit latch is left pending (cancelled layout loop) but the
+  // destination is already no-loading ready, complete the reveal.
+  useEffect(() => {
+    if (!isTabShellNoLoadingTransitionContractActive()) return;
+    if (!isShuffleExitToMainTabPending()) return;
+    const path = pathname.split("?")[0].split("#")[0];
+    if (!isMainTabPath(path)) return;
+
+    let cancelled = false;
+    let frames = 0;
+    const tick = () => {
+      if (cancelled) return;
+      frames += 1;
+      if (!isShuffleExitToMainTabPending()) return;
+      const visual = getTabDestinationVisualReadiness(path);
+      const safe =
+        visual.ready ||
+        (!visual.hasLoadingShell &&
+          !visual.hasVisibleLoadingText &&
+          visual.hasContentRoot &&
+          visual.geometryValid);
+      if (safe) {
+        commitPresentedMainTabIfReady(pathname);
+        releaseShuffleTabSurface();
+        clearShuffleExitToMainTab();
+        pinShuffleWindowWhileAway();
+        clearQueuedShuffleTriggers();
+        resetShuffleGeometryStability();
+        traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", {
+          source: "/shuffle",
+          destination: path,
+          frames,
+          via: "exit-recovery-effect",
+        });
+        return;
+      }
+      if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
+        requestAnimationFrame(tick);
+      }
+    };
+    requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+    };
   }, [pathname]);
 
   useLayoutEffect(() => {
@@ -187,38 +298,123 @@ export default function ShuffleKeepAliveHost() {
       const loopId = handoffLoopRef.current;
 
       if (isMainTabPath(path)) {
+        const contractActive = isTabShellNoLoadingTransitionContractActive();
+        const frameBudget = contractActive
+          ? NO_LOADING_EXIT_FRAME_BUDGET
+          : HANDOFF_FRAME_BUDGET;
         beginShuffleExitToMainTab(path);
+        resetTabDestinationReadinessStability(path);
+        if (contractActive) {
+          armShuffleExitNoLoadingWatchdog(path, pathname);
+          traceTabShellNoLoading("TAB_SHELL_NO_LOADING_SOURCE_FROZEN", {
+            source: "/shuffle",
+            destination: path,
+          });
+        }
         let frames = 0;
         let cancelled = false;
+
+        const destinationReady = () => {
+          if (contractActive) {
+            const visual = getTabDestinationVisualReadiness(path);
+            return (
+              visual.ready &&
+              !visual.hasLoadingShell &&
+              !visual.hasVisibleLoadingText &&
+              visual.geometryValid &&
+              visual.stableFramesReady
+            );
+          }
+          return isMainTabPrimaryReady(path);
+        };
 
         const releaseWhenMainTabReady = () => {
           if (cancelled || handoffLoopRef.current !== loopId) return;
           frames += 1;
 
-          if (isMainTabPrimaryReady(path)) {
+          if (destinationReady()) {
             commitPresentedMainTabIfReady(pathname);
             releaseShuffleTabSurface();
             clearShuffleExitToMainTab();
             pinShuffleWindowWhileAway();
             clearQueuedShuffleTriggers();
             resetShuffleGeometryStability();
+            if (contractActive) {
+              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", {
+                source: "/shuffle",
+                destination: path,
+                frames,
+              });
+            }
             return;
           }
 
-          if (frames < HANDOFF_FRAME_BUDGET) {
+          if (frames < frameBudget) {
+            if (contractActive && frames % 30 === 0) {
+              const visual = getTabDestinationVisualReadiness(path);
+              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_DESTINATION_REVEAL_BLOCKED", {
+                destination: path,
+                reason: visual.reason,
+                frames,
+              });
+            }
             requestAnimationFrame(releaseWhenMainTabReady);
-          } else {
-            releaseShuffleTabSurface();
-            clearShuffleExitToMainTab();
+            return;
+          }
+
+          // Soft timeout: under no-loading contract, never reveal a loading destination.
+          if (contractActive) {
+            const visual = getTabDestinationVisualReadiness(path);
+            if (frames === frameBudget || frames % 60 === 0) {
+              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_DESTINATION_READY_TIMEOUT", {
+                destination: path,
+                frames,
+                visual,
+              });
+            }
+            // Safe settle: destination has no loading chrome — complete reveal even
+            // without full stable-frame readiness so the shell does not latch forever.
+            if (
+              !visual.hasLoadingShell &&
+              !visual.hasVisibleLoadingText &&
+              visual.hasContentRoot &&
+              visual.geometryValid
+            ) {
+              commitPresentedMainTabIfReady(pathname);
+              releaseShuffleTabSurface();
+              clearShuffleExitToMainTab();
+              pinShuffleWindowWhileAway();
+              clearQueuedShuffleTriggers();
+              resetShuffleGeometryStability();
+              return;
+            }
+            // Still not safe — keep polling until absolute budget.
+            if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
+              requestAnimationFrame(releaseWhenMainTabReady);
+              return;
+            }
+            // Absolute give-up: keep Shuffle frozen; leave exit latch active.
             pinShuffleWindowWhileAway();
             clearQueuedShuffleTriggers();
             resetShuffleGeometryStability();
+            return;
           }
+
+          releaseShuffleTabSurface();
+          clearShuffleExitToMainTab();
+          pinShuffleWindowWhileAway();
+          clearQueuedShuffleTriggers();
+          resetShuffleGeometryStability();
         };
 
         requestAnimationFrame(releaseWhenMainTabReady);
         return () => {
           cancelled = true;
+          if (contractActive) {
+            traceTabShellNoLoading("TAB_SHELL_NO_LOADING_CANCELLED", {
+              destination: path,
+            });
+          }
         };
       }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
@@ -23,6 +24,7 @@ import {
   isInternalMainTabToShuffleTransitionActive,
   pathToMainTabShuffleSource,
 } from "@/lib/navigation/mainTabToShuffleTransition";
+import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import {
@@ -39,6 +41,12 @@ type Props = {
 
 /** Main tabs navigate via real routes; keep-alive hosts preserve mounted panels. */
 export default function BottomNavLink({ href, className, children, ...rest }: Props) {
+  const router = useRouter();
+  // Native shell normally uses hard <a> navigations. The bidirectional no-loading
+  // contract requires same-document soft nav so keep-alive handoff can freeze source.
+  const forceSoftMainTabNav =
+    isTabShellNoLoadingTransitionContractActive() && isMainTabHref(href);
+
   function warmTab() {
     if (typeof window !== "undefined") {
       const currentPath = window.location.pathname.split("?")[0].split("#")[0];
@@ -67,6 +75,10 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       if (currentPath === "/shuffle" && href !== "/shuffle") {
         pinShuffleKeepAlive();
         pinShuffleWindowWhileAway();
+        if (isMainTabHref(href)) {
+          pinMainTabKeepAlive();
+          markMainTabVisited(href);
+        }
       }
     }
 
@@ -80,8 +92,19 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     }
   }
 
-  return (
-    isNativeAppShell() ? (
+  function onNativeClick(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (!forceSoftMainTabNav) return;
+    if (event.defaultPrevented) return;
+    if (event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    warmTab();
+    if (blockMainTabNavigationDuringSlide()) return;
+    router.push(href);
+  }
+
+  if (isNativeAppShell() && !forceSoftMainTabNav) {
+    return (
       <a
         href={href}
         className={className}
@@ -91,17 +114,34 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       >
         {children}
       </a>
-    ) : (
-      <Link
+    );
+  }
+
+  if (isNativeAppShell() && forceSoftMainTabNav) {
+    return (
+      <a
         href={href}
         className={className}
-        prefetch
         onPointerDown={warmTab}
         onPointerEnter={warmTab}
+        onClick={onNativeClick}
         {...rest}
       >
         {children}
-      </Link>
-    )
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      className={className}
+      prefetch
+      onPointerDown={warmTab}
+      onPointerEnter={warmTab}
+      {...rest}
+    >
+      {children}
+    </Link>
   );
 }

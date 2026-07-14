@@ -1,4 +1,10 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
+import {
+  getTabDestinationVisualReadiness,
+  isTabShellNoLoadingTransitionContractActive,
+  resetTabDestinationReadinessStability,
+  traceTabShellNoLoading,
+} from "@/lib/navigation/tabDestinationReadiness";
 
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
@@ -70,6 +76,13 @@ export function onMainTabRouteChange(pathname: string) {
   }
 
   handoffTarget = next;
+  resetTabDestinationReadinessStability(next);
+  if (isTabShellNoLoadingTransitionContractActive()) {
+    traceTabShellNoLoading("TAB_SHELL_NO_LOADING_SOURCE_FROZEN", {
+      source: presentedTab,
+      destination: next,
+    });
+  }
   markMainTabHandoffPendingDom(true);
   notify();
 }
@@ -99,6 +112,17 @@ function isPresentablePrimary(host: HTMLElement, primary: Element) {
 export function isMainTabPrimaryReady(href: MainTabHref) {
   if (typeof document === "undefined") return false;
 
+  if (isTabShellNoLoadingTransitionContractActive()) {
+    const visual = getTabDestinationVisualReadiness(href);
+    return (
+      visual.ready &&
+      !visual.hasLoadingShell &&
+      !visual.hasVisibleLoadingText &&
+      visual.geometryValid &&
+      visual.stableFramesReady
+    );
+  }
+
   const host = document.getElementById(`sayittome-main-tab-keepalive-${href.slice(1)}`);
   if (!host) return false;
 
@@ -112,10 +136,31 @@ export function isMainTabPrimaryReady(href: MainTabHref) {
 export function commitPresentedMainTabIfReady(pathname: string) {
   const path = normalizePath(pathname);
   if (!handoffTarget || handoffTarget !== path) return false;
-  if (!isMainTabPrimaryReady(handoffTarget)) return false;
+
+  if (isTabShellNoLoadingTransitionContractActive()) {
+    const visual = getTabDestinationVisualReadiness(handoffTarget);
+    if (
+      !visual.ready ||
+      visual.hasLoadingShell ||
+      visual.hasVisibleLoadingText ||
+      !visual.geometryValid ||
+      !visual.stableFramesReady
+    ) {
+      traceTabShellNoLoading("TAB_SHELL_NO_LOADING_DESTINATION_REVEAL_BLOCKED", {
+        destination: handoffTarget,
+        reason: visual.reason,
+      });
+      return false;
+    }
+  } else if (!isMainTabPrimaryReady(handoffTarget)) {
+    return false;
+  }
 
   presentedTab = handoffTarget;
   handoffTarget = null;
+  if (isTabShellNoLoadingTransitionContractActive()) {
+    traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", { destination: path });
+  }
   markMainTabHandoffPendingDom(false);
   notify();
   return true;

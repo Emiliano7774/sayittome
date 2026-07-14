@@ -34,6 +34,7 @@ import {
   resetMainTabHistoryPathnameStore,
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
+import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
 import MainTabKeepAliveHost from "@/components/navigation/MainTabKeepAliveHost";
 
 type MainTabShellContextValue = {
@@ -94,7 +95,12 @@ export function MainTabShellProvider({
       pinMainTabKeepAlive();
       recordNativeNavPath(href);
       releaseChatViewportLock();
-      if (isNativeAppShell() && shouldHardNavigatePath(href)) {
+      // Soft-nav required for tab-shell no-loading freeze/handoff (same as micro-slide).
+      if (
+        isNativeAppShell() &&
+        shouldHardNavigatePath(href) &&
+        !isTabShellNoLoadingTransitionContractActive()
+      ) {
         hardNavigate(href);
         return;
       }

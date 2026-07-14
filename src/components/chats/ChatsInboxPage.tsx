@@ -14,7 +14,10 @@ function ChatsPageSkeleton() {
   const t = useT();
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black text-white/35">
+    <main
+      data-nav-loading-copy="1"
+      className="flex min-h-screen items-center justify-center bg-black text-white/35"
+    >
       <p className="text-sm font-bold">{t("common_loading")}</p>
     </main>
   );

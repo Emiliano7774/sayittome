@@ -15,6 +15,7 @@ import {
   seedPresentedMainTab,
   subscribeAtomicMainTabHandoff,
 } from "@/lib/navigation/atomicMainTabHandoff";
+import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
 import {
   getMainTabKeepAliveVersion,
   getPendingVisualTab,
@@ -59,6 +60,7 @@ const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
 };
 
 const HANDOFF_FRAME_BUDGET = 120;
+const NO_LOADING_HANDOFF_FRAME_BUDGET = 360;
 
 function resolveMainTabPanelPath(pathname: string) {
   if (isMainTabToShufflePresentationOwned()) {
@@ -128,12 +130,15 @@ export default function MainTabKeepAliveHost() {
     handoffLoopRef.current += 1;
     const loopId = handoffLoopRef.current;
     let frames = 0;
+    const frameBudget = isTabShellNoLoadingTransitionContractActive()
+      ? NO_LOADING_HANDOFF_FRAME_BUDGET
+      : HANDOFF_FRAME_BUDGET;
 
     const tryCommit = () => {
       if (handoffLoopRef.current !== loopId) return;
       frames += 1;
       if (commitPresentedMainTabIfReady(pathname)) return;
-      if (frames < HANDOFF_FRAME_BUDGET) {
+      if (frames < frameBudget) {
         requestAnimationFrame(tryCommit);
       }
     };

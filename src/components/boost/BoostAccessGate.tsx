@@ -15,7 +15,10 @@ export default function BoostAccessGate({ state }: Props) {
 
   if (state === "loading") {
     return (
-      <div className="mt-8 rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-8 text-center">
+      <div
+        data-nav-loading-copy="1"
+        className="mt-8 rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-8 text-center"
+      >
         <p className="text-lg font-black text-white/45">{t("common_loading")}</p>
       </div>
     );

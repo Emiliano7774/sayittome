@@ -62,15 +62,26 @@ export function beginShuffleExitToMainTab(target: MainTabHref) {
   shuffleExitMainTabTarget = target;
   if (typeof document !== "undefined") {
     document.documentElement.classList.add("sayittome-shuffle-exit-handoff-pending");
+    document.documentElement.setAttribute(
+      "data-shuffle-exit-handoff-target",
+      target,
+    );
   }
   notify();
 }
 
 export function clearShuffleExitToMainTab() {
-  if (!shuffleExitMainTabTarget) return;
+  if (!shuffleExitMainTabTarget) {
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.remove("sayittome-shuffle-exit-handoff-pending");
+      document.documentElement.removeAttribute("data-shuffle-exit-handoff-target");
+    }
+    return;
+  }
   shuffleExitMainTabTarget = null;
   if (typeof document !== "undefined") {
     document.documentElement.classList.remove("sayittome-shuffle-exit-handoff-pending");
+    document.documentElement.removeAttribute("data-shuffle-exit-handoff-target");
   }
   notify();
 }
