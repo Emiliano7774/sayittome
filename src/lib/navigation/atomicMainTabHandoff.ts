@@ -278,9 +278,14 @@ export function commitPresentedMainTabIfReady(pathname: string) {
   return true;
 }
 
-export function resetPresentedMainTab(href?: MainTabHref) {
-  presentedTab = href ?? null;
+export function forcePresentMainTabAfterStableExit(href: MainTabHref) {
+  presentedTab = href;
   handoffTarget = null;
+  if (href === "/boost" || href === "/chats" || href === "/shuffle") {
+    scheduleClearTabPostAuthStabilityAfterReveal(href, {
+      via: "forcePresentMainTabAfterStableExit",
+    });
+  }
   markMainTabHandoffPendingDom(false);
   notify();
 }

@@ -24,8 +24,16 @@ const STABLE_FRAMES_REQUIRED = 2;
 /** Auth destinations need post-route-commit stability beyond pre-commit ready. */
 const POST_AUTH_STABLE_FRAMES = 3;
 const POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 3;
+/** Boost needs a slightly longer pre-reveal sample than Chats, without latching forever. */
+const BOOST_POST_AUTH_STABLE_FRAMES = 3;
+const BOOST_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 3;
 /** Keep CSS settle after reveal so auth rebounds cannot flash "Cargando...". */
 const POST_REVEAL_SETTLE_HOLD_FRAMES = 5;
+/** Prod Boost auth rebind can land after ~100ms; hold longer than Chats/Shuffle. */
+const BOOST_POST_REVEAL_SETTLE_HOLD_FRAMES = 12;
+const BOOST_POST_REVEAL_MIN_HOLD_MS = 160;
+/** Hard cap so settle CSS cannot pin the destination forever. */
+const BOOST_POST_REVEAL_MAX_HOLD_MS = 400;
 
 type PostAuthTab = "/boost" | "/chats" | "/shuffle";
 
@@ -40,6 +48,9 @@ type PostAuthTracker = {
   loadingReboundSeen: boolean;
   postRevealHoldFrames: number;
   postRevealClearPending: boolean;
+  postRevealHoldStartedAt: number;
+  /** Wall-clock epoch for max hold; not reset on rebound. */
+  postRevealGuardEpochAt: number;
 };
 
 const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
@@ -51,6 +62,8 @@ const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
     loadingReboundSeen: false,
     postRevealHoldFrames: 0,
     postRevealClearPending: false,
+    postRevealHoldStartedAt: 0,
+    postRevealGuardEpochAt: 0,
   },
   "/chats": {
     active: false,
@@ -60,6 +73,8 @@ const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
     loadingReboundSeen: false,
     postRevealHoldFrames: 0,
     postRevealClearPending: false,
+    postRevealHoldStartedAt: 0,
+    postRevealGuardEpochAt: 0,
   },
   "/shuffle": {
     active: false,
@@ -69,6 +84,8 @@ const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
     loadingReboundSeen: false,
     postRevealHoldFrames: 0,
     postRevealClearPending: false,
+    postRevealHoldStartedAt: 0,
+    postRevealGuardEpochAt: 0,
   },
 };
 
@@ -337,6 +354,8 @@ function resetPostAuthTracker(tab: PostAuthTab) {
   t.loadingReboundSeen = false;
   t.postRevealHoldFrames = 0;
   t.postRevealClearPending = false;
+  t.postRevealHoldStartedAt = 0;
+  t.postRevealGuardEpochAt = 0;
 }
 
 /** Start post-auth / post-commit stability window for logged-in tab handoffs. */
@@ -402,6 +421,7 @@ export function clearTabPostAuthStabilityTracking(
 /**
  * After a successful reveal commit, keep settle CSS for a short post-reveal
  * window so auth/data rebounds cannot flash loading text.
+ * Boost uses a longer prod-timing guard (frames + wall-clock).
  */
 export function scheduleClearTabPostAuthStabilityAfterReveal(
   tab: PostAuthTab,
@@ -411,6 +431,25 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
   if (!t.active) return;
   t.postRevealClearPending = true;
   t.postRevealHoldFrames = 0;
+  t.postRevealHoldStartedAt = Date.now();
+  t.postRevealGuardEpochAt = t.postRevealHoldStartedAt;
+
+  const requiredFrames =
+    tab === "/boost"
+      ? BOOST_POST_REVEAL_SETTLE_HOLD_FRAMES
+      : POST_REVEAL_SETTLE_HOLD_FRAMES;
+  const requiredMs = tab === "/boost" ? BOOST_POST_REVEAL_MIN_HOLD_MS : 0;
+
+  if (tab === "/boost") {
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_START", {
+      requiredFrames,
+      requiredMs,
+      ...(typeof detail === "object" && detail ? detail : { detail }),
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_SETTLE_CSS_HELD", {
+      phase: "post-reveal-guard",
+    });
+  }
 
   const tick = () => {
     if (!postAuthByTab[tab].active || !postAuthByTab[tab].postRevealClearPending) {
@@ -422,16 +461,37 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
           ? document.getElementById("sayittome-shuffle-keepalive-host")
           : document.getElementById(`sayittome-main-tab-keepalive-${tab.slice(1)}`)
         : null;
+    const gateState =
+      tab === "/boost"
+        ? readBoostAccessGateState(host as HTMLElement | null)
+        : "ready";
+    // Post-reveal rebound must be VISIBLE. CSS-hidden loading under settle datasets
+    // is the safety net working — do not treat layout-present-only as a forever block.
     const loading =
-      detectVisibleLoadingText(host, { ignoreHandoffHide: true }) ||
-      countVisibleLoadingShells(host, { ignoreHandoffHide: true }) > 0 ||
+      detectVisibleLoadingText(host) ||
+      countVisibleLoadingShells(host) > 0 ||
       (tab === "/boost" &&
-        readBoostAccessGateState(host as HTMLElement | null) === "loading") ||
+        gateState === "loading" &&
+        Boolean(
+          host &&
+            [...host.querySelectorAll('[data-boost-access-state="loading"]')].some(
+              (el) => isElementVisuallyPresent(el),
+            ),
+        )) ||
       detectOrphanMainLoadingText();
 
-    if (loading) {
+    const heldMsTotal = Date.now() - postAuthByTab[tab].postRevealGuardEpochAt;
+    const boostMaxExceeded =
+      tab === "/boost" && heldMsTotal >= BOOST_POST_REVEAL_MAX_HOLD_MS;
+
+    if (loading && !boostMaxExceeded) {
       postAuthByTab[tab].postRevealHoldFrames = 0;
+      postAuthByTab[tab].postRevealHoldStartedAt = Date.now();
       if (tab === "/boost") {
+        traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_BLOCKED", {
+          tab,
+          gateState,
+        });
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
           tab,
         });
@@ -448,13 +508,38 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       return;
     }
 
+    if (tab === "/boost") {
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_GATE_VISUAL_STABLE", { gateState });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_MAIN_LOADING_TEXT_STABLE_ABSENT", {});
+    }
+
     postAuthByTab[tab].postRevealHoldFrames += 1;
-    if (postAuthByTab[tab].postRevealHoldFrames < POST_REVEAL_SETTLE_HOLD_FRAMES) {
+    const heldMs = Date.now() - postAuthByTab[tab].postRevealHoldStartedAt;
+    const framesOk = postAuthByTab[tab].postRevealHoldFrames >= requiredFrames;
+    const msOk = heldMs >= requiredMs;
+    if ((!framesOk || !msOk) && !boostMaxExceeded) {
       requestAnimationFrame(tick);
       return;
     }
+
+    if (tab === "/boost") {
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_READY", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+        boostMaxExceeded,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_SETTLE_CSS_RELEASED_AFTER_GUARD", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_BOOST_PROD_TARGETED_READY", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+      });
+    }
+
     clearTabPostAuthStabilityTracking(tab, {
-      via: "post-reveal-hold",
+      via: boostMaxExceeded ? "post-reveal-max-hold" : "post-reveal-hold",
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
   };
@@ -600,16 +685,20 @@ function evaluatePostAuthStability(
     return { stable: false, reason: base.reason || `${tab.slice(1)}-not-ready` };
   }
 
-  if (t.frames < POST_AUTH_MIN_FRAMES_AFTER_HANDOFF) {
+  const minFrames =
+    tab === "/boost"
+      ? BOOST_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF
+      : POST_AUTH_MIN_FRAMES_AFTER_HANDOFF;
+  if (t.frames < minFrames) {
     return { stable: false, reason: `${tab.slice(1)}-min-frames` };
   }
 
   t.sawReady = true;
   t.stableStreak += 1;
 
-  const required = t.loadingReboundSeen
-    ? POST_AUTH_STABLE_FRAMES + 2
-    : POST_AUTH_STABLE_FRAMES;
+  const baseRequired =
+    tab === "/boost" ? BOOST_POST_AUTH_STABLE_FRAMES : POST_AUTH_STABLE_FRAMES;
+  const required = t.loadingReboundSeen ? baseRequired + 2 : baseRequired;
 
   if (t.stableStreak < required) {
     return { stable: false, reason: `${tab.slice(1)}-post-auth-stable-frames` };
@@ -819,7 +908,16 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_BOOST_AUTH_GATE_READY"
   | "TAB_HANDOFF_BOOST_AUTH_GATE_LOADING_BLOCKED"
   | "TAB_HANDOFF_BOOST_AUTH_POST_COMMIT_STABILITY_READY"
-  | "TAB_HANDOFF_BOOST_AUTH_POST_REVEAL_LOADING_REBOUND_BLOCKED";
+  | "TAB_HANDOFF_BOOST_AUTH_POST_REVEAL_LOADING_REBOUND_BLOCKED"
+  | "TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_START"
+  | "TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_READY"
+  | "TAB_HANDOFF_BOOST_PROD_REBOUND_BLOCKED"
+  | "TAB_HANDOFF_BOOST_SETTLE_CSS_HELD"
+  | "TAB_HANDOFF_BOOST_SETTLE_CSS_RELEASED_AFTER_GUARD"
+  | "TAB_HANDOFF_BOOST_GATE_VISUAL_STABLE"
+  | "TAB_HANDOFF_BOOST_MAIN_LOADING_TEXT_STABLE_ABSENT"
+  | "TAB_HANDOFF_SHUFFLE_BOOST_PROD_TARGETED_READY"
+  | "TAB_HANDOFF_EXIT_WATCHDOG_FORCE_PRESENT_NO_LOADING";
 
 const diagRing: Array<{ at: number; event: TabShellNoLoadingDiagEvent; detail?: unknown }> =
   [];

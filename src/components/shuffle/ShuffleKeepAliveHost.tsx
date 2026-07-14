@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
-import { commitPresentedMainTabIfReady, isMainTabPrimaryReady } from "@/lib/navigation/atomicMainTabHandoff";
+import { commitPresentedMainTabIfReady, forcePresentMainTabAfterStableExit, isMainTabPrimaryReady } from "@/lib/navigation/atomicMainTabHandoff";
 import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
   beginShuffleExitToMainTab,
@@ -67,6 +67,76 @@ function requiresStrictPostAuthExit(path: string) {
   return path === "/boost" || path === "/chats";
 }
 
+/** Visible-only loading (respects settle/handoff CSS hide). */
+function hasVisuallyVisibleDestinationLoading(
+  path: Exclude<MainTabHref, "/shuffle">,
+) {
+  if (typeof document === "undefined") return false;
+  const host = document.getElementById(
+    `sayittome-main-tab-keepalive-${path.slice(1)}`,
+  );
+  if (!host) return false;
+  const nodes = host.querySelectorAll(
+    "[data-loading-shell], [data-nav-loading-copy], [data-boost-access-state='loading']",
+  );
+  for (const el of nodes) {
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    if (
+      rect.width >= 8 &&
+      rect.height >= 8 &&
+      style.visibility !== "hidden" &&
+      style.display !== "none" &&
+      parseFloat(style.opacity || "1") >= 0.04
+    ) {
+      return true;
+    }
+  }
+  const text = host.textContent || "";
+  if (!/Cargando(?:\.\.\.)?|Loading(?:\.\.\.)?/i.test(text)) return false;
+  // Text matched somewhere; confirm a text parent is visually present.
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const t = node.textContent?.trim() || "";
+    if (/Cargando(?:\.\.\.)?|Loading(?:\.\.\.)?/i.test(t)) {
+      const parent = node.parentElement;
+      if (parent) {
+        const style = getComputedStyle(parent);
+        if (
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          parseFloat(style.opacity || "1") >= 0.04
+        ) {
+          return true;
+        }
+      }
+    }
+    node = walker.nextNode();
+  }
+  return false;
+}
+
+function forceReleaseShuffleExitIfNoVisibleLoading(
+  path: Exclude<MainTabHref, "/shuffle">,
+  frames: number,
+  via: string,
+) {
+  if (hasVisuallyVisibleDestinationLoading(path)) return false;
+  forcePresentMainTabAfterStableExit(path);
+  releaseShuffleTabSurface();
+  clearShuffleExitToMainTab();
+  pinShuffleWindowWhileAway();
+  clearQueuedShuffleTriggers();
+  resetShuffleGeometryStability();
+  traceTabShellNoLoading("TAB_HANDOFF_EXIT_WATCHDOG_FORCE_PRESENT_NO_LOADING", {
+    destination: path,
+    frames,
+    via,
+  });
+  return true;
+}
+
 function isStrictNoLoadingReady(
   path: Exclude<MainTabHref, "/shuffle">,
   visual: ReturnType<typeof getTabDestinationVisualReadiness>,
@@ -126,6 +196,19 @@ function armShuffleExitNoLoadingWatchdog(
         }
         if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
           requestAnimationFrame(tick);
+        } else if (
+          !forceReleaseShuffleExitIfNoVisibleLoading(
+            path,
+            frames,
+            "module-exit-watchdog-absolute",
+          )
+        ) {
+          traceTabShellNoLoading("TAB_SHELL_NO_LOADING_DESTINATION_READY_TIMEOUT", {
+            destination: path,
+            frames,
+            visual,
+            via: "module-exit-watchdog",
+          });
         }
         return;
       }
@@ -145,7 +228,13 @@ function armShuffleExitNoLoadingWatchdog(
 
     if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
       requestAnimationFrame(tick);
-    } else {
+    } else if (
+      !forceReleaseShuffleExitIfNoVisibleLoading(
+        path,
+        frames,
+        "module-exit-watchdog-absolute-unready",
+      )
+    ) {
       traceTabShellNoLoading("TAB_SHELL_NO_LOADING_DESTINATION_READY_TIMEOUT", {
         destination: path,
         frames,
@@ -448,9 +537,21 @@ export default function ShuffleKeepAliveHost() {
                 visual,
               });
             }
+            // After soft budget: if loading is only CSS-hidden (or latch-suppressed),
+            // force-present so exit-handoff cannot exceed probe canonical-idle window.
+            if (
+              requiresStrictPostAuthExit(path) &&
+              forceReleaseShuffleExitIfNoVisibleLoading(
+                path,
+                frames,
+                "layout-exit-soft-budget-visual-clear",
+              )
+            ) {
+              return;
+            }
             // Safe settle: destination has no loading chrome — complete reveal even
             // without full stable-frame readiness so the shell does not latch forever.
-            // Boost/Chats are excluded: post-auth stability must pass (no soft settle).
+            // Boost/Chats are excluded from soft settle when visible loading remains.
             if (
               !requiresStrictPostAuthExit(path) &&
               !visual.hasLoadingShell &&
@@ -494,7 +595,17 @@ export default function ShuffleKeepAliveHost() {
               requestAnimationFrame(releaseWhenMainTabReady);
               return;
             }
-            // Absolute give-up: keep Shuffle frozen; leave exit latch active.
+            // Absolute give-up: if no VISIBLE loading, force-present so exit cannot latch.
+            if (
+              forceReleaseShuffleExitIfNoVisibleLoading(
+                path,
+                frames,
+                "layout-exit-absolute",
+              )
+            ) {
+              return;
+            }
+            // Absolute give-up with visible loading still present: keep Shuffle frozen.
             pinShuffleWindowWhileAway();
             clearQueuedShuffleTriggers();
             resetShuffleGeometryStability();
