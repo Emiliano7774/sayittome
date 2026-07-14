@@ -1,10 +1,12 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
 import {
   getTabDestinationVisualReadiness,
+  isTabDestinationVisualReady,
   isTabShellNoLoadingTransitionContractActive,
   resetTabDestinationReadinessStability,
   traceTabShellNoLoading,
 } from "@/lib/navigation/tabDestinationReadiness";
+import { isShuffleExitToMainTabPending } from "@/lib/navigation/shuffleHandoffState";
 
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
@@ -70,8 +72,32 @@ export function onMainTabRouteChange(pathname: string) {
   }
 
   if (presentedTab === next) {
+    // Returning to the already-presented tab during a shuffle exit (or before
+    // destination is visually ready) must keep the freeze; otherwise loading
+    // chrome can flash once exit/main handoff classes clear.
+    if (
+      isTabShellNoLoadingTransitionContractActive() &&
+      (isShuffleExitToMainTabPending() || !isTabDestinationVisualReady(next))
+    ) {
+      handoffTarget = next;
+      resetTabDestinationReadinessStability(next);
+      markMainTabHandoffPendingDom(true);
+      traceTabShellNoLoading("TAB_HANDOFF_SOURCE_FREEZE_RETAINED", {
+        source: presentedTab,
+        destination: next,
+        reason: isShuffleExitToMainTabPending()
+          ? "shuffle-exit-pending"
+          : "destination-not-ready",
+      });
+      notify();
+      return;
+    }
     handoffTarget = null;
     markMainTabHandoffPendingDom(false);
+    traceTabShellNoLoading("TAB_HANDOFF_ROUTE_STATE_ALIGNED", {
+      tab: next,
+      note: "same-tab-already-presented",
+    });
     return;
   }
 
@@ -79,6 +105,10 @@ export function onMainTabRouteChange(pathname: string) {
   resetTabDestinationReadinessStability(next);
   if (isTabShellNoLoadingTransitionContractActive()) {
     traceTabShellNoLoading("TAB_SHELL_NO_LOADING_SOURCE_FROZEN", {
+      source: presentedTab,
+      destination: next,
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_ROUTE_COMMIT_REQUESTED", {
       source: presentedTab,
       destination: next,
     });
@@ -96,7 +126,7 @@ function isPresentablePrimary(host: HTMLElement, primary: Element) {
   if (host.querySelector("[data-loading-shell]")) return false;
 
   const text = primary.textContent?.slice(0, 240) ?? "";
-  if (/Cargando\.\.\.|Loading\.\.\./i.test(text)) return false;
+  if (/Cargando(?:\.\.\.)?|Loading(?:\.\.\.)?/i.test(text)) return false;
 
   const rect = primary.getBoundingClientRect();
   const style = getComputedStyle(primary);
@@ -150,6 +180,22 @@ export function commitPresentedMainTabIfReady(pathname: string) {
         destination: handoffTarget,
         reason: visual.reason,
       });
+      if (visual.hasVisibleLoadingText || visual.hasLoadingShell) {
+        traceTabShellNoLoading("TAB_HANDOFF_DESTINATION_LOADING_BLOCKED", {
+          destination: handoffTarget,
+          reason: visual.reason,
+        });
+        if (visual.hasVisibleLoadingText) {
+          traceTabShellNoLoading("TAB_HANDOFF_DESTINATION_READY_FALSE_LOADING_TEXT", {
+            destination: handoffTarget,
+          });
+        }
+        if (handoffTarget === "/boost") {
+          traceTabShellNoLoading("TAB_HANDOFF_BOOST_LOADING_BLOCKED", {
+            reason: visual.reason,
+          });
+        }
+      }
       return false;
     }
   } else if (!isMainTabPrimaryReady(handoffTarget)) {
@@ -160,6 +206,17 @@ export function commitPresentedMainTabIfReady(pathname: string) {
   handoffTarget = null;
   if (isTabShellNoLoadingTransitionContractActive()) {
     traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", { destination: path });
+    if (path === "/chats") {
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_READY", { destination: path });
+    }
+    if (path === "/boost") {
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_READY", { destination: path });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_GATE_READY", { destination: path });
+    }
+    traceTabShellNoLoading("TAB_HANDOFF_ROUTE_STATE_ALIGNED", {
+      destination: path,
+      presentedTab: path,
+    });
   }
   markMainTabHandoffPendingDom(false);
   notify();

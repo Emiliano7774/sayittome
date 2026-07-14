@@ -86,7 +86,19 @@ function armShuffleExitNoLoadingWatchdog(
         visual.geometryValid);
 
     if (safe) {
-      commitPresentedMainTabIfReady(pathnameForCommit);
+      const committed = commitPresentedMainTabIfReady(pathnameForCommit);
+      if (!committed) {
+        traceTabShellNoLoading("TAB_HANDOFF_EXIT_WATCHDOG_BLOCKED_LOADING_RELEASE", {
+          destination: path,
+          frames,
+          visual,
+          via: "module-exit-watchdog",
+        });
+        if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
+          requestAnimationFrame(tick);
+        }
+        return;
+      }
       releaseShuffleTabSurface();
       clearShuffleExitToMainTab();
       pinShuffleWindowWhileAway();
@@ -193,7 +205,19 @@ export default function ShuffleKeepAliveHost() {
           visual.hasContentRoot &&
           visual.geometryValid);
       if (safe) {
-        commitPresentedMainTabIfReady(pathname);
+        const committed = commitPresentedMainTabIfReady(pathname);
+        if (!committed) {
+          traceTabShellNoLoading("TAB_HANDOFF_EXIT_WATCHDOG_BLOCKED_LOADING_RELEASE", {
+            destination: path,
+            frames,
+            visual,
+            via: "exit-recovery-effect",
+          });
+          if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
+            requestAnimationFrame(tick);
+          }
+          return;
+        }
         releaseShuffleTabSurface();
         clearShuffleExitToMainTab();
         pinShuffleWindowWhileAway();
@@ -333,7 +357,20 @@ export default function ShuffleKeepAliveHost() {
           frames += 1;
 
           if (destinationReady()) {
-            commitPresentedMainTabIfReady(pathname);
+            const committed = commitPresentedMainTabIfReady(pathname);
+            if (!committed) {
+              if (contractActive) {
+                traceTabShellNoLoading("TAB_HANDOFF_EXIT_WATCHDOG_BLOCKED_LOADING_RELEASE", {
+                  destination: path,
+                  frames,
+                  via: "layout-exit-loop",
+                });
+              }
+              if (frames < frameBudget || (contractActive && frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET)) {
+                requestAnimationFrame(releaseWhenMainTabReady);
+              }
+              return;
+            }
             releaseShuffleTabSurface();
             clearShuffleExitToMainTab();
             pinShuffleWindowWhileAway();
@@ -374,13 +411,30 @@ export default function ShuffleKeepAliveHost() {
             }
             // Safe settle: destination has no loading chrome — complete reveal even
             // without full stable-frame readiness so the shell does not latch forever.
+            // Still require a successful presentation commit before clearing freeze.
             if (
               !visual.hasLoadingShell &&
               !visual.hasVisibleLoadingText &&
               visual.hasContentRoot &&
               visual.geometryValid
             ) {
-              commitPresentedMainTabIfReady(pathname);
+              const committed = commitPresentedMainTabIfReady(pathname);
+              if (!committed) {
+                traceTabShellNoLoading("TAB_HANDOFF_EXIT_WATCHDOG_BLOCKED_LOADING_RELEASE", {
+                  destination: path,
+                  frames,
+                  visual,
+                  via: "safe-settle",
+                });
+                if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
+                  requestAnimationFrame(releaseWhenMainTabReady);
+                  return;
+                }
+                pinShuffleWindowWhileAway();
+                clearQueuedShuffleTriggers();
+                resetShuffleGeometryStability();
+                return;
+              }
               releaseShuffleTabSurface();
               clearShuffleExitToMainTab();
               pinShuffleWindowWhileAway();

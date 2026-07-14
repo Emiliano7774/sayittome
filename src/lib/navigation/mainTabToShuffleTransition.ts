@@ -3317,6 +3317,9 @@ function startReadinessLoop() {
     ) {
       // No-loading contract: commit route only once destination can present without loading.
       flushDeferredMicroSlideRouteCommit();
+      pushTrace("NAVIGATION_COMMIT_NOTIFIED", {
+        note: "TAB_HANDOFF_ROUTE_COMMIT_APPLIED",
+      });
 
       tx.destinationReadyAtMono = monoMs();
       tx.phase = "armed";
@@ -3355,8 +3358,34 @@ function startReadinessLoop() {
       return;
     }
 
+    // Fresh/anon empty pool: still commit /shuffle once loading chrome is gone so
+    // the browser route aligns with the tab handoff (avoids ROUTE_MISMATCH).
+    // Wait a few frames so in-flight pool warmup can claim "warming" first.
+    if (
+      frames >= 30 &&
+      !visual.hasLoadingShell &&
+      !visual.loadingTextVisibleInDestination &&
+      visual.hasShuffleList &&
+      visual.poolWarmState === "empty"
+    ) {
+      flushDeferredMicroSlideRouteCommit();
+      pushTrace("DESTINATION_READY", {
+        readiness,
+        note: "TAB_HANDOFF_DESTINATION_EMPTY_STATE_READY:route-commit",
+      });
+      pushTrace("NAVIGATION_COMMIT_NOTIFIED", {
+        note: "TAB_HANDOFF_ROUTE_COMMIT_APPLIED:empty-pool",
+      });
+      abortMainTabToShuffleTransition("empty-pool-route-committed");
+      return;
+    }
+
     if (frames >= getPrepFrameBudget()) {
-      clearDeferredMicroSlideRouteCommit("prep-timeout");
+      // Never leave the user click without a route commit — flush first, then abort slide.
+      flushDeferredMicroSlideRouteCommit();
+      pushTrace("NAVIGATION_COMMIT_NOTIFIED", {
+        note: "TAB_HANDOFF_ROUTE_COMMIT_APPLIED:prep-timeout-flush",
+      });
       pushTrace("ABORTED", {
         note: "MICRO_SLIDE_NO_LOADING_CONTRACT_TIMEOUT",
         readiness,
