@@ -50,8 +50,18 @@ const cycle = [
   { source: "shuffle", dest: "stories" },
   { source: "shuffle", dest: "boost" },
 ];
-// 20 hops = 2 full cycles + first 4 of third
-const hopsPlan = [...cycle, ...cycle, ...cycle.slice(0, 4)];
+// Full-local-release coverage: shuffle→boost≥6, boost→shuffle≥4, shuffle→chats≥6
+const hopsPlan = [
+  ...cycle,
+  ...cycle,
+  ...cycle,
+  ...cycle,
+  { source: "shuffle", dest: "boost" },
+  { source: "shuffle", dest: "boost" },
+  { source: "shuffle", dest: "chats" },
+  { source: "shuffle", dest: "chats" },
+];
+const HOP_TOTAL = hopsPlan.length;
 
 async function sample(page) {
   return page.evaluate(() => {
@@ -231,7 +241,7 @@ await context.addInitScript(() => {
 const page = context.pages()[0] || (await context.newPage());
 const results = [];
 for (let i = 0; i < hopsPlan.length; i++) {
-  console.log(`HOP ${i + 1}/20 ${hopsPlan[i].source}->${hopsPlan[i].dest}`);
+  console.log(`HOP ${i + 1}/${HOP_TOTAL} ${hopsPlan[i].source}->${hopsPlan[i].dest}`);
   results.push(await runHop(page, hopsPlan[i], i + 1));
 }
 await context.close();
@@ -243,24 +253,44 @@ for (const r of results) {
   const k = `${r.source}->${r.dest}`;
   dist[k] = (dist[k] || 0) + 1;
 }
+const coverageOk =
+  (dist["shuffle->boost"] || 0) >= 6 &&
+  (dist["boost->shuffle"] || 0) >= 4 &&
+  (dist["shuffle->chats"] || 0) >= 6;
+const allClean =
+  results.length === HOP_TOTAL &&
+  results.every((r) => r.classification === "CLEAN") &&
+  series.pass === true;
 const summary = {
   tag: useChrome ? "chrome-bidirectional-native-20" : "chromium-bidirectional-native-20",
   visualProvider: PROVIDER,
   hopsAttempted: results.length,
   cleanHops: results.filter((r) => r.classification === "CLEAN").length,
-  RELEASE_SERIES_CLEAN:
-    results.length === 20 &&
-    results.every((r) => r.classification === "CLEAN") &&
-    series.pass === true,
-  PASS:
-    results.length === 20 &&
-    results.every((r) => r.classification === "CLEAN") &&
-    series.pass === true,
+  coverageOk,
+  coverage: {
+    "shuffle->boost": dist["shuffle->boost"] || 0,
+    "boost->shuffle": dist["boost->shuffle"] || 0,
+    "shuffle->chats": dist["shuffle->chats"] || 0,
+    required: { "shuffle->boost": 6, "boost->shuffle": 4, "shuffle->chats": 6 },
+  },
+  RELEASE_SERIES_CLEAN: allClean && coverageOk,
+  PASS: allClean && coverageOk,
   distribution: dist,
   series,
   directions: results,
 };
 fs.writeFileSync(path.join(out, "current-head-report.json"), JSON.stringify(summary, null, 2));
 fs.writeFileSync(path.join(out, "summary.json"), JSON.stringify(summary, null, 2));
-console.log(JSON.stringify({ PASS: summary.PASS, cleanHops: summary.cleanHops, distribution: dist }, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      PASS: summary.PASS,
+      cleanHops: summary.cleanHops,
+      coverageOk,
+      distribution: dist,
+    },
+    null,
+    2,
+  ),
+);
 process.exit(summary.PASS ? 0 : 2);
