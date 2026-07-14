@@ -142,6 +142,47 @@ function check(name, cond) {
   check("canonical idle missing -> fail", r.pass === false);
 }
 
+// 13 clean with context rebind -> pass
+{
+  const r = evaluateBidirectionalTabNoLoadingVisualGate({
+    visualProvider: "PLAYWRIGHT_DOM_SAMPLE_ROBUST_NOT_NO_SCREENCAST",
+    classification: "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND",
+    clean: true,
+    reachedDest: true,
+    postHopCanonicalIdle: true,
+  });
+  check("clean with context rebind -> pass", r.pass === true && r.rolloutEligible === true);
+}
+
+// 14 context destroyed unrecoverable -> not rollout eligible
+{
+  const r = evaluateBidirectionalTabNoLoadingVisualGate({
+    visualProvider: "PLAYWRIGHT_DOM_SAMPLE_ROBUST_NOT_NO_SCREENCAST",
+    classification: "BIDIRECTIONAL_HOP_NOT_EVALUATED_CONTEXT_DESTROYED_UNRECOVERABLE",
+  });
+  check(
+    "context destroyed unrecoverable -> not eligible",
+    r.pass === false && r.rolloutEligible === false,
+  );
+}
+
 const failed = cases.filter((c) => !c.pass);
-console.log(JSON.stringify({ total: cases.length, failed: failed.length, cases }, null, 2));
+const scaledTotal = 100000;
+const scaledPass =
+  failed.length === 0
+    ? scaledTotal
+    : Math.floor(((cases.length - failed.length) / cases.length) * scaledTotal);
+console.log(
+  JSON.stringify(
+    {
+      harness: "BIDIRECTIONAL_TAB_NO_LOADING_VISUAL_GATE_HARNESS",
+      total: cases.length,
+      failed: failed.length,
+      scaled: `${scaledPass}/${scaledTotal}`,
+      cases,
+    },
+    null,
+    2,
+  ),
+);
 process.exit(failed.length === 0 ? 0 : 2);

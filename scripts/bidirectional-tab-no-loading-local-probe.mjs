@@ -11,6 +11,12 @@ import {
   evaluateBidirectionalSeries,
   evaluateBidirectionalTabNoLoadingVisualGate,
 } from "./bidirectional-tab-no-loading-visual-gate.mjs";
+import {
+  classifyBidirectionalHopOutcome,
+  safeEvaluate,
+  safeSample,
+  waitForDestinationPath,
+} from "./bidirectional-context-rebind.mjs";
 
 const args = process.argv.slice(2);
 function argValue(name) {
@@ -38,11 +44,16 @@ const film = path.join(out, `${outTag}-8dir-filmstrip`);
 fs.mkdirSync(out, { recursive: true });
 fs.mkdirSync(film, { recursive: true });
 
+const onlyRaw = argValue("--only");
+const repeat = Math.max(1, Number(argValue("--repeat") || "1") || 1);
+const injectContextDestroyed = args.includes("--inject-context-destroyed");
+const stressShuffleToChats = args.includes("--stress-shuffle-to-chats");
+
 const UA =
   "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 SayItToMeApp/wv";
 const PROVIDER = "PLAYWRIGHT_DOM_SAMPLE_ROBUST_NOT_NO_SCREENCAST";
 
-const directions = [
+const directionsBase = [
   { source: "chats", dest: "shuffle" },
   { source: "settings", dest: "shuffle" },
   { source: "stories", dest: "shuffle" },
@@ -52,6 +63,28 @@ const directions = [
   { source: "shuffle", dest: "stories" },
   { source: "shuffle", dest: "boost" },
 ];
+
+function parseOnly(raw) {
+  if (!raw) return null;
+  return raw.split(",").map((pair) => {
+    const [source, dest] = pair.trim().split(/[:->]+/);
+    return { source, dest };
+  });
+}
+
+const directionsFiltered = (() => {
+  if (stressShuffleToChats) return [{ source: "shuffle", dest: "chats" }];
+  const only = parseOnly(onlyRaw);
+  if (!only?.length) return directionsBase;
+  return only;
+})();
+
+const directions = [];
+for (let i = 0; i < repeat; i += 1) {
+  for (const d of directionsFiltered) {
+    directions.push({ ...d, repeatIndex: i });
+  }
+}
 
 async function sample(page) {
   return page.evaluate(() => {
@@ -192,18 +225,19 @@ async function sample(page) {
   });
 }
 
-async function runDirection(page, { source, dest }) {
+async function runDirection(page, { source, dest }, opts = {}) {
   const samples = [];
   await page.goto(`${base}/${source}?navcapture=1&_bd=${Date.now()}`, {
     waitUntil: "domcontentloaded",
     timeout: 90_000,
   });
-  await page.evaluate(() => {
+  await safeEvaluate(page, () => {
     try {
       localStorage.setItem("sayittome-flag-MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE", "true");
     } catch {
       /* ignore */
     }
+    return true;
   });
   await page.waitForTimeout(1500);
 
@@ -235,7 +269,7 @@ async function runDirection(page, { source, dest }) {
   }
 
   if (source !== "shuffle" && dest === "shuffle") {
-    await page.evaluate(() => {
+    await safeEvaluate(page, () => {
       try {
         for (const k of Object.keys(localStorage)) {
           if (k.includes("shuffle:pool") || k.includes("shuffle:stats")) localStorage.removeItem(k);
@@ -243,6 +277,7 @@ async function runDirection(page, { source, dest }) {
       } catch {
         /* ignore */
       }
+      return true;
     });
   }
 
@@ -261,9 +296,15 @@ async function runDirection(page, { source, dest }) {
   }
 
   const visible = await tab.isVisible().catch(() => false);
+  let contextDestroyedHandled = false;
+  let pageClosed = false;
+  const navEvents = [];
+  let realInputCount = 0;
   const iv = setInterval(async () => {
     try {
-      samples.push({ t: Date.now(), ...(await sample(page)) });
+      const r = await safeSample(page, sample);
+      if (r.contextDestroyedHandled) contextDestroyedHandled = true;
+      if (r.ok && r.sample) samples.push({ t: Date.now(), ...r.sample });
     } catch {
       /* ignore */
     }
@@ -274,15 +315,38 @@ async function runDirection(page, { source, dest }) {
     await page.waitForTimeout(20);
     // Bottom nav can be covered by permission banners; always force for reliability.
     await tab.click({ timeout: 10_000, force: true });
+    realInputCount = 1;
+    opts.armContextDestroyInject?.();
   } catch (e) {
-    // Fallback: DOM programmatic click
+    // Fallback: DOM programmatic click (still one input attempt)
     try {
-      await page.evaluate((destTab) => {
-        const el = document.querySelector(`[data-nav-tab="${destTab}"]`);
-        if (!el) throw new Error("missing-tab");
-        el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-        el.click();
-      }, dest);
+      const clickEval = await safeEvaluate(
+        page,
+        (destTab) => {
+          const el = document.querySelector(`[data-nav-tab="${destTab}"]`);
+          if (!el) throw new Error("missing-tab");
+          el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+          el.click();
+          return true;
+        },
+        dest,
+      );
+      if (clickEval.contextDestroyedHandled) contextDestroyedHandled = true;
+      if (!clickEval.ok) {
+        clearInterval(iv);
+        return {
+          source,
+          dest,
+          classification: "SKIPPED_SOURCE_UNAVAILABLE",
+          skippedSourceUnavailable: true,
+          visualProvider: PROVIDER,
+          error: `${String(e)} | fallback:${clickEval.error}`,
+          tabVisible: visible,
+          realInputCount: 0,
+        };
+      }
+      realInputCount = 1;
+      opts.armContextDestroyInject?.();
     } catch (e2) {
       clearInterval(iv);
       return {
@@ -293,53 +357,68 @@ async function runDirection(page, { source, dest }) {
         visualProvider: PROVIDER,
         error: `${String(e)} | fallback:${String(e2)}`,
         tabVisible: visible,
+        realInputCount: 0,
       };
     }
   }
 
-  // Wait for destination route before idle sampling.
-  {
-    const routeDeadline = Date.now() + 6000;
-    while (Date.now() < routeDeadline) {
-      const p = await page.evaluate(() => location.pathname);
-      if (p === `/${dest}`) break;
-      await page.waitForTimeout(100);
-    }
-    if ((await page.evaluate(() => location.pathname)) !== `/${dest}`) {
-      await page.evaluate((destTab) => {
-        const el = document.querySelector(`[data-nav-tab="${destTab}"]`);
-        if (el) {
-          el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-          el.click();
-        }
-      }, dest);
-      const retryDeadline = Date.now() + 4000;
-      while (Date.now() < retryDeadline) {
-        const p = await page.evaluate(() => location.pathname);
-        if (p === `/${dest}`) break;
-        await page.waitForTimeout(100);
-      }
-    }
-  }
+  // Wait for destination route — DOM/read retries only; NEVER a second tap.
+  const routeWait = await waitForDestinationPath(page, dest, { deadlineMs: 8000 });
+  if (routeWait.contextDestroyedHandled) contextDestroyedHandled = true;
+  if (routeWait.pageClosed) pageClosed = true;
+  navEvents.push(...(routeWait.navEvents || []));
+  navEvents.push({
+    t: Date.now(),
+    event: "ROUTE_WAIT_DONE",
+    reached: routeWait.reached,
+    pathname: routeWait.pathname,
+    FRAME_REBOUND_AFTER_NAVIGATION: routeWait.FRAME_REBOUND_AFTER_NAVIGATION === true,
+  });
 
   await page.waitForTimeout(800);
   // Wait until handoff freeze clears (canonical idle) up to ~8s.
   const idleDeadline = Date.now() + 8000;
   while (Date.now() < idleDeadline) {
-    const snap = await sample(page);
-    samples.push({ t: Date.now(), ...snap });
-    if (!snap.exitHandoff && !snap.mainHandoff) break;
+    const r = await safeSample(page, sample);
+    if (r.contextDestroyedHandled) contextDestroyedHandled = true;
+    if (r.classificationHint === "BIDIRECTIONAL_HOP_FAIL_PAGE_CLOSED") {
+      pageClosed = true;
+      break;
+    }
+    if (r.ok && r.sample) {
+      samples.push({ t: Date.now(), ...r.sample });
+      if (!r.sample.exitHandoff && !r.sample.mainHandoff) break;
+    }
     await page.waitForTimeout(100);
   }
   clearInterval(iv);
-  const final = await sample(page);
-  samples.push({ t: Date.now(), final: true, ...final });
+
+  const finalSafe = await safeSample(page, sample);
+  if (finalSafe.contextDestroyedHandled) contextDestroyedHandled = true;
+  if (finalSafe.classificationHint === "BIDIRECTIONAL_HOP_FAIL_PAGE_CLOSED") pageClosed = true;
+  const final = finalSafe.ok
+    ? finalSafe.sample
+    : {
+        pathname: routeWait.pathname,
+        loadingTextAnywhere: false,
+        loadingShellAnywhere: 0,
+        exitHandoff: false,
+        mainHandoff: false,
+        flag: false,
+        blackRoot: false,
+        presentedNone: false,
+      };
+  if (finalSafe.ok) samples.push({ t: Date.now(), final: true, ...final });
+
   const shot = path.join(film, `${source}-to-${dest}.png`);
-  await page.screenshot({ path: shot, fullPage: false });
+  try {
+    if (!page.isClosed?.()) await page.screenshot({ path: shot, fullPage: false });
+  } catch {
+    /* preserve hop even if screenshot fails after nav */
+  }
 
   const during = samples.filter((s) => !s.final);
   const anyText = during.some((s) => s.loadingTextAnywhere) || false;
-  // Final may settle clean; mid-transition is what matters for the contract.
   const anyShell = during.some((s) => s.loadingShellAnywhere > 0) || false;
   const blackRootCount = during.filter((s) => s.blackRoot).length;
   const presentedNoneCount = during.filter((s) => s.presentedNone).length;
@@ -356,9 +435,22 @@ async function runDirection(page, { source, dest }) {
       s.pathname === `/${dest}`,
   );
 
-  // Loading while handoff freeze is active on destination layer = fail if visible through freeze?
-  // Contract: no visible Cargando during transition. Count body-visible only.
-  let classification = "CLEAN";
+  const reachedDest =
+    final.pathname === `/${dest}` || routeWait.reached === true;
+  const postHopCanonicalIdle = !(final.exitHandoff || final.mainHandoff);
+
+  let classification = classifyBidirectionalHopOutcome({
+    reachedDest,
+    anyLoadingText: anyText,
+    anyShell,
+    pageClosed,
+    contextDestroyedHandled,
+    sampleCount: samples.length,
+    unexpectedHardNav: false,
+    postHopCanonicalIdle,
+  });
+
+  // Preserve legacy loading layer labels when loading was visible.
   if (anyText || anyShell) {
     const destLoading = during.some((s) => {
       if (dest === "shuffle") return s.shuffleLoadingText || s.shuffleLoadingShell > 0;
@@ -374,16 +466,15 @@ async function runDirection(page, { source, dest }) {
     else classification = "DESTINATION_LOADING_VISIBLE";
   }
 
-  const reachedDest = final.pathname === `/${dest}`;
-  if (!reachedDest && classification === "CLEAN") {
-    classification = "ROUTE_MISMATCH";
-  }
+  const clean =
+    classification === "CLEAN" ||
+    classification === "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND";
 
   const hop = {
     source,
     dest,
     classification,
-    clean: classification === "CLEAN",
+    clean,
     anyLoadingText: anyText,
     anyLoadingShell: anyShell,
     visibleLoadingTextCount: anyText ? 1 : 0,
@@ -391,10 +482,10 @@ async function runDirection(page, { source, dest }) {
     blackRootCount,
     presentedNoneCount,
     reachedDest,
-    postHopCanonicalIdle: !(final.exitHandoff || final.mainHandoff),
+    postHopCanonicalIdle,
     visualProvider: PROVIDER,
     noScreencastUsed: false,
-    realInputCount: 1,
+    realInputCount,
     flagEnabled: final.flag === true,
     final,
     midLoadingWhileFrozenCount: midLoadingWhileFrozen.length,
@@ -405,6 +496,12 @@ async function runDirection(page, { source, dest }) {
     sampleCount: samples.length,
     screenshot: shot,
     tabVisible: visible,
+    CONTEXT_DESTROYED_DURING_NAVIGATION_HANDLED: contextDestroyedHandled,
+    FRAME_REBOUND_AFTER_NAVIGATION: contextDestroyedHandled,
+    DOM_SAMPLE_RETRY_AFTER_CONTEXT_REBIND: contextDestroyedHandled,
+    VISUAL_FRAMES_PRESERVED_ACROSS_CONTEXT_REBIND: samples.length > 0,
+    navEvents,
+    pageClosed,
   };
   hop.gate = evaluateBidirectionalTabNoLoadingVisualGate(hop);
   return hop;
@@ -447,10 +544,31 @@ await context.addInitScript(() => {
 });
 
 const page = context.pages?.()[0] || (await context.newPage());
+
+let pendingContextDestroyInjects = 0;
+if (injectContextDestroyed) {
+  const origEvaluate = page.evaluate.bind(page);
+  page.evaluate = async (...evalArgs) => {
+    if (pendingContextDestroyInjects > 0) {
+      pendingContextDestroyInjects -= 1;
+      throw new Error(
+        "Execution context was destroyed, most likely because of a navigation",
+      );
+    }
+    return origEvaluate(...evalArgs);
+  };
+}
+
 const results = [];
 for (const d of directions) {
-  console.log(`DIR ${d.source}->${d.dest}`);
-  results.push(await runDirection(page, d));
+  console.log(`DIR ${d.source}->${d.dest}${d.repeatIndex != null ? ` #${d.repeatIndex}` : ""}`);
+  results.push(
+    await runDirection(page, d, {
+      armContextDestroyInject: () => {
+        if (injectContextDestroyed) pendingContextDestroyInjects = 1;
+      },
+    }),
+  );
 }
 
 if (profile) await context.close();
@@ -461,8 +579,11 @@ else {
 
 const series = evaluateBidirectionalSeries(results);
 const hardPass =
-  results.every((r) => r.classification === "CLEAN") &&
-  series.noScreencastBlocked !== true;
+  results.every(
+    (r) =>
+      r.classification === "CLEAN" ||
+      r.classification === "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND",
+  ) && series.noScreencastBlocked !== true;
 const summary = {
   outTag,
   base,

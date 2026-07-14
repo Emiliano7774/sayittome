@@ -69,6 +69,24 @@ export function evaluateBidirectionalTabNoLoadingVisualGate(hop = {}) {
     };
   }
 
+  const cls = String(hop.classification || "");
+  if (
+    cls === "BIDIRECTIONAL_HOP_FAIL_PAGE_CLOSED" ||
+    cls === "BIDIRECTIONAL_HOP_FAIL_HARD_NAVIGATION_UNEXPECTED" ||
+    cls === "BIDIRECTIONAL_HOP_NOT_EVALUATED_CONTEXT_DESTROYED_UNRECOVERABLE" ||
+    cls === "BIDIRECTIONAL_HOP_NOT_EVALUATED_INSUFFICIENT_EVIDENCE" ||
+    cls === "BIDIRECTIONAL_HOP_FAIL_VISIBLE_LOADING"
+  ) {
+    return {
+      gate: BIDIRECTIONAL_TAB_NO_LOADING_VISUAL_GATE,
+      status: cls,
+      pass: false,
+      rolloutEligible: false,
+      provider,
+      reason: cls,
+    };
+  }
+
   const loadingText =
     hop.visibleLoadingTextCount > 0 ||
     hop.anyLoadingText === true ||
@@ -113,8 +131,13 @@ export function evaluateBidirectionalTabNoLoadingVisualGate(hop = {}) {
 
   const clean =
     hop.classification === "CLEAN" ||
+    hop.classification === "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND" ||
     hop.clean === true ||
-    (!loadingText && !loadingShell && hop.reachedDest !== false);
+    (!loadingText &&
+      !loadingShell &&
+      hop.reachedDest !== false &&
+      !cls.startsWith("BIDIRECTIONAL_HOP_NOT_EVALUATED") &&
+      !cls.startsWith("BIDIRECTIONAL_HOP_FAIL_"));
 
   return {
     gate: BIDIRECTIONAL_TAB_NO_LOADING_VISUAL_GATE,
