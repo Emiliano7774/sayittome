@@ -67,6 +67,41 @@ function requiresStrictPostAuthExit(path: string) {
   return path === "/boost" || path === "/chats";
 }
 
+const EXACT_LOADING_TEXT_RE = /^(Cargando\.\.\.|Loading\.\.\.)$/i;
+
+function elementVisuallyShowsLoading(el: Element) {
+  const style = getComputedStyle(el);
+  const rect = el.getBoundingClientRect();
+  return (
+    rect.width >= 8 &&
+    rect.height >= 8 &&
+    style.visibility !== "hidden" &&
+    style.display !== "none" &&
+    parseFloat(style.opacity || "1") >= 0.04
+  );
+}
+
+function hostHasVisuallyVisibleLoading(host: HTMLElement | null) {
+  if (!host) return false;
+  const nodes = host.querySelectorAll(
+    "[data-loading-shell], [data-nav-loading-copy], [data-boost-access-state='loading']",
+  );
+  for (const el of nodes) {
+    if (elementVisuallyShowsLoading(el)) return true;
+  }
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const t = node.textContent?.trim() || "";
+    if (EXACT_LOADING_TEXT_RE.test(t)) {
+      const parent = node.parentElement;
+      if (parent && elementVisuallyShowsLoading(parent)) return true;
+    }
+    node = walker.nextNode();
+  }
+  return false;
+}
+
 /** Visible-only loading (respects settle/handoff CSS hide). */
 function hasVisuallyVisibleDestinationLoading(
   path: Exclude<MainTabHref, "/shuffle">,
@@ -75,46 +110,14 @@ function hasVisuallyVisibleDestinationLoading(
   const host = document.getElementById(
     `sayittome-main-tab-keepalive-${path.slice(1)}`,
   );
-  if (!host) return false;
-  const nodes = host.querySelectorAll(
-    "[data-loading-shell], [data-nav-loading-copy], [data-boost-access-state='loading']",
+  return hostHasVisuallyVisibleLoading(host as HTMLElement | null);
+}
+
+function hasVisuallyVisibleShuffleLoading() {
+  if (typeof document === "undefined") return false;
+  return hostHasVisuallyVisibleLoading(
+    document.getElementById("sayittome-shuffle-keepalive-host"),
   );
-  for (const el of nodes) {
-    const style = getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    if (
-      rect.width >= 8 &&
-      rect.height >= 8 &&
-      style.visibility !== "hidden" &&
-      style.display !== "none" &&
-      parseFloat(style.opacity || "1") >= 0.04
-    ) {
-      return true;
-    }
-  }
-  const text = host.textContent || "";
-  if (!/Cargando(?:\.\.\.)?|Loading(?:\.\.\.)?/i.test(text)) return false;
-  // Text matched somewhere; confirm a text parent is visually present.
-  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode();
-  while (node) {
-    const t = node.textContent?.trim() || "";
-    if (/Cargando(?:\.\.\.)?|Loading(?:\.\.\.)?/i.test(t)) {
-      const parent = node.parentElement;
-      if (parent) {
-        const style = getComputedStyle(parent);
-        if (
-          style.visibility !== "hidden" &&
-          style.display !== "none" &&
-          parseFloat(style.opacity || "1") >= 0.04
-        ) {
-          return true;
-        }
-      }
-    }
-    node = walker.nextNode();
-  }
-  return false;
 }
 
 function forceReleaseShuffleExitIfNoVisibleLoading(
@@ -122,7 +125,15 @@ function forceReleaseShuffleExitIfNoVisibleLoading(
   frames: number,
   via: string,
 ) {
-  if (hasVisuallyVisibleDestinationLoading(path)) return false;
+  // Never clear the Shuffle exit latch while destination OR Shuffle still shows
+  // user-visible loading (force-clearing exit while Shuffle loading is visible
+  // produced BOTH_LOADING_VISIBLE in Chromium/local probes).
+  if (
+    hasVisuallyVisibleDestinationLoading(path) ||
+    hasVisuallyVisibleShuffleLoading()
+  ) {
+    return false;
+  }
   forcePresentMainTabAfterStableExit(path);
   releaseShuffleTabSurface();
   clearShuffleExitToMainTab();

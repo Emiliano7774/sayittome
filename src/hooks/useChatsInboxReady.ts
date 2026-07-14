@@ -65,14 +65,18 @@ export function explainChatsInboxSkeleton(inbox: InboxGateInput) {
     return { show: false, reason: "session-hydrated-flag" as const };
   }
 
-  // During internal tab handoffs, never mount the full-page skeleton on a
-  // transient auth.loading flicker — keep the prior empty/content surface.
+  // During internal tab handoffs / post-reveal settle, never mount the
+  // full-page skeleton on a transient auth.loading flicker — keep the prior
+  // empty/content surface. Covers fresh-anon sequence remounts after rebind.
   if (
     typeof document !== "undefined" &&
     (document.documentElement.classList.contains("sayittome-main-tab-handoff-pending") ||
       document.documentElement.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
       document.documentElement.dataset.chatsPostAuthSettle === "1" ||
-      document.documentElement.dataset.tabPostAuthSettle === "1")
+      document.documentElement.dataset.tabPostAuthSettle === "1" ||
+      document.documentElement.dataset.mainTabShuffleSlide === "preparing" ||
+      document.documentElement.dataset.mainTabShuffleSlide === "armed" ||
+      document.documentElement.dataset.mainTabShuffleSlide === "running")
   ) {
     return { show: false, reason: "handoff-suppress-skeleton" as const };
   }

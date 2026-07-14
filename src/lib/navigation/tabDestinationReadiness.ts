@@ -5,6 +5,7 @@
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { getShuffleDestinationVisualReadiness } from "@/lib/navigation/shuffleDestinationReadiness";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
+import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 
 export type TabDestinationVisualReadiness = {
   tabId: MainTabHref;
@@ -27,6 +28,12 @@ const POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 3;
 /** Boost needs a slightly longer pre-reveal sample than Chats, without latching forever. */
 const BOOST_POST_AUTH_STABLE_FRAMES = 3;
 const BOOST_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 3;
+/**
+ * Fresh-anon exact sequences remount Chats after prior hops / context rebind;
+ * require a slightly longer pre-reveal sample than generic post-auth tabs.
+ */
+const CHATS_POST_AUTH_STABLE_FRAMES = 4;
+const CHATS_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 4;
 /** Keep CSS settle after reveal so auth rebounds cannot flash "Cargando...". */
 const POST_REVEAL_SETTLE_HOLD_FRAMES = 5;
 /** Prod Boost auth rebind can land after ~100ms; hold longer than Chats/Shuffle. */
@@ -34,6 +41,13 @@ const BOOST_POST_REVEAL_SETTLE_HOLD_FRAMES = 12;
 const BOOST_POST_REVEAL_MIN_HOLD_MS = 160;
 /** Hard cap so settle CSS cannot pin the destination forever. */
 const BOOST_POST_REVEAL_MAX_HOLD_MS = 400;
+/**
+ * Prod fresh-anon Shuffle→Chats sequence rebound: Chats remount loading text can
+ * land ~80–160ms after a short 5-frame settle clear. Match Boost hold timing.
+ */
+const CHATS_POST_REVEAL_SETTLE_HOLD_FRAMES = 12;
+const CHATS_POST_REVEAL_MIN_HOLD_MS = 160;
+const CHATS_POST_REVEAL_MAX_HOLD_MS = 400;
 
 type PostAuthTab = "/boost" | "/chats" | "/shuffle";
 
@@ -421,7 +435,7 @@ export function clearTabPostAuthStabilityTracking(
 /**
  * After a successful reveal commit, keep settle CSS for a short post-reveal
  * window so auth/data rebounds cannot flash loading text.
- * Boost uses a longer prod-timing guard (frames + wall-clock).
+ * Boost + Chats use longer prod-timing guards (frames + wall-clock).
  */
 export function scheduleClearTabPostAuthStabilityAfterReveal(
   tab: PostAuthTab,
@@ -437,8 +451,21 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
   const requiredFrames =
     tab === "/boost"
       ? BOOST_POST_REVEAL_SETTLE_HOLD_FRAMES
-      : POST_REVEAL_SETTLE_HOLD_FRAMES;
-  const requiredMs = tab === "/boost" ? BOOST_POST_REVEAL_MIN_HOLD_MS : 0;
+      : tab === "/chats"
+        ? CHATS_POST_REVEAL_SETTLE_HOLD_FRAMES
+        : POST_REVEAL_SETTLE_HOLD_FRAMES;
+  const requiredMs =
+    tab === "/boost"
+      ? BOOST_POST_REVEAL_MIN_HOLD_MS
+      : tab === "/chats"
+        ? CHATS_POST_REVEAL_MIN_HOLD_MS
+        : 0;
+  const maxHoldMs =
+    tab === "/boost"
+      ? BOOST_POST_REVEAL_MAX_HOLD_MS
+      : tab === "/chats"
+        ? CHATS_POST_REVEAL_MAX_HOLD_MS
+        : 0;
 
   if (tab === "/boost") {
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_START", {
@@ -447,6 +474,15 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_SETTLE_CSS_HELD", {
+      phase: "post-reveal-guard",
+    });
+  } else if (tab === "/chats") {
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_START", {
+      requiredFrames,
+      requiredMs,
+      ...(typeof detail === "object" && detail ? detail : { detail }),
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_SETTLE_CSS_HELD", {
       phase: "post-reveal-guard",
     });
   }
@@ -481,10 +517,9 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       detectOrphanMainLoadingText();
 
     const heldMsTotal = Date.now() - postAuthByTab[tab].postRevealGuardEpochAt;
-    const boostMaxExceeded =
-      tab === "/boost" && heldMsTotal >= BOOST_POST_REVEAL_MAX_HOLD_MS;
+    const maxHoldExceeded = maxHoldMs > 0 && heldMsTotal >= maxHoldMs;
 
-    if (loading && !boostMaxExceeded) {
+    if (loading && !maxHoldExceeded) {
       postAuthByTab[tab].postRevealHoldFrames = 0;
       postAuthByTab[tab].postRevealHoldStartedAt = Date.now();
       if (tab === "/boost") {
@@ -496,8 +531,14 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
           tab,
         });
       } else if (tab === "/chats") {
+        traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_BLOCKED", {
+          tab,
+        });
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
           tab,
+        });
+        traceTabShellNoLoading("TAB_HANDOFF_CHATS_SETTLE_CSS_HELD", {
+          phase: "rebound-extend",
         });
       } else {
         traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
@@ -511,13 +552,18 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
     if (tab === "/boost") {
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_GATE_VISUAL_STABLE", { gateState });
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_MAIN_LOADING_TEXT_STABLE_ABSENT", {});
+    } else if (tab === "/chats" && !loading) {
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_MAIN_LOADING_TEXT_STABLE_ABSENT", {});
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_READY_STABLE", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+      });
     }
 
     postAuthByTab[tab].postRevealHoldFrames += 1;
     const heldMs = Date.now() - postAuthByTab[tab].postRevealHoldStartedAt;
     const framesOk = postAuthByTab[tab].postRevealHoldFrames >= requiredFrames;
     const msOk = heldMs >= requiredMs;
-    if ((!framesOk || !msOk) && !boostMaxExceeded) {
+    if ((!framesOk || !msOk) && !maxHoldExceeded) {
       requestAnimationFrame(tick);
       return;
     }
@@ -526,7 +572,7 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
-        boostMaxExceeded,
+        boostMaxExceeded: maxHoldExceeded,
       });
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_SETTLE_CSS_RELEASED_AFTER_GUARD", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
@@ -536,10 +582,26 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
       });
+    } else if (tab === "/chats") {
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_READY", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+        maxHoldExceeded,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_SETTLE_CSS_RELEASED_AFTER_GUARD", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_CHATS_PROD_SEQUENCE_READY", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+      });
+      // Drop any leftover Shuffle exit latch once Chats guard completed cleanly.
+      clearShuffleExitToMainTab();
     }
 
     clearTabPostAuthStabilityTracking(tab, {
-      via: boostMaxExceeded ? "post-reveal-max-hold" : "post-reveal-hold",
+      via: maxHoldExceeded ? "post-reveal-max-hold" : "post-reveal-hold",
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
   };
@@ -624,7 +686,10 @@ function evaluatePostAuthStability(
   t.frames += 1;
   const gateState = tab === "/boost" ? readBoostAccessGateState(host) : "ready";
   const gateLoading = gateState === "loading";
-  const orphanLoading = tab === "/shuffle" ? detectOrphanMainLoadingText() : false;
+  const orphanLoading =
+    tab === "/shuffle" || tab === "/chats"
+      ? detectOrphanMainLoadingText()
+      : false;
   const loading =
     base.hasVisibleLoadingText ||
     base.hasLoadingShell ||
@@ -688,7 +753,9 @@ function evaluatePostAuthStability(
   const minFrames =
     tab === "/boost"
       ? BOOST_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF
-      : POST_AUTH_MIN_FRAMES_AFTER_HANDOFF;
+      : tab === "/chats"
+        ? CHATS_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF
+        : POST_AUTH_MIN_FRAMES_AFTER_HANDOFF;
   if (t.frames < minFrames) {
     return { stable: false, reason: `${tab.slice(1)}-min-frames` };
   }
@@ -697,7 +764,11 @@ function evaluatePostAuthStability(
   t.stableStreak += 1;
 
   const baseRequired =
-    tab === "/boost" ? BOOST_POST_AUTH_STABLE_FRAMES : POST_AUTH_STABLE_FRAMES;
+    tab === "/boost"
+      ? BOOST_POST_AUTH_STABLE_FRAMES
+      : tab === "/chats"
+        ? CHATS_POST_AUTH_STABLE_FRAMES
+        : POST_AUTH_STABLE_FRAMES;
   const required = t.loadingReboundSeen ? baseRequired + 2 : baseRequired;
 
   if (t.stableStreak < required) {
@@ -845,6 +916,12 @@ export function getTabDestinationVisualReadiness(
           reason: post.reason,
           frames: postAuthByTab["/boost"].frames,
         });
+      } else if (tab === "/chats") {
+        traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY", {
+          phase: "wait",
+          reason: post.reason,
+          frames: postAuthByTab["/chats"].frames,
+        });
       }
     } else if (base.ready && stableFramesReady) {
       ready = true;
@@ -888,6 +965,14 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_CHATS_INBOX_LOADING_BLOCKED"
   | "TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY"
   | "TAB_HANDOFF_CHATS_POST_REVEAL_LOADING_REBOUND_BLOCKED"
+  | "TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_START"
+  | "TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_READY"
+  | "TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_BLOCKED"
+  | "TAB_HANDOFF_CHATS_SETTLE_CSS_HELD"
+  | "TAB_HANDOFF_CHATS_SETTLE_CSS_RELEASED_AFTER_GUARD"
+  | "TAB_HANDOFF_CHATS_MAIN_LOADING_TEXT_STABLE_ABSENT"
+  | "TAB_HANDOFF_CHATS_INBOX_READY_STABLE"
+  | "TAB_HANDOFF_SHUFFLE_CHATS_PROD_SEQUENCE_READY"
   | "TAB_HANDOFF_SHUFFLE_AUTH_READY"
   | "TAB_HANDOFF_SHUFFLE_AUTH_LOADING_BLOCKED"
   | "TAB_HANDOFF_SHUFFLE_POST_COMMIT_STABILITY_WAIT"

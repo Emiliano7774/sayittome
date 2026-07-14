@@ -282,6 +282,13 @@ export function forcePresentMainTabAfterStableExit(href: MainTabHref) {
   presentedTab = href;
   handoffTarget = null;
   if (href === "/boost" || href === "/chats" || href === "/shuffle") {
+    // Ensure post-reveal settle tracking is active so CSS hide continues while
+    // the exit latch is force-cleared (Chromium Shuffle→Chats idle window).
+    if (!isTabPostAuthStabilityTrackingActive(href)) {
+      beginTabPostAuthStabilityTracking(href, {
+        via: "forcePresentMainTabAfterStableExit",
+      });
+    }
     scheduleClearTabPostAuthStabilityAfterReveal(href, {
       via: "forcePresentMainTabAfterStableExit",
     });
