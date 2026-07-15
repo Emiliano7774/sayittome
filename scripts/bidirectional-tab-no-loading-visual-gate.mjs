@@ -75,7 +75,11 @@ export function evaluateBidirectionalTabNoLoadingVisualGate(hop = {}) {
     cls === "BIDIRECTIONAL_HOP_FAIL_HARD_NAVIGATION_UNEXPECTED" ||
     cls === "BIDIRECTIONAL_HOP_NOT_EVALUATED_CONTEXT_DESTROYED_UNRECOVERABLE" ||
     cls === "BIDIRECTIONAL_HOP_NOT_EVALUATED_INSUFFICIENT_EVIDENCE" ||
-    cls === "BIDIRECTIONAL_HOP_FAIL_VISIBLE_LOADING"
+    cls === "BIDIRECTIONAL_HOP_FAIL_VISIBLE_LOADING" ||
+    cls === "FLAG_DESYNC_BETWEEN_DELIVERY_AND_HOP" ||
+    cls === "FLAG_DESYNC_PRE_INPUT_GATE_FAIL" ||
+    cls === "STALE_FALSE_BUNDLE" ||
+    cls === "PROBE_FLAG_MISMATCH"
   ) {
     return {
       gate: BIDIRECTIONAL_TAB_NO_LOADING_VISUAL_GATE,
@@ -84,6 +88,23 @@ export function evaluateBidirectionalTabNoLoadingVisualGate(hop = {}) {
       rolloutEligible: false,
       provider,
       reason: cls,
+    };
+  }
+
+  if (
+    hop.flagAudit?.flagDesync === true ||
+    hop.flagDesync === true ||
+    (hop.flagAudit?.midRuntimeFalse === true && hop.anyLoadingText === true)
+  ) {
+    return {
+      gate: BIDIRECTIONAL_TAB_NO_LOADING_VISUAL_GATE,
+      status: "FLAG_DESYNC_OR_LOADING_FAIL",
+      pass: false,
+      rolloutEligible: false,
+      provider,
+      reason: "TAB_HANDOFF_FLAG_DESYNC_DETECTED",
+      classification: hop.classification || null,
+      flagAudit: hop.flagAudit || null,
     };
   }
 

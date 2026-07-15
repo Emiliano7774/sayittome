@@ -193,6 +193,9 @@ async function sample(page) {
       ? [...list.querySelectorAll(":scope > *:not(.sayittome-nav-scroll-spacer)")].length
       : 0;
     const act = window.__microSlideActivationExport?.() ?? null;
+    const exportPresent = typeof window.__microSlideActivationExport === "function";
+    const buildFlag = act?.microSlideBuildFlag === true;
+    const runtimeFlag = act?.microSlideRuntimeEnabled === true;
     const tabReady =
       typeof window.__sayittomeGetTabDestinationVisualReadiness === "function"
         ? window.__sayittomeGetTabDestinationVisualReadiness(location.pathname)
@@ -211,7 +214,19 @@ async function sample(page) {
       mainLoadingText: mainVis.text,
       mainLoadingShell: mainVis.shell,
       slots,
-      flag: act?.microSlideRuntimeEnabled === true,
+      // Legacy boolean — false when export missing OR runtime disabled.
+      flag: exportPresent && runtimeFlag,
+      exportPresent,
+      buildFlag,
+      runtimeFlag,
+      buildSha: act?.buildSha ?? null,
+      overridePresent: act?.microSlideOverridePresent === true,
+      overrideValue: act?.microSlideOverrideValue ?? null,
+      chatsHandoffSuppress:
+        document.documentElement.getAttribute("data-chats-handoff-suppress") === "1",
+      chatsHandoffSuppressRehydrated:
+        document.documentElement.getAttribute("data-chats-handoff-suppress-rehydrated") ===
+        "1",
       tabReady,
       blackRoot,
       presentedNone,
@@ -234,12 +249,57 @@ async function runDirection(page, { source, dest }, opts = {}) {
   await safeEvaluate(page, () => {
     try {
       localStorage.setItem("sayittome-flag-MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE", "true");
+      localStorage.setItem("sayittome:nav-capture", "1");
+      sessionStorage.setItem("sayittome:nav-capture-session", "1");
     } catch {
       /* ignore */
     }
     return true;
   });
   await page.waitForTimeout(1500);
+
+  // Same-page pre-input gate: export must be present + canonical runtime flag true.
+  // Local-only keeps source/build default false and enables via localhost override;
+  // prod true rollout has buildFlag===runtimeFlag===true. Do not require buildFlag
+  // here or local validation falsely FLAG_DESYNC_PRE_INPUT_GATE_FAIL.
+  const preInput = await safeEvaluate(page, () => {
+    const act = window.__microSlideActivationExport?.() ?? null;
+    const exportPresent = typeof window.__microSlideActivationExport === "function";
+    return {
+      exportPresent,
+      buildFlag: act?.microSlideBuildFlag === true,
+      runtimeFlag: act?.microSlideRuntimeEnabled === true,
+      buildSha: act?.buildSha ?? null,
+      pathname: location.pathname,
+    };
+  });
+  const preInputSnap = preInput.ok ? preInput.value : null;
+  const requireBuildFlag = args.includes("--require-build-flag");
+  if (
+    !preInputSnap?.exportPresent ||
+    preInputSnap.runtimeFlag !== true ||
+    (requireBuildFlag && preInputSnap.buildFlag !== true)
+  ) {
+    return {
+      source,
+      dest,
+      classification: "FLAG_DESYNC_PRE_INPUT_GATE_FAIL",
+      clean: false,
+      visualProvider: PROVIDER,
+      flagAudit: {
+        phase: "pre-input",
+        ...preInputSnap,
+        requireBuildFlag,
+        reason: !preInputSnap?.exportPresent
+          ? "PROBE_EXPORT_MISSING"
+          : preInputSnap.runtimeFlag !== true
+            ? "RUNTIME_FLAG_FALSE"
+            : "BUILD_FLAG_FALSE_WHEN_REQUIRED",
+        diagnostic: "TAB_HANDOFF_CANONICAL_FLAG_VERIFIED_PRE_INPUT",
+      },
+      error: "same-page-pre-input-flag-gate-failed",
+    };
+  }
 
   // Dismiss common blocking prompts (notification permission banner).
   for (let i = 0; i < 3; i++) {
@@ -466,6 +526,51 @@ async function runDirection(page, { source, dest }, opts = {}) {
     else classification = "DESTINATION_LOADING_VISIBLE";
   }
 
+  const midFlagSamples = during.filter((s) => s.pathname === `/${dest}`);
+  const midExportMissing = midFlagSamples.some((s) => s.exportPresent === false);
+  const midBuildFlagFalse = midFlagSamples.some(
+    (s) => s.exportPresent === true && s.buildFlag === false,
+  );
+  const midRuntimeFalse = midFlagSamples.some(
+    (s) => s.exportPresent === true && s.runtimeFlag === false,
+  );
+  const flagAudit = {
+    preInput: preInputSnap,
+    midExportMissing,
+    midBuildFlagFalse,
+    midRuntimeFalse,
+    midFlagFalseCount: midFlagSamples.filter((s) => s.flag !== true).length,
+    midBuildFlagTrueCount: midFlagSamples.filter((s) => s.buildFlag === true).length,
+    midRuntimeTrueCount: midFlagSamples.filter((s) => s.runtimeFlag === true).length,
+    finalExportPresent: final.exportPresent === true,
+    finalBuildFlag: final.buildFlag === true,
+    finalRuntimeFlag: final.runtimeFlag === true,
+    finalBuildSha: final.buildSha ?? null,
+    probeFlagFieldAudited: true,
+    diagnostic: "TAB_HANDOFF_PROBE_FLAG_FIELD_AUDITED",
+  };
+  // Canonical desync = export present but runtime false (effective flag).
+  // buildFlag false alone is expected on local source-false + override.
+  if (midRuntimeFalse) {
+    flagAudit.flagDesync = true;
+    flagAudit.diagnosticSecondary = "TAB_HANDOFF_FLAG_DESYNC_DETECTED";
+  }
+  if (midExportMissing) {
+    flagAudit.probeExportMissing = true;
+    flagAudit.diagnosticSecondary = "TAB_HANDOFF_PROBE_EXPORT_MISSING_AFTER_REMOUNT";
+  }
+
+  // Fail closed: export present but runtime false is FLAG_DESYNC (not clean).
+  if (
+    !anyText &&
+    !anyShell &&
+    midRuntimeFalse &&
+    (classification === "CLEAN" ||
+      classification === "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND")
+  ) {
+    classification = "FLAG_DESYNC_BETWEEN_DELIVERY_AND_HOP";
+  }
+
   const clean =
     classification === "CLEAN" ||
     classification === "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND";
@@ -487,6 +592,12 @@ async function runDirection(page, { source, dest }, opts = {}) {
     noScreencastUsed: false,
     realInputCount,
     flagEnabled: final.flag === true,
+    flagAudit,
+    preInputFlagGate: {
+      pass: true,
+      ...preInputSnap,
+      diagnostic: "TAB_HANDOFF_CANONICAL_FLAG_VERIFIED_PRE_INPUT",
+    },
     final,
     midLoadingWhileFrozenCount: midLoadingWhileFrozen.length,
     midLoadingAfterRevealCount: midLoadingAfterReveal.length,
@@ -538,6 +649,8 @@ if (profile) {
 await context.addInitScript(() => {
   try {
     localStorage.setItem("sayittome-flag-MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE", "true");
+    localStorage.setItem("sayittome:nav-capture", "1");
+    sessionStorage.setItem("sayittome:nav-capture-session", "1");
   } catch {
     /* ignore */
   }
