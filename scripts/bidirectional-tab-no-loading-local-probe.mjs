@@ -227,6 +227,24 @@ async function sample(page) {
       chatsHandoffSuppressRehydrated:
         document.documentElement.getAttribute("data-chats-handoff-suppress-rehydrated") ===
         "1",
+      prepaintChatsHandoffSuppress:
+        document.documentElement.getAttribute("data-prepaint-chats-handoff-suppress") ===
+        "1",
+      prepaintMarkerPresent: (() => {
+        try {
+          const raw = sessionStorage.getItem("sayittome:chats-prepaint-handoff");
+          if (!raw) return false;
+          const m = JSON.parse(raw);
+          return (
+            m &&
+            m.destination === "/chats" &&
+            typeof m.expiresAt === "number" &&
+            Date.now() <= m.expiresAt
+          );
+        } catch {
+          return false;
+        }
+      })(),
       tabReady,
       blackRoot,
       presentedNone,
@@ -560,6 +578,36 @@ async function runDirection(page, { source, dest }, opts = {}) {
     flagAudit.diagnosticSecondary = "TAB_HANDOFF_PROBE_EXPORT_MISSING_AFTER_REMOUNT";
   }
 
+  // Remount export gap: protected (prepaint/suppress + no loading) may wait/recover.
+  // Unprotected loading with missing export is always a fail (already DESTINATION_LOADING).
+  const midExportMissingSamples = midFlagSamples.filter((s) => s.exportPresent === false);
+  const remountExportPendingSuppressed =
+    midExportMissingSamples.length > 0 &&
+    midExportMissingSamples.every(
+      (s) =>
+        !s.loadingTextAnywhere &&
+        !(s.loadingShellAnywhere > 0) &&
+        (s.prepaintChatsHandoffSuppress === true ||
+          s.chatsHandoffSuppress === true ||
+          s.prepaintMarkerPresent === true),
+    );
+  const remountExportPendingUnprotected =
+    midExportMissingSamples.some(
+      (s) =>
+        (s.loadingTextAnywhere || s.loadingShellAnywhere > 0) &&
+        s.prepaintChatsHandoffSuppress !== true &&
+        s.chatsHandoffSuppress !== true &&
+        s.prepaintMarkerPresent !== true,
+    );
+  if (remountExportPendingSuppressed) {
+    flagAudit.remountExportPendingSuppressed = true;
+    flagAudit.diagnosticRemount = "TAB_HANDOFF_REMOUNT_EXPORT_PENDING_SUPPRESSED";
+  }
+  if (remountExportPendingUnprotected) {
+    flagAudit.remountExportPendingUnprotected = true;
+    flagAudit.diagnosticRemount = "TAB_HANDOFF_REMOUNT_EXPORT_PENDING_UNPROTECTED_FAIL";
+  }
+
   // Fail closed: export present but runtime false is FLAG_DESYNC (not clean).
   if (
     !anyText &&
@@ -569,6 +617,17 @@ async function runDirection(page, { source, dest }, opts = {}) {
       classification === "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND")
   ) {
     classification = "FLAG_DESYNC_BETWEEN_DELIVERY_AND_HOP";
+  }
+
+  // Export missing + no loading + suppress → recover as clean remount pending (not fail).
+  if (
+    remountExportPendingSuppressed &&
+    !anyText &&
+    !anyShell &&
+    (classification === "CLEAN" ||
+      classification === "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND")
+  ) {
+    classification = "BIDIRECTIONAL_HOP_CLEAN_WITH_CONTEXT_REBIND";
   }
 
   const clean =

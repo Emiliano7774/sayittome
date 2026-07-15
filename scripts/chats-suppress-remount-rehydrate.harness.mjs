@@ -52,12 +52,23 @@ if (!pre.exportPresent || !pre.runtimeFlag) {
   process.exit(1);
 }
 
-// Arm suppress as SoftNavigate would, then hard-nav to /chats (remount).
+// Arm suppress + prepaint marker as SoftNavigate would, then hard-nav to /chats (remount).
 await page.evaluate(() => {
   const until = Date.now() + 8000;
   sessionStorage.setItem("sayittome:chats-sequence-handoff-suppress-until", String(until));
   sessionStorage.setItem("sayittome:chats-sequence-handoff-suppress-tx", "remount-stress");
+  sessionStorage.setItem(
+    "sayittome:chats-prepaint-handoff",
+    JSON.stringify({
+      destination: "/chats",
+      from: "/shuffle",
+      txId: "remount-stress",
+      startedAt: Date.now(),
+      expiresAt: until,
+    }),
+  );
   document.documentElement.dataset.chatsHandoffSuppress = "1";
+  document.documentElement.dataset.prepaintChatsHandoffSuppress = "1";
 });
 await page.goto(`${base}/chats?navcapture=1&_bd=${Date.now()}`, {
   waitUntil: "domcontentloaded",
