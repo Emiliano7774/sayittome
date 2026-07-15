@@ -3,6 +3,8 @@ import { isMainTabToShufflePresentationOwned } from "@/lib/navigation/mainTabToS
 import { canClearShuffleExitLatch } from "@/lib/navigation/tabHandoffDestinationGuard";
 import { writeChatsPrepaintHandoffMarker } from "@/lib/chats/chatsPrepaintHandoff";
 import { armChatsSequenceHandoffSuppress } from "@/lib/chats/chatsHandoffSuppress";
+import { writeBoostPrepaintHandoffMarker } from "@/lib/boost/boostPrepaintHandoff";
+import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppress";
 
 let shuffleRevealDeferred = false;
 let deferSourcePath = "/chats";
@@ -74,6 +76,10 @@ export function beginShuffleExitToMainTab(target: MainTabHref) {
   if (target === "/chats" && typeof window !== "undefined") {
     writeChatsPrepaintHandoffMarker({ from: "/shuffle" });
     armChatsSequenceHandoffSuppress(520, { from: "/shuffle" });
+  }
+  if (target === "/boost" && typeof window !== "undefined") {
+    writeBoostPrepaintHandoffMarker({ from: "/shuffle" });
+    armBoostSequenceHandoffSuppress(520, { from: "/shuffle" });
   }
   notify();
 }

@@ -33,6 +33,8 @@ import {
 } from "@/lib/perf/ghostFrameTrace";
 import { writeChatsPrepaintHandoffMarker } from "@/lib/chats/chatsPrepaintHandoff";
 import { armChatsSequenceHandoffSuppress } from "@/lib/chats/chatsHandoffSuppress";
+import { writeBoostPrepaintHandoffMarker } from "@/lib/boost/boostPrepaintHandoff";
+import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppress";
 
 type Props = {
   href: string;
@@ -81,14 +83,22 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
           pinMainTabKeepAlive();
           markMainTabVisited(href);
         }
-        // Pre-paint: Shuffle→Chats must arm session+DOM suppress before SoftNavigate
-        // can destroy the heap — React effects / module hydrate are too late.
+        // Pre-paint: Shuffle→Chats / Shuffle→Boost must arm session+DOM suppress
+        // before SoftNavigate can destroy the heap — React effects / module
+        // hydrate are too late (targeted sequence after Chats remount).
         if (
           href === "/chats" &&
           isTabShellNoLoadingTransitionContractActive()
         ) {
           writeChatsPrepaintHandoffMarker({ from: "/shuffle" });
           armChatsSequenceHandoffSuppress(520, { from: "/shuffle" });
+        }
+        if (
+          href === "/boost" &&
+          isTabShellNoLoadingTransitionContractActive()
+        ) {
+          writeBoostPrepaintHandoffMarker({ from: "/shuffle" });
+          armBoostSequenceHandoffSuppress(520, { from: "/shuffle" });
         }
       }
     }

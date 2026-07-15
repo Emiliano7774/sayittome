@@ -7,6 +7,7 @@ import Providers from "@/components/providers/Providers";
 import AppNavigation from "@/components/navigation/AppNavigation";
 import { MainTabShellProvider } from "@/contexts/MainTabShellContext";
 import { CHATS_PREPAINT_BOOTSTRAP_SCRIPT } from "@/lib/chats/chatsPrepaintBootstrapInline";
+import { BOOST_PREPAINT_BOOTSTRAP_SCRIPT } from "@/lib/boost/boostPrepaintBootstrapInline";
 
 export const metadata: Metadata = {
   title: "SayItToMe",
@@ -39,11 +40,15 @@ export default function RootLayout({
   return (
     <html lang="es">
       <head>
-        {/* Pre-paint: SoftNavigate remount may paint Chats skeleton before React
-            hydrates suppress. Inline bootstrap reads session marker / until and
-            installs CSS datasets before first visible paint. Direct cold has no marker. */}
+        {/* Pre-paint: SoftNavigate remount may paint Chats skeleton / BoostAccessGate
+            loading before React hydrates suppress. Inline bootstraps read session
+            markers / until and install CSS datasets before first visible paint.
+            Direct cold has no marker. Destination-scoped (Chats vs Boost keys). */}
         <script
           dangerouslySetInnerHTML={{ __html: CHATS_PREPAINT_BOOTSTRAP_SCRIPT }}
+        />
+        <script
+          dangerouslySetInnerHTML={{ __html: BOOST_PREPAINT_BOOTSTRAP_SCRIPT }}
         />
       </head>
       <body>

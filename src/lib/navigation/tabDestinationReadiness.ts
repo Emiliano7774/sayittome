@@ -5,7 +5,7 @@
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { getShuffleDestinationVisualReadiness } from "@/lib/navigation/shuffleDestinationReadiness";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
-import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppress";
+import { armBoostSequenceHandoffSuppress, handoffBoostPrepaintToReactSuppress } from "@/lib/boost/boostHandoffSuppress";
 import {
   armChatsSequenceHandoffSuppress,
   handoffChatsPrepaintToReactSuppress,
@@ -13,6 +13,7 @@ import {
   wasChatsHandoffSuppressRehydratedFromSession,
 } from "@/lib/chats/chatsHandoffSuppress";
 import { isChatsPrepaintHandoffActive } from "@/lib/chats/chatsPrepaintHandoff";
+import { isBoostPrepaintHandoffActive } from "@/lib/boost/boostPrepaintHandoff";
 import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 import {
   canClearDestinationGuardForPreviousHop,
@@ -554,7 +555,10 @@ export function beginTabPostAuthStabilityTracking(
   const txId = getActiveHandoffGuardTxId(tab as HandoffGuardDestination);
 
   if (tab === "/boost") {
-    armBoostSequenceHandoffSuppress(520, { txId });
+    armBoostSequenceHandoffSuppress(520, {
+      txId,
+      from: source ? String(source) : "/shuffle",
+    });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_STABILITY_WAIT", detail);
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
@@ -571,6 +575,13 @@ export function beginTabPostAuthStabilityTracking(
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP", {
         via: "begin-preserve-post-reveal",
         txId,
+      });
+    }
+    if (isBoostPrepaintHandoffActive()) {
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_SUPPRESS_ARMED_BEFORE_REVEAL", {
+        via: "begin-post-auth",
+        txId,
+        prepaint: true,
       });
     }
   } else if (tab === "/chats") {
@@ -683,7 +694,10 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
           : 0;
 
   if (tab === "/boost") {
-    armBoostSequenceHandoffSuppress(Math.max(requiredMs + 360, 520), { txId });
+    armBoostSequenceHandoffSuppress(Math.max(requiredMs + 360, 520), {
+      txId,
+      from: "/shuffle",
+    });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_START", {
       requiredFrames,
       requiredMs,
@@ -702,6 +716,11 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
     });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_HELD", {
       phase: "post-reveal-guard",
+      txId,
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_REVEAL_WAITED_FOR_READY_OR_SUPPRESS", {
+      requiredFrames,
+      requiredMs,
       txId,
     });
   } else if (tab === "/chats") {
@@ -792,7 +811,7 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       postAuthByTab[tab].postRevealHoldFrames = 0;
       postAuthByTab[tab].postRevealHoldStartedAt = Date.now();
       if (tab === "/boost") {
-        armBoostSequenceHandoffSuppress(400, { txId });
+        armBoostSequenceHandoffSuppress(400, { txId, from: "/shuffle" });
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_BLOCKED", {
           tab,
           gateState,
@@ -810,6 +829,12 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_HELD", {
           phase: "rebound-extend",
           txId,
+        });
+        traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_BOOST_LOADING_VISIBLE_FAIL", {
+          tab,
+          gateState,
+          txId,
+          note: "rebound-extend-holding",
         });
       } else if (tab === "/chats") {
         armChatsHandoffSuppressAndSettle(400, txId);
@@ -871,6 +896,11 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         gateState,
         frames: postAuthByTab[tab].postRevealHoldFrames,
       });
+      // React suppress owns the window; clear short-lived prepaint marker/dataset.
+      // Destination-scoped: does not clear Chats prepaint.
+      handoffBoostPrepaintToReactSuppress({
+        reason: "loading-absent-stable",
+      });
     } else if (tab === "/chats" && !loading) {
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_LOADING_ABSENT_STABLE", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
@@ -910,7 +940,7 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
 
     if (tab === "/boost") {
       // Keep eligibility latch through sequence remount after settle CSS clears.
-      armBoostSequenceHandoffSuppress(360, { txId });
+      armBoostSequenceHandoffSuppress(360, { txId, from: "/shuffle" });
       markHandoffGuardReady(tab as HandoffGuardDestination, txId);
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
@@ -1445,6 +1475,13 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_BOOST_SEQUENCE_MAIN_LOADING_TEXT_STABLE_ABSENT"
   | "TAB_HANDOFF_SHUFFLE_BOOST_SEQUENCE_READY"
   | "TAB_HANDOFF_BOOST_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP"
+  | "TAB_HANDOFF_BOOST_SUPPRESS_ARMED_BEFORE_REVEAL"
+  | "TAB_HANDOFF_BOOST_LOADING_BLOCKED_DURING_INTERNAL_HANDOFF"
+  | "TAB_HANDOFF_BOOST_ACCESS_GATE_INTERNAL_SUPPRESS"
+  | "TAB_HANDOFF_BOOST_REVEAL_WAITED_FOR_READY_OR_SUPPRESS"
+  | "TAB_HANDOFF_BOOST_SUPPRESS_CLEARED_AFTER_CANONICAL_IDLE"
+  | "TAB_HANDOFF_PREVIOUS_DESTINATION_CLEANUP_DID_NOT_CLEAR_ACTIVE_TX"
+  | "TAB_HANDOFF_SHUFFLE_BOOST_LOADING_VISIBLE_FAIL"
   | "TAB_HANDOFF_EXIT_WATCHDOG_FORCE_PRESENT_NO_LOADING"
   | "TAB_HANDOFF_GUARD_TOKEN_CREATED"
   | "TAB_HANDOFF_GUARD_TOKEN_ROUTE_COMMITTED"

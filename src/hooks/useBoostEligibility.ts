@@ -5,6 +5,7 @@ import { resolveBoostAccessState, type BoostAccessState } from "@/lib/boost/boos
 import {
   isBoostSequenceHandoffSuppressActive,
 } from "@/lib/boost/boostHandoffSuppress";
+import { isBoostPrepaintHandoffActive } from "@/lib/boost/boostPrepaintHandoff";
 
 export {
   armBoostSequenceHandoffSuppress,
@@ -23,7 +24,9 @@ export {
  * Fresh-anon exact sequences can remount Boost loading text *after* settle CSS
  * clears (targeted isolated Shuffle→Boost often finishes inside the guard). Keep
  * a short post-guard grace so sequence reentry cannot flash "Cargando...".
- * Direct cold /boost never arms this window.
+ * SoftNavigate remounts after prior Chats hops also rely on prepaint session
+ * marker + inline bootstrap so BoostAccessGate never paints "Cargando..." before
+ * React rehydrates suppress. Direct cold /boost never arms this window.
  */
 let lastNonLoadingBoostAccessState: Exclude<BoostAccessState, "loading"> | null =
   null;
@@ -31,11 +34,14 @@ let lastNonLoadingBoostAccessState: Exclude<BoostAccessState, "loading"> | null 
 function isBoostHandoffSettleActive() {
   if (typeof document === "undefined") return false;
   if (isBoostSequenceHandoffSuppressActive()) return true;
+  if (isBoostPrepaintHandoffActive()) return true;
   const html = document.documentElement;
   const slide = html.dataset.mainTabShuffleSlide;
   // Destination-scoped: prefer Boost settle/suppress over aggregate used by Chats.
   // Also cover Boost→Shuffle while source Boost stays visible (orphan loading gap).
   return (
+    html.dataset.boostHandoffSuppress === "1" ||
+    html.dataset.prepaintBoostHandoffSuppress === "1" ||
     html.dataset.boostPostCommitSettle === "1" ||
     html.dataset.shufflePostAuthSettle === "1" ||
     html.classList.contains("sayittome-main-tab-handoff-pending") ||
@@ -63,6 +69,7 @@ export function useBoostEligibility() {
       accessState = lastNonLoadingBoostAccessState;
     } else if (!firebaseUser || firebaseUser.isAnonymous) {
       // Fresh-anon / guest: do not mount BoostAccessGate loading during handoff.
+      // TAB_HANDOFF_BOOST_ACCESS_GATE_INTERNAL_SUPPRESS
       accessState = "guest";
     }
   }
