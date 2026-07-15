@@ -6,7 +6,10 @@ import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { getShuffleDestinationVisualReadiness } from "@/lib/navigation/shuffleDestinationReadiness";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppress";
-import { armChatsSequenceHandoffSuppress } from "@/lib/chats/chatsHandoffSuppress";
+import {
+  armChatsSequenceHandoffSuppress,
+  isChatsSequenceHandoffSuppressActive,
+} from "@/lib/chats/chatsHandoffSuppress";
 import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 import {
   canClearDestinationGuardForPreviousHop,
@@ -150,8 +153,87 @@ function syncTabPostAuthSettleDataset() {
       delete html.dataset[key];
     }
   }
+  // Chats protection must outlive exitHandoff / postAuth.active clear: keep
+  // settle + suppress datasets while the tx-scoped suppress window is live so
+  // fresh-anon sequence remounts cannot flash [data-nav-loading-copy].
+  if (isChatsSequenceHandoffSuppressActive()) {
+    html.dataset.chatsPostAuthSettle = "1";
+    html.dataset.chatsHandoffSuppress = "1";
+    any = true;
+  } else {
+    delete html.dataset.chatsHandoffSuppress;
+  }
   if (any) html.dataset.tabPostAuthSettle = "1";
   else delete html.dataset.tabPostAuthSettle;
+}
+
+/** Arm Chats suppress and keep settle CSS datasets in sync. */
+function armChatsHandoffSuppressAndSettle(ms: number, txId: string | null | undefined) {
+  armChatsSequenceHandoffSuppress(ms, { txId });
+  syncTabPostAuthSettleDataset();
+}
+
+function chatsHostHasLayoutLoading(host: HTMLElement | null) {
+  if (!host) return false;
+  if (detectVisibleLoadingText(host, { ignoreHandoffHide: true })) return true;
+  if (countVisibleLoadingShells(host, { ignoreHandoffHide: true }) > 0) return true;
+  return [...host.querySelectorAll("[data-nav-loading-copy]")].some((el) =>
+    isElementLayoutPresent(el),
+  );
+}
+
+/**
+ * After exit/settle class clear, keep watching for a late Chats inbox remount
+ * while suppress is still armed (fresh-anon sequence carry-over).
+ */
+function scheduleChatsPostClassClearGuard(txId: string | null) {
+  const startedAt = Date.now();
+  const maxMs = 420;
+  const tick = () => {
+    if (!isChatsSequenceHandoffSuppressActive({ txId })) return;
+    if (Date.now() - startedAt > maxMs) {
+      syncTabPostAuthSettleDataset();
+      return;
+    }
+    const host =
+      typeof document !== "undefined"
+        ? (document.getElementById("sayittome-main-tab-keepalive-chats") as HTMLElement | null)
+        : null;
+    const layoutLoading = chatsHostHasLayoutLoading(host);
+    const visualLoading =
+      detectVisibleLoadingText(host) ||
+      countVisibleLoadingShells(host) > 0 ||
+      detectOrphanMainLoadingText();
+    if (layoutLoading || visualLoading) {
+      armChatsHandoffSuppressAndSettle(400, txId);
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_FRESH_SEQUENCE_LOADING_DETECTED", {
+        txId,
+        layoutLoading,
+        visualLoading,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_FRESH_SEQUENCE_BLOCKED_RELEASE", {
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_CLASS_CLEAR_GUARD_HELD", {
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_SUPPRESS_HELD_AFTER_EXIT_CLEAR", {
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_FRESH_CHATS_LOADING", {
+        txId,
+      });
+      requestAnimationFrame(tick);
+      return;
+    }
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_LOADING_ABSENT_STABLE_AFTER_CLASS_CLEAR", {
+      txId,
+      heldMs: Date.now() - startedAt,
+    });
+    syncTabPostAuthSettleDataset();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 function normalizeTab(tab: MainTabHref | string): MainTabHref | null {
@@ -453,7 +535,7 @@ export function beginTabPostAuthStabilityTracking(
       });
     }
   } else if (tab === "/chats") {
-    armChatsSequenceHandoffSuppress(520, { txId });
+    armChatsHandoffSuppressAndSettle(520, txId);
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
       txId,
@@ -584,6 +666,7 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       txId,
     });
   } else if (tab === "/chats") {
+    armChatsHandoffSuppressAndSettle(Math.max(requiredMs + 360, 520), txId);
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_START", {
       requiredFrames,
       requiredMs,
@@ -592,6 +675,10 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
     });
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_SETTLE_CSS_HELD", {
       phase: "post-reveal-guard",
+      txId,
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_SUPPRESS_HELD_AFTER_EXIT_CLEAR", {
+      phase: "post-reveal-arm",
       txId,
     });
   } else if (tab === "/shuffle") {
@@ -620,7 +707,9 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         : "ready";
     // Post-reveal rebound must be VISIBLE. CSS-hidden loading under settle datasets
     // is the safety net working — do not treat layout-present-only as a forever block.
-    const loading =
+    // Exception (Chats fresh-anon sequence): layout-present inbox loading after prior
+    // hops still blocks release so settle/suppress outlive exitHandoff clear.
+    const visualLoading =
       detectVisibleLoadingText(host) ||
       countVisibleLoadingShells(host) > 0 ||
       (tab === "/boost" &&
@@ -632,6 +721,9 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
             ),
         )) ||
       detectOrphanMainLoadingText();
+    const chatsLayoutLoading =
+      tab === "/chats" ? chatsHostHasLayoutLoading(host as HTMLElement | null) : false;
+    const loading = visualLoading || chatsLayoutLoading;
 
     const orphanVisible =
       tab === "/shuffle" ? detectOrphanMainLoadingText() : false;
@@ -681,10 +773,12 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
           txId,
         });
       } else if (tab === "/chats") {
-        armChatsSequenceHandoffSuppress(400, { txId });
+        armChatsHandoffSuppressAndSettle(400, txId);
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_LOADING_DETECTED", {
           tab,
           txId,
+          chatsLayoutLoading,
+          visualLoading,
         });
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_LOADING_BLOCKED_RELEASE", {
           tab,
@@ -694,6 +788,21 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
           tab,
           txId,
         });
+        if (chatsLayoutLoading && !visualLoading) {
+          traceTabShellNoLoading("TAB_HANDOFF_CHATS_FRESH_SEQUENCE_LOADING_DETECTED", {
+            tab,
+            txId,
+            layer: "layout-present-under-settle",
+          });
+          traceTabShellNoLoading("TAB_HANDOFF_CHATS_FRESH_SEQUENCE_BLOCKED_RELEASE", {
+            tab,
+            txId,
+          });
+          traceTabShellNoLoading("TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_FRESH_CHATS_LOADING", {
+            tab,
+            txId,
+          });
+        }
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_BLOCKED", {
           tab,
           txId,
@@ -794,9 +903,16 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       });
       clearShuffleExitToMainTab({ destination: "/boost", txId });
     } else if (tab === "/chats") {
-      // Keep inbox skeleton suppressed through post-settle auth flicker (logged-in).
-      // Direct cold /chats never arms this window.
-      armChatsSequenceHandoffSuppress(maxHoldExceeded ? 480 : 360, { txId });
+      // Keep inbox skeleton suppressed through post-settle remount (fresh-anon +
+      // logged-in). Direct cold /chats never arms this window.
+      const postClearHold = maxHoldExceeded
+        ? chatsLayoutLoading
+          ? 560
+          : 480
+        : chatsLayoutLoading
+          ? 520
+          : 400;
+      armChatsHandoffSuppressAndSettle(postClearHold, txId);
       markHandoffGuardReady(tab as HandoffGuardDestination, txId);
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
@@ -814,6 +930,13 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
         txId,
+        note: "postAuth cleared; settle dataset retained while suppress live",
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_SUPPRESS_HELD_AFTER_EXIT_CLEAR", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+        postClearHold,
+        txId,
       });
       traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_CHATS_PROD_SEQUENCE_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
@@ -822,6 +945,7 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       });
       // Drop any leftover Shuffle exit latch once Chats guard completed cleanly.
       clearShuffleExitToMainTab({ destination: "/chats", txId });
+      scheduleChatsPostClassClearGuard(txId ?? null);
     } else {
       markHandoffGuardReady(tab as HandoffGuardDestination, txId);
       clearShuffleExitToMainTab({ destination: "/shuffle", txId, force: true });
@@ -1205,6 +1329,12 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_CHATS_INBOX_LOADING_ABSENT_STABLE"
   | "TAB_HANDOFF_CHATS_LOGGED_IN_READY_AFTER_REBIND"
   | "TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_CHATS_LOADING"
+  | "TAB_HANDOFF_CHATS_FRESH_SEQUENCE_LOADING_DETECTED"
+  | "TAB_HANDOFF_CHATS_FRESH_SEQUENCE_BLOCKED_RELEASE"
+  | "TAB_HANDOFF_CHATS_POST_CLASS_CLEAR_GUARD_HELD"
+  | "TAB_HANDOFF_CHATS_SUPPRESS_HELD_AFTER_EXIT_CLEAR"
+  | "TAB_HANDOFF_CHATS_LOADING_ABSENT_STABLE_AFTER_CLASS_CLEAR"
+  | "TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_FRESH_CHATS_LOADING"
   | "TAB_HANDOFF_CHATS_DIRECT_COLD_LOADING_ALLOWED"
   | "TAB_HANDOFF_CHATS_TOKEN_RELEASE_AFTER_INBOX_READY"
   | "TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY"

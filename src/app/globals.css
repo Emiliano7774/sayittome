@@ -426,6 +426,10 @@ html[data-tab-post-auth-settle="1"] #sayittome-main-tab-keepalive-boost [data-bo
 html[data-chats-post-auth-settle="1"] #sayittome-main-tab-keepalive-chats [data-loading-shell],
 html[data-chats-post-auth-settle="1"] #sayittome-main-tab-keepalive-chats [data-nav-loading-copy],
 html[data-chats-post-auth-settle="1"] #sayittome-main-tab-keepalive-chats [data-nav-loading-copy] *,
+/* Post-exitHandoff: keep Chats inbox loading hidden while suppress token is live. */
+html[data-chats-handoff-suppress="1"] #sayittome-main-tab-keepalive-chats [data-loading-shell],
+html[data-chats-handoff-suppress="1"] #sayittome-main-tab-keepalive-chats [data-nav-loading-copy],
+html[data-chats-handoff-suppress="1"] #sayittome-main-tab-keepalive-chats [data-nav-loading-copy] *,
 /* Shuffle→Chats: keep inbox Cargando hidden while exit latch targets Chats. */
 html.sayittome-shuffle-exit-handoff-pending[data-shuffle-exit-handoff-target="/chats"]
   #sayittome-main-tab-keepalive-chats

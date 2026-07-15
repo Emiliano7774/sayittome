@@ -81,6 +81,7 @@ export function explainChatsInboxSkeleton(inbox: InboxGateInput) {
       html.classList.contains("sayittome-main-tab-handoff-pending") ||
       html.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
       html.dataset.chatsPostAuthSettle === "1" ||
+      html.dataset.chatsHandoffSuppress === "1" ||
       (html.dataset.shuffleExitHandoffTarget === "/chats" &&
         html.classList.contains("sayittome-shuffle-exit-handoff-pending")) ||
       html.dataset.mainTabShuffleSlide === "preparing" ||
