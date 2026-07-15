@@ -230,14 +230,53 @@ async function sample(page) {
       prepaintChatsHandoffSuppress:
         document.documentElement.getAttribute("data-prepaint-chats-handoff-suppress") ===
         "1",
+      boostHandoffSuppress:
+        document.documentElement.getAttribute("data-boost-handoff-suppress") === "1",
+      boostHandoffSuppressRehydrated:
+        document.documentElement.getAttribute("data-boost-handoff-suppress-rehydrated") ===
+        "1",
+      prepaintBoostHandoffSuppress:
+        document.documentElement.getAttribute("data-prepaint-boost-handoff-suppress") ===
+        "1",
       prepaintMarkerPresent: (() => {
         try {
-          const raw = sessionStorage.getItem("sayittome:chats-prepaint-handoff");
+          const chatsRaw = sessionStorage.getItem("sayittome:chats-prepaint-handoff");
+          if (chatsRaw) {
+            const m = JSON.parse(chatsRaw);
+            if (
+              m &&
+              m.destination === "/chats" &&
+              typeof m.expiresAt === "number" &&
+              Date.now() <= m.expiresAt
+            ) {
+              return true;
+            }
+          }
+          const boostRaw = sessionStorage.getItem("sayittome:boost-prepaint-handoff");
+          if (boostRaw) {
+            const m = JSON.parse(boostRaw);
+            if (
+              m &&
+              m.destination === "/boost" &&
+              typeof m.expiresAt === "number" &&
+              Date.now() <= m.expiresAt
+            ) {
+              return true;
+            }
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      })(),
+      boostPrepaintMarkerPresent: (() => {
+        try {
+          const raw = sessionStorage.getItem("sayittome:boost-prepaint-handoff");
           if (!raw) return false;
           const m = JSON.parse(raw);
           return (
             m &&
-            m.destination === "/chats" &&
+            m.destination === "/boost" &&
             typeof m.expiresAt === "number" &&
             Date.now() <= m.expiresAt
           );
@@ -589,7 +628,10 @@ async function runDirection(page, { source, dest }, opts = {}) {
         !(s.loadingShellAnywhere > 0) &&
         (s.prepaintChatsHandoffSuppress === true ||
           s.chatsHandoffSuppress === true ||
-          s.prepaintMarkerPresent === true),
+          s.prepaintBoostHandoffSuppress === true ||
+          s.boostHandoffSuppress === true ||
+          s.prepaintMarkerPresent === true ||
+          s.boostPrepaintMarkerPresent === true),
     );
   const remountExportPendingUnprotected =
     midExportMissingSamples.some(
@@ -597,7 +639,10 @@ async function runDirection(page, { source, dest }, opts = {}) {
         (s.loadingTextAnywhere || s.loadingShellAnywhere > 0) &&
         s.prepaintChatsHandoffSuppress !== true &&
         s.chatsHandoffSuppress !== true &&
-        s.prepaintMarkerPresent !== true,
+        s.prepaintBoostHandoffSuppress !== true &&
+        s.boostHandoffSuppress !== true &&
+        s.prepaintMarkerPresent !== true &&
+        s.boostPrepaintMarkerPresent !== true,
     );
   if (remountExportPendingSuppressed) {
     flagAudit.remountExportPendingSuppressed = true;
