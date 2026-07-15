@@ -126,6 +126,15 @@ export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
     }
   }
 
+  // Profile (/u/...), chat threads (/chat/...), and any other non-main-tab route:
+  // keep panels mounted for instant return, but never paint sticky presented /
+  // pending / handoff tabs underneath in-flow pages (transparent stack / double UI).
+  // Must run before atomic handoff + pendingVisualTab, which otherwise keep the
+  // prior main tab "visible" while pathname is already /u/... or /chat/....
+  if (!(MAIN_TAB_HREFS as readonly string[]).includes(path)) {
+    return false;
+  }
+
   if (path === "/shuffle" && !isShuffleExitToMainTabPending()) {
     return false;
   }

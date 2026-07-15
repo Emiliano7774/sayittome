@@ -33,9 +33,11 @@ import {
   getMainTabToShuffleTransaction,
   getTransitionModuleInstanceIdForDiag,
 } from "@/lib/navigation/mainTabToShuffleTransition";
+import { MAIN_TAB_HREFS } from "@/lib/navigation/mainTabs";
 import {
   commitMainTabPathnameForHistoryNavigation,
   installMainTabInternalPathnameStore,
+  resetMainTabHistoryPathnameStore,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
 
 export type FastRouterPushOptions = {
@@ -59,6 +61,17 @@ function normalizeChatHref(href: string) {
 
 function normalizePath(href: string) {
   return String(href || "/").split("?")[0].split("#")[0] || "/";
+}
+
+function isMainTabOrShufflePath(href: string) {
+  const path = normalizePath(href);
+  return path === "/shuffle" || (MAIN_TAB_HREFS as readonly string[]).includes(path);
+}
+
+/** Soft nav away from main tabs must drop history pathname override or keepalive/nav stay stuck. */
+function clearStaleMainTabPathnameOverrideForHref(href: string) {
+  if (isMainTabOrShufflePath(href)) return;
+  resetMainTabHistoryPathnameStore("soft-nav-non-main-tab");
 }
 
 function commitHistoryPushState(href: string, reason: string) {
@@ -263,6 +276,7 @@ export function fastRouterPush(
         typeof window !== "undefined" ? getMainTabShufflePresentationRuntimeInstanceId() : null,
       activeTxPresent: Boolean(getSoftCommitTxPin()),
     });
+    clearStaleMainTabPathnameOverrideForHref(href);
     router.push(href);
     if (isForceSoftPushModuleReinitForTestEnabled()) {
       // Localhost-only prod divergence repro: wipe runtime after soft push, rehydrate from pin.
@@ -276,10 +290,12 @@ export function fastRouterPush(
   }
 
   if (hardNavWouldApply) {
+    clearStaleMainTabPathnameOverrideForHref(href);
     hardNavigate(href);
     return;
   }
 
+  clearStaleMainTabPathnameOverrideForHref(href);
   router.push(href);
 }
 
@@ -308,5 +324,6 @@ export function fastRouterReplace(router: AppRouterInstance, href: string) {
     clearInstantShuffleReturn();
   }
 
+  clearStaleMainTabPathnameOverrideForHref(href);
   router.replace(href);
 }

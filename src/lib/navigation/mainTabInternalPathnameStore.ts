@@ -51,11 +51,29 @@ export function subscribeMainTabPathname(listener: PathnameListener) {
   };
 }
 
-/** Effective pathname for main-tab presentation: override if set, else location/Next. */
+/**
+ * Effective pathname for main-tab presentation.
+ * History override leads only while soft-commit is in flight or it matches
+ * window.location (pushState). Otherwise prefer the live URL so soft navigations
+ * to /u/... or /chat/... cannot leave keepalive stuck on a prior main tab.
+ */
 export function getCurrentMainTabPathname(fallback?: string | null) {
-  if (overridePathname) return overridePathname;
-  if (fallback) return normalizePath(fallback);
-  return locationPathname();
+  const loc = typeof window !== "undefined" ? locationPathname() : null;
+  const fb = fallback ? normalizePath(fallback) : null;
+
+  if (overridePathname) {
+    const pin = typeof window !== "undefined" ? getSoftCommitTxPin() : null;
+    if (pin?.isSoftCommitInFlight) return overridePathname;
+    if (loc && overridePathname === loc) return overridePathname;
+    // Stale override after soft router.push away from main tabs (e.g. /chats → /u/...).
+    if (loc && overridePathname !== loc) return loc;
+    return overridePathname;
+  }
+
+  // Prefer live URL when Next usePathname lags one tick after soft push.
+  if (loc && fb && loc !== fb) return loc;
+  if (fb) return fb;
+  return loc ?? "/";
 }
 
 export function hasMainTabHistoryPathnameOverride() {

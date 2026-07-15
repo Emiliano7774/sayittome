@@ -17,6 +17,7 @@ import {
 } from "@/lib/navigation/atomicMainTabHandoff";
 import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
 import {
+  clearPendingVisualTab,
   getMainTabKeepAliveVersion,
   getPendingVisualTab,
   isMainTabPanelVisible,
@@ -45,9 +46,11 @@ import {
 import {
   getCurrentMainTabPathname,
   getMainTabInternalPathnameVersion,
+  hasMainTabHistoryPathnameOverride,
+  resetMainTabHistoryPathnameStore,
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
-import type { MainTabHref } from "@/lib/navigation/mainTabs";
+import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
 import { settingsPipelineMark } from "@/lib/perf/settingsPipelineTrace";
@@ -113,6 +116,30 @@ export default function MainTabKeepAliveHost() {
   const panelPath = resolveMainTabPanelPath(pathname);
 
   useLayoutEffect(() => {
+    // Drop stale history override once Next reports a non-main-tab route (/u/, /chat/, …).
+    const nextPath = String(nextPathname || "")
+      .split("?")[0]
+      .split("#")[0];
+    const nextIsMainTabOrShuffle =
+      nextPath === "/shuffle" ||
+      (MAIN_TAB_HREFS as readonly string[]).includes(nextPath);
+    if (
+      hasMainTabHistoryPathnameOverride() &&
+      nextPath &&
+      !nextIsMainTabOrShuffle
+    ) {
+      resetMainTabHistoryPathnameStore("keepalive-host-non-main-tab");
+    }
+
+    // Drop visual-first pending tab so it cannot re-paint under /u/ or /chat/.
+    const pathForPending = pathname.split("?")[0].split("#")[0];
+    if (
+      !(MAIN_TAB_HREFS as readonly string[]).includes(pathForPending) &&
+      getPendingVisualTab()
+    ) {
+      clearPendingVisualTab();
+    }
+
     syncPendingVisualTabWithPathname(pathname);
 
     if (shouldRenderMainTabKeepAliveHost(pathname)) {
@@ -159,7 +186,7 @@ export default function MainTabKeepAliveHost() {
         break;
       }
     }
-  }, [pathname, version, panelPath]);
+  }, [pathname, version, panelPath, nextPathname]);
 
   if (!shouldRenderMainTabKeepAliveHost(pathname)) {
     return null;
