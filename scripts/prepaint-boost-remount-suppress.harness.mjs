@@ -113,6 +113,13 @@ check(
 );
 
 check(
+  "BEGINPOSTAUTH_DOES_NOT_DEFAULT_FROM_TO_SHUFFLE",
+  !readiness.includes('source ? String(source) : "/shuffle"') &&
+    readiness.includes("resolveBoostInternalHandoffFrom") &&
+    readiness.includes("TAB_HANDOFF_BOOST_DIRECT_COLD_NO_SOURCE_NOOP"),
+);
+
+check(
   "BOOST_ACCESS_GATE_HIDDEN_DURING_INTERNAL_HANDOFF",
   css.includes('data-prepaint-boost-handoff-suppress="1"') &&
     css.includes('data-boost-handoff-suppress="1"') &&
@@ -135,7 +142,10 @@ check(
 
 check(
   "DIRECT_COLD_BOOST_LOADING_ALLOWED",
-  prepaint.includes('if (from === "/boost") return null') &&
+  (prepaint.includes('if (from === "/boost") return null') ||
+    prepaint.includes("!isRealInternalBoostHandoffSource(from)")) &&
+    prepaint.includes("TAB_HANDOFF_BOOST_MARKER_WRITE_SKIPPED_NO_REAL_SOURCE") &&
+    readiness.includes("TAB_HANDOFF_BOOST_DIRECT_COLD_NO_SOURCE_NOOP") &&
     nav.includes('href === "/boost"') &&
     nav.includes('currentPath === "/shuffle"'),
 );
