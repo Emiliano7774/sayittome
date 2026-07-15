@@ -5,7 +5,12 @@
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { getShuffleDestinationVisualReadiness } from "@/lib/navigation/shuffleDestinationReadiness";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
-import { armBoostSequenceHandoffSuppress, handoffBoostPrepaintToReactSuppress } from "@/lib/boost/boostHandoffSuppress";
+import {
+  armBoostSequenceHandoffSuppress,
+  clearBoostSequenceHandoffSuppress,
+  handoffBoostPrepaintToReactSuppress,
+  isBoostSequenceHandoffSuppressActive,
+} from "@/lib/boost/boostHandoffSuppress";
 import {
   armChatsSequenceHandoffSuppress,
   handoffChatsPrepaintToReactSuppress,
@@ -13,7 +18,11 @@ import {
   wasChatsHandoffSuppressRehydratedFromSession,
 } from "@/lib/chats/chatsHandoffSuppress";
 import { isChatsPrepaintHandoffActive } from "@/lib/chats/chatsPrepaintHandoff";
-import { isBoostPrepaintHandoffActive } from "@/lib/boost/boostPrepaintHandoff";
+import {
+  clearBoostPrepaintHandoffMarker,
+  isBoostPrepaintHandoffActive,
+  resolveBoostInternalHandoffFrom,
+} from "@/lib/boost/boostPrepaintHandoff";
 import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 import {
   canClearDestinationGuardForPreviousHop,
@@ -96,6 +105,13 @@ type PostAuthTracker = {
   postRevealHoldStartedAt: number;
   /** Wall-clock epoch for max hold; not reset on rebound. */
   postRevealGuardEpochAt: number;
+  /**
+   * Boost-only: real internal handoff `from` (never invented "/shuffle").
+   * Null on direct cold /boost — suppress/prepaint must not arm.
+   */
+  boostInternalFrom: string | null;
+  /** Boost-only: allow suppress/prepaint arms for this post-auth window. */
+  boostAllowSuppressArm: boolean;
 };
 
 const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
@@ -109,6 +125,8 @@ const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
     postRevealClearPending: false,
     postRevealHoldStartedAt: 0,
     postRevealGuardEpochAt: 0,
+    boostInternalFrom: null,
+    boostAllowSuppressArm: false,
   },
   "/chats": {
     active: false,
@@ -120,6 +138,8 @@ const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
     postRevealClearPending: false,
     postRevealHoldStartedAt: 0,
     postRevealGuardEpochAt: 0,
+    boostInternalFrom: null,
+    boostAllowSuppressArm: false,
   },
   "/shuffle": {
     active: false,
@@ -131,8 +151,31 @@ const postAuthByTab: Record<PostAuthTab, PostAuthTracker> = {
     postRevealClearPending: false,
     postRevealHoldStartedAt: 0,
     postRevealGuardEpochAt: 0,
+    boostInternalFrom: null,
+    boostAllowSuppressArm: false,
   },
 };
+
+/** Arm Boost suppress/prepaint only for real internal handoffs (never invent from). */
+function armBoostInternalHandoffSuppressIfAllowed(
+  ms: number,
+  txId: string | null | undefined,
+) {
+  const t = postAuthByTab["/boost"];
+  if (!t.boostAllowSuppressArm) {
+    traceTabShellNoLoading("TAB_HANDOFF_BOOST_MARKER_WRITE_SKIPPED_NO_REAL_SOURCE", {
+      ms,
+      txId,
+      via: "arm-gated",
+    });
+    return false;
+  }
+  armBoostSequenceHandoffSuppress(ms, {
+    txId,
+    from: t.boostInternalFrom ?? undefined,
+  });
+  return true;
+}
 
 function isPostAuthTab(tab: MainTabHref | string): tab is PostAuthTab {
   return tab === "/boost" || tab === "/chats" || tab === "/shuffle";
@@ -516,6 +559,8 @@ function resetPostAuthTracker(tab: PostAuthTab) {
   t.postRevealClearPending = false;
   t.postRevealHoldStartedAt = 0;
   t.postRevealGuardEpochAt = 0;
+  t.boostInternalFrom = null;
+  t.boostAllowSuppressArm = false;
 }
 
 /** Start post-auth / post-commit stability window for logged-in tab handoffs. */
@@ -555,14 +600,84 @@ export function beginTabPostAuthStabilityTracking(
   const txId = getActiveHandoffGuardTxId(tab as HandoffGuardDestination);
 
   if (tab === "/boost") {
-    armBoostSequenceHandoffSuppress(520, {
-      txId,
-      from: source ? String(source) : "/shuffle",
-    });
+    const internalFrom = resolveBoostInternalHandoffFrom(
+      source != null ? String(source) : null,
+    );
+    const prepaintActive = isBoostPrepaintHandoffActive();
+    const suppressActive = isBoostSequenceHandoffSuppressActive(
+      txId ? { txId } : undefined,
+    );
+
+    if (internalFrom) {
+      t.boostInternalFrom = internalFrom;
+      t.boostAllowSuppressArm = true;
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_INTERNAL_SOURCE_ACCEPTED", {
+        from: internalFrom,
+        txId,
+        via: "begin-post-auth",
+      });
+    } else if (keepPostReveal && t.boostAllowSuppressArm) {
+      // Preserve ongoing internal post-reveal window; never invent "/shuffle".
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_INTERNAL_SOURCE_ACCEPTED", {
+        from: t.boostInternalFrom,
+        txId,
+        via: "begin-preserve-post-reveal",
+      });
+    } else if (prepaintActive || suppressActive) {
+      // Pointerdown / exit begin already wrote a real marker; extend suppress
+      // without inventing from when source is absent on rebind.
+      t.boostAllowSuppressArm = true;
+      if (!t.boostInternalFrom) {
+        t.boostInternalFrom = null;
+      }
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_INTERNAL_SOURCE_ACCEPTED", {
+        from: t.boostInternalFrom,
+        txId,
+        via: "begin-prepaint-or-suppress-active",
+        prepaintActive,
+        suppressActive,
+      });
+    } else {
+      // Direct cold /boost (or any begin without real internal source):
+      // never default from to "/shuffle"; do not arm marker/suppress.
+      if (source != null && String(source).length > 0 && !internalFrom) {
+        traceTabShellNoLoading("TAB_HANDOFF_BOOST_SOURCE_FALLBACK_BLOCKED", {
+          source: String(source),
+          txId,
+        });
+      }
+      t.boostInternalFrom = null;
+      t.boostAllowSuppressArm = false;
+      clearBoostSequenceHandoffSuppress({ force: true });
+      clearBoostPrepaintHandoffMarker({
+        force: true,
+        reason: "direct-cold-no-real-source",
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_DIRECT_COLD_NO_SOURCE_NOOP", {
+        source: source != null ? String(source) : null,
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_DIRECT_COLD_MARKER_NOT_ARMED", {
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_STALE_MARKER_CLEARED_ON_COLD", {
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_BOOST_MARKER_WRITE_SKIPPED_NO_REAL_SOURCE", {
+        txId,
+        via: "begin-post-auth-cold",
+      });
+    }
+
+    if (t.boostAllowSuppressArm) {
+      armBoostInternalHandoffSuppressIfAllowed(520, txId);
+    }
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_STABILITY_WAIT", detail);
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
       txId,
+      boostAllowSuppressArm: t.boostAllowSuppressArm,
+      boostInternalFrom: t.boostInternalFrom,
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
     traceTabShellNoLoading("TAB_HANDOFF_SEQUENCE_BOOST_REENTRY_STABLE", {
@@ -694,10 +809,10 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
           : 0;
 
   if (tab === "/boost") {
-    armBoostSequenceHandoffSuppress(Math.max(requiredMs + 360, 520), {
+    armBoostInternalHandoffSuppressIfAllowed(
+      Math.max(requiredMs + 360, 520),
       txId,
-      from: "/shuffle",
-    });
+    );
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_START", {
       requiredFrames,
       requiredMs,
@@ -811,7 +926,7 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       postAuthByTab[tab].postRevealHoldFrames = 0;
       postAuthByTab[tab].postRevealHoldStartedAt = Date.now();
       if (tab === "/boost") {
-        armBoostSequenceHandoffSuppress(400, { txId, from: "/shuffle" });
+        armBoostInternalHandoffSuppressIfAllowed(400, txId);
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_BLOCKED", {
           tab,
           gateState,
@@ -940,7 +1055,7 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
 
     if (tab === "/boost") {
       // Keep eligibility latch through sequence remount after settle CSS clears.
-      armBoostSequenceHandoffSuppress(360, { txId, from: "/shuffle" });
+      armBoostInternalHandoffSuppressIfAllowed(360, txId);
       markHandoffGuardReady(tab as HandoffGuardDestination, txId);
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
@@ -1480,6 +1595,12 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_BOOST_ACCESS_GATE_INTERNAL_SUPPRESS"
   | "TAB_HANDOFF_BOOST_REVEAL_WAITED_FOR_READY_OR_SUPPRESS"
   | "TAB_HANDOFF_BOOST_SUPPRESS_CLEARED_AFTER_CANONICAL_IDLE"
+  | "TAB_HANDOFF_BOOST_DIRECT_COLD_NO_SOURCE_NOOP"
+  | "TAB_HANDOFF_BOOST_DIRECT_COLD_MARKER_NOT_ARMED"
+  | "TAB_HANDOFF_BOOST_INTERNAL_SOURCE_ACCEPTED"
+  | "TAB_HANDOFF_BOOST_SOURCE_FALLBACK_BLOCKED"
+  | "TAB_HANDOFF_BOOST_STALE_MARKER_CLEARED_ON_COLD"
+  | "TAB_HANDOFF_BOOST_MARKER_WRITE_SKIPPED_NO_REAL_SOURCE"
   | "TAB_HANDOFF_PREVIOUS_DESTINATION_CLEANUP_DID_NOT_CLEAR_ACTIVE_TX"
   | "TAB_HANDOFF_SHUFFLE_BOOST_LOADING_VISIBLE_FAIL"
   | "TAB_HANDOFF_EXIT_WATCHDOG_FORCE_PRESENT_NO_LOADING"

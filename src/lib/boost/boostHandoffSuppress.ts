@@ -19,6 +19,7 @@ import {
   clearBoostPrepaintHandoffMarker,
   installBoostPrepaintSuppressDom,
   isBoostPrepaintHandoffActive,
+  isRealInternalBoostHandoffSource,
   rehydrateBoostPrepaintFromSession,
   writeBoostPrepaintHandoffMarker,
 } from "@/lib/boost/boostPrepaintHandoff";
@@ -141,8 +142,10 @@ export function armBoostSequenceHandoffSuppress(
   if (until > boostSequenceHandoffSuppressUntil) {
     boostSequenceHandoffSuppressUntil = until;
   }
-  // Keep prepaint marker alive across the arm window when from is known.
-  if (opts?.from && opts.from !== "/boost") {
+  // Keep prepaint marker alive across the arm window when from is a real
+  // internal handoff source. Never invent "/shuffle" here — callers must pass
+  // a real from, or omit it (extend suppress without rewriting marker).
+  if (opts?.from && isRealInternalBoostHandoffSource(opts.from)) {
     writeBoostPrepaintHandoffMarker({
       from: opts.from,
       txId,

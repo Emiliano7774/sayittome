@@ -18,6 +18,43 @@ export type BoostPrepaintHandoffMarker = {
   expectedFlag?: boolean | null;
 };
 
+const INTERNAL_BOOST_HANDOFF_SOURCES = new Set([
+  "/shuffle",
+  "/chats",
+  "/stories",
+  "/settings",
+]);
+
+/** Normalize a tab path (strip query/hash). */
+export function normalizeBoostHandoffSourcePath(source: string): string {
+  return String(source).split("?")[0].split("#")[0].trim() || "/";
+}
+
+/**
+ * True only when `source` is an explicit internal tab path that may hand off
+ * into Boost. Rejects null/undefined/empty/falsey and never invents "/shuffle".
+ */
+export function isRealInternalBoostHandoffSource(
+  source: string | null | undefined,
+): source is string {
+  if (source == null) return false;
+  if (typeof source !== "string") return false;
+  const path = normalizeBoostHandoffSourcePath(source);
+  if (!path || path === "/boost") return false;
+  return INTERNAL_BOOST_HANDOFF_SOURCES.has(path);
+}
+
+/**
+ * Resolve the only `from` allowed for Boost prepaint/suppress arms.
+ * Returns null when source is absent — callers must NOT fall back to "/shuffle".
+ */
+export function resolveBoostInternalHandoffFrom(
+  source: string | null | undefined,
+): string | null {
+  if (!isRealInternalBoostHandoffSource(source)) return null;
+  return normalizeBoostHandoffSourcePath(source);
+}
+
 function readMarkerRaw(): BoostPrepaintHandoffMarker | null {
   if (typeof window === "undefined") return null;
   try {
@@ -102,9 +139,37 @@ export function writeBoostPrepaintHandoffMarker(opts: {
   expectedFlag?: boolean | null;
 }) {
   if (typeof window === "undefined") return null;
-  const from = String(opts.from || "").split("?")[0].split("#")[0] || "/";
-  // Direct cold /boost: never create marker.
-  if (from === "/boost") return null;
+  const from = normalizeBoostHandoffSourcePath(String(opts.from || ""));
+  // Direct cold /boost: never create marker (no real internal source).
+  if (from === "/boost" || !isRealInternalBoostHandoffSource(from)) {
+    try {
+      (
+        window as Window & {
+          __sayittomePrepaintDiag?: Array<Record<string, unknown>>;
+        }
+      ).__sayittomePrepaintDiag = (
+        (
+          window as Window & {
+            __sayittomePrepaintDiag?: Array<Record<string, unknown>>;
+          }
+        ).__sayittomePrepaintDiag || []
+      ).concat([
+        {
+          t: Date.now(),
+          event: "TAB_HANDOFF_BOOST_MARKER_WRITE_SKIPPED_NO_REAL_SOURCE",
+          from: from || null,
+        },
+        {
+          t: Date.now(),
+          event: "TAB_HANDOFF_BOOST_SOURCE_FALLBACK_BLOCKED",
+          from: from || null,
+        },
+      ]);
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
   const startedAt = Date.now();
   const ttl = Math.min(
     BOOST_PREPAINT_TTL_MS,
