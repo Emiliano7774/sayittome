@@ -1,5 +1,6 @@
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { isMainTabToShufflePresentationOwned } from "@/lib/navigation/mainTabToShuffleTransition";
+import { canClearShuffleExitLatch } from "@/lib/navigation/tabHandoffDestinationGuard";
 
 let shuffleRevealDeferred = false;
 let deferSourcePath = "/chats";
@@ -70,13 +71,28 @@ export function beginShuffleExitToMainTab(target: MainTabHref) {
   notify();
 }
 
-export function clearShuffleExitToMainTab() {
+export type ClearShuffleExitOpts = {
+  txId?: string | null;
+  destination?: string | null;
+  /** Bypass destination-guard token gate (tests / hard recovery only). */
+  force?: boolean;
+};
+
+/**
+ * Clear Shuffle→main exit latch. When a Boost/Chats destination guard token is
+ * still in-flight (pre-releaseAllowed), unscoped clears are blocked so sequence
+ * hops cannot disarm the active destination's CSS/eligibility window.
+ */
+export function clearShuffleExitToMainTab(opts?: ClearShuffleExitOpts) {
+  const gate = canClearShuffleExitLatch(opts);
+  if (!gate.allowed) return false;
+
   if (!shuffleExitMainTabTarget) {
     if (typeof document !== "undefined") {
       document.documentElement.classList.remove("sayittome-shuffle-exit-handoff-pending");
       document.documentElement.removeAttribute("data-shuffle-exit-handoff-target");
     }
-    return;
+    return true;
   }
   shuffleExitMainTabTarget = null;
   if (typeof document !== "undefined") {
@@ -84,6 +100,7 @@ export function clearShuffleExitToMainTab() {
     document.documentElement.removeAttribute("data-shuffle-exit-handoff-target");
   }
   notify();
+  return true;
 }
 
 export function isShuffleExitToMainTabPending() {

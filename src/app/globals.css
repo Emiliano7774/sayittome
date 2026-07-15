@@ -438,7 +438,25 @@ html[data-main-tab-shuffle-slide="armed"] [data-loading-shell],
 html[data-main-tab-shuffle-slide="running"] [data-loading-shell],
 html[data-main-tab-shuffle-slide="preparing"] [data-nav-loading-copy],
 html[data-main-tab-shuffle-slide="armed"] [data-nav-loading-copy],
-html[data-main-tab-shuffle-slide="running"] [data-nav-loading-copy] {
+html[data-main-tab-shuffle-slide="running"] [data-nav-loading-copy],
+/* Boost→Shuffle: source Boost stays visible (not frozen) during slide/handoff.
+   Hide BoostAccessGate loading so orphan Cargando cannot leak outside Shuffle host. */
+html.sayittome-shuffle-handoff-pending #sayittome-main-tab-keepalive-boost [data-nav-loading-copy],
+html.sayittome-shuffle-handoff-pending #sayittome-main-tab-keepalive-boost [data-nav-loading-copy] *,
+html.sayittome-shuffle-handoff-pending #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"],
+html.sayittome-shuffle-handoff-pending #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"] *,
+html.sayittome-shuffle-handoff-pending #sayittome-main-tab-keepalive-boost [data-loading-shell],
+html[data-shuffle-post-auth-settle="1"] #sayittome-main-tab-keepalive-boost [data-nav-loading-copy],
+html[data-shuffle-post-auth-settle="1"] #sayittome-main-tab-keepalive-boost [data-nav-loading-copy] *,
+html[data-shuffle-post-auth-settle="1"] #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"],
+html[data-shuffle-post-auth-settle="1"] #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"] *,
+html[data-shuffle-post-auth-settle="1"] #sayittome-main-tab-keepalive-boost [data-loading-shell],
+html[data-main-tab-shuffle-slide="preparing"] #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"],
+html[data-main-tab-shuffle-slide="armed"] #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"],
+html[data-main-tab-shuffle-slide="running"] #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"],
+html[data-main-tab-shuffle-slide="preparing"] #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"] *,
+html[data-main-tab-shuffle-slide="armed"] #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"] *,
+html[data-main-tab-shuffle-slide="running"] #sayittome-main-tab-keepalive-boost [data-boost-access-state="loading"] * {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;

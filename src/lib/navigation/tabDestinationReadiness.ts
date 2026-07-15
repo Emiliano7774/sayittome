@@ -7,6 +7,17 @@ import { getShuffleDestinationVisualReadiness } from "@/lib/navigation/shuffleDe
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppress";
 import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
+import {
+  canClearDestinationGuardForPreviousHop,
+  completeHandoffGuardToken,
+  createHandoffGuardToken,
+  getActiveHandoffGuardTxId,
+  markHandoffGuardReady,
+  markHandoffGuardRevealStarted,
+  markHandoffGuardRouteCommitted,
+  registerHandoffGuardTrace,
+  type HandoffGuardDestination,
+} from "@/lib/navigation/tabHandoffDestinationGuard";
 
 export type TabDestinationVisualReadiness = {
   tabId: MainTabHref;
@@ -40,6 +51,14 @@ const CHATS_POST_AUTH_STABLE_FRAMES = 4;
 const CHATS_POST_AUTH_MIN_FRAMES_AFTER_HANDOFF = 4;
 /** Keep CSS settle after reveal so auth rebounds cannot flash "Cargando...". */
 const POST_REVEAL_SETTLE_HOLD_FRAMES = 5;
+/**
+ * Main-tab → Shuffle (esp. logged-in Boost→Shuffle): source Boost can stay
+ * non-frozen and flash BoostAccessGate loading after a short 5-frame settle.
+ * Match Boost/Chats post-reveal timing so orphan loading blocks release.
+ */
+const SHUFFLE_POST_REVEAL_SETTLE_HOLD_FRAMES = 12;
+const SHUFFLE_POST_REVEAL_MIN_HOLD_MS = 160;
+const SHUFFLE_POST_REVEAL_MAX_HOLD_MS = 400;
 /** Prod Boost auth rebind can land after ~100ms; hold longer than Chats/Shuffle. */
 const BOOST_POST_REVEAL_SETTLE_HOLD_FRAMES = 12;
 const BOOST_POST_REVEAL_MIN_HOLD_MS = 160;
@@ -383,8 +402,11 @@ export function beginTabPostAuthStabilityTracking(
 ) {
   const t = postAuthByTab[tab];
   // Preserve an in-flight post-reveal guard (sequence rebind must not cancel it).
+  // Boost AND Chats — ping-pong root was Boost-only keepPostReveal.
   const keepPostReveal =
-    tab === "/boost" && t.active && t.postRevealClearPending;
+    (tab === "/boost" || tab === "/chats") &&
+    t.active &&
+    t.postRevealClearPending;
   t.active = true;
   t.frames = 0;
   t.stableStreak = 0;
@@ -395,34 +417,57 @@ export function beginTabPostAuthStabilityTracking(
     t.postRevealClearPending = false;
   }
   resetTabDestinationReadinessStability(tab);
+
+  const source =
+    detail && typeof detail === "object" && "source" in detail
+      ? ((detail as { source?: MainTabHref | string }).source ?? null)
+      : null;
+  const existingTx = getActiveHandoffGuardTxId(tab as HandoffGuardDestination);
+  if (!existingTx || !keepPostReveal) {
+    createHandoffGuardToken(source, tab as HandoffGuardDestination);
+  }
+  markHandoffGuardRouteCommitted(tab as HandoffGuardDestination);
   syncTabPostAuthSettleDataset();
 
+  const txId = getActiveHandoffGuardTxId(tab as HandoffGuardDestination);
+
   if (tab === "/boost") {
-    armBoostSequenceHandoffSuppress(520);
+    armBoostSequenceHandoffSuppress(520, { txId });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_POST_COMMIT_STABILITY_WAIT", detail);
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
+      txId,
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
     traceTabShellNoLoading("TAB_HANDOFF_SEQUENCE_BOOST_REENTRY_STABLE", {
       phase: "begin",
       keepPostReveal,
+      txId,
       ...((detail && typeof detail === "object" ? detail : { detail }) as object),
     });
     if (keepPostReveal) {
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP", {
         via: "begin-preserve-post-reveal",
+        txId,
       });
     }
   } else if (tab === "/chats") {
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
+      txId,
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_AUTH_READY", {
       phase: "begin-wait",
+      txId,
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
+    if (keepPostReveal) {
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP", {
+        via: "begin-preserve-post-reveal",
+        txId,
+      });
+    }
   } else {
     traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_COMMIT_STABILITY_WAIT", detail);
     traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_AUTH_READY", {
@@ -436,12 +481,34 @@ export function clearTabPostAuthStabilityTracking(
   tab: PostAuthTab,
   detail?: unknown,
 ) {
+  const via =
+    detail && typeof detail === "object" && "via" in detail
+      ? String((detail as { via?: unknown }).via ?? "")
+      : "";
+  const destination =
+    detail && typeof detail === "object" && "destination" in detail
+      ? String((detail as { destination?: unknown }).destination ?? "")
+      : "";
+
+  if (
+    via.includes("left-destination") &&
+    destination &&
+    !canClearDestinationGuardForPreviousHop(tab, destination)
+  ) {
+    return;
+  }
+
+  const txId = getActiveHandoffGuardTxId(tab as HandoffGuardDestination);
   resetPostAuthTracker(tab);
+  if (txId) {
+    completeHandoffGuardToken(tab as HandoffGuardDestination, txId);
+  }
   syncTabPostAuthSettleDataset();
   if (detail !== undefined) {
     if (tab === "/boost") {
       traceTabShellNoLoading("TAB_HANDOFF_SEQUENCE_BOOST_REENTRY_STABLE", {
         phase: "clear",
+        txId,
         ...(typeof detail === "object" && detail ? detail : { detail }),
       });
     }
@@ -464,51 +531,74 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
   t.postRevealHoldStartedAt = Date.now();
   t.postRevealGuardEpochAt = t.postRevealHoldStartedAt;
 
+  const txId = getActiveHandoffGuardTxId(tab as HandoffGuardDestination);
+  markHandoffGuardRevealStarted(tab as HandoffGuardDestination, txId);
+
   const requiredFrames =
     tab === "/boost"
       ? BOOST_POST_REVEAL_SETTLE_HOLD_FRAMES
       : tab === "/chats"
         ? CHATS_POST_REVEAL_SETTLE_HOLD_FRAMES
-        : POST_REVEAL_SETTLE_HOLD_FRAMES;
+        : tab === "/shuffle"
+          ? SHUFFLE_POST_REVEAL_SETTLE_HOLD_FRAMES
+          : POST_REVEAL_SETTLE_HOLD_FRAMES;
   const requiredMs =
     tab === "/boost"
       ? BOOST_POST_REVEAL_MIN_HOLD_MS
       : tab === "/chats"
         ? CHATS_POST_REVEAL_MIN_HOLD_MS
-        : 0;
+        : tab === "/shuffle"
+          ? SHUFFLE_POST_REVEAL_MIN_HOLD_MS
+          : 0;
   const maxHoldMs =
     tab === "/boost"
       ? BOOST_POST_REVEAL_MAX_HOLD_MS
       : tab === "/chats"
         ? CHATS_POST_REVEAL_MAX_HOLD_MS
-        : 0;
+        : tab === "/shuffle"
+          ? SHUFFLE_POST_REVEAL_MAX_HOLD_MS
+          : 0;
 
   if (tab === "/boost") {
-    armBoostSequenceHandoffSuppress(Math.max(requiredMs + 360, 520));
+    armBoostSequenceHandoffSuppress(Math.max(requiredMs + 360, 520), { txId });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_START", {
       requiredFrames,
       requiredMs,
+      txId,
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_GUARD_START", {
       requiredFrames,
       requiredMs,
+      txId,
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_SETTLE_CSS_HELD", {
       phase: "post-reveal-guard",
+      txId,
     });
     traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_HELD", {
       phase: "post-reveal-guard",
+      txId,
     });
   } else if (tab === "/chats") {
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_START", {
       requiredFrames,
       requiredMs,
+      txId,
       ...(typeof detail === "object" && detail ? detail : { detail }),
     });
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_SETTLE_CSS_HELD", {
       phase: "post-reveal-guard",
+      txId,
+    });
+  } else if (tab === "/shuffle") {
+    traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_COMMIT_STABILITY_WAIT", {
+      phase: "post-reveal-guard",
+      requiredFrames,
+      requiredMs,
+      txId,
+      ...(typeof detail === "object" && detail ? detail : { detail }),
     });
   }
 
@@ -541,6 +631,27 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         )) ||
       detectOrphanMainLoadingText();
 
+    const orphanVisible =
+      tab === "/shuffle" ? detectOrphanMainLoadingText() : false;
+    if (orphanVisible) {
+      traceTabShellNoLoading("TAB_HANDOFF_ORPHAN_LOADING_DETECTED", {
+        tab,
+        txId,
+        layer: "source-or-global-nav-loading-copy",
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_ORPHAN_LOADING_BLOCKED_RELEASE", {
+        tab,
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_ORPHAN_LOADING_LAYER_CLASSIFIED", {
+        layer: "boost-access-gate-or-nav-loading-copy-outside-frozen-host",
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_ORPHAN_LOADING", {
+        tab,
+        txId,
+      });
+    }
+
     const heldMsTotal = Date.now() - postAuthByTab[tab].postRevealGuardEpochAt;
     const maxHoldExceeded = maxHoldMs > 0 && heldMsTotal >= maxHoldMs;
 
@@ -548,30 +659,37 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       postAuthByTab[tab].postRevealHoldFrames = 0;
       postAuthByTab[tab].postRevealHoldStartedAt = Date.now();
       if (tab === "/boost") {
-        armBoostSequenceHandoffSuppress(400);
+        armBoostSequenceHandoffSuppress(400, { txId });
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_BLOCKED", {
           tab,
           gateState,
+          txId,
         });
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_BLOCKED", {
           tab,
           gateState,
+          txId,
         });
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_AUTH_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
           tab,
+          txId,
         });
         traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_HELD", {
           phase: "rebound-extend",
+          txId,
         });
       } else if (tab === "/chats") {
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_BLOCKED", {
           tab,
+          txId,
         });
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
           tab,
+          txId,
         });
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_SETTLE_CSS_HELD", {
           phase: "rebound-extend",
+          txId,
         });
       } else {
         traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_POST_REVEAL_LOADING_REBOUND_BLOCKED", {
@@ -595,6 +713,15 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_READY_STABLE", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
       });
+    } else if (tab === "/shuffle" && !loading) {
+      traceTabShellNoLoading("TAB_HANDOFF_ORPHAN_LOADING_ABSENT_STABLE", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_LOGGED_IN_READY_AFTER_ORPHAN_CLEAR", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        txId,
+      });
     }
 
     postAuthByTab[tab].postRevealHoldFrames += 1;
@@ -608,50 +735,64 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
 
     if (tab === "/boost") {
       // Keep eligibility latch through sequence remount after settle CSS clears.
-      armBoostSequenceHandoffSuppress(360);
+      armBoostSequenceHandoffSuppress(360, { txId });
+      markHandoffGuardReady(tab as HandoffGuardDestination, txId);
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_PROD_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
         boostMaxExceeded: maxHoldExceeded,
+        txId,
       });
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
         maxHoldExceeded,
+        txId,
       });
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_SETTLE_CSS_RELEASED_AFTER_GUARD", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
+        txId,
       });
       traceTabShellNoLoading("TAB_HANDOFF_BOOST_SEQUENCE_SETTLE_CSS_RELEASED_AFTER_GUARD", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
+        txId,
       });
       traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_BOOST_PROD_TARGETED_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
+        txId,
       });
       traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_BOOST_SEQUENCE_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
+        txId,
       });
-      clearShuffleExitToMainTab();
+      clearShuffleExitToMainTab({ destination: "/boost", txId });
     } else if (tab === "/chats") {
+      markHandoffGuardReady(tab as HandoffGuardDestination, txId);
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
         maxHoldExceeded,
+        txId,
       });
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_SETTLE_CSS_RELEASED_AFTER_GUARD", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
+        txId,
       });
       traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_CHATS_PROD_SEQUENCE_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
+        txId,
       });
       // Drop any leftover Shuffle exit latch once Chats guard completed cleanly.
-      clearShuffleExitToMainTab();
+      clearShuffleExitToMainTab({ destination: "/chats", txId });
+    } else {
+      markHandoffGuardReady(tab as HandoffGuardDestination, txId);
+      clearShuffleExitToMainTab({ destination: "/shuffle", txId, force: true });
     }
 
     clearTabPostAuthStabilityTracking(tab, {
@@ -778,6 +919,16 @@ function evaluatePostAuthStability(
           frames: t.frames,
           phase: "pre-commit",
         });
+        if (orphanLoading) {
+          traceTabShellNoLoading("TAB_HANDOFF_ORPHAN_LOADING_DETECTED", {
+            frames: t.frames,
+            phase: "pre-reveal",
+          });
+          traceTabShellNoLoading("TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_ORPHAN_LOADING", {
+            frames: t.frames,
+            phase: "pre-reveal",
+          });
+        }
       }
     }
     if (gateLoading) {
@@ -1065,7 +1216,27 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_BOOST_SEQUENCE_MAIN_LOADING_TEXT_STABLE_ABSENT"
   | "TAB_HANDOFF_SHUFFLE_BOOST_SEQUENCE_READY"
   | "TAB_HANDOFF_BOOST_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP"
-  | "TAB_HANDOFF_EXIT_WATCHDOG_FORCE_PRESENT_NO_LOADING";
+  | "TAB_HANDOFF_EXIT_WATCHDOG_FORCE_PRESENT_NO_LOADING"
+  | "TAB_HANDOFF_GUARD_TOKEN_CREATED"
+  | "TAB_HANDOFF_GUARD_TOKEN_ROUTE_COMMITTED"
+  | "TAB_HANDOFF_GUARD_TOKEN_REVEAL_STARTED"
+  | "TAB_HANDOFF_GUARD_TOKEN_READY"
+  | "TAB_HANDOFF_GUARD_TOKEN_RELEASE_ALLOWED"
+  | "TAB_HANDOFF_GUARD_TOKEN_CLEANED"
+  | "TAB_HANDOFF_GUARD_TOKEN_CLEANUP_BLOCKED_STALE"
+  | "TAB_HANDOFF_GUARD_TOKEN_CLEANUP_BLOCKED_OTHER_DESTINATION"
+  | "TAB_HANDOFF_SETTLE_CSS_REF_HELD"
+  | "TAB_HANDOFF_SETTLE_CSS_REF_RELEASED"
+  | "TAB_HANDOFF_CANONICAL_IDLE_AFTER_GUARD"
+  | "TAB_HANDOFF_PREVIOUS_HOP_CLEANUP_IGNORED_FOR_ACTIVE_TOKEN"
+  | "TAB_HANDOFF_CHATS_GUARD_NOT_CLEARED_BY_PREVIOUS_HOP"
+  | "TAB_HANDOFF_ORPHAN_LOADING_DETECTED"
+  | "TAB_HANDOFF_ORPHAN_LOADING_BLOCKED_RELEASE"
+  | "TAB_HANDOFF_ORPHAN_LOADING_ABSENT_STABLE"
+  | "TAB_HANDOFF_SHUFFLE_LOGGED_IN_READY_AFTER_ORPHAN_CLEAR"
+  | "TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_ORPHAN_LOADING"
+  | "TAB_HANDOFF_ORPHAN_LOADING_DIRECT_COLD_ALLOWED"
+  | "TAB_HANDOFF_ORPHAN_LOADING_LAYER_CLASSIFIED";
 
 const diagRing: Array<{ at: number; event: TabShellNoLoadingDiagEvent; detail?: unknown }> =
   [];
@@ -1084,6 +1255,10 @@ export function traceTabShellNoLoading(
     w.__sayittomeTabShellNoLoadingDiag = { events: [...diagRing] };
   }
 }
+
+registerHandoffGuardTrace((event, detail) => {
+  traceTabShellNoLoading(event as TabShellNoLoadingDiagEvent, detail);
+});
 
 export function exportTabShellNoLoadingDiag() {
   return { events: [...diagRing] };

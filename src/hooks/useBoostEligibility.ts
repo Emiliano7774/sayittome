@@ -33,11 +33,16 @@ function isBoostHandoffSettleActive() {
   if (isBoostSequenceHandoffSuppressActive()) return true;
   const html = document.documentElement;
   const slide = html.dataset.mainTabShuffleSlide;
+  // Destination-scoped: prefer Boost settle/suppress over aggregate used by Chats.
+  // Also cover Boost→Shuffle while source Boost stays visible (orphan loading gap).
   return (
     html.dataset.boostPostCommitSettle === "1" ||
-    html.dataset.tabPostAuthSettle === "1" ||
+    html.dataset.shufflePostAuthSettle === "1" ||
     html.classList.contains("sayittome-main-tab-handoff-pending") ||
     html.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
+    html.classList.contains("sayittome-shuffle-handoff-pending") ||
+    (html.dataset.shuffleExitHandoffTarget === "/boost" &&
+      html.classList.contains("sayittome-shuffle-exit-handoff-pending")) ||
     slide === "preparing" ||
     slide === "armed" ||
     slide === "running"
