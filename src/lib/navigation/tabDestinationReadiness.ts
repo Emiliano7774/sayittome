@@ -9,6 +9,7 @@ import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppres
 import {
   armChatsSequenceHandoffSuppress,
   isChatsSequenceHandoffSuppressActive,
+  wasChatsHandoffSuppressRehydratedFromSession,
 } from "@/lib/chats/chatsHandoffSuppress";
 import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 import {
@@ -169,8 +170,33 @@ function syncTabPostAuthSettleDataset() {
 
 /** Arm Chats suppress and keep settle CSS datasets in sync. */
 function armChatsHandoffSuppressAndSettle(ms: number, txId: string | null | undefined) {
+  const flagTrue = isMainTabToShuffleMicroSlideEnabled();
   armChatsSequenceHandoffSuppress(ms, { txId });
   syncTabPostAuthSettleDataset();
+  if (flagTrue) {
+    traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_CHATS_ARMED_WITH_CANONICAL_FLAG", {
+      ms,
+      txId,
+      canonicalFlag: true,
+      rehydrated: wasChatsHandoffSuppressRehydratedFromSession(),
+    });
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_LOADING_BLOCKED_WITH_FLAG_TRUE", {
+      ms,
+      txId,
+    });
+  } else {
+    traceTabShellNoLoading("TAB_HANDOFF_FLAG_FALSE_ON_INTERNAL_HOP", {
+      ms,
+      txId,
+      canonicalFlag: false,
+    });
+  }
+  if (wasChatsHandoffSuppressRehydratedFromSession()) {
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_SUPPRESS_REHYDRATED_AFTER_REMOUNT", {
+      txId,
+      ms,
+    });
+  }
 }
 
 function chatsHostHasLayoutLoading(host: HTMLElement | null) {
@@ -1335,6 +1361,15 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_CHATS_SUPPRESS_HELD_AFTER_EXIT_CLEAR"
   | "TAB_HANDOFF_CHATS_LOADING_ABSENT_STABLE_AFTER_CLASS_CLEAR"
   | "TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_FRESH_CHATS_LOADING"
+  | "TAB_HANDOFF_SHUFFLE_CHATS_ARMED_WITH_CANONICAL_FLAG"
+  | "TAB_HANDOFF_CHATS_LOADING_BLOCKED_WITH_FLAG_TRUE"
+  | "TAB_HANDOFF_FLAG_FALSE_ON_INTERNAL_HOP"
+  | "TAB_HANDOFF_CHATS_SUPPRESS_REHYDRATED_AFTER_REMOUNT"
+  | "TAB_HANDOFF_FLAG_DESYNC_DETECTED"
+  | "TAB_HANDOFF_BUILD_SHA_MISMATCH"
+  | "TAB_HANDOFF_STALE_FALSE_BUNDLE_DETECTED"
+  | "TAB_HANDOFF_CANONICAL_FLAG_VERIFIED_PRE_INPUT"
+  | "TAB_HANDOFF_PROBE_FLAG_FIELD_AUDITED"
   | "TAB_HANDOFF_CHATS_DIRECT_COLD_LOADING_ALLOWED"
   | "TAB_HANDOFF_CHATS_TOKEN_RELEASE_AFTER_INBOX_READY"
   | "TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY"

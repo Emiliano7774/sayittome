@@ -95,6 +95,15 @@ export function isNavCaptureEnabled() {
   if (typeof window === "undefined") return false;
   if (window.location.search.includes("navcapture=1")) return true;
   if (window.localStorage.getItem("sayittome:nav-capture") === "1") return true;
+  // SoftNavigate remounts drop ?navcapture=1; keep probe attach alive for the
+  // same tab session so __microSlideActivationExport stays readable mid-hop.
+  try {
+    if (window.sessionStorage.getItem("sayittome:nav-capture-session") === "1") {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
   return process.env.NEXT_PUBLIC_NAV_CAPTURE === "1";
 }
 

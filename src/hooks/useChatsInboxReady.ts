@@ -69,12 +69,15 @@ export function explainChatsInboxSkeleton(inbox: InboxGateInput) {
 
   // During internal tab handoffs / post-reveal settle, never mount the
   // full-page skeleton on a transient auth.loading flicker — keep the prior
-  // empty/content surface. Covers fresh-anon sequence remounts after rebind.
+  // empty/content surface. Covers fresh-anon sequence remounts after rebind
+  // and SoftNavigate context-destroy remounts (session-rehydrated suppress).
   // Destination-scoped: Chats settle/suppress/token only (not Boost aggregate).
   // Direct cold /chats never arms chatsSequenceHandoffSuppress.
   if (typeof document !== "undefined") {
     const html = document.documentElement;
     const chatsTokenLive = Boolean(getActiveHandoffGuardToken("/chats"));
+    // isChatsSequenceHandoffSuppressActive hydrates from sessionStorage and
+    // re-applies data-chats-handoff-suppress before this gate decides.
     const chatsHandoffActive =
       isChatsSequenceHandoffSuppressActive() ||
       chatsTokenLive ||
@@ -82,6 +85,7 @@ export function explainChatsInboxSkeleton(inbox: InboxGateInput) {
       html.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
       html.dataset.chatsPostAuthSettle === "1" ||
       html.dataset.chatsHandoffSuppress === "1" ||
+      html.dataset.chatsHandoffSuppressRehydrated === "1" ||
       (html.dataset.shuffleExitHandoffTarget === "/chats" &&
         html.classList.contains("sayittome-shuffle-exit-handoff-pending")) ||
       html.dataset.mainTabShuffleSlide === "preparing" ||
