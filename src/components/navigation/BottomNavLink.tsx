@@ -31,6 +31,8 @@ import {
   ghostFrameWatchBegin,
   ghostFrameWatchInspect,
 } from "@/lib/perf/ghostFrameTrace";
+import { writeChatsPrepaintHandoffMarker } from "@/lib/chats/chatsPrepaintHandoff";
+import { armChatsSequenceHandoffSuppress } from "@/lib/chats/chatsHandoffSuppress";
 
 type Props = {
   href: string;
@@ -78,6 +80,15 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
         if (isMainTabHref(href)) {
           pinMainTabKeepAlive();
           markMainTabVisited(href);
+        }
+        // Pre-paint: Shuffle→Chats must arm session+DOM suppress before SoftNavigate
+        // can destroy the heap — React effects / module hydrate are too late.
+        if (
+          href === "/chats" &&
+          isTabShellNoLoadingTransitionContractActive()
+        ) {
+          writeChatsPrepaintHandoffMarker({ from: "/shuffle" });
+          armChatsSequenceHandoffSuppress(520, { from: "/shuffle" });
         }
       }
     }

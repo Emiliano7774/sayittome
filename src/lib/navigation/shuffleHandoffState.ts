@@ -1,6 +1,8 @@
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { isMainTabToShufflePresentationOwned } from "@/lib/navigation/mainTabToShuffleTransition";
 import { canClearShuffleExitLatch } from "@/lib/navigation/tabHandoffDestinationGuard";
+import { writeChatsPrepaintHandoffMarker } from "@/lib/chats/chatsPrepaintHandoff";
+import { armChatsSequenceHandoffSuppress } from "@/lib/chats/chatsHandoffSuppress";
 
 let shuffleRevealDeferred = false;
 let deferSourcePath = "/chats";
@@ -67,6 +69,11 @@ export function beginShuffleExitToMainTab(target: MainTabHref) {
       "data-shuffle-exit-handoff-target",
       target,
     );
+  }
+  // Belt-and-suspenders: if pointerdown missed, still seed prepaint sync before remount.
+  if (target === "/chats" && typeof window !== "undefined") {
+    writeChatsPrepaintHandoffMarker({ from: "/shuffle" });
+    armChatsSequenceHandoffSuppress(520, { from: "/shuffle" });
   }
   notify();
 }

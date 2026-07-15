@@ -8,9 +8,11 @@ import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFla
 import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppress";
 import {
   armChatsSequenceHandoffSuppress,
+  handoffChatsPrepaintToReactSuppress,
   isChatsSequenceHandoffSuppressActive,
   wasChatsHandoffSuppressRehydratedFromSession,
 } from "@/lib/chats/chatsHandoffSuppress";
+import { isChatsPrepaintHandoffActive } from "@/lib/chats/chatsPrepaintHandoff";
 import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 import {
   canClearDestinationGuardForPreviousHop,
@@ -169,9 +171,13 @@ function syncTabPostAuthSettleDataset() {
 }
 
 /** Arm Chats suppress and keep settle CSS datasets in sync. */
-function armChatsHandoffSuppressAndSettle(ms: number, txId: string | null | undefined) {
+function armChatsHandoffSuppressAndSettle(
+  ms: number,
+  txId: string | null | undefined,
+  from?: string | null,
+) {
   const flagTrue = isMainTabToShuffleMicroSlideEnabled();
-  armChatsSequenceHandoffSuppress(ms, { txId });
+  armChatsSequenceHandoffSuppress(ms, { txId, from: from ?? null });
   syncTabPostAuthSettleDataset();
   if (flagTrue) {
     traceTabShellNoLoading("TAB_HANDOFF_SHUFFLE_CHATS_ARMED_WITH_CANONICAL_FLAG", {
@@ -195,6 +201,13 @@ function armChatsHandoffSuppressAndSettle(ms: number, txId: string | null | unde
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_SUPPRESS_REHYDRATED_AFTER_REMOUNT", {
       txId,
       ms,
+    });
+  }
+  if (isChatsPrepaintHandoffActive()) {
+    traceTabShellNoLoading("TAB_HANDOFF_CHATS_PREPAINT_LOADING_BLOCKED", {
+      txId,
+      ms,
+      from: from ?? null,
     });
   }
 }
@@ -561,7 +574,7 @@ export function beginTabPostAuthStabilityTracking(
       });
     }
   } else if (tab === "/chats") {
-    armChatsHandoffSuppressAndSettle(520, txId);
+    armChatsHandoffSuppressAndSettle(520, txId, source ? String(source) : null);
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
       txId,
@@ -870,6 +883,10 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_LOGGED_IN_READY_AFTER_REBIND", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         txId,
+      });
+      // React suppress owns the window; clear short-lived prepaint marker/dataset.
+      handoffChatsPrepaintToReactSuppress({
+        reason: "loading-absent-stable",
       });
     } else if (tab === "/shuffle" && !loading) {
       traceTabShellNoLoading("TAB_HANDOFF_ORPHAN_LOADING_ABSENT_STABLE", {
@@ -1365,6 +1382,14 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_CHATS_LOADING_BLOCKED_WITH_FLAG_TRUE"
   | "TAB_HANDOFF_FLAG_FALSE_ON_INTERNAL_HOP"
   | "TAB_HANDOFF_CHATS_SUPPRESS_REHYDRATED_AFTER_REMOUNT"
+  | "TAB_HANDOFF_CHATS_PREPAINT_MARKER_WRITTEN"
+  | "TAB_HANDOFF_CHATS_PREPAINT_SUPPRESS_INSTALLED"
+  | "TAB_HANDOFF_CHATS_PREPAINT_SUPPRESS_MISSING_BEFORE_PAINT"
+  | "TAB_HANDOFF_CHATS_PREPAINT_LOADING_BLOCKED"
+  | "TAB_HANDOFF_CHATS_PREPAINT_TO_REACT_SUPPRESS_HANDOFF"
+  | "TAB_HANDOFF_CHATS_PREPAINT_SUPPRESS_CLEARED"
+  | "TAB_HANDOFF_REMOUNT_EXPORT_PENDING_SUPPRESSED"
+  | "TAB_HANDOFF_REMOUNT_EXPORT_PENDING_UNPROTECTED_FAIL"
   | "TAB_HANDOFF_FLAG_DESYNC_DETECTED"
   | "TAB_HANDOFF_BUILD_SHA_MISMATCH"
   | "TAB_HANDOFF_STALE_FALSE_BUNDLE_DETECTED"

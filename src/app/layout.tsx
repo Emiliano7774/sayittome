@@ -6,6 +6,7 @@ import VisualViewportInset from "@/components/layout/VisualViewportInset";
 import Providers from "@/components/providers/Providers";
 import AppNavigation from "@/components/navigation/AppNavigation";
 import { MainTabShellProvider } from "@/contexts/MainTabShellContext";
+import { CHATS_PREPAINT_BOOTSTRAP_SCRIPT } from "@/lib/chats/chatsPrepaintBootstrapInline";
 
 export const metadata: Metadata = {
   title: "SayItToMe",
@@ -37,6 +38,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
+      <head>
+        {/* Pre-paint: SoftNavigate remount may paint Chats skeleton before React
+            hydrates suppress. Inline bootstrap reads session marker / until and
+            installs CSS datasets before first visible paint. Direct cold has no marker. */}
+        <script
+          dangerouslySetInnerHTML={{ __html: CHATS_PREPAINT_BOOTSTRAP_SCRIPT }}
+        />
+      </head>
       <body>
         <SayItToMeVisualPolish />
         <VisualViewportInset />

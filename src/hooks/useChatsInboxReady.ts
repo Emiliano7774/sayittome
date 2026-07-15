@@ -1,5 +1,6 @@
 import { readInboxSnapshotWithMeta } from "@/lib/chat/inboxSnapshot";
 import { isChatsSequenceHandoffSuppressActive } from "@/lib/chats/chatsHandoffSuppress";
+import { isChatsPrepaintHandoffActive } from "@/lib/chats/chatsPrepaintHandoff";
 import { getActiveHandoffGuardToken } from "@/lib/navigation/tabHandoffDestinationGuard";
 
 const INBOX_HYDRATED_SESSION_KEY = "sayittome:inbox:hydrated:v1";
@@ -78,13 +79,16 @@ export function explainChatsInboxSkeleton(inbox: InboxGateInput) {
     const chatsTokenLive = Boolean(getActiveHandoffGuardToken("/chats"));
     // isChatsSequenceHandoffSuppressActive hydrates from sessionStorage and
     // re-applies data-chats-handoff-suppress before this gate decides.
+    // Prepaint marker/DOM covers SoftNavigate remount before React effects.
     const chatsHandoffActive =
       isChatsSequenceHandoffSuppressActive() ||
+      isChatsPrepaintHandoffActive() ||
       chatsTokenLive ||
       html.classList.contains("sayittome-main-tab-handoff-pending") ||
       html.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
       html.dataset.chatsPostAuthSettle === "1" ||
       html.dataset.chatsHandoffSuppress === "1" ||
+      html.dataset.prepaintChatsHandoffSuppress === "1" ||
       html.dataset.chatsHandoffSuppressRehydrated === "1" ||
       (html.dataset.shuffleExitHandoffTarget === "/chats" &&
         html.classList.contains("sayittome-shuffle-exit-handoff-pending")) ||
