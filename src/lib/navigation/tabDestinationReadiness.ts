@@ -6,6 +6,7 @@ import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { getShuffleDestinationVisualReadiness } from "@/lib/navigation/shuffleDestinationReadiness";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 import { armBoostSequenceHandoffSuppress } from "@/lib/boost/boostHandoffSuppress";
+import { armChatsSequenceHandoffSuppress } from "@/lib/chats/chatsHandoffSuppress";
 import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 import {
   canClearDestinationGuardForPreviousHop,
@@ -452,6 +453,7 @@ export function beginTabPostAuthStabilityTracking(
       });
     }
   } else if (tab === "/chats") {
+    armChatsSequenceHandoffSuppress(520, { txId });
     traceTabShellNoLoading("TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY", {
       phase: "begin",
       txId,
@@ -679,6 +681,19 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
           txId,
         });
       } else if (tab === "/chats") {
+        armChatsSequenceHandoffSuppress(400, { txId });
+        traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_LOADING_DETECTED", {
+          tab,
+          txId,
+        });
+        traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_LOADING_BLOCKED_RELEASE", {
+          tab,
+          txId,
+        });
+        traceTabShellNoLoading("TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_CHATS_LOADING", {
+          tab,
+          txId,
+        });
         traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_BLOCKED", {
           tab,
           txId,
@@ -709,9 +724,17 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
         frames: postAuthByTab[tab].postRevealHoldFrames,
       });
     } else if (tab === "/chats" && !loading) {
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_LOADING_ABSENT_STABLE", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        txId,
+      });
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_MAIN_LOADING_TEXT_STABLE_ABSENT", {});
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_INBOX_READY_STABLE", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_LOGGED_IN_READY_AFTER_REBIND", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        txId,
       });
     } else if (tab === "/shuffle" && !loading) {
       traceTabShellNoLoading("TAB_HANDOFF_ORPHAN_LOADING_ABSENT_STABLE", {
@@ -771,8 +794,17 @@ export function scheduleClearTabPostAuthStabilityAfterReveal(
       });
       clearShuffleExitToMainTab({ destination: "/boost", txId });
     } else if (tab === "/chats") {
+      // Keep inbox skeleton suppressed through post-settle auth flicker (logged-in).
+      // Direct cold /chats never arms this window.
+      armChatsSequenceHandoffSuppress(maxHoldExceeded ? 480 : 360, { txId });
       markHandoffGuardReady(tab as HandoffGuardDestination, txId);
       traceTabShellNoLoading("TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_READY", {
+        frames: postAuthByTab[tab].postRevealHoldFrames,
+        heldMs: heldMsTotal,
+        maxHoldExceeded,
+        txId,
+      });
+      traceTabShellNoLoading("TAB_HANDOFF_CHATS_TOKEN_RELEASE_AFTER_INBOX_READY", {
         frames: postAuthByTab[tab].postRevealHoldFrames,
         heldMs: heldMsTotal,
         maxHoldExceeded,
@@ -1168,6 +1200,13 @@ export type TabShellNoLoadingDiagEvent =
   | "TAB_HANDOFF_CHATS_AUTH_READY"
   | "TAB_HANDOFF_CHATS_INBOX_READY"
   | "TAB_HANDOFF_CHATS_INBOX_LOADING_BLOCKED"
+  | "TAB_HANDOFF_CHATS_INBOX_LOADING_DETECTED"
+  | "TAB_HANDOFF_CHATS_INBOX_LOADING_BLOCKED_RELEASE"
+  | "TAB_HANDOFF_CHATS_INBOX_LOADING_ABSENT_STABLE"
+  | "TAB_HANDOFF_CHATS_LOGGED_IN_READY_AFTER_REBIND"
+  | "TAB_HANDOFF_CANONICAL_IDLE_BLOCKED_CHATS_LOADING"
+  | "TAB_HANDOFF_CHATS_DIRECT_COLD_LOADING_ALLOWED"
+  | "TAB_HANDOFF_CHATS_TOKEN_RELEASE_AFTER_INBOX_READY"
   | "TAB_HANDOFF_CHATS_POST_COMMIT_STABILITY_READY"
   | "TAB_HANDOFF_CHATS_POST_REVEAL_LOADING_REBOUND_BLOCKED"
   | "TAB_HANDOFF_CHATS_PROD_SEQUENCE_REBOUND_GUARD_START"

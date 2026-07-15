@@ -1,4 +1,6 @@
 import { readInboxSnapshotWithMeta } from "@/lib/chat/inboxSnapshot";
+import { isChatsSequenceHandoffSuppressActive } from "@/lib/chats/chatsHandoffSuppress";
+import { getActiveHandoffGuardToken } from "@/lib/navigation/tabHandoffDestinationGuard";
 
 const INBOX_HYDRATED_SESSION_KEY = "sayittome:inbox:hydrated:v1";
 
@@ -68,22 +70,25 @@ export function explainChatsInboxSkeleton(inbox: InboxGateInput) {
   // During internal tab handoffs / post-reveal settle, never mount the
   // full-page skeleton on a transient auth.loading flicker — keep the prior
   // empty/content surface. Covers fresh-anon sequence remounts after rebind.
-  // Destination-scoped: do not treat Boost-only aggregate settle as Chats suppress
-  // once Chats settle clears (ping-pong / shared tabPostAuthSettle).
-  if (
-    typeof document !== "undefined" &&
-    (document.documentElement.classList.contains("sayittome-main-tab-handoff-pending") ||
-      document.documentElement.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
-      document.documentElement.dataset.chatsPostAuthSettle === "1" ||
-      (document.documentElement.dataset.shuffleExitHandoffTarget === "/chats" &&
-        document.documentElement.classList.contains(
-          "sayittome-shuffle-exit-handoff-pending",
-        )) ||
-      document.documentElement.dataset.mainTabShuffleSlide === "preparing" ||
-      document.documentElement.dataset.mainTabShuffleSlide === "armed" ||
-      document.documentElement.dataset.mainTabShuffleSlide === "running")
-  ) {
-    return { show: false, reason: "handoff-suppress-skeleton" as const };
+  // Destination-scoped: Chats settle/suppress/token only (not Boost aggregate).
+  // Direct cold /chats never arms chatsSequenceHandoffSuppress.
+  if (typeof document !== "undefined") {
+    const html = document.documentElement;
+    const chatsTokenLive = Boolean(getActiveHandoffGuardToken("/chats"));
+    const chatsHandoffActive =
+      isChatsSequenceHandoffSuppressActive() ||
+      chatsTokenLive ||
+      html.classList.contains("sayittome-main-tab-handoff-pending") ||
+      html.classList.contains("sayittome-shuffle-exit-handoff-pending") ||
+      html.dataset.chatsPostAuthSettle === "1" ||
+      (html.dataset.shuffleExitHandoffTarget === "/chats" &&
+        html.classList.contains("sayittome-shuffle-exit-handoff-pending")) ||
+      html.dataset.mainTabShuffleSlide === "preparing" ||
+      html.dataset.mainTabShuffleSlide === "armed" ||
+      html.dataset.mainTabShuffleSlide === "running";
+    if (chatsHandoffActive) {
+      return { show: false, reason: "handoff-suppress-skeleton" as const };
+    }
   }
 
   if (inbox.loading) {
