@@ -1,4 +1,5 @@
 import {
+  activateShuffleTabSurface,
   keepPresentedShuffleSurfaceForRouteBridge,
   releasePresentedShuffleOwnerSurface,
 } from "@/lib/navigation/shuffleKeepAlive";
@@ -1186,7 +1187,9 @@ function completeFinalShufflePresentationHandoff(
 
   cancelPostSettleBridgeObservation();
   clearSlideAnimationDomState();
-  releasePresentedShuffleOwnerSurface();
+  // Do not freeze here: freezing + dropping bridge CSS before legacy activate
+  // briefly re-shows the source main tab (post-arrival second paint).
+  releasePresentedShuffleOwnerSurface({ freeze: false });
 
   if (runtime.latchArmedAtMono !== null) {
     latchLifetimeSamplesMs.push(monoMs() - runtime.latchArmedAtMono);
@@ -1212,15 +1215,27 @@ function completeFinalShufflePresentationHandoff(
   runtime.postSettleBridgeTransactionId = null;
   runtime.bridgeStartedAtMono = null;
   runtime.bridgeObserverOwnerModuleId = null;
-  if (typeof document !== "undefined") {
-    document.documentElement.removeAttribute("data-post-settle-route-bridge");
-  }
   pushTrace("POST_SETTLE_ROUTE_BRIDGE_COMPLETED", {
     readiness: finalReadiness,
     note: `navSeq=${releasedSeq ?? "none"}|reason=${reason}`,
   });
 
+  // Clear ownership first so activate/present are not blocked, while bridge CSS
+  // still keeps the host presentable for this synchronous turn.
   clearTransactionRef("completeFinalShufflePresentationHandoff", reason);
+  activateShuffleTabSurface({ microSlideSettle: true });
+
+  // Drop bridge CSS only after the host is actually presented/visible.
+  if (typeof document !== "undefined") {
+    const host = document.getElementById("sayittome-shuffle-keepalive-host");
+    const presentedVisible =
+      !!host &&
+      host.classList.contains("sayittome-shuffle-keepalive-visible") &&
+      !host.classList.contains("sayittome-shuffle-keepalive-frozen");
+    if (presentedVisible) {
+      document.documentElement.removeAttribute("data-post-settle-route-bridge");
+    }
+  }
   notify();
   return true;
 }

@@ -679,6 +679,14 @@ body.sayittome-shuffle-surface-active:not(
   pointer-events: auto !important;
 }
 
+/* While post-settle bridge owns presentation, never re-show source main tabs
+   even if the host class briefly thrash — prevents post-arrival second paint. */
+html[data-post-settle-route-bridge] body.sayittome-shuffle-surface-active
+  .sayittome-main-tab-keepalive-visible {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* One scroll surface inside shuffle — touch swipe works, no OS scrollbar chrome. */
 #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible main[data-scroll-root] {
   height: 100%;

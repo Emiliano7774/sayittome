@@ -491,10 +491,23 @@ export function keepPresentedShuffleSurfaceForRouteBridge() {
   return true;
 }
 
-/** Hide prep owner only after final route surface owns presentation. */
-export function releasePresentedShuffleOwnerSurface() {
+export type ReleasePresentedShuffleOwnerOptions = {
+  /**
+   * Abort / cleanup paths freeze the prep host.
+   * Successful final handoff must keep the host visible and call
+   * `activateShuffleTabSurface` before dropping route-bridge CSS — freezing
+   * here creates a post-arrival source-tab flash (second paint).
+   */
+  freeze?: boolean;
+};
+
+/** Drop route-bridge owner chrome; freeze only when not promoting to final presentation. */
+export function releasePresentedShuffleOwnerSurface(
+  options?: ReleasePresentedShuffleOwnerOptions,
+) {
   if (typeof document === "undefined") return;
 
+  const freeze = options?.freeze !== false;
   const host = document.getElementById("sayittome-shuffle-keepalive-host");
   if (host) {
     const tx = getMainTabToShuffleTransaction();
@@ -521,9 +534,17 @@ export function releasePresentedShuffleOwnerSurface() {
         },
       );
     }
+    if (!freeze) {
+      // Keep continuous presentation across bridge → final ownership.
+      host.classList.remove("sayittome-shuffle-keepalive-frozen");
+      host.classList.add("sayittome-shuffle-keepalive-visible");
+      host.setAttribute("aria-hidden", "false");
+    }
   }
 
-  freezeShuffleKeepAliveHostSync();
+  if (freeze) {
+    freezeShuffleKeepAliveHostSync();
+  }
   notifyKeepAliveListeners();
 }
 
@@ -732,29 +753,45 @@ export function activateShuffleTabSurface(options?: { microSlideSettle?: boolean
 
   restorePinnedShuffleWindowSync();
 
-  const warmHop =
-    isShuffleDestinationWarmIntentActive() ||
-    isShuffleRevealDeferred() ||
-    isShuffleHandoffPreparing() ||
-    isValidWarmShuffleHandoffActive();
-  if (warmHop) {
-    if (!canActivateShuffleWarmHandoff()) return;
-  } else if (!isShuffleVisualHandoffReady() && !canActivateShuffleWarmHandoff()) {
-    return;
+  // Final post-settle handoff already validated DOM readiness. Do not let warm
+  // geometry gates no-op activate after ownership was intentionally released —
+  // that re-freezes the host once route-bridge CSS is cleared (post-arrival flash).
+  if (!options?.microSlideSettle) {
+    const warmHop =
+      isShuffleDestinationWarmIntentActive() ||
+      isShuffleRevealDeferred() ||
+      isShuffleHandoffPreparing() ||
+      isValidWarmShuffleHandoffActive();
+    if (warmHop) {
+      if (!canActivateShuffleWarmHandoff()) return;
+    } else if (!isShuffleVisualHandoffReady() && !canActivateShuffleWarmHandoff()) {
+      return;
+    }
   }
 
   markAtomicVisualHandoffReady();
 
-  if (!revealShuffleKeepAliveHostSync("activateShuffleTabSurface")) return;
+  if (options?.microSlideSettle) {
+    const host = document.getElementById("sayittome-shuffle-keepalive-host");
+    if (!host) return;
+    host.classList.remove("sayittome-shuffle-keepalive-frozen");
+    host.classList.add("sayittome-shuffle-keepalive-visible");
+    host.setAttribute("aria-hidden", "false");
+    recordLegacyRevealLifecycle("activateShuffleTabSurface", {
+      microSlideSettle: true,
+      executed: true,
+    });
+  } else if (!revealShuffleKeepAliveHostSync("activateShuffleTabSurface")) {
+    return;
+  }
 
   setNavCapturePhase("SWAPPING_SHUFFLE");
   markNavCaptureDetail("imperative-reveal-shuffle-host");
 
   presentShuffleSurface();
   finishShuffleHandoffPreparing();
-  if (!options?.microSlideSettle) {
-    settleShuffleDestinationWarmIntent();
-  }
+  // Always settle warm intent on activate — final handoff must leave deferred clear.
+  settleShuffleDestinationWarmIntent();
   commitAtomicVisualHandoff();
   setNavCapturePhase("SHUFFLE_PRESENTED");
   setNavCaptureSurface("SHUFFLE");
