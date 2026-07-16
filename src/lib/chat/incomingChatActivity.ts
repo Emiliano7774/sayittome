@@ -1,13 +1,17 @@
 import type { InboxChat } from "@/hooks/useChatsInbox";
-import { isProfileAnonChatId, parseProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { profileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
 import {
   isAnonVisitorProfileChat,
   isIncomingAnonChatForOwner,
+  profileAnonSenderFromChat,
 } from "@/lib/chat/inboxPeerTitle";
 import { isProfileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
 
+/**
+ * True viewer identity aliases only. Never include peer anon IDs for a profile
+ * owner — that poisons unread/mark-read and treats inbound anon replies as "own".
+ */
 export function collectViewerSenderIds(
   chat: InboxChat,
   viewerId: string,
@@ -23,21 +27,23 @@ export function collectViewerSenderIds(
   add(firebaseUid);
   if (firebaseUid) add(profileReplyAuthorId(firebaseUid));
 
-  const storedAnon = String(chat.anonSessionId || "").trim();
-  if (storedAnon.startsWith("anon_")) add(storedAnon);
-
-  const chatId = chat.canonicalChatId || chat.id;
-  if (isProfileAnonChatId(chatId)) {
-    const parsedAnon = parseProfileAnonChatId(chatId).senderId;
-    if (parsedAnon.startsWith("anon_")) add(parsedAnon);
-  }
-
+  const threadAnon = profileAnonSenderFromChat(chat);
   const liveAnonId = getChatAnonSenderId();
-  if (liveAnonId.startsWith("anon_")) add(liveAnonId);
+  const viewerIsAnonSession = viewerId.startsWith("anon_");
+  const viewerIsThreadAnonVisitor =
+    viewerIsAnonSession || isAnonVisitorProfileChat(chat, firebaseUid);
 
-  if (Array.isArray(chat.participantes)) {
-    for (const participant of chat.participantes) {
-      if (participant.startsWith("anon_")) add(participant);
+  // Anon visitor aliases only when this viewer is that visitor.
+  if (viewerIsThreadAnonVisitor) {
+    if (viewerIsAnonSession) add(viewerId);
+    if (threadAnon.startsWith("anon_") && (!viewerIsAnonSession || threadAnon === viewerId)) {
+      if (threadAnon === viewerId || threadAnon === liveAnonId) add(threadAnon);
+    }
+    if (
+      liveAnonId.startsWith("anon_") &&
+      (liveAnonId === viewerId || liveAnonId === threadAnon)
+    ) {
+      add(liveAnonId);
     }
   }
 
@@ -83,16 +89,14 @@ export function wasChatReadOnServer(
   viewerId: string,
   firebaseUid = "",
 ) {
-  if (isOwnInboxLastSender(chat, viewerId, firebaseUid)) {
-    return true;
-  }
-
   const sender = String(chat.lastMessageSender || "").trim();
   const readBy = chat.readBy || {};
   const incomingForViewer =
     isIncomingProfileReplyForAnonVisitor(sender, viewerId, firebaseUid, chat) ||
     isIncomingAnonMessageForProfileOwner(sender, firebaseUid, chat);
 
+  // Inbound replies must be evaluated before "own last sender ⇒ read". Peer anon
+  // IDs used to be misclassified as own and hid unread forever.
   if (incomingForViewer) {
     const viewerIds = [...collectViewerSenderIds(chat, viewerId, firebaseUid)];
 
@@ -110,6 +114,10 @@ export function wasChatReadOnServer(
         chat.unreadCounts[id] === 0,
     );
     return explicitlyRead;
+  }
+
+  if (isOwnInboxLastSender(chat, viewerId, firebaseUid)) {
+    return true;
   }
 
   if (readBy[viewerId] === true) return true;

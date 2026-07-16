@@ -118,48 +118,58 @@ export function clearPendingVisualTab() {
 
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
   const path = normalizePath(pathname);
+  const onConcreteMainTab =
+    (MAIN_TAB_HREFS as readonly string[]).includes(path) && path !== "/shuffle";
 
-  if (isMainTabToShufflePresentationOwned()) {
+  // Shuffle→main exit latch: hide all main panels while Shuffle still owns paint.
+  if (isShuffleExitToMainTabPending()) {
+    return false;
+  }
+
+  // Profile (/u/...), chat threads (/chat/...), and any other non-main-tab route:
+  // keep panels mounted for instant return, but never paint sticky presented /
+  // pending / handoff tabs underneath in-flow pages (transparent stack / double UI).
+  if (!(MAIN_TAB_HREFS as readonly string[]).includes(path)) {
+    return false;
+  }
+
+  // While already on a concrete main-tab route, pathname/presented win over stale
+  // main→shuffle ownership or entry defer (e.g. /stories must never paint /chats).
+  if (!onConcreteMainTab && isMainTabToShufflePresentationOwned()) {
     const source = getMainTabToShuffleTransaction()?.source;
     if (source) {
       return href === (`/${source}` as MainTabHref);
     }
   }
 
-  // Profile (/u/...), chat threads (/chat/...), and any other non-main-tab route:
-  // keep panels mounted for instant return, but never paint sticky presented /
-  // pending / handoff tabs underneath in-flow pages (transparent stack / double UI).
-  // Must run before atomic handoff + pendingVisualTab, which otherwise keep the
-  // prior main tab "visible" while pathname is already /u/... or /chat/....
-  if (!(MAIN_TAB_HREFS as readonly string[]).includes(path)) {
-    return false;
-  }
-
-  if (path === "/shuffle" && !isShuffleExitToMainTabPending()) {
-    return false;
-  }
-
-  if (isShuffleExitToMainTabPending()) {
-    return false;
-  }
-
-  if (isShuffleSurfacePresented() && !isShuffleExitToMainTabPending()) {
+  if (path === "/shuffle") {
+    if (isShuffleSurfacePresented()) {
+      return false;
+    }
+    if (isShuffleRevealDeferred()) {
+      return getShuffleDeferSourcePath() === href;
+    }
+    if (isShuffleKeepAliveActive() && !isShuffleSurfacePresented()) {
+      return getShuffleDeferSourcePath() === href;
+    }
     return false;
   }
 
   if (isAtomicMainTabHandoffActive()) {
-    return getPresentedMainTab(pathname) === href;
+    const presented = getPresentedMainTab(pathname);
+    // If handoff presented lags behind an already-routed destination, prefer route.
+    if (
+      onConcreteMainTab &&
+      (MAIN_TAB_HREFS as readonly string[]).includes(presented) &&
+      presented !== path
+    ) {
+      return path === href;
+    }
+    return presented === href;
   }
 
-  if (isShuffleRevealDeferred()) {
-    return getShuffleDeferSourcePath() === href;
-  }
-
-  if (
-    isShuffleKeepAliveActive() &&
-    path === "/shuffle" &&
-    !isShuffleSurfacePresented()
-  ) {
+  // Entry defer must not outlive landing on a different main tab.
+  if (isShuffleRevealDeferred() && !onConcreteMainTab) {
     return getShuffleDeferSourcePath() === href;
   }
 
@@ -173,6 +183,9 @@ export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
 
   const presented = getPresentedMainTab(pathname);
   if ((MAIN_TAB_HREFS as readonly string[]).includes(presented)) {
+    if (onConcreteMainTab && presented !== path) {
+      return path === href;
+    }
     return presented === href;
   }
   return path === href;

@@ -9,7 +9,10 @@ function isBlockedRoute(pathname: string) {
   return INBOX_IDLE_BLOCK_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
-/** Full inbox Firestore queries: shuffle, chats list, and open chat threads. */
+/**
+ * Full inbox Firestore queries for badge + list unread while bottom nav is live.
+ * Reuses the existing inbox hooks — no extra listeners/polling.
+ */
 export function shouldEnableFullInboxListeners(pathname: string) {
   if (!pathname || pathname === "/") return false;
   if (isBlockedRoute(pathname)) return false;
@@ -17,7 +20,14 @@ export function shouldEnableFullInboxListeners(pathname: string) {
   return (
     pathname === "/shuffle" ||
     pathname === "/chats" ||
-    pathname.startsWith("/chat/")
+    pathname.startsWith("/chat/") ||
+    pathname === "/stories" ||
+    pathname.startsWith("/stories/") ||
+    pathname === "/boost" ||
+    pathname.startsWith("/boost/") ||
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/") ||
+    pathname.startsWith("/u/")
   );
 }
 

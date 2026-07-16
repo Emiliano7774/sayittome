@@ -10,6 +10,7 @@ import { SettingsRouteContent } from "@/app/settings/page";
 import { StoriesRouteContent } from "@/app/stories/page";
 import {
   commitPresentedMainTabIfReady,
+  forcePresentMainTabAfterStableExit,
   getAtomicMainTabHandoffVersion,
   onMainTabRouteChange,
   seedPresentedMainTab,
@@ -30,8 +31,11 @@ import {
   syncPendingVisualTabWithPathname,
 } from "@/lib/navigation/mainTabKeepAlive";
 import {
+  clearShuffleExitToMainTab,
+  clearStaleShuffleEntryHandoffForMainTabDestination,
   getShuffleDeferSourcePath,
   getShuffleHandoffVersion,
+  isShuffleExitToMainTabPending,
   isShuffleRevealDeferred,
   subscribeShuffleHandoffState,
 } from "@/lib/navigation/shuffleHandoffState";
@@ -66,6 +70,15 @@ const HANDOFF_FRAME_BUDGET = 120;
 const NO_LOADING_HANDOFF_FRAME_BUDGET = 360;
 
 function resolveMainTabPanelPath(pathname: string) {
+  const path = pathname.split("?")[0].split("#")[0];
+  const onConcreteMainTab =
+    (listMainTabKeepAliveHrefs() as readonly string[]).includes(path) &&
+    path !== "/shuffle";
+
+  // Once the router is on a concrete main tab, never remap the panel path back
+  // to a stale Shuffle entry source (commonly /chats).
+  if (onConcreteMainTab) return path;
+
   if (isMainTabToShufflePresentationOwned()) {
     const source = getMainTabToShuffleTransaction()?.source;
     if (source) return `/${source}`;
@@ -76,7 +89,7 @@ function resolveMainTabPanelPath(pathname: string) {
       return defer;
     }
   }
-  return pathname.split("?")[0].split("#")[0];
+  return path;
 }
 
 export default function MainTabKeepAliveHost() {
@@ -147,11 +160,31 @@ export default function MainTabKeepAliveHost() {
     }
 
     const path = pathname.split("?")[0].split("#")[0];
-    if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(path)) {
-      const href = path as MainTabHref;
+    const livePath =
+      typeof window !== "undefined"
+        ? window.location.pathname.split("?")[0].split("#")[0]
+        : path;
+    // Prefer the live browser URL when keep-alive pathname lags (history sync /
+    // Next usePathname desync). Otherwise Stories can stay under an exit latch.
+    const effectivePath =
+      (listMainTabKeepAliveHrefs() as readonly string[]).includes(livePath) &&
+      livePath !== "/shuffle"
+        ? livePath
+        : path;
+    if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(effectivePath)) {
+      const href = effectivePath as MainTabHref;
       markMainTabVisited(href);
       seedPresentedMainTab(href);
-      onMainTabRouteChange(pathname);
+      onMainTabRouteChange(effectivePath);
+      // Concrete main tabs (especially /stories) must not keep Shuffle entry
+      // leftovers that re-paint a stale /chats panel under the selected tab.
+      if (href !== "/shuffle") {
+        clearStaleShuffleEntryHandoffForMainTabDestination(href);
+        forcePresentMainTabAfterStableExit(href);
+        if (isShuffleExitToMainTabPending()) {
+          clearShuffleExitToMainTab({ destination: href, force: true });
+        }
+      }
     }
 
     handoffLoopRef.current += 1;

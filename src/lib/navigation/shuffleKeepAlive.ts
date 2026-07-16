@@ -280,16 +280,22 @@ function markShuffleHandoffPendingDom() {
     shuffleHandoffPendingSince = performance.now();
   }
   document.documentElement.classList.add("sayittome-shuffle-handoff-pending");
+  const defer = getShuffleDeferSourcePath() || "/chats";
+  const sourceKey = String(defer).replace(/^\//, "").split("/")[0];
+  if (sourceKey) {
+    document.documentElement.setAttribute("data-shuffle-defer-source", sourceKey);
+  }
   scheduleStaleHandoffSweep();
 }
 
-function clearShuffleHandoffPendingDom() {
+function clearShuffleHandoffPendingDom(options?: { force?: boolean }) {
   if (typeof document === "undefined") return;
-  if (isMainTabToShufflePresentationOwned()) {
+  if (!options?.force && isMainTabToShufflePresentationOwned()) {
     recordLegacyPresentationBlocked("clearShuffleHandoffPendingDom");
     return;
   }
   document.documentElement.classList.remove("sayittome-shuffle-handoff-pending");
+  document.documentElement.removeAttribute("data-shuffle-defer-source");
   shuffleHandoffPendingSince = 0;
 }
 

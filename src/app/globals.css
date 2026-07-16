@@ -349,7 +349,15 @@ html.sayittome-shuffle-handoff-pending .sayittome-main-tab-keepalive-visible {
   inset: 0;
 }
 
-html.sayittome-shuffle-handoff-pending #sayittome-main-tab-keepalive-chats {
+/* Only force the actual deferred entry source — never hardcode Chats over Stories. */
+html.sayittome-shuffle-handoff-pending[data-shuffle-defer-source="stories"]
+  #sayittome-main-tab-keepalive-stories,
+html.sayittome-shuffle-handoff-pending[data-shuffle-defer-source="chats"]
+  #sayittome-main-tab-keepalive-chats,
+html.sayittome-shuffle-handoff-pending[data-shuffle-defer-source="boost"]
+  #sayittome-main-tab-keepalive-boost,
+html.sayittome-shuffle-handoff-pending[data-shuffle-defer-source="settings"]
+  #sayittome-main-tab-keepalive-settings {
   visibility: visible !important;
   pointer-events: auto !important;
   z-index: 2 !important;

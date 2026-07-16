@@ -9,6 +9,7 @@ import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
   beginShuffleExitToMainTab,
   clearShuffleExitToMainTab,
+  getShuffleExitMainTabTarget,
   getShuffleHandoffVersion,
   isShuffleExitToMainTabPending,
   isShuffleSurfacePresented,
@@ -378,6 +379,28 @@ export default function ShuffleKeepAliveHost() {
     const prev = prevPathRef.current.split("?")[0].split("#")[0];
     prevPathRef.current = pathname;
 
+    // Recover stuck Shuffle presentation / exit latch when the live route is
+    // already a concrete main tab. History pathname sync can re-enter this
+    // effect and cancel the exit rAF loop after prevPathRef advanced past
+    // /shuffle, leaving sayittome-shuffle-exit-handoff-pending forever.
+    const exitTarget = getShuffleExitMainTabTarget();
+    if (
+      isMainTabPath(path) &&
+      (isShuffleExitToMainTabPending() || isShuffleSurfacePresented())
+    ) {
+      if (
+        !requiresStrictPostAuthExit(path) &&
+        (!exitTarget || exitTarget === path)
+      ) {
+        forcePresentMainTabAfterStableExit(path);
+        releaseShuffleTabSurface();
+        clearShuffleExitToMainTab({ destination: path, force: true });
+        pinShuffleWindowWhileAway();
+        clearQueuedShuffleTriggers();
+        resetShuffleGeometryStability();
+      }
+    }
+
     if (path === "/shuffle") {
       pinShuffleKeepAlive();
       restorePinnedShuffleWindowSync();
@@ -525,6 +548,27 @@ export default function ShuffleKeepAliveHost() {
             return;
           }
 
+          // Non-auth destinations (Stories/Settings): never stay latched in
+          // exit-handoff. Exit CSS hides destination loading, so waiting on
+          // visual readiness here caused Shuffle→Stories blank desync.
+          if (!requiresStrictPostAuthExit(path) && frames >= 45) {
+            forcePresentMainTabAfterStableExit(path);
+            releaseShuffleTabSurface();
+            clearShuffleExitToMainTab();
+            pinShuffleWindowWhileAway();
+            clearQueuedShuffleTriggers();
+            resetShuffleGeometryStability();
+            if (contractActive) {
+              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", {
+                source: "/shuffle",
+                destination: path,
+                frames,
+                via: "non-auth-early-settle",
+              });
+            }
+            return;
+          }
+
           if (frames < frameBudget) {
             if (contractActive && frames % 30 === 0) {
               const visual = getTabDestinationVisualReadiness(path);
@@ -560,38 +604,29 @@ export default function ShuffleKeepAliveHost() {
             ) {
               return;
             }
-            // Safe settle: destination has no loading chrome — complete reveal even
-            // without full stable-frame readiness so the shell does not latch forever.
-            // Boost/Chats are excluded from soft settle when visible loading remains.
+            // Safe settle for non-auth tabs (Stories/Settings): never latch forever
+            // waiting for content-root readiness. Force-present destination so
+            // Shuffle→Stories cannot stick in exit-handoff with all panels frozen.
             if (
               !requiresStrictPostAuthExit(path) &&
               !visual.hasLoadingShell &&
-              !visual.hasVisibleLoadingText &&
-              visual.hasContentRoot &&
-              visual.geometryValid
+              !visual.hasVisibleLoadingText
             ) {
               const committed = commitPresentedMainTabIfReady(pathname);
               if (!committed) {
-                traceTabShellNoLoading("TAB_HANDOFF_EXIT_WATCHDOG_BLOCKED_LOADING_RELEASE", {
-                  destination: path,
-                  frames,
-                  visual,
-                  via: "safe-settle",
-                });
-                if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
-                  requestAnimationFrame(releaseWhenMainTabReady);
-                  return;
-                }
-                pinShuffleWindowWhileAway();
-                clearQueuedShuffleTriggers();
-                resetShuffleGeometryStability();
-                return;
+                forcePresentMainTabAfterStableExit(path);
               }
               releaseShuffleTabSurface();
               clearShuffleExitToMainTab();
               pinShuffleWindowWhileAway();
               clearQueuedShuffleTriggers();
               resetShuffleGeometryStability();
+              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", {
+                source: "/shuffle",
+                destination: path,
+                frames,
+                via: committed ? "safe-settle" : "safe-settle-force-present",
+              });
               return;
             }
             if (path === "/boost") {

@@ -16,6 +16,7 @@ import {
   clearSoftCommitTxPin,
   getSoftCommitTxPin,
 } from "@/lib/navigation/mainTabShuffleSoftCommitTxPin";
+import { MAIN_TAB_HREFS } from "@/lib/navigation/mainTabs";
 
 export const MAIN_TAB_HISTORY_COMMIT_EVENT = "sayittome:main-tab-history-commit";
 
@@ -60,9 +61,19 @@ export function subscribeMainTabPathname(listener: PathnameListener) {
 export function getCurrentMainTabPathname(fallback?: string | null) {
   const loc = typeof window !== "undefined" ? locationPathname() : null;
   const fb = fallback ? normalizePath(fallback) : null;
+  const locIsConcreteMainTab =
+    !!loc &&
+    (MAIN_TAB_HREFS as readonly string[]).includes(loc) &&
+    loc !== "/shuffle";
 
   if (overridePathname) {
     const pin = typeof window !== "undefined" ? getSoftCommitTxPin() : null;
+    // Soft-commit pin must not keep /shuffle (or another tab) after the browser
+    // URL already landed on a concrete main tab — that freezes all keep-alive
+    // panels while the selected nav shows Stories/Chats/etc.
+    if (locIsConcreteMainTab && overridePathname !== loc) {
+      return loc;
+    }
     if (pin?.isSoftCommitInFlight) return overridePathname;
     if (loc && overridePathname === loc) return overridePathname;
     // Stale override after soft router.push away from main tabs (e.g. /chats → /u/...).
@@ -188,10 +199,46 @@ function onPopState() {
   });
 }
 
+function syncPathnameStoreFromLiveLocation(reason: string) {
+  const path = locationPathname();
+  const prev = overridePathname;
+  if (prev !== path) {
+    overridePathname = path;
+  }
+  // Always notify: Next usePathname can lag behind history.pushState/router
+  // soft navigations, leaving keep-alive hosts stuck on /shuffle while the
+  // live URL is already /stories (both main panels frozen, Shuffle still up).
+  notify();
+  if (prev !== path) {
+    emitMicroSlideCommitNavDiag("MAIN_TAB_HISTORY_PATHNAME_STORE_UPDATED", {
+      href: path,
+      reason,
+      forcedSoft: false,
+      caller: "syncPathnameStoreFromLiveLocation",
+      prevPathname: prev,
+      nextPathname: path,
+      commitMode: "history",
+    });
+  }
+}
+
 export function installMainTabInternalPathnameStore() {
   if (typeof window === "undefined" || popstateInstalled) return;
   popstateInstalled = true;
   window.addEventListener("popstate", onPopState);
+
+  const originalPushState = window.history.pushState.bind(window.history);
+  const originalReplaceState = window.history.replaceState.bind(window.history);
+  window.history.pushState = function pushStatePatched(data, unused, url) {
+    const result = originalPushState(data, unused, url);
+    syncPathnameStoreFromLiveLocation("history-pushstate");
+    return result;
+  };
+  window.history.replaceState = function replaceStatePatched(data, unused, url) {
+    const result = originalReplaceState(data, unused, url);
+    syncPathnameStoreFromLiveLocation("history-replacestate");
+    return result;
+  };
 }
 
 if (typeof window !== "undefined") {

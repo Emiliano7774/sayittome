@@ -62,16 +62,46 @@ export function clearShuffleHandoffState() {
   notify();
 }
 
+/**
+ * Destination-scoped cleanup when a concrete main tab is already the route.
+ * Clears entry defer/CSS leftovers even if presentation ownership still latches,
+ * so a stale /chats source cannot paint under /stories|/boost|/settings.
+ */
+export function clearStaleShuffleEntryHandoffForMainTabDestination(
+  destination: MainTabHref,
+) {
+  if (!destination || destination === "/shuffle") return false;
+  shuffleRevealDeferred = false;
+  if (typeof document !== "undefined") {
+    const html = document.documentElement;
+    // Force-clear even if presentation ownership still latches — destination
+    // URL already won, so entry handoff CSS must not linger.
+    html.classList.remove("sayittome-shuffle-handoff-pending");
+    html.removeAttribute("data-shuffle-defer-source");
+  }
+  notify();
+  return true;
+}
+
 /** Retain shuffle as the presented source until a main-tab destination is ready. */
 export function beginShuffleExitToMainTab(target: MainTabHref) {
+  // Exit supersedes entry leftovers: stale defer/CSS must not re-paint the
+  // previous source (often /chats) after Stories/Boost/Settings commit.
+  shuffleRevealDeferred = false;
   shuffleExitMainTabTarget = target;
   if (typeof document !== "undefined") {
-    document.documentElement.classList.add("sayittome-shuffle-exit-handoff-pending");
-    document.documentElement.setAttribute(
-      "data-shuffle-exit-handoff-target",
-      target,
-    );
+    const html = document.documentElement;
+    html.classList.remove("sayittome-shuffle-handoff-pending");
+    html.removeAttribute("data-shuffle-defer-source");
+    html.classList.add("sayittome-shuffle-exit-handoff-pending");
+    html.setAttribute("data-shuffle-exit-handoff-target", target);
   }
+  // Ensure destination keep-alive can mount during exit (visibility is false while
+  // the exit latch is up; mount still needs a visited mark for content readiness).
+  void import("@/lib/navigation/mainTabKeepAlive").then((mod) => {
+    mod.markMainTabVisited(target);
+  });
+
   // Belt-and-suspenders: if pointerdown missed, still seed prepaint sync before remount.
   if (target === "/chats" && typeof window !== "undefined") {
     writeChatsPrepaintHandoffMarker({ from: "/shuffle" });
