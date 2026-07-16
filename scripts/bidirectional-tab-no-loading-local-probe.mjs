@@ -67,7 +67,15 @@ const directionsBase = [
 function parseOnly(raw) {
   if (!raw) return null;
   return raw.split(",").map((pair) => {
-    const [source, dest] = pair.trim().split(/[:->]+/);
+    // Prefer explicit "->" / ":" separators. Do not use a [:->] character
+    // class — that is an ASCII range and turns "shuffle->stories" into
+    // source "shuffle-" (false DESTINATION_LOADING_VISIBLE noise).
+    const trimmed = pair.trim();
+    const arrow = trimmed.match(/^([a-z0-9_/]+)\s*->\s*([a-z0-9_/]+)$/i);
+    if (arrow) return { source: arrow[1], dest: arrow[2] };
+    const colon = trimmed.match(/^([a-z0-9_/]+)\s*:\s*([a-z0-9_/]+)$/i);
+    if (colon) return { source: colon[1], dest: colon[2] };
+    const [source, dest] = trimmed.split(/\s+/);
     return { source, dest };
   });
 }
