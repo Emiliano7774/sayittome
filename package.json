@@ -43,6 +43,7 @@
     "test:shuffle-slide-classifier": "node scripts/shuffle-slide-multisource-classifier.harness.mjs",
     "test:current-hop-trace-isolation": "node scripts/current-hop-trace-isolation.harness.mjs",
     "test:post-settle-route-bridge": "node scripts/post-settle-route-bridge.harness.mjs",
+    "test:post-arrival-shuffle-stability": "node scripts/post-arrival-shuffle-stability.harness.mjs",
     "test:route-bridge-owner-visibility": "node scripts/route-bridge-owner-visibility.harness.mjs",
     "test:prod-timing-jitter-guard": "node scripts/prod-timing-jitter-guard.harness.mjs",
     "test:main-tab-shuffle-invariants": "node scripts/main-tab-shuffle-slide-invariants.mjs",
