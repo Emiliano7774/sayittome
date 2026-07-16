@@ -13,6 +13,7 @@ import {
   getMainTabInternalPathnameVersion,
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
+import { canSelectBottomNavMainTab } from "@/lib/navigation/routeKind";
 import {
   beginWarmShuffleTabNavigation,
   completeWarmShuffleTabNavigation,
@@ -39,7 +40,8 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
     getMainTabInternalPathnameVersion,
   );
   const pathname = getCurrentMainTabPathname(nextPathname);
-  const effectiveTab = resolveEffectiveMainTab(pathname);
+  const navSelectable = canSelectBottomNavMainTab(pathname);
+  const effectiveTab = navSelectable ? resolveEffectiveMainTab(pathname) : "";
   const router = useRouter();
   const t = useT();
 
@@ -118,7 +120,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
             );
           }
 
-          if (item.kind === "shuffle" && pathname !== "/shuffle") {
+          if (item.kind === "shuffle" && !(navSelectable && pathname === "/shuffle")) {
             return (
               <button
                 key={item.id}
@@ -139,7 +141,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
             );
           }
 
-          if (item.kind === "shuffle" && pathname === "/shuffle") {
+          if (item.kind === "shuffle" && navSelectable && pathname === "/shuffle") {
             return (
               <button
                 key={item.id}

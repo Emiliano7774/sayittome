@@ -391,6 +391,33 @@ html.sayittome-main-tab-handoff-pending[data-sayittome-main-tab-handoff-source="
   opacity: 1 !important;
 }
 
+/* PROFILE_ROUTE_MAIN_TAB_LEAK: non-main routes win over handoff CSS leftovers. */
+html[data-sayittome-route-kind="profile"] #sayittome-main-tab-keepalive-stories,
+html[data-sayittome-route-kind="profile"] #sayittome-main-tab-keepalive-chats,
+html[data-sayittome-route-kind="profile"] #sayittome-main-tab-keepalive-boost,
+html[data-sayittome-route-kind="profile"] #sayittome-main-tab-keepalive-settings,
+html[data-sayittome-route-kind="profile-chat"] #sayittome-main-tab-keepalive-stories,
+html[data-sayittome-route-kind="profile-chat"] #sayittome-main-tab-keepalive-chats,
+html[data-sayittome-route-kind="profile-chat"] #sayittome-main-tab-keepalive-boost,
+html[data-sayittome-route-kind="profile-chat"] #sayittome-main-tab-keepalive-settings,
+html[data-sayittome-route-kind="chat-thread"] #sayittome-main-tab-keepalive-stories,
+html[data-sayittome-route-kind="chat-thread"] #sayittome-main-tab-keepalive-chats,
+html[data-sayittome-route-kind="chat-thread"] #sayittome-main-tab-keepalive-boost,
+html[data-sayittome-route-kind="chat-thread"] #sayittome-main-tab-keepalive-settings,
+html[data-sayittome-route-kind="non-main"] #sayittome-main-tab-keepalive-stories,
+html[data-sayittome-route-kind="non-main"] #sayittome-main-tab-keepalive-chats,
+html[data-sayittome-route-kind="non-main"] #sayittome-main-tab-keepalive-boost,
+html[data-sayittome-route-kind="non-main"] #sayittome-main-tab-keepalive-settings,
+html[data-sayittome-route-kind="profile"] #sayittome-shuffle-keepalive-host,
+html[data-sayittome-route-kind="profile-chat"] #sayittome-shuffle-keepalive-host,
+html[data-sayittome-route-kind="chat-thread"] #sayittome-shuffle-keepalive-host,
+html[data-sayittome-route-kind="non-main"] #sayittome-shuffle-keepalive-host {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
 html.sayittome-shuffle-exit-handoff-pending #sayittome-shuffle-keepalive-host {
   visibility: visible !important;
   opacity: 1 !important;

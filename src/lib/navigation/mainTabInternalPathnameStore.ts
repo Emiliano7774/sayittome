@@ -17,6 +17,7 @@ import {
   getSoftCommitTxPin,
 } from "@/lib/navigation/mainTabShuffleSoftCommitTxPin";
 import { MAIN_TAB_HREFS } from "@/lib/navigation/mainTabs";
+import { isNonMainRoute } from "@/lib/navigation/routeKind";
 
 export const MAIN_TAB_HISTORY_COMMIT_EVENT = "sayittome:main-tab-history-commit";
 
@@ -72,6 +73,11 @@ export function getCurrentMainTabPathname(fallback?: string | null) {
     // URL already landed on a concrete main tab — that freezes all keep-alive
     // panels while the selected nav shows Stories/Chats/etc.
     if (locIsConcreteMainTab && overridePathname !== loc) {
+      return loc;
+    }
+    // PROFILE_ROUTE_MAIN_TAB_LEAK: live /u/* (and other non-main) wins over an
+    // in-flight soft-commit pin that still claims /shuffle or a prior tab.
+    if (loc && isNonMainRoute(loc) && overridePathname !== loc) {
       return loc;
     }
     if (pin?.isSoftCommitInFlight) return overridePathname;

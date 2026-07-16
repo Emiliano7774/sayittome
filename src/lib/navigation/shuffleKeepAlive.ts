@@ -840,6 +840,20 @@ export function commitShuffleTabReturn() {
 }
 
 export function canShowShuffleKeepAliveSurface(pathname: string) {
+  const path = normalizePath(pathname);
+  // Never paint Shuffle under profile / chat / other non-main routes — retain
+  // and post-settle bridges must not win while /u/* is the live URL.
+  if (
+    path.startsWith("/u/") ||
+    path.startsWith("/chat/") ||
+    (path !== "/shuffle" &&
+      path !== "/stories" &&
+      path !== "/chats" &&
+      path !== "/boost" &&
+      path !== "/settings")
+  ) {
+    return false;
+  }
   if (
     typeof document !== "undefined" &&
     document.documentElement.hasAttribute("data-post-settle-route-bridge")

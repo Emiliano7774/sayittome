@@ -55,6 +55,8 @@ import {
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
+import { isNonMainRoute } from "@/lib/navigation/routeKind";
+import { neutralizeMainTabPresentationForNonMainRoute } from "@/lib/navigation/nonMainRouteMainTabIsolation";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
 import { settingsPipelineMark } from "@/lib/perf/settingsPipelineTrace";
@@ -78,6 +80,10 @@ function resolveMainTabPanelPath(pathname: string) {
   // Once the router is on a concrete main tab, never remap the panel path back
   // to a stale Shuffle entry source (commonly /chats).
   if (onConcreteMainTab) return path;
+
+  // Profile / chat / other non-main routes must never remap to a sticky source
+  // panel (PROFILE_ROUTE_MAIN_TAB_LEAK: Chats list under /u/[username]).
+  if (isNonMainRoute(path)) return path;
 
   if (isMainTabToShufflePresentationOwned()) {
     const source = getMainTabToShuffleTransaction()?.source;
@@ -144,6 +150,24 @@ export default function MainTabKeepAliveHost() {
       resetMainTabHistoryPathnameStore("keepalive-host-non-main-tab");
     }
 
+    const livePath =
+      typeof window !== "undefined"
+        ? window.location.pathname.split("?")[0].split("#")[0]
+        : nextPath;
+    // PROFILE_ROUTE_MAIN_TAB_LEAK: neutralize sticky main-tab presentation under
+    // /u/* (and other non-main routes) before panel visibility is computed.
+    if (isNonMainRoute(livePath) || isNonMainRoute(nextPath) || isNonMainRoute(pathname)) {
+      neutralizeMainTabPresentationForNonMainRoute(
+        isNonMainRoute(livePath) ? livePath : isNonMainRoute(nextPath) ? nextPath : pathname,
+      );
+    } else if (typeof document !== "undefined") {
+      const kindPath = livePath || nextPath || pathname;
+      document.documentElement.setAttribute(
+        "data-sayittome-route-kind",
+        kindPath === "/shuffle" ? "shuffle" : "main-tab",
+      );
+    }
+
     // Drop visual-first pending tab so it cannot re-paint under /u/ or /chat/.
     const pathForPending = pathname.split("?")[0].split("#")[0];
     if (
@@ -160,16 +184,16 @@ export default function MainTabKeepAliveHost() {
     }
 
     const path = pathname.split("?")[0].split("#")[0];
-    const livePath =
+    const livePathForMain =
       typeof window !== "undefined"
         ? window.location.pathname.split("?")[0].split("#")[0]
         : path;
     // Prefer the live browser URL when keep-alive pathname lags (history sync /
     // Next usePathname desync). Otherwise Stories can stay under an exit latch.
     const effectivePath =
-      (listMainTabKeepAliveHrefs() as readonly string[]).includes(livePath) &&
-      livePath !== "/shuffle"
-        ? livePath
+      (listMainTabKeepAliveHrefs() as readonly string[]).includes(livePathForMain) &&
+      livePathForMain !== "/shuffle"
+        ? livePathForMain
         : path;
     if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(effectivePath)) {
       const href = effectivePath as MainTabHref;
@@ -187,23 +211,27 @@ export default function MainTabKeepAliveHost() {
       }
     }
 
-    handoffLoopRef.current += 1;
-    const loopId = handoffLoopRef.current;
-    let frames = 0;
-    const frameBudget = isTabShellNoLoadingTransitionContractActive()
-      ? NO_LOADING_HANDOFF_FRAME_BUDGET
-      : HANDOFF_FRAME_BUDGET;
+    // Non-main routes must not run presented-tab commit loops (avoids delayed
+    // setActiveTab / handoff reactivation under /u/*).
+    if (!isNonMainRoute(path) && !isNonMainRoute(livePathForMain)) {
+      handoffLoopRef.current += 1;
+      const loopId = handoffLoopRef.current;
+      let frames = 0;
+      const frameBudget = isTabShellNoLoadingTransitionContractActive()
+        ? NO_LOADING_HANDOFF_FRAME_BUDGET
+        : HANDOFF_FRAME_BUDGET;
 
-    const tryCommit = () => {
-      if (handoffLoopRef.current !== loopId) return;
-      frames += 1;
-      if (commitPresentedMainTabIfReady(pathname)) return;
-      if (frames < frameBudget) {
-        requestAnimationFrame(tryCommit);
-      }
-    };
+      const tryCommit = () => {
+        if (handoffLoopRef.current !== loopId) return;
+        frames += 1;
+        if (commitPresentedMainTabIfReady(pathname)) return;
+        if (frames < frameBudget) {
+          requestAnimationFrame(tryCommit);
+        }
+      };
 
-    requestAnimationFrame(tryCommit);
+      requestAnimationFrame(tryCommit);
+    }
 
     if (isNavTraceEnabled()) {
       const pending = getPendingVisualTab();
