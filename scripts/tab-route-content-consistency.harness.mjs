@@ -83,6 +83,43 @@ check(
   keepAlive.includes("!onConcreteMainTab && isMainTabToShufflePresentationOwned"),
 );
 
+const bottomNavLink = fs.readFileSync(
+  path.join(root, "src/components/navigation/BottomNavLink.tsx"),
+  "utf8",
+);
+check(
+  "NATIVE_SOFT_CLICK_ABORTS_SLIDE_BEFORE_STORIES_PUSH",
+  bottomNavLink.includes("concreteMainTabDestination") &&
+    bottomNavLink.includes('abortMainTabToShuffleTransition("navigation-replaced")') &&
+    bottomNavLink.includes("router.push(href)") &&
+    // Must not swallow preventDefault'd native soft clicks while sliding.
+    bottomNavLink.includes(
+      "!concreteMainTabDestination && blockMainTabNavigationDuringSlide()",
+    ) &&
+    // Mid-slide: commit on pointerdown so a lost click cannot leave /shuffle.
+    bottomNavLink.includes("mustCommitDuringHandoff") &&
+    bottomNavLink.includes("commitConcreteMainTabSoft") &&
+    bottomNavLink.includes("noteConcreteMainTabSupersede") &&
+    bottomNavLink.includes("cancelPendingShuffleRouteCommits"),
+);
+
+const transitionSrc = fs.readFileSync(
+  path.join(root, "src/lib/navigation/mainTabToShuffleTransition.ts"),
+  "utf8",
+);
+const warmShuffleSrc = fs.readFileSync(
+  path.join(root, "src/lib/navigation/warmShuffleTabNavigation.ts"),
+  "utf8",
+);
+check(
+  "DEFERRED_SHUFFLE_COMMIT_RESPECTS_SUPERSEDE_EPOCH",
+  transitionSrc.includes("noteConcreteMainTabSupersede") &&
+    transitionSrc.includes("epochAtRegister") &&
+    transitionSrc.includes("supersedeAtRegister") &&
+    warmShuffleSrc.includes("getConcreteMainTabSupersedeEpoch") &&
+    warmShuffleSrc.includes("supersedeEpoch !== getConcreteMainTabSupersedeEpoch()"),
+);
+
 async function liveProbe() {
   const { chromium } = await import("playwright");
   const browser = await chromium
@@ -211,6 +248,9 @@ async function liveProbe() {
             storiesVisible,
             chatsVisible,
             navStories,
+            routeKind: document.documentElement.getAttribute(
+              "data-sayittome-route-kind",
+            ),
             storiesClass: stories?.className || null,
             chatsClass: chats?.className || null,
             deferSource: document.documentElement.getAttribute(
@@ -237,23 +277,41 @@ async function liveProbe() {
     const mismatch = afterSettle.filter(
       (s) => s.chatsVisible || !s.storiesVisible,
     );
+    const last = samples.at(-1);
+    const navMiss =
+      last?.path !== "/stories" ||
+      (afterSettle.length === 0 && last?.path === "/shuffle");
     results.push({
       i,
       mismatch: mismatch.length,
       sampled: afterSettle.length,
-      pathFinal: samples.at(-1)?.path,
-      storiesFinal: samples.at(-1)?.storiesVisible,
-      chatsFinal: samples.at(-1)?.chatsVisible,
-      handoffFinal: samples.at(-1)?.handoffPending,
-      htmlFinal: samples.at(-1)?.htmlClass,
-      storiesClassFinal: samples.at(-1)?.storiesClass,
-      chatsClassFinal: samples.at(-1)?.chatsClass,
+      pathFinal: last?.path,
+      storiesFinal: last?.storiesVisible,
+      chatsFinal: last?.chatsVisible,
+      handoffFinal: last?.handoffPending,
+      htmlFinal: last?.htmlClass,
+      storiesClassFinal: last?.storiesClass,
+      chatsClassFinal: last?.chatsClass,
+      routeKindFinal: last?.routeKind ?? null,
+      navMiss,
+      failureClass: navMiss
+        ? "SHUFFLE_STORIES_NAV_NOT_COMMITTED"
+        : mismatch.length > 0
+          ? "SHUFFLE_STORIES_PANEL_MISMATCH"
+          : null,
     });
     await ctx.close();
   }
   await browser.close();
   const pass = results.every(
-    (r) => r.mismatch === 0 && r.pathFinal === "/stories" && r.storiesFinal,
+    (r) =>
+      r.mismatch === 0 &&
+      r.pathFinal === "/stories" &&
+      r.storiesFinal &&
+      !r.navMiss,
+  );
+  const failed = results.filter(
+    (r) => r.mismatch > 0 || !r.storiesFinal || r.pathFinal !== "/stories",
   );
   const label =
     mode === "stories-shuffle-stories"
@@ -264,14 +322,17 @@ async function liveProbe() {
     fromTab,
     mode,
     waitMs,
-    failCount: results.filter((r) => r.mismatch > 0 || !r.storiesFinal).length,
-    results: results.slice(0, 3),
+    failCount: failed.length,
+    // Persist failing samples (not only the first 3 passes) for forensics.
+    results: failed.length > 0 ? failed : results.slice(0, 3),
+    failureClasses: [...new Set(failed.map((r) => r.failureClass).filter(Boolean))],
   });
   // Keep legacy name when default chats→shuffle→stories.
   if (mode === "shuffle-to-stories" && fromTab === "chats") {
     check("SHUFFLE_TO_STORIES_STAYS_STORIES_FOR_5S", pass, {
       repeat,
-      failCount: results.filter((r) => r.mismatch > 0 || !r.storiesFinal).length,
+      failCount: failed.length,
+      failureClasses: [...new Set(failed.map((r) => r.failureClass).filter(Boolean))],
     });
   }
   return pass;

@@ -186,34 +186,39 @@ async function waitPath(page, dest, timeoutMs = 8000) {
 }
 
 async function dismissEntryLegal(page) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const open = await page.evaluate(() =>
       document.body.classList.contains("sayittome-entry-legal-open"),
     );
     if (!open) return;
+    // Must tick the declare checkbox then accept. Never click Cancelar —
+    // that navigates to "/" and strips the bottom nav (false remount fails).
     await page.evaluate(() => {
-      const declare = document.querySelector(
-        ".sayittome-entry-legal-scroll button:last-of-type",
+      const root = document.querySelector(".sayittome-entry-legal-modal");
+      if (!root) return;
+      const declare = [...root.querySelectorAll("button")].find((b) =>
+        /declaro|entiendo|edad suficiente/i.test(b.textContent || ""),
       );
       declare?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       declare?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
       declare?.click();
-    });
-    await page.waitForTimeout(300);
-    await page.evaluate(() => {
-      const accept = document.querySelector(
-        ".sayittome-entry-legal-actions button:last-of-type",
+      const accept = [...root.querySelectorAll("button")].find((b) =>
+        /acepto y continúo|acepto y continuo|accept and continue/i.test(
+          b.textContent || "",
+        ),
       );
-      accept?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-      accept?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
-      accept?.click();
+      if (accept && !accept.disabled && !accept.className.includes("cursor-not-allowed")) {
+        accept.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        accept.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+        accept.click();
+      }
     });
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(500);
     await page
       .waitForFunction(
         () => !document.body.classList.contains("sayittome-entry-legal-open"),
         null,
-        { timeout: 8000 },
+        { timeout: 4000 },
       )
       .catch(() => {});
   }
@@ -307,6 +312,9 @@ async function runHop(page, hop, idx) {
       try {
         localStorage.setItem("sayittome-flag-MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE", "true");
         localStorage.setItem("sayittome:nav-capture", "1");
+        // Classic keeps bottom nav mounted on /shuffle (modern hides it),
+        // which remount hops (shuffle→chats→shuffle) require to tap via-tabs.
+        localStorage.setItem("sayittome_ux_mode", "classic");
       } catch {
         /* ignore */
       }
