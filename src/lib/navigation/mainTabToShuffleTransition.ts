@@ -234,22 +234,87 @@ const PREP_FRAME_BUDGET_WITH_WARMUP = 360;
 
 /** Deferred /shuffle route commit — flush only when destination is no-loading ready. */
 let pendingMicroSlideRouteCommit: (() => void) | null = null;
+/** Cancels delayed executeShuffleRouteCommit timers (post-settle jitter path). */
+let pendingShuffleRouteCommitTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Bumped when a concrete main-tab destination supersedes an in-flight Shuffle
+ * commit (Shuffle→Stories mid-slide). Stale deferred/timer pushes must no-op.
+ */
+let shuffleRouteCommitEpoch = 0;
+/** Bumped when a concrete main-tab (Stories/Chats/Boost/Settings) supersedes Shuffle. */
+let concreteMainTabSupersedeEpoch = 0;
 
 export function registerDeferredMicroSlideRouteCommit(commit: () => void) {
-  pendingMicroSlideRouteCommit = commit;
+  // Capture epochs at register time. If Stories supersedes before flush runs,
+  // executeShuffleRouteCommit must not re-arm under the post-cancel epoch.
+  const epochAtRegister = shuffleRouteCommitEpoch;
+  const supersedeAtRegister = concreteMainTabSupersedeEpoch;
+  pendingMicroSlideRouteCommit = () => {
+    if (epochAtRegister !== shuffleRouteCommitEpoch) return;
+    if (supersedeAtRegister !== concreteMainTabSupersedeEpoch) return;
+    commit();
+  };
 }
 
 export function clearDeferredMicroSlideRouteCommit(_reason?: string) {
   pendingMicroSlideRouteCommit = null;
 }
 
+/** Invalidate any pending/deferred /shuffle route commit (timer + callback). */
+export function cancelPendingShuffleRouteCommits(reason?: string) {
+  shuffleRouteCommitEpoch += 1;
+  clearDeferredMicroSlideRouteCommit(reason);
+  if (pendingShuffleRouteCommitTimer != null) {
+    clearTimeout(pendingShuffleRouteCommitTimer);
+    pendingShuffleRouteCommitTimer = null;
+  }
+}
+
+/** Mark that a concrete main-tab destination replaced an in-flight Shuffle commit. */
+export function noteConcreteMainTabSupersede(_href?: string) {
+  concreteMainTabSupersedeEpoch += 1;
+}
+
+export function getConcreteMainTabSupersedeEpoch() {
+  return concreteMainTabSupersedeEpoch;
+}
+
+export function getShuffleRouteCommitEpoch() {
+  return shuffleRouteCommitEpoch;
+}
+
+export function scheduleShuffleRouteCommit(
+  run: () => void,
+  delayMs: number,
+): void {
+  const epoch = shuffleRouteCommitEpoch;
+  const exec = () => {
+    if (epoch !== shuffleRouteCommitEpoch) return;
+    pendingShuffleRouteCommitTimer = null;
+    run();
+  };
+  if (delayMs > 0) {
+    if (pendingShuffleRouteCommitTimer != null) {
+      clearTimeout(pendingShuffleRouteCommitTimer);
+    }
+    pendingShuffleRouteCommitTimer = setTimeout(exec, delayMs);
+    return;
+  }
+  exec();
+}
+
 function flushDeferredMicroSlideRouteCommit() {
   const commit = pendingMicroSlideRouteCommit;
   pendingMicroSlideRouteCommit = null;
   if (!commit) return;
+  // Superseded by a concrete main-tab tap (e.g. Stories during slide).
+  const activeTx = rt().activeTx;
+  if (!activeTx || activeTx.phase === "aborted") return;
   pushTrace("NAVIGATION_COMMIT_NOTIFIED", {
     note: "MICRO_SLIDE_READY_AFTER_WARMUP:route-commit-flushed",
   });
+  // Wrapper installed by registerDeferredMicroSlideRouteCommit also
+  // no-ops when epoch/supersede advanced after register.
   commit();
 }
 
@@ -3601,8 +3666,10 @@ export function notifyMainTabToShuffleNavigationCommitted() {
 export function abortMainTabToShuffleTransition(reason: string) {
   const runtime = rt();
   const tx = runtime.activeTx;
+  // Always invalidate deferred/timer Shuffle commits first so a mid-slide
+  // Stories/Chats/Boost/Settings tap cannot be overwritten by a late /shuffle push.
+  cancelPendingShuffleRouteCommits(reason || "abort");
   if (!tx) {
-    clearDeferredMicroSlideRouteCommit(reason || "manual-abort");
     clearSoftCommitTxPin(reason || "manual-abort", {
       moduleInstanceId: TRANSITION_MODULE_INSTANCE_ID,
       runtimeInstanceId: runtime.runtimeInstanceId,
@@ -3610,7 +3677,6 @@ export function abortMainTabToShuffleTransition(reason: string) {
     });
     return;
   }
-  clearDeferredMicroSlideRouteCommit(reason || "abort");
   tx.phase = "aborted";
   tx.abortReason = reason;
   syncPresentationOwnerFromState(runtime);

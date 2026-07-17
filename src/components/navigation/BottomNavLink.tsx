@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRef } from "react";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
@@ -13,7 +14,6 @@ import {
 import { isMainTabHref } from "@/lib/navigation/mainTabs";
 import {
   beginShuffleWarmHandoff,
-  isShuffleKeepAliveActive,
   pinShuffleKeepAlive,
   pinShuffleWindowWhileAway,
 } from "@/lib/navigation/shuffleKeepAlive";
@@ -21,7 +21,9 @@ import {
   abortMainTabToShuffleTransition,
   beginInternalMainTabToShuffleTransition,
   blockMainTabNavigationDuringSlide,
+  cancelPendingShuffleRouteCommits,
   isInternalMainTabToShuffleTransitionActive,
+  noteConcreteMainTabSupersede,
   pathToMainTabShuffleSource,
 } from "@/lib/navigation/mainTabToShuffleTransition";
 import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
@@ -43,6 +45,10 @@ type Props = {
   "aria-label"?: string;
 };
 
+function isConcreteMainTabHref(href: string) {
+  return isMainTabHref(href) && href !== "/shuffle";
+}
+
 /** Main tabs navigate via real routes; keep-alive hosts preserve mounted panels. */
 export default function BottomNavLink({ href, className, children, ...rest }: Props) {
   const router = useRouter();
@@ -50,16 +56,39 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
   // contract requires same-document soft nav so keep-alive handoff can freeze source.
   const forceSoftMainTabNav =
     isTabShellNoLoadingTransitionContractActive() && isMainTabHref(href);
+  /** Set when pointerdown already committed a soft push during an active slide. */
+  const softPushFromPointerDownRef = useRef<string | null>(null);
 
-  function warmTab() {
+  function supersedeInFlightShuffle(reason: string) {
+    noteConcreteMainTabSupersede(href);
+    cancelPendingShuffleRouteCommits(reason);
+    if (
+      blockMainTabNavigationDuringSlide() ||
+      isInternalMainTabToShuffleTransitionActive()
+    ) {
+      abortMainTabToShuffleTransition(reason);
+    }
+  }
+
+  function warmTab(options?: { allowSupersede?: boolean }) {
+    const allowSupersede = options?.allowSupersede === true;
     if (typeof window !== "undefined") {
       const currentPath = window.location.pathname.split("?")[0].split("#")[0];
+      const concreteMainTabDestination = isConcreteMainTabHref(href);
 
-      if (blockMainTabNavigationDuringSlide()) {
+      // Concrete main-tab destinations must win over an in-flight micro-slide.
+      // Only supersede on pointerdown/click — never on pointerenter hover.
+      if (concreteMainTabDestination && allowSupersede) {
+        supersedeInFlightShuffle("navigation-replaced");
+      } else if (!concreteMainTabDestination && blockMainTabNavigationDuringSlide()) {
         return;
       }
 
-      if (href !== "/shuffle" && isInternalMainTabToShuffleTransitionActive()) {
+      if (
+        allowSupersede &&
+        href !== "/shuffle" &&
+        isInternalMainTabToShuffleTransitionActive()
+      ) {
         abortMainTabToShuffleTransition("navigation-replaced");
       }
 
@@ -113,14 +142,65 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     }
   }
 
+  function commitConcreteMainTabSoft(hrefTo: string) {
+    supersedeInFlightShuffle("navigation-replaced");
+    softPushFromPointerDownRef.current = hrefTo;
+    router.push(hrefTo);
+  }
+
+  function onPointerDown() {
+    if (!forceSoftMainTabNav || !isConcreteMainTabHref(href)) {
+      warmTab({ allowSupersede: true });
+      return;
+    }
+    // Capture handoff state BEFORE warm/abort — abort clears sliding/active.
+    // During an active micro-slide the nav hit-target can briefly collapse
+    // (0×0) and the subsequent click never fires. Commit on pointerdown so the
+    // Stories/Chats/Boost/Settings tap cannot be swallowed.
+    const mustCommitDuringHandoff =
+      blockMainTabNavigationDuringSlide() ||
+      isInternalMainTabToShuffleTransitionActive();
+    warmTab({ allowSupersede: true });
+    if (mustCommitDuringHandoff) {
+      commitConcreteMainTabSoft(href);
+    }
+  }
+
   function onNativeClick(event: React.MouseEvent<HTMLAnchorElement>) {
     if (!forceSoftMainTabNav) return;
     if (event.defaultPrevented) return;
     if (event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    warmTab();
-    if (blockMainTabNavigationDuringSlide()) return;
+    const concreteMainTabDestination = isConcreteMainTabHref(href);
+
+    if (
+      concreteMainTabDestination &&
+      softPushFromPointerDownRef.current === href
+    ) {
+      softPushFromPointerDownRef.current = null;
+      supersedeInFlightShuffle("navigation-replaced");
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname.split("?")[0].split("#")[0] !== href
+      ) {
+        router.push(href);
+      }
+      return;
+    }
+
+    // Abort any in-flight slide / deferred Shuffle commit before push so
+    // preventDefault cannot orphan the click or lose to a late /shuffle commit.
+    if (concreteMainTabDestination) {
+      supersedeInFlightShuffle("navigation-replaced");
+    }
+    warmTab({ allowSupersede: true });
+    if (!concreteMainTabDestination && blockMainTabNavigationDuringSlide()) {
+      return;
+    }
+    if (concreteMainTabDestination) {
+      supersedeInFlightShuffle("navigation-replaced");
+    }
     router.push(href);
   }
 
@@ -129,8 +209,8 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       <a
         href={href}
         className={className}
-        onPointerDown={warmTab}
-        onPointerEnter={warmTab}
+        onPointerDown={onPointerDown}
+        onPointerEnter={() => warmTab()}
         {...rest}
       >
         {children}
@@ -143,8 +223,8 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       <a
         href={href}
         className={className}
-        onPointerDown={warmTab}
-        onPointerEnter={warmTab}
+        onPointerDown={onPointerDown}
+        onPointerEnter={() => warmTab()}
         onClick={onNativeClick}
         {...rest}
       >
@@ -158,8 +238,8 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       href={href}
       className={className}
       prefetch
-      onPointerDown={warmTab}
-      onPointerEnter={warmTab}
+      onPointerDown={onPointerDown}
+      onPointerEnter={() => warmTab()}
       {...rest}
     >
       {children}

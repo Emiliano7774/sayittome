@@ -7,10 +7,13 @@ import {
   abortMainTabToShuffleTransition,
   beginInternalMainTabToShuffleTransition,
   getMainTabToShufflePhase,
+  getConcreteMainTabSupersedeEpoch,
+  getShuffleRouteCommitEpoch,
   isInternalMainTabToShuffleTransitionActive,
   notifyMainTabToShuffleNavigationCommitted,
   pathToMainTabShuffleSource,
   registerDeferredMicroSlideRouteCommit,
+  scheduleShuffleRouteCommit,
 } from "@/lib/navigation/mainTabToShuffleTransition";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 import {
@@ -149,11 +152,32 @@ function executeShuffleRouteCommit(
   }
 
   const routeCommitDelayMs = getPostSettleBridgeRouteCommitDelayMs();
-  if (routeCommitDelayMs > 0) {
-    window.setTimeout(() => push(router, "/shuffle", pushOptions), routeCommitDelayMs);
-    return;
-  }
-  push(router, "/shuffle", pushOptions);
+  const epoch = getShuffleRouteCommitEpoch();
+  const supersedeEpoch = getConcreteMainTabSupersedeEpoch();
+  scheduleShuffleRouteCommit(() => {
+    if (epoch !== getShuffleRouteCommitEpoch()) return;
+    if (supersedeEpoch !== getConcreteMainTabSupersedeEpoch()) return;
+    // Skip only when a concrete main-tab already won AND the micro-slide is
+    // gone. While committing from /chats|/settings|/stories|/boost the live
+    // path is still the source until this push runs — do not treat that as
+    // supersede.
+    if (
+      typeof window !== "undefined" &&
+      !isInternalMainTabToShuffleTransitionActive() &&
+      getMainTabToShufflePhase() === "idle"
+    ) {
+      const live = window.location.pathname.split("?")[0].split("#")[0];
+      if (
+        live === "/stories" ||
+        live === "/chats" ||
+        live === "/boost" ||
+        live === "/settings"
+      ) {
+        return;
+      }
+    }
+    push(router, "/shuffle", pushOptions);
+  }, routeCommitDelayMs);
 }
 
 /** Click: commit transaction intent, start readiness ownership, defer route until no-loading ready. */

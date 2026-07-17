@@ -55,7 +55,10 @@ import {
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
-import { isNonMainRoute } from "@/lib/navigation/routeKind";
+import {
+  classifyAppRouteKind,
+  isNonMainRoute,
+} from "@/lib/navigation/routeKind";
 import { neutralizeMainTabPresentationForNonMainRoute } from "@/lib/navigation/nonMainRouteMainTabIsolation";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
@@ -154,17 +157,17 @@ export default function MainTabKeepAliveHost() {
       typeof window !== "undefined"
         ? window.location.pathname.split("?")[0].split("#")[0]
         : nextPath;
-    // PROFILE_ROUTE_MAIN_TAB_LEAK: neutralize sticky main-tab presentation under
-    // /u/* (and other non-main routes) before panel visibility is computed.
-    if (isNonMainRoute(livePath) || isNonMainRoute(nextPath) || isNonMainRoute(pathname)) {
-      neutralizeMainTabPresentationForNonMainRoute(
-        isNonMainRoute(livePath) ? livePath : isNonMainRoute(nextPath) ? nextPath : pathname,
-      );
+    // PROFILE_ROUTE_MAIN_TAB_LEAK: neutralize only while the *live* URL is
+    // non-main. Never use lagged Next/store pathnames alone — that can stamp
+    // data-sayittome-route-kind=profile onto /stories and CSS-hide Stories.
+    if (isNonMainRoute(livePath)) {
+      neutralizeMainTabPresentationForNonMainRoute(livePath);
     } else if (typeof document !== "undefined") {
       const kindPath = livePath || nextPath || pathname;
+      const kind = classifyAppRouteKind(kindPath);
       document.documentElement.setAttribute(
         "data-sayittome-route-kind",
-        kindPath === "/shuffle" ? "shuffle" : "main-tab",
+        kind === "shuffle" || kindPath === "/shuffle" ? "shuffle" : "main-tab",
       );
     }
 
