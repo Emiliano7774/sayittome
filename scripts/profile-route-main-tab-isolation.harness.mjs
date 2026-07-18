@@ -114,6 +114,24 @@ check(
     shuffleKa.includes('path.startsWith("/u/")'),
 );
 
+const revealSrc = fs.readFileSync(
+  path.join(root, "src/lib/navigation/nonMainToShuffleReveal.ts"),
+  "utf8",
+);
+const warmNavSrc = fs.readFileSync(
+  path.join(root, "src/lib/navigation/warmShuffleTabNavigation.ts"),
+  "utf8",
+);
+
+check(
+  "OWN_PROFILE_TO_SHUFFLE_SYNC_REVEAL",
+  revealSrc.includes("prepareShuffleRevealFromNonMainRoute") &&
+    warmNavSrc.includes("prepareShuffleRevealFromNonMainRoute") &&
+    css.includes(
+      'sayittome-shuffle-exit-handoff-pending:not([data-sayittome-route-kind="profile"])',
+    ),
+);
+
 async function liveProbe() {
   const { chromium } = await import("playwright");
   const browser = await chromium

@@ -64,11 +64,12 @@ check(
 
 {
   const start = activitySrc.indexOf("export function wasChatReadOnServer");
-  const slice = activitySrc.slice(start, start + 1200);
+  const slice = activitySrc.slice(start, start + 2400);
   check(
     "INBOUND_EVALUATED_BEFORE_OWN_LAST_SENDER",
     start >= 0 &&
       slice.indexOf("incomingForViewer") >= 0 &&
+      slice.indexOf("primaryIds") >= 0 &&
       slice.indexOf("incomingForViewer") <
         slice.indexOf("isOwnInboxLastSender(chat, viewerId, firebaseUid)"),
   );
