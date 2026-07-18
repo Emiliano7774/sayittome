@@ -55,6 +55,7 @@ import { scrollShuffleFeedToTop } from "@/lib/shuffle/scrollShuffleFeed";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { stashStoryReturnTo } from "@/lib/navigation/storyReturnNav";
+import { isShufflePoolWarmForNav } from "@/lib/shuffle/shufflePoolWarmup";
 import {
   readCachedShufflePool,
   readCachedShuffleStats,
@@ -920,13 +921,10 @@ export function useShufflePool() {
       totalLiveRef.current = cachedStats.totalLive;
     }
 
-    // Warm cache / pinned window: skip the cold forced pool GET. The 8m timer
-    // still refreshes; Chats→Shuffle must not look like a remount reload.
-    const warmCache =
-      (cachedProfiles?.length ?? 0) >= 3 ||
-      getVisibleShuffleProfiles().length >= 3 ||
-      hasShuffleEverHydrated();
-    if (!warmCache) {
+    // Warm cache / pinned / already-hydrated: skip forced pool GET. Align with
+    // ensureShufflePoolWarmForMicroSlide so remount/race cannot refetch warm-valid.
+    // The 8m timer still refreshes TTL; Chats→Shuffle must not look like reload.
+    if (!isShufflePoolWarmForNav()) {
       void loadProfiles({ q: "", force: true });
     }
 
@@ -1021,7 +1019,13 @@ export function useShufflePool() {
       patchShuffleSlotPresence(activePoolRef.current);
     }, 45_000);
 
+    // TTL-aligned refresh: only force-fetch when session cache expired.
+    // Do not reissue pool=full while warm-valid TTL remains (long Chats↔Shuffle runs).
     const poolSyncTimer = window.setInterval(() => {
+      const stillWarm = readCachedShufflePool();
+      if (stillWarm && stillWarm.length >= 3) {
+        return;
+      }
       void loadProfiles({ q: searchRef.current.trim(), force: true });
     }, 8 * 60_000);
 

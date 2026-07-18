@@ -3,7 +3,7 @@
  * Uses existing cached `/api/shuffle?pool=full` only — no polling, no listeners, no writes.
  */
 
-import { markShuffleHydrated } from "@/hooks/useShuffleReady";
+import { hasShuffleEverHydrated, markShuffleHydrated } from "@/hooks/useShuffleReady";
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
 import {
   readCachedShufflePool,
@@ -40,10 +40,20 @@ function emitWarmDiag(kind: string, detail?: Record<string, unknown>) {
   }
 }
 
+/** True when a warm Chats→Shuffle hop must not issue /api/shuffle?pool=full. */
+export function isShufflePoolWarmForNav(): boolean {
+  const cached = readCachedShufflePool();
+  if (cached && cached.length >= MIN_READY_PROFILES) return true;
+  if (getVisibleShuffleProfiles().length >= MIN_READY_PROFILES) return true;
+  // In-memory hydration already painted Shuffle; sessionStorage may lag/race.
+  if (hasShuffleEverHydrated()) return true;
+  return false;
+}
+
 export function getShufflePoolWarmState(): ShufflePoolWarmState {
   if (inflight) return "warming";
+  if (isShufflePoolWarmForNav()) return "ready";
   const cached = readCachedShufflePool();
-  if (cached && cached.length >= MIN_READY_PROFILES) return "ready";
   if (cached && cached.length === 0) return "empty";
   if (lastState !== "unknown") return lastState;
   return cached == null ? "unknown" : "empty";
@@ -82,12 +92,22 @@ export function ensureShufflePoolWarmForMicroSlide(): Promise<ShufflePoolWarmSta
   }
 
   const cached = readCachedShufflePool();
-  if (cached && cached.length >= MIN_READY_PROFILES) {
+  const visibleCount = getVisibleShuffleProfiles().length;
+  // Warm-valid nav: never refetch when hydrated/visible/cache-ready (fixes
+  // prod race where sessionStorage lag after cold load triggered pool=full).
+  if (isShufflePoolWarmForNav()) {
     lastState = "ready";
     applyWarmCacheToSlots();
     emitWarmDiag("MICRO_SLIDE_FRESH_ANON_POOL_WARMUP_READY", {
-      reason: "cache-hit",
-      profileCount: cached.length,
+      reason:
+        cached && cached.length >= MIN_READY_PROFILES
+          ? "cache-hit"
+          : visibleCount >= MIN_READY_PROFILES
+            ? "visible-hit"
+            : "hydrated-hit",
+      profileCount: cached?.length ?? 0,
+      visibleCount,
+      hydrated: hasShuffleEverHydrated(),
     });
     return Promise.resolve("ready");
   }
@@ -101,6 +121,8 @@ export function ensureShufflePoolWarmForMicroSlide(): Promise<ShufflePoolWarmSta
   emitWarmDiag("MICRO_SLIDE_FRESH_ANON_POOL_WARMUP_STARTED", {
     reason: "cache-miss",
     cachedCount: cached?.length ?? 0,
+    visibleCount,
+    hydrated: hasShuffleEverHydrated(),
   });
 
   inflight = (async () => {
