@@ -41,6 +41,7 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 import { getPostSettleBridgeRouteCommitDelayMs } from "@/lib/navigation/postSettleBridgeDiagJitter";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { ensureShufflePoolWarmForMicroSlide } from "@/lib/shuffle/shufflePoolWarmup";
+import { prepareShuffleRevealFromNonMainRoute } from "@/lib/navigation/nonMainToShuffleReveal";
 
 /** Begin warm shuffle handoff from the current main-tab path (Chats, Stories, etc.). */
 export function beginWarmShuffleTabNavigation(
@@ -55,6 +56,10 @@ export function beginWarmShuffleTabNavigation(
     "/chats";
 
   const triggerType: MicroSlideNavTriggerType = options?.triggerType ?? "user-main-tab-pointerdown";
+
+  // Own-profile /u/* and settings/edit are outside micro-slide sources — clear
+  // sticky routeKind + profile viewer overlays synchronously (Android WebView).
+  prepareShuffleRevealFromNonMainRoute(path);
 
   observeShuffleNavPointerdown(path, Boolean(options?.blockedDuringSlide));
   traceDryRunIntegration("PREPARE_MAIN_TAB_TO_SHUFFLE", `path=${path}`);

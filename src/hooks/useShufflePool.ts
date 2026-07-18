@@ -920,7 +920,15 @@ export function useShufflePool() {
       totalLiveRef.current = cachedStats.totalLive;
     }
 
-    void loadProfiles({ q: "", force: true });
+    // Warm cache / pinned window: skip the cold forced pool GET. The 8m timer
+    // still refreshes; Chats→Shuffle must not look like a remount reload.
+    const warmCache =
+      (cachedProfiles?.length ?? 0) >= 3 ||
+      getVisibleShuffleProfiles().length >= 3 ||
+      hasShuffleEverHydrated();
+    if (!warmCache) {
+      void loadProfiles({ q: "", force: true });
+    }
 
     const scheduleStoriesIndex = () => {
       const run = () =>

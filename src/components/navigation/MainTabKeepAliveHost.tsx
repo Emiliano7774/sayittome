@@ -169,6 +169,11 @@ export default function MainTabKeepAliveHost() {
         "data-sayittome-route-kind",
         kind === "shuffle" || kindPath === "/shuffle" ? "shuffle" : "main-tab",
       );
+      if (kindPath === "/shuffle" || kind === "shuffle") {
+        document.documentElement.removeAttribute(
+          "data-sayittome-shuffle-reveal-from",
+        );
+      }
     }
 
     // Drop visual-first pending tab so it cannot re-paint under /u/ or /chat/.

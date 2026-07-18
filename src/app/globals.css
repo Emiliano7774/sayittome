@@ -418,13 +418,24 @@ html[data-sayittome-route-kind="non-main"] #sayittome-shuffle-keepalive-host {
   z-index: 0 !important;
 }
 
-html.sayittome-shuffle-exit-handoff-pending #sayittome-shuffle-keepalive-host {
+/* Exit-handoff must not paint Shuffle over a still-mounted profile layer. */
+html.sayittome-shuffle-exit-handoff-pending:not([data-sayittome-route-kind="profile"]):not(
+    [data-sayittome-route-kind="profile-chat"]
+  ):not([data-sayittome-route-kind="chat-thread"]):not(
+    [data-sayittome-route-kind="non-main"]
+  )
+  #sayittome-shuffle-keepalive-host {
   visibility: visible !important;
   opacity: 1 !important;
   pointer-events: auto !important;
   z-index: 2 !important;
   position: fixed;
   inset: 0;
+}
+
+/* Pointerdown reveal from own-profile / settings: Shuffle may paint once kind is shuffle. */
+html[data-sayittome-route-kind="shuffle"] #sayittome-shuffle-keepalive-host {
+  visibility: visible;
 }
 
 /* Keep destination main-tab panels hidden while Shuffle exit handoff waits for readiness. */

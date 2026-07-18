@@ -24,14 +24,20 @@ export function collectViewerSenderIds(
   };
 
   add(viewerId);
-  add(firebaseUid);
-  if (firebaseUid) add(profileReplyAuthorId(firebaseUid));
 
   const threadAnon = profileAnonSenderFromChat(chat);
   const liveAnonId = getChatAnonSenderId();
   const viewerIsAnonSession = viewerId.startsWith("anon_");
   const viewerIsThreadAnonVisitor =
     viewerIsAnonSession || isAnonVisitorProfileChat(chat, firebaseUid);
+
+  // Profile-owner / normal Firebase viewers keep uid + profile_* aliases.
+  // Anon visitors must NOT inherit the browser Firebase uid — that poisons
+  // readBy/unreadCounts evaluation for profile replies keyed under anon_*.
+  if (!viewerIsThreadAnonVisitor) {
+    add(firebaseUid);
+    if (firebaseUid) add(profileReplyAuthorId(firebaseUid));
+  }
 
   // Anon visitor aliases only when this viewer is that visitor.
   if (viewerIsThreadAnonVisitor) {
@@ -99,15 +105,23 @@ export function wasChatReadOnServer(
   // IDs used to be misclassified as own and hid unread forever.
   if (incomingForViewer) {
     const viewerIds = [...collectViewerSenderIds(chat, viewerId, firebaseUid)];
+    // Prefer the inbound recipient keys (anon_* for visitors, firebase/profile_* for owners).
+    const primaryIds = viewerIds.filter((id) =>
+      viewerId.startsWith("anon_")
+        ? id.startsWith("anon_")
+        : !id.startsWith("anon_"),
+    );
+    const ids = primaryIds.length > 0 ? primaryIds : viewerIds;
 
-    for (const id of viewerIds) {
+    for (const id of ids) {
       const unread = chat.unreadCounts?.[id];
       if (typeof unread === "number" && unread > 0) return false;
       if (readBy[id] === false) return false;
     }
 
     // Stale readBy=true from the visitor's own last send must not hide a profile reply.
-    const explicitlyRead = viewerIds.some(
+    // Require an explicit zero-unread + readBy on a primary recipient key.
+    const explicitlyRead = ids.some(
       (id) =>
         readBy[id] === true &&
         typeof chat.unreadCounts?.[id] === "number" &&

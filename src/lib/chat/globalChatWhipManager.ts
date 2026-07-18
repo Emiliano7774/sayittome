@@ -39,12 +39,28 @@ function sameIdSet(a: Set<string>, b: Set<string>) {
 
 const MAX_WHIP_CHAT_LISTENERS = 25;
 
+function messageCreatedAtMs(data: {
+  createdAt?: { toMillis?: () => number; seconds?: number };
+}): number {
+  const createdAt = data.createdAt;
+  if (!createdAt) return 0;
+  if (typeof createdAt.toMillis === "function") {
+    const ms = createdAt.toMillis();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof createdAt.seconds === "number") {
+    return createdAt.seconds * 1000;
+  }
+  return 0;
+}
+
 class GlobalChatWhipManager {
   private context: WhipContext | null = null;
   private inboxIds = new Set<string>();
   private sessionIds = new Set<string>();
   private messageUnsubs = new Map<string, Unsubscribe>();
   private lastMessageId = new Map<string, string>();
+  private listenerAttachedAt = new Map<string, number>();
   private bootstrapped = false;
   private sessionListenerAttached = false;
   private paused = false;
@@ -132,6 +148,7 @@ class GlobalChatWhipManager {
 
     for (const chatId of nextSet) {
       if (this.messageUnsubs.has(chatId)) continue;
+      this.listenerAttachedAt.set(chatId, Date.now());
       this.messageUnsubs.set(chatId, this.attachMessageListener(chatId));
     }
   }
@@ -161,6 +178,7 @@ class GlobalChatWhipManager {
           senderKind?: string;
           text?: string;
           texto?: string;
+          createdAt?: { toMillis?: () => number; seconds?: number };
         };
 
         const body = String(data.text || data.texto || "").trim();
@@ -177,10 +195,26 @@ class GlobalChatWhipManager {
         const activeChatId = ctx.getActiveChatId();
         const viewingActiveChat = activeChatId === chatId && !document.hidden;
         const isNewMessage = Boolean(previousId && previousId !== messageId);
+        // First snapshot after attaching a listener used to always suppress sound.
+        // Profile←anon fails that path (chat just entered the watch set); anon←profile
+        // already had previousId from the visitor's outgoing message. Treat a fresh
+        // inbound created around attach time as live — never hydrate-old.
+        const attachedAt = this.listenerAttachedAt.get(chatId) || Date.now();
+        const createdAtMs = messageCreatedAtMs(data);
+        const unreadHint =
+          Boolean(chat) &&
+          (Number(chat?.unreadCounts?.[viewerId] || 0) > 0 ||
+            chat?.readBy?.[viewerId] === false);
+        const liveInboundOnAttach =
+          !previousId &&
+          incoming &&
+          !viewingActiveChat &&
+          ((createdAtMs > 0 && createdAtMs >= attachedAt - 2500) ||
+            (createdAtMs === 0 && unreadHint));
 
         this.lastMessageId.set(chatId, messageId);
 
-        if (!isNewMessage) {
+        if (!isNewMessage && !liveInboundOnAttach) {
           tryAlertIncomingMessage({
             chatId,
             messageId,
@@ -220,6 +254,7 @@ class GlobalChatWhipManager {
       unsub();
     }
     this.messageUnsubs.clear();
+    this.listenerAttachedAt.clear();
   }
 }
 
