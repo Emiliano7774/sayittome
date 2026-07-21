@@ -120,6 +120,33 @@ check(
     warmShuffleSrc.includes("supersedeEpoch !== getConcreteMainTabSupersedeEpoch()"),
 );
 
+const harnessSelf = fs.readFileSync(
+  path.join(root, "scripts/tab-route-content-consistency.harness.mjs"),
+  "utf8",
+);
+check(
+  "LOADING_CLASSIFIES_VISIBLE_VS_HIDDEN",
+  harnessSelf.includes("visibleLoadingTextCount") &&
+    harnessSelf.includes("hiddenLoadingTextCount") &&
+    harnessSelf.includes("inactivePanelLoadingTextCount") &&
+    harnessSelf.includes("residualDomLoadingTextCount") &&
+    harnessSelf.includes("activePanelLoadingTextCount") &&
+    harnessSelf.includes("pixelVisible"),
+);
+check(
+  "CONTRACT_FAILS_ON_VISIBLE_LOADING",
+  harnessSelf.includes("metrics.visibleLoadingTextCount > 0") &&
+    harnessSelf.includes("metrics.activePanelLoadingTextCount > 0") &&
+    harnessSelf.includes("metrics.staleLocatorUnresolvedCount > 0") &&
+    harnessSelf.includes("contractPass"),
+);
+check(
+  "STALE_LOCATOR_RECOVER_OR_UNRESOLVED",
+  harnessSelf.includes("staleLocatorRecoveredCount") &&
+    harnessSelf.includes("staleLocatorUnresolvedCount") &&
+    harnessSelf.includes("locatorClickFallbackCount"),
+);
+
 function isContextDestroyedError(err) {
   const msg = String(err?.message || err || "");
   return /Execution context was destroyed|Target closed|Frame was detached|most likely because of a navigation/i.test(
@@ -149,8 +176,136 @@ async function readTabConsistencySample(page) {
         (Number.isFinite(opacity) ? opacity > 0.05 : true)
       );
     };
+    const isKeepAliveHost = (el) =>
+      !!el?.id?.startsWith?.("sayittome-main-tab-keepalive-") ||
+      el?.id === "sayittome-shuffle-keepalive-host";
+    const nearestKeepAlive = (el) => {
+      let cur = el;
+      while (cur && cur !== document.documentElement) {
+        if (isKeepAliveHost(cur)) return cur;
+        cur = cur.parentElement;
+      }
+      return null;
+    };
+    const classifyLoadingMatches = () => {
+      const re = /cargando/i;
+      const matches = [];
+      const walker = document.createTreeWalker(
+        document.body || document.documentElement,
+        NodeFilter.SHOW_TEXT,
+      );
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const text = String(node.textContent || "").trim();
+        if (!text || !re.test(text)) continue;
+        const el = node.parentElement;
+        if (!el) continue;
+        const cs = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        const opacity = Number.parseFloat(cs.opacity || "1");
+        const host = nearestKeepAlive(el);
+        const hostVisible = host
+          ? host.classList.contains("sayittome-main-tab-keepalive-visible") ||
+            host.classList.contains("sayittome-shuffle-keepalive-visible")
+          : true;
+        const ariaHidden =
+          el.closest("[aria-hidden='true']") != null ||
+          el.getAttribute("aria-hidden") === "true";
+        const inert =
+          el.closest("[inert]") != null || el.hasAttribute("inert");
+        const hiddenAttr = el.closest("[hidden]") != null || el.hasAttribute("hidden");
+        const zeroRect =
+          rect.width < 1 ||
+          rect.height < 1 ||
+          rect.bottom <= 0 ||
+          rect.right <= 0 ||
+          rect.top >= (window.innerHeight || 0) ||
+          rect.left >= (window.innerWidth || 0);
+        const styleHidden =
+          cs.display === "none" ||
+          cs.visibility === "hidden" ||
+          (Number.isFinite(opacity) && opacity <= 0.05) ||
+          cs.contentVisibility === "hidden";
+        const pixelVisible =
+          !styleHidden &&
+          !ariaHidden &&
+          !inert &&
+          !hiddenAttr &&
+          !zeroRect &&
+          hostVisible;
+        const inActivePanel =
+          hostVisible &&
+          (host?.classList.contains("sayittome-main-tab-keepalive-visible") ||
+            host?.classList.contains("sayittome-shuffle-keepalive-visible") ||
+            !host);
+        let bucket = "residualDom";
+        if (pixelVisible && inActivePanel) bucket = "visibleActive";
+        else if (pixelVisible && !inActivePanel) bucket = "visibleInactive";
+        else if (!hostVisible || (host && !hostVisible)) bucket = "inactivePanel";
+        else if (styleHidden || ariaHidden || inert || hiddenAttr || zeroRect)
+          bucket = "hidden";
+        matches.push({
+          text: text.slice(0, 80),
+          bucket,
+          pixelVisible,
+          inActivePanel,
+          hostId: host?.id || null,
+          hostVisible,
+          display: cs.display,
+          visibility: cs.visibility,
+          opacity: cs.opacity,
+          pointerEvents: cs.pointerEvents,
+          ariaHidden,
+          inert,
+          hiddenAttr,
+          rect: {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            w: Math.round(rect.width),
+            h: Math.round(rect.height),
+          },
+          ancestry: (() => {
+            const parts = [];
+            let cur = el;
+            for (let i = 0; i < 6 && cur; i++) {
+              parts.push(
+                `${cur.tagName.toLowerCase()}${cur.id ? `#${cur.id}` : ""}${
+                  cur.className && typeof cur.className === "string"
+                    ? "." + cur.className.trim().split(/\s+/).slice(0, 2).join(".")
+                    : ""
+                }`,
+              );
+              cur = cur.parentElement;
+            }
+            return parts;
+          })(),
+        });
+      }
+      const visibleActive = matches.filter((m) => m.bucket === "visibleActive");
+      const visibleInactive = matches.filter(
+        (m) => m.bucket === "visibleInactive",
+      );
+      const hidden = matches.filter((m) => m.bucket === "hidden");
+      const inactivePanel = matches.filter((m) => m.bucket === "inactivePanel");
+      const residual = matches.filter((m) => m.bucket === "residualDom");
+      return {
+        loadingTextAnywhereRaw: matches.length > 0,
+        loadingTextAnywhereCountRaw: matches.length,
+        visibleLoadingTextCount: visibleActive.length + visibleInactive.length,
+        activePanelLoadingTextCount: visibleActive.length,
+        hiddenLoadingTextCount: hidden.length,
+        inactivePanelLoadingTextCount: inactivePanel.length,
+        residualDomLoadingTextCount: residual.length,
+        // Legacy boolean: body.innerText (can include non-painted keep-alive text).
+        loadingTextAnywhereLegacyInnerText: /cargando/i.test(
+          document.body?.innerText || "",
+        ),
+        loadingMatches: matches.slice(0, 12),
+      };
+    };
     const navEntries = performance.getEntriesByType?.("navigation") || [];
     const nav0 = navEntries[0];
+    const loading = classifyLoadingMatches();
     return {
       t: Date.now(),
       path,
@@ -178,7 +333,9 @@ async function readTabConsistencySample(page) {
         document
           .querySelector('[data-nav-tab][aria-current="page"], [data-nav-tab].active, [data-nav-tab][data-selected="true"]')
           ?.getAttribute("data-nav-tab") || null,
-      loadingTextAnywhere: /cargando/i.test(document.body?.innerText || ""),
+      ...loading,
+      // Contract alias: only pixel-visible loading fails the gate.
+      loadingTextAnywhere: loading.visibleLoadingTextCount > 0,
     };
   });
 }
@@ -202,14 +359,27 @@ async function liveProbe() {
     },
     expectedSpaNavContextSwapCount: 0,
     unexpectedHardReloadCount: 0,
+    // Legacy alias: locator click fallbacks (not unresolved product state).
     staleLocatorCount: 0,
+    staleLocatorRecoveredCount: 0,
+    staleLocatorUnresolvedCount: 0,
+    locatorClickFallbackCount: 0,
     routeMismatchCount: 0,
     contentMismatchCount: 0,
     navMismatchCount: 0,
     selectedMismatchCount: 0,
     staleTxActivationCount: 0,
     recoveryRedirectCount: 0,
+    // Legacy raw: samples where any DOM "Cargando" text node existed.
+    loadingTextAnywhereCountRaw: 0,
+    // Legacy alias kept for rollout parsers; now tracks VISIBLE loading only.
     loadingTextAnywhereCount: 0,
+    visibleLoadingTextCount: 0,
+    hiddenLoadingTextCount: 0,
+    inactivePanelLoadingTextCount: 0,
+    residualDomLoadingTextCount: 0,
+    activePanelLoadingTextCount: 0,
+    loadingMatchSamples: [],
   };
 
   const results = [];
@@ -276,19 +446,26 @@ async function liveProbe() {
         await loc.click({ force: true, timeout: 5_000 });
       } catch {
         metrics.staleLocatorCount += 1;
-        // One synthetic input after locator miss; do not sample across this hop.
-        await page.evaluate((tab) => {
-          const el = document.querySelector(`[data-nav-tab="${tab}"]`);
-          if (!el) throw new Error(`missing-tab-${tab}`);
-          el.dispatchEvent(
-            new PointerEvent("pointerdown", {
-              bubbles: true,
-              cancelable: true,
-              pointerType: "touch",
-            }),
-          );
-          el.click();
-        }, dest);
+        metrics.locatorClickFallbackCount += 1;
+        // Re-acquire via evaluate; recovered if click lands, unresolved if not.
+        try {
+          await page.evaluate((tab) => {
+            const el = document.querySelector(`[data-nav-tab="${tab}"]`);
+            if (!el) throw new Error(`missing-tab-${tab}`);
+            el.dispatchEvent(
+              new PointerEvent("pointerdown", {
+                bubbles: true,
+                cancelable: true,
+                pointerType: "touch",
+              }),
+            );
+            el.click();
+          }, dest);
+          metrics.staleLocatorRecoveredCount += 1;
+        } catch {
+          metrics.staleLocatorUnresolvedCount += 1;
+          throw new Error(`tapNav-unresolved-${dest}`);
+        }
       }
     }
     if (mode === "stories-shuffle-stories") {
@@ -345,7 +522,33 @@ async function liveProbe() {
         if (sample.navPerfType === "reload" || sample.navLegacyType === 1) {
           metrics.unexpectedHardReloadCount += 1;
         }
-        if (sample.loadingTextAnywhere) metrics.loadingTextAnywhereCount += 1;
+        if (sample.loadingTextAnywhereCountRaw > 0) {
+          metrics.loadingTextAnywhereCountRaw += 1;
+        }
+        if ((sample.visibleLoadingTextCount || 0) > 0) {
+          metrics.visibleLoadingTextCount += sample.visibleLoadingTextCount;
+          metrics.loadingTextAnywhereCount += 1;
+        }
+        if ((sample.activePanelLoadingTextCount || 0) > 0) {
+          metrics.activePanelLoadingTextCount +=
+            sample.activePanelLoadingTextCount;
+        }
+        metrics.hiddenLoadingTextCount += sample.hiddenLoadingTextCount || 0;
+        metrics.inactivePanelLoadingTextCount +=
+          sample.inactivePanelLoadingTextCount || 0;
+        metrics.residualDomLoadingTextCount +=
+          sample.residualDomLoadingTextCount || 0;
+        if (
+          (sample.visibleLoadingTextCount || 0) > 0 &&
+          metrics.loadingMatchSamples.length < 8
+        ) {
+          metrics.loadingMatchSamples.push({
+            i,
+            t: sample.t,
+            path: sample.path,
+            matches: sample.loadingMatches || [],
+          });
+        }
       } catch (err) {
         metrics.contextDestroyedCount += 1;
         const msg = String(err?.message || err);
@@ -552,14 +755,21 @@ async function liveProbe() {
       !r.selectedMiss &&
       !r.failureClass,
   );
-  // Fail-closed metrics: unknown context destruction or unexpected hard reload.
+  // Fail-closed metrics aligned with staged-rollout contract.
   const metricsFail =
     (metrics.contextDestroyedClassified.UNKNOWN || 0) > 0 ||
     metrics.unexpectedHardReloadCount > 0 ||
     (metrics.contextDestroyedClassified.UNEXPECTED_NAV || 0) > 0 ||
     metrics.routeMismatchCount > 0 ||
     metrics.contentMismatchCount > 0 ||
-    metrics.navMismatchCount > 0;
+    metrics.navMismatchCount > 0 ||
+    metrics.selectedMismatchCount > 0 ||
+    metrics.staleTxActivationCount > 0 ||
+    metrics.recoveryRedirectCount > 0 ||
+    metrics.visibleLoadingTextCount > 0 ||
+    metrics.activePanelLoadingTextCount > 0 ||
+    metrics.staleLocatorUnresolvedCount > 0;
+  const contractPass = pass && !metricsFail;
   const failed = results.filter(
     (r) =>
       r.mismatch > 0 ||
@@ -571,13 +781,14 @@ async function liveProbe() {
     mode === "stories-shuffle-stories"
       ? "STORIES_SHUFFLE_STORIES_STAYS_STORIES_FOR_5S"
       : `FROM_${String(fromTab).toUpperCase()}_SHUFFLE_TO_STORIES_STAYS_STORIES_FOR_5S`;
-  const overallPass = pass && !metricsFail;
+  const overallPass = contractPass;
   check(label, overallPass, {
     repeat,
     fromTab,
     mode,
     waitMs,
     failCount: failed.length,
+    contractPass,
     // Persist failing samples (not only the first 3 passes) for forensics.
     results: failed.length > 0 ? failed : results.slice(0, 3),
     failureClasses: [
@@ -590,6 +801,7 @@ async function liveProbe() {
     check("SHUFFLE_TO_STORIES_STAYS_STORIES_FOR_5S", overallPass, {
       repeat,
       failCount: failed.length,
+      contractPass,
       failureClasses: [
         ...new Set(failed.map((r) => r.failureClass).filter(Boolean)),
       ],
