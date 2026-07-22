@@ -130,12 +130,26 @@ check(
     suppress.includes("writeChatsPrepaintHandoffMarker"),
 );
 
-check(
-  "SOURCE_FLAG_STILL_FALSE",
-  fs
-    .readFileSync(path.join(root, "src/lib/perf/instantaneityFlags.ts"), "utf8")
-    .includes("MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE: false"),
-);
+{
+  const flagSrc = fs.readFileSync(
+    path.join(root, "src/lib/perf/instantaneityFlags.ts"),
+    "utf8",
+  );
+  const sourceFlagExpected = true;
+  const sourceFlagActual = /MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE:\s*true/.test(
+    flagSrc,
+  );
+  // Contract: micro-slide source must be true. Obsolete SOURCE_FLAG_STILL_FALSE
+  // (expected false) removed — that contradicted the current release train.
+  check("SOURCE_FLAG_NOT_TRUE", sourceFlagActual === sourceFlagExpected, {
+    sourceFlagExpected,
+    sourceFlagActual,
+    failureClass:
+      sourceFlagActual === sourceFlagExpected
+        ? null
+        : "SOURCE_FLAG_CONTRACT_MISMATCH",
+  });
+}
 
 if (live) {
   const { chromium } = await import("playwright");

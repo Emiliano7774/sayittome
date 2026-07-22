@@ -146,6 +146,25 @@ check(
     harnessSelf.includes("staleLocatorUnresolvedCount") &&
     harnessSelf.includes("locatorClickFallbackCount"),
 );
+check(
+  "NAV_TAP_CLASSIFIES_TIMEOUT_AND_PRECONDITIONS",
+  harnessSelf.includes("NAV_ABSENT_PRODUCT_BUG") &&
+    harnessSelf.includes("NAV_ABSENT_NON_MAIN_EXPECTED") &&
+    harnessSelf.includes("NAV_SHELL_NOT_READY") &&
+    harnessSelf.includes("NAV_HIDDEN_OR_INERT") &&
+    harnessSelf.includes("NAV_LOCATOR_STALE") &&
+    harnessSelf.includes("NAV_SELECTOR_CHANGED") &&
+    harnessSelf.includes("NAV_FRAME_CONTEXT_SWAP") &&
+    harnessSelf.includes("NAV_UNKNOWN") &&
+    harnessSelf.includes("navLocatorTimeoutUnclassifiedCount") &&
+    harnessSelf.includes("navMainRouteAbsentCount"),
+);
+check(
+  "CONTRACT_FAILS_ON_NAV_MAIN_ABSENT_OR_UNCLASSIFIED_TIMEOUT",
+  harnessSelf.includes("metrics.navMainRouteAbsentCount > 0") &&
+    harnessSelf.includes("metrics.navLocatorTimeoutUnclassifiedCount > 0") &&
+    harnessSelf.includes("metrics.navSelectorChangedCount > 0"),
+);
 
 function isContextDestroyedError(err) {
   const msg = String(err?.message || err || "");
@@ -380,6 +399,34 @@ async function liveProbe() {
     residualDomLoadingTextCount: 0,
     activePanelLoadingTextCount: 0,
     loadingMatchSamples: [],
+    // Bottom-nav locator contract (tapNav).
+    navTabLookupCount: 0,
+    navTabFoundCount: 0,
+    navTabMissingCount: 0,
+    navTabVisibleCount: 0,
+    navTabHiddenCount: 0,
+    navTabInertCount: 0,
+    navTabDisabledCount: 0,
+    navTabCoveredCount: 0,
+    navTabActionableCount: 0,
+    navLocatorTimeoutCount: 0,
+    navLocatorTimeoutClassifiedCount: 0,
+    navLocatorTimeoutUnclassifiedCount: 0,
+    navSelectorChangedCount: 0,
+    navShellNotReadyCount: 0,
+    navNonMainPreconditionCount: 0,
+    navMainRouteAbsentCount: 0,
+    navTimeoutClassified: {
+      NAV_ABSENT_PRODUCT_BUG: 0,
+      NAV_ABSENT_NON_MAIN_EXPECTED: 0,
+      NAV_SELECTOR_CHANGED: 0,
+      NAV_SHELL_NOT_READY: 0,
+      NAV_LOCATOR_STALE: 0,
+      NAV_HIDDEN_OR_INERT: 0,
+      NAV_FRAME_CONTEXT_SWAP: 0,
+      NAV_UNKNOWN: 0,
+    },
+    navTimeoutSamples: [],
   };
 
   const results = [];
@@ -439,9 +486,232 @@ async function liveProbe() {
         break;
       }
     }
+
+    const MAIN_TAB_PATHS = new Set([
+      "/chats",
+      "/shuffle",
+      "/boost",
+      "/settings",
+      "/stories",
+    ]);
+
+    async function readNavSnapshot(tab) {
+      return page.evaluate((want) => {
+        const pathName = location.pathname;
+        const routeKind = document.documentElement.getAttribute(
+          "data-sayittome-route-kind",
+        );
+        const ux = document.documentElement.getAttribute("data-ux");
+        const all = [...document.querySelectorAll("[data-nav-tab]")].map(
+          (el) => el.getAttribute("data-nav-tab"),
+        );
+        const el = document.querySelector(`[data-nav-tab="${want}"]`);
+        const navHost = document.querySelector(
+          "[data-bottom-nav-implementation]",
+        );
+        const bodyHasNav = document.body.classList.contains(
+          "sayittome-has-bottom-nav",
+        );
+        if (!el) {
+          return {
+            path: pathName,
+            routeKind,
+            ux,
+            allTabs: all,
+            present: false,
+            visible: false,
+            inert: false,
+            disabled: false,
+            covered: false,
+            actionable: false,
+            navImpl: navHost?.getAttribute("data-bottom-nav-implementation"),
+            bodyHasNav,
+            ready: Boolean(navHost) || bodyHasNav || all.length > 0,
+          };
+        }
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        const visible =
+          cs.visibility !== "hidden" &&
+          cs.display !== "none" &&
+          Number.parseFloat(cs.opacity || "1") > 0.05 &&
+          r.width > 0 &&
+          r.height > 0;
+        const inert =
+          el.hasAttribute("inert") || el.closest("[inert]") != null;
+        const disabled =
+          el.hasAttribute("disabled") ||
+          el.getAttribute("aria-disabled") === "true";
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        const topEl =
+          Number.isFinite(cx) && Number.isFinite(cy)
+            ? document.elementFromPoint(cx, cy)
+            : null;
+        const covered = !!(
+          topEl &&
+          topEl !== el &&
+          !el.contains(topEl) &&
+          !topEl.closest?.(`[data-nav-tab="${want}"]`)
+        );
+        return {
+          path: pathName,
+          routeKind,
+          ux,
+          allTabs: all,
+          present: true,
+          visible,
+          inert,
+          disabled,
+          covered,
+          actionable: visible && !inert && !disabled,
+          navImpl: navHost?.getAttribute("data-bottom-nav-implementation"),
+          bodyHasNav,
+          ready: true,
+        };
+      }, tab);
+    }
+
+    function isMainRoutePath(pathname) {
+      return MAIN_TAB_PATHS.has(String(pathname || "").split("?")[0]);
+    }
+
+    function classifyNavTimeout(snap, err) {
+      const msg = String(err?.message || err || "");
+      if (isContextDestroyedError(err)) return "NAV_FRAME_CONTEXT_SWAP";
+      if (!snap) return "NAV_UNKNOWN";
+      const main = isMainRoutePath(snap.path);
+      const nonMain =
+        !main ||
+        snap.routeKind === "profile" ||
+        snap.routeKind === "profile-chat" ||
+        snap.routeKind === "chat-thread" ||
+        snap.routeKind === "non-main";
+      if (!snap.present) {
+        // Product intentionally hides bottom nav on modern+/shuffle.
+        if (snap.ux === "modern" && snap.path === "/shuffle") {
+          return "NAV_HIDDEN_OR_INERT";
+        }
+        if (nonMain && !main) return "NAV_ABSENT_NON_MAIN_EXPECTED";
+        if (!snap.ready) return "NAV_SHELL_NOT_READY";
+        if (main) return "NAV_ABSENT_PRODUCT_BUG";
+        return "NAV_ABSENT_NON_MAIN_EXPECTED";
+      }
+      if (snap.inert || snap.disabled || !snap.visible) {
+        return "NAV_HIDDEN_OR_INERT";
+      }
+      if (/strict mode violation|not visible|not enabled/i.test(msg)) {
+        return "NAV_HIDDEN_OR_INERT";
+      }
+      if (/Timeout/i.test(msg) && snap.present) return "NAV_LOCATOR_STALE";
+      // Attached nodes exist elsewhere but wanted tab missing → selector drift.
+      if (!snap.allTabs?.includes?.("shuffle") && snap.allTabs?.length > 0) {
+        return "NAV_SELECTOR_CHANGED";
+      }
+      return "NAV_UNKNOWN";
+    }
+
+    async function ensureMainShellReady() {
+      // Soft wait for chrome; do not pass if still absent — classification fails closed.
+      await page
+        .waitForFunction(
+          () => {
+            const pathName = location.pathname;
+            const main = [
+              "/chats",
+              "/shuffle",
+              "/boost",
+              "/settings",
+              "/stories",
+            ].includes(pathName);
+            if (!main) return true; // non-main handled by tapNav classification
+            return (
+              document.body.classList.contains("sayittome-has-bottom-nav") ||
+              !!document.querySelector("[data-bottom-nav-implementation]") ||
+              document.querySelectorAll("[data-nav-tab]").length > 0
+            );
+          },
+          { timeout: 8_000 },
+        )
+        .catch(() => {});
+    }
+
     async function tapNav(dest) {
+      metrics.navTabLookupCount += 1;
+      await ensureMainShellReady();
+      let snap = await readNavSnapshot(dest).catch(() => null);
+      if (snap?.present) metrics.navTabFoundCount += 1;
+      else metrics.navTabMissingCount += 1;
+      if (snap?.visible) metrics.navTabVisibleCount += 1;
+      if (snap && snap.present && !snap.visible) metrics.navTabHiddenCount += 1;
+      if (snap?.inert) metrics.navTabInertCount += 1;
+      if (snap?.disabled) metrics.navTabDisabledCount += 1;
+      if (snap?.covered) metrics.navTabCoveredCount += 1;
+      if (snap?.actionable) metrics.navTabActionableCount += 1;
+
+      // Precondition: never blind-tap bottom nav on non-main routes.
+      if (snap && !isMainRoutePath(snap.path)) {
+        metrics.navNonMainPreconditionCount += 1;
+        // Deterministic recovery: hard-enter seed main route once (not a retry of tap).
+        await page.goto(`${base}/${seed}?navcapture=1&_bd=${Date.now()}`, {
+          waitUntil: "domcontentloaded",
+          timeout: 90_000,
+        });
+        await page.waitForTimeout(500);
+        await ensureMainShellReady();
+        snap = await readNavSnapshot(dest).catch(() => null);
+        if (!snap?.present && isMainRoutePath(snap?.path || "")) {
+          metrics.navMainRouteAbsentCount += 1;
+          metrics.navLocatorTimeoutCount += 1;
+          metrics.navLocatorTimeoutClassifiedCount += 1;
+          metrics.navTimeoutClassified.NAV_ABSENT_PRODUCT_BUG += 1;
+          throw new Error(
+            `NAV_ABSENT_PRODUCT_BUG:${dest}:path=${snap?.path}`,
+          );
+        }
+      }
+
       const loc = page.locator(`[data-nav-tab="${dest}"]`).first();
-      await loc.waitFor({ state: "attached", timeout: 20_000 });
+      try {
+        await loc.waitFor({ state: "attached", timeout: 20_000 });
+      } catch (err) {
+        metrics.navLocatorTimeoutCount += 1;
+        // Re-read after timeout for accurate classification (no second tap).
+        const after = await readNavSnapshot(dest).catch(() => snap);
+        const classification = classifyNavTimeout(after || snap, err);
+        metrics.navTimeoutClassified[classification] =
+          (metrics.navTimeoutClassified[classification] || 0) + 1;
+        if (classification === "NAV_UNKNOWN") {
+          metrics.navLocatorTimeoutUnclassifiedCount += 1;
+        } else {
+          metrics.navLocatorTimeoutClassifiedCount += 1;
+        }
+        if (classification === "NAV_ABSENT_PRODUCT_BUG") {
+          metrics.navMainRouteAbsentCount += 1;
+        }
+        if (classification === "NAV_SHELL_NOT_READY") {
+          metrics.navShellNotReadyCount += 1;
+        }
+        if (classification === "NAV_SELECTOR_CHANGED") {
+          metrics.navSelectorChangedCount += 1;
+        }
+        if (classification === "NAV_ABSENT_NON_MAIN_EXPECTED") {
+          metrics.navNonMainPreconditionCount += 1;
+        }
+        if (metrics.navTimeoutSamples.length < 12) {
+          metrics.navTimeoutSamples.push({
+            dest,
+            classification,
+            snap: after || snap,
+            msg: String(err?.message || err).slice(0, 300),
+          });
+        }
+        // Structured failure — never leave Playwright TimeoutError uncaught.
+        throw new Error(
+          `${classification}:tapNav:${dest}:path=${(after || snap)?.path || "?"}`,
+        );
+      }
+
       try {
         await loc.click({ force: true, timeout: 5_000 });
       } catch {
@@ -464,36 +734,90 @@ async function liveProbe() {
           metrics.staleLocatorRecoveredCount += 1;
         } catch {
           metrics.staleLocatorUnresolvedCount += 1;
-          throw new Error(`tapNav-unresolved-${dest}`);
+          metrics.navLocatorTimeoutCount += 1;
+          metrics.navLocatorTimeoutClassifiedCount += 1;
+          metrics.navTimeoutClassified.NAV_LOCATOR_STALE += 1;
+          throw new Error(`NAV_LOCATOR_STALE:tapNav-unresolved-${dest}`);
         }
       }
     }
-    if (mode === "stories-shuffle-stories") {
-      if (seed !== "stories") {
+    let setupError = null;
+    try {
+      if (mode === "stories-shuffle-stories") {
+        if (seed !== "stories") {
+          if (seed !== "shuffle") {
+            await tapNav("shuffle");
+            await page.waitForURL("**/shuffle", { timeout: 15_000 }).catch(() => {});
+            await page.waitForTimeout(400);
+          }
+          await tapNav("stories");
+          await page.waitForURL("**/stories", { timeout: 15_000 }).catch(() => {});
+          await page.waitForTimeout(400);
+        }
+        await tapNav("shuffle");
+        await page.waitForURL("**/shuffle", { timeout: 15_000 }).catch(() => {});
+        await page.waitForTimeout(400);
+        await tapNav("stories");
+      } else if (mode === "main-to-stories") {
+        if (seed !== "stories") {
+          await tapNav("stories");
+        }
+      } else {
         if (seed !== "shuffle") {
           await tapNav("shuffle");
           await page.waitForURL("**/shuffle", { timeout: 15_000 }).catch(() => {});
           await page.waitForTimeout(400);
         }
         await tapNav("stories");
-        await page.waitForURL("**/stories", { timeout: 15_000 }).catch(() => {});
-        await page.waitForTimeout(400);
       }
-      await tapNav("shuffle");
-      await page.waitForURL("**/shuffle", { timeout: 15_000 }).catch(() => {});
-      await page.waitForTimeout(400);
-      await tapNav("stories");
-    } else if (mode === "main-to-stories") {
-      if (seed !== "stories") {
-        await tapNav("stories");
+    } catch (err) {
+      setupError = err;
+    }
+
+    if (setupError) {
+      const msg = String(setupError?.message || setupError);
+      const classification =
+        msg.split(":")[0] || "NAV_UNKNOWN";
+      const known = [
+        "NAV_ABSENT_PRODUCT_BUG",
+        "NAV_ABSENT_NON_MAIN_EXPECTED",
+        "NAV_SELECTOR_CHANGED",
+        "NAV_SHELL_NOT_READY",
+        "NAV_LOCATOR_STALE",
+        "NAV_HIDDEN_OR_INERT",
+        "NAV_FRAME_CONTEXT_SWAP",
+        "NAV_UNKNOWN",
+      ];
+      const failureClass = known.includes(classification)
+        ? classification
+        : "NAV_UNKNOWN";
+      if (failureClass === "NAV_UNKNOWN") {
+        metrics.navLocatorTimeoutUnclassifiedCount += 1;
+        metrics.navTimeoutClassified.NAV_UNKNOWN += 1;
       }
-    } else {
-      if (seed !== "shuffle") {
-        await tapNav("shuffle");
-        await page.waitForURL("**/shuffle", { timeout: 15_000 }).catch(() => {});
-        await page.waitForTimeout(400);
-      }
-      await tapNav("stories");
+      results.push({
+        i,
+        mismatch: 0,
+        sampled: 0,
+        pathFinal: (() => {
+          try {
+            return new URL(page.url()).pathname;
+          } catch {
+            return null;
+          }
+        })(),
+        storiesFinal: false,
+        chatsFinal: false,
+        navMiss: true,
+        selectedMiss: false,
+        destroyedCount: 0,
+        destroyedClassified: [],
+        failureClass,
+        setupError: msg.slice(0, 400),
+        lifecycleTail: lifecycle.slice(-12),
+      });
+      await ctx.close();
+      continue;
     }
 
     // Do not sample across the Stories commit navigation.
@@ -768,7 +1092,12 @@ async function liveProbe() {
     metrics.recoveryRedirectCount > 0 ||
     metrics.visibleLoadingTextCount > 0 ||
     metrics.activePanelLoadingTextCount > 0 ||
-    metrics.staleLocatorUnresolvedCount > 0;
+    metrics.staleLocatorUnresolvedCount > 0 ||
+    metrics.navMainRouteAbsentCount > 0 ||
+    metrics.navLocatorTimeoutUnclassifiedCount > 0 ||
+    metrics.navSelectorChangedCount > 0 ||
+    (metrics.navTimeoutClassified.NAV_ABSENT_PRODUCT_BUG || 0) > 0 ||
+    (metrics.navTimeoutClassified.NAV_UNKNOWN || 0) > 0;
   const contractPass = pass && !metricsFail;
   const failed = results.filter(
     (r) =>
