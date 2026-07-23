@@ -18,6 +18,11 @@ import {
   pinShuffleWindowWhileAway,
 } from "@/lib/navigation/shuffleKeepAlive";
 import {
+  beginShuffleExitToMainTab,
+  clearStaleShuffleEntryHandoffForMainTabDestination,
+  ensureShuffleExitNoLoadingWatchdog,
+} from "@/lib/navigation/shuffleHandoffState";
+import {
   abortMainTabToShuffleTransition,
   beginInternalMainTabToShuffleTransition,
   blockMainTabNavigationDuringSlide,
@@ -26,6 +31,7 @@ import {
   noteConcreteMainTabSupersede,
   pathToMainTabShuffleSource,
 } from "@/lib/navigation/mainTabToShuffleTransition";
+import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
@@ -62,11 +68,28 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
   function supersedeInFlightShuffle(reason: string) {
     noteConcreteMainTabSupersede(href);
     cancelPendingShuffleRouteCommits(reason);
-    if (
+    const wasInFlightShuffle =
       blockMainTabNavigationDuringSlide() ||
-      isInternalMainTabToShuffleTransitionActive()
-    ) {
+      isInternalMainTabToShuffleTransitionActive();
+    if (wasInFlightShuffle) {
       abortMainTabToShuffleTransition(reason);
+    }
+    // Concrete main-tab destinations must neutralize entry handoff leftovers in
+    // the same pointerdown turn. Stories has no Chats/Boost post-auth settle CSS,
+    // so promote Shuffle→Stories (mid-slide or settled) to an exit latch until
+    // Stories is no-loading ready.
+    if (isConcreteMainTabHref(href)) {
+      const dest = href as Exclude<MainTabHref, "/shuffle">;
+      const fromShuffle =
+        typeof window !== "undefined" &&
+        window.location.pathname.split("?")[0].split("#")[0] === "/shuffle";
+      if (dest === "/stories" && (wasInFlightShuffle || fromShuffle)) {
+        beginShuffleExitToMainTab(dest);
+        // Layout effect can miss arming if prevPath already advanced past /shuffle.
+        ensureShuffleExitNoLoadingWatchdog(dest);
+      } else {
+        clearStaleShuffleEntryHandoffForMainTabDestination(dest);
+      }
     }
   }
 
@@ -94,15 +117,21 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
 
       if (href === "/shuffle" && currentPath !== "/shuffle") {
         pinShuffleKeepAlive();
-        if (isNavTraceEnabled()) {
-          ghostFrameWatchBegin(`warm:${currentPath}->/shuffle`);
-          ghostFrameWatchInspect("pointerdown-prepare");
+        // Arm micro-slide + entry handoff only on pointerdown/click intent.
+        // pointerenter hover used to beginShuffleWarmHandoff while still on
+        // /stories|/chats, leaving sayittome-shuffle-handoff-pending stuck after
+        // Stories stay samples (FROM_CHATS_SHUFFLE_TO_STORIES handoffFinal).
+        if (allowSupersede) {
+          if (isNavTraceEnabled()) {
+            ghostFrameWatchBegin(`warm:${currentPath}->/shuffle`);
+            ghostFrameWatchInspect("pointerdown-prepare");
+          }
+          const source = pathToMainTabShuffleSource(currentPath);
+          if (isMainTabToShuffleMicroSlideEnabled() && source) {
+            beginInternalMainTabToShuffleTransition(source);
+          }
+          beginShuffleWarmHandoff(currentPath);
         }
-        const source = pathToMainTabShuffleSource(currentPath);
-        if (isMainTabToShuffleMicroSlideEnabled() && source) {
-          beginInternalMainTabToShuffleTransition(source);
-        }
-        beginShuffleWarmHandoff(currentPath);
       }
 
       if (currentPath === "/shuffle" && href !== "/shuffle") {

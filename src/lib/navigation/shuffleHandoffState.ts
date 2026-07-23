@@ -13,6 +13,31 @@ let shuffleExitMainTabTarget: MainTabHref | null = null;
 let handoffVersion = 0;
 const listeners = new Set<() => void>();
 
+/** Module watchdog arm hook — registered by ShuffleKeepAliveHost. */
+let armExitNoLoadingWatchdog:
+  | ((path: Exclude<MainTabHref, "/shuffle">, pathnameForCommit: string) => void)
+  | null = null;
+
+export function registerShuffleExitNoLoadingWatchdogArm(
+  fn: (
+    path: Exclude<MainTabHref, "/shuffle">,
+    pathnameForCommit: string,
+  ) => void,
+) {
+  armExitNoLoadingWatchdog = fn;
+}
+
+/**
+ * Ensure the exit no-loading watchdog is running after beginShuffleExitToMainTab
+ * from BottomNavLink (layout effect may miss if prevPath already advanced).
+ */
+export function ensureShuffleExitNoLoadingWatchdog(
+  path: Exclude<MainTabHref, "/shuffle">,
+  pathnameForCommit?: string,
+) {
+  armExitNoLoadingWatchdog?.(path, pathnameForCommit || path);
+}
+
 function notify() {
   handoffVersion += 1;
   listeners.forEach((listener) => listener());
@@ -76,6 +101,34 @@ export function clearStaleShuffleEntryHandoffForMainTabDestination(
     const html = document.documentElement;
     // Force-clear even if presentation ownership still latches — destination
     // URL already won, so entry handoff CSS must not linger.
+    html.classList.remove("sayittome-shuffle-handoff-pending");
+    html.removeAttribute("data-shuffle-defer-source");
+  }
+  notify();
+  return true;
+}
+
+/**
+ * Abort/supersede cleanup: drop entry defer + pending CSS even when no concrete
+ * destination URL has committed yet (mid-slide Stories/Chats tap).
+ */
+export function clearShuffleEntryHandoffAfterAbort() {
+  if (!shuffleRevealDeferred) {
+    if (typeof document !== "undefined") {
+      const html = document.documentElement;
+      if (
+        !html.classList.contains("sayittome-shuffle-handoff-pending") &&
+        !html.hasAttribute("data-shuffle-defer-source")
+      ) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  shuffleRevealDeferred = false;
+  if (typeof document !== "undefined") {
+    const html = document.documentElement;
     html.classList.remove("sayittome-shuffle-handoff-pending");
     html.removeAttribute("data-shuffle-defer-source");
   }

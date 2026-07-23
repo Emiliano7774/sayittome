@@ -1,5 +1,6 @@
 import {
   activateShuffleTabSurface,
+  clearShuffleEntryHandoffAfterTransitionAbort,
   keepPresentedShuffleSurfaceForRouteBridge,
   releasePresentedShuffleOwnerSurface,
 } from "@/lib/navigation/shuffleKeepAlive";
@@ -3675,6 +3676,8 @@ export function abortMainTabToShuffleTransition(reason: string) {
       runtimeInstanceId: runtime.runtimeInstanceId,
       activeTxPresent: false,
     });
+    // Warm handoff may have armed entry pending before a tx existed.
+    clearShuffleEntryHandoffAfterTransitionAbort();
     return;
   }
   tx.phase = "aborted";
@@ -3698,6 +3701,11 @@ export function abortMainTabToShuffleTransition(reason: string) {
   clearAllSlideWatchdogs("abortMainTabToShuffleTransition", reason);
   cancelActiveWaapiAnimations(reason || "abort");
   clearTransactionRef("abortMainTabToShuffleTransition", reason);
+  // Entry handoff CSS (sayittome-shuffle-handoff-pending) is armed by
+  // beginShuffleWarmHandoff before the slide owns presentation. Abort must
+  // drop it synchronously or a mid-slide Stories tap can land with pending
+  // still on <html> and paint cold destination loading under a stale defer.
+  clearShuffleEntryHandoffAfterTransitionAbort();
   notify();
 }
 

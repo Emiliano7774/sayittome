@@ -9,9 +9,11 @@ import {
 import { clearPendingVisualTab, pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
 import {
   beginShuffleRevealDeferred,
+  clearShuffleEntryHandoffAfterAbort,
   clearShuffleExitToMainTab,
   clearShuffleHandoffState,
   getShuffleDeferSourcePath,
+  isShuffleExitToMainTabPending,
   isShuffleRevealDeferred,
   isShuffleSourceRetainedForMainTabExit,
   isShuffleSurfacePresented,
@@ -276,6 +278,9 @@ export function exportShuffleRevealAudit() {
 
 function markShuffleHandoffPendingDom() {
   if (typeof document === "undefined") return;
+  // Never re-arm entry pending while Shuffle→main exit owns the destination
+  // (stale activate rAF after Stories tap was re-painting handoff-pending on /stories).
+  if (isShuffleExitToMainTabPending()) return;
   if (!document.documentElement.classList.contains("sayittome-shuffle-handoff-pending")) {
     shuffleHandoffPendingSince = performance.now();
   }
@@ -331,6 +336,15 @@ export function reconcileOrphanedShuffleHandoffDom() {
   if (!document.documentElement.classList.contains("sayittome-shuffle-handoff-pending")) return;
   if (isValidWarmShuffleHandoffActive()) return;
   clearShuffleHandoffPendingDom();
+}
+
+/**
+ * Sync abort/supersede cleanup. Must run in the same turn as slide abort so a
+ * mid-slide Stories tap cannot sample sayittome-shuffle-handoff-pending on /stories.
+ */
+export function clearShuffleEntryHandoffAfterTransitionAbort() {
+  clearShuffleHandoffPendingDom({ force: true });
+  clearShuffleEntryHandoffAfterAbort();
 }
 
 function legacyRevealBlockReason(microSlideSettle?: boolean) {
@@ -719,6 +733,10 @@ export function beginShuffleWarmHandoff(fromPath?: string) {
 export function prepareShuffleTabReturn(): boolean {
   if (typeof window === "undefined" || !keepAliveActive) return false;
   if (!hasRestorableWarmShuffleState()) return false;
+  // Stale handoff-loop frames must not re-arm entry defer after Stories/Chats
+  // already won and armed the Shuffle exit latch.
+  if (isShuffleExitToMainTabPending()) return false;
+  if (normalizePath(window.location.pathname) !== "/shuffle") return false;
 
   restorePinnedShuffleWindowSync();
   suppressShuffleWindowRefresh = true;
@@ -806,7 +824,9 @@ export function activateShuffleTabSurface(options?: { microSlideSettle?: boolean
   document.body.classList.add("sayittome-shuffle-route");
   markNavCaptureDetail("body-class-shuffle-surface-active");
   document.body.classList.add("sayittome-shuffle-surface-active");
-  clearShuffleHandoffPendingDom();
+  // Force-clear: presentation ownership can still latch at settle and otherwise
+  // leave sayittome-shuffle-handoff-pending armed into the next Stories tap.
+  clearShuffleHandoffPendingDom({ force: true });
   window.scrollTo(0, 0);
 
   if (isNavTraceEnabled()) {

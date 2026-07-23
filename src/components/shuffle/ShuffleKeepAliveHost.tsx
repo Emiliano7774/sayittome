@@ -13,6 +13,7 @@ import {
   getShuffleHandoffVersion,
   isShuffleExitToMainTabPending,
   isShuffleSurfacePresented,
+  registerShuffleExitNoLoadingWatchdogArm,
   subscribeShuffleHandoffState,
 } from "@/lib/navigation/shuffleHandoffState";
 import {
@@ -65,10 +66,21 @@ const NO_LOADING_EXIT_ABSOLUTE_BUDGET = 900;
 
 /** Auth destinations must not soft-settle into loading after reveal. */
 function requiresStrictPostAuthExit(path: string) {
-  return path === "/boost" || path === "/chats";
+  if (path === "/boost" || path === "/chats") return true;
+  // Stories paints "Cargando historias..." without post-auth settle CSS. Under
+  // the tab-shell no-loading contract it must wait for destination readiness
+  // instead of the non-strict early force-clear path.
+  if (
+    path === "/stories" &&
+    isTabShellNoLoadingTransitionContractActive()
+  ) {
+    return true;
+  }
+  return false;
 }
 
-const EXACT_LOADING_TEXT_RE = /^(Cargando\.\.\.|Loading\.\.\.)$/i;
+/** Match tabDestinationReadiness LOADING_TEXT_RE — includes "Cargando historias...". */
+const VISIBLE_LOADING_TEXT_RE = /Cargando(?:\.\.\.)?|Loading(?:\.\.\.)?/i;
 
 function elementVisuallyShowsLoading(el: Element) {
   const style = getComputedStyle(el);
@@ -79,6 +91,18 @@ function elementVisuallyShowsLoading(el: Element) {
     style.visibility !== "hidden" &&
     style.display !== "none" &&
     parseFloat(style.opacity || "1") >= 0.04
+  );
+}
+
+function elementLayoutPresent(el: Element) {
+  const style = getComputedStyle(el);
+  const rect = el.getBoundingClientRect();
+  return (
+    rect.width >= 8 &&
+    rect.height >= 8 &&
+    style.display !== "none" &&
+    // Treat handoff/settle CSS hide as still "loading present" for release gates.
+    style.visibility !== "collapse"
   );
 }
 
@@ -94,9 +118,31 @@ function hostHasVisuallyVisibleLoading(host: HTMLElement | null) {
   let node = walker.nextNode();
   while (node) {
     const t = node.textContent?.trim() || "";
-    if (EXACT_LOADING_TEXT_RE.test(t)) {
+    if (VISIBLE_LOADING_TEXT_RE.test(t)) {
       const parent = node.parentElement;
       if (parent && elementVisuallyShowsLoading(parent)) return true;
+    }
+    node = walker.nextNode();
+  }
+  return false;
+}
+
+/** Layout-present loading (ignores exit/handoff visibility:hidden). */
+function hostHasLayoutPresentLoading(host: HTMLElement | null) {
+  if (!host) return false;
+  const nodes = host.querySelectorAll(
+    "[data-loading-shell], [data-nav-loading-copy], [data-boost-access-state='loading']",
+  );
+  for (const el of nodes) {
+    if (elementLayoutPresent(el)) return true;
+  }
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const t = node.textContent?.trim() || "";
+    if (VISIBLE_LOADING_TEXT_RE.test(t)) {
+      const parent = node.parentElement;
+      if (parent && elementLayoutPresent(parent)) return true;
     }
     node = walker.nextNode();
   }
@@ -126,18 +172,29 @@ function forceReleaseShuffleExitIfNoVisibleLoading(
   frames: number,
   via: string,
 ) {
-  // Never clear the Shuffle exit latch while destination OR Shuffle still shows
-  // user-visible loading (force-clearing exit while Shuffle loading is visible
-  // produced BOTH_LOADING_VISIBLE in Chromium/local probes).
+  // Never clear while the destination still shows user-visible loading.
+  if (hasVisuallyVisibleDestinationLoading(path)) {
+    return false;
+  }
+  // Shuffle stays painted under exit CSS. Waiting on Shuffle loading forever
+  // deadlocks Stories (host frozen, sampled=0). After soft budget, allow
+  // Stories release despite Shuffle loading — releaseShuffleTabSurface hides it.
+  // Before soft budget, still block (BOTH_LOADING_VISIBLE risk on early clear).
   if (
-    hasVisuallyVisibleDestinationLoading(path) ||
-    hasVisuallyVisibleShuffleLoading()
+    hasVisuallyVisibleShuffleLoading() &&
+    !(path === "/stories" && frames >= NO_LOADING_EXIT_FRAME_BUDGET)
   ) {
     return false;
   }
+  if (path === "/stories") {
+    const host = document.getElementById(
+      "sayittome-main-tab-keepalive-stories",
+    ) as HTMLElement | null;
+    if (hostHasLayoutPresentLoading(host)) return false;
+  }
   forcePresentMainTabAfterStableExit(path);
   releaseShuffleTabSurface();
-  clearShuffleExitToMainTab();
+  clearShuffleExitToMainTab({ destination: path, force: true });
   pinShuffleWindowWhileAway();
   clearQueuedShuffleTriggers();
   resetShuffleGeometryStability();
@@ -153,6 +210,16 @@ function isStrictNoLoadingReady(
   path: Exclude<MainTabHref, "/shuffle">,
   visual: ReturnType<typeof getTabDestinationVisualReadiness>,
 ) {
+  if (path === "/stories") {
+    const host =
+      typeof document !== "undefined"
+        ? (document.getElementById(
+            "sayittome-main-tab-keepalive-stories",
+          ) as HTMLElement | null)
+        : null;
+    // Exit/handoff CSS hides [data-nav-loading-copy]; do not treat that as ready.
+    if (hostHasLayoutPresentLoading(host)) return false;
+  }
   if (requiresStrictPostAuthExit(path)) {
     return (
       visual.ready &&
@@ -225,7 +292,7 @@ function armShuffleExitNoLoadingWatchdog(
         return;
       }
       releaseShuffleTabSurface();
-      clearShuffleExitToMainTab();
+      clearShuffleExitToMainTab({ destination: path, force: true });
       pinShuffleWindowWhileAway();
       clearQueuedShuffleTriggers();
       resetShuffleGeometryStability();
@@ -258,6 +325,8 @@ function armShuffleExitNoLoadingWatchdog(
 
   requestAnimationFrame(tick);
 }
+
+registerShuffleExitNoLoadingWatchdogArm(armShuffleExitNoLoadingWatchdog);
 
 function isMainTabPath(path: string): path is Exclude<MainTabHref, "/shuffle"> {
   return isMainTabHref(path) && path !== "/shuffle";
@@ -348,11 +417,17 @@ export default function ShuffleKeepAliveHost() {
           }
           if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
             requestAnimationFrame(tick);
+          } else {
+            forceReleaseShuffleExitIfNoVisibleLoading(
+              path,
+              frames,
+              "exit-recovery-effect-absolute",
+            );
           }
           return;
         }
         releaseShuffleTabSurface();
-        clearShuffleExitToMainTab();
+        clearShuffleExitToMainTab({ destination: path, force: true });
         pinShuffleWindowWhileAway();
         clearQueuedShuffleTriggers();
         resetShuffleGeometryStability();
@@ -366,6 +441,12 @@ export default function ShuffleKeepAliveHost() {
       }
       if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
         requestAnimationFrame(tick);
+      } else {
+        forceReleaseShuffleExitIfNoVisibleLoading(
+          path,
+          frames,
+          "exit-recovery-effect-absolute-unready",
+        );
       }
     };
     requestAnimationFrame(tick);
@@ -398,6 +479,15 @@ export default function ShuffleKeepAliveHost() {
         pinShuffleWindowWhileAway();
         clearQueuedShuffleTriggers();
         resetShuffleGeometryStability();
+      } else if (path === "/stories" && isShuffleExitToMainTabPending()) {
+        // Stories is strict under no-loading: re-arm module watchdog and try a
+        // safe force-release so cancelled layout rAF cannot leave Stories frozen.
+        armShuffleExitNoLoadingWatchdog(path, pathname);
+        forceReleaseShuffleExitIfNoVisibleLoading(
+          path,
+          NO_LOADING_EXIT_FRAME_BUDGET,
+          "layout-stuck-stories-recovery",
+        );
       }
     }
 
@@ -414,6 +504,14 @@ export default function ShuffleKeepAliveHost() {
       const tryActivate = () => {
         if (handoffLoopRef.current !== loopId) return;
         frames += 1;
+        // Drop stale activate frames once the live route left /shuffle.
+        const livePath =
+          typeof window !== "undefined"
+            ? window.location.pathname.split("?")[0].split("#")[0]
+            : path;
+        if (livePath !== "/shuffle" || isShuffleExitToMainTabPending()) {
+          return;
+        }
 
         restorePinnedShuffleWindowSync();
 
@@ -534,7 +632,7 @@ export default function ShuffleKeepAliveHost() {
               return;
             }
             releaseShuffleTabSurface();
-            clearShuffleExitToMainTab();
+            clearShuffleExitToMainTab({ destination: path, force: true });
             pinShuffleWindowWhileAway();
             clearQueuedShuffleTriggers();
             resetShuffleGeometryStability();
@@ -554,7 +652,7 @@ export default function ShuffleKeepAliveHost() {
           if (!requiresStrictPostAuthExit(path) && frames >= 45) {
             forcePresentMainTabAfterStableExit(path);
             releaseShuffleTabSurface();
-            clearShuffleExitToMainTab();
+            clearShuffleExitToMainTab({ destination: path, force: true });
             pinShuffleWindowWhileAway();
             clearQueuedShuffleTriggers();
             resetShuffleGeometryStability();
@@ -617,7 +715,7 @@ export default function ShuffleKeepAliveHost() {
                 forcePresentMainTabAfterStableExit(path);
               }
               releaseShuffleTabSurface();
-              clearShuffleExitToMainTab();
+              clearShuffleExitToMainTab({ destination: path, force: true });
               pinShuffleWindowWhileAway();
               clearQueuedShuffleTriggers();
               resetShuffleGeometryStability();
@@ -659,7 +757,7 @@ export default function ShuffleKeepAliveHost() {
           }
 
           releaseShuffleTabSurface();
-          clearShuffleExitToMainTab();
+          clearShuffleExitToMainTab({ destination: path, force: true });
           pinShuffleWindowWhileAway();
           clearQueuedShuffleTriggers();
           resetShuffleGeometryStability();

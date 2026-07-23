@@ -712,25 +712,27 @@ async function liveProbe() {
         );
       }
 
+      // Prefer pointerdown+click via evaluate so BottomNavLink supersede / exit
+      // handoff arms the same way as real touch (Playwright force-click alone can
+      // skip React onPointerDown and leave sayittome-shuffle-handoff-pending).
       try {
-        await loc.click({ force: true, timeout: 5_000 });
+        await page.evaluate((tab) => {
+          const el = document.querySelector(`[data-nav-tab="${tab}"]`);
+          if (!el) throw new Error(`missing-tab-${tab}`);
+          el.dispatchEvent(
+            new PointerEvent("pointerdown", {
+              bubbles: true,
+              cancelable: true,
+              pointerType: "touch",
+            }),
+          );
+          el.click();
+        }, dest);
       } catch {
         metrics.staleLocatorCount += 1;
         metrics.locatorClickFallbackCount += 1;
-        // Re-acquire via evaluate; recovered if click lands, unresolved if not.
         try {
-          await page.evaluate((tab) => {
-            const el = document.querySelector(`[data-nav-tab="${tab}"]`);
-            if (!el) throw new Error(`missing-tab-${tab}`);
-            el.dispatchEvent(
-              new PointerEvent("pointerdown", {
-                bubbles: true,
-                cancelable: true,
-                pointerType: "touch",
-              }),
-            );
-            el.click();
-          }, dest);
+          await loc.click({ force: true, timeout: 5_000 });
           metrics.staleLocatorRecoveredCount += 1;
         } catch {
           metrics.staleLocatorUnresolvedCount += 1;
@@ -1070,6 +1072,9 @@ async function liveProbe() {
   }
   await browser.close();
 
+  const handoffPendingOnStories = results.some(
+    (r) => r.pathFinal === "/stories" && r.handoffFinal,
+  );
   const pass = results.every(
     (r) =>
       r.mismatch === 0 &&
@@ -1077,7 +1082,8 @@ async function liveProbe() {
       r.storiesFinal &&
       !r.navMiss &&
       !r.selectedMiss &&
-      !r.failureClass,
+      !r.failureClass &&
+      !r.handoffFinal,
   );
   // Fail-closed metrics aligned with staged-rollout contract.
   const metricsFail =
@@ -1097,7 +1103,8 @@ async function liveProbe() {
     metrics.navLocatorTimeoutUnclassifiedCount > 0 ||
     metrics.navSelectorChangedCount > 0 ||
     (metrics.navTimeoutClassified.NAV_ABSENT_PRODUCT_BUG || 0) > 0 ||
-    (metrics.navTimeoutClassified.NAV_UNKNOWN || 0) > 0;
+    (metrics.navTimeoutClassified.NAV_UNKNOWN || 0) > 0 ||
+    handoffPendingOnStories;
   const contractPass = pass && !metricsFail;
   const failed = results.filter(
     (r) =>

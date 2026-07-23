@@ -16,7 +16,10 @@ import {
   seedPresentedMainTab,
   subscribeAtomicMainTabHandoff,
 } from "@/lib/navigation/atomicMainTabHandoff";
-import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
+import {
+  getTabDestinationVisualReadiness,
+  isTabShellNoLoadingTransitionContractActive,
+} from "@/lib/navigation/tabDestinationReadiness";
 import {
   clearPendingVisualTab,
   getMainTabKeepAliveVersion,
@@ -41,10 +44,12 @@ import {
 } from "@/lib/navigation/shuffleHandoffState";
 import {
   getMainTabToShuffleTransaction,
+  isInternalMainTabToShuffleTransitionActive,
   isMainTabToShufflePresentationOwned,
 } from "@/lib/navigation/mainTabToShuffleTransition";
 import {
   getShuffleKeepAliveVersion,
+  releaseShuffleTabSurface,
   subscribeShuffleKeepAlive,
 } from "@/lib/navigation/shuffleKeepAlive";
 import {
@@ -73,6 +78,37 @@ const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
 
 const HANDOFF_FRAME_BUDGET = 120;
 const NO_LOADING_HANDOFF_FRAME_BUDGET = 360;
+
+/** Scrub leftover entry handoff CSS while /stories owns the URL. */
+let storiesEntryHandoffScrubToken = 0;
+
+function armStoriesEntryHandoffScrub() {
+  if (typeof window === "undefined") return;
+  storiesEntryHandoffScrubToken += 1;
+  const token = storiesEntryHandoffScrubToken;
+  let frames = 0;
+  const tick = () => {
+    if (token !== storiesEntryHandoffScrubToken) return;
+    const live = window.location.pathname.split("?")[0].split("#")[0];
+    if (live !== "/stories") return;
+    // Do not scrub while Stories→Shuffle micro-slide is arming (path still /stories).
+    if (isInternalMainTabToShuffleTransitionActive()) {
+      frames += 1;
+      if (frames < 360) requestAnimationFrame(tick);
+      return;
+    }
+    if (isShuffleRevealDeferred() && getShuffleDeferSourcePath() === "/stories") {
+      frames += 1;
+      if (frames < 360) requestAnimationFrame(tick);
+      return;
+    }
+    clearStaleShuffleEntryHandoffForMainTabDestination("/stories");
+    frames += 1;
+    // Cover the Stories stay 5s gate window without becoming a permanent loop.
+    if (frames < 360) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
 
 function resolveMainTabPanelPath(pathname: string) {
   const path = pathname.split("?")[0].split("#")[0];
@@ -213,8 +249,49 @@ export default function MainTabKeepAliveHost() {
       if (href !== "/shuffle") {
         clearStaleShuffleEntryHandoffForMainTabDestination(href);
         forcePresentMainTabAfterStableExit(href);
+        if (href === "/stories") {
+          armStoriesEntryHandoffScrub();
+        } else {
+          storiesEntryHandoffScrubToken += 1;
+        }
         if (isShuffleExitToMainTabPending()) {
-          clearShuffleExitToMainTab({ destination: href, force: true });
+          // Stories has no post-auth settle CSS. Force-clearing the exit latch
+          // while "Cargando historias..." is still painted flashes user-visible
+          // loading during Shuffle→Stories / mid-slide supersede. Let the exit
+          // watchdog release once destination loading is gone.
+          if (href === "/stories") {
+            const visual = getTabDestinationVisualReadiness("/stories");
+            const storiesHost =
+              typeof document !== "undefined"
+                ? document.getElementById(
+                    "sayittome-main-tab-keepalive-stories",
+                  )
+                : null;
+            const layoutLoading = storiesHost
+              ? [...storiesHost.querySelectorAll("[data-nav-loading-copy]")].some(
+                  (el) => {
+                    const style = getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return (
+                      rect.width >= 8 &&
+                      rect.height >= 8 &&
+                      style.display !== "none"
+                    );
+                  },
+                )
+              : false;
+            if (
+              !visual.hasVisibleLoadingText &&
+              !visual.hasLoadingShell &&
+              !layoutLoading
+            ) {
+              forcePresentMainTabAfterStableExit(href);
+              releaseShuffleTabSurface();
+              clearShuffleExitToMainTab({ destination: href, force: true });
+            }
+          } else {
+            clearShuffleExitToMainTab({ destination: href, force: true });
+          }
         }
       }
     }

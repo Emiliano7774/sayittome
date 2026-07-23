@@ -20,7 +20,12 @@ export default function ModernStoriesPage() {
         <ModernPageHeader title={t("stories_title")} subtitle={t("stories_subtitle")} />
 
         {loading ? (
-          <p className="text-center text-lg font-black text-white/35">{t("stories_loading")}</p>
+          <p
+            className="text-center text-lg font-black text-white/35"
+            data-nav-loading-copy="1"
+          >
+            {t("stories_loading")}
+          </p>
         ) : groups.length === 0 ? (
           <div className="flex min-h-[45vh] flex-col items-center justify-center text-center">
             <p className="text-2xl font-black text-white/35">{t("stories_empty")}</p>
