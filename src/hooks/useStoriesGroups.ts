@@ -64,5 +64,10 @@ export function useStoriesGroups() {
     groupCount: groups.length,
   });
 
-  return { groups, viewerUid, loading: showLoading };
+  // indexPending: cold fetch in flight with no groups yet — pages may paint a
+  // stable awaiting shell. Under the no-loading contract showLoading is false
+  // so "Cargando historias..." is never returned as loading.
+  const indexPending = loading && groups.length === 0;
+
+  return { groups, viewerUid, loading: showLoading, indexPending };
 }

@@ -10,23 +10,33 @@ import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernStoriesPage() {
   const t = useT();
-  const { groups, viewerUid, loading } = useStoriesGroups();
+  const { groups, viewerUid, loading, indexPending } = useStoriesGroups();
 
-  useNavUsefulPaint(!loading, "/stories");
+  useNavUsefulPaint(!loading && !indexPending, "/stories");
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content>
       <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
         <ModernPageHeader title={t("stories_title")} subtitle={t("stories_subtitle")} />
 
-        {loading ? (
+        {groups.length > 0 ? (
+          <StoriesHub groups={groups} viewerUid={viewerUid} />
+        ) : indexPending ? (
+          // Stable awaiting shell (no "Cargando historias..." / data-nav-loading-copy).
+          // Tab stay gates treat that copy as FAIL when Stories is already final.
+          <div
+            className="flex min-h-[45vh] flex-col items-center justify-center text-center"
+            aria-busy="true"
+            data-stories-index-pending="1"
+          />
+        ) : loading ? (
           <p
             className="text-center text-lg font-black text-white/35"
             data-nav-loading-copy="1"
           >
             {t("stories_loading")}
           </p>
-        ) : groups.length === 0 ? (
+        ) : (
           <div className="flex min-h-[45vh] flex-col items-center justify-center text-center">
             <p className="text-2xl font-black text-white/35">{t("stories_empty")}</p>
             <Link
@@ -36,8 +46,6 @@ export default function ModernStoriesPage() {
               {t("stories_create")}
             </Link>
           </div>
-        ) : (
-          <StoriesHub groups={groups} viewerUid={viewerUid} />
         )}
       </div>
     </main>

@@ -112,9 +112,9 @@ const listeners = new Set<() => void>();
 
 function notify() {
   version += 1;
-  if (cachedGroups.length > 0) {
-    markStoriesHydrated(cachedGroups.length);
-  }
+  // Mark hydrated after any successful index materialization, including empty.
+  // Empty prod users otherwise re-enter cold loading UI on every Stories remount.
+  markStoriesHydrated(cachedGroups.length);
   listeners.forEach((listener) => listener());
 }
 
@@ -145,6 +145,18 @@ export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = fal
   const previousByUid = new Map(byUid);
 
   try {
+    // Harness-only: artificial latency for cold Stories stay gates (no extra reads).
+    const testDelayMs =
+      typeof window !== "undefined"
+        ? Number(
+            (window as Window & { __SAYITTOME_TEST_STORIES_INDEX_DELAY_MS?: number })
+              .__SAYITTOME_TEST_STORIES_INDEX_DELAY_MS || 0,
+          )
+        : 0;
+    if (Number.isFinite(testDelayMs) && testDelayMs > 0) {
+      await new Promise((r) => setTimeout(r, testDelayMs));
+    }
+
     const groups = await fetchActiveStoriesGrouped(viewerUid);
     preserveViewerSeenState(groups, previousByUid, viewerUid);
     cachedGroups = groups;

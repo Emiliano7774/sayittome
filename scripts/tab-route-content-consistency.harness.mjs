@@ -26,6 +26,19 @@ const waitMs = Math.max(
   1000,
   Number(args[args.indexOf("--wait-ms") + 1] || "5200") || 5200,
 );
+/**
+ * Prod-like cold Stories (default ON for --live so local FLR cannot false-PASS
+ * like 29e898d). Opt out with --no-cold-stories.
+ */
+const coldStories =
+  args.includes("--cold-stories") ||
+  (live && !args.includes("--no-cold-stories"));
+const coldStoriesDelayMs = Math.max(
+  0,
+  Number(
+    args[args.indexOf("--cold-delay-ms") + 1] || (coldStories ? "6500" : "0"),
+  ) || 0,
+);
 
 const checks = [];
 function check(name, pass, detail = {}) {
@@ -139,6 +152,22 @@ check(
     harnessSelf.includes("metrics.activePanelLoadingTextCount > 0") &&
     harnessSelf.includes("metrics.staleLocatorUnresolvedCount > 0") &&
     harnessSelf.includes("contractPass"),
+);
+check(
+  "COLD_STORIES_GATE_HARDENS_LOCAL_FLR",
+  harnessSelf.includes("sayittome:stories:hydrated:v1") &&
+    harnessSelf.includes("__SAYITTOME_TEST_STORIES_INDEX_DELAY_MS") &&
+    harnessSelf.includes("--cold-stories"),
+);
+const storiesReadySrc = fs.readFileSync(
+  path.join(root, "src/hooks/useStoriesReady.ts"),
+  "utf8",
+);
+check(
+  "STORIES_LOADING_COPY_DISABLED_UNDER_NO_LOADING_FLAG",
+  storiesReadySrc.includes("isMainTabToShuffleMicroSlideEnabled") &&
+    storiesReadySrc.includes("shouldShowStoriesLoading") &&
+    storiesReadySrc.includes("return false"),
 );
 check(
   "STALE_LOCATOR_RECOVER_OR_UNRESOLVED",
@@ -437,19 +466,40 @@ async function liveProbe() {
       isMobile: true,
       hasTouch: true,
     });
+    await ctx.addInitScript(
+      ({ delayMs }) => {
+        try {
+          localStorage.setItem(
+            "sayittome-flag-MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE",
+            "true",
+          );
+          // Classic shell keeps bottom nav on /shuffle (modern hides it).
+          localStorage.setItem("sayittome_ux_mode", "classic");
+          // Prevent false-warm from prior Stories hydration in the same context.
+          sessionStorage.removeItem("sayittome:stories:hydrated:v1");
+          if (delayMs > 0) {
+            window.__SAYITTOME_TEST_STORIES_INDEX_DELAY_MS = delayMs;
+          }
+        } catch {
+          /* ignore */
+        }
+      },
+      { delayMs: coldStoriesDelayMs },
+    );
+    const page = await ctx.newPage();
+    // Bypass SW/cache so local stays production-like for Stories cold mounts.
+    await page.route("**/sw.js", (route) => route.abort()).catch(() => {});
     await ctx.addInitScript(() => {
       try {
-        localStorage.setItem(
-          "sayittome-flag-MAIN_TAB_TO_SHUFFLE_MICRO_SLIDE",
-          "true",
-        );
-        // Classic shell keeps bottom nav on /shuffle (modern hides it).
-        localStorage.setItem("sayittome_ux_mode", "classic");
+        if (navigator.serviceWorker?.getRegistrations) {
+          void navigator.serviceWorker
+            .getRegistrations()
+            .then((regs) => regs.forEach((r) => r.unregister()));
+        }
       } catch {
         /* ignore */
       }
     });
-    const page = await ctx.newPage();
     const lifecycle = [];
     const noteLife = (type, extra = {}) => {
       lifecycle.push({ t: Date.now(), type, url: page.url(), ...extra });
