@@ -189,6 +189,15 @@ check(
     harnessSelf.includes("navMainRouteAbsentCount"),
 );
 check(
+  "NAV_SHELL_READY_FAIL_CLOSED_WITH_SEED_REENTEER",
+  harnessSelf.includes("ensureMainShellReady") &&
+    harnessSelf.includes("navShellReadyRecoveredCount") &&
+    harnessSelf.includes("shellReadyMs") &&
+    harnessSelf.includes("NAV_SHELL_NOT_READY") &&
+    // One seed re-enter is setup recovery, not a second Shuffle tap.
+    harnessSelf.includes("shell-not-ready-seed-reenter"),
+);
+check(
   "CONTRACT_FAILS_ON_NAV_MAIN_ABSENT_OR_UNCLASSIFIED_TIMEOUT",
   harnessSelf.includes("metrics.navMainRouteAbsentCount > 0") &&
     harnessSelf.includes("metrics.navLocatorTimeoutUnclassifiedCount > 0") &&
@@ -443,6 +452,8 @@ async function liveProbe() {
     navLocatorTimeoutUnclassifiedCount: 0,
     navSelectorChangedCount: 0,
     navShellNotReadyCount: 0,
+    navShellReadyRecoveredCount: 0,
+    navShellReadyWaitMsTotal: 0,
     navNonMainPreconditionCount: 0,
     navMainRouteAbsentCount: 0,
     navTimeoutClassified: {
@@ -520,10 +531,11 @@ async function liveProbe() {
       ? fromTab
       : "chats";
     await page.goto(`${base}/${seed}?navcapture=1&_bd=${Date.now()}`, {
-      waitUntil: "domcontentloaded",
+      // load > domcontentloaded: cold/prod SSR needs JS before AppNavigation mounts
+      waitUntil: coldStories ? "load" : "domcontentloaded",
       timeout: 90_000,
     });
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(coldStories ? 1200 : 900);
     for (let d = 0; d < 3; d++) {
       try {
         const dismiss = page
@@ -661,10 +673,46 @@ async function liveProbe() {
       return "NAV_UNKNOWN";
     }
 
-    async function ensureMainShellReady() {
-      // Soft wait for chrome; do not pass if still absent — classification fails closed.
-      await page
-        .waitForFunction(
+    async function readShellReadyProbe() {
+      return page.evaluate(() => {
+        const pathName = location.pathname;
+        const main = [
+          "/chats",
+          "/shuffle",
+          "/boost",
+          "/settings",
+          "/stories",
+        ].includes(pathName);
+        const tabCount = document.querySelectorAll("[data-nav-tab]").length;
+        const bodyHasNav = document.body.classList.contains(
+          "sayittome-has-bottom-nav",
+        );
+        const navHost = !!document.querySelector(
+          "[data-bottom-nav-implementation]",
+        );
+        const ready = !main || bodyHasNav || navHost || tabCount > 0;
+        return {
+          path: pathName,
+          main,
+          ready,
+          bodyHasNav,
+          navHost,
+          tabCount,
+          readyState: document.readyState,
+          ux: document.documentElement.getAttribute("data-ux"),
+          routeKind: document.documentElement.getAttribute(
+            "data-sayittome-route-kind",
+          ),
+          bodyTextLen: (document.body?.innerText || "").length,
+        };
+      });
+    }
+
+    async function ensureMainShellReady(timeoutMs = 12_000) {
+      // Bounded wait for main-tab chrome. Returns readiness; never pretends PASS.
+      const t0 = Date.now();
+      try {
+        await page.waitForFunction(
           () => {
             const pathName = location.pathname;
             const main = [
@@ -681,15 +729,74 @@ async function liveProbe() {
               document.querySelectorAll("[data-nav-tab]").length > 0
             );
           },
-          { timeout: 8_000 },
-        )
-        .catch(() => {});
+          { timeout: timeoutMs },
+        );
+        const waited = Date.now() - t0;
+        metrics.navShellReadyWaitMsTotal += waited;
+        return { ready: true, waitedMs: waited, probe: await readShellReadyProbe() };
+      } catch {
+        const waited = Date.now() - t0;
+        metrics.navShellReadyWaitMsTotal += waited;
+        return {
+          ready: false,
+          waitedMs: waited,
+          probe: await readShellReadyProbe().catch(() => null),
+        };
+      }
+    }
+
+    async function ensureMainShellReadyOrRecover() {
+      let shell = await ensureMainShellReady(12_000);
+      if (shell.ready) return shell;
+      // Setup recovery for intermittent unhydrated main route (08e270a matrix-slow
+      // iter49): one seed re-enter — NOT a second Shuffle tap.
+      metrics.recoveryRedirectCount += 1;
+      noteLife("shell-not-ready-seed-reenter", {
+        probe: shell.probe,
+        waitedMs: shell.waitedMs,
+      });
+      await page.goto(`${base}/${seed}?navcapture=1&_bd=${Date.now()}`, {
+        waitUntil: "load",
+        timeout: 90_000,
+      });
+      await page.waitForTimeout(400);
+      shell = await ensureMainShellReady(15_000);
+      if (shell.ready) {
+        metrics.navShellReadyRecoveredCount += 1;
+      }
+      return shell;
     }
 
     async function tapNav(dest) {
       metrics.navTabLookupCount += 1;
-      await ensureMainShellReady();
+      const shell = await ensureMainShellReadyOrRecover();
       let snap = await readNavSnapshot(dest).catch(() => null);
+      if (
+        shell &&
+        !shell.ready &&
+        snap &&
+        isMainRoutePath(snap.path) &&
+        !snap.present &&
+        !snap.ready
+      ) {
+        metrics.navLocatorTimeoutCount += 1;
+        metrics.navLocatorTimeoutClassifiedCount += 1;
+        metrics.navShellNotReadyCount += 1;
+        metrics.navTimeoutClassified.NAV_SHELL_NOT_READY += 1;
+        if (metrics.navTimeoutSamples.length < 12) {
+          metrics.navTimeoutSamples.push({
+            dest,
+            classification: "NAV_SHELL_NOT_READY",
+            snap,
+            shellReadyMs: shell.waitedMs,
+            shellProbe: shell.probe,
+            msg: "main-shell-not-ready-after-seed-reenter",
+          });
+        }
+        throw new Error(
+          `NAV_SHELL_NOT_READY:tapNav:${dest}:path=${snap.path}:shellReadyMs=${shell.waitedMs}`,
+        );
+      }
       if (snap?.present) metrics.navTabFoundCount += 1;
       else metrics.navTabMissingCount += 1;
       if (snap?.visible) metrics.navTabVisibleCount += 1;
@@ -793,6 +900,41 @@ async function liveProbe() {
         }
       }
     }
+    // Seed shell must be contractual-ready before first tapNav (slow-matrix iter49).
+    {
+      const seedShell = await ensureMainShellReadyOrRecover();
+      noteLife("seed-shell-ready", {
+        ready: seedShell.ready,
+        waitedMs: seedShell.waitedMs,
+        shellReadyMs: seedShell.waitedMs,
+        probe: seedShell.probe,
+      });
+      if (!seedShell.ready) {
+        const msg = `NAV_SHELL_NOT_READY:seed:${seed}:shellReadyMs=${seedShell.waitedMs}`;
+        results.push({
+          i,
+          mismatch: 0,
+          sampled: 0,
+          pathFinal: seedShell.probe?.path || null,
+          storiesFinal: false,
+          chatsFinal: false,
+          navMiss: true,
+          selectedMiss: false,
+          destroyedCount: 0,
+          destroyedClassified: [],
+          failureClass: "NAV_SHELL_NOT_READY",
+          setupError: msg,
+          lifecycleTail: lifecycle.slice(-12),
+        });
+        metrics.navShellNotReadyCount += 1;
+        metrics.navLocatorTimeoutCount += 1;
+        metrics.navLocatorTimeoutClassifiedCount += 1;
+        metrics.navTimeoutClassified.NAV_SHELL_NOT_READY += 1;
+        await ctx.close();
+        continue;
+      }
+    }
+
     let setupError = null;
     try {
       if (mode === "stories-shuffle-stories") {
