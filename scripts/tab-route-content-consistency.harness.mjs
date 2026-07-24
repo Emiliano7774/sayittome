@@ -198,6 +198,20 @@ check(
     harnessSelf.includes("shell-not-ready-seed-reenter"),
 );
 check(
+  "SEED_REENTER_NOT_COUNTED_AS_PRODUCT_RECOVERY",
+  harnessSelf.includes("setupSeedReenterCount") &&
+    harnessSelf.includes("shell-not-ready-seed-reenter") &&
+    harnessSelf.includes(
+      "Count as setupSeedReenterCount only — never recoveryRedirectCount",
+    ) &&
+    // Product mid-sample redirect still increments recoveryRedirectCount.
+    harnessSelf.includes('classification = "UNEXPECTED_NAV"') &&
+    harnessSelf.includes("metrics.recoveryRedirectCount += 1") &&
+    harnessSelf.includes("PRODUCT_RECOVERY_REDIRECT") &&
+    harnessSelf.includes("metricsFailReasons") &&
+    harnessSelf.includes("CONTRACT_METRICS_INCONSISTENT"),
+);
+check(
   "CONTRACT_FAILS_ON_NAV_MAIN_ABSENT_OR_UNCLASSIFIED_TIMEOUT",
   harnessSelf.includes("metrics.navMainRouteAbsentCount > 0") &&
     harnessSelf.includes("metrics.navLocatorTimeoutUnclassifiedCount > 0") &&
@@ -426,7 +440,11 @@ async function liveProbe() {
     navMismatchCount: 0,
     selectedMismatchCount: 0,
     staleTxActivationCount: 0,
+    // Product/gate-scoped: UNEXPECTED_NAV mid-sample recovery redirect (FAIL).
     recoveryRedirectCount: 0,
+    // Setup/precondition only: one seed re-enter before contractual taps.
+    // Must NOT contaminate recoveryRedirectCount / metricsFail.
+    setupSeedReenterCount: 0,
     // Legacy raw: samples where any DOM "Cargando" text node existed.
     loadingTextAnywhereCountRaw: 0,
     // Legacy alias kept for rollout parsers; now tracks VISIBLE loading only.
@@ -750,10 +768,12 @@ async function liveProbe() {
       if (shell.ready) return shell;
       // Setup recovery for intermittent unhydrated main route (08e270a matrix-slow
       // iter49): one seed re-enter — NOT a second Shuffle tap.
-      metrics.recoveryRedirectCount += 1;
+      // Count as setupSeedReenterCount only — never recoveryRedirectCount (product).
+      metrics.setupSeedReenterCount += 1;
       noteLife("shell-not-ready-seed-reenter", {
         probe: shell.probe,
         waitedMs: shell.waitedMs,
+        setupSeedReenterCount: metrics.setupSeedReenterCount,
       });
       await page.goto(`${base}/${seed}?navcapture=1&_bd=${Date.now()}`, {
         waitUntil: "load",
@@ -1278,25 +1298,59 @@ async function liveProbe() {
       !r.handoffFinal,
   );
   // Fail-closed metrics aligned with staged-rollout contract.
-  const metricsFail =
-    (metrics.contextDestroyedClassified.UNKNOWN || 0) > 0 ||
-    metrics.unexpectedHardReloadCount > 0 ||
-    (metrics.contextDestroyedClassified.UNEXPECTED_NAV || 0) > 0 ||
-    metrics.routeMismatchCount > 0 ||
-    metrics.contentMismatchCount > 0 ||
-    metrics.navMismatchCount > 0 ||
-    metrics.selectedMismatchCount > 0 ||
-    metrics.staleTxActivationCount > 0 ||
-    metrics.recoveryRedirectCount > 0 ||
-    metrics.visibleLoadingTextCount > 0 ||
-    metrics.activePanelLoadingTextCount > 0 ||
-    metrics.staleLocatorUnresolvedCount > 0 ||
-    metrics.navMainRouteAbsentCount > 0 ||
-    metrics.navLocatorTimeoutUnclassifiedCount > 0 ||
-    metrics.navSelectorChangedCount > 0 ||
-    (metrics.navTimeoutClassified.NAV_ABSENT_PRODUCT_BUG || 0) > 0 ||
-    (metrics.navTimeoutClassified.NAV_UNKNOWN || 0) > 0 ||
-    handoffPendingOnStories;
+  // setupSeedReenterCount is intentionally excluded (harness precondition only).
+  const metricsFailReasons = [];
+  if ((metrics.contextDestroyedClassified.UNKNOWN || 0) > 0) {
+    metricsFailReasons.push("CONTEXT_DESTROYED_UNKNOWN");
+  }
+  if (metrics.unexpectedHardReloadCount > 0) {
+    metricsFailReasons.push("UNEXPECTED_HARD_RELOAD");
+  }
+  if ((metrics.contextDestroyedClassified.UNEXPECTED_NAV || 0) > 0) {
+    metricsFailReasons.push("UNEXPECTED_NAV");
+  }
+  if (metrics.routeMismatchCount > 0) metricsFailReasons.push("ROUTE_MISMATCH");
+  if (metrics.contentMismatchCount > 0) {
+    metricsFailReasons.push("CONTENT_MISMATCH");
+  }
+  if (metrics.navMismatchCount > 0) metricsFailReasons.push("NAV_MISMATCH");
+  if (metrics.selectedMismatchCount > 0) {
+    metricsFailReasons.push("SELECTED_MISMATCH");
+  }
+  if (metrics.staleTxActivationCount > 0) {
+    metricsFailReasons.push("STALE_TX_ACTIVATION");
+  }
+  if (metrics.recoveryRedirectCount > 0) {
+    metricsFailReasons.push("PRODUCT_RECOVERY_REDIRECT");
+  }
+  if (metrics.visibleLoadingTextCount > 0) {
+    metricsFailReasons.push("VISIBLE_LOADING");
+  }
+  if (metrics.activePanelLoadingTextCount > 0) {
+    metricsFailReasons.push("ACTIVE_PANEL_LOADING");
+  }
+  if (metrics.staleLocatorUnresolvedCount > 0) {
+    metricsFailReasons.push("STALE_LOCATOR_UNRESOLVED");
+  }
+  if (metrics.navMainRouteAbsentCount > 0) {
+    metricsFailReasons.push("NAV_MAIN_ROUTE_ABSENT");
+  }
+  if (metrics.navLocatorTimeoutUnclassifiedCount > 0) {
+    metricsFailReasons.push("NAV_TIMEOUT_UNCLASSIFIED");
+  }
+  if (metrics.navSelectorChangedCount > 0) {
+    metricsFailReasons.push("NAV_SELECTOR_CHANGED");
+  }
+  if ((metrics.navTimeoutClassified.NAV_ABSENT_PRODUCT_BUG || 0) > 0) {
+    metricsFailReasons.push("NAV_ABSENT_PRODUCT_BUG");
+  }
+  if ((metrics.navTimeoutClassified.NAV_UNKNOWN || 0) > 0) {
+    metricsFailReasons.push("NAV_UNKNOWN");
+  }
+  if (handoffPendingOnStories) {
+    metricsFailReasons.push("HANDOFF_PENDING_ON_STORIES");
+  }
+  const metricsFail = metricsFailReasons.length > 0;
   const contractPass = pass && !metricsFail;
   const failed = results.filter(
     (r) =>
@@ -1305,34 +1359,49 @@ async function liveProbe() {
       r.pathFinal !== "/stories" ||
       r.failureClass,
   );
+  const failureClasses = [
+    ...new Set(failed.map((r) => r.failureClass).filter(Boolean)),
+  ];
+  let failCount = failed.length;
+  // Never leave contractPass=false with failCount=0 and empty failureClasses.
+  if (metricsFail && failCount === 0) {
+    failCount = metricsFailReasons.length;
+    failureClasses.push(...metricsFailReasons);
+    failureClasses.push("CONTRACT_METRICS_INCONSISTENT");
+  } else if (metricsFail) {
+    failureClasses.push(...metricsFailReasons);
+  }
   const label =
     mode === "stories-shuffle-stories"
       ? "STORIES_SHUFFLE_STORIES_STAYS_STORIES_FOR_5S"
       : `FROM_${String(fromTab).toUpperCase()}_SHUFFLE_TO_STORIES_STAYS_STORIES_FOR_5S`;
   const overallPass = contractPass;
-  check(label, overallPass, {
+  const checkDetail = {
     repeat,
     fromTab,
     mode,
     waitMs,
-    failCount: failed.length,
+    failCount,
     contractPass,
+    metricsFail,
+    metricsFailReasons,
+    setupSeedReenterCount: metrics.setupSeedReenterCount,
+    productRecoveryRedirectCount: metrics.recoveryRedirectCount,
     // Persist failing samples (not only the first 3 passes) for forensics.
     results: failed.length > 0 ? failed : results.slice(0, 3),
-    failureClasses: [
-      ...new Set(failed.map((r) => r.failureClass).filter(Boolean)),
-    ],
+    failureClasses: [...new Set(failureClasses)],
     metrics,
-  });
+  };
+  check(label, overallPass, checkDetail);
   // Keep legacy name when default chats→shuffle→stories.
   if (mode === "shuffle-to-stories" && fromTab === "chats") {
     check("SHUFFLE_TO_STORIES_STAYS_STORIES_FOR_5S", overallPass, {
       repeat,
-      failCount: failed.length,
+      failCount,
       contractPass,
-      failureClasses: [
-        ...new Set(failed.map((r) => r.failureClass).filter(Boolean)),
-      ],
+      metricsFail,
+      metricsFailReasons,
+      failureClasses: [...new Set(failureClasses)],
       metrics,
     });
   }
