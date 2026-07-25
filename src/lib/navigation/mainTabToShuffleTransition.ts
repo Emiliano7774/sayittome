@@ -1291,15 +1291,31 @@ function completeFinalShufflePresentationHandoff(
   clearTransactionRef("completeFinalShufflePresentationHandoff", reason);
   activateShuffleTabSurface({ microSlideSettle: true });
 
-  // Drop bridge CSS only after the host is actually presented/visible.
+  // Drop bridge CSS only after the host is presented AND surface-active.
+  // Sync-only drop raced a paint where the source main-tab keepalive flashed
+  // (manual Chats→Shuffle pantallazo post-771a927).
   if (typeof document !== "undefined") {
-    const host = document.getElementById("sayittome-shuffle-keepalive-host");
-    const presentedVisible =
-      !!host &&
-      host.classList.contains("sayittome-shuffle-keepalive-visible") &&
-      !host.classList.contains("sayittome-shuffle-keepalive-frozen");
-    if (presentedVisible) {
-      document.documentElement.removeAttribute("data-post-settle-route-bridge");
+    const dropBridgeWhenPresented = () => {
+      const host = document.getElementById("sayittome-shuffle-keepalive-host");
+      const presentedVisible =
+        !!host &&
+        host.classList.contains("sayittome-shuffle-keepalive-visible") &&
+        !host.classList.contains("sayittome-shuffle-keepalive-frozen") &&
+        document.body.classList.contains("sayittome-shuffle-surface-active");
+      if (presentedVisible) {
+        document.documentElement.removeAttribute("data-post-settle-route-bridge");
+        return true;
+      }
+      return false;
+    };
+    if (!dropBridgeWhenPresented()) {
+      requestAnimationFrame(() => {
+        if (!dropBridgeWhenPresented()) {
+          requestAnimationFrame(() => {
+            dropBridgeWhenPresented();
+          });
+        }
+      });
     }
   }
   notify();

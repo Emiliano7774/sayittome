@@ -1,4 +1,5 @@
 import {
+  activateShuffleTabSurface,
   beginShuffleWarmHandoff,
   isShuffleKeepAliveActive,
   pinShuffleKeepAlive,
@@ -42,6 +43,7 @@ import { getPostSettleBridgeRouteCommitDelayMs } from "@/lib/navigation/postSett
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { ensureShufflePoolWarmForMicroSlide } from "@/lib/shuffle/shufflePoolWarmup";
 import { prepareShuffleRevealFromNonMainRoute } from "@/lib/navigation/nonMainToShuffleReveal";
+import { isNonMainRoute } from "@/lib/navigation/routeKind";
 
 /** Begin warm shuffle handoff from the current main-tab path (Chats, Stories, etc.). */
 export function beginWarmShuffleTabNavigation(
@@ -59,7 +61,7 @@ export function beginWarmShuffleTabNavigation(
 
   // Own-profile /u/* and settings/edit are outside micro-slide sources — clear
   // sticky routeKind + profile viewer overlays synchronously (Android WebView).
-  prepareShuffleRevealFromNonMainRoute(path);
+  const fromNonMain = prepareShuffleRevealFromNonMainRoute(path);
 
   observeShuffleNavPointerdown(path, Boolean(options?.blockedDuringSlide));
   traceDryRunIntegration("PREPARE_MAIN_TAB_TO_SHUFFLE", `path=${path}`);
@@ -102,6 +104,24 @@ export function beginWarmShuffleTabNavigation(
   if (!handoffOk && isInternalMainTabToShuffleTransitionActive()) {
     abortMainTabToShuffleTransition("handoff-unavailable");
   }
+
+  // Non-main (profile/chat) has no micro-slide source — force panel activate on
+  // the next frames once /shuffle commits so nav≠content cannot stick.
+  if (handoffOk && (fromNonMain || isNonMainRoute(path))) {
+    const armActivate = () => {
+      if (window.location.pathname.split("?")[0].split("#")[0] !== "/shuffle") {
+        return;
+      }
+      activateShuffleTabSurface();
+    };
+    requestAnimationFrame(() => {
+      armActivate();
+      requestAnimationFrame(armActivate);
+      window.setTimeout(armActivate, 50);
+      window.setTimeout(armActivate, 180);
+    });
+  }
+
   return handoffOk;
 }
 

@@ -52,6 +52,22 @@ check(
   warmSrc.includes("prepareShuffleRevealFromNonMainRoute"),
 );
 
+const isolationSrc = fs.readFileSync(
+  path.join(root, "src/lib/navigation/nonMainRouteMainTabIsolation.ts"),
+  "utf8",
+);
+check(
+  "NON_MAIN_ISOLATION_RESPECTS_SHUFFLE_REVEAL_FROM",
+  isolationSrc.includes("data-sayittome-shuffle-reveal-from") &&
+    isolationSrc.includes('setAttribute("data-sayittome-route-kind", "shuffle")'),
+);
+
+check(
+  "NON_MAIN_WARM_ARMS_ACTIVATE_ON_SHUFFLE",
+  warmSrc.includes("activateShuffleTabSurface") &&
+    warmSrc.includes("fromNonMain"),
+);
+
 check(
   "EXIT_HANDOFF_DOES_NOT_OVERRIDE_PROFILE_KIND",
   css.includes(

@@ -199,29 +199,49 @@ class GlobalChatWhipManager {
         // Profile←anon fails that path (chat just entered the watch set); anon←profile
         // already had previousId from the visitor's outgoing message. Treat a fresh
         // inbound created around attach time as live — never hydrate-old.
+        //
+        // Manual post-771a927: first inbound often arrives with pending
+        // serverTimestamp (createdAtMs===0) and inbox unreadHint not yet visible.
+        // That used to suppress + burn dedupe, so the first whip never played.
         const attachedAt = this.listenerAttachedAt.get(chatId) || Date.now();
         const createdAtMs = messageCreatedAtMs(data);
-        const unreadHint =
-          Boolean(chat) &&
-          (Number(chat?.unreadCounts?.[viewerId] || 0) > 0 ||
-            chat?.readBy?.[viewerId] === false);
+        const unreadHint = (() => {
+          if (!chat) return false;
+          const readBy = chat.readBy || {};
+          const counts = chat.unreadCounts || {};
+          const keys = new Set<string>([viewerId, ctx.viewerId, ctx.firebaseUid].filter(Boolean));
+          for (const id of keys) {
+            if (Number(counts[id] || 0) > 0) return true;
+            if (readBy[id] === false) return true;
+          }
+          return Object.values(counts).some((n) => Number(n || 0) > 0);
+        })();
+        const LIVE_ATTACH_WINDOW_MS = 8_000;
+        const pendingServerTimestamp = createdAtMs === 0;
+        const createdNearAttach =
+          createdAtMs > 0 && createdAtMs >= attachedAt - LIVE_ATTACH_WINDOW_MS;
         const liveInboundOnAttach =
           !previousId &&
           incoming &&
           !viewingActiveChat &&
-          ((createdAtMs > 0 && createdAtMs >= attachedAt - 2500) ||
-            (createdAtMs === 0 && unreadHint));
+          (createdNearAttach || pendingServerTimestamp || unreadHint);
 
         this.lastMessageId.set(chatId, messageId);
 
         if (!isNewMessage && !liveInboundOnAttach) {
-          tryAlertIncomingMessage({
-            chatId,
-            messageId,
-            incoming: false,
-            suppress: true,
-            onAlert: () => undefined,
-          });
+          // Only burn dedupe for clearly-old hydration. Pending createdAt on a
+          // non-live first snapshot must not permanently silence that messageId.
+          const clearlyOldHydration =
+            createdAtMs > 0 && createdAtMs < attachedAt - LIVE_ATTACH_WINDOW_MS;
+          if (clearlyOldHydration || !incoming) {
+            tryAlertIncomingMessage({
+              chatId,
+              messageId,
+              incoming: false,
+              suppress: true,
+              onAlert: () => undefined,
+            });
+          }
           return;
         }
 

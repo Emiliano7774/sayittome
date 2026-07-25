@@ -26,6 +26,24 @@ export function neutralizeMainTabPresentationForNonMainRoute(pathname: string) {
 
   if (typeof document !== "undefined") {
     const html = document.documentElement;
+    // Shuffle nav already armed reveal-from while live URL is still /u/* (or
+    // chat). Do not re-stamp sticky profile/non-main kind over that intent —
+    // Android WebView layout effects otherwise win and leave profile content
+    // painted while bottom-nav already shows Shuffle.
+    const shuffleRevealFrom = html.getAttribute("data-sayittome-shuffle-reveal-from");
+    if (shuffleRevealFrom) {
+      html.setAttribute("data-sayittome-route-kind", "shuffle");
+      reconcileOrphanedShuffleHandoffDom();
+      if (isShuffleExitToMainTabPending()) {
+        clearShuffleExitToMainTab({ force: true });
+      }
+      if (hasMainTabHistoryPathnameOverride()) {
+        resetMainTabHistoryPathnameStore("non-main-route-isolation-shuffle-reveal");
+      }
+      clearSoftCommitTxPin("non-main-route-isolation-shuffle-reveal");
+      return true;
+    }
+
     const kind = classifyAppRouteKind(pathname);
     html.setAttribute("data-sayittome-route-kind", kind);
     html.classList.remove("sayittome-main-tab-handoff-pending");

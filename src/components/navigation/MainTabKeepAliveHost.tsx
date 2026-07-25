@@ -196,6 +196,7 @@ export default function MainTabKeepAliveHost() {
     // PROFILE_ROUTE_MAIN_TAB_LEAK: neutralize only while the *live* URL is
     // non-main. Never use lagged Next/store pathnames alone — that can stamp
     // data-sayittome-route-kind=profile onto /stories and CSS-hide Stories.
+    // Respect shuffle-reveal-from so profile→Shuffle pointerdown is not undone.
     if (isNonMainRoute(livePath)) {
       neutralizeMainTabPresentationForNonMainRoute(livePath);
     } else if (typeof document !== "undefined") {

@@ -62,6 +62,23 @@ check(
     activitySrc.includes("viewerIsThreadAnonVisitor"),
 );
 
+const outgoingMeta = fs.readFileSync(
+  path.join(root, "src/lib/chat/outgoingChatMeta.ts"),
+  "utf8",
+);
+check(
+  "OUTGOING_INCREMENTS_UNREAD_ON_ALL_IDENTITY_ALIASES",
+  outgoingMeta.includes("expandReadByIdentityKeys") &&
+    outgoingMeta.includes("unreadCounts.${readByKey}") &&
+    outgoingMeta.includes("Mirror unread onto every identity alias"),
+);
+
+check(
+  "WAS_READ_CHECKS_VIEWER_ALIASES_FOR_REPEAT_INBOUND",
+  activitySrc.includes("Check aliases too") &&
+    activitySrc.includes("repeat inbound after markChatAsRead"),
+);
+
 {
   const start = activitySrc.indexOf("export function wasChatReadOnServer");
   const slice = activitySrc.slice(start, start + 2400);

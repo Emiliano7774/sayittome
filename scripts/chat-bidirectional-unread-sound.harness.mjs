@@ -54,6 +54,13 @@ check(
 );
 
 check(
+  "FIRST_INBOUND_PENDING_SERVER_TIMESTAMP_CAN_SOUND",
+  whipMgr.includes("pendingServerTimestamp") &&
+    whipMgr.includes("LIVE_ATTACH_WINDOW_MS") &&
+    whipMgr.includes("clearlyOldHydration"),
+);
+
+check(
   "ACTIVE_CHAT_SUPPRESSES_SOUND",
   whipMgr.includes("viewingActiveChat") &&
     whipMgr.includes("suppress: viewingActiveChat"),

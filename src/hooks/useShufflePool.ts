@@ -762,10 +762,12 @@ export function useShufflePool() {
 
         if (cachedProfiles?.length) {
           applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
-          filterActivePool("", filtersRef.current);
-          applyWindowFromPool(activePoolRef.current);
+          // forceWindow: typing must re-roll visible cards, not only patch presence
+          // under warm-nav window-refresh suppression.
+          filterActivePool("", filtersRef.current, { forceWindow: true });
+          applyWindowFromPool(activePoolRef.current, { forceReplace: true });
         } else {
-          filterActivePool("", filtersRef.current);
+          filterActivePool("", filtersRef.current, { forceWindow: true });
         }
 
         searchTimerRef.current = window.setTimeout(() => {
@@ -774,7 +776,10 @@ export function useShufflePool() {
         return;
       }
 
-      filterActivePool(value, filtersRef.current);
+      // Live search: filter client pool + replace visible window immediately.
+      // Warm-nav suppression must not freeze the feed while the user is typing.
+      releaseShuffleWindowRefreshSuppression();
+      filterActivePool(value, filtersRef.current, { forceWindow: true });
 
       searchTimerRef.current = window.setTimeout(() => {
         runSearch(value);

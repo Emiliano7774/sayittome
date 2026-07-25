@@ -111,7 +111,9 @@ export function wasChatReadOnServer(
         ? id.startsWith("anon_")
         : !id.startsWith("anon_"),
     );
-    const ids = primaryIds.length > 0 ? primaryIds : viewerIds;
+    // Check aliases too — repeat inbound after markChatAsRead may dirty a
+    // non-primary key first (or only), and must still clear "read".
+    const ids = [...new Set([...primaryIds, ...viewerIds])];
 
     for (const id of ids) {
       const unread = chat.unreadCounts?.[id];
@@ -121,7 +123,8 @@ export function wasChatReadOnServer(
 
     // Stale readBy=true from the visitor's own last send must not hide a profile reply.
     // Require an explicit zero-unread + readBy on a primary recipient key.
-    const explicitlyRead = ids.some(
+    const readIds = primaryIds.length > 0 ? primaryIds : viewerIds;
+    const explicitlyRead = readIds.some(
       (id) =>
         readBy[id] === true &&
         typeof chat.unreadCounts?.[id] === "number" &&

@@ -42,8 +42,11 @@ export function buildOutgoingChatMetaPatch(
   for (const recipientUid of recipients) {
     for (const readByKey of expandReadByIdentityKeys(recipientUid)) {
       patch[`readBy.${readByKey}`] = false;
+      // Mirror unread onto every identity alias so wasChatReadOnServer cannot
+      // stay "explicitlyRead" on profile_* / firebase uid after markChatAsRead
+      // when only one key was incremented (repeat-inbound highlight miss).
+      patch[`unreadCounts.${readByKey}`] = increment(1);
     }
-    patch[`unreadCounts.${recipientUid}`] = increment(1);
   }
 
   return patch;
