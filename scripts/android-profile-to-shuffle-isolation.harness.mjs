@@ -2,6 +2,9 @@
  * ANDROID_PROFILE_TO_SHUFFLE_ISOLATION_GATE
  *   node scripts/android-profile-to-shuffle-isolation.harness.mjs
  *   node scripts/android-profile-to-shuffle-isolation.harness.mjs --live --base http://127.0.0.1:3010
+ *
+ * Fail-closed: final pathname /u/* is FAIL even when overlay=0 and sticky=0.
+ * No second tap. No post-failure goto.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -20,6 +23,9 @@ const repeat = Math.max(
 const profilePath = args.includes("--profile-path")
   ? args[args.indexOf("--profile-path") + 1]
   : "/u/Santi000_35";
+const outDir = args.includes("--out")
+  ? args[args.indexOf("--out") + 1]
+  : null;
 
 const checks = [];
 function check(name, pass, detail = {}) {
@@ -38,6 +44,14 @@ const warmSrc = fs.readFileSync(
 const css = fs.readFileSync(path.join(root, "src/app/globals.css"), "utf8");
 const routeKind = fs.readFileSync(
   path.join(root, "src/lib/navigation/routeKind.ts"),
+  "utf8",
+);
+const bottomNav = fs.readFileSync(
+  path.join(root, "src/components/navigation/BottomNav.tsx"),
+  "utf8",
+);
+const modernNav = fs.readFileSync(
+  path.join(root, "src/components/navigation/ModernBottomNav.tsx"),
   "utf8",
 );
 
@@ -66,6 +80,33 @@ check(
   "NON_MAIN_WARM_ARMS_ACTIVATE_ON_SHUFFLE",
   warmSrc.includes("activateShuffleTabSurface") &&
     warmSrc.includes("fromNonMain"),
+);
+
+check(
+  "NON_MAIN_SYNC_ROUTE_COMMIT",
+  warmSrc.includes("commitNonMainRouteToShuffleNavigation") &&
+    warmSrc.includes("non-main-to-shuffle-sync") &&
+    warmSrc.includes("forceSoftNavigation: true"),
+);
+
+check(
+  "NON_MAIN_SHUFFLE_HREF_FALLBACK",
+  bottomNav.includes('data-sayittome-nonmain-shuffle-href="1"') &&
+    modernNav.includes('data-sayittome-nonmain-shuffle-href="1"') &&
+    bottomNav.includes('href="/shuffle"') &&
+    modernNav.includes('href="/shuffle"'),
+);
+
+check(
+  "MAIN_TAB_SHUFFLE_HREF_FALLBACK",
+  bottomNav.includes('data-sayittome-main-tab-shuffle-href="1"') &&
+    modernNav.includes('data-sayittome-main-tab-shuffle-href="1"'),
+);
+
+check(
+  "MAIN_TAB_ANDROID_FAILSAFE_COMMIT",
+  warmSrc.includes("main-tab-to-shuffle-android-failsafe") &&
+    warmSrc.includes("stillStuckOnOrigin"),
 );
 
 check(
@@ -108,6 +149,9 @@ const browser = await chromium
 const results = [];
 let overlayCount = 0;
 let stickyKindCount = 0;
+let pathStuckCount = 0;
+let secondTapCount = 0;
+let hrefFallbackSeen = 0;
 
 for (let i = 0; i < repeat; i++) {
   const ctx = await browser.newContext({
@@ -117,11 +161,74 @@ for (let i = 0; i < repeat; i++) {
     hasTouch: true,
   });
   const page = await ctx.newPage();
+  const consoleErrors = [];
+  page.on("pageerror", (e) => consoleErrors.push(String(e)));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+
   await page.goto(`${base}${profilePath}?navcapture=1&_bd=${Date.now()}`, {
     waitUntil: "domcontentloaded",
     timeout: 90_000,
   });
-  await page.waitForTimeout(900);
+
+  // /settings/edit intentionally hides bottom nav — go back to /settings first.
+  if (profilePath.startsWith("/settings/edit")) {
+    await page.goto(`${base}/settings?navcapture=1&_bd=${Date.now()}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 90_000,
+    });
+  }
+
+  const navReady = await page
+    .waitForFunction(
+      () => {
+        const el = document.querySelector('[data-nav-tab="shuffle"]');
+        return (
+          !!el &&
+          !!document.querySelector("[data-bottom-nav-implementation]")
+        );
+      },
+      { timeout: 30_000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+
+  if (!navReady) {
+    results.push({
+      i,
+      path: "missing-nav",
+      pathStuck: true,
+      overlay: false,
+      sticky: false,
+      secondTap: false,
+      failureClass: "MISSING_SHUFFLE_NAV",
+      shuffleVisible: false,
+      opacity: 0,
+    });
+    pathStuckCount += 1;
+    await ctx.close();
+    continue;
+  }
+
+  const before = await page.evaluate(() => ({
+    path: location.pathname,
+    kind: document.documentElement.getAttribute("data-sayittome-route-kind"),
+    href: document
+      .querySelector('[data-nav-tab="shuffle"]')
+      ?.getAttribute("href"),
+    tag: document.querySelector('[data-nav-tab="shuffle"]')?.tagName || null,
+    nonmainHref: document
+      .querySelector("[data-sayittome-nonmain-shuffle-href]")
+      ?.getAttribute("data-sayittome-nonmain-shuffle-href"),
+  }));
+  if (before.nonmainHref === "1" || before.href === "/shuffle") {
+    hrefFallbackSeen += 1;
+  }
+
+  // pointerdown then real element.click() — <a href> navigates even pre-hydrate;
+  // synthetic MouseEvent alone does not follow href. Hard nav may destroy the
+  // execution context; wait for /shuffle before sampling.
   await page.evaluate(() => {
     const el = document.querySelector('[data-nav-tab="shuffle"]');
     if (!el) throw new Error("missing-shuffle");
@@ -132,70 +239,154 @@ for (let i = 0; i < repeat; i++) {
         pointerType: "touch",
       }),
     );
-    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    el.click();
   });
-  await page.waitForTimeout(2200);
-  const sample = await page.evaluate(() => {
-    const pathName = location.pathname;
-    const kind = document.documentElement.getAttribute(
-      "data-sayittome-route-kind",
-    );
-    const shuffle = document.getElementById("sayittome-shuffle-keepalive-host");
-    const profileViewer = document.body.classList.contains(
-      "sayittome-profile-viewer-open",
-    );
-    const shuffleVisible = !!shuffle?.classList.contains(
-      "sayittome-shuffle-keepalive-visible",
-    );
-    const cs = shuffle ? getComputedStyle(shuffle) : null;
-    return {
-      path: pathName,
-      kind,
-      profileViewer,
-      shuffleVisible,
-      shuffleOpacity: cs ? Number.parseFloat(cs.opacity || "1") : 0,
-      shuffleVisibility: cs?.visibility || null,
-    };
-  });
+
+  await page
+    .waitForURL((url) => {
+      try {
+        return new URL(url).pathname === "/shuffle";
+      } catch {
+        return String(url).includes("/shuffle");
+      }
+    }, { timeout: 10_000 })
+    .catch(() => null);
+  await page
+    .waitForLoadState("domcontentloaded", { timeout: 10_000 })
+    .catch(() => null);
+
+  async function sampleState() {
+    return page.evaluate(() => {
+      const host = document.getElementById("sayittome-shuffle-keepalive-host");
+      const cs = host ? getComputedStyle(host) : null;
+      const text = document.body?.innerText || "";
+      return {
+        path: location.pathname,
+        kind: document.documentElement.getAttribute(
+          "data-sayittome-route-kind",
+        ),
+        revealFrom: document.documentElement.getAttribute(
+          "data-sayittome-shuffle-reveal-from",
+        ),
+        shuffleVisible: !!host?.classList.contains(
+          "sayittome-shuffle-keepalive-visible",
+        ),
+        surface: !!host?.classList.contains("sayittome-shuffle-surface-active"),
+        opacity: cs ? Number.parseFloat(cs.opacity || "1") : 0,
+        visibility: cs?.visibility || null,
+        profileViewer: document.body.classList.contains(
+          "sayittome-profile-viewer-open",
+        ),
+        loadingStories: /Cargando historias/i.test(text),
+        adminVisible: /Cerrar sesión|Copiar link|Editar perfil|Admin/i.test(
+          text,
+        ),
+      };
+    });
+  }
+
+  const timeline = [];
+  const t0 = Date.now();
+  for (const waitMs of [0, 120, 400, 900, 1400, 2200]) {
+    const elapsed = Date.now() - t0;
+    if (waitMs > elapsed) await page.waitForTimeout(waitMs - elapsed);
+    let snap;
+    try {
+      snap = await sampleState();
+    } catch {
+      await page
+        .waitForLoadState("domcontentloaded", { timeout: 10_000 })
+        .catch(() => null);
+      snap = await sampleState();
+    }
+    timeline.push({ waitMs, ...snap });
+  }
+
+  const sample = timeline[timeline.length - 1];
+  // Any final non-/shuffle pathname is stuck (profile OR settings OR other).
+  const pathStuck = sample.path !== "/shuffle";
   const overlay =
     sample.profileViewer ||
-    (sample.path === "/shuffle" &&
-      sample.kind === "profile") ||
-    (sample.path === "/shuffle" &&
-      sample.shuffleVisibility === "hidden");
+    (sample.path === "/shuffle" && sample.kind === "profile") ||
+    (sample.path === "/shuffle" && sample.visibility === "hidden");
   const sticky = sample.path === "/shuffle" && sample.kind === "profile";
   if (overlay) overlayCount += 1;
   if (sticky) stickyKindCount += 1;
-  results.push({ i, ...sample, overlay, sticky });
+  if (pathStuck) pathStuckCount += 1;
+
+  results.push({
+    i,
+    before,
+    ...sample,
+    pathStuck,
+    overlay,
+    sticky,
+    secondTap: false,
+    failureClass: pathStuck
+      ? "PATH_STUCK_NONMAIN"
+      : sticky
+        ? "STICKY_ROUTEKIND"
+        : overlay
+          ? "OVERLAY_OR_HIDDEN"
+          : null,
+    consoleErrors: consoleErrors.slice(0, 5),
+    timeline,
+  });
   await ctx.close();
 }
 
 await browser.close();
+
+const pathOk = results.every((r) => r.path === "/shuffle");
+const contentOk = results.every(
+  (r) => r.shuffleVisible && r.opacity > 0.2 && r.visibility !== "hidden",
+);
 const pass =
   overlayCount === 0 &&
   stickyKindCount === 0 &&
-  results.every((r) => r.path === "/shuffle");
+  pathStuckCount === 0 &&
+  secondTapCount === 0 &&
+  pathOk &&
+  contentOk;
+
 check("LIVE_ANDROID_UA_PROFILE_TO_SHUFFLE_CLEAN", pass, {
   overlayCount,
   stickyKindCount,
+  pathStuckCount,
+  secondTapCount,
+  hrefFallbackSeen,
   repeat,
 });
 
-const failed = checks.filter((c) => !c.pass);
-console.log(
-  JSON.stringify(
-    {
-      gate: "ANDROID_PROFILE_TO_SHUFFLE_ISOLATION_GATE",
-      pass: failed.length === 0,
-      live: true,
-      provider: "PLAYWRIGHT_CHROME_ANDROID_UA_TOUCH",
-      overlayCount,
-      stickyKindCount,
-      checks,
-      results: results.slice(0, 5),
-    },
-    null,
-    2,
-  ),
+check(
+  "LIVE_PATHNAME_NEVER_STUCK_ON_PROFILE",
+  pathStuckCount === 0,
+  { pathStuckCount },
 );
+
+const failed = checks.filter((c) => !c.pass);
+const report = {
+  gate: "ANDROID_PROFILE_TO_SHUFFLE_ISOLATION_GATE",
+  pass: failed.length === 0,
+  live: true,
+  provider: "PLAYWRIGHT_CHROME_ANDROID_UA_TOUCH",
+  overlayCount,
+  stickyKindCount,
+  pathStuckCount,
+  secondTapCount,
+  hrefFallbackSeen,
+  checks,
+  failedResults: results.filter((r) => r.path !== "/shuffle" || r.pathStuck),
+  results: results.slice(0, 8),
+};
+
+if (outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(outDir, "android-live-report.json"),
+    JSON.stringify({ ...report, results }, null, 2),
+  );
+}
+
+console.log(JSON.stringify(report, null, 2));
 process.exit(failed.length ? 1 : 0);

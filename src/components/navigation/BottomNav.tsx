@@ -14,9 +14,13 @@ import {
   getMainTabInternalPathnameVersion,
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
-import { canSelectBottomNavMainTab } from "@/lib/navigation/routeKind";
+import {
+  canSelectBottomNavMainTab,
+  isNonMainRoute,
+} from "@/lib/navigation/routeKind";
 import {
   beginWarmShuffleTabNavigation,
+  commitNonMainRouteToShuffleNavigation,
   completeWarmShuffleTabNavigation,
   prepareMainTabToShuffleNavigation,
 } from "@/lib/navigation/warmShuffleTabNavigation";
@@ -57,8 +61,15 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
     triggerShuffleClick();
   }
 
-  function openShuffleTab() {
+  function openShuffleTab(event?: { preventDefault: () => void }) {
+    // <a href="/shuffle"> is the progressive fallback when JS has not hydrated.
+    // When hydrated, preventDefault + sync/micro-slide commit owns navigation.
+    event?.preventDefault();
     if (blockMainTabNavigationDuringSlide()) return;
+    if (!navSelectable || isNonMainRoute(pathname)) {
+      commitNonMainRouteToShuffleNavigation(router, fastRouterPush, pathname);
+      return;
+    }
     if (getMainTabToShufflePhase() !== "preparing") {
       beginWarmShuffleTabNavigation(pathname, { triggerType: "user-main-tab-click" });
     }
@@ -121,16 +132,16 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
             );
           }
 
-          if (item.kind === "shuffle" && !(navSelectable && pathname === "/shuffle")) {
+          if (item.kind === "shuffle" && !navSelectable) {
             return (
-              <button
+              <a
                 key={item.id}
-                type="button"
+                href="/shuffle"
                 data-nav-tab="shuffle"
+                data-sayittome-nonmain-shuffle-href="1"
                 onPointerDown={warmShuffleTabPointerDown}
-                onPointerEnter={warmShuffleTabPointerEnter}
                 onClick={openShuffleTab}
-                className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0"
+                className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0 no-underline"
                 aria-label={t("nav_shuffle_refresh")}
               >
                 <Icon
@@ -138,7 +149,29 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
                   strokeWidth={2.4}
                   className="text-[#777]"
                 />
-              </button>
+              </a>
+            );
+          }
+
+          if (item.kind === "shuffle" && !(navSelectable && pathname === "/shuffle")) {
+            return (
+              <a
+                key={item.id}
+                href="/shuffle"
+                data-nav-tab="shuffle"
+                data-sayittome-main-tab-shuffle-href="1"
+                onPointerDown={warmShuffleTabPointerDown}
+                onPointerEnter={warmShuffleTabPointerEnter}
+                onClick={openShuffleTab}
+                className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0 no-underline"
+                aria-label={t("nav_shuffle_refresh")}
+              >
+                <Icon
+                  size={38}
+                  strokeWidth={2.4}
+                  className="text-[#777]"
+                />
+              </a>
             );
           }
 

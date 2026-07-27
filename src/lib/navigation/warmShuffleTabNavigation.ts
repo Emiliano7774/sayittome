@@ -1,9 +1,11 @@
 import {
   activateShuffleTabSurface,
   beginShuffleWarmHandoff,
+  enterColdShufflePresentation,
   isShuffleKeepAliveActive,
   pinShuffleKeepAlive,
 } from "@/lib/navigation/shuffleKeepAlive";
+import { presentShuffleSurface } from "@/lib/navigation/shuffleHandoffState";
 import {
   abortMainTabToShuffleTransition,
   beginInternalMainTabToShuffleTransition,
@@ -205,6 +207,128 @@ function executeShuffleRouteCommit(
   }, routeCommitDelayMs);
 }
 
+/**
+ * Non-main → Shuffle must commit pathname synchronously.
+ * Micro-slide deferral/history modes can no-op while phase is idle on /u/*,
+ * and a bare <button> has no href fallback if the click handler races hydration.
+ */
+export function commitNonMainRouteToShuffleNavigation(
+  router: AppRouterInstance,
+  push: typeof fastRouterPush = fastRouterPush,
+  fromPath?: string,
+) {
+  if (typeof window === "undefined") return;
+
+  const path =
+    fromPath ||
+    window.location.pathname.split("?")[0].split("#")[0] ||
+    "/";
+
+  if (!isNonMainRoute(path)) {
+    commitPreparedMainTabToShuffleNavigation(router, push, path);
+    return;
+  }
+
+  prepareShuffleRevealFromNonMainRoute(path);
+  pinShuffleKeepAlive();
+  void ensureShufflePoolWarmForMicroSlide();
+  beginShuffleWarmHandoff(path);
+  observeShuffleNavClickCommit(path);
+  traceDryRunIntegration("ROUTER_PUSH_SHUFFLE", `path=${path}|nonmain-sync`);
+  traceCompleteWarmNavCalled(path);
+  traceRouterNavCalled("/shuffle", path);
+
+  push(router, "/shuffle", {
+    forceSoftNavigation: true,
+    reason: "non-main-to-shuffle-sync",
+  });
+
+  // Soft router commit can update pathname after the first frames. Poll until
+  // the keepalive host is actually presented — path-only success with opacity 0
+  // is still a user-visible blank Shuffle shell on Android.
+  const armActivate = () => {
+    if (window.location.pathname.split("?")[0].split("#")[0] !== "/shuffle") {
+      return false;
+    }
+    activateShuffleTabSurface({ microSlideSettle: true });
+    const host = document.getElementById("sayittome-shuffle-keepalive-host");
+    return !!host?.classList.contains("sayittome-shuffle-keepalive-visible");
+  };
+  requestAnimationFrame(() => {
+    armActivate();
+    requestAnimationFrame(armActivate);
+  });
+  let tries = 0;
+  const pollId = window.setInterval(() => {
+    tries += 1;
+    if (armActivate() || tries >= 60) {
+      window.clearInterval(pollId);
+    }
+  }, 50);
+  armAndroidShufflePresentationFailsafe(router, push, path);
+}
+
+function armAndroidShufflePresentationFailsafe(
+  router: AppRouterInstance,
+  push: typeof fastRouterPush,
+  fromPath?: string,
+) {
+  if (typeof window === "undefined") return;
+  const armedFrom =
+    fromPath ||
+    window.location.pathname.split("?")[0].split("#")[0] ||
+    "/";
+  window.setTimeout(() => {
+    const live = window.location.pathname.split("?")[0].split("#")[0];
+    // Never yank the user off Stories/Chats/Boost/etc. Only recover when still
+    // stuck on the armed origin (or a non-main profile/chat route).
+    const stillStuckOnOrigin = live === armedFrom || isNonMainRoute(live);
+    if (live !== "/shuffle") {
+      if (!stillStuckOnOrigin) {
+        return;
+      }
+      if (isInternalMainTabToShuffleTransitionActive()) {
+        abortMainTabToShuffleTransition("android-failsafe-commit");
+      }
+      push(router, "/shuffle", {
+        forceSoftNavigation: true,
+        reason: "main-tab-to-shuffle-android-failsafe",
+      });
+    }
+    let tries = 0;
+    const pollId = window.setInterval(() => {
+      tries += 1;
+      const now = window.location.pathname.split("?")[0].split("#")[0];
+      if (now !== "/shuffle") {
+        // User left Shuffle (e.g. Stories) — stop presentation recovery.
+        window.clearInterval(pollId);
+        return;
+      }
+      const host = document.getElementById("sayittome-shuffle-keepalive-host");
+      const visible = !!host?.classList.contains(
+        "sayittome-shuffle-keepalive-visible",
+      );
+      if (!visible) {
+        if (isInternalMainTabToShuffleTransitionActive()) {
+          abortMainTabToShuffleTransition("android-failsafe-present");
+        }
+        // Force React-visible presentation (classList alone is wiped on render).
+        presentShuffleSurface();
+        enterColdShufflePresentation({ force: true });
+        activateShuffleTabSurface({ microSlideSettle: true });
+      }
+      if (
+        document
+          .getElementById("sayittome-shuffle-keepalive-host")
+          ?.classList.contains("sayittome-shuffle-keepalive-visible") ||
+        tries >= 50
+      ) {
+        window.clearInterval(pollId);
+      }
+    }, 50);
+  }, 900);
+}
+
 /** Click: commit transaction intent, start readiness ownership, defer route until no-loading ready. */
 export function commitPreparedMainTabToShuffleNavigation(
   router: AppRouterInstance,
@@ -218,6 +342,12 @@ export function commitPreparedMainTabToShuffleNavigation(
   traceCompleteWarmNavCalled(path);
   observeShuffleNavClickCommit(path);
 
+  // Profile/settings/chat threads: never defer through micro-slide schedule.
+  if (isNonMainRoute(path)) {
+    commitNonMainRouteToShuffleNavigation(router, push, path);
+    return;
+  }
+
   const microSlidePreparing =
     isMainTabToShuffleMicroSlideEnabled() && getMainTabToShufflePhase() === "preparing";
 
@@ -229,10 +359,14 @@ export function commitPreparedMainTabToShuffleNavigation(
     registerDeferredMicroSlideRouteCommit(() => {
       executeShuffleRouteCommit(router, push, path);
     });
+    // Android cold main-tab→Shuffle: deferred readiness can stall with no second
+    // tap available. Bounded failsafe commits + presents if still blank.
+    armAndroidShufflePresentationFailsafe(router, push, path);
     return;
   }
 
   executeShuffleRouteCommit(router, push, path);
+  armAndroidShufflePresentationFailsafe(router, push, path);
 }
 
 /** Router commit after pointerdown prep — starts destination readiness watch when micro-slide is on. */
