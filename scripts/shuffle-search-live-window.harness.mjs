@@ -50,6 +50,29 @@ check(
   !pool.includes("onSnapshot") || pool.includes("loadProfiles"),
 );
 
+const handleSearchChangeMatch = pool.match(
+  /const handleSearchChange = useCallback\(\s*\(value: string\) => \{([\s\S]*?)\n\s*\},\s*\[[^\]]*\]\s*,?\s*\);/,
+);
+const handleSearchChangeBody = (handleSearchChangeMatch?.[1] || "")
+  // Strip line comments so prose like "Do NOT ... loadProfiles" does not fail the gate.
+  .replace(/\/\/[^\n]*/g, "");
+check(
+  "TYPING_DOES_NOT_DEBOUNCE_LOADPROFILES",
+  Boolean(handleSearchChangeMatch) &&
+    pool.includes("forceWindow: true") &&
+    !/\brunSearch\s*\(/.test(handleSearchChangeBody) &&
+    !/\breloadDefaultShuffle\s*\(/.test(handleSearchChangeBody) &&
+    !/\bloadProfiles\s*\(/.test(handleSearchChangeBody),
+);
+
+check(
+  "SUBMIT_AND_BUTTON_STILL_OWN_NETWORK_SEARCH",
+  pool.includes("handleSearchSubmit") &&
+    /const runSearch = useCallback[\s\S]{0,400}loadProfiles\(\{\s*q,\s*force:\s*true\s*\}\)/.test(
+      pool,
+    ),
+);
+
 const failed = checks.filter((c) => !c.pass);
 console.log(
   JSON.stringify(

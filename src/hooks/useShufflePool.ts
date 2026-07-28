@@ -767,25 +767,20 @@ export function useShufflePool() {
           filterActivePool("", filtersRef.current, { forceWindow: true });
           applyWindowFromPool(activePoolRef.current, { forceReplace: true });
         } else {
+          // No pool yet: keep local empty/loading state. Never fetch from input.
           filterActivePool("", filtersRef.current, { forceWindow: true });
         }
-
-        searchTimerRef.current = window.setTimeout(() => {
-          void reloadDefaultShuffle();
-        }, 200);
         return;
       }
 
       // Live search: filter client pool + replace visible window immediately.
       // Warm-nav suppression must not freeze the feed while the user is typing.
+      // Do NOT debounce loadProfiles(/api/shuffle?q=...) or reloadDefaultShuffle here —
+      // Shuffle button / handleSearchSubmit owns network search; typing is client-pool only.
       releaseShuffleWindowRefreshSuppression();
       filterActivePool(value, filtersRef.current, { forceWindow: true });
-
-      searchTimerRef.current = window.setTimeout(() => {
-        runSearch(value);
-      }, 250);
     },
-    [applyPool, applyWindowFromPool, filterActivePool, reloadDefaultShuffle, runSearch],
+    [applyPool, applyWindowFromPool, filterActivePool],
   );
 
   const openFilters = useCallback(() => {
