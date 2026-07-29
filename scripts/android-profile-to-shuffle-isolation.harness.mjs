@@ -58,7 +58,8 @@ const modernNav = fs.readFileSync(
 check(
   "NON_MAIN_TO_SHUFFLE_REVEAL_HELPER",
   revealSrc.includes("prepareShuffleRevealFromNonMainRoute") &&
-    revealSrc.includes("clearProfileViewerOverlayForShuffleNav"),
+    revealSrc.includes("clearProfileViewerOverlayForShuffleNav") &&
+    revealSrc.includes("presentShuffleHostForNonMainReveal"),
 );
 
 check(
@@ -226,21 +227,28 @@ for (let i = 0; i < repeat; i++) {
     hrefFallbackSeen += 1;
   }
 
-  // pointerdown then real element.click() — <a href> navigates even pre-hydrate;
-  // synthetic MouseEvent alone does not follow href. Hard nav may destroy the
-  // execution context; wait for /shuffle before sampling.
-  await page.evaluate(() => {
-    const el = document.querySelector('[data-nav-tab="shuffle"]');
-    if (!el) throw new Error("missing-shuffle");
-    el.dispatchEvent(
-      new PointerEvent("pointerdown", {
-        bubbles: true,
-        cancelable: true,
-        pointerType: "touch",
-      }),
-    );
-    el.click();
-  });
+  // Touch tap (not desktop-only click): pointerdown + locator.tap, with href
+  // click fallback so pre-hydrate <a href="/shuffle"> still navigates.
+  const shuffleNav = page.locator('[data-nav-tab="shuffle"]').first();
+  await shuffleNav.dispatchEvent("pointerdown", { pointerType: "touch" }).catch(() => {});
+  const tapped = await shuffleNav
+    .tap({ timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!tapped) {
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-nav-tab="shuffle"]');
+      if (!el) throw new Error("missing-shuffle");
+      el.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          pointerType: "touch",
+        }),
+      );
+      el.click();
+    });
+  }
 
   await page
     .waitForURL((url) => {
@@ -260,6 +268,22 @@ for (let i = 0; i < repeat; i++) {
       const host = document.getElementById("sayittome-shuffle-keepalive-host");
       const cs = host ? getComputedStyle(host) : null;
       const text = document.body?.innerText || "";
+      const navShuffle = document.querySelector('[data-nav-tab="shuffle"]');
+      const navSelected =
+        navShuffle?.getAttribute("aria-current") === "page" ||
+        navShuffle?.getAttribute("data-selected") === "1" ||
+        navShuffle?.classList?.contains("sayittome-nav-selected") ||
+        !!navShuffle?.closest('[data-selected="1"]');
+      const profileChromeVisible =
+        /Cerrar sesión|Copiar link|Editar perfil|\bAdmin\b/i.test(text);
+      // Profile bio / actions without Shuffle search chrome = stuck profile paint.
+      const hasShuffleSearch = !!document.querySelector(
+        'input[data-shuffle-search="1"], input[placeholder*="Buscar"]',
+      );
+      const profileContentStuck =
+        location.pathname === "/shuffle" &&
+        profileChromeVisible &&
+        !hasShuffleSearch;
       return {
         path: location.pathname,
         kind: document.documentElement.getAttribute(
@@ -278,9 +302,10 @@ for (let i = 0; i < repeat; i++) {
           "sayittome-profile-viewer-open",
         ),
         loadingStories: /Cargando historias/i.test(text),
-        adminVisible: /Cerrar sesión|Copiar link|Editar perfil|Admin/i.test(
-          text,
-        ),
+        adminVisible: profileChromeVisible,
+        profileContentStuck,
+        navSelected,
+        hasShuffleSearch,
       };
     });
   }
@@ -305,10 +330,15 @@ for (let i = 0; i < repeat; i++) {
   const sample = timeline[timeline.length - 1];
   // Any final non-/shuffle pathname is stuck (profile OR settings OR other).
   const pathStuck = sample.path !== "/shuffle";
+  const profileContentVisible = !!(
+    sample.adminVisible || sample.profileContentStuck
+  );
   const overlay =
     sample.profileViewer ||
+    profileContentVisible ||
     (sample.path === "/shuffle" && sample.kind === "profile") ||
-    (sample.path === "/shuffle" && sample.visibility === "hidden");
+    (sample.path === "/shuffle" && sample.visibility === "hidden") ||
+    (sample.path === "/shuffle" && !sample.hasShuffleSearch);
   const sticky = sample.path === "/shuffle" && sample.kind === "profile";
   if (overlay) overlayCount += 1;
   if (sticky) stickyKindCount += 1;
@@ -321,14 +351,17 @@ for (let i = 0; i < repeat; i++) {
     pathStuck,
     overlay,
     sticky,
+    profileContentVisible,
     secondTap: false,
     failureClass: pathStuck
       ? "PATH_STUCK_NONMAIN"
       : sticky
         ? "STICKY_ROUTEKIND"
-        : overlay
-          ? "OVERLAY_OR_HIDDEN"
-          : null,
+        : profileContentVisible
+          ? "PROFILE_CONTENT_VISIBLE"
+          : overlay
+            ? "OVERLAY_OR_HIDDEN"
+            : null,
     consoleErrors: consoleErrors.slice(0, 5),
     timeline,
   });
@@ -341,13 +374,17 @@ const pathOk = results.every((r) => r.path === "/shuffle");
 const contentOk = results.every(
   (r) => r.shuffleVisible && r.opacity > 0.2 && r.visibility !== "hidden",
 );
+const profilePaintOk = results.every(
+  (r) => !r.adminVisible && !r.profileContentStuck && r.hasShuffleSearch,
+);
 const pass =
   overlayCount === 0 &&
   stickyKindCount === 0 &&
   pathStuckCount === 0 &&
   secondTapCount === 0 &&
   pathOk &&
-  contentOk;
+  contentOk &&
+  profilePaintOk;
 
 check("LIVE_ANDROID_UA_PROFILE_TO_SHUFFLE_CLEAN", pass, {
   overlayCount,
@@ -356,7 +393,16 @@ check("LIVE_ANDROID_UA_PROFILE_TO_SHUFFLE_CLEAN", pass, {
   secondTapCount,
   hrefFallbackSeen,
   repeat,
+  profilePaintOk,
 });
+
+check(
+  "LIVE_ANDROID_PROFILE_CONTENT_NOT_VISIBLE_AFTER_SHUFFLE",
+  profilePaintOk,
+  {
+    stuck: results.filter((r) => r.adminVisible || r.profileContentStuck).length,
+  },
+);
 
 check(
   "LIVE_PATHNAME_NEVER_STUCK_ON_PROFILE",

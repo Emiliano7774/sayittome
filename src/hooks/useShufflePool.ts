@@ -51,10 +51,15 @@ import type { ShuffleProfile } from "@/lib/shuffle/types";
 import {
   deferShuffleCountOnlyIfTyping,
   deferShufflePoolLoadIfTyping,
+  ensureShuffleSearchTypingGuardInstalled,
+  markShuffleSearchBlurred,
+  markShuffleSearchFocused,
   markShuffleSearchTypingActive,
   registerShuffleSearchTypingFlushers,
   unregisterShuffleSearchTypingFlushers,
 } from "@/lib/shuffle/shuffleSearchTypingGuard";
+
+ensureShuffleSearchTypingGuardInstalled();
 import { registerShuffleClickHandler } from "@/lib/shuffle/shuffleClickBridge";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
@@ -763,8 +768,12 @@ export function useShufflePool() {
   }, [runSearch]);
 
   const handleSearchFocus = useCallback(() => {
-    // Arm before first keypress so late mount pool/countOnly cannot start in-window.
-    markShuffleSearchTypingActive();
+    // Arm before first keypress / before late hydration mount force+countOnly.
+    markShuffleSearchFocused();
+  }, []);
+
+  const handleSearchBlur = useCallback(() => {
+    markShuffleSearchBlurred();
   }, []);
 
   const handleSearchChange = useCallback(
@@ -1155,6 +1164,7 @@ export function useShufflePool() {
     filtersActiveCount,
     handleSearchChange,
     handleSearchFocus,
+    handleSearchBlur,
     handleSearchSubmit,
     handleShuffleClick,
     handleListClick,

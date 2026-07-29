@@ -16,7 +16,31 @@ export function clearProfileViewerOverlayForShuffleNav() {
       /* ignore */
     }
   }
-  body.classList.remove("sayittome-chat-fullscreen-open");
+  // Android manual stuck: profile/edit/media sheets can leave content painted
+  // over Shuffle even after pathname commits — clear all profile surface locks.
+  body.classList.remove(
+    "sayittome-chat-fullscreen-open",
+    "sayittome-profile-edit-open",
+    "sayittome-profile-media-sheet-open",
+    "sayittome-profile-video-open",
+  );
+}
+
+/** Eagerly present Shuffle host so profile DOM cannot remain the only painted surface. */
+export function presentShuffleHostForNonMainReveal() {
+  if (typeof document === "undefined") return;
+  const host = document.getElementById("sayittome-shuffle-keepalive-host");
+  if (!host) return;
+  host.classList.add(
+    "sayittome-shuffle-keepalive-visible",
+    "sayittome-shuffle-surface-active",
+  );
+  host.removeAttribute("inert");
+  host.setAttribute("aria-hidden", "false");
+  const style = host.style;
+  if (style.opacity === "0") style.opacity = "1";
+  if (style.visibility === "hidden") style.visibility = "visible";
+  if (style.pointerEvents === "none") style.pointerEvents = "";
 }
 
 /**
@@ -45,6 +69,7 @@ export function prepareShuffleRevealFromNonMainRoute(fromPath?: string) {
   html.removeAttribute("data-shuffle-exit-handoff-target");
   html.classList.remove("sayittome-main-tab-handoff-pending");
   html.removeAttribute("data-sayittome-main-tab-handoff-source");
+  presentShuffleHostForNonMainReveal();
 
   return true;
 }

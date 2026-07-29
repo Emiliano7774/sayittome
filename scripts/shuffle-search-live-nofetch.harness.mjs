@@ -10,6 +10,32 @@
  */
 import { chromium } from "playwright";
 import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const guardSrc = fs.readFileSync(
+  path.join(root, "src/lib/shuffle/shuffleSearchTypingGuard.ts"),
+  "utf8",
+);
+const poolSrc = fs.readFileSync(
+  path.join(root, "src/hooks/useShufflePool.ts"),
+  "utf8",
+);
+if (
+  !guardSrc.includes("ensureShuffleSearchTypingGuardInstalled") ||
+  !guardSrc.includes("markShuffleSearchFocused") ||
+  !guardSrc.includes("searchFocused") ||
+  !poolSrc.includes("ensureShuffleSearchTypingGuardInstalled")
+) {
+  console.error(
+    JSON.stringify({
+      gate: "SHUFFLE_SEARCH_LIVE_NOFETCH",
+      pass: false,
+      fail: "TYPING_GUARD_DOM_BRIDGE_MISSING",
+    }),
+  );
+  process.exit(1);
+}
 
 const args = process.argv.slice(2);
 const base = args.includes("--base")

@@ -113,8 +113,10 @@ export default function ShuffleClient() {
           >
             <Search size={headerUi.searchIconPx} className="shrink-0 text-white/35" />
             <input
+              data-shuffle-search="1"
               value={pool.search}
               onFocus={() => pool.handleSearchFocus()}
+              onBlur={() => pool.handleSearchBlur()}
               onCompositionStart={() => pool.handleSearchFocus()}
               onChange={(e) => pool.handleSearchChange(e.target.value)}
               onKeyDown={(event) => {

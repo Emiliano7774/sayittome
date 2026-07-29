@@ -10,6 +10,7 @@ type PoolControls = {
   search: string;
   handleSearchChange: (value: string) => void;
   handleSearchFocus: () => void;
+  handleSearchBlur?: () => void;
   handleSearchSubmit: () => void;
   openFilters: () => void;
   handleShuffleClick: () => void;
@@ -28,8 +29,10 @@ export default function ModernShuffleGlassToolbar({ pool }: Props) {
       <div className="sayittome-shuffle-toolbar-inner mx-auto flex w-full max-w-[1400px] items-center gap-3 px-[max(16px,4vw)]">
         <Search size={20} className="shrink-0 text-white/35" />
         <input
+          data-shuffle-search="1"
           value={pool.search}
           onFocus={() => pool.handleSearchFocus()}
+          onBlur={() => pool.handleSearchBlur?.()}
           onCompositionStart={() => pool.handleSearchFocus()}
           onChange={(e) => pool.handleSearchChange(e.target.value)}
           onKeyDown={(event) => {
