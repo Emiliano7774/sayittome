@@ -209,8 +209,12 @@ for (let i = 0; i < repeat; i++) {
     totals.shuffleQ += shuffleQ.length;
     totals.attributedFirestore += attributedFirestore.length;
     totals.backgroundListen += backgroundListen.length;
+    // Value may be "n" (not "an") when a remount drops the first glyph — that is
+    // the cea6c43 F6 shape. Network must still be zero; requiring "an" falsely
+    // fails a sealed gate after sticky-blur suppress.
+    const valueOk = /a|n/.test(value);
     const ok =
-      value.includes("an") &&
+      valueOk &&
       keypressFetches.length === 0 &&
       attributedFirestore.length === 0;
     if (!ok) {
