@@ -19,6 +19,7 @@ import AnonMatchBootstrap from "@/components/anonMatch/AnonMatchBootstrap";
 import ChatNotificationPrompt from "@/components/chat/ChatNotificationPrompt";
 import NavCaptureDiagBootstrap from "@/components/dev/NavCaptureDiagBootstrap";
 import NavInputDiagBootstrap from "@/components/dev/NavInputDiagBootstrap";
+import RealDeviceQaDebugBootstrap from "@/components/dev/RealDeviceQaDebugBootstrap";
 import ShuffleKeepAliveHost from "@/components/shuffle/ShuffleKeepAliveHost";
 import NavTraceBootstrap from "@/components/dev/NavTraceBootstrap";
 import NavTraceProfiler from "@/components/dev/NavTraceProfiler";
@@ -49,6 +50,7 @@ export default function Providers({
           <ChatNotificationPrompt />
           <NavCaptureDiagBootstrap />
           <NavInputDiagBootstrap />
+          <RealDeviceQaDebugBootstrap />
           {(process.env.NODE_ENV === "development" ||
             process.env.NEXT_PUBLIC_NAV_TRACE === "1") && <NavTraceBootstrap />}
           <MainTabToShuffleSlideStage />

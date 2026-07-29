@@ -62,7 +62,8 @@ check(
 check(
   "PERSIST_ACCEPTS_EXPLICIT_IS_OWNER_REPLY",
   persistSrc.includes("isOwnerReply?: boolean") &&
-    persistSrc.includes('typeof input.isOwnerReply === "boolean"'),
+    (persistSrc.includes("input.isOwnerReply === true") ||
+      persistSrc.includes('typeof input.isOwnerReply === "boolean"')),
 );
 
 check(
@@ -77,9 +78,37 @@ check(
 );
 
 check(
-  "VISITOR_UNREAD_PREFERS_ANON_SESSION",
-  unreadSrc.includes("Prefer the chatId / thread visitor for unread keys") &&
+  "VISITOR_UNREAD_UNION_EVALUATION",
+  unreadSrc.includes("Union evaluation for anon visitors") &&
+    unreadSrc.includes("candidates") &&
     unreadSrc.includes("getChatAnonSenderId"),
+);
+
+const profileChatSrc = fs.readFileSync(
+  path.join(root, "src/components/chat/ProfileAnonChat.tsx"),
+  "utf8",
+);
+check(
+  "MARK_READ_USES_LIVE_PATHNAME",
+  profileChatSrc.includes("window.location.pathname") &&
+    profileChatSrc.includes("List route must never clear unread"),
+);
+check(
+  "MARK_READ_NO_UNMOUNT_CLEAR",
+  profileChatSrc.includes("Do NOT mark-read on unmount/cleanup"),
+);
+check(
+  "PERSIST_RESOLVES_OWNER_FROM_DOC",
+  persistSrc.includes("ownerUidFromDoc") &&
+    persistSrc.includes("resolvedTargetUid") &&
+    persistSrc.includes("input.isOwnerReply === true"),
+);
+check(
+  "QA_DEBUG_INSTRUMENTATION_PRESENT",
+  fs.existsSync(path.join(root, "src/lib/qa/realDeviceQaDebug.ts")) &&
+    fs
+      .readFileSync(path.join(root, "src/components/providers/Providers.tsx"), "utf8")
+      .includes("RealDeviceQaDebugBootstrap"),
 );
 
 check(
@@ -148,37 +177,28 @@ function isOwnChatSender(sender, viewerId, firebaseUid = "") {
   return false;
 }
 function unreadForViewerPoisonAware(chat, liveAnon, firebaseUid = "") {
-  let viewerId = profileAnonSenderFromChat(chat) || liveAnon;
   const threadAnon = profileAnonSenderFromChat(chat);
-  const members = chat.participantes || [];
-  const hasUnreadSignal = (id) => {
-    if (!id.startsWith("anon_")) return false;
-    const unread = chat.unreadCounts?.[id];
-    if (typeof unread === "number" && unread > 0) return true;
-    return chat.readBy?.[id] === false;
-  };
-  // Prefer threadAnon when it holds the unread signal (matches inboxUnread.ts).
-  if (hasUnreadSignal(threadAnon)) {
-    viewerId = threadAnon;
-  } else if (hasUnreadSignal(liveAnon)) {
-    viewerId = liveAnon;
-  } else if (
-    liveAnon.startsWith("anon_") &&
-    members.includes(liveAnon) &&
-    threadAnon.startsWith("anon_")
-  ) {
-    viewerId = threadAnon;
+  const candidates = new Set();
+  if (threadAnon.startsWith("anon_")) candidates.add(threadAnon);
+  if (liveAnon.startsWith("anon_")) candidates.add(liveAnon);
+  for (const id of chat.participantes || []) {
+    if (String(id).startsWith("anon_")) candidates.add(String(id));
   }
-  const sender = String(chat.lastMessageSender || "");
-  if (isOwnChatSender(sender, viewerId, firebaseUid)) return 0;
-  if (isProfileReplyAuthorId(sender) && viewerId.startsWith("anon_")) {
-    const unread = chat.unreadCounts?.[viewerId];
-    if (typeof unread === "number" && unread > 0) return 1;
-    if (chat.readBy?.[viewerId] === false) return 1;
-    if (chat.readBy?.[viewerId] === true && chat.unreadCounts?.[viewerId] === 0) return 0;
-    return 0;
+  for (const viewerId of candidates) {
+    const sender = String(chat.lastMessageSender || "");
+    if (isOwnChatSender(sender, viewerId, firebaseUid)) continue;
+    if (isProfileReplyAuthorId(sender) && viewerId.startsWith("anon_")) {
+      const unread = chat.unreadCounts?.[viewerId];
+      if (typeof unread === "number" && unread > 0) return 1;
+      if (chat.readBy?.[viewerId] === false) return 1;
+    }
   }
   return 0;
+}
+
+function listOpenDoesNotClear(chat, viewerId) {
+  // Opening /chats must not mutate readBy/unreadCounts.
+  return unreadForViewer(chat, viewerId, "") === 1;
 }
 function buildOutgoingPatch(messageAuthorId, recipients) {
   const patch = {
@@ -274,7 +294,7 @@ check(
 );
 check(
   "MODEL_LIST_OPEN_DOES_NOT_CLEAR",
-  unreadForViewer(inboundChat, visitorAnon, "") === 1,
+  listOpenDoesNotClear(inboundChat, visitorAnon),
 );
 const afterDetail = {
   ...inboundChat,

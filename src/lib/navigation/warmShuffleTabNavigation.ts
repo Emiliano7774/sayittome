@@ -44,7 +44,10 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 import { getPostSettleBridgeRouteCommitDelayMs } from "@/lib/navigation/postSettleBridgeDiagJitter";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { ensureShufflePoolWarmForMicroSlide } from "@/lib/shuffle/shufflePoolWarmup";
-import { prepareShuffleRevealFromNonMainRoute } from "@/lib/navigation/nonMainToShuffleReveal";
+import {
+  prepareShuffleRevealFromNonMainRoute,
+  presentShuffleHostForNonMainReveal,
+} from "@/lib/navigation/nonMainToShuffleReveal";
 import { isNonMainRoute } from "@/lib/navigation/routeKind";
 
 /** Begin warm shuffle handoff from the current main-tab path (Chats, Stories, etc.). */
@@ -250,10 +253,17 @@ export function commitNonMainRouteToShuffleNavigation(
   // the keepalive host is actually presented — path-only success with opacity 0
   // is still a user-visible blank Shuffle shell on Android.
   const armActivate = () => {
-    if (window.location.pathname.split("?")[0].split("#")[0] !== "/shuffle") {
-      return false;
-    }
+    const live = window.location.pathname.split("?")[0].split("#")[0];
+    const html = document.documentElement;
+    const revealing =
+      live === "/shuffle" ||
+      html.hasAttribute("data-sayittome-shuffle-reveal-pending") ||
+      html.getAttribute("data-sayittome-route-kind") === "shuffle";
+    if (!revealing) return false;
+    // microSlideSettle bypasses warm geometry gates that no-op on Android
+    // profile→Shuffle and leave the host frozen under a hidden route shell.
     activateShuffleTabSurface({ microSlideSettle: true });
+    presentShuffleHostForNonMainReveal({ hideShell: live === "/shuffle" });
     const host = document.getElementById("sayittome-shuffle-keepalive-host");
     return !!host?.classList.contains("sayittome-shuffle-keepalive-visible");
   };
@@ -264,10 +274,10 @@ export function commitNonMainRouteToShuffleNavigation(
   let tries = 0;
   const pollId = window.setInterval(() => {
     tries += 1;
-    if (armActivate() || tries >= 60) {
+    if (armActivate() || tries >= 90) {
       window.clearInterval(pollId);
     }
-  }, 50);
+  }, 32);
   armAndroidShufflePresentationFailsafe(router, push, path);
 }
 
@@ -319,6 +329,7 @@ function armAndroidShufflePresentationFailsafe(
         presentShuffleSurface();
         enterColdShufflePresentation({ force: true });
         activateShuffleTabSurface({ microSlideSettle: true });
+        presentShuffleHostForNonMainReveal({ hideShell: true });
       }
       if (
         document

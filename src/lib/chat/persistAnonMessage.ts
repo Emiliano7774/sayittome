@@ -143,17 +143,6 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const storedText = type === "text" ? messageText : "";
   const lastMessagePreview = input.lastMessagePreview ?? messageText;
 
-  const inferredOwnerReply = Boolean(
-    currentUid && targetUid && currentUid === targetUid,
-  );
-  // Explicit false must not beat uid match during mount races (owner reply
-  // misclassified as visitor → anon sees own lastMessageSender).
-  const isOwnerReply =
-    inferredOwnerReply ||
-    (typeof input.isOwnerReply === "boolean" ? input.isOwnerReply : false);
-  const senderKind: ProfileAnonSenderKind = isOwnerReply ? "profile" : "anon";
-  const messageAuthorId = isOwnerReply ? profileReplyAuthorId(targetUid) : senderId;
-
   const chatRef = doc(db, "chats", chatId);
   let existingData = input.existingChatData || {};
 
@@ -163,6 +152,26 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
       ? (existingSnap.data() as Record<string, unknown>)
       : {};
   }
+
+  const ownerUidFromDoc = String(
+    existingData.receptorUid ||
+      existingData.targetUid ||
+      existingData.anonOwnerUid ||
+      "",
+  ).trim();
+  const resolvedTargetUid = String(targetUid || ownerUidFromDoc || "").trim();
+  const inferredOwnerReply = Boolean(
+    currentUid && resolvedTargetUid && currentUid === resolvedTargetUid,
+  );
+  // Explicit false must not beat uid match during mount races (owner reply
+  // misclassified as visitor → anon sees own lastMessageSender). Trust
+  // explicit true, or inferred owner from hydrated/doc uid.
+  const isOwnerReply =
+    inferredOwnerReply || input.isOwnerReply === true;
+  const senderKind: ProfileAnonSenderKind = isOwnerReply ? "profile" : "anon";
+  const messageAuthorId = isOwnerReply
+    ? profileReplyAuthorId(resolvedTargetUid)
+    : senderId;
 
   const existingParticipantes = Array.isArray(existingData.participantes)
     ? existingData.participantes.map((entry) => String(entry)).filter(Boolean)
@@ -184,7 +193,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
       // Owner replies: keep visitor anon from senderId/chatId, never live owner session.
       ...(senderAnon ? [senderAnon] : isOwnerReply ? [] : [senderId]),
       ...(currentUid ? [currentUid] : []),
-      ...(targetUid ? [targetUid] : []),
+      ...(resolvedTargetUid ? [resolvedTargetUid] : []),
       ...(!isOwnerReply && liveBrowserAnon.startsWith("anon_")
         ? [liveBrowserAnon]
         : []),
@@ -207,7 +216,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const unreadRecipients = resolveProfileAnonUnreadRecipients({
     isOwnerReply,
     messageAuthorId,
-    targetUid,
+    targetUid: resolvedTargetUid,
     participantes,
     anonSessionId,
     senderId: senderAnon || anonSessionId,
@@ -220,18 +229,20 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     : currentUid || null;
 
   const legacyIds = [
-    ...buildLegacyProfileChatIds(senderId, username, targetUid),
-    ...(currentUid ? buildLegacyProfileChatIds(currentUid, username, targetUid) : []),
+    ...buildLegacyProfileChatIds(senderId, username, resolvedTargetUid),
+    ...(currentUid
+      ? buildLegacyProfileChatIds(currentUid, username, resolvedTargetUid)
+      : []),
   ];
 
   const chatMeta = {
     id: chatId,
     targetUsername: username,
     receptorUsername: username,
-    receptorUid: targetUid || null,
-    targetUid: targetUid || null,
+    receptorUid: resolvedTargetUid || null,
+    targetUid: resolvedTargetUid || null,
     initiatorUid,
-    anonOwnerUid: targetUid || null,
+    anonOwnerUid: resolvedTargetUid || null,
     anonSessionId,
     participantes,
     anon: true,
@@ -255,7 +266,9 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     fromUid: messageAuthorId,
     ownerId: messageAuthorId,
     senderKind,
-    ...(isOwnerReply && targetUid ? { profileUid: targetUid } : {}),
+    ...(isOwnerReply && resolvedTargetUid
+      ? { profileUid: resolvedTargetUid }
+      : {}),
     [`readBy.${messageAuthorId}`]: true,
     ...(reply ? { reply } : {}),
     ...(input.storyReply ? { storyReply: input.storyReply } : {}),
@@ -291,10 +304,10 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     id: chatId,
     targetUsername: username,
     receptorUsername: username,
-    receptorUid: targetUid || undefined,
-    targetUid: targetUid || undefined,
+    receptorUid: resolvedTargetUid || undefined,
+    targetUid: resolvedTargetUid || undefined,
     initiatorUid: currentUid || undefined,
-    anonOwnerUid: targetUid || undefined,
+    anonOwnerUid: resolvedTargetUid || undefined,
     anonSessionId,
     lastMessage: lastMessagePreview,
     lastMessageSender: messageAuthorId,

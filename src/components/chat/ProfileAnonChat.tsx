@@ -443,15 +443,23 @@ export default function ProfileAnonChat({
     fastRouterReplace(router, dest);
   }
 
-  function markOpenChatAsRead() {
+  function markOpenChatAsRead(reason: "detail" | "snapshot" = "detail") {
     const ctx = markReadContextRef.current;
     const chat = chatMetaRef.current;
     if (!ctx.chatId || !ctx.authReady || !chat) return;
     if (typeof document !== "undefined" && document.hidden) return;
 
-    const activeMatch = pathname.match(/\/chat\/([^/?#]+)/);
+    // Always read the live URL — render-closure pathname goes stale on list
+    // navigation and incorrectly cleared unread when only /chats opened.
+    const livePath =
+      typeof window !== "undefined"
+        ? window.location.pathname.split("?")[0].split("#")[0]
+        : pathname;
+    const activeMatch = livePath.match(/\/chat\/([^/?#]+)/);
     const activeChatId = activeMatch ? decodeURIComponent(activeMatch[1]) : "";
     if (activeChatId !== ctx.chatId) return;
+    // List route must never clear unread (manual QA: list-open no-clear).
+    if (livePath === "/chats" || livePath.startsWith("/chats/")) return;
 
     const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
     const profileOwnerUid = ctx.targetUid || ctx.chatOwnerUid;
@@ -461,6 +469,17 @@ export default function ProfileAnonChat({
     const messageViewerId = ownerViewing ? ctx.currentUid : senderId;
 
     if (!messageViewerId) return;
+
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.setItem(
+          "sayittome_qa_clear_read_reason",
+          reason === "snapshot" ? "detail" : reason,
+        );
+      } catch {
+        /* ignore */
+      }
+    }
 
     void markChatAsRead(ctx.chatId, messageViewerId, chat, ctx.currentUid).catch(
       () => undefined,
@@ -609,7 +628,7 @@ export default function ProfileAnonChat({
         setTargetPhoto((prev) => prev || chatPhoto);
       }
       chatMetaRef.current = inboxChatFromFirestore(chatId, data, username);
-      markOpenChatAsRead();
+      markOpenChatAsRead("snapshot");
     });
 
     return () => {
@@ -617,7 +636,8 @@ export default function ProfileAnonChat({
         clearTimeout(readMarkTimerRef.current);
         readMarkTimerRef.current = null;
       }
-      markOpenChatAsRead();
+      // Do NOT mark-read on unmount/cleanup — stale pathname made list-open
+      // look like it cleared unread. Detail snapshots already mark while open.
       unsub();
     };
   }, [chatId, username]);
@@ -703,7 +723,13 @@ export default function ProfileAnonChat({
   }, [username, chatId]);
 
   const isClassic = uxMode === "classic";
-  const profileOwnerUid = targetUid || chatOwnerUid;
+  const docOwnerUid = String(
+    chatDocDataRef.current?.receptorUid ||
+      chatDocDataRef.current?.targetUid ||
+      chatDocDataRef.current?.anonOwnerUid ||
+      "",
+  ).trim();
+  const profileOwnerUid = targetUid || chatOwnerUid || docOwnerUid;
   const isOwnerViewing = Boolean(
     currentUid && profileOwnerUid && currentUid === profileOwnerUid,
   );

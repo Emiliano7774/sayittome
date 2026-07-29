@@ -88,10 +88,10 @@ export function isAnonVisitorProfileChat(chat: InboxChat, firebaseUid = "") {
   // anon session matches the thread (or is present in participantes).
   if (liveAnonId.startsWith("anon_")) {
     const members = chat.participantes || [];
-    if (members.includes(liveAnonId) && members.includes(threadAnonId)) {
-      return liveAnonId === threadAnonId || members.includes(liveAnonId);
-    }
     if (members.includes(liveAnonId)) return true;
+    // Live anon present and viewer is not profile owner ⇒ visitor context even
+    // when session regenerated away from chatId (inbox still keyed by thread).
+    return true;
   }
 
   return false;

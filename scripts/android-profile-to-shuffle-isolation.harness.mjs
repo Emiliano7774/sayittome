@@ -91,6 +91,22 @@ check(
     presentFn.includes("if (!host) return"),
 );
 check(
+  "PRESENT_REQUIRES_HOST_PRESENTABLE_BEFORE_SHELL_HIDE",
+  revealSrc.includes("isHostPresentable") &&
+    presentFn.includes("isHostPresentable(host)") &&
+    revealSrc.includes("armDualHideRecovery"),
+);
+check(
+  "DUAL_HIDE_RECOVERY_RESTORES_SHELL",
+  revealSrc.includes("restoreNonMainRouteShellAfterShuffleReveal") &&
+    revealSrc.includes("Never leave both surfaces hidden"),
+);
+check(
+  "MIN_SHUFFLE_SHELL_WHEN_EMPTY",
+  revealSrc.includes("ensureShuffleHostMinimumShell") &&
+    revealSrc.includes("data-sayittome-shuffle-min-shell"),
+);
+check(
   "CSS_FORCE_SURFACE_PREP_ON_REVEAL",
   css.includes(".sayittome-shuffle-surface-prep") &&
     css.includes("data-sayittome-shuffle-reveal-from") &&
@@ -105,6 +121,11 @@ check(
       "#sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible",
     ) &&
     css.includes(".sayittome-route-shell"),
+);
+check(
+  "CSS_SHUFFLE_HOST_NONTRANSPARENT_ON_REVEAL",
+  css.includes("background: #0b0b0b !important") &&
+    css.includes("min-height: 100dvh !important"),
 );
 check(
   "WARM_PIN_BEFORE_NON_MAIN_REVEAL",

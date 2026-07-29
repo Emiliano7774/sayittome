@@ -47,35 +47,33 @@ export function chatUnreadCountForViewer(
   firebaseUid = "",
   options: Omit<UnreadCountOptions, "firebaseUid"> = {},
 ) {
-  let viewerId = resolveChatViewerId(chat, firebaseUid);
+  const primaryViewerId = resolveChatViewerId(chat, firebaseUid);
   const liveAnon = getChatAnonSenderId();
   const threadAnon = profileAnonSenderFromChat(chat);
-  // Prefer the chatId / thread visitor for unread keys. A regenerated live
-  // session must not steal evaluation away from unreadCounts[threadAnon]
-  // written by profile→anon replies (manual QA: badge/row missing).
-  if (liveAnon.startsWith("anon_") && !isIncomingAnonChatForOwner(chat, firebaseUid)) {
-    const members = chat.participantes || [];
-    const hasUnreadSignal = (id: string) => {
-      if (!id.startsWith("anon_")) return false;
-      const unread = chat.unreadCounts?.[id];
-      if (typeof unread === "number" && unread > 0) return true;
-      return chat.readBy?.[id] === false;
-    };
-    if (hasUnreadSignal(threadAnon)) {
-      viewerId = threadAnon;
-    } else if (hasUnreadSignal(liveAnon)) {
-      viewerId = liveAnon;
-    } else if (
-      members.includes(liveAnon) ||
-      viewerId === liveAnon ||
-      threadAnon === liveAnon
-    ) {
-      // Stable key = chatId visitor when present; never prefer live over thread
-      // just because both appear in participantes.
-      viewerId = threadAnon.startsWith("anon_") ? threadAnon : liveAnon;
+  const candidates = new Set<string>();
+  if (primaryViewerId) candidates.add(primaryViewerId);
+
+  // Union evaluation for anon visitors: profile replies may dirtied chatId
+  // visitor, live session, or a poisoned historical key. Any positive unread
+  // signal must surface badge + bold row (manual QA override 3).
+  if (!isIncomingAnonChatForOwner(chat, firebaseUid)) {
+    if (threadAnon.startsWith("anon_")) candidates.add(threadAnon);
+    if (liveAnon.startsWith("anon_")) candidates.add(liveAnon);
+    for (const id of chat.participantes || []) {
+      if (String(id).startsWith("anon_")) candidates.add(String(id));
     }
   }
-  return chatUnreadCount(chat, viewerId, { ...options, firebaseUid });
+
+  if (candidates.size === 0) {
+    return chatUnreadCount(chat, primaryViewerId, { ...options, firebaseUid });
+  }
+
+  for (const viewerId of candidates) {
+    if (chatUnreadCount(chat, viewerId, { ...options, firebaseUid }) > 0) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 export function totalUnreadCount(

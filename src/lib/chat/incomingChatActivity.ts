@@ -39,18 +39,13 @@ export function collectViewerSenderIds(
     if (firebaseUid) add(profileReplyAuthorId(firebaseUid));
   }
 
-  // Anon visitor aliases only when this viewer is that visitor.
+  // Anon visitor aliases: always include chatId visitor + live session when
+  // this viewer is the anon side of a profile-anon thread. Diverged live vs
+  // thread keys must not drop unread / mark-read evaluation.
   if (viewerIsThreadAnonVisitor) {
     if (viewerIsAnonSession) add(viewerId);
-    if (threadAnon.startsWith("anon_") && (!viewerIsAnonSession || threadAnon === viewerId)) {
-      if (threadAnon === viewerId || threadAnon === liveAnonId) add(threadAnon);
-    }
-    if (
-      liveAnonId.startsWith("anon_") &&
-      (liveAnonId === viewerId || liveAnonId === threadAnon)
-    ) {
-      add(liveAnonId);
-    }
+    if (threadAnon.startsWith("anon_")) add(threadAnon);
+    if (liveAnonId.startsWith("anon_")) add(liveAnonId);
   }
 
   return ids;

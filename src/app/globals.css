@@ -467,6 +467,9 @@ html[data-sayittome-route-kind="shuffle"] #sayittome-shuffle-keepalive-host {
   z-index: 5 !important;
   position: fixed;
   inset: 0;
+  /* Never paint as transparent over body black during Android handoff. */
+  background: #0b0b0b !important;
+  min-height: 100dvh !important;
 }
 
 /* Force Shuffle children paint during reveal — host-only visibility still leaves
