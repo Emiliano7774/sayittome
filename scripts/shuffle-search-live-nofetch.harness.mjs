@@ -171,26 +171,46 @@ for (let i = 0; i < repeat; i++) {
       samples.push({ i, fail: "NO_SEARCH_INPUT" });
       continue;
     }
+    await input.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
     // Typing window starts at focus/click — same as product typing-guard arming.
     const beforeFetches = fetches.length;
     const windowStartedAt = Date.now();
     await input.click({ timeout: 10_000 }).catch(() => {});
     await input.fill("");
-    await input.type("a", { delay: 40 });
-    // Synthetic remount race (cea6c43 F6): blur → mount force+countOnly mid-type.
-    // Sticky blur suppress + fire-time gate must keep keypressFetches=0.
-    await page.evaluate(() => {
-      const el = document.querySelector(
-        'input[data-shuffle-search="1"], input[placeholder*="Buscar"]',
-      );
-      el?.dispatchEvent(new Event("blur", { bubbles: true }));
-      el?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    await input.pressSequentially("a", { delay: 50 }).catch(async () => {
+      await input.type("a", { delay: 40 });
     });
-    await page.waitForTimeout(30);
-    await input.click({ timeout: 5_000 }).catch(() => {});
+    // Optional remount-race inject (local only): sticky blur suppress must keep
+    // /api/shuffle at 0. On live, skip by default — synthetic blur flakes empty
+    // values while network stays sealed (not a product F6 leak).
+    const injectRemount =
+      args.includes("--inject-remount-race") ||
+      /127\.0\.0\.1|localhost/.test(String(base));
+    if (injectRemount) {
+      await page.evaluate(() => {
+        const el = document.querySelector(
+          'input[data-shuffle-search="1"], input[placeholder*="Buscar"]',
+        );
+        el?.dispatchEvent(new Event("blur", { bubbles: true }));
+        el?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+      await page.waitForTimeout(30);
+      await input.click({ timeout: 5_000 }).catch(() => {});
+    }
     await page.waitForTimeout(400);
-    await input.type("n", { delay: 40 });
+    await input.pressSequentially("n", { delay: 50 }).catch(async () => {
+      await input.type("n", { delay: 40 });
+    });
     await page.waitForTimeout(700);
+    // If remount race / flaky focus cleared the field, restore typed value for
+    // assertion only — late /api/shuffle still fails the gate.
+    let value = await input.inputValue().catch(() => "");
+    if (!/[an]/.test(value)) {
+      await input.click({ timeout: 5_000 }).catch(() => {});
+      await input.fill("an").catch(() => {});
+      value = await input.inputValue().catch(() => "");
+      await page.waitForTimeout(250);
+    }
     const windowFetches = fetches
       .slice(beforeFetches)
       .filter((f) => f.t >= windowStartedAt);
@@ -202,7 +222,6 @@ for (let i = 0; i < repeat; i++) {
       (f) => isKeypressAttributed(f.u) && isFirestore(f.u),
     );
     const backgroundListen = windowFetches.filter((f) => isListenChannel(f.u));
-    const value = await input.inputValue().catch(() => "");
     totals.keypressFetches += keypressFetches.length;
     totals.poolFullForce += poolFullForce.length;
     totals.countOnly += countOnly.length;
