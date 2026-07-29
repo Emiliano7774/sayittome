@@ -31,12 +31,19 @@ function profileUsername(chat: InboxChat) {
 export function profileAnonSenderFromChat(chat: InboxChat) {
   const chatId = chat.canonicalChatId || chat.id;
   const stored = String(chat.anonSessionId || "").trim();
-  if (stored.startsWith("anon_")) return stored;
+  const fromChatId =
+    isProfileAnonChatId(chatId) &&
+    parseProfileAnonChatId(chatId).senderId.startsWith("anon_")
+      ? parseProfileAnonChatId(chatId).senderId
+      : "";
 
-  if (isProfileAnonChatId(chatId)) {
-    const { senderId } = parseProfileAnonChatId(chatId);
-    if (senderId.startsWith("anon_")) return senderId;
+  // Prefer the anon baked into chatId over a poisoned anonSessionId (owner
+  // browser session historically written into the doc).
+  if (fromChatId && stored.startsWith("anon_") && stored !== fromChatId) {
+    return fromChatId;
   }
+  if (fromChatId) return fromChatId;
+  if (stored.startsWith("anon_")) return stored;
 
   return "";
 }

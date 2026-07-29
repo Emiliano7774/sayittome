@@ -64,25 +64,37 @@ function resolveThreadAnonRecipientIds(input: {
   messageAuthorId: string;
 }) {
   const recipients = new Set<string>();
+  // Owner's live browser anon must never be treated as the visitor recipient.
+  const ownerLiveAnon = getChatAnonSenderId();
+  const chatIdAnon =
+    isProfileAnonChatId(input.chatId) &&
+    parseProfileAnonChatId(input.chatId).senderId.startsWith("anon_")
+      ? parseProfileAnonChatId(input.chatId).senderId
+      : "";
+
   const addAnon = (value: string) => {
     const id = String(value || "").trim();
-    if (id.startsWith("anon_") && id !== input.messageAuthorId) {
-      recipients.add(id);
-    }
+    if (!id.startsWith("anon_") || id === input.messageAuthorId) return;
+    // Exclude the profile owner's live session unless it is the chatId visitor.
+    if (id === ownerLiveAnon && id !== chatIdAnon) return;
+    recipients.add(id);
   };
 
+  // Canonical visitor from chatId first — required for profile→anon unread.
+  addAnon(chatIdAnon);
   // Visitor thread identity only — never the profile owner's live browser anon
   // session (that poisoned unreadCounts and hid the visitor badge/row).
-  addAnon(input.anonSessionId);
-  addAnon(input.senderId);
-
-  if (isProfileAnonChatId(input.chatId)) {
-    addAnon(parseProfileAnonChatId(input.chatId).senderId);
+  if (input.anonSessionId !== ownerLiveAnon || input.anonSessionId === chatIdAnon) {
+    addAnon(input.anonSessionId);
   }
+  addAnon(input.senderId);
 
   for (const id of input.participantes) {
     addAnon(id);
   }
+
+  // Fail-closed: owner reply must always dirty the chatId visitor key.
+  if (chatIdAnon) recipients.add(chatIdAnon);
 
   return [...recipients];
 }
@@ -134,8 +146,11 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const inferredOwnerReply = Boolean(
     currentUid && targetUid && currentUid === targetUid,
   );
+  // Explicit false must not beat uid match during mount races (owner reply
+  // misclassified as visitor → anon sees own lastMessageSender).
   const isOwnerReply =
-    typeof input.isOwnerReply === "boolean" ? input.isOwnerReply : inferredOwnerReply;
+    inferredOwnerReply ||
+    (typeof input.isOwnerReply === "boolean" ? input.isOwnerReply : false);
   const senderKind: ProfileAnonSenderKind = isOwnerReply ? "profile" : "anon";
   const messageAuthorId = isOwnerReply ? profileReplyAuthorId(targetUid) : senderId;
 
@@ -178,9 +193,13 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   );
 
   const anonSessionId = isOwnerReply
-    ? storedAnonSession.startsWith("anon_")
-      ? storedAnonSession
-      : chatIdAnon || senderAnon
+    ? // Prefer chatId visitor; never keep a poisoned owner-live anonSessionId.
+      chatIdAnon ||
+      (storedAnonSession.startsWith("anon_") &&
+      storedAnonSession !== liveBrowserAnon
+        ? storedAnonSession
+        : "") ||
+      senderAnon
     : storedAnonSession.startsWith("anon_")
       ? storedAnonSession
       : senderAnon || chatIdAnon || liveBrowserAnon;

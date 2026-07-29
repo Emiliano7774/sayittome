@@ -51,9 +51,13 @@ export function restoreNonMainRouteShellAfterShuffleReveal() {
 /** Eagerly present Shuffle host so profile DOM cannot remain the only painted surface. */
 export function presentShuffleHostForNonMainReveal() {
   if (typeof document === "undefined") return;
-  releaseNonMainRouteShellForShuffleReveal();
   const host = document.getElementById("sayittome-shuffle-keepalive-host");
+  // Never release the profile/settings shell until Shuffle can own paint —
+  // otherwise Android shows a sustained black frame (both surfaces hidden).
   if (!host) return;
+
+  // Unfreeze + force surface-prep visible BEFORE hiding the route shell.
+  host.classList.remove("sayittome-shuffle-keepalive-frozen");
   host.classList.add(
     "sayittome-shuffle-keepalive-visible",
     "sayittome-shuffle-surface-active",
@@ -70,6 +74,17 @@ export function presentShuffleHostForNonMainReveal() {
   if (!style.inset && !style.top) {
     style.inset = "0";
   }
+
+  const prep = host.querySelector(
+    ".sayittome-shuffle-surface-prep",
+  ) as HTMLElement | null;
+  if (prep) {
+    if (prep.style.visibility === "hidden") prep.style.visibility = "visible";
+    if (prep.style.opacity === "0") prep.style.opacity = "1";
+    if (prep.style.pointerEvents === "none") prep.style.pointerEvents = "";
+  }
+
+  releaseNonMainRouteShellForShuffleReveal();
 }
 
 /**

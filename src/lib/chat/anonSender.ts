@@ -18,12 +18,18 @@ export function getProfileChatAnonSenderId(
   chatAnonSessionId?: string,
 ) {
   const fromDoc = String(chatAnonSessionId || "").trim();
-  if (fromDoc.startsWith("anon_")) return fromDoc;
+  const fromChatId =
+    isProfileAnonChatId(chatId) &&
+    parseProfileAnonChatId(chatId).senderId.startsWith("anon_")
+      ? parseProfileAnonChatId(chatId).senderId
+      : "";
 
-  if (isProfileAnonChatId(chatId)) {
-    const { senderId } = parseProfileAnonChatId(chatId);
-    if (senderId.startsWith("anon_")) return senderId;
+  // chatId-embedded visitor wins over a poisoned doc anonSessionId.
+  if (fromChatId && fromDoc.startsWith("anon_") && fromDoc !== fromChatId) {
+    return fromChatId;
   }
+  if (fromChatId) return fromChatId;
+  if (fromDoc.startsWith("anon_")) return fromDoc;
 
   return getAnonSessionId();
 }

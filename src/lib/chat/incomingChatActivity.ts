@@ -65,8 +65,20 @@ export function isOwnChatSender(
   const from = String(sender || "").trim();
   if (!from) return true;
   if (from === viewerId) return true;
-  if (firebaseUid && from === firebaseUid) return true;
-  if (firebaseUid && from === profileReplyAuthorId(firebaseUid)) return true;
+
+  // Anon visitors must never treat profile_* replies as own — enterAnonymousMode
+  // can leave a Firebase uid in the browser while the viewer is anon_*.
+  const viewerIsAnon =
+    viewerId.startsWith("anon_") ||
+    (chat ? isAnonVisitorProfileChat(chat, firebaseUid) : false);
+  if (viewerIsAnon && isProfileReplyAuthorId(from)) {
+    return false;
+  }
+
+  if (!viewerIsAnon) {
+    if (firebaseUid && from === firebaseUid) return true;
+    if (firebaseUid && from === profileReplyAuthorId(firebaseUid)) return true;
+  }
 
   if (chat) {
     for (const id of collectViewerSenderIds(chat, viewerId, firebaseUid)) {

@@ -61,15 +61,18 @@ export function beginWarmShuffleTabNavigation(
 
   const triggerType: MicroSlideNavTriggerType = options?.triggerType ?? "user-main-tab-pointerdown";
 
-  // Own-profile /u/* and settings/edit are outside micro-slide sources — clear
-  // sticky routeKind + profile viewer overlays synchronously (Android WebView).
-  const fromNonMain = prepareShuffleRevealFromNonMainRoute(path);
-
   observeShuffleNavPointerdown(path, Boolean(options?.blockedDuringSlide));
   traceDryRunIntegration("PREPARE_MAIN_TAB_TO_SHUFFLE", `path=${path}`);
   tracePrepareWarmNavCalled(path);
 
+  // Pin keepalive BEFORE non-main reveal so Shuffle host exists/unfreezes
+  // before the profile route shell is released (Android black-frame guard).
   pinShuffleKeepAlive();
+
+  // Own-profile /u/* and settings/edit are outside micro-slide sources — clear
+  // sticky routeKind + profile viewer overlays synchronously (Android WebView).
+  const fromNonMain = prepareShuffleRevealFromNonMainRoute(path);
+
   // Kick existing cached pool warmup early for fresh/anon (deduped; no per-click Firestore).
   void ensureShufflePoolWarmForMicroSlide();
 
@@ -229,8 +232,8 @@ export function commitNonMainRouteToShuffleNavigation(
     return;
   }
 
-  prepareShuffleRevealFromNonMainRoute(path);
   pinShuffleKeepAlive();
+  prepareShuffleRevealFromNonMainRoute(path);
   void ensureShufflePoolWarmForMicroSlide();
   beginShuffleWarmHandoff(path);
   observeShuffleNavClickCommit(path);

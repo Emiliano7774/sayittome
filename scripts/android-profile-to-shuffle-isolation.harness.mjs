@@ -63,6 +63,46 @@ check(
     revealSrc.includes("releaseNonMainRouteShellForShuffleReveal"),
 );
 
+const presentFn = revealSrc.includes("export function presentShuffleHostForNonMainReveal")
+  ? revealSrc.slice(
+      revealSrc.indexOf("export function presentShuffleHostForNonMainReveal"),
+      revealSrc.indexOf("export function prepareShuffleRevealFromNonMainRoute"),
+    )
+  : "";
+const unfreezeIdx = presentFn.indexOf(
+  'remove("sayittome-shuffle-keepalive-frozen")',
+);
+const releaseIdx = presentFn.indexOf("releaseNonMainRouteShellForShuffleReveal");
+check(
+  "PRESENT_UNFREEZES_BEFORE_SHELL_RELEASE",
+  unfreezeIdx >= 0 && releaseIdx >= 0 && unfreezeIdx < releaseIdx,
+  { unfreezeIdx, releaseIdx },
+);
+check(
+  "PRESENT_NO_SHELL_RELEASE_WITHOUT_HOST",
+  presentFn.includes("if (!host) return") &&
+    presentFn.indexOf("if (!host) return") < releaseIdx,
+);
+check(
+  "CSS_FORCE_SURFACE_PREP_ON_REVEAL",
+  css.includes(".sayittome-shuffle-surface-prep") &&
+    css.includes("data-sayittome-shuffle-reveal-from") &&
+    /shuffle-reveal-from[\s\S]*surface-prep[\s\S]*visibility:\s*visible\s*!important/.test(
+      css,
+    ),
+);
+check(
+  "WARM_PIN_BEFORE_NON_MAIN_REVEAL",
+  (() => {
+    const begin = warmSrc.indexOf("export function beginWarmShuffleTabNavigation");
+    const commit = warmSrc.indexOf("export function commitNonMainRouteToShuffleNavigation");
+    const beginBody = warmSrc.slice(begin, commit > begin ? commit : begin + 2000);
+    const pin = beginBody.indexOf("pinShuffleKeepAlive()");
+    const prep = beginBody.indexOf("prepareShuffleRevealFromNonMainRoute");
+    return pin >= 0 && prep >= 0 && pin < prep;
+  })(),
+);
+
 check(
   "WARM_NAV_CALLS_NON_MAIN_REVEAL",
   warmSrc.includes("prepareShuffleRevealFromNonMainRoute"),
@@ -302,6 +342,28 @@ for (let i = 0; i < repeat; i++) {
           ?.hasAttribute("hidden") ||
         document.documentElement.getAttribute("data-sayittome-route-kind") ===
           "shuffle";
+      const prep = host?.querySelector(".sayittome-shuffle-surface-prep");
+      const prepCs = prep ? getComputedStyle(prep) : null;
+      const hostFrozen = !!host?.classList.contains(
+        "sayittome-shuffle-keepalive-frozen",
+      );
+      const prepHidden =
+        !prep ||
+        (prepCs &&
+          (prepCs.visibility === "hidden" ||
+            Number.parseFloat(prepCs.opacity || "1") < 0.05));
+      const shellHidden =
+        !!document.querySelector(".sayittome-route-shell[hidden]") ||
+        (() => {
+          const shell = document.querySelector(".sayittome-route-shell");
+          if (!shell) return routeShellReleased;
+          const scs = getComputedStyle(shell);
+          return scs.visibility === "hidden" || Number.parseFloat(scs.opacity || "1") < 0.05;
+        })();
+      // Black detector: both paint planes empty / Shuffle prep not painted.
+      const blackScreen =
+        location.pathname === "/shuffle" &&
+        (shellHidden && (hostFrozen || prepHidden || !host)) ;
       const profileContentStuck =
         location.pathname === "/shuffle" &&
         (profileChromeVisible ||
@@ -311,6 +373,12 @@ for (let i = 0; i < repeat; i++) {
       // Even with search present: any visible profile chrome after Shuffle tap = FAIL.
       const profileChromeAfterShuffle =
         location.pathname === "/shuffle" && profileChromeVisible;
+      // Search in DOM under frozen/hidden prep does not count as visible Shuffle.
+      const shuffleSearchPainted =
+        hasShuffleSearch &&
+        !hostFrozen &&
+        !prepHidden &&
+        !!host?.classList.contains("sayittome-shuffle-keepalive-visible");
       return {
         path: location.pathname,
         kind: document.documentElement.getAttribute(
@@ -334,7 +402,12 @@ for (let i = 0; i < repeat; i++) {
         profileChromeAfterShuffle,
         navSelected,
         hasShuffleSearch,
+        shuffleSearchPainted,
         routeShellReleased,
+        hostFrozen,
+        prepHidden: !!prepHidden,
+        blackScreen,
+        activePanelNull: !host || (!host.classList.contains("sayittome-shuffle-keepalive-visible") && shellHidden),
       };
     });
   }
@@ -367,9 +440,11 @@ for (let i = 0; i < repeat; i++) {
   const overlay =
     sample.profileViewer ||
     profileContentVisible ||
+    sample.blackScreen ||
+    sample.activePanelNull ||
     (sample.path === "/shuffle" && sample.kind === "profile") ||
     (sample.path === "/shuffle" && sample.visibility === "hidden") ||
-    (sample.path === "/shuffle" && !sample.hasShuffleSearch);
+    (sample.path === "/shuffle" && !sample.shuffleSearchPainted);
   const sticky = sample.path === "/shuffle" && sample.kind === "profile";
   if (overlay) overlayCount += 1;
   if (sticky) stickyKindCount += 1;
@@ -388,7 +463,11 @@ for (let i = 0; i < repeat; i++) {
       ? "PATH_STUCK_NONMAIN"
       : sticky
         ? "STICKY_ROUTEKIND"
-        : profileContentVisible
+        : sample.blackScreen
+          ? "ANDROID_BLACK_SCREEN"
+          : sample.activePanelNull
+            ? "ACTIVE_PANEL_NULL"
+          : profileContentVisible
           ? "PROFILE_CONTENT_VISIBLE"
           : overlay
             ? "OVERLAY_OR_HIDDEN"
@@ -410,8 +489,9 @@ const profilePaintOk = results.every(
     !r.adminVisible &&
     !r.profileContentStuck &&
     !r.profileChromeAfterShuffle &&
-    r.hasShuffleSearch,
+    r.shuffleSearchPainted,
 );
+const blackOk = results.every((r) => !r.blackScreen && !r.activePanelNull && !r.hostFrozen);
 const pass =
   overlayCount === 0 &&
   stickyKindCount === 0 &&
@@ -419,7 +499,8 @@ const pass =
   secondTapCount === 0 &&
   pathOk &&
   contentOk &&
-  profilePaintOk;
+  profilePaintOk &&
+  blackOk;
 
 check("LIVE_ANDROID_UA_PROFILE_TO_SHUFFLE_CLEAN", pass, {
   overlayCount,
@@ -429,7 +510,16 @@ check("LIVE_ANDROID_UA_PROFILE_TO_SHUFFLE_CLEAN", pass, {
   hrefFallbackSeen,
   repeat,
   profilePaintOk,
+  blackOk,
 });
+
+check(
+  "LIVE_ANDROID_NO_BLACK_SCREEN",
+  blackOk,
+  {
+    black: results.filter((r) => r.blackScreen || r.hostFrozen || r.activePanelNull).length,
+  },
+);
 
 check(
   "LIVE_ANDROID_PROFILE_CONTENT_NOT_VISIBLE_AFTER_SHUFFLE",

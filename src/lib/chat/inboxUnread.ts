@@ -50,15 +50,17 @@ export function chatUnreadCountForViewer(
   let viewerId = resolveChatViewerId(chat, firebaseUid);
   const liveAnon = getChatAnonSenderId();
   // Firebase anonymous auth uids must not steal visitor unread evaluation.
-  // Use the thread/live anon session for profile↔anon visitor rows.
+  // Prefer the live visitor anon when it is in the thread — poisoned
+  // anonSessionId (owner browser session) must not win over the real visitor.
   if (liveAnon.startsWith("anon_") && !isIncomingAnonChatForOwner(chat, firebaseUid)) {
     const threadAnon = profileAnonSenderFromChat(chat);
-    if (
-      threadAnon === liveAnon ||
-      viewerId === liveAnon ||
-      (chat.participantes || []).includes(liveAnon)
-    ) {
-      viewerId = threadAnon.startsWith("anon_") ? threadAnon : liveAnon;
+    const members = chat.participantes || [];
+    if (members.includes(liveAnon) || viewerId === liveAnon || threadAnon === liveAnon) {
+      if (threadAnon.startsWith("anon_") && threadAnon !== liveAnon && members.includes(liveAnon)) {
+        viewerId = liveAnon;
+      } else {
+        viewerId = threadAnon.startsWith("anon_") ? threadAnon : liveAnon;
+      }
     }
   }
   return chatUnreadCount(chat, viewerId, { ...options, firebaseUid });

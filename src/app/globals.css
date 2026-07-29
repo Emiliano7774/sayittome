@@ -462,6 +462,19 @@ html[data-sayittome-route-kind="shuffle"] #sayittome-shuffle-keepalive-host {
   inset: 0;
 }
 
+/* Force Shuffle children paint during reveal — host-only visibility still leaves
+ * .sayittome-shuffle-surface-prep hidden under the frozen descendant rule. */
+html[data-sayittome-shuffle-reveal-from]
+  #sayittome-shuffle-keepalive-host
+  .sayittome-shuffle-surface-prep,
+html[data-sayittome-route-kind="shuffle"]
+  #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  .sayittome-shuffle-surface-prep {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
 /* Keep destination main-tab panels hidden while Shuffle exit handoff waits for readiness. */
 html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-stories,
 html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-chats,

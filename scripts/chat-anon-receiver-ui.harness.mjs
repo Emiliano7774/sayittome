@@ -52,7 +52,11 @@ check(
   persistSrc.includes("resolveThreadAnonRecipientIds") &&
     persistSrc.includes("never the profile owner's live browser anon") &&
     threadRecipientFn.length > 0 &&
-    !threadRecipientFn.includes("getChatAnonSenderId("),
+    // Live anon may be read only to EXCLUDE it from recipients (not add it).
+    threadRecipientFn.includes("ownerLiveAnon") &&
+    threadRecipientFn.includes("Exclude the profile owner's live session") &&
+    !/recipients\.add\(\s*ownerLiveAnon\s*\)/.test(threadRecipientFn) &&
+    !/addAnon\(\s*getChatAnonSenderId/.test(threadRecipientFn),
 );
 
 check(
@@ -105,17 +109,66 @@ function expandReadByIdentityKeys(uid) {
   return keys;
 }
 function resolveOwnerReplyUnreadRecipients(input) {
-  // Fixed: never include ownerLiveAnon
+  // Fixed: never include ownerLiveAnon unless it is the chatId visitor.
   const recipients = new Set();
+  const ownerLive = input.ownerLiveAnon || "";
+  const chatIdAnon = input.chatIdAnon || "";
   const addAnon = (v) => {
     const id = String(v || "").trim();
-    if (id.startsWith("anon_")) recipients.add(id);
+    if (!id.startsWith("anon_")) return;
+    if (id === ownerLive && id !== chatIdAnon) return;
+    recipients.add(id);
   };
+  addAnon(chatIdAnon);
   addAnon(input.anonSessionId);
   addAnon(input.senderId);
-  addAnon(input.chatIdAnon);
   for (const id of input.participantes || []) addAnon(id);
+  if (chatIdAnon) recipients.add(chatIdAnon);
   return [...recipients];
+}
+function profileAnonSenderFromChat(chat) {
+  const stored = String(chat.anonSessionId || "").trim();
+  const id = String(chat.id || chat.canonicalChatId || "");
+  const m = id.match(/^pa_(anon_[^_]+(?:_[^_]+)*)_/);
+  const fromChatId = m ? m[1] : "";
+  if (fromChatId && stored.startsWith("anon_") && stored !== fromChatId) {
+    return fromChatId;
+  }
+  if (fromChatId) return fromChatId;
+  if (stored.startsWith("anon_")) return stored;
+  return "";
+}
+function isOwnChatSender(sender, viewerId, firebaseUid = "") {
+  const from = String(sender || "").trim();
+  if (!from) return true;
+  if (from === viewerId) return true;
+  if (viewerId.startsWith("anon_") && isProfileReplyAuthorId(from)) return false;
+  if (firebaseUid && from === firebaseUid) return true;
+  if (firebaseUid && from === profileReplyAuthorId(firebaseUid)) return true;
+  return false;
+}
+function unreadForViewerPoisonAware(chat, liveAnon, firebaseUid = "") {
+  let viewerId = profileAnonSenderFromChat(chat) || liveAnon;
+  const threadAnon = profileAnonSenderFromChat(chat);
+  const members = chat.participantes || [];
+  if (
+    liveAnon.startsWith("anon_") &&
+    members.includes(liveAnon) &&
+    threadAnon.startsWith("anon_") &&
+    threadAnon !== liveAnon
+  ) {
+    viewerId = liveAnon;
+  }
+  const sender = String(chat.lastMessageSender || "");
+  if (isOwnChatSender(sender, viewerId, firebaseUid)) return 0;
+  if (isProfileReplyAuthorId(sender) && viewerId.startsWith("anon_")) {
+    const unread = chat.unreadCounts?.[viewerId];
+    if (typeof unread === "number" && unread > 0) return 1;
+    if (chat.readBy?.[viewerId] === false) return 1;
+    if (chat.readBy?.[viewerId] === true && chat.unreadCounts?.[viewerId] === 0) return 0;
+    return 0;
+  }
+  return 0;
 }
 function buildOutgoingPatch(messageAuthorId, recipients) {
   const patch = {
@@ -156,6 +209,7 @@ const poisonedOld = resolveOwnerReplyUnreadRecipients({
   anonSessionId: "",
   senderId: ownerLiveAnon, // old bug: owner senderId fallback
   chatIdAnon: visitorAnon,
+  ownerLiveAnon,
   participantes: [ownerUid, ownerLiveAnon],
 });
 // With fix, chatIdAnon still recovers visitor
@@ -164,11 +218,17 @@ check(
   poisonedOld.includes(visitorAnon),
   { poisonedOld },
 );
+check(
+  "MODEL_OWNER_LIVE_ANON_EXCLUDED_FROM_RECIPIENTS",
+  !poisonedOld.includes(ownerLiveAnon),
+  { poisonedOld },
+);
 
 const fixedRecipients = resolveOwnerReplyUnreadRecipients({
   anonSessionId: visitorAnon,
   senderId: visitorAnon,
   chatIdAnon: visitorAnon,
+  ownerLiveAnon,
   participantes: [ownerUid, visitorAnon, ownerLiveAnon],
 });
 const patch = buildOutgoingPatch(profileReplyAuthorId(ownerUid), fixedRecipients);
@@ -181,7 +241,7 @@ check(
 );
 check(
   "MODEL_OWNER_LIVE_ANON_MAY_BE_PRESENT_BUT_VISITOR_STILL_MARKED",
-  fixedRecipients.includes(visitorAnon),
+  fixedRecipients.includes(visitorAnon) && !fixedRecipients.includes(ownerLiveAnon),
 );
 
 const inboundChat = {
@@ -255,6 +315,40 @@ check(
 check(
   "SYNTH_FAIL_BADGE_ABSENT_WHEN_UNREAD_TRUE_IS_DETECTABLE",
   unreadForViewer(inboundChat, visitorAnon, "") === 1,
+);
+
+const poisonedSessionChat = {
+  id: chatId,
+  anonSessionId: ownerLiveAnon, // poisoned owner browser session
+  targetUid: ownerUid,
+  lastMessage: "respuesta",
+  lastMessageSender: `profile_${ownerUid}`,
+  readBy: { [visitorAnon]: false, [ownerLiveAnon]: true },
+  unreadCounts: { [visitorAnon]: 1, [ownerLiveAnon]: 0 },
+  participantes: [ownerUid, visitorAnon, ownerLiveAnon],
+};
+check(
+  "MODEL_POISONED_ANON_SESSION_PREFERS_CHAT_ID",
+  profileAnonSenderFromChat(poisonedSessionChat) === visitorAnon,
+);
+check(
+  "MODEL_POISONED_VIEWER_STILL_GETS_BADGE",
+  unreadForViewerPoisonAware(poisonedSessionChat, visitorAnon, ownerUid) === 1,
+);
+check(
+  "MODEL_ANON_VIEWER_PROFILE_REPLY_NOT_OWN",
+  isOwnChatSender(`profile_${ownerUid}`, visitorAnon, ownerUid) === false,
+);
+check(
+  "SOURCE_CHATID_PREFERRED_OVER_POISONED_SESSION",
+  fs
+    .readFileSync(path.join(root, "src/lib/chat/inboxPeerTitle.ts"), "utf8")
+    .includes("Prefer the anon baked into chatId") &&
+    persistSrc.includes("Exclude the profile owner's live session"),
+);
+check(
+  "SOURCE_OWN_SENDER_SKIPS_PROFILE_FOR_ANON",
+  activitySrc.includes("Anon visitors must never treat profile_* replies as own"),
 );
 
 const failed = checks.filter((c) => !c.pass);
