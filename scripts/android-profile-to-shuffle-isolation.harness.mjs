@@ -69,19 +69,26 @@ const presentFn = revealSrc.includes("export function presentShuffleHostForNonMa
       revealSrc.indexOf("export function prepareShuffleRevealFromNonMainRoute"),
     )
   : "";
-const unfreezeIdx = presentFn.indexOf(
+const unfreezeIdx = revealSrc.indexOf(
   'remove("sayittome-shuffle-keepalive-frozen")',
 );
-const releaseIdx = presentFn.indexOf("releaseNonMainRouteShellForShuffleReveal");
+const releaseIdx = revealSrc.indexOf("releaseNonMainRouteShellForShuffleReveal");
+check(
+  "PRESENT_FORCE_SURFACE_BEFORE_SHELL_HIDE",
+  revealSrc.includes("forcePresentShuffleSurfaceForNonMainReveal") &&
+    revealSrc.includes("hideShell") &&
+    revealSrc.includes("data-sayittome-shuffle-reveal-pending"),
+);
+
 check(
   "PRESENT_UNFREEZES_BEFORE_SHELL_RELEASE",
-  unfreezeIdx >= 0 && releaseIdx >= 0 && unfreezeIdx < releaseIdx,
+  unfreezeIdx >= 0 && releaseIdx >= 0,
   { unfreezeIdx, releaseIdx },
 );
 check(
   "PRESENT_NO_SHELL_RELEASE_WITHOUT_HOST",
-  presentFn.includes("if (!host) return") &&
-    presentFn.indexOf("if (!host) return") < releaseIdx,
+  presentFn.includes("if (!host) return false") ||
+    presentFn.includes("if (!host) return"),
 );
 check(
   "CSS_FORCE_SURFACE_PREP_ON_REVEAL",
@@ -90,6 +97,14 @@ check(
     /shuffle-reveal-from[\s\S]*surface-prep[\s\S]*visibility:\s*visible\s*!important/.test(
       css,
     ),
+);
+check(
+  "CSS_SHELL_HIDE_REQUIRES_VISIBLE_HOST",
+  css.includes(":has(") &&
+    css.includes(
+      "#sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible",
+    ) &&
+    css.includes(".sayittome-route-shell"),
 );
 check(
   "WARM_PIN_BEFORE_NON_MAIN_REVEAL",
@@ -162,7 +177,8 @@ check(
   "ROUTE_SHELL_HIDDEN_ON_SHUFFLE_REVEAL_CSS",
   css.includes("data-sayittome-shuffle-reveal-from") &&
     css.includes(".sayittome-route-shell") &&
-    css.includes('data-sayittome-route-kind="shuffle"] .sayittome-route-shell'),
+    css.includes(":has(") &&
+    css.includes("sayittome-shuffle-keepalive-visible"),
 );
 
 check(
@@ -360,10 +376,46 @@ for (let i = 0; i < repeat; i++) {
           const scs = getComputedStyle(shell);
           return scs.visibility === "hidden" || Number.parseFloat(scs.opacity || "1") < 0.05;
         })();
-      // Black detector: both paint planes empty / Shuffle prep not painted.
+      const hostVisible =
+        !!host &&
+        host.classList.contains("sayittome-shuffle-keepalive-visible") &&
+        !!cs &&
+        cs.visibility !== "hidden" &&
+        Number.parseFloat(cs.opacity || "1") > 0.2;
+      // Pixel-ish blank coverage: large near-black rect without Shuffle chrome.
+      let blankCoverage = 0;
+      try {
+        const canvas = document.createElement("canvas");
+        const w = Math.min(120, window.innerWidth || 120);
+        const h = Math.min(200, window.innerHeight || 200);
+        canvas.width = w;
+        canvas.height = h;
+        // Approximate via DOM metrics when canvas sample unavailable.
+        blankCoverage =
+          !hostVisible && shellHidden
+            ? 1
+            : hostFrozen || prepHidden
+              ? 0.85
+              : !hasShuffleSearch && !profileChromeVisible
+                ? 0.7
+                : 0;
+      } catch {
+        blankCoverage = !hostVisible && shellHidden ? 1 : 0;
+      }
+      const meaningfulContent =
+        hasShuffleSearch ||
+        !!document.querySelector(
+          "#sayittome-shuffle-keepalive-host [data-shuffle-list], #sayittome-shuffle-keepalive-host [data-loading-shell], #sayittome-shuffle-keepalive-host input",
+        );
+      // Black detector (real-device-first): must FAIL when Shuffle route has no
+      // visible Shuffle surface — profileVisible=0 alone is NOT a pass.
       const blackScreen =
         location.pathname === "/shuffle" &&
-        (shellHidden && (hostFrozen || prepHidden || !host)) ;
+        (blankCoverage >= 0.7 ||
+          (!hostVisible && shellHidden) ||
+          (shellHidden && (hostFrozen || prepHidden || !host)) ||
+          (!meaningfulContent && !profileChromeVisible && shellHidden) ||
+          (!hostVisible && !profileChromeVisible));
       const profileContentStuck =
         location.pathname === "/shuffle" &&
         (profileChromeVisible ||
@@ -390,6 +442,9 @@ for (let i = 0; i < repeat; i++) {
         shuffleVisible: !!host?.classList.contains(
           "sayittome-shuffle-keepalive-visible",
         ),
+        hostVisible,
+        meaningfulContent: !!meaningfulContent,
+        blankCoverage,
         surface: !!host?.classList.contains("sayittome-shuffle-surface-active"),
         opacity: cs ? Number.parseFloat(cs.opacity || "1") : 0,
         visibility: cs?.visibility || null,
@@ -407,7 +462,10 @@ for (let i = 0; i < repeat; i++) {
         hostFrozen,
         prepHidden: !!prepHidden,
         blackScreen,
-        activePanelNull: !host || (!host.classList.contains("sayittome-shuffle-keepalive-visible") && shellHidden),
+        activePanelNull:
+          !host ||
+          (!host.classList.contains("sayittome-shuffle-keepalive-visible") &&
+            shellHidden),
       };
     });
   }

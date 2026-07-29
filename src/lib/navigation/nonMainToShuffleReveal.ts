@@ -4,6 +4,7 @@
  * routeKind updates lag behind the kept-alive Shuffle surface.
  */
 import { classifyAppRouteKind, isNonMainRoute } from "@/lib/navigation/routeKind";
+import { forcePresentShuffleSurfaceForNonMainReveal } from "@/lib/navigation/shuffleHandoffState";
 
 export function clearProfileViewerOverlayForShuffleNav() {
   if (typeof document === "undefined") return;
@@ -48,15 +49,7 @@ export function restoreNonMainRouteShellAfterShuffleReveal() {
   shell.removeAttribute("data-sayittome-nonmain-released-for-shuffle");
 }
 
-/** Eagerly present Shuffle host so profile DOM cannot remain the only painted surface. */
-export function presentShuffleHostForNonMainReveal() {
-  if (typeof document === "undefined") return;
-  const host = document.getElementById("sayittome-shuffle-keepalive-host");
-  // Never release the profile/settings shell until Shuffle can own paint —
-  // otherwise Android shows a sustained black frame (both surfaces hidden).
-  if (!host) return;
-
-  // Unfreeze + force surface-prep visible BEFORE hiding the route shell.
+function unfreezeShuffleHost(host: HTMLElement) {
   host.classList.remove("sayittome-shuffle-keepalive-frozen");
   host.classList.add(
     "sayittome-shuffle-keepalive-visible",
@@ -83,13 +76,48 @@ export function presentShuffleHostForNonMainReveal() {
     if (prep.style.opacity === "0") prep.style.opacity = "1";
     if (prep.style.pointerEvents === "none") prep.style.pointerEvents = "";
   }
+}
 
-  releaseNonMainRouteShellForShuffleReveal();
+/**
+ * Eagerly present Shuffle host so profile DOM cannot remain the only painted surface.
+ * Returns false when the host is not in the DOM yet (React pin still mounting).
+ */
+export function presentShuffleHostForNonMainReveal(options?: {
+  hideShell?: boolean;
+}) {
+  if (typeof document === "undefined") return false;
+  const hideShell = options?.hideShell !== false;
+  const host = document.getElementById("sayittome-shuffle-keepalive-host");
+  // Never release the profile/settings shell until Shuffle can own paint —
+  // otherwise Android shows a sustained black frame (both surfaces hidden).
+  if (!host) return false;
+
+  forcePresentShuffleSurfaceForNonMainReveal();
+  unfreezeShuffleHost(host);
+
+  if (hideShell) {
+    releaseNonMainRouteShellForShuffleReveal();
+  }
+  return true;
+}
+
+function armRevealMarkers(fromKind: string) {
+  const html = document.documentElement;
+  html.setAttribute("data-sayittome-route-kind", "shuffle");
+  html.setAttribute("data-sayittome-shuffle-reveal-from", fromKind);
+  html.removeAttribute("data-sayittome-shuffle-reveal-pending");
+  html.classList.remove("sayittome-shuffle-exit-handoff-pending");
+  html.removeAttribute("data-shuffle-exit-handoff-target");
+  html.classList.remove("sayittome-main-tab-handoff-pending");
+  html.removeAttribute("data-sayittome-main-tab-handoff-source");
 }
 
 /**
  * Call on Shuffle pointerdown/click when the live URL is still non-main.
  * Live URL wins for routeKind once we commit to revealing Shuffle.
+ *
+ * Contract: never hide the profile shell until the Shuffle host exists and is
+ * unfrozen. Loading shell inside Shuffle is OK; dual-hidden black is not.
  */
 export function prepareShuffleRevealFromNonMainRoute(fromPath?: string) {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -105,15 +133,36 @@ export function prepareShuffleRevealFromNonMainRoute(fromPath?: string) {
 
   clearProfileViewerOverlayForShuffleNav();
 
+  const fromKind = classifyAppRouteKind(live);
   const html = document.documentElement;
-  // Drop sticky non-main kind before router commit so Shuffle CSS can paint.
+  // Markers BEFORE force-present notify so React mounts the host as visible
+  // while URL is still /u/* (canShowShuffleKeepAliveSurface reads these).
+  // Shell stays painted until :has(visible host) — see globals.css.
+  html.setAttribute("data-sayittome-shuffle-reveal-pending", "1");
   html.setAttribute("data-sayittome-route-kind", "shuffle");
-  html.setAttribute("data-sayittome-shuffle-reveal-from", classifyAppRouteKind(live));
-  html.classList.remove("sayittome-shuffle-exit-handoff-pending");
-  html.removeAttribute("data-shuffle-exit-handoff-target");
-  html.classList.remove("sayittome-main-tab-handoff-pending");
-  html.removeAttribute("data-sayittome-main-tab-handoff-source");
-  presentShuffleHostForNonMainReveal();
+  forcePresentShuffleSurfaceForNonMainReveal();
+
+  const hostReady = presentShuffleHostForNonMainReveal({ hideShell: false });
+  if (hostReady) {
+    armRevealMarkers(fromKind);
+    releaseNonMainRouteShellForShuffleReveal();
+    return true;
+  }
+
+  // Host not mounted yet — keep profile painted; retry after React pin flush.
+  const retry = () => {
+    if (presentShuffleHostForNonMainReveal({ hideShell: true })) {
+      armRevealMarkers(fromKind);
+      return;
+    }
+    // One more frame for slow Android WebView React commit.
+    requestAnimationFrame(() => {
+      if (presentShuffleHostForNonMainReveal({ hideShell: true })) {
+        armRevealMarkers(fromKind);
+      }
+    });
+  };
+  requestAnimationFrame(() => requestAnimationFrame(retry));
 
   return true;
 }
@@ -121,4 +170,5 @@ export function prepareShuffleRevealFromNonMainRoute(fromPath?: string) {
 export function clearShuffleRevealFromNonMainMarker() {
   if (typeof document === "undefined") return;
   document.documentElement.removeAttribute("data-sayittome-shuffle-reveal-from");
+  document.documentElement.removeAttribute("data-sayittome-shuffle-reveal-pending");
 }

@@ -66,13 +66,31 @@ export function isOwnChatSender(
   if (!from) return true;
   if (from === viewerId) return true;
 
-  // Anon visitors must never treat profile_* replies as own — enterAnonymousMode
-  // can leave a Firebase uid in the browser while the viewer is anon_*.
+  const liveAnonId = getChatAnonSenderId();
+  const threadAnon = chat ? profileAnonSenderFromChat(chat) : "";
   const viewerIsAnon =
     viewerId.startsWith("anon_") ||
-    (chat ? isAnonVisitorProfileChat(chat, firebaseUid) : false);
+    (chat ? isAnonVisitorProfileChat(chat, firebaseUid) : false) ||
+    // Firebase anonymous auth uid must not own profile_* replies on visitor threads.
+    (liveAnonId.startsWith("anon_") &&
+      threadAnon.startsWith("anon_") &&
+      (liveAnonId === threadAnon || liveAnonId === viewerId));
+
+  // Anon visitors must never treat profile_* replies as own — enterAnonymousMode
+  // can leave a Firebase uid in the browser while the viewer is anon_*.
   if (viewerIsAnon && isProfileReplyAuthorId(from)) {
     return false;
+  }
+  if (isProfileReplyAuthorId(from) && threadAnon.startsWith("anon_")) {
+    // Hard rule for profile-anon threads: profile_* is the peer owner reply
+    // unless this firebase viewer is the profile owner inbox.
+    if (
+      !chat ||
+      !firebaseUid ||
+      !isIncomingAnonChatForOwner(chat, firebaseUid)
+    ) {
+      return false;
+    }
   }
 
   if (!viewerIsAnon) {

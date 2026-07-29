@@ -861,6 +861,18 @@ export function commitShuffleTabReturn() {
 
 export function canShowShuffleKeepAliveSurface(pathname: string) {
   const path = normalizePath(pathname);
+  // Non-main → Shuffle reveal must paint the host even while the URL is still
+  // /u/* or /chat/* — otherwise CSS hides the route shell with nothing visible.
+  if (typeof document !== "undefined") {
+    const html = document.documentElement;
+    if (
+      html.hasAttribute("data-sayittome-shuffle-reveal-from") ||
+      html.hasAttribute("data-sayittome-shuffle-reveal-pending") ||
+      html.getAttribute("data-sayittome-route-kind") === "shuffle"
+    ) {
+      return true;
+    }
+  }
   // Never paint Shuffle under profile / chat / other non-main routes — retain
   // and post-settle bridges must not win while /u/* is the live URL.
   if (

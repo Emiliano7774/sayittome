@@ -49,18 +49,30 @@ export function chatUnreadCountForViewer(
 ) {
   let viewerId = resolveChatViewerId(chat, firebaseUid);
   const liveAnon = getChatAnonSenderId();
-  // Firebase anonymous auth uids must not steal visitor unread evaluation.
-  // Prefer the live visitor anon when it is in the thread — poisoned
-  // anonSessionId (owner browser session) must not win over the real visitor.
+  const threadAnon = profileAnonSenderFromChat(chat);
+  // Prefer the chatId / thread visitor for unread keys. A regenerated live
+  // session must not steal evaluation away from unreadCounts[threadAnon]
+  // written by profile→anon replies (manual QA: badge/row missing).
   if (liveAnon.startsWith("anon_") && !isIncomingAnonChatForOwner(chat, firebaseUid)) {
-    const threadAnon = profileAnonSenderFromChat(chat);
     const members = chat.participantes || [];
-    if (members.includes(liveAnon) || viewerId === liveAnon || threadAnon === liveAnon) {
-      if (threadAnon.startsWith("anon_") && threadAnon !== liveAnon && members.includes(liveAnon)) {
-        viewerId = liveAnon;
-      } else {
-        viewerId = threadAnon.startsWith("anon_") ? threadAnon : liveAnon;
-      }
+    const hasUnreadSignal = (id: string) => {
+      if (!id.startsWith("anon_")) return false;
+      const unread = chat.unreadCounts?.[id];
+      if (typeof unread === "number" && unread > 0) return true;
+      return chat.readBy?.[id] === false;
+    };
+    if (hasUnreadSignal(threadAnon)) {
+      viewerId = threadAnon;
+    } else if (hasUnreadSignal(liveAnon)) {
+      viewerId = liveAnon;
+    } else if (
+      members.includes(liveAnon) ||
+      viewerId === liveAnon ||
+      threadAnon === liveAnon
+    ) {
+      // Stable key = chatId visitor when present; never prefer live over thread
+      // just because both appear in participantes.
+      viewerId = threadAnon.startsWith("anon_") ? threadAnon : liveAnon;
     }
   }
   return chatUnreadCount(chat, viewerId, { ...options, firebaseUid });

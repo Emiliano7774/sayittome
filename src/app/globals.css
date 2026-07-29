@@ -440,12 +440,18 @@ html[data-sayittome-route-kind="shuffle"] #sayittome-shuffle-keepalive-host {
 
 /*
  * Android profile→Shuffle: hide the Next.js route shell (profile/settings/edit)
- * while revealing Shuffle and for the entire Shuffle route (page is null —
- * UI lives in keepalive). Prevents username/logout/copy-link/sytm.me from
- * remaining the painted surface after pathname commits.
+ * ONLY once Shuffle keepalive is visibly owning paint. Hiding the shell while
+ * the host is missing/frozen produces a sustained black frame (manual QA).
+ * Loading chrome inside a visible Shuffle host is allowed.
  */
-html[data-sayittome-shuffle-reveal-from] .sayittome-route-shell,
-html[data-sayittome-route-kind="shuffle"] .sayittome-route-shell {
+html[data-sayittome-shuffle-reveal-from]:has(
+    #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  )
+  .sayittome-route-shell,
+html[data-sayittome-route-kind="shuffle"]:has(
+    #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  )
+  .sayittome-route-shell {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
@@ -453,6 +459,7 @@ html[data-sayittome-route-kind="shuffle"] .sayittome-route-shell {
 }
 
 html[data-sayittome-shuffle-reveal-from] #sayittome-shuffle-keepalive-host,
+html[data-sayittome-shuffle-reveal-pending] #sayittome-shuffle-keepalive-host,
 html[data-sayittome-route-kind="shuffle"] #sayittome-shuffle-keepalive-host {
   visibility: visible !important;
   opacity: 1 !important;
@@ -467,8 +474,11 @@ html[data-sayittome-route-kind="shuffle"] #sayittome-shuffle-keepalive-host {
 html[data-sayittome-shuffle-reveal-from]
   #sayittome-shuffle-keepalive-host
   .sayittome-shuffle-surface-prep,
+html[data-sayittome-shuffle-reveal-pending]
+  #sayittome-shuffle-keepalive-host
+  .sayittome-shuffle-surface-prep,
 html[data-sayittome-route-kind="shuffle"]
-  #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  #sayittome-shuffle-keepalive-host
   .sayittome-shuffle-surface-prep {
   visibility: visible !important;
   opacity: 1 !important;

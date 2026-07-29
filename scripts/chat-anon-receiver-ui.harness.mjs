@@ -78,7 +78,7 @@ check(
 
 check(
   "VISITOR_UNREAD_PREFERS_ANON_SESSION",
-  unreadSrc.includes("Firebase anonymous auth uids must not steal visitor unread") &&
+  unreadSrc.includes("Prefer the chatId / thread visitor for unread keys") &&
     unreadSrc.includes("getChatAnonSenderId"),
 );
 
@@ -151,13 +151,23 @@ function unreadForViewerPoisonAware(chat, liveAnon, firebaseUid = "") {
   let viewerId = profileAnonSenderFromChat(chat) || liveAnon;
   const threadAnon = profileAnonSenderFromChat(chat);
   const members = chat.participantes || [];
-  if (
+  const hasUnreadSignal = (id) => {
+    if (!id.startsWith("anon_")) return false;
+    const unread = chat.unreadCounts?.[id];
+    if (typeof unread === "number" && unread > 0) return true;
+    return chat.readBy?.[id] === false;
+  };
+  // Prefer threadAnon when it holds the unread signal (matches inboxUnread.ts).
+  if (hasUnreadSignal(threadAnon)) {
+    viewerId = threadAnon;
+  } else if (hasUnreadSignal(liveAnon)) {
+    viewerId = liveAnon;
+  } else if (
     liveAnon.startsWith("anon_") &&
     members.includes(liveAnon) &&
-    threadAnon.startsWith("anon_") &&
-    threadAnon !== liveAnon
+    threadAnon.startsWith("anon_")
   ) {
-    viewerId = liveAnon;
+    viewerId = threadAnon;
   }
   const sender = String(chat.lastMessageSender || "");
   if (isOwnChatSender(sender, viewerId, firebaseUid)) return 0;
@@ -333,11 +343,25 @@ check(
 );
 check(
   "MODEL_POISONED_VIEWER_STILL_GETS_BADGE",
-  unreadForViewerPoisonAware(poisonedSessionChat, visitorAnon, ownerUid) === 1,
+  unreadForViewerPoisonAware(poisonedSessionChat, visitorAnon, "") === 1,
+);
+check(
+  "MODEL_THREAD_UNREAD_WINS_OVER_DIVERGED_LIVE",
+  unreadForViewerPoisonAware(
+    {
+      ...inboundChat,
+      unreadCounts: { [visitorAnon]: 1 },
+      readBy: { [visitorAnon]: false },
+      participantes: [ownerUid, visitorAnon, "anon_regenerated_live"],
+    },
+    "anon_regenerated_live",
+    "",
+  ) === 1,
 );
 check(
   "MODEL_ANON_VIEWER_PROFILE_REPLY_NOT_OWN",
-  isOwnChatSender(`profile_${ownerUid}`, visitorAnon, ownerUid) === false,
+  isOwnChatSender(`profile_${ownerUid}`, visitorAnon, "firebase_anon_auth_uid") ===
+    false,
 );
 check(
   "SOURCE_CHATID_PREFERRED_OVER_POISONED_SESSION",

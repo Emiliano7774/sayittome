@@ -78,6 +78,17 @@ export function presentShuffleSurface() {
   notify();
 }
 
+/**
+ * Profile/settings → Shuffle: force the presented latch even if a main-tab
+ * micro-slide still owns presentation. Without this, React keeps the keepalive
+ * host frozen while CSS already hides the route shell → Android black frame.
+ */
+export function forcePresentShuffleSurfaceForNonMainReveal() {
+  shuffleRevealDeferred = false;
+  shuffleSurfacePresented = true;
+  notify();
+}
+
 export function clearShuffleHandoffState() {
   if (isMainTabToShufflePresentationOwned()) return;
   if (!shuffleRevealDeferred && !shuffleSurfacePresented && !shuffleExitMainTabTarget) return;
