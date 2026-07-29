@@ -52,10 +52,12 @@ import {
   deferShuffleCountOnlyIfTyping,
   deferShufflePoolLoadIfTyping,
   ensureShuffleSearchTypingGuardInstalled,
+  fetchShuffleApi,
   markShuffleSearchBlurred,
   markShuffleSearchFocused,
   markShuffleSearchTypingActive,
   registerShuffleSearchTypingFlushers,
+  shouldSuppressShuffleNetworkAtFireTime,
   unregisterShuffleSearchTypingFlushers,
 } from "@/lib/shuffle/shuffleSearchTypingGuard";
 
@@ -582,6 +584,13 @@ export function useShufflePool() {
       }
 
       try {
+        // Fire-time re-check: remount blur may have armed sticky suppress after
+        // the entry defer() call returned false.
+        if (shouldSuppressShuffleNetworkAtFireTime()) {
+          deferShufflePoolLoadIfTyping({ q, force });
+          return;
+        }
+
         const params = new URLSearchParams({
           pool: "full",
           // Shuffle pool order on the server so cold restores never share a fixed prefix.
@@ -590,7 +599,7 @@ export function useShufflePool() {
         if (q) params.set("q", q);
         if (force) params.set("force", "1");
 
-        const res = await fetch(`/api/shuffle?${params.toString()}`, {
+        const res = await fetchShuffleApi(`/api/shuffle?${params.toString()}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -1088,10 +1097,15 @@ export function useShufflePool() {
       if (lastAt > 0 && now - lastAt < 45_000) {
         return;
       }
+      // Fire-time gate: sticky blur / remount must not land countOnly in F6 window.
+      if (shouldSuppressShuffleNetworkAtFireTime()) {
+        deferShuffleCountOnlyIfTyping();
+        return;
+      }
       countOnlyInflight = true;
       g.__sayittomeShuffleCountOnlyAt = now;
       try {
-        const res = await fetch(`/api/shuffle?countOnly=1`, {
+        const res = await fetchShuffleApi(`/api/shuffle?countOnly=1`, {
           cache: "default",
         });
         const json = await res.json();

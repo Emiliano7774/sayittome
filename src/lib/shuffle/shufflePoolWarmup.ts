@@ -12,6 +12,10 @@ import {
   writeCachedShuffleStats,
 } from "@/lib/shuffle/shuffleClientCache";
 import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
+import {
+  fetchShuffleApi,
+  shouldSuppressShuffleNetworkAtFireTime,
+} from "@/lib/shuffle/shuffleSearchTypingGuard";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 
 export type ShufflePoolWarmState = "ready" | "warming" | "empty" | "unknown";
@@ -129,8 +133,13 @@ export function ensureShufflePoolWarmForMicroSlide(): Promise<ShufflePoolWarmSta
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 10_000);
     try {
+      // Typing/focus fire-time gate — warmup must not land inside F6 windows.
+      if (shouldSuppressShuffleNetworkAtFireTime()) {
+        lastState = isShufflePoolWarmForNav() ? "ready" : "empty";
+        return lastState;
+      }
       const params = new URLSearchParams({ pool: "full", shuffle: "1" });
-      const res = await fetch(`/api/shuffle?${params.toString()}`, {
+      const res = await fetchShuffleApi(`/api/shuffle?${params.toString()}`, {
         cache: "no-store",
         signal: controller.signal,
       });

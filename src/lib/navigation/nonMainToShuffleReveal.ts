@@ -26,9 +26,32 @@ export function clearProfileViewerOverlayForShuffleNav() {
   );
 }
 
+/** Hide the Next.js route shell (profile/settings) so it cannot paint over Shuffle. */
+export function releaseNonMainRouteShellForShuffleReveal() {
+  if (typeof document === "undefined") return;
+  const shell = document.querySelector(".sayittome-route-shell");
+  if (!shell) return;
+  shell.setAttribute("hidden", "");
+  shell.setAttribute("aria-hidden", "true");
+  shell.setAttribute("data-sayittome-nonmain-released-for-shuffle", "1");
+}
+
+/** Restore route shell after leaving Shuffle so profile/settings can paint again. */
+export function restoreNonMainRouteShellAfterShuffleReveal() {
+  if (typeof document === "undefined") return;
+  const shell = document.querySelector(
+    '.sayittome-route-shell[data-sayittome-nonmain-released-for-shuffle="1"]',
+  );
+  if (!shell) return;
+  shell.removeAttribute("hidden");
+  shell.removeAttribute("aria-hidden");
+  shell.removeAttribute("data-sayittome-nonmain-released-for-shuffle");
+}
+
 /** Eagerly present Shuffle host so profile DOM cannot remain the only painted surface. */
 export function presentShuffleHostForNonMainReveal() {
   if (typeof document === "undefined") return;
+  releaseNonMainRouteShellForShuffleReveal();
   const host = document.getElementById("sayittome-shuffle-keepalive-host");
   if (!host) return;
   host.classList.add(
@@ -41,6 +64,12 @@ export function presentShuffleHostForNonMainReveal() {
   if (style.opacity === "0") style.opacity = "1";
   if (style.visibility === "hidden") style.visibility = "visible";
   if (style.pointerEvents === "none") style.pointerEvents = "";
+  // Own the paint plane above lingering profile route content.
+  style.zIndex = "5";
+  style.position = style.position || "fixed";
+  if (!style.inset && !style.top) {
+    style.inset = "0";
+  }
 }
 
 /**

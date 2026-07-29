@@ -21,17 +21,42 @@ const poolSrc = fs.readFileSync(
   path.join(root, "src/hooks/useShufflePool.ts"),
   "utf8",
 );
+const warmSrc = fs.readFileSync(
+  path.join(root, "src/lib/shuffle/shufflePoolWarmup.ts"),
+  "utf8",
+);
 if (
   !guardSrc.includes("ensureShuffleSearchTypingGuardInstalled") ||
   !guardSrc.includes("markShuffleSearchFocused") ||
   !guardSrc.includes("searchFocused") ||
-  !poolSrc.includes("ensureShuffleSearchTypingGuardInstalled")
+  !guardSrc.includes("shouldSuppressShuffleNetworkAtFireTime") ||
+  !guardSrc.includes("fetchShuffleApi") ||
+  !guardSrc.includes("SEARCH_BLUR_STICKY_MS") ||
+  !poolSrc.includes("ensureShuffleSearchTypingGuardInstalled") ||
+  !poolSrc.includes("fetchShuffleApi") ||
+  !poolSrc.includes("shouldSuppressShuffleNetworkAtFireTime") ||
+  !warmSrc.includes("fetchShuffleApi")
 ) {
   console.error(
     JSON.stringify({
       gate: "SHUFFLE_SEARCH_LIVE_NOFETCH",
       pass: false,
-      fail: "TYPING_GUARD_DOM_BRIDGE_MISSING",
+      fail: "TYPING_GUARD_FIRE_TIME_GATE_MISSING",
+    }),
+  );
+  process.exit(1);
+}
+
+// Static: blur must not clear typing suppress (F6 remount race → value "n").
+if (
+  /markShuffleSearchBlurred[\s\S]*?typingActive\s*=\s*false/.test(guardSrc) &&
+  !guardSrc.includes("do NOT clear typingActive")
+) {
+  console.error(
+    JSON.stringify({
+      gate: "SHUFFLE_SEARCH_LIVE_NOFETCH",
+      pass: false,
+      fail: "BLUR_CLEARS_TYPING_SUPPRESS_F6_REGRESSION",
     }),
   );
   process.exit(1);
@@ -152,6 +177,17 @@ for (let i = 0; i < repeat; i++) {
     await input.click({ timeout: 10_000 }).catch(() => {});
     await input.fill("");
     await input.type("a", { delay: 40 });
+    // Synthetic remount race (cea6c43 F6): blur → mount force+countOnly mid-type.
+    // Sticky blur suppress + fire-time gate must keep keypressFetches=0.
+    await page.evaluate(() => {
+      const el = document.querySelector(
+        'input[data-shuffle-search="1"], input[placeholder*="Buscar"]',
+      );
+      el?.dispatchEvent(new Event("blur", { bubbles: true }));
+      el?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    await page.waitForTimeout(30);
+    await input.click({ timeout: 5_000 }).catch(() => {});
     await page.waitForTimeout(400);
     await input.type("n", { delay: 40 });
     await page.waitForTimeout(700);

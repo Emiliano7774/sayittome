@@ -59,7 +59,8 @@ check(
   "NON_MAIN_TO_SHUFFLE_REVEAL_HELPER",
   revealSrc.includes("prepareShuffleRevealFromNonMainRoute") &&
     revealSrc.includes("clearProfileViewerOverlayForShuffleNav") &&
-    revealSrc.includes("presentShuffleHostForNonMainReveal"),
+    revealSrc.includes("presentShuffleHostForNonMainReveal") &&
+    revealSrc.includes("releaseNonMainRouteShellForShuffleReveal"),
 );
 
 check(
@@ -115,6 +116,13 @@ check(
   css.includes(
     'sayittome-shuffle-exit-handoff-pending:not([data-sayittome-route-kind="profile"])',
   ),
+);
+
+check(
+  "ROUTE_SHELL_HIDDEN_ON_SHUFFLE_REVEAL_CSS",
+  css.includes("data-sayittome-shuffle-reveal-from") &&
+    css.includes(".sayittome-route-shell") &&
+    css.includes('data-sayittome-route-kind="shuffle"] .sayittome-route-shell'),
 );
 
 check(
@@ -275,15 +283,34 @@ for (let i = 0; i < repeat; i++) {
         navShuffle?.classList?.contains("sayittome-nav-selected") ||
         !!navShuffle?.closest('[data-selected="1"]');
       const profileChromeVisible =
-        /Cerrar sesión|Copiar link|Editar perfil|\bAdmin\b/i.test(text);
+        /Cerrar sesión|Copiar link|Editar perfil|\bAdmin\b|Sign out|Copy invite|Edit profile|sytm\.me\/@|\/settings\/edit/i.test(
+          text,
+        ) ||
+        (!!document.querySelector(
+          'a[href*="/settings/edit"], button[data-action="logout"], [data-profile-copy-link]',
+        ) &&
+          !document.querySelector(
+            'input[data-shuffle-search="1"], input[placeholder*="Buscar"]',
+          ));
       // Profile bio / actions without Shuffle search chrome = stuck profile paint.
       const hasShuffleSearch = !!document.querySelector(
         'input[data-shuffle-search="1"], input[placeholder*="Buscar"]',
       );
+      const routeShellReleased =
+        document
+          .querySelector(".sayittome-route-shell")
+          ?.hasAttribute("hidden") ||
+        document.documentElement.getAttribute("data-sayittome-route-kind") ===
+          "shuffle";
       const profileContentStuck =
         location.pathname === "/shuffle" &&
-        profileChromeVisible &&
-        !hasShuffleSearch;
+        (profileChromeVisible ||
+          (!hasShuffleSearch &&
+            /@[A-Za-z0-9._-]{3,}/.test(text) &&
+            !routeShellReleased));
+      // Even with search present: any visible profile chrome after Shuffle tap = FAIL.
+      const profileChromeAfterShuffle =
+        location.pathname === "/shuffle" && profileChromeVisible;
       return {
         path: location.pathname,
         kind: document.documentElement.getAttribute(
@@ -304,8 +331,10 @@ for (let i = 0; i < repeat; i++) {
         loadingStories: /Cargando historias/i.test(text),
         adminVisible: profileChromeVisible,
         profileContentStuck,
+        profileChromeAfterShuffle,
         navSelected,
         hasShuffleSearch,
+        routeShellReleased,
       };
     });
   }
@@ -331,7 +360,9 @@ for (let i = 0; i < repeat; i++) {
   // Any final non-/shuffle pathname is stuck (profile OR settings OR other).
   const pathStuck = sample.path !== "/shuffle";
   const profileContentVisible = !!(
-    sample.adminVisible || sample.profileContentStuck
+    sample.adminVisible ||
+    sample.profileContentStuck ||
+    sample.profileChromeAfterShuffle
   );
   const overlay =
     sample.profileViewer ||
@@ -375,7 +406,11 @@ const contentOk = results.every(
   (r) => r.shuffleVisible && r.opacity > 0.2 && r.visibility !== "hidden",
 );
 const profilePaintOk = results.every(
-  (r) => !r.adminVisible && !r.profileContentStuck && r.hasShuffleSearch,
+  (r) =>
+    !r.adminVisible &&
+    !r.profileContentStuck &&
+    !r.profileChromeAfterShuffle &&
+    r.hasShuffleSearch,
 );
 const pass =
   overlayCount === 0 &&

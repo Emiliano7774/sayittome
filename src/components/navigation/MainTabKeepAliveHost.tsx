@@ -33,6 +33,7 @@ import {
   subscribeMainTabKeepAlive,
   syncPendingVisualTabWithPathname,
 } from "@/lib/navigation/mainTabKeepAlive";
+import { restoreNonMainRouteShellAfterShuffleReveal } from "@/lib/navigation/nonMainToShuffleReveal";
 import {
   clearShuffleExitToMainTab,
   clearStaleShuffleEntryHandoffForMainTabDestination,
@@ -210,6 +211,9 @@ export default function MainTabKeepAliveHost() {
         document.documentElement.removeAttribute(
           "data-sayittome-shuffle-reveal-from",
         );
+        // Keep route shell released — Shuffle page is null; keepalive owns paint.
+      } else {
+        restoreNonMainRouteShellAfterShuffleReveal();
       }
     }
 

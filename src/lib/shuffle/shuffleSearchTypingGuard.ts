@@ -1,15 +1,20 @@
 /**
  * Active Shuffle search typing / focus guard.
  *
- * Blocks pool=full&force and countOnly while the search field is focused or
- * recently typed — including the hydration race where the user focuses the
- * input before React attaches onFocus (DOM capture arms the guard first).
+ * Blocks ALL /api/shuffle network (pool=full&force, countOnly, warmup, q=)
+ * while the search field is focused or recently typed — including the live F6
+ * remount race where focusout clears React focus but mount effects re-fire
+ * force+countOnly inside the typing window (value often lands as "n").
  *
- * Deferred network is never flushed while focused; on blur deferred force /
- * countOnly are dropped (TTL / next idle poll can refresh later). No new APIs.
+ * Suppression is sticky across brief blur/remount: blur does not clear the idle
+ * window. Fire-time checks re-sync from document.activeElement. Deferred
+ * network is never flushed while suppressed; on idle it is dropped (TTL /
+ * next poll can refresh later). No new APIs.
  */
 
 const SEARCH_TYPING_IDLE_MS = 2500;
+/** Extra sticky suppress after blur so remount mount-effects cannot race. */
+const SEARCH_BLUR_STICKY_MS = 2500;
 const SEARCH_INPUT_SELECTOR =
   'input[placeholder*="Buscar"], input[name="search"], input[type="search"], input[aria-label*="Buscar"], input[data-shuffle-search="1"]';
 
@@ -19,6 +24,7 @@ let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let deferredPoolLoad: { q: string; force: boolean } | null = null;
 let deferredCountOnly = false;
 let domBridgeInstalled = false;
+let lastArmedAt = 0;
 
 type PoolLoadFn = (opts: { q?: string; force?: boolean }) => void | Promise<void>;
 type CountOnlyFn = () => void | Promise<void>;
@@ -54,17 +60,38 @@ function dropDeferredNetwork() {
   deferredCountOnly = false;
 }
 
+/**
+ * Re-sync module flags from the live DOM. Survives remount that briefly
+ * nulled searchFocused while the input (or a replacement) still owns focus.
+ */
+function syncFromLiveDom() {
+  if (typeof document === "undefined") return;
+  if (isShuffleSearchInput(document.activeElement)) {
+    searchFocused = true;
+    typingActive = true;
+    lastArmedAt = Date.now();
+  }
+}
+
 function networkSuppressed() {
-  return searchFocused || typingActive;
+  syncFromLiveDom();
+  if (searchFocused || typingActive) return true;
+  // Sticky window after last arm — covers remount blur → mount fetch race.
+  if (lastArmedAt > 0 && Date.now() - lastArmedAt < SEARCH_BLUR_STICKY_MS) {
+    return true;
+  }
+  return false;
 }
 
 function armTypingIdle() {
   clearIdleTimer();
+  lastArmedAt = Date.now();
   idleTimer = setTimeout(() => {
     typingActive = false;
     idleTimer = null;
     // Never flush while the search field still owns focus — that is what
-    // landed pool=full&force + countOnly inside F6 typing windows after 1s idle.
+    // landed pool=full&force + countOnly inside F6 typing windows after idle.
+    syncFromLiveDom();
     if (searchFocused) return;
     dropDeferredNetwork();
   }, SEARCH_TYPING_IDLE_MS);
@@ -87,14 +114,25 @@ export function markShuffleSearchFocused() {
 export function markShuffleSearchBlurred() {
   if (typeof window === "undefined") return;
   searchFocused = false;
-  clearIdleTimer();
-  typingActive = false;
-  // Drop deferred refresh — do not fire force/countOnly on blur into a
-  // still-open harness measurement window.
+  // CRITICAL (F6 live): do NOT clear typingActive / idle on blur.
+  // Remount detaches the input → focusout → blur → mount force+countOnly
+  // while Playwright still measures the typing window (value often "n").
+  // Keep sticky suppress until idle; drop deferred so blur never flushes.
   dropDeferredNetwork();
+  typingActive = true;
+  armTypingIdle();
 }
 
 export function isShuffleSearchTypingActive() {
+  return networkSuppressed();
+}
+
+/**
+ * Authoritative fire-time gate for ANY /api/shuffle request.
+ * Returns true when the caller must not fetch.
+ */
+export function shouldSuppressShuffleNetworkAtFireTime() {
+  ensureShuffleSearchTypingGuardInstalled();
   return networkSuppressed();
 }
 
@@ -123,7 +161,10 @@ export function ensureShuffleSearchTypingGuardInstalled() {
       // Defer blur until after focus moves — ignore focus moving within search.
       window.setTimeout(() => {
         const active = document.activeElement;
-        if (isShuffleSearchInput(active)) return;
+        if (isShuffleSearchInput(active)) {
+          markShuffleSearchFocused();
+          return;
+        }
         markShuffleSearchBlurred();
       }, 0);
     },
@@ -200,6 +241,23 @@ export function deferShuffleCountOnlyIfTyping() {
   return true;
 }
 
+/**
+ * Central /api/shuffle fetch wrapper — checks suppression synchronously at
+ * fire time (including warmup / mount / TTL / countOnly). Throws AbortError
+ * when suppressed so callers treat it like a cancelled request.
+ */
+export async function fetchShuffleApi(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  ensureShuffleSearchTypingGuardInstalled();
+  if (shouldSuppressShuffleNetworkAtFireTime()) {
+    const err = new DOMException("Shuffle network suppressed during search typing", "AbortError");
+    throw err;
+  }
+  return fetch(input, init);
+}
+
 export function getShuffleSearchTypingDebug() {
   return {
     typingActive,
@@ -207,8 +265,11 @@ export function getShuffleSearchTypingDebug() {
     deferredPoolLoad,
     deferredCountOnly,
     idleMs: SEARCH_TYPING_IDLE_MS,
+    blurStickyMs: SEARCH_BLUR_STICKY_MS,
+    lastArmedAt,
     domBridgeInstalled,
     // flushers retained for diagnostics only — not invoked while focused
     hasFlushers: Boolean(flushPoolLoad || flushCountOnly),
+    suppressed: networkSuppressed(),
   };
 }

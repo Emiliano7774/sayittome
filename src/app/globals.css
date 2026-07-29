@@ -438,6 +438,30 @@ html[data-sayittome-route-kind="shuffle"] #sayittome-shuffle-keepalive-host {
   visibility: visible;
 }
 
+/*
+ * Android profile→Shuffle: hide the Next.js route shell (profile/settings/edit)
+ * while revealing Shuffle and for the entire Shuffle route (page is null —
+ * UI lives in keepalive). Prevents username/logout/copy-link/sytm.me from
+ * remaining the painted surface after pathname commits.
+ */
+html[data-sayittome-shuffle-reveal-from] .sayittome-route-shell,
+html[data-sayittome-route-kind="shuffle"] .sayittome-route-shell {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+html[data-sayittome-shuffle-reveal-from] #sayittome-shuffle-keepalive-host,
+html[data-sayittome-route-kind="shuffle"] #sayittome-shuffle-keepalive-host {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 5 !important;
+  position: fixed;
+  inset: 0;
+}
+
 /* Keep destination main-tab panels hidden while Shuffle exit handoff waits for readiness. */
 html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-stories,
 html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-chats,
