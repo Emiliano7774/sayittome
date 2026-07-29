@@ -204,11 +204,16 @@ function blackScreenHeuristic() {
   const visibleHumanContent = countVisibleShuffleHumanContent(shuffleHost);
   const path = window.location.pathname.split("?")[0].split("#")[0];
   const bothHidden = !shuffleVisible && (shellHidden || profileVisible === 0);
+  const html = document.documentElement;
+  const shuffleRevealActive =
+    path === "/shuffle" ||
+    html.hasAttribute("data-sayittome-shuffle-reveal-pending") ||
+    html.hasAttribute("data-sayittome-shuffle-reveal-from") ||
+    html.getAttribute("data-sayittome-route-kind") === "shuffle";
   return {
     blackScreen:
-      bothHidden ||
-      (path === "/shuffle" && !shuffleVisible) ||
-      (path === "/shuffle" && visibleHumanContent === 0),
+      shuffleRevealActive &&
+      (bothHidden || !shuffleVisible || visibleHumanContent === 0),
     shuffleVisible,
     profileVisible,
     shellHidden,

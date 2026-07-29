@@ -59,10 +59,24 @@ for (const route of [
   `${profilePath}?qaDebug=1`,
   "/shuffle?qaDebug=1",
   "/chats?qaDebug=1",
+  "/chat/anon_qa4__anon_to__santi000_35?u=Santi000_35&qaDebug=1",
 ]) {
   const state = await overlayState(route);
   check(`QADEBUG_GLOBAL_${state.path || "ROOT"}`, state.overlayVisible && state.copyVisible, state);
 }
+const chatDebug = await page.evaluate(() => ({
+  blackFalse: /black:\s*false/i.test(
+    document.querySelector('[data-qa-debug-overlay="1"]')?.textContent || "",
+  ),
+  chatTextVisible: /modo anónimo|anonymous mode/i.test(
+    document.body.innerText || "",
+  ),
+}));
+check(
+  "QADEBUG_CHAT_DETAIL_NOT_FALSE_BLACK",
+  chatDebug.blackFalse && chatDebug.chatTextVisible,
+  chatDebug,
+);
 await page.locator('[data-qa-debug-copy="1"]').click();
 await page.waitForTimeout(200);
 check(
