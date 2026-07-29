@@ -1369,6 +1369,7 @@ export default function ProfileAnonChat({
         viewOnce: previewViewOnce,
         existingChatData: chatDocDataRef.current,
         clientId,
+        isOwnerReply: isOwnerViewing,
         autoModerationRequiresBlur: scanResult.requiresBlur,
         moderationRequiresBlur: scanResult.requiresBlur,
       });
@@ -1468,6 +1469,7 @@ export default function ProfileAnonChat({
       messageText,
       reply: replyText,
       existingChatData: chatDocDataRef.current,
+      isOwnerReply: isOwnerViewing,
     })
       .then(() => {
         messagePersistedRef.current = true;

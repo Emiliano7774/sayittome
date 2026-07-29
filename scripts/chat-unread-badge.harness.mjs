@@ -121,13 +121,16 @@ function collectViewerSenderIdsFixed(chat, viewerId, firebaseUid = "") {
     const id = String(v || "").trim();
     if (id) ids.add(id);
   };
+  const viewerIsAnon = viewerId.startsWith("anon_");
   add(viewerId);
-  add(firebaseUid);
-  if (firebaseUid) add(`profile_reply_${firebaseUid}`);
+  // Anon visitors must NOT inherit firebase/profile_* aliases.
+  if (!viewerIsAnon) {
+    add(firebaseUid);
+    if (firebaseUid) add(`profile_${firebaseUid}`);
+  }
   const threadAnon = String(chat.anonSessionId || "").trim();
   const owner =
     chat.targetUid === firebaseUid || chat.receptorUid === firebaseUid;
-  const viewerIsAnon = viewerId.startsWith("anon_");
   if (viewerIsAnon && threadAnon === viewerId) add(threadAnon);
   if (owner && threadAnon.startsWith("anon_")) {
     // must NOT add peer anon for owner
@@ -141,8 +144,9 @@ function wasReadFixed(chat, viewerId, firebaseUid) {
     sender.startsWith("anon_") &&
     firebaseUid &&
     (chat.targetUid === firebaseUid || chat.receptorUid === firebaseUid);
+  // Production author id is profile_<uid>, not profile_reply_<uid>.
   const incomingProfileForAnon =
-    sender.startsWith("profile_reply_") && viewerId.startsWith("anon_");
+    sender.startsWith("profile_") && viewerId.startsWith("anon_");
   if (incomingAnonForOwner || incomingProfileForAnon) {
     const unread = chat.unreadCounts?.[viewerId];
     if (typeof unread === "number" && unread > 0) return false;
@@ -183,7 +187,7 @@ const inboundForAnon = {
   anonSessionId: anonId,
   targetUid: ownerUid,
   lastMessage: "respuesta",
-  lastMessageSender: `profile_reply_${ownerUid}`,
+  lastMessageSender: `profile_${ownerUid}`,
   readBy: { [anonId]: false },
   unreadCounts: { [anonId]: 1 },
 };

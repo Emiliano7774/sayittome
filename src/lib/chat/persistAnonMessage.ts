@@ -6,7 +6,11 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
-import { buildLegacyProfileChatIds } from "@/lib/chat/anonChatId";
+import {
+  buildLegacyProfileChatIds,
+  isProfileAnonChatId,
+  parseProfileAnonChatId,
+} from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
 import { buildOutgoingChatMetaPatch } from "@/lib/chat/outgoingChatMeta";
@@ -26,10 +30,12 @@ type PersistAnonMessageInput = {
   targetUid: string;
   targetPhoto: string;
   messageText: string;
-  /** Inbox preview line; defaults to messageText. For media, keep messageText empty. */
-  lastMessagePreview?: string;
   /** Skip the pre-write chat read when the open thread already has metadata. */
   existingChatData?: Record<string, unknown>;
+  /** Explicit owner/profile reply — must match UI isOwnerViewing, not only uid==targetUid. */
+  isOwnerReply?: boolean;
+  /** Inbox preview line; defaults to messageText. For media, keep messageText empty. */
+  lastMessagePreview?: string;
   reply?: string;
   storyReply?: {
     storyId: string;
@@ -50,6 +56,37 @@ type PersistAnonMessageInput = {
   clientId?: string;
 };
 
+function resolveThreadAnonRecipientIds(input: {
+  chatId: string;
+  anonSessionId: string;
+  senderId: string;
+  participantes: string[];
+  messageAuthorId: string;
+}) {
+  const recipients = new Set<string>();
+  const addAnon = (value: string) => {
+    const id = String(value || "").trim();
+    if (id.startsWith("anon_") && id !== input.messageAuthorId) {
+      recipients.add(id);
+    }
+  };
+
+  // Visitor thread identity only — never the profile owner's live browser anon
+  // session (that poisoned unreadCounts and hid the visitor badge/row).
+  addAnon(input.anonSessionId);
+  addAnon(input.senderId);
+
+  if (isProfileAnonChatId(input.chatId)) {
+    addAnon(parseProfileAnonChatId(input.chatId).senderId);
+  }
+
+  for (const id of input.participantes) {
+    addAnon(id);
+  }
+
+  return [...recipients];
+}
+
 function resolveProfileAnonUnreadRecipients(input: {
   isOwnerReply: boolean;
   messageAuthorId: string;
@@ -57,6 +94,7 @@ function resolveProfileAnonUnreadRecipients(input: {
   participantes: string[];
   anonSessionId: string;
   senderId: string;
+  chatId: string;
 }) {
   if (!input.isOwnerReply) {
     const recipients = new Set<string>();
@@ -71,20 +109,7 @@ function resolveProfileAnonUnreadRecipients(input: {
     return [...recipients];
   }
 
-  const recipients = new Set<string>();
-  if (input.anonSessionId.startsWith("anon_")) recipients.add(input.anonSessionId);
-  if (input.senderId.startsWith("anon_")) recipients.add(input.senderId);
-
-  const liveAnonId = getChatAnonSenderId();
-  if (liveAnonId.startsWith("anon_")) recipients.add(liveAnonId);
-
-  for (const id of input.participantes) {
-    if (id.startsWith("anon_") && id !== input.messageAuthorId) {
-      recipients.add(id);
-    }
-  }
-
-  return [...recipients];
+  return resolveThreadAnonRecipientIds(input);
 }
 
 export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
@@ -106,9 +131,11 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const storedText = type === "text" ? messageText : "";
   const lastMessagePreview = input.lastMessagePreview ?? messageText;
 
-  const isOwnerReply = Boolean(
+  const inferredOwnerReply = Boolean(
     currentUid && targetUid && currentUid === targetUid,
   );
+  const isOwnerReply =
+    typeof input.isOwnerReply === "boolean" ? input.isOwnerReply : inferredOwnerReply;
   const senderKind: ProfileAnonSenderKind = isOwnerReply ? "profile" : "anon";
   const messageAuthorId = isOwnerReply ? profileReplyAuthorId(targetUid) : senderId;
 
@@ -126,26 +153,46 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     ? existingData.participantes.map((entry) => String(entry)).filter(Boolean)
     : [];
 
+  const liveBrowserAnon = getChatAnonSenderId();
+  const storedAnonSession = String(existingData.anonSessionId || "").trim();
+  const chatIdAnon =
+    isProfileAnonChatId(chatId) &&
+    parseProfileAnonChatId(chatId).senderId.startsWith("anon_")
+      ? parseProfileAnonChatId(chatId).senderId
+      : "";
+  const senderAnon = senderId.startsWith("anon_") ? senderId : "";
+  // Only the visitor thread may inject the live browser anon id. Owner replies
+  // must not rewrite participantes/anonSessionId with the profile browser session.
   const participantes = Array.from(
     new Set([
       ...existingParticipantes,
-      senderId,
+      // Owner replies: keep visitor anon from senderId/chatId, never live owner session.
+      ...(senderAnon ? [senderAnon] : isOwnerReply ? [] : [senderId]),
       ...(currentUid ? [currentUid] : []),
       ...(targetUid ? [targetUid] : []),
-      ...(getChatAnonSenderId().startsWith("anon_") ? [getChatAnonSenderId()] : []),
+      ...(!isOwnerReply && liveBrowserAnon.startsWith("anon_")
+        ? [liveBrowserAnon]
+        : []),
+      ...(chatIdAnon ? [chatIdAnon] : []),
     ].filter(Boolean)),
   );
 
-  const storedAnonSession = String(existingData.anonSessionId || "").trim();
-  const anonSessionId =
-    storedAnonSession.startsWith("anon_") ? storedAnonSession : senderId;
+  const anonSessionId = isOwnerReply
+    ? storedAnonSession.startsWith("anon_")
+      ? storedAnonSession
+      : chatIdAnon || senderAnon
+    : storedAnonSession.startsWith("anon_")
+      ? storedAnonSession
+      : senderAnon || chatIdAnon || liveBrowserAnon;
+
   const unreadRecipients = resolveProfileAnonUnreadRecipients({
     isOwnerReply,
     messageAuthorId,
     targetUid,
     participantes,
     anonSessionId,
-    senderId,
+    senderId: senderAnon || anonSessionId,
+    chatId,
   });
 
   const existingInitiatorUid = String(existingData.initiatorUid || "").trim();

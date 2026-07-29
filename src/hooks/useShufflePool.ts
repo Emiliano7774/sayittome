@@ -48,6 +48,13 @@ import {
   getVisibleShuffleProfiles,
 } from "@/lib/shuffle/shuffleSlotsStore";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
+import {
+  deferShuffleCountOnlyIfTyping,
+  deferShufflePoolLoadIfTyping,
+  markShuffleSearchTypingActive,
+  registerShuffleSearchTypingFlushers,
+  unregisterShuffleSearchTypingFlushers,
+} from "@/lib/shuffle/shuffleSearchTypingGuard";
 import { registerShuffleClickHandler } from "@/lib/shuffle/shuffleClickBridge";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
@@ -540,6 +547,10 @@ export function useShufflePool() {
       q?: string;
       force?: boolean;
     } = {}) => {
+      // Search focus/typing must never start pool=full&force (or any pool GET).
+      // Mount/TTL work is deferred until typing idle — no keypress-attributed fetch.
+      if (deferShufflePoolLoadIfTyping({ q, force })) return;
+
       if (loadLockedRef.current && !force) return;
 
       loadLockedRef.current = true;
@@ -720,6 +731,9 @@ export function useShufflePool() {
   const handleShuffleClickRef = useRef(handleShuffleClick);
   handleShuffleClickRef.current = handleShuffleClick;
 
+  const loadProfilesRef = useRef(loadProfiles);
+  loadProfilesRef.current = loadProfiles;
+
   const reloadDefaultShuffle = useCallback(async () => {
     await loadProfiles({ q: "", force: true });
     const pool = activePoolRef.current;
@@ -748,8 +762,14 @@ export function useShufflePool() {
     runSearch(searchRef.current);
   }, [runSearch]);
 
+  const handleSearchFocus = useCallback(() => {
+    // Arm before first keypress so late mount pool/countOnly cannot start in-window.
+    markShuffleSearchTypingActive();
+  }, []);
+
   const handleSearchChange = useCallback(
     (value: string) => {
+      markShuffleSearchTypingActive();
       setSearch(value);
 
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
@@ -1044,8 +1064,23 @@ export function useShufflePool() {
 
   useEffect(() => {
     let cancelled = false;
+    let countOnlyInflight = false;
 
     async function pollLivePeopleCount() {
+      if (deferShuffleCountOnlyIfTyping()) return;
+      if (countOnlyInflight) return;
+      // Remount/HMR/strict re-entry must not re-hit countOnly within the gap —
+      // prod critical saw duplicate countOnly land inside the typing window.
+      const now = Date.now();
+      const g = globalThis as typeof globalThis & {
+        __sayittomeShuffleCountOnlyAt?: number;
+      };
+      const lastAt = Number(g.__sayittomeShuffleCountOnlyAt || 0);
+      if (lastAt > 0 && now - lastAt < 45_000) {
+        return;
+      }
+      countOnlyInflight = true;
+      g.__sayittomeShuffleCountOnlyAt = now;
       try {
         const res = await fetch(`/api/shuffle?countOnly=1`, {
           cache: "default",
@@ -1066,8 +1101,19 @@ export function useShufflePool() {
         }
       } catch {
         // Keep the last known count when a poll fails.
+      } finally {
+        countOnlyInflight = false;
       }
     }
+
+    registerShuffleSearchTypingFlushers({
+      loadProfiles: (opts) => {
+        void loadProfilesRef.current?.(opts);
+      },
+      pollCountOnly: () => {
+        void pollLivePeopleCount();
+      },
+    });
 
     void pollLivePeopleCount();
     const liveCountTimer = window.setInterval(pollLivePeopleCount, 5 * 60_000);
@@ -1075,6 +1121,7 @@ export function useShufflePool() {
     return () => {
       cancelled = true;
       window.clearInterval(liveCountTimer);
+      unregisterShuffleSearchTypingFlushers();
     };
   }, []);
 
@@ -1107,6 +1154,7 @@ export function useShufflePool() {
     filtersOpen,
     filtersActiveCount,
     handleSearchChange,
+    handleSearchFocus,
     handleSearchSubmit,
     handleShuffleClick,
     handleListClick,

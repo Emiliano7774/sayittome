@@ -74,7 +74,20 @@ export function isAnonVisitorProfileChat(chat: InboxChat, firebaseUid = "") {
   const threadAnonId = profileAnonSenderFromChat(chat);
   if (!threadAnonId.startsWith("anon_")) return false;
 
-  return threadAnonId === getChatAnonSenderId();
+  const liveAnonId = getChatAnonSenderId();
+  if (threadAnonId === liveAnonId) return true;
+
+  // Firebase anonymous auth uid must not block visitor detection when the live
+  // anon session matches the thread (or is present in participantes).
+  if (liveAnonId.startsWith("anon_")) {
+    const members = chat.participantes || [];
+    if (members.includes(liveAnonId) && members.includes(threadAnonId)) {
+      return liveAnonId === threadAnonId || members.includes(liveAnonId);
+    }
+    if (members.includes(liveAnonId)) return true;
+  }
+
+  return false;
 }
 
 /** Inbox row shows the profile (name + photo), not the anon label. */

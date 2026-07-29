@@ -1,7 +1,11 @@
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { isIncomingChatActivity, wasChatReadOnServer } from "@/lib/chat/incomingChatActivity";
-import { resolveChatViewerId } from "@/lib/chat/inboxPeerTitle";
+import {
+  isIncomingAnonChatForOwner,
+  profileAnonSenderFromChat,
+  resolveChatViewerId,
+} from "@/lib/chat/inboxPeerTitle";
 import { wasChatReadLocally } from "@/lib/chat/localChatRead";
 
 export function resolveInboxViewerId(uid: string) {
@@ -43,7 +47,20 @@ export function chatUnreadCountForViewer(
   firebaseUid = "",
   options: Omit<UnreadCountOptions, "firebaseUid"> = {},
 ) {
-  const viewerId = resolveChatViewerId(chat, firebaseUid);
+  let viewerId = resolveChatViewerId(chat, firebaseUid);
+  const liveAnon = getChatAnonSenderId();
+  // Firebase anonymous auth uids must not steal visitor unread evaluation.
+  // Use the thread/live anon session for profile↔anon visitor rows.
+  if (liveAnon.startsWith("anon_") && !isIncomingAnonChatForOwner(chat, firebaseUid)) {
+    const threadAnon = profileAnonSenderFromChat(chat);
+    if (
+      threadAnon === liveAnon ||
+      viewerId === liveAnon ||
+      (chat.participantes || []).includes(liveAnon)
+    ) {
+      viewerId = threadAnon.startsWith("anon_") ? threadAnon : liveAnon;
+    }
+  }
   return chatUnreadCount(chat, viewerId, { ...options, firebaseUid });
 }
 

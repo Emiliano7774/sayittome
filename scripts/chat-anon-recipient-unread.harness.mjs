@@ -40,7 +40,8 @@ check(
 check(
   "PROFILE_REPLY_UNREAD_RECIPIENTS_INCLUDE_ANON",
   persistSrc.includes("resolveProfileAnonUnreadRecipients") &&
-    persistSrc.includes("anonSessionId.startsWith(\"anon_\")"),
+    persistSrc.includes("resolveThreadAnonRecipientIds") &&
+    persistSrc.includes("never the profile owner's live browser anon"),
 );
 
 check(
