@@ -38,7 +38,12 @@ export type InboxChat = {
   targetPhoto?: string;
   lastMessage?: string;
   lastMessageSender?: string;
+  latestMessageId?: string;
+  latestSenderKind?: string;
+  latestSenderAnonSessionId?: string;
+  lastMessageAt?: { toMillis?: () => number };
   readBy?: Record<string, boolean>;
+  readAt?: Record<string, unknown>;
   updatedAt?: { toMillis?: () => number };
   unreadCounts?: Record<string, number>;
   canonicalChatId?: string;

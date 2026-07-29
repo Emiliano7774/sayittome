@@ -5,6 +5,8 @@ const MAX_ROWS = 50;
 
 type StoredInboxRow = Omit<InboxChat, "updatedAt"> & {
   updatedAtMs?: number;
+  lastMessageAtMs?: number;
+  readAtMs?: Record<string, number>;
 };
 
 let memorySnapshot: InboxChat[] = [];
@@ -30,16 +32,50 @@ function inboxUpdatedAtMs(chat: InboxChat) {
 
 function rowFromChat(chat: InboxChat): StoredInboxRow {
   const updatedAtMs = inboxUpdatedAtMs(chat);
-  const { updatedAt: _updatedAt, ...rest } = chat;
-  return updatedAtMs > 0 ? { ...rest, updatedAtMs } : rest;
+  const lastMessageAtMs = chat.lastMessageAt?.toMillis?.() ?? 0;
+  const readAtMs = Object.fromEntries(
+    Object.entries(chat.readAt || {})
+      .map(([key, value]) => [
+        key,
+        typeof (value as { toMillis?: () => number })?.toMillis === "function"
+          ? (value as { toMillis: () => number }).toMillis()
+          : 0,
+      ])
+      .filter(([, value]) => Number(value) > 0),
+  ) as Record<string, number>;
+  const {
+    updatedAt: _updatedAt,
+    lastMessageAt: _lastMessageAt,
+    readAt: _readAt,
+    ...rest
+  } = chat;
+  return {
+    ...rest,
+    ...(updatedAtMs > 0 ? { updatedAtMs } : {}),
+    ...(lastMessageAtMs > 0 ? { lastMessageAtMs } : {}),
+    ...(Object.keys(readAtMs).length > 0 ? { readAtMs } : {}),
+  };
 }
 
 function chatFromRow(row: StoredInboxRow): InboxChat {
-  const { updatedAtMs, ...rest } = row;
+  const { updatedAtMs, lastMessageAtMs, readAtMs, ...rest } = row;
   return {
     ...rest,
     ...(updatedAtMs
       ? { updatedAt: { toMillis: () => updatedAtMs } }
+      : {}),
+    ...(lastMessageAtMs
+      ? { lastMessageAt: { toMillis: () => lastMessageAtMs } }
+      : {}),
+    ...(readAtMs
+      ? {
+          readAt: Object.fromEntries(
+            Object.entries(readAtMs).map(([key, value]) => [
+              key,
+              { toMillis: () => value },
+            ]),
+          ),
+        }
       : {}),
   };
 }

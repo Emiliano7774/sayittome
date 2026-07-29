@@ -4,6 +4,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
+import {
+  ShuffleEmergencyShell,
+  ShuffleSurfaceErrorBoundary,
+} from "@/components/shuffle/ShuffleSurfaceSafety";
+import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 import { commitPresentedMainTabIfReady, forcePresentMainTabAfterStableExit, isMainTabPrimaryReady } from "@/lib/navigation/atomicMainTabHandoff";
 import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
@@ -368,6 +373,9 @@ export default function ShuffleKeepAliveHost() {
 
   useLayoutEffect(() => {
     pinShuffleKeepAlive();
+    recordQaCriticalEvent("nav", "SHUFFLE_HOST_MOUNT", {
+      pathname: window.location.pathname,
+    });
   }, []);
 
   useEffect(() => {
@@ -382,6 +390,14 @@ export default function ShuffleKeepAliveHost() {
     window.addEventListener("pageshow", onPageShow);
     return () => window.removeEventListener("pageshow", onPageShow);
   }, [pathname]);
+
+  useEffect(() => {
+    const path = pathname.split("?")[0].split("#")[0];
+    if (path !== "/shuffle" || !visible) return;
+    recordQaCriticalEvent("nav", "SHUFFLE_SHELL_VISIBLE", {
+      hostMounted: true,
+    });
+  }, [pathname, visible]);
 
   // Recovery: if an exit latch is left pending (cancelled layout loop) but the
   // destination is already no-loading ready, complete the reveal.
@@ -494,6 +510,10 @@ export default function ShuffleKeepAliveHost() {
     if (path === "/shuffle") {
       pinShuffleKeepAlive();
       restorePinnedShuffleWindowSync();
+      recordQaCriticalEvent("nav", "ACTIVE_PANEL_SET", {
+        panel: "shuffle",
+        visible,
+      });
     }
 
     function startHandoffLoop() {
@@ -804,9 +824,16 @@ export default function ShuffleKeepAliveHost() {
           : "sayittome-shuffle-keepalive-frozen"
       }
       aria-hidden={!visible}
+      style={{ position: "fixed", inset: 0, background: "#0b0b0b" }}
     >
-      <div className="sayittome-shuffle-surface-prep" data-shuffle-surface="prep">
-        <ShuffleRouteContent />
+      <ShuffleEmergencyShell />
+      <div
+        className="sayittome-shuffle-surface-prep relative z-[1]"
+        data-shuffle-surface="prep"
+      >
+        <ShuffleSurfaceErrorBoundary>
+          <ShuffleRouteContent />
+        </ShuffleSurfaceErrorBoundary>
       </div>
     </div>
   );

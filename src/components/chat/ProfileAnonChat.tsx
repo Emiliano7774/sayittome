@@ -476,6 +476,10 @@ export default function ProfileAnonChat({
           "sayittome_qa_clear_read_reason",
           reason === "snapshot" ? "detail" : reason,
         );
+        window.sessionStorage.setItem(
+          "sayittome_qa_clear_read_thread",
+          ctx.chatId,
+        );
       } catch {
         /* ignore */
       }

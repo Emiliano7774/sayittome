@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
 import {
   isOwnChatSender,
   isOwnInboxLastSender,
@@ -15,11 +14,13 @@ import {
   profileAnonSenderFromChat,
   resolveChatViewerId,
 } from "@/lib/chat/inboxPeerTitle";
+import { computeThreadPendingForViewer } from "@/lib/chat/threadPending";
 import {
   copyRealDeviceQaDiagnostics,
   collectRealDeviceQaDiagnostics,
   installRealDeviceQaDebugCapture,
   isRealDeviceQaDebugEnabled,
+  recordQaCriticalEvent,
 } from "@/lib/qa/realDeviceQaDebug";
 
 export default function RealDeviceQaDebugOverlay() {
@@ -29,6 +30,7 @@ export default function RealDeviceQaDebugOverlay() {
   const [snap, setSnap] = useState<Record<string, unknown> | null>(null);
   const [copied, setCopied] = useState(false);
   const [enabled, setEnabled] = useState(false);
+  const pendingVersionRef = useRef("");
 
   useEffect(() => {
     const on = isRealDeviceQaDebugEnabled();
@@ -50,7 +52,12 @@ export default function RealDeviceQaDebugOverlay() {
       const rows = sortedChats.slice(0, 8).map((chat) => {
         const viewerId = resolveChatViewerId(chat, firebaseUid);
         const threadAnon = profileAnonSenderFromChat(chat);
-        const unread = chatUnreadCountForViewer(chat, firebaseUid);
+        const pending = computeThreadPendingForViewer(
+          chat,
+          firebaseUid,
+          activeThreadId,
+        );
+        const unread = pending.computedPending ? 1 : 0;
         const own = isOwnInboxLastSender(chat, viewerId, firebaseUid);
         const latestOwn = isOwnChatSender(
           String(chat.lastMessageSender || ""),
@@ -64,9 +71,20 @@ export default function RealDeviceQaDebugOverlay() {
           viewerId,
           unread,
           rowPending: unread > 0,
+          rowShouldBePending: pending.computedPending,
           ownLatest: latestOwn,
           ownInboxLast: own,
           lastMessageSender: chat.lastMessageSender || null,
+          latestMessageId: pending.latestMessageId,
+          latestSenderKind: pending.latestSenderKind,
+          latestSenderUid: pending.latestSenderUid,
+          latestSenderAnonSessionId: pending.latestSenderAnonSessionId,
+          currentAnonSessionId: pending.currentAnonSessionId,
+          isOwnLatestMessage: pending.isOwnLatestMessage,
+          latestAt: pending.latestAt,
+          readAt: pending.readAt,
+          computedPending: pending.computedPending,
+          pendingReason: pending.reason,
           unreadCounts: chat.unreadCounts || null,
           readBy: chat.readBy || null,
         };
@@ -85,18 +103,46 @@ export default function RealDeviceQaDebugOverlay() {
         isDetailOpen,
         detailOpen: isDetailOpen,
         badgeComputed: badge,
+        badgeShouldShow: badge,
         totalUnread,
         rowPendingAny: rows.some((r) => r.rowPending),
+        badgeDomVisible: Boolean(
+          document.querySelector(
+            '[data-nav-tab="chats"] [data-chat-pending-indicator="1"]',
+          ),
+        ),
+        rowPendingDomCount: document.querySelectorAll(
+          '[data-nav-chat-row] [data-chat-pending-indicator="1"]',
+        ).length,
         rows,
-        clearReadLastReason: isDetailOpen
-          ? "detail"
-          : isListOpen
-            ? "list"
-            : "unknown",
+        clearReadLastReason:
+          window.sessionStorage.getItem("sayittome_qa_clear_read_reason") ||
+          "unknown",
+        clearReadLastThread:
+          window.sessionStorage.getItem("sayittome_qa_clear_read_thread") || "",
+        listMounted: isListOpen,
+        detailMountedThread: activeThreadId,
         repeatUnreadMarkerVersion: rows
           .map((r) => `${r.chatId}:${r.unread}:${String(r.lastMessageSender || "")}`)
           .join("|"),
       };
+      if (
+        chatExtras.repeatUnreadMarkerVersion !== pendingVersionRef.current
+      ) {
+        pendingVersionRef.current = chatExtras.repeatUnreadMarkerVersion;
+        recordQaCriticalEvent("chat", "CHAT_PENDING_RECOMPUTED", {
+          totalUnread,
+          badgeComputed: badge,
+          rowPendingAny: chatExtras.rowPendingAny,
+          activeThreadId,
+          rows: rows.map((row) => ({
+            chatId: row.chatId,
+            latestMessageId: row.latestMessageId,
+            pending: row.computedPending,
+            reason: row.pendingReason,
+          })),
+        });
+      }
 
       const next = collectRealDeviceQaDiagnostics(chatExtras);
       setSnap(next);

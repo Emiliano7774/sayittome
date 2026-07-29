@@ -54,6 +54,14 @@ const modernNav = fs.readFileSync(
   path.join(root, "src/components/navigation/ModernBottomNav.tsx"),
   "utf8",
 );
+const safetySrc = fs.readFileSync(
+  path.join(root, "src/components/shuffle/ShuffleSurfaceSafety.tsx"),
+  "utf8",
+);
+const hostSrc = fs.readFileSync(
+  path.join(root, "src/components/shuffle/ShuffleKeepAliveHost.tsx"),
+  "utf8",
+);
 
 check(
   "NON_MAIN_TO_SHUFFLE_REVEAL_HELPER",
@@ -102,9 +110,22 @@ check(
     revealSrc.includes("Never leave both surfaces hidden"),
 );
 check(
-  "MIN_SHUFFLE_SHELL_WHEN_EMPTY",
-  revealSrc.includes("ensureShuffleHostMinimumShell") &&
-    revealSrc.includes("data-sayittome-shuffle-min-shell"),
+  "REACT_SHUFFLE_SHELL_WHEN_EMPTY",
+  safetySrc.includes("ShuffleEmergencyShell") &&
+    safetySrc.includes("data-shuffle-emergency-shell") &&
+    hostSrc.includes("<ShuffleEmergencyShell />"),
+);
+check(
+  "GLOBAL_SHUFFLE_BLANK_RECOVERY",
+  safetySrc.includes("ShuffleGlobalSafetyNet") &&
+    safetySrc.includes("BLACK_RECOVERY_TRIGGERED") &&
+    safetySrc.includes("afterMs: 300"),
+);
+check(
+  "SHUFFLE_RUNTIME_ERROR_BOUNDARY_VISIBLE",
+  safetySrc.includes("ShuffleSurfaceErrorBoundary") &&
+    safetySrc.includes("data-shuffle-error-shell") &&
+    hostSrc.includes("ShuffleSurfaceErrorBoundary"),
 );
 check(
   "CSS_FORCE_SURFACE_PREP_ON_REVEAL",

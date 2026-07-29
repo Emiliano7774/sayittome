@@ -29,12 +29,27 @@ export function resolveChatRecipientIds(
 export function buildOutgoingChatMetaPatch(
   senderUid: string,
   recipients: string[],
-  meta: { lastMessage: string; lastMessageSender: string },
+  meta: {
+    lastMessage: string;
+    lastMessageSender: string;
+    latestMessageId?: string;
+    latestSenderKind?: string;
+    latestSenderAnonSessionId?: string;
+  },
 ): Record<string, string | boolean | FieldValue> {
+  const activityAt = serverTimestamp();
   const patch: Record<string, string | boolean | FieldValue> = {
     lastMessage: meta.lastMessage,
     lastMessageSender: meta.lastMessageSender,
-    updatedAt: serverTimestamp(),
+    updatedAt: activityAt,
+    lastMessageAt: activityAt,
+    ...(meta.latestMessageId
+      ? { latestMessageId: meta.latestMessageId }
+      : {}),
+    ...(meta.latestSenderKind
+      ? { latestSenderKind: meta.latestSenderKind }
+      : {}),
+    latestSenderAnonSessionId: meta.latestSenderAnonSessionId || "",
     [`readBy.${senderUid}`]: true,
     [`typing.${senderUid}`]: false,
   };

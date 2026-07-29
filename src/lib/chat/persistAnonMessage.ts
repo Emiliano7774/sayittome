@@ -21,6 +21,7 @@ import {
 import { registerSessionChat } from "@/lib/chat/sessionChats";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import { db } from "@/lib/firebase";
+import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 
 type PersistAnonMessageInput = {
   chatId: string;
@@ -234,6 +235,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
       ? buildLegacyProfileChatIds(currentUid, username, resolvedTargetUid)
       : []),
   ];
+  const messageRef = doc(collection(db, "chats", chatId, "mensajes"));
 
   const chatMeta = {
     id: chatId,
@@ -253,12 +255,15 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     ...buildOutgoingChatMetaPatch(messageAuthorId, unreadRecipients, {
       lastMessage: lastMessagePreview,
       lastMessageSender: messageAuthorId,
+      latestMessageId: messageRef.id,
+      latestSenderKind: senderKind,
+      latestSenderAnonSessionId:
+        senderKind === "anon" ? senderAnon || anonSessionId : "",
     }),
   };
 
   registerSessionChat(chatId);
 
-  const messageRef = doc(collection(db, "chats", chatId, "mensajes"));
   const messagePayload = {
     texto: storedText,
     text: storedText,
@@ -295,6 +300,14 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   batch.set(chatRef, chatMeta, { merge: true });
   batch.set(messageRef, messagePayload);
   await batch.commit();
+  recordQaCriticalEvent("chat", "CHAT_MESSAGE_PERSISTED", {
+    threadId: chatId,
+    latestMessageId: messageRef.id,
+    senderKind,
+    senderUid: messageAuthorId,
+    anonRecipientIds: unreadRecipients.filter((id) => id.startsWith("anon_")),
+    unreadRecipientCount: unreadRecipients.length,
+  });
 
   void migrateToCanonicalChat(chatId, legacyIds, chatMeta).catch((error) => {
     console.error("chat migrate", chatId, error);

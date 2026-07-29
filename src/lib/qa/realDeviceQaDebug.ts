@@ -16,13 +16,34 @@ import { isShuffleKeepAliveActive } from "@/lib/navigation/shuffleKeepAlive";
 const FATAL_BUFFER_MAX = 40;
 const fatalBuffer: Array<{ t: number; type: string; message: string }> = [];
 let captureInstalled = false;
+const QA_DEBUG_SESSION_KEY = "sayittome_qa_debug_session";
+const QA_EVENTS_KEY = "sayittome_qa_debug_events";
+const QA_EVENTS_CHANGED = "sayittome-qa-debug-events-changed";
+const QA_EVENT_LIMIT = 20;
+
+export type QaCriticalEvent = {
+  t: number;
+  channel: "nav" | "chat" | "runtime";
+  name: string;
+  detail?: Record<string, unknown>;
+};
+
+function queryExplicitlyEnablesQaDebug() {
+  const params = new URLSearchParams(window.location.search);
+  return (
+    params.get("qaDebug") === "1" ||
+    window.location.hash.toLowerCase().includes("qadebug")
+  );
+}
 
 export function isRealDeviceQaDebugEnabled() {
   if (typeof window === "undefined") return false;
   try {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("qaDebug") === "1") return true;
-    if (window.location.hash.toLowerCase().includes("qadebug")) return true;
+    if (queryExplicitlyEnablesQaDebug()) {
+      window.sessionStorage.setItem(QA_DEBUG_SESSION_KEY, "1");
+      return true;
+    }
+    if (window.sessionStorage.getItem(QA_DEBUG_SESSION_KEY) === "1") return true;
     if (window.localStorage.getItem("sayittome_qa_debug") === "1") return true;
   } catch {
     /* ignore */
@@ -30,9 +51,45 @@ export function isRealDeviceQaDebugEnabled() {
   return false;
 }
 
+export function readQaCriticalEvents(): QaCriticalEvent[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(QA_EVENTS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.slice(-QA_EVENT_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function recordQaCriticalEvent(
+  channel: QaCriticalEvent["channel"],
+  name: string,
+  detail?: Record<string, unknown>,
+) {
+  if (typeof window === "undefined" || !isRealDeviceQaDebugEnabled()) return;
+  const event: QaCriticalEvent = { t: Date.now(), channel, name, detail };
+  try {
+    const next = [...readQaCriticalEvents(), event].slice(-QA_EVENT_LIMIT);
+    window.sessionStorage.setItem(QA_EVENTS_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event(QA_EVENTS_CHANGED));
+    console.info(`[qaDebug:${channel}] ${name}`, detail || {});
+  } catch {
+    /* diagnostics must never affect product behavior */
+  }
+}
+
+export function subscribeQaCriticalEvents(listener: () => void) {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(QA_EVENTS_CHANGED, listener);
+  return () => window.removeEventListener(QA_EVENTS_CHANGED, listener);
+}
+
 export function installRealDeviceQaDebugCapture() {
   if (typeof window === "undefined" || captureInstalled) return;
   captureInstalled = true;
+  recordQaCriticalEvent("runtime", "QA_DEBUG_CAPTURE_INSTALLED", {
+    pathname: window.location.pathname,
+  });
 
   window.addEventListener("error", (event) => {
     fatalBuffer.push({
@@ -41,6 +98,9 @@ export function installRealDeviceQaDebugCapture() {
       message: String(event.message || event.error || "error"),
     });
     if (fatalBuffer.length > FATAL_BUFFER_MAX) fatalBuffer.shift();
+    recordQaCriticalEvent("runtime", "RUNTIME_ERROR", {
+      message: String(event.message || event.error || "error"),
+    });
   });
 
   window.addEventListener("unhandledrejection", (event) => {
@@ -50,6 +110,10 @@ export function installRealDeviceQaDebugCapture() {
       message: String(event.reason || "rejection"),
     });
     if (fatalBuffer.length > FATAL_BUFFER_MAX) fatalBuffer.shift();
+    recordQaCriticalEvent("runtime", "RUNTIME_ERROR", {
+      message: String(event.reason || "rejection"),
+      kind: "unhandledrejection",
+    });
   });
 }
 
@@ -92,6 +156,32 @@ function countMeaningfulText(root: ParentNode | null) {
   return count;
 }
 
+function countVisibleShuffleHumanContent(root: ParentNode | null) {
+  if (!root) return 0;
+  const candidates = root.querySelectorAll(
+    [
+      "[data-shuffle-list] > *",
+      "[data-shuffle-search='1']",
+      "[data-shuffle-emergency-shell='1']",
+      "[data-shuffle-error-shell='1']",
+      "button",
+      "a",
+      "input",
+      "[role='button']",
+    ].join(","),
+  );
+  let count = 0;
+  candidates.forEach((node) => {
+    if (!isPresentable(node)) return;
+    const text =
+      node instanceof HTMLInputElement
+        ? node.placeholder || node.value
+        : (node.textContent || "").trim();
+    if (text.length > 0 || node.hasAttribute("data-shuffle-list")) count += 1;
+  });
+  return count;
+}
+
 function blackScreenHeuristic() {
   const shuffleHost = document.getElementById("sayittome-shuffle-keepalive-host");
   const shell = document.querySelector(".sayittome-route-shell");
@@ -111,17 +201,19 @@ function blackScreenHeuristic() {
   const meaningful = countMeaningfulText(
     shuffleVisible ? shuffleHost : document.body,
   );
+  const visibleHumanContent = countVisibleShuffleHumanContent(shuffleHost);
   const path = window.location.pathname.split("?")[0].split("#")[0];
   const bothHidden = !shuffleVisible && (shellHidden || profileVisible === 0);
   return {
     blackScreen:
       bothHidden ||
       (path === "/shuffle" && !shuffleVisible) ||
-      (path === "/shuffle" && meaningful === 0),
+      (path === "/shuffle" && visibleHumanContent === 0),
     shuffleVisible,
     profileVisible,
     shellHidden,
     meaningfulTextCount: meaningful,
+    visibleHumanContentCount: visibleHumanContent,
   };
 }
 
@@ -176,6 +268,7 @@ export function collectRealDeviceQaDiagnostics(
     profileVisibleSelectorCount: black.profileVisible,
     blackScreenHeuristic: black.blackScreen,
     meaningfulVisibleTextCount: black.meaningfulTextCount,
+    visibleShuffleHumanContentCount: black.visibleHumanContentCount,
     rootBodyDimensions: {
       html: {
         w: html.clientWidth,
@@ -211,6 +304,7 @@ export function collectRealDeviceQaDiagnostics(
       routeShell: cssSummary(shell),
     },
     consoleFatalCaptured: fatalBuffer.slice(-20),
+    criticalEvents: readQaCriticalEvents(),
     swCacheBuild: swVersion,
     chat: {
       anonSessionId: getChatAnonSenderId(),
@@ -234,6 +328,20 @@ export async function copyRealDeviceQaDiagnostics(
       await navigator.clipboard.writeText(text);
       return { ok: true, payload };
     }
+  } catch {
+    /* fall through */
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.cssText =
+      "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    if (copied) return { ok: true, payload };
   } catch {
     /* fall through */
   }

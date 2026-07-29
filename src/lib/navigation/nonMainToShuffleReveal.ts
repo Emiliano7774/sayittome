@@ -5,6 +5,7 @@
  */
 import { classifyAppRouteKind, isNonMainRoute } from "@/lib/navigation/routeKind";
 import { forcePresentShuffleSurfaceForNonMainReveal } from "@/lib/navigation/shuffleHandoffState";
+import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 
 let recoveryTimer: number | null = null;
 let recoveryUntil = 0;
@@ -55,6 +56,9 @@ export function releaseNonMainRouteShellForShuffleReveal() {
   shell.setAttribute("hidden", "");
   shell.setAttribute("aria-hidden", "true");
   shell.setAttribute("data-sayittome-nonmain-released-for-shuffle", "1");
+  recordQaCriticalEvent("nav", "PROFILE_RELEASE", {
+    pathname: window.location.pathname,
+  });
 }
 
 /** Restore route shell after leaving Shuffle so profile/settings can paint again. */
@@ -222,6 +226,11 @@ export function prepareShuffleRevealFromNonMainRoute(fromPath?: string) {
 
   if (!isNonMainRoute(live)) return false;
 
+  recordQaCriticalEvent("nav", "NAV_TAP_SHUFFLE", { from: live });
+  recordQaCriticalEvent("nav", "ROUTE_START", {
+    from: live,
+    to: "/shuffle",
+  });
   clearProfileViewerOverlayForShuffleNav();
 
   const fromKind = classifyAppRouteKind(live);

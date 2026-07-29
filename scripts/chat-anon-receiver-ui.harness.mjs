@@ -24,6 +24,10 @@ const unreadSrc = fs.readFileSync(
   path.join(root, "src/lib/chat/inboxUnread.ts"),
   "utf8",
 );
+const pendingSrc = fs.readFileSync(
+  path.join(root, "src/lib/chat/threadPending.ts"),
+  "utf8",
+);
 const activitySrc = fs.readFileSync(
   path.join(root, "src/lib/chat/incomingChatActivity.ts"),
   "utf8",
@@ -78,10 +82,11 @@ check(
 );
 
 check(
-  "VISITOR_UNREAD_UNION_EVALUATION",
-  unreadSrc.includes("Union evaluation for anon visitors") &&
-    unreadSrc.includes("candidates") &&
-    unreadSrc.includes("getChatAnonSenderId"),
+  "VISITOR_UNREAD_CENTRAL_PENDING_EVALUATION",
+  unreadSrc.includes("computeThreadPendingForViewer") &&
+    pendingSrc.includes("candidateViewerIds") &&
+    pendingSrc.includes("latest-after-read") &&
+    pendingSrc.includes("profile-inbound-fallback"),
 );
 
 const profileChatSrc = fs.readFileSync(

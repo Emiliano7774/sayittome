@@ -219,7 +219,12 @@ export function isIncomingChatActivity(
 }
 
 export function chatActivityKey(chat: InboxChat) {
-  return `${chat.lastMessage || ""}|${chat.lastMessageSender || ""}|${chat.updatedAt?.toMillis?.() ?? 0}`;
+  return [
+    chat.latestMessageId || "",
+    chat.lastMessage || "",
+    chat.lastMessageSender || "",
+    chat.lastMessageAt?.toMillis?.() ?? chat.updatedAt?.toMillis?.() ?? 0,
+  ].join("|");
 }
 
 export function isIncomingMessageFromDoc(

@@ -32,6 +32,23 @@ function inboxTimestampMs(updatedAt: unknown) {
   return 0;
 }
 
+function normalizedTimestamp(value: unknown) {
+  const ms = inboxTimestampMs(value);
+  return ms > 0 ? { toMillis: () => ms } : undefined;
+}
+
+function asTimestampRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const next: Record<string, { toMillis: () => number }> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    const timestamp = normalizedTimestamp(raw);
+    if (timestamp) next[key] = timestamp;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
 function asStringRecord<T extends string | number | boolean>(
   value: unknown,
   valueKind: "string" | "number" | "boolean",
@@ -63,10 +80,21 @@ export function normalizeInboxChat(raw: InboxChat): InboxChat | null {
     otherUsername: raw.otherUsername ? String(raw.otherUsername) : undefined,
     lastMessage: String(raw.lastMessage || ""),
     lastMessageSender: String(raw.lastMessageSender || ""),
+    latestMessageId: raw.latestMessageId
+      ? String(raw.latestMessageId)
+      : undefined,
+    latestSenderKind: raw.latestSenderKind
+      ? String(raw.latestSenderKind)
+      : undefined,
+    latestSenderAnonSessionId: raw.latestSenderAnonSessionId
+      ? String(raw.latestSenderAnonSessionId)
+      : undefined,
+    lastMessageAt: normalizedTimestamp(raw.lastMessageAt),
     targetPhoto: raw.targetPhoto ? String(raw.targetPhoto) : undefined,
     anonSessionId: raw.anonSessionId ? String(raw.anonSessionId) : undefined,
     anonOwnerUid: raw.anonOwnerUid ? String(raw.anonOwnerUid) : undefined,
     readBy: asStringRecord<boolean>(raw.readBy, "boolean"),
+    readAt: asTimestampRecord(raw.readAt),
     unreadCounts: asStringRecord<number>(raw.unreadCounts, "number"),
     participantes: Array.isArray(raw.participantes)
       ? raw.participantes.map((entry) => String(entry))
