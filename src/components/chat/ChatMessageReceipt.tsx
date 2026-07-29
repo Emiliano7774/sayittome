@@ -8,16 +8,34 @@ type Props = {
   status: MessageReceiptStatus;
   align?: "left" | "right";
   className?: string;
+  onRetry?: () => void;
+  retryLabel?: string;
 };
 
 export default function ChatMessageReceipt({
   status,
   align = "right",
   className = "",
+  onRetry,
+  retryLabel = "Retry",
 }: Props) {
   const alignClass = align === "right" ? "justify-end" : "justify-start";
 
   if (status === "error") {
+    if (onRetry) {
+      return (
+        <button
+          type="button"
+          onClick={onRetry}
+          className={`mt-1 flex items-center gap-1.5 text-xs font-bold text-red-300 ${alignClass} ${className}`}
+          aria-label={retryLabel}
+        >
+          <AlertCircle size={14} className="text-red-400" strokeWidth={2.5} />
+          <span>{retryLabel}</span>
+        </button>
+      );
+    }
+
     return (
       <div className={`mt-1 flex ${alignClass} ${className}`} aria-label="Error">
         <AlertCircle size={14} className="text-red-400" strokeWidth={2.5} />

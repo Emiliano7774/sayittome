@@ -19,7 +19,7 @@ import type { MessageKey } from "@/lib/i18n/getMessage";
 type Props = {
   open: boolean;
   onCancel: () => void;
-  onAccept: () => void;
+  onAccept: () => void | Promise<void>;
 };
 
 const BULLET_ICONS = {
@@ -44,19 +44,12 @@ const BULLET_KEYS: Record<
 };
 
 export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: Props) {
-  const t = useT();
-  const [accepted, setAccepted] = useState(false);
-
   useOverlayBackClose(
     open,
     onCancel,
     "sayittome-entry-legal-open",
     "sayittome:close-entry-legal",
   );
-
-  useEffect(() => {
-    if (open) setAccepted(false);
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -73,6 +66,36 @@ export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: P
   }, [open, onCancel]);
 
   if (!open) return null;
+
+  return (
+    <AnonymousEntryLegalModalBody onCancel={onCancel} onAccept={onAccept} />
+  );
+}
+
+function AnonymousEntryLegalModalBody({
+  onCancel,
+  onAccept,
+}: {
+  onCancel: () => void;
+  onAccept: () => void | Promise<void>;
+}) {
+  const t = useT();
+  const [accepted, setAccepted] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [acceptError, setAcceptError] = useState(false);
+
+  async function handleAccept() {
+    if (!accepted || accepting) return;
+    setAccepting(true);
+    setAcceptError(false);
+    try {
+      await onAccept();
+    } catch (error) {
+      console.error(error);
+      setAcceptError(true);
+      setAccepting(false);
+    }
+  }
 
   return (
     <div
@@ -128,6 +151,7 @@ export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: P
 
           <button
             type="button"
+            data-legal-accept-toggle="1"
             onClick={() => setAccepted((value) => !value)}
             className={[
               "mt-4 flex w-full items-start gap-2.5 rounded-[18px] border px-[13px] py-3 text-left transition",
@@ -169,16 +193,24 @@ export default function AnonymousEntryLegalModal({ open, onCancel, onAccept }: P
           </button>
           <button
             type="button"
-            disabled={!accepted}
-            onClick={onAccept}
+            data-legal-accept-submit="1"
+            disabled={!accepted || accepting}
+            onClick={handleAccept}
             className={[
               "flex-1 rounded-[18px] py-3.5 text-sm font-black text-white transition",
-              accepted ? "bg-[#6C63FF]" : "cursor-not-allowed bg-white/12 text-white/35",
+              accepted && !accepting
+                ? "bg-[#6C63FF]"
+                : "cursor-not-allowed bg-white/12 text-white/35",
             ].join(" ")}
           >
-            {t("legal_accept")}
+            {accepting ? `${t("legal_accept")}…` : t("legal_accept")}
           </button>
         </div>
+        {acceptError ? (
+          <p role="alert" className="mx-auto mt-2 w-full max-w-lg text-center text-xs font-bold text-red-300">
+            {t("legal_accept_error")}
+          </p>
+        ) : null}
       </div>
     </div>
   );

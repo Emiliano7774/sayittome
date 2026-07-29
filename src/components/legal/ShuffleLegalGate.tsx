@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 
 import AnonymousEntryLegalModal from "@/components/legal/AnonymousEntryLegalModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,19 +39,23 @@ export default function ShuffleLegalGate({ children }: { children: React.ReactNo
   const router = useRouter();
   const pathname = usePathname();
   const { firebaseUser, loading } = useAuth();
+  const [acceptedInThisMount, setAcceptedInThisMount] = useState(false);
   const uid = firebaseUser?.uid || "";
-  const legalAccepted = isShuffleLegalGateUnlocked(uid);
+  const legalAccepted = acceptedInThisMount || isShuffleLegalGateUnlocked(uid);
   const shuffleLayerVisible =
     isShuffleKeepAliveVisible(pathname) || isInstantShuffleReturnPending();
 
   async function handleAccept() {
-    if (uid) {
-      setShuffleLegalAcceptance(uid);
-    } else {
+    // Persist + dismiss synchronously first. Waiting on anonymous auth before
+    // unlock left the authenticated keepalive gate stuck whenever React had no
+    // other render signal, and left anonymous stuck if auth was slow/offline.
+    setShuffleLegalAcceptance(uid || null);
+    unlockShuffleLegalGate();
+    setAcceptedInThisMount(true);
+
+    if (!uid) {
       await enterAnonymousMode();
     }
-
-    unlockShuffleLegalGate();
   }
 
   if (legalAccepted || loading || !shuffleLayerVisible) {

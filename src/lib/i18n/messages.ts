@@ -77,6 +77,7 @@ const es = {
   legal_declaration:
     "Entiendo cómo funciona la aplicación, declaro tener edad suficiente y acepto actuar bajo mi responsabilidad, con los riesgos y consecuencias positivas o negativas que puedan existir.",
   legal_accept: "Acepto y continúo",
+  legal_accept_error: "No se pudo completar. Intentá nuevamente.",
 
   profile_gate_title: "Modo anónimo",
   profile_gate_body:
@@ -472,6 +473,7 @@ const es = {
   chat_mic_fail: "No se pudo activar el micrófono. Revisá permisos del navegador.",
   chat_abuse_write_block: "No podés escribir en este chat: bloqueo antiacoso activo.",
   chat_save_fail: "No se pudo guardar el chat. Revisá permisos de Firestore.",
+  chat_retry: "Reintentar",
   chat_upload_fail: "No se pudo subir la foto o el video. Probá de nuevo.",
   chat_media_camera_photo: "enviado desde cámara",
   chat_media_camera_video: "grabado en vivo",
@@ -826,6 +828,7 @@ const en: Record<keyof typeof es, string> = {
   legal_declaration:
     "I understand how the application works, I declare that I am old enough and I agree to act under my own responsibility, with the positive or negative risks and consequences that may exist.",
   legal_accept: "I accept and continue",
+  legal_accept_error: "Could not complete the action. Please try again.",
 
   profile_gate_title: "Anonymous mode",
   profile_gate_body:
@@ -1220,6 +1223,7 @@ const en: Record<keyof typeof es, string> = {
   chat_mic_fail: "Could not enable the microphone. Check browser permissions.",
   chat_abuse_write_block: "You cannot write in this chat: anti-harassment block active.",
   chat_save_fail: "Could not save the chat. Check Firestore permissions.",
+  chat_retry: "Retry",
   chat_upload_fail: "Could not upload the photo or video. Try again.",
   chat_media_camera_photo: "sent from camera",
   chat_media_camera_video: "recorded live",
@@ -1565,6 +1569,7 @@ const it: Record<keyof typeof es, string> = {
   legal_declaration:
     "Capisco come funziona l'applicazione, dichiaro di avere l'età sufficiente e accetto di agire sotto la mia responsabilità, con i rischi e le conseguenze positive o negative che possono esistere.",
   legal_accept: "Accetto e continuo",
+  legal_accept_error: "Impossibile completare. Riprova.",
 
   profile_gate_title: "Modalità anonima",
   profile_gate_body:
@@ -1774,6 +1779,7 @@ const de: Record<keyof typeof es, string> = {
   legal_declaration:
     "Ich verstehe, wie die Anwendung funktioniert, erkläre, dass ich alt genug bin, und akzeptiere, unter meiner Verantwortung zu handeln, mit den positiven oder negativen Risiken und Folgen, die existieren können.",
   legal_accept: "Ich akzeptiere und fahre fort",
+  legal_accept_error: "Aktion fehlgeschlagen. Bitte versuche es erneut.",
 
   profile_gate_title: "Anonymmodus",
   profile_gate_body:

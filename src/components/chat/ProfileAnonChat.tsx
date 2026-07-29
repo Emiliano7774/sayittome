@@ -1420,6 +1420,73 @@ export default function ProfileAnonChat({
     }
   }
 
+  function persistOptimisticTextMessage(input: {
+    message: Message;
+    senderId: string;
+    targetUid: string;
+    isOwnerReply: boolean;
+  }) {
+    const clientId = input.message.clientId;
+    if (!clientId) return;
+
+    setMessages((old) =>
+      old.map((message) =>
+        message.clientId === clientId ? { ...message, status: "sending" as const } : message,
+      ),
+    );
+
+    void persistAnonChatMessage({
+      chatId,
+      username,
+      senderId: input.senderId,
+      currentUid,
+      targetUid: input.targetUid,
+      targetPhoto,
+      messageText: input.message.text,
+      reply: input.message.reply,
+      existingChatData: chatDocDataRef.current,
+      isOwnerReply: input.isOwnerReply,
+      clientId,
+    })
+      .then(() => {
+        messagePersistedRef.current = true;
+        keepComposerFocusRef.current = true;
+        refocusComposer();
+      })
+      .catch((error) => {
+        console.error(error);
+        setMessages((old) =>
+          old.map((message) =>
+            message.clientId === clientId ? { ...message, status: "error" as const } : message,
+          ),
+        );
+      });
+  }
+
+  function retryTextMessage(message: Message) {
+    if (
+      message.status !== "error" ||
+      (message.type && message.type !== "text") ||
+      !authReady ||
+      !chatId
+    ) {
+      return;
+    }
+
+    const effectiveTargetUid = profileUid || chatOwnerUid;
+    if (!effectiveTargetUid && message.senderKind !== "profile") return;
+
+    persistOptimisticTextMessage({
+      message,
+      senderId:
+        message.senderKind === "anon"
+          ? message.fromUid || getProfileChatAnonSenderId(chatId, chatAnonSessionId)
+          : getProfileChatAnonSenderId(chatId, chatAnonSessionId),
+      targetUid: effectiveTargetUid,
+      isOwnerReply: message.senderKind === "profile",
+    });
+  }
+
   async function sendMessage() {
     if (!text.trim()) return;
     if (!authReady || !chatId) return;
@@ -1489,32 +1556,12 @@ export default function ProfileAnonChat({
         .catch(() => undefined);
     }
 
-    void persistAnonChatMessage({
-      chatId,
-      username,
+    persistOptimisticTextMessage({
+      message: localMessage,
       senderId,
-      currentUid,
       targetUid: effectiveTargetUid,
-      targetPhoto,
-      messageText,
-      reply: replyText,
-      existingChatData: chatDocDataRef.current,
-      isOwnerReply: isOwnerViewing,
-    })
-      .then(() => {
-        messagePersistedRef.current = true;
-        keepComposerFocusRef.current = true;
-        refocusComposer();
-      })
-      .catch((e) => {
-        console.error(e);
-        setMessages((old) =>
-          old.map((message) =>
-            message.clientId === clientId ? { ...message, status: "error" as const } : message,
-          ),
-        );
-        alert(t("chat_save_fail"));
-      });
+      isOwnerReply,
+    });
   }
 
   function mediaLastMessageLabel(
@@ -1842,7 +1889,18 @@ export default function ProfileAnonChat({
                   message.mine ? "items-end pr-0.5" : "items-start pl-0.5",
                 ].join(" ")}
               >
-                {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
+                {receiptStatus ? (
+                  <ChatMessageReceipt
+                    status={receiptStatus}
+                    onRetry={
+                      receiptStatus === "error" &&
+                      (!message.type || message.type === "text")
+                        ? () => retryTextMessage(message)
+                        : undefined
+                    }
+                    retryLabel={t("chat_retry")}
+                  />
+                ) : null}
               </div>
               </div>
             );

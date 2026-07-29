@@ -12,6 +12,7 @@ import {
   commitPresentedMainTabIfReady,
   forcePresentMainTabAfterStableExit,
   getAtomicMainTabHandoffVersion,
+  isAtomicMainTabHandoffActive,
   onMainTabRouteChange,
   seedPresentedMainTab,
   subscribeAtomicMainTabHandoff,
@@ -302,8 +303,13 @@ export default function MainTabKeepAliveHost() {
     }
 
     // Non-main routes must not run presented-tab commit loops (avoids delayed
-    // setActiveTab / handoff reactivation under /u/*).
-    if (!isNonMainRoute(path) && !isNonMainRoute(livePathForMain)) {
+    // setActiveTab / handoff reactivation under /u/*). Warm tabs with no
+    // active handoff also skip the RAF budget — commit is a no-op until armed.
+    if (
+      !isNonMainRoute(path) &&
+      !isNonMainRoute(livePathForMain) &&
+      isAtomicMainTabHandoffActive()
+    ) {
       handoffLoopRef.current += 1;
       const loopId = handoffLoopRef.current;
       let frames = 0;
@@ -315,7 +321,7 @@ export default function MainTabKeepAliveHost() {
         if (handoffLoopRef.current !== loopId) return;
         frames += 1;
         if (commitPresentedMainTabIfReady(pathname)) return;
-        if (frames < frameBudget) {
+        if (frames < frameBudget && isAtomicMainTabHandoffActive()) {
           requestAnimationFrame(tryCommit);
         }
       };

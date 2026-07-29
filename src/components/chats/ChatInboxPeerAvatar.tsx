@@ -8,6 +8,7 @@ import { chatHref, resolveChatUsername, type InboxChat } from "@/hooks/useChatsI
 import { shouldHidePeerProfilePhoto } from "@/lib/chat/inboxPeerTitle";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
+import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 
 type Props = {
   chat: InboxChat;
@@ -55,6 +56,7 @@ export default function ChatInboxPeerAvatar({
 
     if (profileUsername && !hidePhoto) {
       clearMainTabShellOverlay();
+      stashProfileReturnTo("/chats");
       fastRouterPush(router, `/u/${encodeURIComponent(profileUsername)}`);
       return;
     }

@@ -166,26 +166,8 @@ export default function PublicProfilePage() {
         profilePipelineMark("set-profile", { hasProfile: true, loading: false });
         profilePipelineMark("loading-false", { loading: false, hasProfile: true });
 
-        void lookupProfileByUsername(usernameParam, true)
-          .then((lookup) => {
-            if (lookup.usernameChanged) {
-              setUsernameChanged({
-                requestedUsername: lookup.requestedUsername,
-                currentUsername: lookup.currentUsername,
-              });
-              setProfile(null);
-              return;
-            }
-
-            setUsernameChanged(null);
-            if (lookup.profile) {
-              setProfile(lookup.profile as Profile);
-              setCachedFullProfile(usernameParam, lookup.profile);
-              markProfileHydrated();
-            }
-          })
-          .catch(() => undefined);
-
+        // Fresh full-profile cache already painted the route. Avoid a forced
+        // network refresh that races the warm back/reopen path.
         return;
       }
 
