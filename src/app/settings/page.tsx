@@ -417,14 +417,16 @@ export function SettingsRouteContent() {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/78 to-black/35 pointer-events-none" />
 
-        {profile?.moderationTag === "roleplay" && ownerUid ? (
+        {ownerUid ? (
           <div className="pointer-events-auto absolute left-6 top-[max(2.5rem,env(safe-area-inset-top))] z-20 flex items-center gap-2.5 sm:left-10">
             <RoleplayAppealFlagButton
               uid={ownerUid}
               username={ownerUsername}
               minimal
             />
-            <ProfileModerationTag tag={String(profile.moderationTag)} compact />
+            {profile?.moderationTag === "roleplay" ? (
+              <ProfileModerationTag tag={String(profile.moderationTag)} compact />
+            ) : null}
           </div>
         ) : null}
 

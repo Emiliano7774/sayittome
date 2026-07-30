@@ -460,14 +460,16 @@ export default function ModernEditProfilePage() {
         {uploadError ? <p className="mb-4 text-sm font-semibold text-red-400">{uploadError}</p> : null}
 
         <div className="relative">
-          {moderationTag === "roleplay" && user.uid ? (
+          {user.uid ? (
             <div className="pointer-events-auto absolute left-4 top-4 z-30 flex items-center gap-2">
               <RoleplayAppealFlagButton
                 uid={user.uid}
                 username={username || savedUsername || "usuario"}
                 minimal
               />
-              <ProfileModerationTag tag={moderationTag} compact />
+              {moderationTag === "roleplay" ? (
+                <ProfileModerationTag tag={moderationTag} compact />
+              ) : null}
             </div>
           ) : null}
 

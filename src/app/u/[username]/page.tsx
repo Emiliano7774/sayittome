@@ -519,16 +519,15 @@ export default function PublicProfilePage() {
         style={{ minHeight: profileUi.heroHeight }}
       >
         <div className="pointer-events-auto absolute left-8 top-[max(1rem,env(safe-area-inset-top))] z-[40] flex items-center gap-2 md:left-24 md:top-10">
-          {isOwner && profile.moderationTag === "roleplay" && profile.uid ? (
-            <>
-              <RoleplayAppealFlagButton
-                uid={profile.uid}
-                username={profile.username}
-                minimal
-              />
-              <ProfileModerationTag tag={profile.moderationTag} compact />
-            </>
-          ) : profile.moderationTag && !isOwner ? (
+          {isOwner && profile.uid ? (
+            <RoleplayAppealFlagButton
+              uid={profile.uid}
+              username={profile.username}
+              minimal
+            />
+          ) : null}
+          {profile.moderationTag &&
+          (isOwner ? profile.moderationTag === "roleplay" : true) ? (
             <ProfileModerationTag tag={profile.moderationTag} compact />
           ) : null}
           <AdminProfileRoleplayButton
