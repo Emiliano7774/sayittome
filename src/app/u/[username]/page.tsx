@@ -29,6 +29,7 @@ import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
+import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -544,6 +545,8 @@ export default function PublicProfilePage() {
 
           <div className="flex flex-wrap items-center justify-end gap-3">
           {!isOwner ? <FollowButton targetUid={profile.uid} variant="profileClassic" /> : null}
+
+          {isOwner ? <ProfileClaimHistoryMenu /> : null}
 
           {!isOwner ? (
             <ProfileReportButton

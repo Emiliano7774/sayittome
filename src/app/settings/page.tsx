@@ -28,6 +28,7 @@ import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import AdminClaimReplyBanner from "@/components/profile/AdminClaimReplyBanner";
+import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -439,6 +440,7 @@ export function SettingsRouteContent() {
         <div className="relative z-10 mx-auto max-w-[1500px]">
           <div className="flex flex-wrap items-center justify-end gap-3">
             <HeaderControls />
+            {ownerUid ? <ProfileClaimHistoryMenu /> : null}
             {isAdminEmail(auth.currentUser?.email) ? (
               <button
                 type="button"

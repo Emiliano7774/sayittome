@@ -52,6 +52,7 @@ import {
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
+import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -293,6 +294,7 @@ export default function ModernPublicProfile({
             <div />
           )}
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {isOwner ? <ProfileClaimHistoryMenu /> : null}
             {isOwner && isAdminEmail(profile.email) ? (
               <Link
                 href="/admin"
