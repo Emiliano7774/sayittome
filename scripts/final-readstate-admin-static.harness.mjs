@@ -82,7 +82,7 @@ check(
   adminRouteSrc.includes("reply_general_claim") &&
     adminRouteSrc.includes("verifyAdminIdToken") &&
     adminRouteSrc.includes("claim_not_found") &&
-    adminVerifySrc.includes("verifyIdToken") &&
+    adminVerifySrc.includes("accounts:lookup") &&
     postAdminSrc.includes("Authorization"),
 );
 

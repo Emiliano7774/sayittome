@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { writeAdminLog } from "@/lib/admin/adminLogs";
-import { assertAdminEmail, getAdminEmailFromRequest } from "@/lib/admin/isAdmin";
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
 import {
   createFirestoreDoc,
@@ -16,22 +15,9 @@ import { deleteOrphanProfile } from "@/lib/profile/cleanupOrphans";
 export const dynamic = "force-dynamic";
 
 async function resolveAdminEmail(req: Request, body: Record<string, unknown>) {
-  // Prefer verified ID token. Fall back to legacy email header only when the
-  // token verifier is unavailable (local/dev without ADC) AND the claim email
-  // matches the allowlist — production Hosting/SSR must use tokens.
-  try {
-    const verified = await verifyAdminIdToken(req);
-    return verified.email;
-  } catch (error) {
-    const status = Number((error as { status?: number })?.status || 401);
-    const message = String((error as Error)?.message || "");
-    if (message === "admin_auth_unavailable") {
-      const legacy = getAdminEmailFromRequest(req, body);
-      assertAdminEmail(legacy);
-      return legacy;
-    }
-    throw Object.assign(new Error(message || "forbidden"), { status });
-  }
+  void body;
+  const verified = await verifyAdminIdToken(req);
+  return verified.email;
 }
 
 async function disableUserStories(uid: string, adminEmail: string) {
