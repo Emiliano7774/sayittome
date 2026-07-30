@@ -41,11 +41,17 @@ check(
 );
 
 check(
-  "WARMUP_SKIPS_FETCH_WHEN_HYDRATED_OR_VISIBLE",
-  warmSrc.includes("isShufflePoolWarmForNav") &&
-    warmSrc.includes("hasShuffleEverHydrated") &&
-    warmSrc.includes("hydrated-hit") &&
-    warmSrc.includes("visible-hit"),
+  "STALE_HYDRATION_MARKER_ALONE_MUST_REFETCH",
+  (() => {
+    const start = warmSrc.indexOf("export function isShufflePoolWarmForNav");
+    const end = warmSrc.indexOf("\n}", start);
+    const warmPredicate = warmSrc.slice(start, end);
+    return (
+      warmPredicate.includes("readCachedShufflePool") &&
+      warmPredicate.includes("getVisibleShuffleProfiles") &&
+      !warmPredicate.includes("if (hasShuffleEverHydrated()) return true")
+    );
+  })(),
 );
 
 check(

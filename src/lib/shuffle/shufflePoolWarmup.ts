@@ -49,8 +49,9 @@ export function isShufflePoolWarmForNav(): boolean {
   const cached = readCachedShufflePool();
   if (cached && cached.length >= MIN_READY_PROFILES) return true;
   if (getVisibleShuffleProfiles().length >= MIN_READY_PROFILES) return true;
-  // In-memory hydration already painted Shuffle; sessionStorage may lag/race.
-  if (hasShuffleEverHydrated()) return true;
+  // A persisted hydration marker is not a restorable pool. After a deploy or
+  // cache expiry it can outlive both slots and cached profiles; treating that
+  // marker as warm skips the only pool fetch and leaves Shuffle empty.
   return false;
 }
 
