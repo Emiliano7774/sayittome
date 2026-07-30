@@ -15,6 +15,7 @@ import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ModernShuffleGlassToolbar from "@/components/shuffle/ModernShuffleGlassToolbar";
 import { useShufflePool } from "@/hooks/useShufflePool";
 import {
+  getServerShuffleSlotsVersion,
   getShuffleSlotsVersion,
   getVisibleShuffleProfiles,
   subscribeAllShuffleSlots,
@@ -35,11 +36,13 @@ import {
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
+import { useHydrationReady } from "@/hooks/useHydrationReady";
 
 export default function ModernShuffleClient() {
   const shuffleActive = useMainTabRouteActive("/shuffle");
   const t = useT();
   const pool = useShufflePool();
+  const hydrationReady = useHydrationReady();
   const { totalUnread } = useChatAlerts();
 
   useEffect(() => {
@@ -52,7 +55,11 @@ export default function ModernShuffleClient() {
     };
   }, [shuffleActive]);
 
-  useSyncExternalStore(subscribeAllShuffleSlots, getShuffleSlotsVersion, getShuffleSlotsVersion);
+  const slotsVersion = useSyncExternalStore(
+    subscribeAllShuffleSlots,
+    getShuffleSlotsVersion,
+    getServerShuffleSlotsVersion,
+  );
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
 
   useLayoutEffect(() => {
@@ -61,8 +68,9 @@ export default function ModernShuffleClient() {
     }
   });
 
-  const visible = getVisibleShuffleProfiles();
-  const withStories = getCachedStoryGroups().length;
+  const visible =
+    hydrationReady && slotsVersion > 0 ? getVisibleShuffleProfiles() : [];
+  const withStories = hydrationReady ? getCachedStoryGroups().length : 0;
   const profileCount = pool.profilesCreated || pool.livePeopleCount;
   const filtersBlockResults =
     pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery;
@@ -71,6 +79,7 @@ export default function ModernShuffleClient() {
     listReady: pool.listReady,
     visibleCount: visible.length,
     poolProfileCount: pool.poolSize,
+    hydrationReady,
   };
   const presentation = deriveShufflePresentation(gateInput);
   const { showShuffleLoading, showShuffleFeed } = presentation;

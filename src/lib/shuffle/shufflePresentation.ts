@@ -21,6 +21,7 @@ export type ShufflePresentationInput = {
   listReady: boolean;
   visibleCount: number;
   poolProfileCount?: number;
+  hydrationReady?: boolean;
 };
 
 export type ShufflePresentationState = {
@@ -103,6 +104,20 @@ export function isWarmShufflePresentationContext(input: ShufflePresentationInput
 }
 
 export function deriveShufflePresentation(input: ShufflePresentationInput): ShufflePresentationState {
+  if (input.hydrationReady === false) {
+    const showShuffleLoading =
+      input.loading && !input.listReady && input.visibleCount === 0;
+    return {
+      showShuffleLoading,
+      showShuffleFeed: !showShuffleLoading && (input.listReady || input.visibleCount > 0),
+      warm: false,
+      trueCold: true,
+      restorableSlots: 0,
+      effectiveVisibleCount: input.visibleCount,
+      signature: `HYDRATING:${showShuffleLoading ? "LOADING" : "CONTENT"}`,
+    };
+  }
+
   const restorableSlots = countRestorableWarmFeedSlots();
   const trueCold = isTrueColdShuffleEntry(input);
   const warm = !trueCold;

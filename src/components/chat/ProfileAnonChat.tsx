@@ -86,7 +86,6 @@ import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
-import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import {
@@ -97,6 +96,7 @@ import {
 } from "@/lib/navigation/shuffleKeepAlive";
 import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
 import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
+import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 import {
   collection,
   doc,
@@ -356,8 +356,11 @@ export default function ProfileAnonChat({
   const keyboardAnimatingRef = useRef(false);
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
+  const lastReadRenderedKeyRef = useRef("");
+  const lastRenderedQaKeyRef = useRef("");
   const chatMetaRef = useRef<InboxChat | null>(null);
   const chatDocDataRef = useRef<Record<string, unknown>>({});
+  const [chatMetaVersion, setChatMetaVersion] = useState(0);
   const threadContextRef = useRef({
     chatId: "",
     currentUid: "",
@@ -447,10 +450,10 @@ export default function ProfileAnonChat({
     fastRouterReplace(router, dest);
   }
 
-  function markOpenChatAsRead(reason: "detail" | "snapshot" = "detail") {
+  function markOpenChatAsRead(renderedMessageId: string) {
     const ctx = markReadContextRef.current;
     const chat = chatMetaRef.current;
-    if (!ctx.chatId || !ctx.authReady || !chat) return;
+    if (!ctx.chatId || !ctx.authReady || !chat || !renderedMessageId) return;
     if (typeof document !== "undefined" && document.hidden) return;
 
     // Always read the live URL — render-closure pathname goes stale on list
@@ -473,12 +476,15 @@ export default function ProfileAnonChat({
     const messageViewerId = ownerViewing ? ctx.currentUid : senderId;
 
     if (!messageViewerId) return;
+    const readKey = `${ctx.chatId}:${messageViewerId}:${renderedMessageId}`;
+    if (lastReadRenderedKeyRef.current === readKey) return;
+    lastReadRenderedKeyRef.current = readKey;
 
     if (typeof window !== "undefined") {
       try {
         window.sessionStorage.setItem(
           "sayittome_qa_clear_read_reason",
-          reason === "snapshot" ? "detail" : reason,
+          "detail-rendered",
         );
         window.sessionStorage.setItem(
           "sayittome_qa_clear_read_thread",
@@ -489,9 +495,11 @@ export default function ProfileAnonChat({
       }
     }
 
-    void markChatAsRead(ctx.chatId, messageViewerId, chat, ctx.currentUid).catch(
-      () => undefined,
-    );
+    void markChatAsRead(ctx.chatId, messageViewerId, chat, ctx.currentUid).catch(() => {
+      if (lastReadRenderedKeyRef.current === readKey) {
+        lastReadRenderedKeyRef.current = "";
+      }
+    });
   }
 
   useEffect(() => {
@@ -636,7 +644,7 @@ export default function ProfileAnonChat({
         setTargetPhoto((prev) => prev || chatPhoto);
       }
       chatMetaRef.current = inboxChatFromFirestore(chatId, data, username);
-      markOpenChatAsRead("snapshot");
+      setChatMetaVersion((version) => version + 1);
     });
 
     return () => {
@@ -827,9 +835,35 @@ export default function ProfileAnonChat({
     }
   }, [messages.length]);
 
+  const latestRenderedMessageId = messages[messages.length - 1]?.id || "";
   useEffect(() => {
-    markOpenChatAsRead();
-  }, [chatId, authReady, currentUid, targetUid, chatOwnerUid, chatAnonSessionId]);
+    markOpenChatAsRead(latestRenderedMessageId);
+  }, [
+    chatId,
+    authReady,
+    currentUid,
+    targetUid,
+    chatOwnerUid,
+    chatAnonSessionId,
+    latestRenderedMessageId,
+    chatMetaVersion,
+  ]);
+  useEffect(() => {
+    const latest = messages[messages.length - 1];
+    if (!latest) return;
+    const qaKey = `${chatId}:${messageRowKey(latest)}:${latest.status || "ack"}`;
+    if (lastRenderedQaKeyRef.current === qaKey) return;
+    lastRenderedQaKeyRef.current = qaKey;
+    recordQaCriticalEvent("chat", "CHAT_MESSAGE_RENDERED", {
+      threadId: chatId,
+      messageId: latest.id,
+      clientId: latest.clientId || "",
+      senderKind: latest.senderKind || "",
+      mine: latest.mine,
+      status: latest.status || "ack",
+      messageRenderedAt: Date.now(),
+    });
+  }, [chatId, messages]);
 
   useEffect(() => {
     if (!showAnonIdentityNotice || !chatId || typeof window === "undefined") return;
@@ -881,6 +915,16 @@ export default function ProfileAnonChat({
             ),
           )
           .filter((row): row is Message => row !== null);
+        const latestSnapshotDoc = snapshot.docs[snapshot.docs.length - 1];
+        recordQaCriticalEvent("chat", "CHAT_MESSAGE_LISTENER_SNAPSHOT", {
+          threadId: chatId,
+          listenerSnapshotAt: Date.now(),
+          documentCount: snapshot.size,
+          changeCount: snapshot.docChanges().length,
+          latestMessageId: latestSnapshotDoc?.id || "",
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        });
 
         setMessages((prev) => {
           const pending = prev.filter(
@@ -894,11 +938,6 @@ export default function ProfileAnonChat({
         });
 
         writeCachedChatMessages(chatId, loaded.map(uiMessageToCached));
-
-        markChatMessagesWhipAlerted(
-          chatId,
-          snapshot.docs.map((docSnap) => docSnap.id),
-        );
 
         if (!messageViewerId) return;
 
@@ -935,7 +974,6 @@ export default function ProfileAnonChat({
           }
         }, 900);
 
-        markOpenChatAsRead();
       },
       (error) => {
         console.error(error);
@@ -1521,6 +1559,7 @@ export default function ProfileAnonChat({
 
     const messageText = text.trim();
     const clientId = crypto.randomUUID();
+    const sendTapAt = Date.now();
     const replyText = replyingTo?.text;
     const localMessage = {
       id: clientId,
@@ -1541,6 +1580,16 @@ export default function ProfileAnonChat({
     keepComposerFocusRef.current = true;
     scheduleScrollToBottom({ keepKeyboard: true });
     refocusComposer();
+    const optimisticEnqueuedAt = Date.now();
+    recordQaCriticalEvent("chat", "CHAT_OPTIMISTIC_MESSAGE_ENQUEUED", {
+      threadId: chatId,
+      clientId,
+      localId: localMessage.id,
+      senderKind: localMessage.senderKind || "",
+      sendTapAt,
+      optimisticEnqueuedAt,
+      inputClearedAt: optimisticEnqueuedAt,
+    });
 
     if (effectiveTargetUid && !isOwnerReply) {
       void findActiveAbuseBlock({

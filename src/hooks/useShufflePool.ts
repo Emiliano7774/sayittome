@@ -101,23 +101,15 @@ import {
 import { isShuffleRevealDeferred } from "@/lib/navigation/shuffleHandoffState";
 
 function readInitialShuffleState() {
-  const cachedProfiles = readCachedShufflePool() ?? [];
-  const cachedStats = readCachedShuffleStats();
-  const visible = getVisibleShuffleProfiles();
-  const pinnedCount = peekPinnedShuffleWindowCount();
-  const warmRestorable =
-    visible.length >= 3 ||
-    cachedProfiles.length >= 3 ||
-    pinnedCount >= 3 ||
-    hasShuffleEverHydrated();
-  const hasContent = cachedProfiles.length > 0 || visible.length > 0 || warmRestorable;
-
+  // SSR and the first client render must be identical. Browser cache/store
+  // hydration happens in the layout effect below, before paint, so warm cards
+  // remain instant without producing React #418.
   return {
-    cachedProfiles,
-    cachedStats,
-    loading: !hasContent,
-    listReady: hasContent,
-    visibleCount: visible.length,
+    cachedProfiles: [] as ShuffleProfile[],
+    cachedStats: null as ReturnType<typeof readCachedShuffleStats>,
+    loading: true,
+    listReady: false,
+    visibleCount: 0,
   };
 }
 
@@ -150,12 +142,12 @@ export function useShufflePool() {
   const [loading, setLoading] = useState(() => initialShuffle.loading);
   const [errorText, setErrorText] = useState("");
   const [listReady, setListReady] = useState(() => initialShuffle.listReady);
-  const [filters, setFiltersState] = useState<ShuffleFilters>(() => loadStoredShuffleFilters());
+  const [filters, setFiltersState] = useState<ShuffleFilters>(() => defaultShuffleFilters());
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filteredCount, setFilteredCount] = useState(0);
   const [filteredOnlineCount, setFilteredOnlineCount] = useState(0);
 
-  const filtersRef = useRef<ShuffleFilters>(loadStoredShuffleFilters());
+  const filtersRef = useRef<ShuffleFilters>(defaultShuffleFilters());
   const searchRef = useRef("");
   const storyOwnerUidsRef = useRef<Set<string>>(new Set());
   const poolRef = useRef<ShuffleProfile[]>(
@@ -905,7 +897,7 @@ export function useShufflePool() {
     saveStoredShuffleFilters(cleared);
     clearBatchMemory();
     filterActivePool(searchRef.current.trim(), cleared, { forceWindow: true });
-  }, [filterActivePool]);
+  }, [applyPool, filterActivePool]);
 
   const handleListClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -947,8 +939,25 @@ export function useShufflePool() {
   }, []);
 
   useLayoutEffect(() => {
-    if (initialShuffle.listReady || initialShuffle.visibleCount > 0) {
-      markShuffleHydrated(initialShuffle.visibleCount);
+    const storedFilters = loadStoredShuffleFilters();
+    filtersRef.current = storedFilters;
+    setFiltersState(storedFilters);
+
+    const cachedProfiles = readCachedShufflePool();
+    const cachedStats = readCachedShuffleStats();
+    const visible = getVisibleShuffleProfiles();
+    if (cachedProfiles?.length) {
+      applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
+      if (visible.length === 0) {
+        filterActivePool("", storedFilters, { forceWindow: true });
+      } else {
+        markShuffleHydrated(visible.length);
+      }
+    } else if (visible.length > 0 || peekPinnedShuffleWindowCount() >= 3) {
+      restorePinnedShuffleWindowSync();
+      setLoading(false);
+      setListReady(true);
+      markShuffleHydrated(Math.max(visible.length, peekPinnedShuffleWindowCount()));
     }
 
     if (

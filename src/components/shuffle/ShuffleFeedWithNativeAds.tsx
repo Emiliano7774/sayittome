@@ -11,12 +11,14 @@ import {
   shouldShowShuffleFeedAds,
 } from "@/lib/shuffle/shuffleFeedAds";
 import {
+  getServerShuffleSlotsVersion,
   getShuffleSlotsVersion,
   getShuffleWindowGeneration,
   getVisibleShuffleProfiles,
   subscribeAllShuffleSlots,
 } from "@/lib/shuffle/shuffleSlotsStore";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
+import { useHydrationReady } from "@/hooks/useHydrationReady";
 
 type Props = {
   /** Used for ad slot IDs so modern and classic never share the same ad instance. */
@@ -33,14 +35,16 @@ export default function ShuffleFeedWithNativeAds({
   className,
   renderProfile,
 }: Props) {
-  useSyncExternalStore(
+  const hydrationReady = useHydrationReady();
+  const slotsVersion = useSyncExternalStore(
     subscribeAllShuffleSlots,
     getShuffleSlotsVersion,
-    getShuffleSlotsVersion,
+    getServerShuffleSlotsVersion,
   );
 
   const windowGeneration = getShuffleWindowGeneration();
-  const profiles = getVisibleShuffleProfiles();
+  const profiles =
+    hydrationReady && slotsVersion > 0 ? getVisibleShuffleProfiles() : [];
   const showAds = shouldShowShuffleFeedAds(profiles.length);
   const itemCount = getShuffleFeedItemCount(profiles.length, showAds);
 

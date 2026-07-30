@@ -20,10 +20,12 @@ type Props = {
 };
 
 export default function ModernStoriesBar({ compact = false }: Props) {
-  const [groups, setGroups] = useState<StoryUserGroup[]>(() => getCachedStoryGroups());
+  // Empty until mount so SSR/hydration never diverge from a browser cache.
+  const [groups, setGroups] = useState<StoryUserGroup[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+    setGroups(getCachedStoryGroups());
 
     const unsubIndex = subscribeStoriesIndex(() => {
       if (!cancelled) setGroups(getCachedStoryGroups());

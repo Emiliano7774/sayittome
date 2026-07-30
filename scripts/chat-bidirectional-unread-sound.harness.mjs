@@ -28,6 +28,14 @@ const activity = fs.readFileSync(
   path.join(root, "src/lib/chat/incomingChatActivity.ts"),
   "utf8",
 );
+const profileDetail = fs.readFileSync(
+  path.join(root, "src/components/chat/ProfileAnonChat.tsx"),
+  "utf8",
+);
+const detailWhip = fs.readFileSync(
+  path.join(root, "src/hooks/useIncomingMessageWhip.ts"),
+  "utf8",
+);
 
 check(
   "PROFILE_INBOUND_AND_ANON_INBOUND_CLASSIFIED",
@@ -61,9 +69,12 @@ check(
 );
 
 check(
-  "ACTIVE_CHAT_SUPPRESSES_SOUND",
+  "ACTIVE_CHAT_HANDS_SOUND_TO_DETAIL_WITHOUT_PREBURN",
   whipMgr.includes("viewingActiveChat") &&
-    whipMgr.includes("suppress: viewingActiveChat"),
+    whipMgr.includes("suppress: viewingActiveChat") &&
+    dedupe.includes("if (incoming && suppress) return false") &&
+    !profileDetail.includes("markChatMessagesWhipAlerted(") &&
+    detailWhip.includes("CHAT_INBOUND_WHIP_TRIGGERED"),
 );
 
 const failed = checks.filter((c) => !c.pass);

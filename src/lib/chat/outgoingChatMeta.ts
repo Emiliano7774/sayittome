@@ -66,3 +66,33 @@ export function buildOutgoingChatMetaPatch(
 
   return patch;
 }
+
+/**
+ * `updateDoc` interprets dotted keys as field paths, but `setDoc(..., { merge:
+ * true })` treats the same object keys literally. Convert only for set/merge
+ * callers so read/unread state remains a real nested map.
+ */
+export function expandOutgoingChatMetaPatchForSet(
+  patch: Record<string, string | boolean | FieldValue>,
+): Record<string, unknown> {
+  const expanded: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(patch)) {
+    const separator = key.indexOf(".");
+    if (separator < 0) {
+      expanded[key] = value;
+      continue;
+    }
+
+    const mapName = key.slice(0, separator);
+    const childKey = key.slice(separator + 1);
+    const current =
+      expanded[mapName] && typeof expanded[mapName] === "object"
+        ? (expanded[mapName] as Record<string, unknown>)
+        : {};
+    current[childKey] = value;
+    expanded[mapName] = current;
+  }
+
+  return expanded;
+}

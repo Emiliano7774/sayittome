@@ -22,7 +22,7 @@ export function inboxChatFromFirestore(
 
   return {
     id: chatId,
-    canonicalChatId: chatId,
+    canonicalChatId: String(row.canonicalChatId || chatId),
     targetUsername: String(row.targetUsername || fallbackUsername),
     receptorUsername: String(row.receptorUsername || fallbackUsername),
     targetUid: row.targetUid as string | undefined,

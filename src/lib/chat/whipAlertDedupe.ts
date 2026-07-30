@@ -92,9 +92,13 @@ export function tryAlertIncomingMessage(input: {
   if (!chatId || !messageId) return false;
   if (wasMessageWhipAlerted(chatId, messageId)) return false;
 
-  markMessageWhipAlerted(chatId, messageId);
+  // A global listener suppresses alerts while the exact detail is visible.
+  // Do not consume that doc id there: the detail listener is the alert owner
+  // and must still emit one whip for every newly rendered inbound message.
+  if (incoming && suppress) return false;
 
-  if (!incoming || suppress) return false;
+  markMessageWhipAlerted(chatId, messageId);
+  if (!incoming) return false;
 
   onAlert();
   return true;

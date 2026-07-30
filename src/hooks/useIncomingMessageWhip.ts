@@ -6,6 +6,7 @@ import type { InboxChat } from "@/hooks/useChatsInbox";
 import { isIncomingMessageFromDoc } from "@/lib/chat/incomingChatActivity";
 import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
 import { bindWhipSoundUnlock, notifyIncomingChatMessage, playIncomingWhipSound } from "@/lib/chat/whipSound";
+import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 
 type IncomingMessage = {
   id: string;
@@ -62,6 +63,11 @@ export function useIncomingMessageWhip(
         incoming: true,
         suppress: false,
         onAlert: () => {
+          recordQaCriticalEvent("chat", "CHAT_INBOUND_WHIP_TRIGGERED", {
+            threadId: chatId,
+            messageId: last.id,
+            soundTriggeredAt: Date.now(),
+          });
           playIncomingWhipSound();
           notifyIncomingChatMessage({
             title: "Nuevo mensaje",

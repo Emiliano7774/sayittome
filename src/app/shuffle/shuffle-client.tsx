@@ -21,6 +21,7 @@ import { getClassicShuffleHeaderUi } from "@/lib/shuffle/classicHeaderUi";
 import { setShuffleExcludeProfiles } from "@/lib/shuffle/shuffleExcludeStore";
 import {
   getVisibleShuffleProfiles,
+  getServerShuffleSlotsVersion,
   getShuffleSlotsVersion,
   subscribeAllShuffleSlots,
 } from "@/lib/shuffle/shuffleSlotsStore";
@@ -31,12 +32,14 @@ import { isShuffleKeepAliveActive } from "@/lib/navigation/shuffleKeepAlive";
 import { isShuffleRevealDeferred, isShuffleSurfacePresented } from "@/lib/navigation/shuffleHandoffState";
 import { useT } from "@/contexts/LocaleContext";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
+import { useHydrationReady } from "@/hooks/useHydrationReady";
 
 /** Classic UX — lista congelada visualmente. */
 export default function ShuffleClient() {
   const shuffleActive = useMainTabRouteActive("/shuffle");
   const t = useT();
   const pool = useShufflePool();
+  const hydrationReady = useHydrationReady();
   const following = useFollowingProfiles();
   const { density } = useClassicShuffleDensity();
   const tokens = getClassicShuffleDensityTokens(density);
@@ -63,7 +66,11 @@ export default function ShuffleClient() {
     setShuffleExcludeProfiles(following.profiles);
   }, [following.profiles]);
 
-  useSyncExternalStore(subscribeAllShuffleSlots, getShuffleSlotsVersion, getShuffleSlotsVersion);
+  const slotsVersion = useSyncExternalStore(
+    subscribeAllShuffleSlots,
+    getShuffleSlotsVersion,
+    getServerShuffleSlotsVersion,
+  );
 
   useLayoutEffect(() => {
     if (isShuffleRevealDeferred()) {
@@ -71,12 +78,14 @@ export default function ShuffleClient() {
     }
   });
 
-  const visibleCount = getVisibleShuffleProfiles().length;
+  const visibleCount =
+    hydrationReady && slotsVersion > 0 ? getVisibleShuffleProfiles().length : 0;
   const gateInput = {
     loading: pool.loading,
     listReady: pool.listReady,
     visibleCount,
     poolProfileCount: pool.poolSize,
+    hydrationReady,
   };
   const presentation = deriveShufflePresentation(gateInput);
   const { showShuffleLoading, showShuffleFeed } = presentation;

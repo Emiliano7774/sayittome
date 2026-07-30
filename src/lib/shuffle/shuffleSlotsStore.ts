@@ -19,6 +19,11 @@ let windowGeneration = 0;
 const dirtySlots = new Set<number>();
 const globalListeners = new Set<() => void>();
 
+/** Deterministic SSR/hydration snapshot; browser slots become visible after hydration. */
+export function getServerShuffleSlotsVersion() {
+  return 0;
+}
+
 function notifyGlobal() {
   slotsVersion += 1;
   globalListeners.forEach((listener) => listener());

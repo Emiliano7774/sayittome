@@ -48,16 +48,33 @@ function ProfileAnonChatRoute() {
               const requestedData = requestedSnap.data() as {
                 targetUsername?: string;
                 receptorUsername?: string;
+                canonicalChatId?: string;
               };
+              const canonicalChatId = String(requestedData.canonicalChatId || "").trim();
               const docUsername =
                 requestedData.targetUsername || requestedData.receptorUsername || "";
-              if (docUsername && docUsername !== usernameFromQuery) {
-                setUsername(docUsername);
-                const query = new URLSearchParams({ u: docUsername });
+              const resolvedChatId =
+                canonicalChatId &&
+                canonicalChatId !== rawChatId &&
+                isProfileAnonChatId(canonicalChatId)
+                  ? canonicalChatId
+                  : rawChatId;
+              if (docUsername) setUsername(docUsername);
+              if (resolvedChatId !== rawChatId) {
+                setChatId(resolvedChatId);
+                prefetchChatThread(resolvedChatId);
+              }
+              if (
+                resolvedChatId !== rawChatId ||
+                (docUsername && docUsername !== usernameFromQuery)
+              ) {
+                const query = new URLSearchParams({
+                  u: docUsername || usernameFromQuery,
+                });
                 window.history.replaceState(
                   null,
                   "",
-                  `/chat/${encodeURIComponent(rawChatId)}?${query.toString()}`,
+                  `/chat/${encodeURIComponent(resolvedChatId)}?${query.toString()}`,
                 );
               }
             })
@@ -70,6 +87,7 @@ function ProfileAnonChatRoute() {
           ? (requestedSnap.data() as {
               targetUsername?: string;
               receptorUsername?: string;
+              canonicalChatId?: string;
             })
           : null;
 
@@ -93,16 +111,27 @@ function ProfileAnonChatRoute() {
         if (requestedSnap.exists()) {
           if (cancelled) return;
 
+          const canonicalChatId = String(requestedData?.canonicalChatId || "").trim();
+          const resolvedChatId =
+            canonicalChatId &&
+            canonicalChatId !== rawChatId &&
+            isProfileAnonChatId(canonicalChatId)
+              ? canonicalChatId
+              : rawChatId;
           setUsername(resolvedUsername);
-          setChatId(rawChatId);
+          setChatId(resolvedChatId);
           setReady(true);
+          if (resolvedChatId !== rawChatId) prefetchChatThread(resolvedChatId);
 
-          if (usernameFromQuery !== resolvedUsername) {
+          if (
+            resolvedChatId !== rawChatId ||
+            usernameFromQuery !== resolvedUsername
+          ) {
             const query = new URLSearchParams({ u: resolvedUsername });
             window.history.replaceState(
               null,
               "",
-              `/chat/${encodeURIComponent(rawChatId)}?${query.toString()}`,
+              `/chat/${encodeURIComponent(resolvedChatId)}?${query.toString()}`,
             );
           }
           return;

@@ -13,7 +13,10 @@ import {
 } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
-import { buildOutgoingChatMetaPatch } from "@/lib/chat/outgoingChatMeta";
+import {
+  buildOutgoingChatMetaPatch,
+  expandOutgoingChatMetaPatchForSet,
+} from "@/lib/chat/outgoingChatMeta";
 import {
   profileReplyAuthorId,
   type ProfileAnonSenderKind,
@@ -56,6 +59,8 @@ type PersistAnonMessageInput = {
   moderationModel?: string;
   clientId?: string;
 };
+
+const canonicalMigrationStarted = new Set<string>();
 
 function resolveThreadAnonRecipientIds(input: {
   chatId: string;
@@ -144,14 +149,36 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const storedText = type === "text" ? messageText : "";
   const lastMessagePreview = input.lastMessagePreview ?? messageText;
 
-  const chatRef = doc(db, "chats", chatId);
+  const requestedChatRef = doc(db, "chats", chatId);
   let existingData = input.existingChatData || {};
 
   if (!input.existingChatData) {
-    const existingSnap = await getDoc(chatRef);
+    const existingSnap = await getDoc(requestedChatRef);
     existingData = existingSnap.exists()
       ? (existingSnap.data() as Record<string, unknown>)
       : {};
+  }
+
+  const storedCanonicalChatId = String(existingData.canonicalChatId || "").trim();
+  const canonicalChatId =
+    storedCanonicalChatId &&
+    storedCanonicalChatId !== chatId &&
+    isProfileAnonChatId(storedCanonicalChatId)
+      ? storedCanonicalChatId
+      : chatId;
+  const chatRef = doc(db, "chats", canonicalChatId);
+
+  // Alias bridges are exceptional and bounded to one extra document read. The
+  // actual message and summary must always be written to the same canonical
+  // thread that the receiver listens to.
+  if (canonicalChatId !== chatId) {
+    const canonicalSnap = await getDoc(chatRef);
+    if (canonicalSnap.exists()) {
+      existingData = {
+        ...existingData,
+        ...(canonicalSnap.data() as Record<string, unknown>),
+      };
+    }
   }
 
   const ownerUidFromDoc = String(
@@ -181,9 +208,9 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const liveBrowserAnon = getChatAnonSenderId();
   const storedAnonSession = String(existingData.anonSessionId || "").trim();
   const chatIdAnon =
-    isProfileAnonChatId(chatId) &&
-    parseProfileAnonChatId(chatId).senderId.startsWith("anon_")
-      ? parseProfileAnonChatId(chatId).senderId
+    isProfileAnonChatId(canonicalChatId) &&
+    parseProfileAnonChatId(canonicalChatId).senderId.startsWith("anon_")
+      ? parseProfileAnonChatId(canonicalChatId).senderId
       : "";
   const senderAnon = senderId.startsWith("anon_") ? senderId : "";
   // Only the visitor thread may inject the live browser anon id. Owner replies
@@ -221,7 +248,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     participantes,
     anonSessionId,
     senderId: senderAnon || anonSessionId,
-    chatId,
+    chatId: canonicalChatId,
   });
 
   const existingInitiatorUid = String(existingData.initiatorUid || "").trim();
@@ -234,11 +261,12 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     ...(currentUid
       ? buildLegacyProfileChatIds(currentUid, username, resolvedTargetUid)
       : []),
+    ...(chatId !== canonicalChatId ? [chatId] : []),
   ];
-  const messageRef = doc(collection(db, "chats", chatId, "mensajes"));
+  const messageRef = doc(collection(db, "chats", canonicalChatId, "mensajes"));
 
   const chatMeta = {
-    id: chatId,
+    id: canonicalChatId,
     targetUsername: username,
     receptorUsername: username,
     receptorUid: resolvedTargetUid || null,
@@ -249,20 +277,22 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     participantes,
     anon: true,
     senderIsAnonymous: !isOwnerReply,
-    canonicalChatId: chatId,
+    canonicalChatId,
     schemaVersion: 2,
     targetPhoto: targetPhoto || null,
-    ...buildOutgoingChatMetaPatch(messageAuthorId, unreadRecipients, {
-      lastMessage: lastMessagePreview,
-      lastMessageSender: messageAuthorId,
-      latestMessageId: messageRef.id,
-      latestSenderKind: senderKind,
-      latestSenderAnonSessionId:
-        senderKind === "anon" ? senderAnon || anonSessionId : "",
-    }),
+    ...expandOutgoingChatMetaPatchForSet(
+      buildOutgoingChatMetaPatch(messageAuthorId, unreadRecipients, {
+        lastMessage: lastMessagePreview,
+        lastMessageSender: messageAuthorId,
+        latestMessageId: messageRef.id,
+        latestSenderKind: senderKind,
+        latestSenderAnonSessionId:
+          senderKind === "anon" ? senderAnon || anonSessionId : "",
+      }),
+    ),
   };
 
-  registerSessionChat(chatId);
+  registerSessionChat(canonicalChatId);
 
   const messagePayload = {
     texto: storedText,
@@ -274,7 +304,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     ...(isOwnerReply && resolvedTargetUid
       ? { profileUid: resolvedTargetUid }
       : {}),
-    [`readBy.${messageAuthorId}`]: true,
+    readBy: { [messageAuthorId]: true },
     ...(reply ? { reply } : {}),
     ...(input.storyReply ? { storyReply: input.storyReply } : {}),
     ...(type !== "text" ? { type } : {}),
@@ -299,22 +329,41 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const batch = writeBatch(db);
   batch.set(chatRef, chatMeta, { merge: true });
   batch.set(messageRef, messagePayload);
+  const writeStartedAt = Date.now();
+  recordQaCriticalEvent("chat", "CHAT_MESSAGE_WRITE_START", {
+    threadId: canonicalChatId,
+    serverDocId: messageRef.id,
+    clientId: input.clientId || "",
+    senderKind,
+    writeStartedAt,
+  });
   await batch.commit();
+  const writeAckAt = Date.now();
   recordQaCriticalEvent("chat", "CHAT_MESSAGE_PERSISTED", {
     threadId: chatId,
+    canonicalThreadId: canonicalChatId,
     latestMessageId: messageRef.id,
+    serverDocId: messageRef.id,
+    clientId: input.clientId || "",
     senderKind,
     senderUid: messageAuthorId,
     anonRecipientIds: unreadRecipients.filter((id) => id.startsWith("anon_")),
     unreadRecipientCount: unreadRecipients.length,
+    writeStartedAt,
+    writeAckAt,
+    writeLatencyMs: writeAckAt - writeStartedAt,
   });
 
-  void migrateToCanonicalChat(chatId, legacyIds, chatMeta).catch((error) => {
-    console.error("chat migrate", chatId, error);
-  });
+  if (!canonicalMigrationStarted.has(canonicalChatId)) {
+    canonicalMigrationStarted.add(canonicalChatId);
+    void migrateToCanonicalChat(canonicalChatId, legacyIds, chatMeta).catch((error) => {
+      canonicalMigrationStarted.delete(canonicalChatId);
+      console.error("chat migrate", canonicalChatId, error);
+    });
+  }
 
   scheduleModerationActivityTouch({
-    id: chatId,
+    id: canonicalChatId,
     targetUsername: username,
     receptorUsername: username,
     receptorUid: resolvedTargetUid || undefined,

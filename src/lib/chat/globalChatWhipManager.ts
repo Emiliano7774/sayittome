@@ -20,6 +20,7 @@ import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
 import { showChatNotification } from "@/lib/chat/chatNotifications";
 import { playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { db } from "@/lib/firebase";
+import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 
 type WhipContext = {
   viewerId: string;
@@ -252,6 +253,12 @@ class GlobalChatWhipManager {
           suppress: viewingActiveChat,
           onAlert: () => {
             if (!viewingActiveChat) {
+              recordQaCriticalEvent("chat", "CHAT_INBOUND_WHIP_TRIGGERED", {
+                threadId: chatId,
+                messageId,
+                soundTriggeredAt: Date.now(),
+                owner: "global-listener",
+              });
               playIncomingWhipSound();
             }
             void showChatNotification({
