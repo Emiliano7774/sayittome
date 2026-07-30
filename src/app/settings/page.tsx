@@ -27,6 +27,7 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
+import AdminClaimReplyBanner from "@/components/profile/AdminClaimReplyBanner";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -338,6 +339,11 @@ export function SettingsRouteContent() {
 
     return (
       <div data-nav-settings-primary>
+        {ownerUid ? (
+          <div className="mx-auto max-w-[1500px] px-4 pt-4">
+            <AdminClaimReplyBanner uid={ownerUid} />
+          </div>
+        ) : null}
         <ModernPublicProfile
         profile={{
           uid: profile.uid,
@@ -419,6 +425,12 @@ export function SettingsRouteContent() {
               minimal
             />
             <ProfileModerationTag tag={String(profile.moderationTag)} compact />
+          </div>
+        ) : null}
+
+        {ownerUid ? (
+          <div className="relative z-20 mx-auto mb-4 max-w-[1500px]">
+            <AdminClaimReplyBanner uid={ownerUid} />
           </div>
         ) : null}
 

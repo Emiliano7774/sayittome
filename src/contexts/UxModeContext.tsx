@@ -38,7 +38,10 @@ export function UxModeProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [uxMode, setUxModeState] = useState<UxMode>(() => readStoredUxMode());
+  // Always start classic on server + first client render so SSR HTML matches
+  // hydration. Reading localStorage in useState caused React #418 when the
+  // stored mode was "modern" (new UI zone crash / error overlay).
+  const [uxMode, setUxModeState] = useState<UxMode>("classic");
 
   useEffect(() => {
     const saved = readStoredUxMode();

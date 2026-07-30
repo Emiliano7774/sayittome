@@ -171,11 +171,14 @@ export function resolveProfileAnonMessageMine(input: {
   const liveAnon = getChatAnonSenderId();
   const visitorUid = String(input.ownerUid || "").trim();
 
+  // Anon viewer: only THIS visitor's aliases are "mine". Never treat another
+  // anon_* id (or a mis-tagged profile reply) as owned just because senderKind
+  // is anon — that hid incoming profile replies and suppressed unread/badge.
   if (visitorUid && from === visitorUid) return true;
   if (threadAnon && from === threadAnon) return true;
   if (liveAnon.startsWith("anon_") && from === liveAnon) return true;
 
-  return kind === "anon" && from.startsWith("anon_");
+  return false;
 }
 
 export function firestoreMessageAuthorId(data: ProfileAnonFirestoreMessage) {

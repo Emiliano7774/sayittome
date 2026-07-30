@@ -31,6 +31,9 @@ type ClaimRow = {
   evidenceKind?: string;
   moderationTag?: string;
   estado?: string;
+  adminReply?: string;
+  adminRepliedAt?: unknown;
+  adminRepliedBy?: string;
   createdAt?: unknown;
 };
 
@@ -197,6 +200,9 @@ function ClaimProfileCard({
 export default function AdminGeneralClaimsPanel() {
   const t = useT();
   const [claims, setClaims] = useState<ClaimRow[]>([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyBusyId, setReplyBusyId] = useState("");
+  const [replyErrorId, setReplyErrorId] = useState("");
 
   useEffect(() => {
     if (!isAdminEmail(auth.currentUser?.email)) return;
@@ -230,6 +236,36 @@ export default function AdminGeneralClaimsPanel() {
     });
   }
 
+  async function sendReply(claim: ClaimRow) {
+    const replyText = String(replyDrafts[claim.id] || "").trim();
+    if (!replyText || replyBusyId) return;
+
+    setReplyBusyId(claim.id);
+    setReplyErrorId("");
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reply_general_claim",
+          claimId: claim.id,
+          uid: claim.uid || "",
+          replyText,
+          adminEmail: auth.currentUser?.email || "",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        throw new Error(String(json?.error || "reply_failed"));
+      }
+      setReplyDrafts((prev) => ({ ...prev, [claim.id]: "" }));
+    } catch {
+      setReplyErrorId(claim.id);
+    } finally {
+      setReplyBusyId("");
+    }
+  }
+
   if (visibleClaims.length === 0) {
     return <p className="text-white/40 font-bold">{t("admin_claim_empty")}</p>;
   }
@@ -248,6 +284,7 @@ export default function AdminGeneralClaimsPanel() {
           const createdLabel = parseReportCreatedAtMs(claim.createdAt)
             ? new Date(parseReportCreatedAtMs(claim.createdAt)).toLocaleString("es-AR")
             : "";
+          const existingReply = String(claim.adminReply || "").trim();
 
           return (
             <div key={claim.id} className="rounded-2xl border border-white/10 p-5">
@@ -286,6 +323,51 @@ export default function AdminGeneralClaimsPanel() {
                   <AdminEvidenceMedia url={claim.evidenceUrl} />
                 </div>
               ) : null}
+
+              {existingReply ? (
+                <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200/70">
+                    {t("admin_claim_reply_sent_label")}
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-emerald-50">
+                    {existingReply}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-4 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+                  {t("admin_claim_reply_label")}
+                </p>
+                <textarea
+                  value={replyDrafts[claim.id] || ""}
+                  onChange={(event) =>
+                    setReplyDrafts((prev) => ({
+                      ...prev,
+                      [claim.id]: event.target.value.slice(0, 2000),
+                    }))
+                  }
+                  rows={3}
+                  placeholder={t("admin_claim_reply_placeholder")}
+                  className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm font-semibold text-white outline-none"
+                />
+                {replyErrorId === claim.id ? (
+                  <p className="text-xs font-bold text-red-300">{t("admin_claim_reply_fail")}</p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={
+                    replyBusyId === claim.id ||
+                    !String(replyDrafts[claim.id] || "").trim()
+                  }
+                  onClick={() => void sendReply(claim)}
+                  className="rounded-xl bg-sky-500/25 px-4 py-2 text-sm font-black text-sky-100 disabled:opacity-40"
+                >
+                  {replyBusyId === claim.id
+                    ? t("admin_claim_reply_sending")
+                    : t("admin_claim_reply_send")}
+                </button>
+              </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {claim.uid && claim.moderationTag === "roleplay" ? (

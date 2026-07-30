@@ -10,8 +10,17 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 
-import { forcePresentShuffleSurfaceForNonMainReveal } from "@/lib/navigation/shuffleHandoffState";
+import {
+  forcePresentShuffleSurfaceForNonMainReveal,
+  isShuffleRevealDeferred,
+} from "@/lib/navigation/shuffleHandoffState";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
+import { hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
+import {
+  hasDurableRestorableWarmShuffle,
+  isShuffleDestinationWarmIntentActive,
+} from "@/lib/shuffle/shuffleWarmHopIntent";
+import { countRestorableWarmFeedSlots } from "@/lib/shuffle/shufflePresentation";
 
 function elementIsVisible(element: Element | null) {
   if (!(element instanceof HTMLElement)) return false;
@@ -28,10 +37,15 @@ function hasPrimaryShuffleContent(host: HTMLElement | null) {
   const candidates = host.querySelectorAll(
     [
       "[data-shuffle-list] > *",
+      "[data-shuffle-list]",
+      "[data-shuffle-slot]",
       "[data-shuffle-search='1']",
+      "[data-nav-shuffle-primary]",
       "button",
       "input",
       "[role='button']",
+      "a[href]",
+      "img",
     ].join(","),
   );
   return [...candidates].some(elementIsVisible);
@@ -147,6 +161,20 @@ export function ShuffleGlobalSafetyNet() {
       const host = document.getElementById(
         "sayittome-shuffle-keepalive-host",
       ) as HTMLElement | null;
+      // If the keep-alive host is mounted but currently frozen/opacity-hidden
+      // during a warm handoff, do not treat that as a blank requiring the
+      // global loading shell — that is the Chats→Shuffle flicker.
+      if (
+        host &&
+        (isShuffleDestinationWarmIntentActive() ||
+          isShuffleRevealDeferred() ||
+          hasDurableRestorableWarmShuffle() ||
+          hasShuffleEverHydrated() ||
+          countRestorableWarmFeedSlots() >= 3)
+      ) {
+        setRecoveryVisible(false);
+        return true;
+      }
       if (hasHumanShuffleContent(host)) {
         setRecoveryVisible(false);
         if (hasPrimaryShuffleContent(host) && !readyLoggedRef.current) {
@@ -163,6 +191,26 @@ export function ShuffleGlobalSafetyNet() {
     let recoveryTriggered = false;
     const recoverBlank = () => {
       if (recoveryTriggered || inspect()) return;
+
+      // Warm Chats→Shuffle / tab hops already have keep-alive or cache. Flashing
+      // the global "Preparando perfiles…" shell is the visible pestañeo.
+      const warmHop =
+        isShuffleDestinationWarmIntentActive() ||
+        isShuffleRevealDeferred() ||
+        hasDurableRestorableWarmShuffle() ||
+        hasShuffleEverHydrated() ||
+        countRestorableWarmFeedSlots() >= 3;
+      if (warmHop) {
+        forcePresentShuffleSurfaceForNonMainReveal();
+        setRecoveryVisible(false);
+        recordQaCriticalEvent("nav", "SHUFFLE_WARM_SAFETY_SKIP_LOADING_SHELL", {
+          hostMounted: Boolean(
+            document.getElementById("sayittome-shuffle-keepalive-host"),
+          ),
+        });
+        return;
+      }
+
       recoveryTriggered = true;
       forcePresentShuffleSurfaceForNonMainReveal();
       const host = document.getElementById(

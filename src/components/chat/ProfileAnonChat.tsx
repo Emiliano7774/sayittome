@@ -199,46 +199,50 @@ function hydrateCachedMessages(
 
 function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
   const merged = loaded.map((message) => ({ ...message }));
+  const claimed = new Set<number>();
 
   for (const optimistic of pending) {
-    const matchIndex = merged.findIndex((message) => {
-      if (optimistic.clientId && message.clientId === optimistic.clientId) {
-        return true;
-      }
+    // Prefer stable clientId. Never reconcile an optimistic bubble against a
+    // peer message that happens to share the same text — that made profile
+    // replies disappear while serverTimestamp was still pending.
+    let matchIndex = -1;
 
-      const samePayload =
-        message.text === optimistic.text &&
-        (message.type || "text") === (optimistic.type || "text") &&
-        (message.mediaUrl || "") === (optimistic.mediaUrl || "");
+    if (optimistic.clientId) {
+      matchIndex = merged.findIndex(
+        (message, index) =>
+          !claimed.has(index) && message.clientId === optimistic.clientId,
+      );
+    }
 
-      if (samePayload) return true;
+    if (matchIndex < 0) {
+      matchIndex = merged.findIndex((message, index) => {
+        if (claimed.has(index)) return false;
+        if (!optimistic.mine || !message.mine) return false;
 
-      const optimisticIsMedia = (optimistic.type || "text") !== "text";
-      const loadedIsMedia = (message.type || "text") !== "text";
-      if (
-        optimisticIsMedia &&
-        loadedIsMedia &&
-        optimistic.mine &&
-        message.mine &&
-        (optimistic.status === "sending" || optimistic.status === "error")
-      ) {
-        if (optimistic.fromUid && message.fromUid) {
-          return message.fromUid === optimistic.fromUid;
-        }
-        return true;
-      }
+        const sameAuthor =
+          Boolean(optimistic.fromUid) &&
+          Boolean(message.fromUid) &&
+          optimistic.fromUid === message.fromUid;
+        if (!sameAuthor) return false;
 
-      if (optimistic.status === "sending" && optimistic.mine) {
-        if (optimistic.fromUid && message.fromUid) {
-          return message.fromUid === optimistic.fromUid;
-        }
-        return message.mine;
-      }
+        const samePayload =
+          message.text === optimistic.text &&
+          (message.type || "text") === (optimistic.type || "text") &&
+          (message.mediaUrl || "") === (optimistic.mediaUrl || "");
+        if (samePayload) return true;
 
-      return false;
-    });
+        const optimisticIsMedia = (optimistic.type || "text") !== "text";
+        const loadedIsMedia = (message.type || "text") !== "text";
+        return (
+          optimisticIsMedia &&
+          loadedIsMedia &&
+          (optimistic.status === "sending" || optimistic.status === "error")
+        );
+      });
+    }
 
     if (matchIndex >= 0) {
+      claimed.add(matchIndex);
       merged[matchIndex] = {
         ...merged[matchIndex],
         ...(optimistic.clientId ? { clientId: optimistic.clientId } : {}),

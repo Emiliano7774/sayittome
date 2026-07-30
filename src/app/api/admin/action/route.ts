@@ -213,6 +213,35 @@ export async function POST(req: Request) {
       });
     } else if (action === "delete_orphan_user" && uid) {
       await deleteOrphanProfile(uid, adminEmail);
+    } else if (action === "reply_general_claim") {
+      const claimId = String(body?.claimId || "").trim();
+      const replyText = String(body?.replyText || "").trim().slice(0, 2000);
+      const claimUid = String(body?.uid || "").trim();
+      if (!claimId || !replyText) {
+        return NextResponse.json(
+          { ok: false, error: "missing_claim_or_reply" },
+          { status: 400 },
+        );
+      }
+
+      const repliedAt = new Date().toISOString();
+      await patchFirestoreDoc("reclamos_perfil_rol", claimId, {
+        adminReply: replyText,
+        adminRepliedAt: repliedAt,
+        adminRepliedBy: adminEmail,
+        estado: "respondido",
+        reviewedAt: repliedAt,
+        reviewedBy: adminEmail,
+      });
+
+      if (claimUid) {
+        await patchFirestoreDoc("usuarios", claimUid, {
+          lastAdminClaimReply: replyText,
+          lastAdminClaimReplyAt: repliedAt,
+          lastAdminClaimId: claimId,
+          lastAdminClaimReplyRead: false,
+        });
+      }
     } else if (action === "cleanup_orphan_profiles") {
       const { cleanupOrphanProfiles } = await import("@/lib/profile/cleanupOrphans");
       const result = await cleanupOrphanProfiles(adminEmail, {
