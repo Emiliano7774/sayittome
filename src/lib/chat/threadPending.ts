@@ -114,6 +114,23 @@ export function computeThreadPendingForViewer(
   }
 
   const localRead = wasChatReadLocally(chat, viewerId, firebaseUid);
+  let readMessageIdMatch = false;
+  if (latestMessageId) {
+    for (const id of candidateViewerIds) {
+      if (String(chat.latestReadMessageIds?.[id] || "").trim() === latestMessageId) {
+        readMessageIdMatch = true;
+        break;
+      }
+    }
+    if (
+      !readMessageIdMatch &&
+      String(chat.latestReadMessageId || "").trim() === latestMessageId &&
+      (localRead || chat.readBy?.[viewerId] === true)
+    ) {
+      readMessageIdMatch = true;
+    }
+  }
+
   let computedPending = false;
   let reason = "not-incoming";
 
@@ -121,11 +138,15 @@ export function computeThreadPendingForViewer(
     reason = "exact-detail-open";
   } else if (!incoming || isOwnLatestMessage) {
     reason = isOwnLatestMessage ? "latest-own" : "not-incoming";
+  } else if (localRead || readMessageIdMatch) {
+    // Prefer exact rendered/local read over stale server unreadCounts that can
+    // arrive after markChatAsRead when the sender's outbound meta is late.
+    reason = localRead
+      ? "local-read-current-activity"
+      : "latest-read-message-id-match";
   } else if (serverUnreadSignal) {
     computedPending = true;
     reason = "server-unread-signal";
-  } else if (localRead) {
-    reason = "local-read-current-activity";
   } else if (latestAt > 0 && latestAt > readAt) {
     computedPending = true;
     reason = "latest-after-read";

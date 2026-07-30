@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
+import { postAdminAction } from "@/lib/admin/postAdminAction";
 import {
   filterAdminReports,
   isFakeProfileReport,
@@ -366,19 +367,12 @@ export default function AdminReportsPanel({
 
     setBusyId(report.id);
     try {
-      const res = await fetch("/api/admin/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          uid: report.targetUid,
-          adminEmail: auth.currentUser?.email || "",
-          note: report.detalle || "",
-        }),
+      const json = await postAdminAction(auth.currentUser?.email || "", {
+        action,
+        uid: report.targetUid,
+        note: report.detalle || "",
       });
-
-      const json = await res.json();
-      if (!res.ok || !json?.ok) {
+      if (!json?.ok) {
         throw new Error(String(json?.error || "action_failed"));
       }
 

@@ -162,6 +162,8 @@ export default function ClassicChatsInbox({
           hasChats={sortedChats.length > 0}
           deleting={selection.deleting}
           confirmOpen={selection.confirmOpen}
+          chats={sortedChats}
+          uid={uid}
           onEnterSelection={selection.enterSelectionMode}
           onExitSelection={selection.exitSelectionMode}
           onToggleSelectAll={selection.toggleSelectAll}

@@ -65,7 +65,11 @@ import {
 } from "@/lib/chat/profileAnonMessageAuthor";
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { isProfileAnonMessageUnreadForViewer } from "@/lib/chat/incomingChatActivity";
-import { inboxChatFromFirestore, markChatAsRead } from "@/lib/chat/unread";
+import {
+  inboxChatFromFirestore,
+  markThreadReadExact,
+} from "@/lib/chat/unread";
+import { isExactActiveDetailThread } from "@/lib/chat/shouldMarkThreadRead";
 import {
   formatAnonSessionLabel,
 } from "@/lib/chat/inboxPeerTitle";
@@ -464,7 +468,15 @@ export default function ProfileAnonChat({
         : pathname;
     const activeMatch = livePath.match(/\/chat\/([^/?#]+)/);
     const activeChatId = activeMatch ? decodeURIComponent(activeMatch[1]) : "";
-    if (activeChatId !== ctx.chatId) return;
+    const canonicalThreadId = chat.canonicalChatId || ctx.chatId;
+    if (
+      !isExactActiveDetailThread(activeChatId, ctx.chatId, [
+        canonicalThreadId,
+        chat.id,
+      ])
+    ) {
+      return;
+    }
     // List route must never clear unread (manual QA: list-open no-clear).
     if (livePath === "/chats" || livePath.startsWith("/chats/")) return;
 
@@ -476,7 +488,7 @@ export default function ProfileAnonChat({
     const messageViewerId = ownerViewing ? ctx.currentUid : senderId;
 
     if (!messageViewerId) return;
-    const readKey = `${ctx.chatId}:${messageViewerId}:${renderedMessageId}`;
+    const readKey = `${canonicalThreadId}:${messageViewerId}:${renderedMessageId}`;
     if (lastReadRenderedKeyRef.current === readKey) return;
     lastReadRenderedKeyRef.current = readKey;
 
@@ -488,14 +500,42 @@ export default function ProfileAnonChat({
         );
         window.sessionStorage.setItem(
           "sayittome_qa_clear_read_thread",
-          ctx.chatId,
+          canonicalThreadId,
         );
       } catch {
         /* ignore */
       }
     }
 
-    void markChatAsRead(ctx.chatId, messageViewerId, chat, ctx.currentUid).catch(() => {
+    // Optimistic meta so leaving detail immediately reflects read before the
+    // Firestore snapshot round-trip (and survives late sender unread dirty).
+    chatMetaRef.current = {
+      ...chat,
+      canonicalChatId: canonicalThreadId,
+      latestMessageId: renderedMessageId,
+      latestReadMessageId: renderedMessageId,
+      latestReadMessageIds: {
+        ...(chat.latestReadMessageIds || {}),
+        [messageViewerId]: renderedMessageId,
+      },
+      unreadCounts: {
+        ...(chat.unreadCounts || {}),
+        [messageViewerId]: 0,
+      },
+      readBy: {
+        ...(chat.readBy || {}),
+        [messageViewerId]: true,
+      },
+    };
+
+    void markThreadReadExact(
+      canonicalThreadId,
+      renderedMessageId,
+      "detail-rendered",
+      messageViewerId,
+      chatMetaRef.current,
+      ctx.currentUid,
+    ).catch(() => {
       if (lastReadRenderedKeyRef.current === readKey) {
         lastReadRenderedKeyRef.current = "";
       }

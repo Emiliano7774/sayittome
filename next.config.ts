@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_SHA: resolveBuildSha(),
   },
+  serverExternalPackages: ["firebase-admin"],
   images: {
     remotePatterns: [
       {

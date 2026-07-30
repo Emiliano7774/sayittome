@@ -41,6 +41,8 @@ export type InboxChat = {
   latestMessageId?: string;
   latestSenderKind?: string;
   latestSenderAnonSessionId?: string;
+  latestReadMessageId?: string;
+  latestReadMessageIds?: Record<string, string>;
   lastMessageAt?: { toMillis?: () => number };
   readBy?: Record<string, boolean>;
   readAt?: Record<string, unknown>;

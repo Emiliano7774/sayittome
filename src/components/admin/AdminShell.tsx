@@ -197,15 +197,8 @@ export function useAdminApi() {
       "x-admin-email": email,
     },
     async postAction(payload: Record<string, unknown>) {
-      const res = await fetch("/api/admin/action", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-email": email,
-        },
-        body: JSON.stringify({ ...payload, adminEmail: email }),
-      });
-      return res.json();
+      const { postAdminAction } = await import("@/lib/admin/postAdminAction");
+      return postAdminAction(email, payload);
     },
   };
 }

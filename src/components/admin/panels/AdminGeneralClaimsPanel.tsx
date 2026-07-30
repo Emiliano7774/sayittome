@@ -18,6 +18,7 @@ import AdminEvidenceMedia from "@/components/admin/AdminEvidenceMedia";
 import AdminUndoButton from "@/components/admin/AdminUndoButton";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
+import { postAdminAction } from "@/lib/admin/postAdminAction";
 import { parseReportCreatedAtMs, sortReportsNewestFirst } from "@/lib/admin/reportSort";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -243,19 +244,14 @@ export default function AdminGeneralClaimsPanel() {
     setReplyBusyId(claim.id);
     setReplyErrorId("");
     try {
-      const res = await fetch("/api/admin/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "reply_general_claim",
-          claimId: claim.id,
-          uid: claim.uid || "",
-          replyText,
-          adminEmail: auth.currentUser?.email || "",
-        }),
+      const email = auth.currentUser?.email || "";
+      const json = await postAdminAction(email, {
+        action: "reply_general_claim",
+        claimId: claim.id,
+        uid: claim.uid || "",
+        replyText,
       });
-      const json = await res.json();
-      if (!res.ok || !json?.ok) {
+      if (!json?.ok) {
         throw new Error(String(json?.error || "reply_failed"));
       }
       setReplyDrafts((prev) => ({ ...prev, [claim.id]: "" }));

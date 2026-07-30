@@ -130,9 +130,17 @@ check(
 );
 check(
   "DETAIL_ONLY_LIVE_PATH_MARK_READ",
-  profileChatSrc.includes("activeChatId !== ctx.chatId") &&
+  (profileChatSrc.includes("isExactActiveDetailThread") ||
+    profileChatSrc.includes("activeChatId !== ctx.chatId")) &&
     profileChatSrc.includes("List route must never clear unread") &&
     profileChatSrc.includes("Do NOT mark-read on unmount/cleanup"),
+);
+check(
+  "PENDING_PREFERS_LOCAL_READ_OVER_SERVER_UNREAD",
+  pendingSrc.includes("localRead || readMessageIdMatch") &&
+    pendingSrc.includes("local-read-current-activity") &&
+    pendingSrc.indexOf("localRead || readMessageIdMatch") <
+      pendingSrc.indexOf('reason = "server-unread-signal"'),
 );
 check(
   "PENDING_FALLBACK_USES_LATEST_AFTER_READ",

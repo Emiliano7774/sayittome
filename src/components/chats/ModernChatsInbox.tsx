@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Check, CheckCheck, MessageSquare } from "lucide-react";
 
 import ChatInboxLink from "@/components/chats/ChatInboxLink";
+import ChatsMarkAllSeenButton from "@/components/chats/ChatsMarkAllSeenButton";
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
 } from "@/components/chats/ChatsSelectionToolbar";
@@ -51,6 +52,8 @@ export default function ModernChatsInbox({
             hasChats={sortedChats.length > 0}
             deleting={selection.deleting}
             confirmOpen={selection.confirmOpen}
+            chats={sortedChats}
+            uid={uid}
             onEnterSelection={selection.enterSelectionMode}
             onExitSelection={selection.exitSelectionMode}
             onToggleSelectAll={selection.toggleSelectAll}
@@ -67,14 +70,21 @@ export default function ModernChatsInbox({
             title={t("chats_title")}
             subtitle={t("chats_subtitle")}
             actions={
-              <button
-                type="button"
-                onClick={selection.enterSelectionMode}
-                disabled={sortedChats.length === 0}
-                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-violet-300 disabled:opacity-35"
-              >
-                {t("chats_select")}
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <ChatsMarkAllSeenButton
+                  chats={sortedChats}
+                  uid={uid}
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-violet-300 disabled:opacity-35"
+                />
+                <button
+                  type="button"
+                  onClick={selection.enterSelectionMode}
+                  disabled={sortedChats.length === 0}
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-black text-violet-300 disabled:opacity-35"
+                >
+                  {t("chats_select")}
+                </button>
+              </div>
             }
           />
         )}

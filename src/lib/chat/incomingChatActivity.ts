@@ -219,11 +219,13 @@ export function isIncomingChatActivity(
 }
 
 export function chatActivityKey(chat: InboxChat) {
+  // Prefer stable latestMessageId — lastMessageAt mutates when serverTimestamp
+  // resolves and previously invalidated local read markers (bold stuck).
+  const latestMessageId = String(chat.latestMessageId || "").trim();
+  if (latestMessageId) return `id:${latestMessageId}`;
   return [
-    chat.latestMessageId || "",
     chat.lastMessage || "",
     chat.lastMessageSender || "",
-    chat.lastMessageAt?.toMillis?.() ?? chat.updatedAt?.toMillis?.() ?? 0,
   ].join("|");
 }
 

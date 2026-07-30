@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { writeAdminLog } from "@/lib/admin/adminLogs";
 import { assertAdminEmail, getAdminEmailFromRequest } from "@/lib/admin/isAdmin";
+import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
 import {
   createFirestoreDoc,
   deleteFirestoreDoc,
@@ -13,6 +14,25 @@ import {
 import { deleteOrphanProfile } from "@/lib/profile/cleanupOrphans";
 
 export const dynamic = "force-dynamic";
+
+async function resolveAdminEmail(req: Request, body: Record<string, unknown>) {
+  // Prefer verified ID token. Fall back to legacy email header only when the
+  // token verifier is unavailable (local/dev without ADC) AND the claim email
+  // matches the allowlist — production Hosting/SSR must use tokens.
+  try {
+    const verified = await verifyAdminIdToken(req);
+    return verified.email;
+  } catch (error) {
+    const status = Number((error as { status?: number })?.status || 401);
+    const message = String((error as Error)?.message || "");
+    if (message === "admin_auth_unavailable") {
+      const legacy = getAdminEmailFromRequest(req, body);
+      assertAdminEmail(legacy);
+      return legacy;
+    }
+    throw Object.assign(new Error(message || "forbidden"), { status });
+  }
+}
 
 async function disableUserStories(uid: string, adminEmail: string) {
   const stories = await runCollectionQuery("historias", 500);
@@ -41,8 +61,16 @@ async function disableUserStories(uid: string, adminEmail: string) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const adminEmail = getAdminEmailFromRequest(req, body);
-    assertAdminEmail(adminEmail);
+    let adminEmail = "";
+    try {
+      adminEmail = await resolveAdminEmail(req, body);
+    } catch (error) {
+      const status = Number((error as { status?: number })?.status || 403);
+      return NextResponse.json(
+        { ok: false, error: String((error as Error)?.message || "forbidden") },
+        { status },
+      );
+    }
 
     const action = String(body?.action || "");
     const uid = String(body?.uid || "");
@@ -224,6 +252,15 @@ export async function POST(req: Request) {
         );
       }
 
+      const existing = await getFirestoreDoc("reclamos_perfil_rol", claimId);
+      if (!existing) {
+        return NextResponse.json(
+          { ok: false, error: "claim_not_found" },
+          { status: 404 },
+        );
+      }
+
+      const recipientUid = claimUid || String(existing.uid || "").trim();
       const repliedAt = new Date().toISOString();
       await patchFirestoreDoc("reclamos_perfil_rol", claimId, {
         adminReply: replyText,
@@ -232,16 +269,25 @@ export async function POST(req: Request) {
         estado: "respondido",
         reviewedAt: repliedAt,
         reviewedBy: adminEmail,
+        claimId,
+        recipientUid,
       });
 
-      if (claimUid) {
-        await patchFirestoreDoc("usuarios", claimUid, {
+      if (recipientUid) {
+        await patchFirestoreDoc("usuarios", recipientUid, {
           lastAdminClaimReply: replyText,
           lastAdminClaimReplyAt: repliedAt,
           lastAdminClaimId: claimId,
           lastAdminClaimReplyRead: false,
         });
       }
+
+      await writeAdminLog({
+        adminEmail,
+        action: "reply_general_claim",
+        targetUid: recipientUid || "",
+        metadata: { claimId, replyLength: replyText.length },
+      });
     } else if (action === "cleanup_orphan_profiles") {
       const { cleanupOrphanProfiles } = await import("@/lib/profile/cleanupOrphans");
       const result = await cleanupOrphanProfiles(adminEmail, {

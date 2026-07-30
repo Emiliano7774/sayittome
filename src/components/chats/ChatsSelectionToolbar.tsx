@@ -2,7 +2,9 @@
 
 import { Check, Trash2, X } from "lucide-react";
 
+import ChatsMarkAllSeenButton from "@/components/chats/ChatsMarkAllSeenButton";
 import { useT } from "@/contexts/LocaleContext";
+import type { InboxChat } from "@/hooks/useChatsInbox";
 
 type Props = {
   variant: "classic" | "modern";
@@ -12,6 +14,8 @@ type Props = {
   hasChats: boolean;
   deleting: boolean;
   confirmOpen: boolean;
+  chats?: InboxChat[];
+  uid?: string;
   onEnterSelection: () => void;
   onExitSelection: () => void;
   onToggleSelectAll: () => void;
@@ -28,6 +32,8 @@ export default function ChatsSelectionToolbar({
   hasChats,
   deleting,
   confirmOpen,
+  chats = [],
+  uid = "",
   onEnterSelection,
   onExitSelection,
   onToggleSelectAll,
@@ -94,14 +100,21 @@ export default function ChatsSelectionToolbar({
               {t("chats_title")}
             </p>
 
-            <button
-              type="button"
-              onClick={onEnterSelection}
-              disabled={!hasChats}
-              className={`rounded-full px-3 py-2 text-xs font-black ${accent} disabled:opacity-35`}
-            >
-              {t("chats_select")}
-            </button>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+              <ChatsMarkAllSeenButton
+                chats={chats}
+                uid={uid}
+                className={`rounded-full px-3 py-2 text-xs font-black ${accent} disabled:opacity-35`}
+              />
+              <button
+                type="button"
+                onClick={onEnterSelection}
+                disabled={!hasChats}
+                className={`rounded-full px-3 py-2 text-xs font-black ${accent} disabled:opacity-35`}
+              >
+                {t("chats_select")}
+              </button>
+            </div>
           </>
         )}
       </div>
