@@ -84,13 +84,13 @@ export default function ClassicHome() {
         <div className="grid flex-1 items-center gap-8 md:grid-cols-2 md:gap-12 md:py-12">
           <div className="order-2 md:order-1">
             <div className="flex flex-col gap-4 md:flex-row md:flex-wrap">
-              <Link
+              <a
                 href="/login"
                 className="flex h-20 flex-1 items-center justify-center gap-4 rounded-full bg-gradient-to-r from-[#5f58ff] to-[#7256ff] text-[15px] font-medium tracking-[-0.02em] shadow-[0_0_45px_rgba(105,82,255,0.48)] md:h-auto md:min-h-[3.5rem] md:px-8 md:py-4"
               >
                 <LoginIcon />
                 {t("home_classic_login")}
-              </Link>
+              </a>
 
               <Link
                 href="/register"

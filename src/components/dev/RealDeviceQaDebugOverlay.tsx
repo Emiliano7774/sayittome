@@ -21,11 +21,13 @@ import {
   installRealDeviceQaDebugCapture,
   isRealDeviceQaDebugEnabled,
   recordQaCriticalEvent,
+  setQaAuthDiagnosticState,
 } from "@/lib/qa/realDeviceQaDebug";
+import { auth } from "@/lib/firebase";
 
 export default function RealDeviceQaDebugOverlay() {
   const pathname = usePathname();
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, loading: authLoading } = useAuth();
   const { totalUnread, sortedChats, uid } = useChatAlerts();
   const [snap, setSnap] = useState<Record<string, unknown> | null>(null);
   const [copied, setCopied] = useState(false);
@@ -43,6 +45,14 @@ export default function RealDeviceQaDebugOverlay() {
     if (!enabled) return;
     const tick = () => {
       const firebaseUid = firebaseUser?.uid || uid || "";
+      setQaAuthDiagnosticState({
+        authCurrentUserUid: firebaseUser?.uid || null,
+        authReady: !authLoading,
+        authDomain: auth.app.options.authDomain || null,
+        currentHost: window.location.host,
+        popupAttempted: false,
+        redirectAttempted: false,
+      });
       const activeMatch = pathname.match(/\/chat\/([^/?#]+)/);
       const activeThreadId = activeMatch ? decodeURIComponent(activeMatch[1]) : "";
       const isListOpen = pathname === "/chats" || pathname.startsWith("/chats/");
@@ -156,7 +166,15 @@ export default function RealDeviceQaDebugOverlay() {
     tick();
     const id = window.setInterval(tick, 1200);
     return () => window.clearInterval(id);
-  }, [enabled, pathname, sortedChats, totalUnread, uid, firebaseUser?.uid]);
+  }, [
+    authLoading,
+    enabled,
+    pathname,
+    sortedChats,
+    totalUnread,
+    uid,
+    firebaseUser?.uid,
+  ]);
 
   if (!enabled) return null;
 
@@ -185,6 +203,30 @@ export default function RealDeviceQaDebugOverlay() {
       <div style={{ fontWeight: 700, marginBottom: 6 }}>qaDebug</div>
       <div>sha: {String(snap?.buildSha || "?")}</div>
       <div>path: {String(snap?.pathname || pathname)}</div>
+      <div>
+        auth:{" "}
+        {String(
+          ((snap as { auth?: { authReady?: boolean } } | null)?.auth || {})
+            .authReady,
+        )}
+        {" / "}
+        {String(
+          ((snap as { auth?: { authLastErrorCode?: string } } | null)?.auth || {})
+            .authLastErrorCode || "ok",
+        )}
+      </div>
+      <div>
+        pool:{" "}
+        {String(
+          ((snap as { shuffle?: { shufflePoolStatus?: string } } | null)
+            ?.shuffle || {}).shufflePoolStatus || "?",
+        )}
+        {" / "}
+        {String(
+          ((snap as { shuffle?: { shufflePoolCount?: number } } | null)
+            ?.shuffle || {}).shufflePoolCount ?? "?",
+        )}
+      </div>
       <div>black: {String((snap as { blackScreenHeuristic?: boolean } | null)?.blackScreenHeuristic)}</div>
       <div>
         shuffleVis:{" "}

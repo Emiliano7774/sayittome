@@ -84,6 +84,11 @@ import {
 } from "@/lib/stories/storiesIndexStore";
 import { markShuffleHydrated, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
 import {
+  recordQaCriticalEvent,
+  setQaShuffleDiagnosticState,
+} from "@/lib/qa/realDeviceQaDebug";
+import { hasShuffleLegalAcceptance } from "@/lib/legal/shuffleTerms";
+import {
   capturePinnedShuffleWindow,
   peekPinnedShuffleWindowCount,
   restorePinnedShuffleWindowSync,
@@ -623,6 +628,29 @@ export function useShufflePool() {
           ),
         );
         featuredRef.current = nextFeatured;
+        const qaPoolCount = dedupeShuffleProfiles([
+          ...nextProfiles,
+          ...nextFeatured,
+        ]).length;
+        setQaShuffleDiagnosticState({
+          shufflePoolStatus: qaPoolCount > 0 ? "ready" : "empty",
+          shufflePoolCount: qaPoolCount,
+          shuffleEmptyReason:
+            qaPoolCount > 0
+              ? null
+              : json?.error || "api-returned-no-profiles",
+          legalAccepted: hasShuffleLegalAcceptance(),
+          anonSessionReady: Boolean(getChatAnonSenderId()),
+          source: "same-origin-api",
+          site: window.location.hostname,
+        });
+        recordQaCriticalEvent("shuffle", "SHUFFLE_POOL_PARSED", {
+          poolCount: qaPoolCount,
+          emptyReason:
+            qaPoolCount > 0
+              ? null
+              : json?.error || "api-returned-no-profiles",
+        });
         const profilesCreated = Number(json?.profilesCreated ?? 0);
         const anonymousOnline = Number(json?.anonymousOnline ?? 0);
         const total =
@@ -667,6 +695,18 @@ export function useShufflePool() {
       } catch (error) {
         if ((error as Error)?.name !== "AbortError") {
           console.error(error);
+          setQaShuffleDiagnosticState({
+            shufflePoolStatus: "parse-or-load-error",
+            shufflePoolCount: poolRef.current.length,
+            shuffleLastApiError:
+              (error as Error)?.message || "Error cargando perfiles",
+            shuffleEmptyReason:
+              poolRef.current.length > 0
+                ? null
+                : "api-request-or-json-parse-failed",
+            anonSessionReady: Boolean(getChatAnonSenderId()),
+            site: window.location.hostname,
+          });
           if (mountedRef.current && poolRef.current.length === 0) {
             setErrorText((error as Error)?.message || "Error cargando perfiles");
             setLoading(false);

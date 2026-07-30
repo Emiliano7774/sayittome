@@ -12,6 +12,11 @@
  * next poll can refresh later). No new APIs.
  */
 
+import {
+  recordQaCriticalEvent,
+  setQaShuffleDiagnosticState,
+} from "@/lib/qa/realDeviceQaDebug";
+
 const SEARCH_TYPING_IDLE_MS = 2500;
 /** Extra sticky suppress after blur so remount mount-effects cannot race. */
 const SEARCH_BLUR_STICKY_MS = 2500;
@@ -255,7 +260,42 @@ export async function fetchShuffleApi(
     const err = new DOMException("Shuffle network suppressed during search typing", "AbortError");
     throw err;
   }
-  return fetch(input, init);
+  setQaShuffleDiagnosticState({
+    shufflePoolStatus: "loading",
+    shuffleLastApiUrl: input,
+    shuffleLastApiStatus: null,
+    shuffleLastApiError: null,
+  });
+  try {
+    const response = await fetch(input, init);
+    const contentType = response.headers.get("content-type") || "";
+    setQaShuffleDiagnosticState({
+      shufflePoolStatus: response.ok ? "response" : "http-error",
+      shuffleLastApiUrl: input,
+      shuffleLastApiStatus: response.status,
+      shuffleLastApiContentType: contentType,
+      shuffleLastApiError: response.ok ? null : `HTTP ${response.status}`,
+    });
+    recordQaCriticalEvent("shuffle", "SHUFFLE_API_RESPONSE", {
+      url: input,
+      status: response.status,
+      contentType,
+    });
+    return response;
+  } catch (error) {
+    const message = String((error as Error)?.message || error || "fetch failed");
+    setQaShuffleDiagnosticState({
+      shufflePoolStatus: "network-error",
+      shuffleLastApiUrl: input,
+      shuffleLastApiStatus: null,
+      shuffleLastApiError: message,
+    });
+    recordQaCriticalEvent("shuffle", "SHUFFLE_API_ERROR", {
+      url: input,
+      message,
+    });
+    throw error;
+  }
 }
 
 export function getShuffleSearchTypingDebug() {

@@ -20,13 +20,53 @@ const QA_DEBUG_SESSION_KEY = "sayittome_qa_debug_session";
 const QA_EVENTS_KEY = "sayittome_qa_debug_events";
 const QA_EVENTS_CHANGED = "sayittome-qa-debug-events-changed";
 const QA_EVENT_LIMIT = 20;
+const QA_AUTH_STATE_KEY = "sayittome_qa_debug_auth";
+const QA_SHUFFLE_STATE_KEY = "sayittome_qa_debug_shuffle";
 
 export type QaCriticalEvent = {
   t: number;
-  channel: "nav" | "chat" | "runtime";
+  channel: "nav" | "chat" | "auth" | "shuffle" | "runtime";
   name: string;
   detail?: Record<string, unknown>;
 };
+
+function readQaState(key: string) {
+  if (typeof window === "undefined") return {};
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(key) || "{}");
+    return value && typeof value === "object" ? value as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function updateQaState(key: string, patch: Record<string, unknown>) {
+  if (typeof window === "undefined" || !isRealDeviceQaDebugEnabled()) return;
+  try {
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({ ...readQaState(key), ...patch, updatedAt: Date.now() }),
+    );
+  } catch {
+    /* diagnostics must never affect product behavior */
+  }
+}
+
+export function setQaAuthDiagnosticState(patch: Record<string, unknown>) {
+  updateQaState(QA_AUTH_STATE_KEY, patch);
+}
+
+export function setQaShuffleDiagnosticState(patch: Record<string, unknown>) {
+  updateQaState(QA_SHUFFLE_STATE_KEY, patch);
+}
+
+export function readQaAuthDiagnosticState() {
+  return readQaState(QA_AUTH_STATE_KEY);
+}
+
+export function readQaShuffleDiagnosticState() {
+  return readQaState(QA_SHUFFLE_STATE_KEY);
+}
 
 function queryExplicitlyEnablesQaDebug() {
   const params = new URLSearchParams(window.location.search);
@@ -90,6 +130,26 @@ export function installRealDeviceQaDebugCapture() {
   recordQaCriticalEvent("runtime", "QA_DEBUG_CAPTURE_INSTALLED", {
     pathname: window.location.pathname,
   });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const loginLink = target.closest('a[href^="/login"]');
+    if (!loginLink) return;
+    const previous = readQaAuthDiagnosticState();
+    const authClickCount = Number(previous.authClickCount || 0) + 1;
+    setQaAuthDiagnosticState({
+      authClickCount,
+      authLastAction: "root-login-link-click",
+      currentHost: window.location.host,
+      popupAttempted: false,
+      redirectAttempted: false,
+    });
+    recordQaCriticalEvent("auth", "AUTH_LOGIN_LINK_CLICK", {
+      authClickCount,
+      href: loginLink.getAttribute("href"),
+    });
+  }, true);
 
   window.addEventListener("error", (event) => {
     fatalBuffer.push({
@@ -311,6 +371,8 @@ export function collectRealDeviceQaDiagnostics(
     consoleFatalCaptured: fatalBuffer.slice(-20),
     criticalEvents: readQaCriticalEvents(),
     swCacheBuild: swVersion,
+    auth: readQaAuthDiagnosticState(),
+    shuffle: readQaShuffleDiagnosticState(),
     chat: {
       anonSessionId: getChatAnonSenderId(),
       ...(chatExtras || {}),

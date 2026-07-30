@@ -13,6 +13,11 @@ import { mapLoginErrorCode } from "@/lib/auth/registerErrors";
 import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { auth } from "@/lib/firebase";
 import { useT } from "@/contexts/LocaleContext";
+import {
+  readQaAuthDiagnosticState,
+  recordQaCriticalEvent,
+  setQaAuthDiagnosticState,
+} from "@/lib/qa/realDeviceQaDebug";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,6 +31,15 @@ export default function LoginPage() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
+      setQaAuthDiagnosticState({
+        authCurrentUserUid: user?.uid || null,
+        authReady: true,
+        authDomain: auth.app.options.authDomain || null,
+        currentHost: window.location.host,
+      });
+      recordQaCriticalEvent("auth", "AUTH_STATE_CHANGED", {
+        authenticated: Boolean(user),
+      });
       if (!user) {
         setChecking(false);
         return;
@@ -43,6 +57,19 @@ export default function LoginPage() {
 
     setError("");
     setLoading(true);
+    const previous = readQaAuthDiagnosticState();
+    const authClickCount = Number(previous.authClickCount || 0) + 1;
+    setQaAuthDiagnosticState({
+      authClickCount,
+      authLastAction: "email-password-submit",
+      authLastErrorCode: null,
+      authLastErrorMessage: null,
+      popupAttempted: false,
+      redirectAttempted: false,
+      authDomain: auth.app.options.authDomain || null,
+      currentHost: window.location.host,
+    });
+    recordQaCriticalEvent("auth", "AUTH_LOGIN_SUBMIT", { authClickCount });
 
     try {
       const cred = await signInWithEmailAndPassword(
@@ -55,10 +82,29 @@ export default function LoginPage() {
         cred.user.uid,
         cred.user.emailVerified,
       );
+      setQaAuthDiagnosticState({
+        authLastAction: "email-password-success",
+        authCurrentUserUid: cred.user.uid,
+        authReady: true,
+      });
+      recordQaCriticalEvent("auth", "AUTH_LOGIN_SUCCESS", {
+        next,
+      });
       router.replace(next);
     } catch (err: unknown) {
       const code = String((err as { code?: string })?.code || "");
+      const message = String((err as { message?: string })?.message || "Unknown auth error");
       setError(t(mapLoginErrorCode(code)));
+      setQaAuthDiagnosticState({
+        authLastAction: "email-password-error",
+        authLastErrorCode: code || "unknown",
+        authLastErrorMessage: message,
+        authReady: true,
+      });
+      recordQaCriticalEvent("auth", "AUTH_LOGIN_ERROR", {
+        code: code || "unknown",
+        message,
+      });
     } finally {
       setLoading(false);
     }
