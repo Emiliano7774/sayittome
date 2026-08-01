@@ -1919,6 +1919,7 @@ export default function ProfileAnonChat({
                       url={message.mediaUrl}
                       staticRequiresBlur={messageRequiresBlur(message)}
                       message={message}
+                      enableRuntimeScan={false}
                       className="inline-block"
                     >
                       <button
@@ -1943,6 +1944,7 @@ export default function ProfileAnonChat({
                       mediaType="video"
                       staticRequiresBlur={messageRequiresBlur(message)}
                       message={message}
+                      enableRuntimeScan={false}
                       className="inline-block"
                     >
                       <video

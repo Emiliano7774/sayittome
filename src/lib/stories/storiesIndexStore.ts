@@ -127,7 +127,13 @@ function indexGroups(groups: StoryUserGroup[]) {
     if (group.ownerUsername) {
       byUsername.set(group.ownerUsername.toLowerCase(), group);
     }
-    preloadStoryGroup(group, 1);
+  }
+
+  // Speculative first-media preload only for the first few tray/mosaic rows.
+  // Preloading EVERY group on index materialization was a major Storage egress driver.
+  const speculativeLimit = 4;
+  for (let i = 0; i < Math.min(speculativeLimit, groups.length); i += 1) {
+    preloadStoryGroup(groups[i], 1, { videoPreload: "metadata" });
   }
 }
 
@@ -196,7 +202,7 @@ export function subscribeStoriesIndex(listener: () => void) {
 
 export function prefetchOwnerStories(ownerUid?: string, username?: string) {
   const group = getStoryGroup(ownerUid, username);
-  if (group) preloadStoryGroup(group, 2);
+  if (group) preloadStoryGroup(group, 1, { videoPreload: "metadata" });
   return group;
 }
 
@@ -218,14 +224,14 @@ export function getPreviousStoryGroup(currentOwnerUid: string) {
   return groups[index - 1] || null;
 }
 
-export function prefetchUpcomingStoryGroups(currentOwnerUid: string, count = 2) {
+export function prefetchUpcomingStoryGroups(currentOwnerUid: string, count = 1) {
   const groups = cachedGroups;
   const index = groups.findIndex((group) => group.ownerUid === currentOwnerUid);
   if (index < 0) return;
 
   for (let offset = 1; offset <= count; offset += 1) {
     const upcoming = groups[index + offset];
-    if (upcoming) preloadStoryGroup(upcoming, 3);
+    if (upcoming) preloadStoryGroup(upcoming, 1, { videoPreload: "metadata" });
   }
 }
 

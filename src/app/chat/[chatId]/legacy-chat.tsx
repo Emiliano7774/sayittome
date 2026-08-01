@@ -406,6 +406,7 @@ export default function LegacyChatPage() {
 
       const uploadTask = uploadBytesResumable(storageRef, blob, {
         contentType,
+        cacheControl: "public,max-age=31536000,immutable",
       });
 
       const downloadUrl = await new Promise<string>((resolve, reject) => {

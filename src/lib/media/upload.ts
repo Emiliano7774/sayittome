@@ -5,6 +5,8 @@
   uploadBytesResumable,
 } from "firebase/storage";
 
+import { storageUploadMetadata } from "@/lib/media/storageCacheControl";
+
 export async function uploadMedia(
   path: string,
   file: Blob,
@@ -25,7 +27,7 @@ export async function uploadMedia(
     uploadBytesResumable(
       storageRef,
       file,
-      contentType ? { contentType } : undefined,
+      contentType ? storageUploadMetadata(contentType) : undefined,
     );
 
   await new Promise<void>(

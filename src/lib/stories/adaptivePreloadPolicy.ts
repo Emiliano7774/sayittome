@@ -13,9 +13,9 @@ export function resolveAdaptivePreloadLimits(): AdaptivePreloadLimits {
     return {
       tier: "balanced",
       decodeAhead: 1,
-      fetchAhead: 2,
+      fetchAhead: 1,
       upcomingUserFirstMedia: 1,
-      videoSpeculative: true,
+      videoSpeculative: false,
     };
   }
 
@@ -40,18 +40,20 @@ export function resolveAdaptivePreloadLimits(): AdaptivePreloadLimits {
     return {
       tier: "balanced",
       decodeAhead: 1,
-      fetchAhead: 2,
+      fetchAhead: 1,
       upcomingUserFirstMedia: 1,
       videoSpeculative: false,
     };
   }
 
+  // Even on fast networks, speculative video preload=auto was a major egress source.
+  // Keep one image/video-metadata ahead; front buffer still uses auto for the active story.
   return {
     tier: "aggressive",
-    decodeAhead: 2,
-    fetchAhead: 2,
-    upcomingUserFirstMedia: 2,
-    videoSpeculative: true,
+    decodeAhead: 1,
+    fetchAhead: 1,
+    upcomingUserFirstMedia: 1,
+    videoSpeculative: false,
   };
 }
 

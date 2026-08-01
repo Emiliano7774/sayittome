@@ -443,7 +443,7 @@ export function useShufflePool() {
         regularCount,
         forceReplace,
       );
-      warmShuffleImages(shownProfiles, SHUFFLE_WINDOW_SIZE, { urgent: forceReplace });
+      warmShuffleImages(shownProfiles, 12, { urgent: forceReplace });
       setListReady(true);
       markShuffleHydrated(shownProfiles.length);
     },
@@ -471,7 +471,7 @@ export function useShufflePool() {
       setTotalLive(total > 0 ? total : profiles.length);
       setLoading(false);
       setErrorText("");
-      warmShuffleImages(profiles, 24, { urgent: true });
+      warmShuffleImages(profiles, 8, { urgent: true });
     },
     [],
   );

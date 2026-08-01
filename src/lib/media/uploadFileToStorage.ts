@@ -14,6 +14,7 @@ import {
   resolveUploadContentType,
   type MediaFileKind,
 } from "@/lib/media/fileKind";
+import { storageUploadMetadata } from "@/lib/media/storageCacheControl";
 import { storage } from "@/lib/firebase";
 
 type UploadOptions = {
@@ -88,7 +89,11 @@ export async function uploadFileToStorage({
   const storageRef = ref(storage, path);
 
   await new Promise<void>((resolve, reject) => {
-    const task = uploadBytesResumable(storageRef, file, { contentType });
+    const task = uploadBytesResumable(
+      storageRef,
+      file,
+      storageUploadMetadata(contentType),
+    );
 
     task.on(
       "state_changed",

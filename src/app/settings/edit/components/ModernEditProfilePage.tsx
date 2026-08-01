@@ -180,13 +180,17 @@ export default function ModernEditProfilePage() {
             : "gallery";
     const path = `usuarios/${user.uid}/fotos/${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
+    const { compressImageForUpload } = await import("@/lib/media/compressImageForUpload");
+    const uploadFile =
+      kind === "image" ? await compressImageForUpload(file, { maxEdge: 1600, quality: 0.82 }) : file;
+
     const url = await uploadFileToStorage({
       path,
-      file,
+      file: uploadFile,
       kind,
       requireRegisteredUser: true,
     });
-    scheduleProfileMediaScan(user.uid, url, file);
+    scheduleProfileMediaScan(user.uid, url, uploadFile);
     return { url, type: kind, path, source };
   }
 

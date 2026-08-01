@@ -135,9 +135,15 @@ export default function NewStoryPage() {
 
         const path = `${storageFolder}/${Date.now()}-${safeName}`;
 
+        const { compressImageForUpload } = await import("@/lib/media/compressImageForUpload");
+        const uploadFile =
+          kind === "image"
+            ? await compressImageForUpload(file, { maxEdge: 1920, quality: 0.84 })
+            : file;
+
         mediaUrl = await uploadFileToStorage({
           path,
-          file,
+          file: uploadFile,
           kind,
           onProgress: setUploadProgress,
           allowAnonymousAuth: author.isAnonymousStory,
@@ -145,8 +151,8 @@ export default function NewStoryPage() {
         });
 
         mediaType = kind;
-        mediaName = file.name;
-        mediaSize = file.size;
+        mediaName = uploadFile.name;
+        mediaSize = uploadFile.size;
         storedMediaSource = mediaSource;
       }
 

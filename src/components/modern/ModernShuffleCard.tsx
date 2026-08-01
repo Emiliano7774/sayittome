@@ -123,16 +123,9 @@ function ModernShuffleCard({
                   ].join(" ")}
                 >
                   {profile.photo ? (
-                    <img
-                      src={profile.photo}
-                      alt=""
-                      loading={photoLoading}
-                      decoding="async"
-                      className={[
-                        "h-full w-full object-cover",
-                        profile.blurPhoto ? "scale-110 blur-2xl" : "",
-                      ].join(" ")}
-                    />
+                    <span className="text-lg font-black uppercase text-black/55">
+                      {String(profile.username || "?").slice(0, 1)}
+                    </span>
                   ) : (
                     <UserRound size={28} className="text-black/45" strokeWidth={1.75} />
                   )}

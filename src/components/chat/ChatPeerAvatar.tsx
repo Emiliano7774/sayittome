@@ -95,7 +95,7 @@ export default function ChatPeerAvatar({
   variant = "modern",
   anonAvatar = false,
   anonKey = "",
-  enablePhotoScan = true,
+  enablePhotoScan = false,
 }: Props) {
   const showAnonAvatar = anonAvatar && !photo;
   const resolvedAnonKey = anonKey || username || "anon";

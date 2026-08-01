@@ -206,7 +206,7 @@ export default function StoryMediaBuffers({
             autoPlay={backVisible}
             playsInline
             muted
-            preload="auto"
+            preload={backVisible ? "auto" : "metadata"}
             onCanPlay={markBackReady}
             onPlaying={markBackReady}
           />

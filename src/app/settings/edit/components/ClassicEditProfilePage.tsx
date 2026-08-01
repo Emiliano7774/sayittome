@@ -272,9 +272,13 @@ export default function ClassicEditProfilePage() {
 
         setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
 
+        const { compressImageForUpload } = await import("@/lib/media/compressImageForUpload");
+        const uploadFile =
+          kind === "image" ? await compressImageForUpload(file, { maxEdge: 1600, quality: 0.82 }) : file;
+
         const url = await uploadFileToStorage({
           path,
-          file,
+          file: uploadFile,
           kind,
           requireRegisteredUser: true,
         });
