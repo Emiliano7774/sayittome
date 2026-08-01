@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Static guards for Storage egress mitigations.
- * Fails if high-risk patterns regress.
+ * Static guards for Storage egress mitigations + safe cache policy.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,20 +18,26 @@ function assert(cond, msg) {
 
 const uploadHelper = read("src/lib/media/uploadFileToStorage.ts");
 assert(
-  uploadHelper.includes("storageUploadMetadata"),
-  "uploadFileToStorage must apply storageUploadMetadata/cacheControl",
+  uploadHelper.includes("storageUploadMetadata(contentType, path, cache)"),
+  "uploadFileToStorage must apply path-aware cache metadata",
 );
 
 const uploadChat = read("src/lib/media/upload.ts");
-assert(
-  uploadChat.includes("storageUploadMetadata"),
-  "upload.ts must apply storageUploadMetadata/cacheControl",
-);
+assert(uploadChat.includes("storageUploadMetadata"), "upload.ts must apply cache metadata");
+assert(uploadChat.includes("viewOnce"), "upload.ts must support viewOnce cache category");
 
 const cacheControl = read("src/lib/media/storageCacheControl.ts");
 assert(
   cacheControl.includes("public,max-age=31536000,immutable"),
-  "immutable cacheControl constant missing",
+  "profile immutable cacheControl constant missing",
+);
+assert(cacheControl.includes("private,no-store"), "private/no-store policy missing");
+assert(cacheControl.includes("CHAT_CACHE_CONTROL"), "chat private cache policy missing");
+assert(
+  !/export function storageUploadMetadata\(\s*contentType: string\s*\)\s*\{[\s\S]*IMMUTABLE_STORAGE_CACHE_CONTROL/.test(
+    cacheControl,
+  ),
+  "global public immutable helper must not remain",
 );
 
 const indexStore = read("src/lib/stories/storiesIndexStore.ts");
@@ -71,20 +76,39 @@ assert(
 
 const chat = read("src/components/chat/ProfileAnonChat.tsx");
 assert(
-  (chat.match(/enableRuntimeScan=\{false\}/g) || []).length >= 2,
-  "chat media shells must disable runtime NSFW double-fetch",
+  chat.includes("enableRuntimeScan={!message.viewOnce}"),
+  "chat must scan non-view-once media",
 );
+assert(
+  chat.includes("{ viewOnce: previewViewOnce }"),
+  "chat uploads must pass viewOnce into storage cache policy",
+);
+
+const avatar = read("src/components/chat/ChatPeerAvatar.tsx");
+assert(avatar.includes("enablePhotoScan = true"), "avatar NSFW scan must remain on");
+
+const detector = read("src/lib/moderation/nsfwDetector.ts");
+assert(detector.includes("findLoadedMediaElement"), "NSFW must reuse DOM media");
+assert(detector.includes("waitForDomMedia"), "NSFW must wait for rendered media");
 
 const modernCard = read("src/components/modern/ModernShuffleCard.tsx");
 assert(
-  !/<img[\s\S]{0,120}profile\.photo[\s\S]{0,200}profile\.photo/.test(modernCard),
+  !/<img[\s\S]{0,120}profile\.photo[\s\S]{0,200}<img[\s\S]{0,80}profile\.photo/.test(modernCard),
   "ModernShuffleCard must not render two img tags for the same photo",
 );
 
 const compress = read("src/lib/media/compressImageForUpload.ts");
 assert(
-  compress.includes("maxEdge") && compress.includes("toBlob"),
-  "profile image compressor helper missing",
+  compress.includes("maxEdge") &&
+    compress.includes("toBlob") &&
+    compress.includes("image/heic"),
+  "profile image compressor helper incomplete",
+);
+
+const legacy = read("src/app/chat/[chatId]/legacy-chat.tsx");
+assert(
+  legacy.includes('cacheControl: "private,max-age=86400"'),
+  "legacy chat must use private cache",
 );
 
 if (fails.length) {
@@ -98,12 +122,13 @@ console.log(
     {
       ok: true,
       guards: [
-        "upload_cache_control",
+        "path_aware_cache_control",
+        "private_chat_and_evidence",
         "stories_index_bounded_preload",
         "shuffle_warm_budget",
         "adaptive_no_video_speculative",
         "story_back_metadata",
-        "chat_no_runtime_scan_double_fetch",
+        "nsfw_dom_reuse_enabled",
         "modern_card_no_double_img",
         "profile_image_compressor",
       ],

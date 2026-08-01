@@ -5,58 +5,42 @@
   uploadBytesResumable,
 } from "firebase/storage";
 
-import { storageUploadMetadata } from "@/lib/media/storageCacheControl";
+import {
+  storageUploadMetadata,
+  type StorageCacheOptions,
+} from "@/lib/media/storageCacheControl";
 
 export async function uploadMedia(
   path: string,
   file: Blob,
-  onProgress?: (
-    pct: number,
-  ) => void,
+  onProgress?: (pct: number) => void,
   contentType?: string,
+  cache?: StorageCacheOptions,
 ) {
-  const storage =
-    getStorage();
+  const storage = getStorage();
+  const storageRef = ref(storage, path);
 
-  const storageRef = ref(
-    storage,
-    path,
-  );
-
-  const task =
-    uploadBytesResumable(
-      storageRef,
-      file,
-      contentType ? storageUploadMetadata(contentType) : undefined,
-    );
-
-  await new Promise<void>(
-    (resolve, reject) => {
-      task.on(
-        "state_changed",
-
-        (snapshot) => {
-          const pct =
-            Math.round(
-              (
-                snapshot.bytesTransferred /
-                snapshot.totalBytes
-              ) * 100,
-            );
-
-          onProgress?.(pct);
-        },
-
-        reject,
-
-        () => resolve(),
-      );
-    },
-  );
-
-  return getDownloadURL(
+  const task = uploadBytesResumable(
     storageRef,
+    file,
+    contentType ? storageUploadMetadata(contentType, path, cache) : undefined,
   );
+
+  await new Promise<void>((resolve, reject) => {
+    task.on(
+      "state_changed",
+      (snapshot) => {
+        const pct = Math.round(
+          (snapshot.bytesTransferred / snapshot.totalBytes) * 100,
+        );
+        onProgress?.(pct);
+      },
+      reject,
+      () => resolve(),
+    );
+  });
+
+  return getDownloadURL(storageRef);
 }
 
 export async function uploadChatMessageMedia(
@@ -65,9 +49,9 @@ export async function uploadChatMessageMedia(
   file: Blob,
   kind: "image" | "video" | "audio",
   onProgress?: (pct: number) => void,
+  options?: { viewOnce?: boolean },
 ) {
-  const ext =
-    kind === "audio" ? "webm" : kind === "video" ? "mp4" : "jpg";
+  const ext = kind === "audio" ? "webm" : kind === "video" ? "mp4" : "jpg";
   const contentType =
     file.type ||
     (kind === "audio"
@@ -76,10 +60,9 @@ export async function uploadChatMessageMedia(
         ? "video/mp4"
         : "image/jpeg");
 
-  return uploadMedia(
-    `chats/${chatId}/${clientId}_${ext}`,
-    file,
-    onProgress,
-    contentType,
-  );
+  const path = `chats/${chatId}/${clientId}_${ext}`;
+  return uploadMedia(path, file, onProgress, contentType, {
+    viewOnce: options?.viewOnce === true,
+    category: options?.viewOnce ? "view_once" : "chat",
+  });
 }

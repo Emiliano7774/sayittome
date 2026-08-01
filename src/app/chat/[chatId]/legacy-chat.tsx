@@ -406,7 +406,8 @@ export default function LegacyChatPage() {
 
       const uploadTask = uploadBytesResumable(storageRef, blob, {
         contentType,
-        cacheControl: "public,max-age=31536000,immutable",
+        // Chat paths are private-browser cache only; never shared/public.
+        cacheControl: "private,max-age=86400",
       });
 
       const downloadUrl = await new Promise<string>((resolve, reject) => {

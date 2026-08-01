@@ -14,7 +14,10 @@ import {
   resolveUploadContentType,
   type MediaFileKind,
 } from "@/lib/media/fileKind";
-import { storageUploadMetadata } from "@/lib/media/storageCacheControl";
+import {
+  storageUploadMetadata,
+  type StorageCacheOptions,
+} from "@/lib/media/storageCacheControl";
 import { storage } from "@/lib/firebase";
 
 type UploadOptions = {
@@ -26,6 +29,7 @@ type UploadOptions = {
   requireRegisteredUser?: boolean;
   /** Allow anonymous Firebase auth when no session exists (stories for visitors). */
   allowAnonymousAuth?: boolean;
+  cache?: StorageCacheOptions;
 };
 
 export function formatStorageUploadError(error: unknown): string {
@@ -73,6 +77,7 @@ export async function uploadFileToStorage({
   onProgress,
   requireRegisteredUser = false,
   allowAnonymousAuth = false,
+  cache,
 }: UploadOptions): Promise<string> {
   if (requireRegisteredUser) {
     await ensureRegisteredStorageAuth();
@@ -92,7 +97,7 @@ export async function uploadFileToStorage({
     const task = uploadBytesResumable(
       storageRef,
       file,
-      storageUploadMetadata(contentType),
+      storageUploadMetadata(contentType, path, cache),
     );
 
     task.on(

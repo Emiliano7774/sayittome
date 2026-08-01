@@ -1448,6 +1448,7 @@ export default function ProfileAnonChat({
         blob,
         previewType,
         (pct) => setUploadProgress(pct),
+        { viewOnce: previewViewOnce },
       );
 
       URL.revokeObjectURL(localPreviewUrl);
@@ -1919,7 +1920,7 @@ export default function ProfileAnonChat({
                       url={message.mediaUrl}
                       staticRequiresBlur={messageRequiresBlur(message)}
                       message={message}
-                      enableRuntimeScan={false}
+                      enableRuntimeScan={!message.viewOnce}
                       className="inline-block"
                     >
                       <button
@@ -1944,7 +1945,7 @@ export default function ProfileAnonChat({
                       mediaType="video"
                       staticRequiresBlur={messageRequiresBlur(message)}
                       message={message}
-                      enableRuntimeScan={false}
+                      enableRuntimeScan={!message.viewOnce}
                       className="inline-block"
                     >
                       <video
