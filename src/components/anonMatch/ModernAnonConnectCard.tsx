@@ -29,6 +29,20 @@ export default function ModernAnonConnectCard() {
     setIncognitoMode(hasAnonLegalAcceptance());
   }, []);
 
+  // Hooks must run unconditionally. Early returns used to skip these and crash
+  // modern Shuffle ("Rendered more hooks than during the previous render") once
+  // auth/incognito became ready; ShuffleSurfaceErrorBoundary showed Recuperacion.
+  const closeDisclaimer = useCallback(() => {
+    setDisclaimerOpen(false);
+  }, []);
+
+  useOverlayBackClose(
+    disclaimerOpen,
+    closeDisclaimer,
+    "sayittome-anon-disclaimer-open",
+    "sayittome:close-anon-disclaimer",
+  );
+
   const isProfileUser = Boolean(firebaseUser?.uid);
   const isIncognitoVisitor = incognitoMode && !isProfileUser;
 
@@ -49,17 +63,6 @@ export default function ModernAnonConnectCard() {
   const sectionLabel = isIncognitoVisitor
     ? t("anon_match_incognito_section")
     : t("anon_match_connect_section");
-
-  const closeDisclaimer = useCallback(() => {
-    setDisclaimerOpen(false);
-  }, []);
-
-  useOverlayBackClose(
-    disclaimerOpen,
-    closeDisclaimer,
-    "sayittome-anon-disclaimer-open",
-    "sayittome:close-anon-disclaimer",
-  );
 
   function handleConfirmSearch() {
     closeDisclaimer();

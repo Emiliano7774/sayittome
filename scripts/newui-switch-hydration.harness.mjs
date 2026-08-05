@@ -66,6 +66,11 @@ const after = await page.evaluate(() => ({
   mode: localStorage.getItem("sayittome_ux_mode"),
   dataUx: document.documentElement.getAttribute("data-ux"),
   text: document.body.innerText.slice(0, 500),
+  hasErrorShell: Boolean(
+    document.querySelector('[data-shuffle-error-shell="1"]'),
+  ),
+  bodyHasRecuperacion: /Recuperaci[oó]n/i.test(document.body.innerText),
+  bodyHasProblema: /tuvo un problema/i.test(document.body.innerText),
   crashLike: /something went wrong|application error|uncaught|cannot read|is not defined/i.test(
     document.body.innerText,
   ),
@@ -87,6 +92,9 @@ const report = {
   pass:
     after.mode === "modern" &&
     !after.crashLike &&
+    !after.hasErrorShell &&
+    !after.bodyHasRecuperacion &&
+    !after.bodyHasProblema &&
     /Visibles|Perfiles|Shuffle/i.test(after.text) &&
     hydrationErrors.length === 0,
 };

@@ -51,7 +51,10 @@
     "test:main-tab-shuffle-module-reinit": "node scripts/main-tab-shuffle-module-reinit-route-bridge.harness.mjs",
     "test:soft-push-reinit-tx-pin": "node scripts/main-tab-shuffle-soft-push-reinit-tx-pin.harness.mjs",
     "test:slide-watchdog": "node scripts/slide-watchdog.harness.mjs",
-    "test:prod-hop-waapi-classifier": "node scripts/prod-hop-waapi-classifier.harness.mjs"
+    "test:prod-hop-waapi-classifier": "node scripts/prod-hop-waapi-classifier.harness.mjs",
+    "test:modern-anon-hooks-order": "node scripts/modern-anon-connect-hooks-order.harness.mjs",
+    "test:modern-anon-hooks-crash-repro": "node scripts/modern-anon-hooks-crash-repro.harness.mjs",
+    "test:modern-shuffle-no-recovery": "node scripts/modern-shuffle-no-recovery.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

@@ -121,11 +121,24 @@ export class ShuffleSurfaceErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    const name = error?.name || "Error";
+    const message = String(error?.message || error || "unknown");
+    const componentStack = info.componentStack || "";
     recordQaCriticalEvent("runtime", "RUNTIME_ERROR", {
-      message: error.message,
-      stack: info.componentStack || "",
+      name,
+      message,
+      stack: componentStack,
       surface: "shuffle",
+      pathname:
+        typeof window !== "undefined" ? window.location.pathname : "",
+      // Safe, non-sensitive render diagnostics for recovery triage.
+      hooksOrderLikely: /Rendered (more|fewer) hooks than expected|Rendered more hooks than during the previous render/i.test(
+        message,
+      ),
     });
+    if (typeof console !== "undefined" && typeof console.error === "function") {
+      console.error("[ShuffleSurfaceErrorBoundary]", name, message, componentStack);
+    }
   }
 
   render() {
