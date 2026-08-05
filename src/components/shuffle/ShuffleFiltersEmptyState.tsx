@@ -44,8 +44,13 @@ export default function ShuffleFiltersEmptyState({
     >
       <p className={titleClass}>{t("shuffle_no_profiles_filters")}</p>
 
-      {soloOnline ? (
-        <p className={noteClass}>{t("shuffle_filters_empty_online_note")}</p>
+      {soloOnline && !errorText ? (
+        <p
+          data-shuffle-online-privacy-note="1"
+          className={noteClass}
+        >
+          {t("shuffle_filters_empty_online_note")}
+        </p>
       ) : null}
 
       {isModern ? (

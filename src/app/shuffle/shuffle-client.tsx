@@ -15,7 +15,10 @@ import { useFollowingProfiles } from "@/hooks/useFollowingProfiles";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useShufflePool } from "@/hooks/useShufflePool";
 import { traceLoadingShellPresentation, traceShuffleVisualCommit } from "@/lib/shuffle/shuffleWarmVisual";
-import { deriveShufflePresentation } from "@/lib/shuffle/shufflePresentation";
+import {
+  deriveShufflePresentation,
+  deriveShuffleSurfaceMode,
+} from "@/lib/shuffle/shufflePresentation";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 import { getClassicShuffleHeaderUi } from "@/lib/shuffle/classicHeaderUi";
 import { setShuffleExcludeProfiles } from "@/lib/shuffle/shuffleExcludeStore";
@@ -89,6 +92,13 @@ export default function ShuffleClient() {
   };
   const presentation = deriveShufflePresentation(gateInput);
   const { showShuffleLoading, showShuffleFeed } = presentation;
+  const surfaceMode = deriveShuffleSurfaceMode({
+    showShuffleLoading,
+    showShuffleFeed,
+    poolSize: pool.poolSize,
+    filteredVisibleCount: pool.visibleCount,
+    hasActiveDiscovery: pool.hasActiveDiscovery,
+  });
 
   useLayoutEffect(() => {
     traceLoadingShellPresentation(showShuffleLoading, gateInput);
@@ -209,15 +219,11 @@ export default function ShuffleClient() {
           onClear={pool.clearFilters}
         />
 
-        {showShuffleLoading ? (
+        {surfaceMode === "loading" ? (
           <div className="flex h-[42vh] items-center justify-center" data-loading-shell>
             <p className="text-lg font-normal text-white/35">{t("common_loading")}</p>
           </div>
-        ) : showShuffleFeed ? (
-          <div onClick={pool.handleListClick}>
-            <ShuffleSlots />
-          </div>
-        ) : pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery ? (
+        ) : surfaceMode === "filters-empty" ? (
           <ShuffleFiltersEmptyState
             variant="classic"
             soloOnline={pool.filters.soloOnline}
@@ -225,6 +231,10 @@ export default function ShuffleClient() {
             onKeepTrying={pool.handleShuffleClick}
             errorText={pool.errorText}
           />
+        ) : surfaceMode === "feed" ? (
+          <div onClick={pool.handleListClick}>
+            <ShuffleSlots />
+          </div>
         ) : (
           <div className="flex h-[42vh] flex-col items-center justify-center px-6 text-center">
             <p className="text-lg font-normal text-white/35">{t("shuffle_no_profiles")}</p>

@@ -23,7 +23,10 @@ import {
 import {
   traceShuffleVisualCommit,
 } from "@/lib/shuffle/shuffleWarmVisual";
-import { deriveShufflePresentation } from "@/lib/shuffle/shufflePresentation";
+import {
+  deriveShufflePresentation,
+  deriveShuffleSurfaceMode,
+} from "@/lib/shuffle/shufflePresentation";
 import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
@@ -72,8 +75,6 @@ export default function ModernShuffleClient() {
     hydrationReady && slotsVersion > 0 ? getVisibleShuffleProfiles() : [];
   const withStories = hydrationReady ? getCachedStoryGroups().length : 0;
   const profileCount = pool.profilesCreated || pool.livePeopleCount;
-  const filtersBlockResults =
-    pool.poolSize > 0 && pool.visibleCount === 0 && pool.hasActiveDiscovery;
   const gateInput = {
     loading: pool.loading,
     listReady: pool.listReady,
@@ -83,6 +84,13 @@ export default function ModernShuffleClient() {
   };
   const presentation = deriveShufflePresentation(gateInput);
   const { showShuffleLoading, showShuffleFeed } = presentation;
+  const surfaceMode = deriveShuffleSurfaceMode({
+    showShuffleLoading,
+    showShuffleFeed,
+    poolSize: pool.poolSize,
+    filteredVisibleCount: pool.visibleCount,
+    hasActiveDiscovery: pool.hasActiveDiscovery,
+  });
 
   useLayoutEffect(() => {
     traceShuffleVisualCommit("modern-shuffle-render", {
@@ -143,18 +151,14 @@ export default function ModernShuffleClient() {
           onClear={pool.clearFilters}
         />
 
-        {showShuffleLoading ? (
+        {surfaceMode === "loading" ? (
           <div
             className="flex h-[50vh] items-center justify-center"
             data-loading-shell
           >
             <p className="text-2xl font-black text-white/35">{t("common_loading")}</p>
           </div>
-        ) : showShuffleFeed ? (
-          <div className="mt-5" onClick={pool.handleListClick}>
-            <ModernShuffleGrid />
-          </div>
-        ) : filtersBlockResults ? (
+        ) : surfaceMode === "filters-empty" ? (
           <ShuffleFiltersEmptyState
             variant="modern"
             soloOnline={pool.filters.soloOnline}
@@ -162,6 +166,10 @@ export default function ModernShuffleClient() {
             onKeepTrying={pool.handleShuffleClick}
             errorText={pool.errorText}
           />
+        ) : surfaceMode === "feed" ? (
+          <div className="mt-5" onClick={pool.handleListClick}>
+            <ModernShuffleGrid />
+          </div>
         ) : (
           <div className="flex h-[50vh] flex-col items-center justify-center text-center">
             <p className="text-2xl font-black text-white/35">{t("shuffle_no_profiles")}</p>

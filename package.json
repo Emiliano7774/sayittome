@@ -54,7 +54,9 @@
     "test:prod-hop-waapi-classifier": "node scripts/prod-hop-waapi-classifier.harness.mjs",
     "test:modern-anon-hooks-order": "node scripts/modern-anon-connect-hooks-order.harness.mjs",
     "test:modern-anon-hooks-crash-repro": "node scripts/modern-anon-hooks-crash-repro.harness.mjs",
-    "test:modern-shuffle-no-recovery": "node scripts/modern-shuffle-no-recovery.harness.mjs"
+    "test:modern-shuffle-no-recovery": "node scripts/modern-shuffle-no-recovery.harness.mjs",
+    "test:shuffle-filters-empty-surface": "node scripts/shuffle-filters-empty-surface-mode.harness.mjs",
+    "test:shuffle-online-privacy-notice": "node scripts/shuffle-online-privacy-notice.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
