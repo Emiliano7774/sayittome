@@ -10,6 +10,9 @@ import { auth } from "@/lib/firebase";
  * Cold start / reopen lands on `/`. If Firebase session is still alive,
  * skip marketing Home + "Iniciar sesión" and go straight to Shuffle (or setup).
  * Logged-out users keep the normal Home surface.
+ *
+ * Uses authStateReady() only (not the first onAuthStateChanged null) so a
+ * restoring session is not mistaken for logged-out.
  */
 export default function HomeSessionRestore({
   children,
@@ -35,14 +38,9 @@ export default function HomeSessionRestore({
 
         const next = await resolvePostAuthPath(user.uid, user.emailVerified);
         if (cancelled) return;
-
-        if (next !== "/") {
-          router.replace(next);
-          return;
-        }
-
-        setReady(true);
-      } catch {
+        router.replace(next);
+      } catch (error) {
+        console.error("HomeSessionRestore", error);
         if (!cancelled) setReady(true);
       }
     })();
