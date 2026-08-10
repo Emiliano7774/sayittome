@@ -339,7 +339,7 @@ export default function ProfileAnonChat({
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewOnce, setViewOnce] = useState(false);
   const [anonSession, setAnonSession] = useState("anon_server");
-  const [authReady, setAuthReady] = useState(false);
+  const [authReady, setAuthReady] = useState(() => Boolean(auth.currentUser));
   const [currentUid, setCurrentUid] = useState(() => auth.currentUser?.uid || "");
   const [targetUid, setTargetUid] = useState(initialProfile?.uid || "");
   const [targetPhoto, setTargetPhoto] = useState(initialProfile?.photo || "");
@@ -583,6 +583,13 @@ export default function ProfileAnonChat({
 
   useEffect(() => {
     setAnonSession(getAnonSessionId());
+    let cancelled = false;
+
+    void auth.authStateReady().then(() => {
+      if (cancelled) return;
+      setCurrentUid(auth.currentUser?.uid || "");
+      setAuthReady(true);
+    });
 
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUid(user?.uid || "");
@@ -590,6 +597,7 @@ export default function ProfileAnonChat({
     });
 
     return () => {
+      cancelled = true;
       unsub();
     };
   }, []);
@@ -622,30 +630,43 @@ export default function ProfileAnonChat({
   useEffect(() => {
     if (!chatId) return;
     prefetchChatThread(chatId);
-    const cached = readCachedChatMessages(chatId);
-    if (!cached?.length) return;
 
-    setMessages((prev) => {
-      const hydrated = hydrateCachedMessages(chatId, cached, {
-        chatAnonSessionId,
-        currentUid,
-        targetUid,
-        chatOwnerUid,
+    let cancelled = false;
+    void (async () => {
+      await auth.authStateReady();
+      if (cancelled) return;
+
+      const uid = auth.currentUser?.uid || "";
+      setCurrentUid(uid);
+      setAuthReady(true);
+
+      const cached = readCachedChatMessages(chatId);
+      if (!cached?.length) return;
+
+      setMessages((prev) => {
+        const hydrated = hydrateCachedMessages(chatId, cached, {
+          chatAnonSessionId,
+          currentUid: uid,
+          targetUid,
+          chatOwnerUid,
+        });
+        if (prev.length === 0) return hydrated;
+        const ctx = buildProfileAnonViewerContext({
+          chatId,
+          chatAnonSessionId,
+          currentUid: uid,
+          targetUid,
+          chatOwnerUid,
+        });
+        return remapProfileAnonMessagesMine(hydrated.length ? hydrated : prev, ctx);
       });
-      // Warm reopen: never leave an empty first paint when cache exists.
-      // Remap ownership when auth/profile context settles without wiping rows.
-      if (prev.length === 0) return hydrated;
-      const ctx = buildProfileAnonViewerContext({
-        chatId,
-        chatAnonSessionId,
-        currentUid,
-        targetUid,
-        chatOwnerUid,
-      });
-      return remapProfileAnonMessagesMine(prev, ctx);
-    });
-    setChatSurfaceEngaged((engaged) => engaged || cached.length > 0);
-  }, [chatId, chatAnonSessionId, currentUid, targetUid, chatOwnerUid]);
+      setChatSurfaceEngaged((engaged) => engaged || cached.length > 0);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, chatAnonSessionId, targetUid, chatOwnerUid]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -837,8 +858,10 @@ export default function ProfileAnonChat({
     (isOwnerViewing
       ? hasChatActivity
       : messages.some((message) => message.mine) || hasChatActivity);
-  const showClassicIntro = isClassic && !isOwnerViewing && !chatSurfaceEngaged;
-  const showModernVisitorIntro = !isClassic && !isOwnerViewing && !chatSurfaceEngaged;
+  const showClassicIntro =
+    isClassic && authReady && !isOwnerViewing && !chatSurfaceEngaged;
+  const showModernVisitorIntro =
+    !isClassic && authReady && !isOwnerViewing && !chatSurfaceEngaged;
   const anonIdentity = resolveProfileChatAnonIdentity(chatId, chatAnonSessionId, {
     isOwnerViewing,
   });

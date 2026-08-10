@@ -137,8 +137,8 @@ assert.match(authorSrc, /messageProfileUid === ownerUid/);
 
 const cacheSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatMessageCache.ts"), "utf8");
 assert.match(cacheSrc, /clearCachedChatMessages/);
-assert.match(cacheSrc, /STORAGE_PREFIX/);
-assert.match(cacheSrc, /resolveViewerKey|viewerKey/);
+assert.match(cacheSrc, /STORAGE_PREFIX|sayittome:chat-msgs:v3/);
+assert.match(cacheSrc, /Fall back to any v2 scoped|storageKey\(chatId\)/);
 
 const logoutSrc = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "utf8");
 assert.match(logoutSrc, /clearCachedChatMessages/);

@@ -29,15 +29,8 @@ export default function StoriesBootstrap() {
 
     const run = (viewerKey: string) => {
       if (cancelled) return;
-
-      const schedule =
-        typeof requestIdleCallback === "function"
-          ? requestIdleCallback
-          : (cb: () => void) => window.setTimeout(cb, 0);
-
-      schedule(() => {
-        refreshStoriesIndex(viewerKey, false).catch(() => {});
-      });
+      // First refresh must not wait for idle — Stories warm path depends on it.
+      refreshStoriesIndex(viewerKey, false).catch(() => {});
     };
 
     const unsub = onAuthStateChanged(auth, (user) => {

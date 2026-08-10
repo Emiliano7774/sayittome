@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { resolveStoryViewerId } from "@/lib/stories/anonStories";
+import { resolveStoryViewerId } from "@/lib/stories/storyAuthor";
 import {
+  clearStoriesIndexCache,
   getCachedStoryGroups,
   refreshStoriesIndex,
   subscribeStoriesIndex,
@@ -18,19 +19,21 @@ import {
 } from "@/hooks/useStoriesReady";
 
 export function useStoriesGroups() {
-  const initialGroups = getCachedStoryGroups();
+  const initialViewer = resolveStoryViewerId(auth.currentUser);
+  const initialGroups = getCachedStoryGroups(initialViewer);
   const [groups, setGroups] = useState<StoryUserGroup[]>(() => initialGroups);
-  const [viewerUid, setViewerUid] = useState("");
+  const [viewerUid, setViewerUid] = useState(initialViewer);
   const [loading, setLoading] = useState(
     () => !hasStoriesEverHydrated() && initialGroups.length === 0,
   );
 
   useEffect(() => {
     let cancelled = false;
+    let lastViewer = resolveStoryViewerId(auth.currentUser);
 
     const unsubIndex = subscribeStoriesIndex(() => {
       if (cancelled) return;
-      const cached = getCachedStoryGroups();
+      const cached = getCachedStoryGroups(lastViewer);
       setGroups(cached);
       if (cached.length > 0) {
         markStoriesHydrated(cached.length);
@@ -38,16 +41,23 @@ export function useStoriesGroups() {
       }
     });
 
-    const viewerId = resolveStoryViewerId(auth.currentUser);
-    setViewerUid(viewerId);
-    void refreshStoriesIndex(viewerId).finally(() => {
+    setViewerUid(lastViewer);
+    // Warm first frame already seeded from snapshot when available; revalidate ASAP.
+    void refreshStoriesIndex(lastViewer).finally(() => {
       if (!cancelled) setLoading(false);
     });
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       const nextViewerId = resolveStoryViewerId(user);
+      if (nextViewerId !== lastViewer) {
+        // Never show previous account's warm mosaic after switch.
+        clearStoriesIndexCache();
+        setGroups([]);
+        setLoading(true);
+        lastViewer = nextViewerId;
+      }
       setViewerUid(nextViewerId);
-      void refreshStoriesIndex(nextViewerId).finally(() => {
+      void refreshStoriesIndex(nextViewerId, true).finally(() => {
         if (!cancelled) setLoading(false);
       });
     });

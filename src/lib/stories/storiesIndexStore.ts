@@ -8,6 +8,11 @@ import {
   markOwnerGroupSnapshotInCache,
   markStoryViewedInCache,
 } from "@/lib/stories/storyViewedCache";
+import {
+  clearStoriesSnapshot,
+  readStoriesSnapshot,
+  writeStoriesSnapshot,
+} from "@/lib/stories/storiesSnapshot";
 import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
 
 function storyUnseenForViewer(story: StoryItem, viewerId: string) {
@@ -168,6 +173,9 @@ export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = fal
     cachedGroups = groups;
     indexGroups(groups);
     lastFetch = Date.now();
+    if (viewerUid) {
+      writeStoriesSnapshot(viewerUid, groups);
+    }
     notify();
   } catch (e) {
     console.error("stories index", e);
@@ -206,8 +214,32 @@ export function prefetchOwnerStories(ownerUid?: string, username?: string) {
   return group;
 }
 
-export function getCachedStoryGroups() {
+export function getCachedStoryGroups(viewerUidHint = "") {
+  if (cachedGroups.length > 0) return cachedGroups;
+
+  const viewer = String(viewerUidHint || viewerUid || "").trim();
+  if (!viewer) return cachedGroups;
+
+  const snapshot = readStoriesSnapshot(viewer);
+  if (!snapshot?.length) return cachedGroups;
+
+  cachedGroups = snapshot;
+  indexGroups(snapshot);
+  // Avoid speculative network preload when restoring from snapshot — first paint only.
+  markStoriesHydrated(snapshot.length);
   return cachedGroups;
+}
+
+/** Drop in-memory + session Stories warm state (logout / account switch). */
+export function clearStoriesIndexCache() {
+  cachedGroups = [];
+  byUid.clear();
+  byUsername.clear();
+  lastFetch = 0;
+  viewerUid = "";
+  loading = false;
+  clearStoriesSnapshot();
+  notify();
 }
 
 export function getNextStoryGroup(currentOwnerUid: string) {
