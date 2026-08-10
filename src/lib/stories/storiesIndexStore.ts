@@ -143,7 +143,7 @@ function indexGroups(groups: StoryUserGroup[]) {
 }
 
 export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = false) {
-  if (loading) return;
+  if (loading && !force) return;
 
   const viewerChanged = String(nextViewerUid) !== String(viewerUid);
   const now = Date.now();

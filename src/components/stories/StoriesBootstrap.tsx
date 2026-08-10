@@ -37,7 +37,9 @@ export default function StoriesBootstrap() {
     void auth.authStateReady().then(() => {
       if (cancelled) return;
       authSettled = true;
-      run(resolveStoryViewerId(auth.currentUser));
+      const viewerKey = resolveStoryViewerId(auth.currentUser);
+      if (!viewerKey) return;
+      refreshStoriesIndex(viewerKey, true).catch(() => {});
     });
 
     const unsub = onAuthStateChanged(auth, (user) => {

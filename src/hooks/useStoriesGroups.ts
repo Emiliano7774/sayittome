@@ -67,7 +67,8 @@ export function useStoriesGroups() {
     void auth.authStateReady().then(() => {
       if (cancelled) return;
       authSettled = true;
-      applyViewer(resolveStoryViewerId(auth.currentUser), false);
+      // Force refresh so a stuck singleton `loading` flag cannot skip the first paint.
+      applyViewer(resolveStoryViewerId(auth.currentUser), true);
     });
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
