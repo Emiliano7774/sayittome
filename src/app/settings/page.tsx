@@ -28,6 +28,7 @@ import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import AdminClaimReplyBanner from "@/components/profile/AdminClaimReplyBanner";
+import ChatNotificationSetting from "@/components/chat/ChatNotificationSetting";
 import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
@@ -378,6 +379,9 @@ export function SettingsRouteContent() {
         onEdit={() => fastRouterPush(router, "/settings/edit")}
         onLogout={() => void handleLogout()}
         />
+        <div className="mx-auto mt-6 max-w-[1500px] px-4">
+          <ChatNotificationSetting variant="classic" />
+        </div>
       </div>
     );
   }
@@ -468,6 +472,9 @@ export function SettingsRouteContent() {
                 variant="inline"
               />
             ) : null}
+          </div>
+          <div className="mt-6">
+            <ChatNotificationSetting />
           </div>
 
           <div className="mt-24">

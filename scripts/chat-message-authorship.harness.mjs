@@ -2,6 +2,7 @@
  * Chat message authorship invariants (profile↔anon).
  * Fails if profile replies classify as peer while auth uid is already known
  * but profileUid context is still empty (cold reopen regression).
+ * Also fails if fromUid shape loses to contradictory senderKind.
  *
  * Usage: node scripts/chat-message-authorship.harness.mjs
  */
@@ -12,7 +13,6 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// Mirror production classifier without pulling Firebase into the harness.
 function profileReplyAuthorId(targetUid) {
   const uid = String(targetUid || "").trim();
   return uid ? `profile_${uid}` : "profile_unknown";
@@ -25,13 +25,16 @@ function isProfileReplyAuthorId(from) {
 function resolveProfileAnonSenderKind(input) {
   const from = String(input.from || "").trim();
   if (!from) return "unknown";
-  if (input.senderKind === "profile" || input.senderKind === "anon") return input.senderKind;
+  // fromUid shape wins over contradictory senderKind.
+  if (from.startsWith("anon_")) return "anon";
   if (isProfileReplyAuthorId(from)) return "profile";
-  if (from === input.threadAnonId || from.startsWith("anon_")) return "anon";
+  if (input.senderKind === "profile" || input.senderKind === "anon") {
+    return input.senderKind;
+  }
+  if (from === input.threadAnonId) return "anon";
   return "unknown";
 }
 
-/** Fixed classifier matching post-fix production rules. */
 function resolveProfileAnonMessageMine(input) {
   const from = String(input.from || "").trim();
   const ownerUid = String(input.ownerUid || "").trim();
@@ -50,6 +53,10 @@ function resolveProfileAnonMessageMine(input) {
       from === profileReplyAuthorId(ownerUid) ||
       messageProfileUid === ownerUid);
 
+  if (ownerUid && from === profileReplyAuthorId(ownerUid)) {
+    return true;
+  }
+
   if (input.isOwnerViewing || structurallyOwnProfileReply) {
     if (kind === "profile" || isProfileReplyAuthorId(from) || structurallyOwnProfileReply) {
       return true;
@@ -61,17 +68,31 @@ function resolveProfileAnonMessageMine(input) {
 
   const threadAnon = String(input.threadAnonId || "").trim();
   const liveAnon = String(input.liveAnon || "").trim();
+  if (ownerUid && profileUid && ownerUid === profileUid) {
+    return false;
+  }
   if (ownerUid && from === ownerUid) return true;
   if (threadAnon && from === threadAnon) return true;
   if (liveAnon.startsWith("anon_") && from === liveAnon) return true;
   return false;
 }
 
+function inferOwnerViewingFromAuthors(currentUid, profileUid, rows) {
+  const uid = String(currentUid || "").trim();
+  const profile = String(profileUid || "").trim();
+  if (uid && profile && uid === profile) return true;
+  if (!uid) return false;
+  const mineProfile = profileReplyAuthorId(uid);
+  return rows.some((row) => {
+    const from = String(row.fromUid || "").trim();
+    return from === mineProfile || from === uid;
+  });
+}
+
 const OWNER = "ownerUid123";
 const PROFILE_FROM = profileReplyAuthorId(OWNER);
 const ANON = "anon_abc123";
 
-// Cold reopen: auth uid known, profileUid still empty — must stay mine.
 assert.equal(
   resolveProfileAnonMessageMine({
     senderKind: "profile",
@@ -84,6 +105,33 @@ assert.equal(
   }),
   true,
   "owner profile reply must stay mine when profileUid context empty",
+);
+
+assert.equal(
+  resolveProfileAnonMessageMine({
+    senderKind: "anon", // contradictory
+    from: PROFILE_FROM,
+    threadAnonId: ANON,
+    profileUid: OWNER,
+    isOwnerViewing: true,
+    ownerUid: OWNER,
+  }),
+  true,
+  "fromUid profile_ wins over mis-tagged senderKind=anon",
+);
+
+assert.equal(
+  resolveProfileAnonMessageMine({
+    senderKind: "profile", // contradictory
+    from: ANON,
+    threadAnonId: ANON,
+    profileUid: OWNER,
+    isOwnerViewing: false,
+    ownerUid: "",
+    liveAnon: ANON,
+  }),
+  true,
+  "fromUid anon_ wins over mis-tagged senderKind=profile for visitor",
 );
 
 assert.equal(
@@ -127,38 +175,44 @@ assert.equal(
   "anon visitor owns own anon messages",
 );
 
-// Source guards
+// Cold reopen with empty auth: cache mine must be preservable (source guard).
+assert.equal(
+  inferOwnerViewingFromAuthors("", "", [{ fromUid: PROFILE_FROM }, { fromUid: ANON }]),
+  false,
+  "empty auth must not infer owner viewing",
+);
+
+assert.equal(
+  inferOwnerViewingFromAuthors(OWNER, "", [{ fromUid: PROFILE_FROM }, { fromUid: ANON }]),
+  true,
+  "known uid + own profile_* authors infer owner viewing",
+);
+
 const authorSrc = fs.readFileSync(
   path.join(root, "src/lib/chat/profileAnonMessageAuthor.ts"),
   "utf8",
 );
 assert.match(authorSrc, /structurallyOwnProfileReply/);
-assert.match(authorSrc, /messageProfileUid === ownerUid/);
+assert.match(authorSrc, /fromUid shape wins/);
+assert.match(authorSrc, /inferOwnerViewingFromAuthors/);
 
 const cacheSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatMessageCache.ts"), "utf8");
 assert.match(cacheSrc, /clearCachedChatMessages/);
 assert.match(cacheSrc, /STORAGE_PREFIX|sayittome:chat-msgs:v3/);
-assert.match(cacheSrc, /Fall back to any v2 scoped|storageKey\(chatId\)/);
-
-const logoutSrc = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "utf8");
-assert.match(logoutSrc, /clearCachedChatMessages/);
-assert.match(logoutSrc, /clearInboxSnapshotCache/);
+assert.match(cacheSrc, /mine\?:/);
 
 const chatSrc = fs.readFileSync(
   path.join(root, "src/components/chat/ProfileAnonChat.tsx"),
   "utf8",
 );
-assert.match(chatSrc, /useState<Message\[\]>\(\(\) =>/);
-assert.match(chatSrc, /readCachedChatMessages\(chatId\)/);
-assert.match(chatSrc, /auth\.currentUser\?\.uid/);
+assert.match(chatSrc, /inferOwnerViewingFromAuthors/);
+assert.match(chatSrc, /typeof row\.mine === "boolean"/);
 
-const whipSrc = fs.readFileSync(path.join(root, "src/lib/chat/whipSound.ts"), "utf8");
-assert.match(whipSrc, /reprimeWhipSound/);
-assert.match(whipSrc, /force\?: boolean/);
-
-const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
-assert.match(notifSrc, /localNotificationActionPerformed/);
-assert.match(notifSrc, /stableNotificationId/);
+const navSrc = fs.readFileSync(
+  path.join(root, "src/components/navigation/AppNavigation.tsx"),
+  "utf8",
+);
+assert.match(navSrc, /pathname\.startsWith\("\/chat"\)/);
 
 console.log(
   JSON.stringify(

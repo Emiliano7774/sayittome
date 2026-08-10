@@ -21,6 +21,7 @@ import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories";
 import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
+import { isStoryViewedInCache } from "@/lib/stories/storyViewedCache";
 import {
   getCachedStoryGroups,
   getNextStoryGroup,
@@ -97,7 +98,12 @@ export default function StoryViewer({
       setIndex(nextIndex >= 0 ? nextIndex : 0);
       return;
     }
-    setIndex(0);
+    // Resume at first unseen story for this viewer (durable localStorage cache).
+    const viewer = resolveStoryViewerId(auth.currentUser);
+    const firstUnseen = stories.findIndex(
+      (story) => viewer && !isStoryViewedInCache(viewer, story.id),
+    );
+    setIndex(firstUnseen >= 0 ? firstUnseen : 0);
   }, [initialStoryId, ownerUid, ownerUsername, stories]);
 
   useEffect(() => {

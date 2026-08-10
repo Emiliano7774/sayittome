@@ -121,6 +121,10 @@ export function resolveProfileAnonSenderKind(input: {
 
   if (!from) return "unknown";
 
+  // fromUid shape wins over a contradictory senderKind (historical/mis-tagged docs).
+  if (from.startsWith("anon_")) return "anon";
+  if (isProfileReplyAuthorId(from)) return "profile";
+
   if (senderKind === "profile" || senderKind === "anon") {
     return senderKind;
   }
@@ -129,15 +133,31 @@ export function resolveProfileAnonSenderKind(input: {
     return "profile";
   }
 
-  if (isProfileReplyAuthorId(from)) {
-    return "profile";
-  }
-
-  if (from === threadAnonId || from.startsWith("anon_")) {
+  if (from === threadAnonId) {
     return "anon";
   }
 
   return "unknown";
+}
+
+/**
+ * Infer owner viewing from message authors when profileUid context is still empty
+ * on cold reopen (avoids classifying own profile_* as peer and peer anon as mine).
+ */
+export function inferOwnerViewingFromAuthors(
+  currentUid: string,
+  profileUid: string,
+  rows: Array<{ fromUid?: string }>,
+) {
+  const uid = String(currentUid || "").trim();
+  const profile = String(profileUid || "").trim();
+  if (uid && profile && uid === profile) return true;
+  if (!uid) return false;
+  const mineProfile = profileReplyAuthorId(uid);
+  return rows.some((row) => {
+    const from = String(row.fromUid || "").trim();
+    return from === mineProfile || from === uid;
+  });
 }
 
 export function resolveProfileAnonMessageMine(input: {
@@ -162,19 +182,21 @@ export function resolveProfileAnonMessageMine(input: {
   });
 
   // Durable authorship: profile_* / matching profileUid must stay "mine" for the
-  // authenticated owner even when profileUid context is still empty on cold reopen
-  // (targetUid/chatOwnerUid hydrate after the first paint).
+  // authenticated owner even when profileUid context is still empty on cold reopen.
   const structurallyOwnProfileReply =
     Boolean(ownerUid) &&
     (from === ownerUid ||
       from === profileReplyAuthorId(ownerUid) ||
       messageProfileUid === ownerUid);
 
+  if (ownerUid && from === profileReplyAuthorId(ownerUid)) {
+    return true;
+  }
+
   if (input.isOwnerViewing || structurallyOwnProfileReply) {
     if (kind === "profile" || isProfileReplyAuthorId(from) || structurallyOwnProfileReply) {
       return true;
     }
-    // Owner viewing: peer/anon bubbles stay not mine.
     return false;
   }
 
@@ -183,12 +205,14 @@ export function resolveProfileAnonMessageMine(input: {
   const threadAnon = String(input.threadAnonId || "").trim();
   const liveAnon = getChatAnonSenderId();
 
-  // Anon viewer: only THIS visitor's aliases are "mine". Never treat another
-  // anon_* id (or a mis-tagged profile reply) as owned just because senderKind
-  // is anon — that hid incoming profile replies and suppressed unread/badge.
+  // Owner with known uid but profileUid still empty: do not claim visitor anon.
+  if (ownerUid && profileUid && ownerUid === profileUid) {
+    return false;
+  }
   if (ownerUid && from === ownerUid) return true;
-  if (threadAnon && from === threadAnon) return true;
+
   if (liveAnon.startsWith("anon_") && from === liveAnon) return true;
+  if (threadAnon && from === threadAnon) return true;
 
   return false;
 }
@@ -289,6 +313,9 @@ export function remapProfileAnonMessagesMine<
   T extends Pick<ProfileAnonUiMessage, "fromUid" | "senderKind" | "mine">,
 >(messages: T[], ctx: ProfileAnonViewerContext): T[] {
   let changed = false;
+  const isOwnerViewing =
+    ctx.isOwnerViewing ||
+    inferOwnerViewingFromAuthors(ctx.currentUid, ctx.profileUid, messages);
 
   const next = messages.map((message) => {
     const from = String(message.fromUid || "");
@@ -301,7 +328,7 @@ export function remapProfileAnonMessagesMine<
       threadAnonId: ctx.threadAnonId,
       profileUid: ctx.profileUid,
       messageProfileUid,
-      isOwnerViewing: ctx.isOwnerViewing,
+      isOwnerViewing,
       ownerUid: ctx.currentUid,
     });
 

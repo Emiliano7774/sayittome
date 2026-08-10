@@ -91,12 +91,16 @@ export function isOwnerGroupSnapshotComplete(
 ) {
   if (!viewerId || !ownerUid || storyIds.length === 0) return false;
 
-  const snapshot = readMap()[ownerSnapshotKey(viewerId, ownerUid)];
-  if (typeof snapshot !== "string") {
-    return storyIds.every((storyId) => isStoryViewedInCache(viewerId, storyId));
+  // Individual viewed flags are authoritative — never let a stale owner snapshot
+  // hide a newly published story, and never ignore per-story marks when complete.
+  if (storyIds.every((storyId) => isStoryViewedInCache(viewerId, storyId))) {
+    return true;
   }
 
-  const seenSet = new Set(snapshot.split(","));
+  const snapshot = readMap()[ownerSnapshotKey(viewerId, ownerUid)];
+  if (typeof snapshot !== "string") return false;
+
+  const seenSet = new Set(snapshot.split(",").filter(Boolean));
   return storyIds.every((storyId) => seenSet.has(storyId));
 }
 

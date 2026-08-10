@@ -17,7 +17,8 @@ function sanitizeGroups(groups: StoryUserGroup[]): StoryUserGroup[] {
     ownerUsername: group.ownerUsername,
     ownerPhoto: group.ownerPhoto,
     isAnonymousStory: group.isAnonymousStory,
-    hasUnseen: group.hasUnseen,
+    // hasUnseen is recomputed on restore via mergeViewerSeenState + local viewed cache.
+    hasUnseen: group.hasUnseen === true,
     stories: (group.stories || []).slice(0, 20).map((story) => ({
       id: story.id,
       ownerUid: story.ownerUid,
@@ -38,6 +39,9 @@ function sanitizeGroups(groups: StoryUserGroup[]): StoryUserGroup[] {
       autoModerationRequiresBlur: story.autoModerationRequiresBlur,
       adminForceBlur: story.adminForceBlur,
       adminDeleted: story.adminDeleted,
+      // Keep viewer maps so restore does not rely only on hasUnseen boolean.
+      viewedBy: story.viewedBy,
+      viewedByAnon: story.viewedByAnon,
     })),
   }));
 }

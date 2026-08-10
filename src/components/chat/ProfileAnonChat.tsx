@@ -57,6 +57,7 @@ import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { unregisterSessionChat, registerSessionChat, getSessionChatIds } from "@/lib/chat/sessionChats";
 import {
   buildProfileAnonViewerContext,
+  inferOwnerViewingFromAuthors,
   isProfileReplyAuthorId,
   mapFirestoreDocToProfileAnonMessage,
   profileReplyAuthorId,
@@ -181,6 +182,9 @@ function hydrateCachedMessages(
     targetUid: input.targetUid,
     chatOwnerUid: input.chatOwnerUid,
   });
+  const isOwnerViewing =
+    ctx.isOwnerViewing ||
+    inferOwnerViewingFromAuthors(ctx.currentUid, ctx.profileUid, rows);
 
   return rows.map((row) => {
     const base = cachedMessageToUi(row) as Message;
@@ -188,13 +192,24 @@ function hydrateCachedMessages(
     const messageProfileUid = isProfileReplyAuthorId(from)
       ? from.slice("profile_".length)
       : undefined;
+
+    // Before auth settles, keep last known side from cache to avoid left/right flip.
+    if (!ctx.currentUid && typeof row.mine === "boolean") {
+      return {
+        ...base,
+        mine: row.mine,
+        senderKind: row.senderKind,
+        fromUid: row.fromUid,
+      };
+    }
+
     const mine = resolveProfileAnonMessageMine({
       senderKind: row.senderKind,
       from,
       threadAnonId: ctx.threadAnonId,
       profileUid: ctx.profileUid,
       messageProfileUid,
-      isOwnerViewing: ctx.isOwnerViewing,
+      isOwnerViewing,
       ownerUid: ctx.currentUid,
     });
 

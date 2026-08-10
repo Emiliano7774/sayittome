@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 function syncChatViewportVars() {
   const viewport = window.visualViewport;
@@ -44,7 +44,7 @@ export function releaseChatViewportLock() {
 
 /** Locks the page and tracks the visible viewport while a fullscreen chat is open. */
 export function useChatViewportLock(active = true) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active || typeof window === "undefined") return;
 
     const scrollY = window.scrollY;

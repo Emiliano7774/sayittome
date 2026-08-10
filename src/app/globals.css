@@ -842,7 +842,7 @@ html.sayittome-shuffle-return-pending #sayittome-shuffle-keepalive-host {
   flex-direction: column;
   background: #000;
   touch-action: manipulation;
-  z-index: 40;
+  z-index: 10000;
 }
 
 .sayittome-chat-composer {

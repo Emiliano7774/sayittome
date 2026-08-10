@@ -34,6 +34,7 @@ import {
 } from "@/lib/chat/outgoingChatMeta";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
+import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import {
   readCachedChatMessages,
   writeCachedChatMessages,
@@ -359,6 +360,7 @@ export default function LegacyChatPage() {
   }, [chatId]);
 
   const viewerUid = currentUid || auth.currentUser?.uid || "";
+  useChatViewportLock(Boolean(chatId));
 
   const visibleMessages = useMemo(() => {
     const realClientIds = new Set(
@@ -751,7 +753,7 @@ export default function LegacyChatPage() {
   
 if (uxMode === "classic") {
     return (
-      <main className="flex min-h-screen flex-col bg-[#050505] text-white">
+      <main className="sayittome-chat-shell flex min-h-screen flex-col bg-[#050505] text-white">
         <header className="sticky top-0 z-40 border-b border-white/10 bg-black/90 backdrop-blur">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-4">
             <Link
@@ -832,7 +834,7 @@ if (uxMode === "classic") {
   }
 
   return (
-    <main className="flex h-screen flex-col bg-black text-white">
+    <main className="sayittome-chat-shell flex h-screen flex-col bg-black text-white">
       <div className="border-b border-white/10 bg-zinc-950 px-5 py-4">
         <h1 className="text-lg font-black">Chat an├│nimo</h1>
 

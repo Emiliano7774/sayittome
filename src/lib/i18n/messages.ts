@@ -686,6 +686,11 @@ const es = {
     "Avisarte cuando llega un mensaje nuevo y quién te lo envió.",
   chat_notifications_enabled: "Activadas",
   chat_notifications_disabled: "Desactivadas",
+  chat_notifications_enable_cta: "Permitir notificaciones",
+  chat_notifications_os_granted: "Permiso del sistema: concedido",
+  chat_notifications_os_denied: "Permiso del sistema: denegado (habilitalo en Ajustes del teléfono)",
+  chat_notifications_os_prompt: "Permiso del sistema: todavía no preguntado",
+  chat_notifications_os_unknown: "Estado del permiso del sistema: desconocido",
   chat_notifications_prompt_title: "¿Querés avisos de mensajes?",
   chat_notifications_prompt_body:
     "Podemos avisarte cada vez que te llega un mensaje y mostrarte quién te lo envió. Podés cambiarlo después en configuración.",
@@ -1458,6 +1463,11 @@ const en: Record<keyof typeof es, string> = {
   chat_notifications_hint: "Notify you when a new message arrives and who sent it.",
   chat_notifications_enabled: "On",
   chat_notifications_disabled: "Off",
+  chat_notifications_enable_cta: "Allow notifications",
+  chat_notifications_os_granted: "System permission: granted",
+  chat_notifications_os_denied: "System permission: denied (enable it in phone Settings)",
+  chat_notifications_os_prompt: "System permission: not asked yet",
+  chat_notifications_os_unknown: "System permission status: unknown",
   chat_notifications_prompt_title: "Want message alerts?",
   chat_notifications_prompt_body:
     "We can notify you whenever a new message arrives and show who sent it. You can change this later in settings.",

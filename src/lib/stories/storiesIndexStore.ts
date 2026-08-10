@@ -220,6 +220,7 @@ export function getCachedStoryGroups(viewerUidHint = "") {
   if (cachedGroups.length > 0) {
     // In-memory mosaic belongs to the store's current viewer only.
     if (!viewer || !viewerUid || viewer === viewerUid) {
+      if (viewer) mergeViewerSeenState(cachedGroups, viewer);
       return cachedGroups;
     }
   }
@@ -233,16 +234,17 @@ export function getCachedStoryGroups(viewerUidHint = "") {
 
   viewerUid = viewer;
   cachedGroups = snapshot;
+  mergeViewerSeenState(cachedGroups, viewer);
   byUid.clear();
   byUsername.clear();
-  for (const group of snapshot) {
+  for (const group of cachedGroups) {
     byUid.set(group.ownerUid, group);
     if (group.ownerUsername) {
       byUsername.set(group.ownerUsername.toLowerCase(), group);
     }
   }
   // Avoid speculative network preload when restoring from snapshot — first paint only.
-  markStoriesHydrated(snapshot.length);
+  markStoriesHydrated(cachedGroups.length);
   return cachedGroups;
 }
 
@@ -307,6 +309,9 @@ export function markStoryViewedLocally(
         byName.stories.map((item) => item.id),
       );
     }
+    if (viewerId) {
+      writeStoriesSnapshot(viewerId, cachedGroups.length ? cachedGroups : [byName]);
+    }
     notify();
     return;
   }
@@ -322,6 +327,9 @@ export function markStoryViewedLocally(
       ownerUid,
       group.stories.map((item) => item.id),
     );
+  }
+  if (viewerId) {
+    writeStoriesSnapshot(viewerId, cachedGroups);
   }
   notify();
 }

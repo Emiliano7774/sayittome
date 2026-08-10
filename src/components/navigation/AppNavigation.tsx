@@ -16,6 +16,7 @@ export default function AppNavigation() {
 
   const navHidden =
     pathname === "/" ||
+    pathname.startsWith("/chat") ||
     HIDE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
     (uxMode === "modern" && pathname === "/shuffle");
 

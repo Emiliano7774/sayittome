@@ -71,8 +71,10 @@ function isFirebaseUid(id: string) {
 }
 
 function isOwnerReply(message: MessageDoc, chat: ChatDoc, from: string) {
-  if (message.senderKind === "profile") return true;
+  // fromUid shape wins over a contradictory senderKind (historical mis-tags).
+  if (from.startsWith("anon_")) return false;
   if (from.startsWith("profile_")) return true;
+  if (message.senderKind === "profile") return true;
   const profileUid = asId(
     message.profileUid || chat.targetUid || chat.receptorUid || chat.anonOwnerUid,
   );
