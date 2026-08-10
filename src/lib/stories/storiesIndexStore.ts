@@ -215,16 +215,32 @@ export function prefetchOwnerStories(ownerUid?: string, username?: string) {
 }
 
 export function getCachedStoryGroups(viewerUidHint = "") {
-  if (cachedGroups.length > 0) return cachedGroups;
-
   const viewer = String(viewerUidHint || viewerUid || "").trim();
-  if (!viewer) return cachedGroups;
+
+  if (cachedGroups.length > 0) {
+    // In-memory mosaic belongs to the store's current viewer only.
+    if (!viewer || !viewerUid || viewer === viewerUid) {
+      return cachedGroups;
+    }
+  }
+
+  if (!viewer) return [];
 
   const snapshot = readStoriesSnapshot(viewer);
-  if (!snapshot?.length) return cachedGroups;
+  if (!snapshot?.length) {
+    return viewer && viewer === viewerUid ? cachedGroups : [];
+  }
 
+  viewerUid = viewer;
   cachedGroups = snapshot;
-  indexGroups(snapshot);
+  byUid.clear();
+  byUsername.clear();
+  for (const group of snapshot) {
+    byUid.set(group.ownerUid, group);
+    if (group.ownerUsername) {
+      byUsername.set(group.ownerUsername.toLowerCase(), group);
+    }
+  }
   // Avoid speculative network preload when restoring from snapshot — first paint only.
   markStoriesHydrated(snapshot.length);
   return cachedGroups;

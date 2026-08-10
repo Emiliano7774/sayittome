@@ -29,6 +29,8 @@ assert.match(storiesSnap, /sayittome:stories-snapshot:v1/);
 assert.match(storiesStore, /writeStoriesSnapshot/);
 assert.match(storiesStore, /readStoriesSnapshot/);
 assert.match(storiesStore, /clearStoriesIndexCache/);
+assert.match(storiesStore, /In-memory mosaic belongs/);
+assert.match(storiesStore, /viewer === viewerUid/);
 assert.match(storiesGroups, /auth\.authStateReady\(\)/);
 assert.match(storiesGroups, /authSettled/);
 assert.match(storiesGroups, /getCachedStoryGroups\(nextViewerId\)/);
