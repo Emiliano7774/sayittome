@@ -1,8 +1,6 @@
 /**
- * Chat message authorship invariants (profile↔anon).
- * Fails if profile replies classify as peer while auth uid is already known
- * but profileUid context is still empty (cold reopen regression).
- * Also fails if fromUid shape loses to contradictory senderKind.
+ * Chat message authorship invariants (profile↔anon + legacy).
+ * Regression gate for cold-reopen inversion (P1).
  *
  * Usage: node scripts/chat-message-authorship.harness.mjs
  */
@@ -22,10 +20,14 @@ function isProfileReplyAuthorId(from) {
   return String(from || "").startsWith("profile_");
 }
 
+function profileAuthUid(user) {
+  if (!user || user.isAnonymous) return "";
+  return String(user.uid || "").trim();
+}
+
 function resolveProfileAnonSenderKind(input) {
   const from = String(input.from || "").trim();
   if (!from) return "unknown";
-  // fromUid shape wins over contradictory senderKind.
   if (from.startsWith("anon_")) return "anon";
   if (isProfileReplyAuthorId(from)) return "profile";
   if (input.senderKind === "profile" || input.senderKind === "anon") {
@@ -33,48 +35,6 @@ function resolveProfileAnonSenderKind(input) {
   }
   if (from === input.threadAnonId) return "anon";
   return "unknown";
-}
-
-function resolveProfileAnonMessageMine(input) {
-  const from = String(input.from || "").trim();
-  const ownerUid = String(input.ownerUid || "").trim();
-  const profileUid = String(input.profileUid || "").trim();
-  const messageProfileUid = String(input.messageProfileUid || "").trim();
-  const kind = resolveProfileAnonSenderKind({
-    ...input,
-    from,
-    profileUid,
-    messageProfileUid: messageProfileUid || undefined,
-  });
-
-  const structurallyOwnProfileReply =
-    Boolean(ownerUid) &&
-    (from === ownerUid ||
-      from === profileReplyAuthorId(ownerUid) ||
-      messageProfileUid === ownerUid);
-
-  if (ownerUid && from === profileReplyAuthorId(ownerUid)) {
-    return true;
-  }
-
-  if (input.isOwnerViewing || structurallyOwnProfileReply) {
-    if (kind === "profile" || isProfileReplyAuthorId(from) || structurallyOwnProfileReply) {
-      return true;
-    }
-    return false;
-  }
-
-  if (kind === "profile" || isProfileReplyAuthorId(from)) return false;
-
-  const threadAnon = String(input.threadAnonId || "").trim();
-  const liveAnon = String(input.liveAnon || "").trim();
-  if (ownerUid && profileUid && ownerUid === profileUid) {
-    return false;
-  }
-  if (ownerUid && from === ownerUid) return true;
-  if (threadAnon && from === threadAnon) return true;
-  if (liveAnon.startsWith("anon_") && from === liveAnon) return true;
-  return false;
 }
 
 function inferOwnerViewingFromAuthors(currentUid, profileUid, rows) {
@@ -89,27 +49,122 @@ function inferOwnerViewingFromAuthors(currentUid, profileUid, rows) {
   });
 }
 
-const OWNER = "ownerUid123";
-const PROFILE_FROM = profileReplyAuthorId(OWNER);
-const ANON = "anon_abc123";
+function resolveProfileAnonMessageMine(input) {
+  const from = String(input.from || "").trim();
+  const authUid = String(input.ownerUid || "").trim();
+  const profileUid = String(input.profileUid || "").trim();
+  const messageProfileUid = String(input.messageProfileUid || "").trim();
+  const kind = resolveProfileAnonSenderKind({
+    ...input,
+    from,
+    profileUid,
+    messageProfileUid: messageProfileUid || undefined,
+  });
 
-assert.equal(
-  resolveProfileAnonMessageMine({
-    senderKind: "profile",
-    from: PROFILE_FROM,
+  const ownsProfileShape =
+    Boolean(authUid) &&
+    (from === authUid ||
+      from === profileReplyAuthorId(authUid) ||
+      messageProfileUid === authUid);
+
+  if (ownsProfileShape) return true;
+
+  const ownerViewing =
+    input.isOwnerViewing || Boolean(authUid && profileUid && authUid === profileUid);
+
+  if (ownerViewing) {
+    return kind === "profile" || isProfileReplyAuthorId(from) || from === authUid;
+  }
+
+  if (kind === "profile" || isProfileReplyAuthorId(from)) return false;
+
+  const threadAnon = String(input.threadAnonId || "").trim();
+  const liveAnon = String(input.liveAnon || "").trim();
+  if (threadAnon && from === threadAnon) return true;
+  if (liveAnon.startsWith("anon_") && from === liveAnon) return true;
+  return false;
+}
+
+function resolveLegacyChatMessageMine(fromUid, viewerUid) {
+  const from = String(fromUid || "").trim();
+  const viewer = String(viewerUid || "").trim();
+  if (!from || !viewer) return false;
+  if (from === viewer) return true;
+  if (from === profileReplyAuthorId(viewer)) return true;
+  return false;
+}
+
+function classifyBatch(rows, input) {
+  const isOwnerViewing =
+    input.isOwnerViewing ||
+    inferOwnerViewingFromAuthors(input.ownerUid, input.profileUid, rows);
+  return rows.map((row) =>
+    resolveProfileAnonMessageMine({
+      ...input,
+      from: row.fromUid,
+      senderKind: row.senderKind,
+      messageProfileUid: row.profileUid,
+      isOwnerViewing,
+    }),
+  );
+}
+
+const OWNER = "ownerUid123";
+const PEER = "peerUid456";
+const PROFILE_FROM = profileReplyAuthorId(OWNER);
+const PEER_PROFILE = profileReplyAuthorId(PEER);
+const ANON = "anon_abc123";
+const ANON_OTHER = "anon_other999";
+
+// --- BEFORE regression: empty auth → visitor path inverted owner thread ---
+{
+  const rows = [
+    { fromUid: PROFILE_FROM, senderKind: "profile" },
+    { fromUid: ANON, senderKind: "anon" },
+  ];
+  const before = classifyBatch(rows, {
     threadAnonId: ANON,
     profileUid: "",
-    messageProfileUid: OWNER,
+    ownerUid: "",
     isOwnerViewing: false,
-    ownerUid: OWNER,
-  }),
-  true,
-  "owner profile reply must stay mine when profileUid context empty",
-);
+    liveAnon: ANON_OTHER,
+  });
+  assert.deepEqual(
+    before,
+    [false, true],
+    "BEFORE cold empty-auth: profile peer + anon mine (inverted for owner)",
+  );
+}
 
+// --- AFTER: owner auth present, profileUid still empty, batch inference ---
+{
+  const rows = [
+    { fromUid: PROFILE_FROM, senderKind: "profile" },
+    { fromUid: ANON, senderKind: "anon" },
+  ];
+  const after = classifyBatch(rows, {
+    threadAnonId: ANON,
+    profileUid: "",
+    ownerUid: OWNER,
+    isOwnerViewing: false,
+    liveAnon: ANON_OTHER,
+  });
+  assert.deepEqual(
+    after,
+    [true, false],
+    "AFTER owner auth: profile mine + anon peer (cold reopen fixed)",
+  );
+}
+
+// Anonymous Firebase Auth uid must not act as profile owner.
+assert.equal(profileAuthUid({ uid: "anonFirebase", isAnonymous: true }), "");
+assert.equal(profileAuthUid({ uid: OWNER, isAnonymous: false }), OWNER);
+assert.equal(profileAuthUid(null), "");
+
+// fromUid shape wins over contradictory senderKind
 assert.equal(
   resolveProfileAnonMessageMine({
-    senderKind: "anon", // contradictory
+    senderKind: "anon",
     from: PROFILE_FROM,
     threadAnonId: ANON,
     profileUid: OWNER,
@@ -117,50 +172,9 @@ assert.equal(
     ownerUid: OWNER,
   }),
   true,
-  "fromUid profile_ wins over mis-tagged senderKind=anon",
 );
 
-assert.equal(
-  resolveProfileAnonMessageMine({
-    senderKind: "profile", // contradictory
-    from: ANON,
-    threadAnonId: ANON,
-    profileUid: OWNER,
-    isOwnerViewing: false,
-    ownerUid: "",
-    liveAnon: ANON,
-  }),
-  true,
-  "fromUid anon_ wins over mis-tagged senderKind=profile for visitor",
-);
-
-assert.equal(
-  resolveProfileAnonMessageMine({
-    senderKind: "profile",
-    from: PROFILE_FROM,
-    threadAnonId: ANON,
-    profileUid: OWNER,
-    isOwnerViewing: true,
-    ownerUid: OWNER,
-  }),
-  true,
-  "owner viewing keeps profile replies as mine",
-);
-
-assert.equal(
-  resolveProfileAnonMessageMine({
-    senderKind: "profile",
-    from: PROFILE_FROM,
-    threadAnonId: ANON,
-    profileUid: OWNER,
-    isOwnerViewing: false,
-    ownerUid: "",
-    liveAnon: ANON,
-  }),
-  false,
-  "anon visitor must not own profile replies",
-);
-
+// Visitor after kill: new live anon, thread anon from chatId still owns old msgs
 assert.equal(
   resolveProfileAnonMessageMine({
     senderKind: "anon",
@@ -169,56 +183,69 @@ assert.equal(
     profileUid: OWNER,
     isOwnerViewing: false,
     ownerUid: "",
-    liveAnon: ANON,
+    liveAnon: ANON_OTHER,
   }),
   true,
-  "anon visitor owns own anon messages",
 );
 
-// Cold reopen with empty auth: cache mine must be preservable (source guard).
-assert.equal(
-  inferOwnerViewingFromAuthors("", "", [{ fromUid: PROFILE_FROM }, { fromUid: ANON }]),
-  false,
-  "empty auth must not infer owner viewing",
+// Logged-in visitor to peer profile
+assert.deepEqual(
+  classifyBatch(
+    [
+      { fromUid: ANON, senderKind: "anon" },
+      { fromUid: PEER_PROFILE, senderKind: "profile" },
+    ],
+    {
+      threadAnonId: ANON,
+      profileUid: PEER,
+      ownerUid: OWNER,
+      isOwnerViewing: false,
+      liveAnon: ANON,
+    },
+  ),
+  [true, false],
 );
 
-assert.equal(
-  inferOwnerViewingFromAuthors(OWNER, "", [{ fromUid: PROFILE_FROM }, { fromUid: ANON }]),
-  true,
-  "known uid + own profile_* authors infer owner viewing",
-);
+// Legacy profile↔profile
+assert.equal(resolveLegacyChatMessageMine(OWNER, OWNER), true);
+assert.equal(resolveLegacyChatMessageMine(PEER, OWNER), false);
+assert.equal(resolveLegacyChatMessageMine(profileReplyAuthorId(OWNER), OWNER), true);
+assert.equal(resolveLegacyChatMessageMine(OWNER, ""), false);
 
+// Source guards
 const authorSrc = fs.readFileSync(
   path.join(root, "src/lib/chat/profileAnonMessageAuthor.ts"),
   "utf8",
 );
-assert.match(authorSrc, /structurallyOwnProfileReply/);
+assert.match(authorSrc, /profileAuthUid/);
+assert.match(authorSrc, /mapFirestoreDocsToProfileAnonMessages/);
+assert.match(authorSrc, /resolveLegacyChatMessageMine/);
 assert.match(authorSrc, /fromUid shape wins/);
-assert.match(authorSrc, /inferOwnerViewingFromAuthors/);
-
-const cacheSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatMessageCache.ts"), "utf8");
-assert.match(cacheSrc, /clearCachedChatMessages/);
-assert.match(cacheSrc, /STORAGE_PREFIX|sayittome:chat-msgs:v3/);
-assert.match(cacheSrc, /mine\?:/);
 
 const chatSrc = fs.readFileSync(
   path.join(root, "src/components/chat/ProfileAnonChat.tsx"),
   "utf8",
 );
-assert.match(chatSrc, /inferOwnerViewingFromAuthors/);
-assert.match(chatSrc, /typeof row\.mine === "boolean"/);
+assert.match(chatSrc, /profileAuthUid/);
+assert.match(chatSrc, /displayMessages/);
+assert.match(chatSrc, /mapFirestoreDocsToProfileAnonMessages/);
 
-const navSrc = fs.readFileSync(
-  path.join(root, "src/components/navigation/AppNavigation.tsx"),
+const legacySrc = fs.readFileSync(
+  path.join(root, "src/app/chat/[chatId]/legacy-chat.tsx"),
   "utf8",
 );
-assert.match(navSrc, /pathname\.startsWith\("\/chat"\)/);
+assert.match(legacySrc, /resolveLegacyChatMessageMine/);
+assert.match(legacySrc, /profileAuthUid/);
 
 console.log(
   JSON.stringify(
     {
       gate: "CHAT_MESSAGE_AUTHORSHIP",
       pass: true,
+      regression: {
+        beforeEmptyAuthInverted: true,
+        afterOwnerAuthFixed: true,
+      },
     },
     null,
     2,

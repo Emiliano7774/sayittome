@@ -59,7 +59,8 @@ import {
   buildProfileAnonViewerContext,
   inferOwnerViewingFromAuthors,
   isProfileReplyAuthorId,
-  mapFirestoreDocToProfileAnonMessage,
+  mapFirestoreDocsToProfileAnonMessages,
+  profileAuthUid,
   profileReplyAuthorId,
   remapProfileAnonMessagesMine,
   resolveProfileAnonMessageMine,
@@ -336,7 +337,7 @@ export default function ProfileAnonChat({
     if (!cached?.length) return [];
     return hydrateCachedMessages(chatId, cached, {
       chatAnonSessionId: "",
-      currentUid: auth.currentUser?.uid || "",
+      currentUid: profileAuthUid(auth.currentUser),
       targetUid: String(initialProfile?.uid || ""),
       chatOwnerUid: "",
     });
@@ -354,8 +355,8 @@ export default function ProfileAnonChat({
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewOnce, setViewOnce] = useState(false);
   const [anonSession, setAnonSession] = useState("anon_server");
-  const [authReady, setAuthReady] = useState(() => Boolean(auth.currentUser));
-  const [currentUid, setCurrentUid] = useState(() => auth.currentUser?.uid || "");
+  const [authReady, setAuthReady] = useState(false);
+  const [currentUid, setCurrentUid] = useState(() => profileAuthUid(auth.currentUser));
   const [targetUid, setTargetUid] = useState(initialProfile?.uid || "");
   const [targetPhoto, setTargetPhoto] = useState(initialProfile?.photo || "");
   const [targetBlurPhoto, setTargetBlurPhoto] = useState(initialProfile?.blurPhoto || false);
@@ -602,12 +603,12 @@ export default function ProfileAnonChat({
 
     void auth.authStateReady().then(() => {
       if (cancelled) return;
-      setCurrentUid(auth.currentUser?.uid || "");
+      setCurrentUid(profileAuthUid(auth.currentUser));
       setAuthReady(true);
     });
 
     const unsub = onAuthStateChanged(auth, (user) => {
-      setCurrentUid(user?.uid || "");
+      setCurrentUid(profileAuthUid(user));
       setAuthReady(true);
     });
 
@@ -651,7 +652,7 @@ export default function ProfileAnonChat({
       await auth.authStateReady();
       if (cancelled) return;
 
-      const uid = auth.currentUser?.uid || "";
+      const uid = profileAuthUid(auth.currentUser);
       setCurrentUid(uid);
       setAuthReady(true);
 
@@ -848,9 +849,9 @@ export default function ProfileAnonChat({
       "",
   ).trim();
   const profileOwnerUid = targetUid || chatOwnerUid || docOwnerUid;
-  const isOwnerViewing = Boolean(
-    currentUid && profileOwnerUid && currentUid === profileOwnerUid,
-  );
+  const isOwnerViewing =
+    Boolean(currentUid && profileOwnerUid && currentUid === profileOwnerUid) ||
+    inferOwnerViewingFromAuthors(currentUid, profileOwnerUid, messages);
   const profileUid = profileOwnerUid || targetUid;
   threadContextRef.current = {
     chatId,
@@ -861,6 +862,18 @@ export default function ProfileAnonChat({
     isOwnerViewing,
     profileUid,
   };
+
+  // Source of truth for bubble side: recompute mine every render from durable fromUid.
+  const displayMessages = remapProfileAnonMessagesMine(
+    messages,
+    buildProfileAnonViewerContext({
+      chatId,
+      chatAnonSessionId,
+      currentUid,
+      targetUid,
+      chatOwnerUid: chatOwnerUid || docOwnerUid,
+    }),
+  );
   const presenceLabel =
     targetShowsLastSeen && !isOwnerViewing
       ? formatLastSeen(targetLastActive, targetOnline)
@@ -872,7 +885,7 @@ export default function ProfileAnonChat({
     isClassic &&
     (isOwnerViewing
       ? hasChatActivity
-      : messages.some((message) => message.mine) || hasChatActivity);
+      : displayMessages.some((message) => message.mine) || hasChatActivity);
   const showClassicIntro =
     isClassic && authReady && !isOwnerViewing && !chatSurfaceEngaged;
   const showModernVisitorIntro =
@@ -889,7 +902,7 @@ export default function ProfileAnonChat({
   const anonIdentityChangeInsertIndex = showAnonIdentityNotice
     ? resolveAnonIdentityDividerIndex(
         chatId,
-        messages,
+        displayMessages,
         anonIdentity.threadAnonId,
         anonIdentity.liveAnonId,
       )
@@ -1001,24 +1014,31 @@ export default function ProfileAnonChat({
     const unsub = onSnapshot(
       q,
       (snapshot) => {
-        const ctx = buildProfileAnonViewerContext({
+        const baseCtx = buildProfileAnonViewerContext({
           chatId: threadContextRef.current.chatId,
           chatAnonSessionId: threadContextRef.current.chatAnonSessionId,
           currentUid: threadContextRef.current.currentUid,
           targetUid: threadContextRef.current.targetUid,
           chatOwnerUid: threadContextRef.current.chatOwnerUid,
         });
-        const messageViewerId = ctx.isOwnerViewing ? ctx.currentUid : ctx.threadAnonId;
-
-        const loaded: Message[] = snapshot.docs
-          .map((docSnap) =>
-            mapFirestoreDocToProfileAnonMessage(
-              docSnap.id,
-              docSnap.data() as ProfileAnonFirestoreMessage,
-              ctx,
+        const loaded = mapFirestoreDocsToProfileAnonMessages(
+          snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            data: docSnap.data() as ProfileAnonFirestoreMessage,
+          })),
+          baseCtx,
+        );
+        const ctx = {
+          ...baseCtx,
+          isOwnerViewing:
+            baseCtx.isOwnerViewing ||
+            inferOwnerViewingFromAuthors(
+              baseCtx.currentUid,
+              baseCtx.profileUid,
+              loaded,
             ),
-          )
-          .filter((row): row is Message => row !== null);
+        };
+        const messageViewerId = ctx.isOwnerViewing ? ctx.currentUid : ctx.threadAnonId;
         const latestSnapshotDoc = snapshot.docs[snapshot.docs.length - 1];
         recordQaCriticalEvent("chat", "CHAT_MESSAGE_LISTENER_SNAPSHOT", {
           threadId: chatId,
@@ -1866,8 +1886,8 @@ export default function ProfileAnonChat({
           ].join(" ")}
         >
           <div className={`${chatWidthClass} flex min-h-full flex-col justify-end`}>
-            {messages.map((message, index) => {
-              const previousFrom = index > 0 ? String(messages[index - 1]?.fromUid || "") : "";
+            {displayMessages.map((message, index) => {
+              const previousFrom = index > 0 ? String(displayMessages[index - 1]?.fromUid || "") : "";
               const currentFrom = String(message.fromUid || "");
               const dividerAnonId = messageAnonSenderId(currentFrom);
               const showIdentityDivider =

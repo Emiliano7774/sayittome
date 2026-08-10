@@ -36,6 +36,10 @@ import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import {
+  profileAuthUid,
+  resolveLegacyChatMessageMine,
+} from "@/lib/chat/profileAnonMessageAuthor";
+import {
   readCachedChatMessages,
   writeCachedChatMessages,
   type CachedChatMessage,
@@ -160,7 +164,7 @@ export default function LegacyChatPage() {
   const [replyingTo, setReplyingTo] = useState<MessageData | null>(null);
   const [viewer, setViewer] = useState<MessageData | null>(null);
   const [recording, setRecording] = useState(false);
-  const [currentUid, setCurrentUid] = useState(() => auth.currentUser?.uid || "");
+  const [currentUid, setCurrentUid] = useState(() => profileAuthUid(auth.currentUser));
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -197,11 +201,11 @@ export default function LegacyChatPage() {
     let cancelled = false;
     void auth.authStateReady().then(() => {
       if (cancelled) return;
-      setCurrentUid(auth.currentUser?.uid || "");
+      setCurrentUid(profileAuthUid(auth.currentUser));
     });
 
     const unsub = onAuthStateChanged(auth, (user) => {
-      setCurrentUid(user?.uid || "");
+      setCurrentUid(profileAuthUid(user));
     });
 
     return () => {
@@ -359,7 +363,7 @@ export default function LegacyChatPage() {
     return () => unsub();
   }, [chatId]);
 
-  const viewerUid = currentUid || auth.currentUser?.uid || "";
+  const viewerUid = currentUid || profileAuthUid(auth.currentUser);
   useChatViewportLock(Boolean(chatId));
 
   const visibleMessages = useMemo(() => {
@@ -780,7 +784,10 @@ if (uxMode === "classic") {
         <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-40 pt-5">
           <div className="space-y-3">
             {visibleMessages.map((message: any) => {
-              const isMine = Boolean(viewerUid && message.fromUid === viewerUid);
+              const isMine = resolveLegacyChatMessageMine(
+                String(message.fromUid || ""),
+                viewerUid,
+              );
               const receiptStatus = resolveMessageReceiptStatus({
                 mine: isMine,
                 readBy: message.readBy,
@@ -848,7 +855,7 @@ if (uxMode === "classic") {
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {visibleMessages.map((msg) => {
-            const mine = Boolean(viewerUid && msg.fromUid === viewerUid);
+            const mine = resolveLegacyChatMessageMine(String(msg.fromUid || ""), viewerUid);
             const isSending = msg.status === "sending";
             const hasError = msg.status === "error";
             const receiptStatus = resolveMessageReceiptStatus({
