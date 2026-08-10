@@ -28,18 +28,25 @@ export default function StoriesBootstrap() {
     let cancelled = false;
 
     const run = (viewerKey: string) => {
-      if (cancelled) return;
+      if (cancelled || !viewerKey) return;
       // First refresh must not wait for idle — Stories warm path depends on it.
       refreshStoriesIndex(viewerKey, false).catch(() => {});
     };
 
+    let authSettled = false;
+    void auth.authStateReady().then(() => {
+      if (cancelled) return;
+      authSettled = true;
+      run(resolveStoryViewerId(auth.currentUser));
+    });
+
     const unsub = onAuthStateChanged(auth, (user) => {
+      if (!authSettled) return;
       run(resolveStoryViewerId(user));
     });
 
-    run(resolveStoryViewerId(auth.currentUser));
-
     const timer = window.setInterval(() => {
+      if (!authSettled) return;
       refreshStoriesIndex(resolveStoryViewerId(auth.currentUser), false).catch(
         () => {},
       );

@@ -19,20 +19,19 @@ import {
 } from "@/hooks/useStoriesReady";
 
 export function useStoriesGroups() {
-  const initialViewer = resolveStoryViewerId(auth.currentUser);
-  const initialGroups = getCachedStoryGroups(initialViewer);
-  const [groups, setGroups] = useState<StoryUserGroup[]>(() => initialGroups);
-  const [viewerUid, setViewerUid] = useState(initialViewer);
-  const [loading, setLoading] = useState(
-    () => !hasStoriesEverHydrated() && initialGroups.length === 0,
-  );
+  // Wait for authStateReady before choosing viewer. Seeding anon while Firebase
+  // restores a real uid paints mosaic then clears it (visible empty flash).
+  const [groups, setGroups] = useState<StoryUserGroup[]>([]);
+  const [viewerUid, setViewerUid] = useState("");
+  const [loading, setLoading] = useState(() => !hasStoriesEverHydrated());
 
   useEffect(() => {
     let cancelled = false;
-    let lastViewer = resolveStoryViewerId(auth.currentUser);
+    let lastViewer = "";
+    let authSettled = false;
 
     const unsubIndex = subscribeStoriesIndex(() => {
-      if (cancelled) return;
+      if (cancelled || !lastViewer) return;
       const cached = getCachedStoryGroups(lastViewer);
       setGroups(cached);
       if (cached.length > 0) {
@@ -41,25 +40,39 @@ export function useStoriesGroups() {
       }
     });
 
-    setViewerUid(lastViewer);
-    // Warm first frame already seeded from snapshot when available; revalidate ASAP.
-    void refreshStoriesIndex(lastViewer).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
+    const applyViewer = (nextViewerId: string, forceRefresh: boolean) => {
+      if (!nextViewerId || cancelled) return;
 
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      const nextViewerId = resolveStoryViewerId(user);
-      if (nextViewerId !== lastViewer) {
-        // Never show previous account's warm mosaic after switch.
+      if (lastViewer && nextViewerId !== lastViewer) {
         clearStoriesIndexCache();
         setGroups([]);
         setLoading(true);
-        lastViewer = nextViewerId;
       }
+
+      lastViewer = nextViewerId;
       setViewerUid(nextViewerId);
-      void refreshStoriesIndex(nextViewerId, true).finally(() => {
+
+      const cached = getCachedStoryGroups(nextViewerId);
+      if (cached.length > 0) {
+        setGroups(cached);
+        markStoriesHydrated(cached.length);
+        setLoading(false);
+      }
+
+      void refreshStoriesIndex(nextViewerId, forceRefresh).finally(() => {
         if (!cancelled) setLoading(false);
       });
+    };
+
+    void auth.authStateReady().then(() => {
+      if (cancelled) return;
+      authSettled = true;
+      applyViewer(resolveStoryViewerId(auth.currentUser), false);
+    });
+
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (!authSettled) return;
+      applyViewer(resolveStoryViewerId(user), true);
     });
 
     return () => {
@@ -74,9 +87,6 @@ export function useStoriesGroups() {
     groupCount: groups.length,
   });
 
-  // indexPending: cold fetch in flight with no groups yet — pages may paint a
-  // stable awaiting shell. Under the no-loading contract showLoading is false
-  // so "Cargando historias..." is never returned as loading.
   const indexPending = loading && groups.length === 0;
 
   return { groups, viewerUid, loading: showLoading, indexPending };
