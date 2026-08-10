@@ -56,7 +56,9 @@
     "test:modern-anon-hooks-crash-repro": "node scripts/modern-anon-hooks-crash-repro.harness.mjs",
     "test:modern-shuffle-no-recovery": "node scripts/modern-shuffle-no-recovery.harness.mjs",
     "test:shuffle-filters-empty-surface": "node scripts/shuffle-filters-empty-surface-mode.harness.mjs",
-    "test:shuffle-online-privacy-notice": "node scripts/shuffle-online-privacy-notice.harness.mjs"
+    "test:shuffle-online-privacy-notice": "node scripts/shuffle-online-privacy-notice.harness.mjs",
+    "test:chat-message-authorship": "node scripts/chat-message-authorship.harness.mjs",
+    "test:chat-thread-warm-first-frame": "node scripts/chat-thread-warm-first-frame.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

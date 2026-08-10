@@ -57,6 +57,7 @@ import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { unregisterSessionChat, registerSessionChat, getSessionChatIds } from "@/lib/chat/sessionChats";
 import {
   buildProfileAnonViewerContext,
+  isProfileReplyAuthorId,
   mapFirestoreDocToProfileAnonMessage,
   profileReplyAuthorId,
   remapProfileAnonMessagesMine,
@@ -183,11 +184,16 @@ function hydrateCachedMessages(
 
   return rows.map((row) => {
     const base = cachedMessageToUi(row) as Message;
+    const from = String(row.fromUid || "");
+    const messageProfileUid = isProfileReplyAuthorId(from)
+      ? from.slice("profile_".length)
+      : undefined;
     const mine = resolveProfileAnonMessageMine({
       senderKind: row.senderKind,
-      from: row.fromUid || "",
+      from,
       threadAnonId: ctx.threadAnonId,
       profileUid: ctx.profileUid,
+      messageProfileUid,
       isOwnerViewing: ctx.isOwnerViewing,
       ownerUid: ctx.currentUid,
     });
@@ -309,7 +315,17 @@ export default function ProfileAnonChat({
   const initialProfile = readInitialTargetProfile(username);
   useNavUsefulPaint(Boolean(chatId) && Boolean(username));
   const initialThreadActive = threadHasPriorActivity(chatId);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (!chatId) return [];
+    const cached = readCachedChatMessages(chatId);
+    if (!cached?.length) return [];
+    return hydrateCachedMessages(chatId, cached, {
+      chatAnonSessionId: "",
+      currentUid: auth.currentUser?.uid || "",
+      targetUid: String(initialProfile?.uid || ""),
+      chatOwnerUid: "",
+    });
+  });
   const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(initialThreadActive);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -324,7 +340,7 @@ export default function ProfileAnonChat({
   const [viewOnce, setViewOnce] = useState(false);
   const [anonSession, setAnonSession] = useState("anon_server");
   const [authReady, setAuthReady] = useState(false);
-  const [currentUid, setCurrentUid] = useState("");
+  const [currentUid, setCurrentUid] = useState(() => auth.currentUser?.uid || "");
   const [targetUid, setTargetUid] = useState(initialProfile?.uid || "");
   const [targetPhoto, setTargetPhoto] = useState(initialProfile?.photo || "");
   const [targetBlurPhoto, setTargetBlurPhoto] = useState(initialProfile?.blurPhoto || false);
@@ -610,13 +626,23 @@ export default function ProfileAnonChat({
     if (!cached?.length) return;
 
     setMessages((prev) => {
-      if (prev.length > 0) return prev;
-      return hydrateCachedMessages(chatId, cached, {
+      const hydrated = hydrateCachedMessages(chatId, cached, {
         chatAnonSessionId,
         currentUid,
         targetUid,
         chatOwnerUid,
       });
+      // Warm reopen: never leave an empty first paint when cache exists.
+      // Remap ownership when auth/profile context settles without wiping rows.
+      if (prev.length === 0) return hydrated;
+      const ctx = buildProfileAnonViewerContext({
+        chatId,
+        chatAnonSessionId,
+        currentUid,
+        targetUid,
+        chatOwnerUid,
+      });
+      return remapProfileAnonMessagesMine(prev, ctx);
     });
     setChatSurfaceEngaged((engaged) => engaged || cached.length > 0);
   }, [chatId, chatAnonSessionId, currentUid, targetUid, chatOwnerUid]);

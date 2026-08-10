@@ -150,31 +150,43 @@ export function resolveProfileAnonMessageMine(input: {
   ownerUid?: string;
 }) {
   const from = String(input.from || "").trim();
+  const ownerUid = String(input.ownerUid || "").trim();
+  const profileUid = String(input.profileUid || "").trim();
+  const messageProfileUid = String(input.messageProfileUid || "").trim();
   const kind = resolveProfileAnonSenderKind({
     senderKind: input.senderKind,
     from,
     threadAnonId: input.threadAnonId,
-    profileUid: input.profileUid,
-    messageProfileUid: input.messageProfileUid,
+    profileUid,
+    messageProfileUid: messageProfileUid || undefined,
   });
 
-  if (input.isOwnerViewing) {
-    if (kind === "profile") return true;
-    if (input.ownerUid && from === input.ownerUid) return true;
-    if (isProfileReplyAuthorId(from)) return true;
+  // Durable authorship: profile_* / matching profileUid must stay "mine" for the
+  // authenticated owner even when profileUid context is still empty on cold reopen
+  // (targetUid/chatOwnerUid hydrate after the first paint).
+  const structurallyOwnProfileReply =
+    Boolean(ownerUid) &&
+    (from === ownerUid ||
+      from === profileReplyAuthorId(ownerUid) ||
+      messageProfileUid === ownerUid);
+
+  if (input.isOwnerViewing || structurallyOwnProfileReply) {
+    if (kind === "profile" || isProfileReplyAuthorId(from) || structurallyOwnProfileReply) {
+      return true;
+    }
+    // Owner viewing: peer/anon bubbles stay not mine.
     return false;
   }
 
-  if (kind === "profile") return false;
+  if (kind === "profile" || isProfileReplyAuthorId(from)) return false;
 
   const threadAnon = String(input.threadAnonId || "").trim();
   const liveAnon = getChatAnonSenderId();
-  const visitorUid = String(input.ownerUid || "").trim();
 
   // Anon viewer: only THIS visitor's aliases are "mine". Never treat another
   // anon_* id (or a mis-tagged profile reply) as owned just because senderKind
   // is anon — that hid incoming profile replies and suppressed unread/badge.
-  if (visitorUid && from === visitorUid) return true;
+  if (ownerUid && from === ownerUid) return true;
   if (threadAnon && from === threadAnon) return true;
   if (liveAnon.startsWith("anon_") && from === liveAnon) return true;
 
@@ -280,11 +292,15 @@ export function remapProfileAnonMessagesMine<
 
   const next = messages.map((message) => {
     const from = String(message.fromUid || "");
+    const messageProfileUid = isProfileReplyAuthorId(from)
+      ? from.slice("profile_".length)
+      : undefined;
     const mine = resolveProfileAnonMessageMine({
       senderKind: message.senderKind,
       from,
       threadAnonId: ctx.threadAnonId,
       profileUid: ctx.profileUid,
+      messageProfileUid,
       isOwnerViewing: ctx.isOwnerViewing,
       ownerUid: ctx.currentUid,
     });

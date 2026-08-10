@@ -179,10 +179,14 @@ class GlobalChatWhipManager {
           senderKind?: string;
           text?: string;
           texto?: string;
+          mediaUrl?: string;
+          type?: string;
           createdAt?: { toMillis?: () => number; seconds?: number };
         };
 
-        const body = String(data.text || data.texto || "").trim();
+        const textBody = String(data.text || data.texto || "").trim();
+        const body =
+          textBody || (data.mediaUrl || data.type ? "Nuevo mensaje" : "");
         const chat = ctx.getChatById(chatId);
         const viewerId = chat
           ? resolveChatViewerId(chat, ctx.firebaseUid)

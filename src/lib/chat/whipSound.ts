@@ -37,13 +37,13 @@ function requestNotificationPermission() {
     .catch(() => undefined);
 }
 
-export function unlockWhipSound() {
-  if (unlocked || typeof window === "undefined") return;
+export function unlockWhipSound(options?: { force?: boolean }) {
+  if (typeof window === "undefined") return;
+  if (unlocked && !options?.force) return;
 
   const el = getPooledAudio();
   if (!el) return;
 
-  unlocked = true;
   requestNotificationPermission();
 
   try {
@@ -55,31 +55,53 @@ export function unlockWhipSound() {
           el.pause();
           el.currentTime = 0;
           el.muted = false;
+          unlocked = true;
         })
         .catch(() => {
           el.muted = false;
+          unlocked = false;
         });
+    } else {
+      unlocked = true;
     }
   } catch {
     el.muted = false;
+    unlocked = false;
   }
 }
 
-export function playIncomingWhipSound() {
+/** Android WebView often suspends audio after background; force a fresh prime. */
+export function reprimeWhipSound() {
+  unlocked = false;
+  unlockWhipSound({ force: true });
+}
+
+export function playIncomingWhipSound(): boolean {
   const now = Date.now();
-  if (now - lastPlayedAt < COOLDOWN_MS) return;
+  if (now - lastPlayedAt < COOLDOWN_MS) return false;
+
+  if (!unlocked) {
+    unlockWhipSound({ force: true });
+  }
 
   const el = getPooledAudio();
-  if (!el) return;
+  if (!el) return false;
 
   lastPlayedAt = now;
 
   try {
     el.currentTime = 0;
     el.muted = false;
-    void el.play().catch(() => undefined);
+    const playPromise = el.play();
+    if (playPromise) {
+      void playPromise.catch(() => {
+        unlocked = false;
+      });
+    }
+    return true;
   } catch {
-    // Autoplay bloqueado.
+    unlocked = false;
+    return false;
   }
 }
 
@@ -104,7 +126,7 @@ export function bindWhipSoundUnlock() {
   window.addEventListener("click", unlock, { passive: true });
   window.addEventListener("pageshow", unlock);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) unlockWhipSound();
+    if (!document.hidden) unlockWhipSound({ force: true });
   });
 
   return () => {

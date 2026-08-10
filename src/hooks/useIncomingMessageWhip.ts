@@ -71,7 +71,8 @@ export function useIncomingMessageWhip(
           playIncomingWhipSound();
           notifyIncomingChatMessage({
             title: "Nuevo mensaje",
-            body: String(last.text || "").trim(),
+            body: String(last.text || "").trim() || "Nuevo mensaje",
+            chatId,
           });
         },
       });

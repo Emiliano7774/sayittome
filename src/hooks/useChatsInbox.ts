@@ -221,12 +221,18 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     }
 
     if (inboxUidRef.current !== uid) {
+      const previousUid = inboxUidRef.current;
       inboxUidRef.current = uid;
       queryMapsRef.current.participantes = new Map();
       queryMapsRef.current.anonOwner = new Map();
       queryMapsRef.current.receptor = new Map();
       queryMapsRef.current.target = new Map();
-      rebuildChats();
+      // Account switch: drop previous UID inbox. Cold auth settle ("" → uid)
+      // must keep the warm snapshot until the first Firestore merge arrives.
+      if (previousUid && previousUid !== uid) {
+        lastSortedChatsRef.current = [];
+        setChats([]);
+      }
     }
 
     let cancelled = false;

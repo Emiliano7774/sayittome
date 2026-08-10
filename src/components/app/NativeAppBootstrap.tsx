@@ -8,7 +8,7 @@ import NativeBackHint from "@/components/app/NativeBackHint";
 import { isNativeAppShell, setNativeAppActive } from "@/lib/app/nativeShell";
 import { initChatNotifications } from "@/lib/chat/chatNotifications";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
-import { unlockWhipSound } from "@/lib/chat/whipSound";
+import { reprimeWhipSound } from "@/lib/chat/whipSound";
 import {
   notifyNativePathnameChanged,
   readNativePathname,
@@ -145,7 +145,8 @@ export default function NativeAppBootstrap() {
           setNativeAppActive(isActive);
           if (isActive) {
             globalChatWhipManager.refresh();
-            unlockWhipSound();
+            // WebView often suspends HTMLAudio after background; force re-prime.
+            reprimeWhipSound();
           }
         });
       } catch {
