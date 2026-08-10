@@ -34,6 +34,11 @@ import {
 } from "@/lib/chat/outgoingChatMeta";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
+import {
+  readCachedChatMessages,
+  writeCachedChatMessages,
+  type CachedChatMessage,
+} from "@/lib/chat/chatMessageCache";
 
 type MessageStatus = "sending" | "sent" | "error";
 type MediaType = "image" | "video" | "audio";
@@ -99,19 +104,62 @@ function mediaLabel(type?: MediaType) {
   return "Multimedia";
 }
 
+function legacyMessageToCached(message: MessageData): CachedChatMessage {
+  const createdAtMs =
+    typeof message.createdAt?.toMillis === "function"
+      ? message.createdAt.toMillis()
+      : typeof message.createdAt?.toDate === "function"
+        ? message.createdAt.toDate().getTime()
+        : undefined;
+  return {
+    id: String(message.id || message.clientMessageId || ""),
+    text: String(message.texto || ""),
+    fromUid: message.fromUid,
+    type: message.mediaType,
+    mediaUrl: message.mediaUrl,
+    readBy: message.readBy,
+    ...(createdAtMs ? { createdAtMs } : {}),
+  };
+}
+
+function cachedToLegacyMessage(message: CachedChatMessage): MessageData {
+  return {
+    id: message.id,
+    texto: message.text,
+    fromUid: message.fromUid,
+    mediaUrl: message.mediaUrl,
+    mediaType: message.type === "text" ? undefined : message.type,
+    readBy: message.readBy,
+    status: "sent",
+    createdAt: message.createdAtMs
+      ? { toMillis: () => message.createdAtMs!, toDate: () => new Date(message.createdAtMs!) }
+      : undefined,
+  };
+}
+
+function hydrateLegacyCachedMessages(chatId: string): MessageData[] {
+  const cached = readCachedChatMessages(chatId);
+  if (!cached?.length) return [];
+  return cached
+    .filter((row) => row.id)
+    .map(cachedToLegacyMessage);
+}
+
 export default function LegacyChatPage() {
   const { uxMode } = useUxMode();
   const params = useParams();
-  const chatId = String(params.chatId || "");
+  const chatId = decodeURIComponent(String(params.chatId || ""));
 
-  const [messages, setMessages] = useState<MessageData[]>([]);
+  const [messages, setMessages] = useState<MessageData[]>(() =>
+    chatId ? hydrateLegacyCachedMessages(chatId) : [],
+  );
   const [optimisticMessages, setOptimisticMessages] = useState<MessageData[]>([]);
   const [chat, setChat] = useState<ChatData | null>(null);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<MessageData | null>(null);
   const [viewer, setViewer] = useState<MessageData | null>(null);
   const [recording, setRecording] = useState(false);
-  const [currentUid, setCurrentUid] = useState("");
+  const [currentUid, setCurrentUid] = useState(() => auth.currentUser?.uid || "");
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -145,12 +193,28 @@ export default function LegacyChatPage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+    void auth.authStateReady().then(() => {
+      if (cancelled) return;
+      setCurrentUid(auth.currentUser?.uid || "");
+    });
+
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUid(user?.uid || "");
     });
 
-    return () => unsub();
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!chatId) return;
+    const cached = hydrateLegacyCachedMessages(chatId);
+    if (!cached.length) return;
+    setMessages((prev) => (prev.length ? prev : cached));
+  }, [chatId]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -230,6 +294,13 @@ export default function LegacyChatPage() {
       );
 
       setMessages(docs);
+      writeCachedChatMessages(
+        chatId,
+        docs
+          .filter((message) => message.id)
+          .map(legacyMessageToCached)
+          .filter((message) => message.id && (message.text || message.mediaUrl)),
+      );
 
       setOptimisticMessages((prev) =>
         prev.filter((localMsg) => {
@@ -286,6 +357,8 @@ export default function LegacyChatPage() {
 
     return () => unsub();
   }, [chatId]);
+
+  const viewerUid = currentUid || auth.currentUser?.uid || "";
 
   const visibleMessages = useMemo(() => {
     const realClientIds = new Set(
@@ -705,11 +778,11 @@ if (uxMode === "classic") {
         <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-40 pt-5">
           <div className="space-y-3">
             {visibleMessages.map((message: any) => {
-              const isMine = message.fromUid === currentUid;
+              const isMine = Boolean(viewerUid && message.fromUid === viewerUid);
               const receiptStatus = resolveMessageReceiptStatus({
                 mine: isMine,
                 readBy: message.readBy,
-                senderId: currentUid,
+                senderId: viewerUid,
               });
 
               return (
@@ -773,7 +846,7 @@ if (uxMode === "classic") {
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {visibleMessages.map((msg) => {
-            const mine = msg.fromUid === currentUid;
+            const mine = Boolean(viewerUid && msg.fromUid === viewerUid);
             const isSending = msg.status === "sending";
             const hasError = msg.status === "error";
             const receiptStatus = resolveMessageReceiptStatus({
