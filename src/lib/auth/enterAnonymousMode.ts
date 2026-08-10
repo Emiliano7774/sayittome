@@ -1,7 +1,11 @@
 import { signOut } from "firebase/auth";
 
-import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
+import {
+  isIncompleteAuthDestination,
+  resolvePostAuthPath,
+} from "@/lib/auth/postAuthRedirect";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
+import { deleteCurrentDeviceFcmToken } from "@/lib/chat/fcmPush";
 import { auth } from "@/lib/firebase";
 import { setShuffleLegalAcceptance } from "@/lib/legal/shuffleTerms";
 
@@ -15,7 +19,8 @@ export async function enterAnonymousMode() {
   if (user) {
     const next = await resolvePostAuthPath(user.uid, user.emailVerified);
 
-    if (next !== "/settings") {
+    if (isIncompleteAuthDestination(next)) {
+      await deleteCurrentDeviceFcmToken(user.uid);
       await signOut(auth);
       beginFreshAnonSession();
     }
@@ -26,5 +31,5 @@ export async function enterAnonymousMode() {
 
 export async function hasCompleteRegisteredProfile(uid: string, emailVerified: boolean) {
   const next = await resolvePostAuthPath(uid, emailVerified);
-  return next === "/settings";
+  return !isIncompleteAuthDestination(next);
 }

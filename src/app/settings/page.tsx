@@ -144,12 +144,9 @@ export function SettingsRouteContent() {
       }
 
       const next = await resolvePostAuthPath(user.uid, true);
-      if (next === "/register/setup") {
-        router.replace("/register/setup");
-        return;
-      }
-
-      if (next !== "/settings") {
+      // Incomplete registration must leave settings; complete sessions stay here
+      // even though post-login / cold-start land on Shuffle.
+      if (next.startsWith("/register")) {
         router.replace(next);
         return;
       }

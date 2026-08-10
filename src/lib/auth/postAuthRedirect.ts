@@ -59,6 +59,17 @@ export function isRegisteredProfileComplete(data: UserDoc) {
   return false;
 }
 
+/** Destination for a fully registered session (cold start + post-login). */
+export const COMPLETE_POST_AUTH_PATH = "/shuffle";
+
+export function isIncompleteAuthDestination(path: string) {
+  return path.startsWith("/register");
+}
+
+export function isCompletePostAuthDestination(path: string) {
+  return path === COMPLETE_POST_AUTH_PATH;
+}
+
 export async function resolvePostAuthPath(
   uid: string,
   emailVerified: boolean,
@@ -74,5 +85,5 @@ export async function resolvePostAuthPath(
     return "/register/setup";
   }
 
-  return "/settings";
+  return COMPLETE_POST_AUTH_PATH;
 }

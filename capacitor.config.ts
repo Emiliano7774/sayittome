@@ -34,7 +34,8 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     PushNotifications: {
-      presentationOptions: ["badge", "sound", "alert"],
+      // Foreground: in-app whip owns UX. Avoid OS alert+sound doubling whip.
+      presentationOptions: ["badge"],
     },
   },
 };

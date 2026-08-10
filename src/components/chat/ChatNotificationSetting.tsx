@@ -3,7 +3,11 @@
 import { useSyncExternalStore } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
-import { requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
+import {
+  requestChatNotificationPermission,
+  resetChatNotificationPermissionLatch,
+} from "@/lib/chat/chatNotifications";
+import { deleteCurrentDeviceFcmToken, registerNativePushIfEnabled } from "@/lib/chat/fcmPush";
 import {
   areChatNotificationsEnabled,
   getChatNotificationPrefsVersion,
@@ -31,10 +35,20 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
 
   async function toggleEnabled() {
     const next = !enabled;
-    setChatNotificationsEnabled(next);
-    if (next) {
-      await requestChatNotificationPermission();
+    if (!next) {
+      setChatNotificationsEnabled(false);
+      await deleteCurrentDeviceFcmToken();
+      return;
     }
+
+    setChatNotificationsEnabled(true);
+    resetChatNotificationPermissionLatch();
+    const granted = await requestChatNotificationPermission({ force: true });
+    if (!granted) {
+      setChatNotificationsEnabled(false);
+      return;
+    }
+    await registerNativePushIfEnabled();
   }
 
   if (variant === "classic") {

@@ -120,16 +120,19 @@ export function notificationTitleForRecipient(
   _recipientUid: string,
 ): string {
   const from = messageAuthorId(message);
+
+  // Anon speaker → Anon-{alias}, never a real profile name/UID.
   if (from.startsWith("anon_")) {
     return formatAnonSessionLabel(from);
   }
 
-  const username = asId(chat.targetUsername || chat.receptorUsername);
-  if (from.startsWith("profile_") || message.senderKind === "profile") {
-    return username || "Nuevo mensaje";
+  // Profile speaker → visible profile username only.
+  if (isOwnerReply(message, chat, from) || from.startsWith("profile_")) {
+    return asId(chat.targetUsername || chat.receptorUsername) || "Nuevo mensaje";
   }
 
-  return username || "Nuevo mensaje";
+  // Legacy peer threads: prefer profile usernames on the chat doc.
+  return asId(chat.targetUsername || chat.receptorUsername) || "Nuevo mensaje";
 }
 
 export function notificationBodyFromMessage(message: MessageDoc): string {

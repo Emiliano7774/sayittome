@@ -7,14 +7,18 @@ import { useT } from "@/contexts/LocaleContext";
 import {
   completeChatNotificationPrompt,
   getChatNotificationPrefs,
+  setChatNotificationsEnabled,
 } from "@/lib/chat/chatNotificationPrefs";
 import { requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
+import { isCapacitorNative } from "@/lib/app/nativeShell";
 
 export default function ChatNotificationPrompt() {
   const t = useT();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
+    // Soft ask before enabling OS notifications — primarily for native shells.
+    if (!isCapacitorNative() && typeof Notification === "undefined") return;
     const prefs = getChatNotificationPrefs();
     if (!prefs.prompted) {
       setOpen(true);
@@ -22,11 +26,18 @@ export default function ChatNotificationPrompt() {
   }, []);
 
   async function choose(enabled: boolean) {
-    completeChatNotificationPrompt(enabled);
-    setOpen(false);
+    if (!enabled) {
+      completeChatNotificationPrompt(false);
+      setOpen(false);
+      return;
+    }
 
-    if (enabled) {
-      await requestChatNotificationPermission();
+    // Mark prompted + provisional enable, then confirm OS grant.
+    completeChatNotificationPrompt(true);
+    setOpen(false);
+    const granted = await requestChatNotificationPermission({ force: true });
+    if (!granted) {
+      setChatNotificationsEnabled(false);
     }
   }
 

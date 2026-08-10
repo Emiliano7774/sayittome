@@ -84,14 +84,12 @@ export async function initChatNotifications() {
   }
 }
 
-export async function requestChatNotificationPermission() {
+export async function requestChatNotificationPermission(options?: {
+  force?: boolean;
+}) {
   if (typeof window === "undefined") return false;
   if (!areChatNotificationsEnabled()) return false;
-  if (permissionRequested) {
-    return hasChatNotificationPermission();
-  }
 
-  permissionRequested = true;
   await initChatNotifications();
 
   if (isCapacitorNative()) {
@@ -100,12 +98,24 @@ export async function requestChatNotificationPermission() {
       const current = await LocalNotifications.checkPermissions();
       if (current.display === "granted") {
         nativePermissionGranted = true;
-      } else {
-        const requested = await LocalNotifications.requestPermissions();
-        nativePermissionGranted = requested.display === "granted";
+        permissionRequested = true;
+        const { registerNativePushIfEnabled } = await import("@/lib/chat/fcmPush");
+        await registerNativePushIfEnabled();
+        return true;
       }
-      const { registerNativePushIfEnabled } = await import("@/lib/chat/fcmPush");
-      await registerNativePushIfEnabled();
+
+      if (permissionRequested && !options?.force && current.display !== "prompt") {
+        nativePermissionGranted = false;
+        return false;
+      }
+
+      permissionRequested = true;
+      const requested = await LocalNotifications.requestPermissions();
+      nativePermissionGranted = requested.display === "granted";
+      if (nativePermissionGranted) {
+        const { registerNativePushIfEnabled } = await import("@/lib/chat/fcmPush");
+        await registerNativePushIfEnabled();
+      }
       return nativePermissionGranted;
     } catch {
       return false;
@@ -114,14 +124,20 @@ export async function requestChatNotificationPermission() {
 
   if (!("Notification" in window)) return false;
   if (Notification.permission === "granted") return true;
+  if (Notification.permission !== "default" && !options?.force) return false;
   if (Notification.permission !== "default") return false;
 
   try {
+    permissionRequested = true;
     const result = await Notification.requestPermission();
     return result === "granted";
   } catch {
     return false;
   }
+}
+
+export function resetChatNotificationPermissionLatch() {
+  permissionRequested = false;
 }
 
 export function hasChatNotificationPermission() {

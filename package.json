@@ -62,7 +62,8 @@
     "test:chat-thread-warm-first-frame": "node scripts/chat-thread-warm-first-frame.harness.mjs",
     "test:fcm-push-pipeline": "node scripts/fcm-push-pipeline.harness.mjs",
     "test:android-fcm-wiring": "node scripts/android-fcm-wiring.harness.mjs",
-    "test:chat-stories-warm-paint": "node scripts/chat-stories-warm-paint.harness.mjs"
+    "test:chat-stories-warm-paint": "node scripts/chat-stories-warm-paint.harness.mjs",
+    "test:session-notify-restore": "node scripts/session-notify-restore.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

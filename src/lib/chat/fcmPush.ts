@@ -9,6 +9,8 @@ import { auth, functions } from "@/lib/firebase";
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
 const INSTALLATION_KEY = "sayittome:fcm-installation-id";
+const PERSISTED_TOKEN_KEY = "sayittome:fcm-device-token";
+const PERSISTED_UID_KEY = "sayittome:fcm-device-uid";
 
 let bootstrapped = false;
 let registeredToken: string | null = null;
@@ -36,6 +38,40 @@ function readInstallationId() {
   }
 }
 
+function persistDeviceToken(uid: string, token: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PERSISTED_UID_KEY, uid);
+    window.localStorage.setItem(PERSISTED_TOKEN_KEY, token);
+  } catch {
+    // ignore quota
+  }
+}
+
+function readPersistedDeviceToken() {
+  if (typeof window === "undefined") {
+    return { uid: "", token: "" };
+  }
+  try {
+    return {
+      uid: asId(window.localStorage.getItem(PERSISTED_UID_KEY)),
+      token: asId(window.localStorage.getItem(PERSISTED_TOKEN_KEY)),
+    };
+  } catch {
+    return { uid: "", token: "" };
+  }
+}
+
+function clearPersistedDeviceToken() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(PERSISTED_UID_KEY);
+    window.localStorage.removeItem(PERSISTED_TOKEN_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function hasActiveFcmRegistration() {
   return Boolean(registeredToken && registeredUid);
 }
@@ -54,10 +90,27 @@ function queuePushChatId(chatId: string) {
   const id = asId(chatId);
   if (!id) return;
   pendingChatId = id;
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("sayittome:push-chat-pending", { detail: { chatId: id } }),
-    );
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem("sayittome:pending-push-chat", id);
+  } catch {
+    // ignore
+  }
+  window.dispatchEvent(
+    new CustomEvent("sayittome:push-chat-pending", { detail: { chatId: id } }),
+  );
+}
+
+function drainQueuedPushChatId() {
+  const memory = consumePendingPushChatId();
+  if (memory) return memory;
+  if (typeof window === "undefined") return "";
+  try {
+    const stored = asId(window.sessionStorage.getItem("sayittome:pending-push-chat"));
+    if (stored) window.sessionStorage.removeItem("sayittome:pending-push-chat");
+    return stored;
+  } catch {
+    return "";
   }
 }
 
@@ -75,28 +128,28 @@ export async function upsertFcmTokenForUser(uid: string, token: string) {
 
   registeredToken = cleanToken;
   registeredUid = cleanUid;
+  persistDeviceToken(cleanUid, cleanToken);
 }
 
 export async function deleteCurrentDeviceFcmToken(
   uid = registeredUid || auth.currentUser?.uid || "",
 ) {
-  const cleanUid = asId(uid);
-  const token = asId(registeredToken);
-  if (!cleanUid || !token) {
-    registeredToken = null;
-    registeredUid = null;
-    return;
-  }
+  const persisted = readPersistedDeviceToken();
+  const cleanUid = asId(uid || persisted.uid);
+  const token = asId(registeredToken || persisted.token);
+
+  registeredToken = null;
+  registeredUid = null;
+  clearPersistedDeviceToken();
+
+  if (!cleanUid || !token) return;
 
   try {
     const unregister = httpsCallable(functions, "unregisterFcmToken");
     await unregister({ token });
   } catch {
-    // Best-effort purge on logout.
+    // Best-effort purge on logout / disable.
   }
-
-  registeredToken = null;
-  registeredUid = null;
 }
 
 async function ensurePushChannel() {
@@ -134,10 +187,9 @@ async function attachPushListeners() {
   await PushNotifications.addListener("registration", (event) => {
     const token = asId(event.value);
     const uid = auth.currentUser?.uid;
-    if (!token || !uid) {
-      registeredToken = token || null;
-      return;
-    }
+    if (!token) return;
+    registeredToken = token;
+    if (!uid) return;
     void upsertFcmTokenForUser(uid, token);
   });
 
@@ -195,7 +247,7 @@ export async function initNativePushNotifications() {
       if (areChatNotificationsEnabled()) {
         void registerNativePushIfEnabled(user);
       }
-      const pending = consumePendingPushChatId();
+      const pending = drainQueuedPushChatId();
       if (pending && user.uid) {
         window.location.assign(`/chat/${encodeURIComponent(pending)}`);
       }
