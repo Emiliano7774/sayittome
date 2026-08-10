@@ -29,6 +29,7 @@
     "copy:aab": "node scripts/copy-aab.mjs",
     "publish:apk": "npm run build:apk",
     "deploy:hosting": "node scripts/firebase-deploy-hosting.mjs",
+    "deploy:functions": "npm --prefix functions run build && firebase deploy --only functions:chat-push",
     "deploy:all": "npm run build && npm run publish:apk && firebase deploy --only hosting,storage",
     "generate:icons": "node scripts/generate-app-icons.mjs",
     "cap:sync": "npx cap sync android",
@@ -58,7 +59,9 @@
     "test:shuffle-filters-empty-surface": "node scripts/shuffle-filters-empty-surface-mode.harness.mjs",
     "test:shuffle-online-privacy-notice": "node scripts/shuffle-online-privacy-notice.harness.mjs",
     "test:chat-message-authorship": "node scripts/chat-message-authorship.harness.mjs",
-    "test:chat-thread-warm-first-frame": "node scripts/chat-thread-warm-first-frame.harness.mjs"
+    "test:chat-thread-warm-first-frame": "node scripts/chat-thread-warm-first-frame.harness.mjs",
+    "test:fcm-push-pipeline": "node scripts/fcm-push-pipeline.harness.mjs",
+    "test:android-fcm-wiring": "node scripts/android-fcm-wiring.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -67,6 +70,7 @@
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/local-notifications": "^8.2.0",
+    "@capacitor/push-notifications": "^8.1.2",
     "@capacitor/splash-screen": "^8.0.1",
     "@tensorflow/tfjs": "^4.22.0",
     "firebase": "^12.13.0",

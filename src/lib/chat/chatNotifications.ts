@@ -100,10 +100,12 @@ export async function requestChatNotificationPermission() {
       const current = await LocalNotifications.checkPermissions();
       if (current.display === "granted") {
         nativePermissionGranted = true;
-        return true;
+      } else {
+        const requested = await LocalNotifications.requestPermissions();
+        nativePermissionGranted = requested.display === "granted";
       }
-      const requested = await LocalNotifications.requestPermissions();
-      nativePermissionGranted = requested.display === "granted";
+      const { registerNativePushIfEnabled } = await import("@/lib/chat/fcmPush");
+      await registerNativePushIfEnabled();
       return nativePermissionGranted;
     } catch {
       return false;
@@ -158,6 +160,12 @@ export async function showChatNotification(input: {
   const body = notificationBody({ body: input.body });
   const title = String(input.title || "Nuevo mensaje").trim() || "Nuevo mensaje";
   const chatId = String(input.chatId || "").trim();
+
+  // Native FCM owns OS notifications once a token is registered (avoids double banners).
+  if (isCapacitorNative()) {
+    const { shouldSuppressLocalOsNotification } = await import("@/lib/chat/fcmPush");
+    if (shouldSuppressLocalOsNotification()) return;
+  }
 
   if (isCapacitorNative()) {
     try {

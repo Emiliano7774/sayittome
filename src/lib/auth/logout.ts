@@ -2,6 +2,7 @@ import { signOut } from "firebase/auth";
 
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
 import { clearCachedChatMessages } from "@/lib/chat/chatMessageCache";
+import { deleteCurrentDeviceFcmToken } from "@/lib/chat/fcmPush";
 import { clearInboxSnapshotCache } from "@/lib/chat/inboxSnapshot";
 import { auth } from "@/lib/firebase";
 import { deleteCurrentAnonymousStories } from "@/lib/stories/anonStories";
@@ -11,6 +12,7 @@ export async function logoutAndResetAnon() {
   beginFreshAnonSession();
   clearCachedChatMessages();
   clearInboxSnapshotCache();
+  await deleteCurrentDeviceFcmToken(auth.currentUser?.uid || "");
 
   try {
     await signOut(auth);

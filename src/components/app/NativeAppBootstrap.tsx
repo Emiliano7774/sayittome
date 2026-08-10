@@ -7,6 +7,7 @@ import { useEffect, useRef } from "react";
 import NativeBackHint from "@/components/app/NativeBackHint";
 import { isNativeAppShell, setNativeAppActive } from "@/lib/app/nativeShell";
 import { initChatNotifications } from "@/lib/chat/chatNotifications";
+import { initNativePushNotifications } from "@/lib/chat/fcmPush";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { reprimeWhipSound } from "@/lib/chat/whipSound";
 import {
@@ -132,6 +133,7 @@ export default function NativeAppBootstrap() {
 
     void (async () => {
       await initChatNotifications();
+      await initNativePushNotifications();
 
       try {
         const { SplashScreen } = await import("@capacitor/splash-screen");

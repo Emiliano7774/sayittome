@@ -12,6 +12,8 @@ import {
   getStorage,
 } from "firebase/storage";
 
+import { getFunctions } from "firebase/functions";
+
 const firebaseConfig = {
   apiKey: "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk",
   authDomain: "sayittome-app.firebaseapp.com",
@@ -31,5 +33,7 @@ export const db =
 
 export const storage =
   getStorage(app);
+
+export const functions = getFunctions(app, "us-central1");
 
 export default app;
