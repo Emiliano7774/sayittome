@@ -33,7 +33,8 @@ assert.match(storiesStore, /In-memory mosaic belongs/);
 assert.match(storiesStore, /viewer === viewerUid/);
 assert.match(storiesGroups, /auth\.authStateReady\(\)/);
 assert.match(storiesGroups, /authSettled/);
-assert.match(storiesGroups, /getCachedStoryGroups\(nextViewerId\)/);
+assert.match(storiesGroups, /getCachedStoryGroups\(initialViewer\)|getCachedStoryGroups\(nextViewerId\)/);
+assert.match(storiesGroups, /!hasStoriesEverHydrated\(\)/);
 assert.match(logout, /clearStoriesIndexCache/);
 
 console.log(JSON.stringify({ gate: "CHAT_STORIES_WARM_PAINT", pass: true }, null, 2));

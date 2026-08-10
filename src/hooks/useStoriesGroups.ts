@@ -19,16 +19,26 @@ import {
 } from "@/hooks/useStoriesReady";
 
 export function useStoriesGroups() {
-  // Wait for authStateReady before choosing viewer. Seeding anon while Firebase
-  // restores a real uid paints mosaic then clears it (visible empty flash).
-  const [groups, setGroups] = useState<StoryUserGroup[]>([]);
-  const [viewerUid, setViewerUid] = useState("");
-  const [loading, setLoading] = useState(() => !hasStoriesEverHydrated());
+  // Prefer sync auth.currentUser when already restored so SoftNavigate remounts
+  // can seed the viewer-keyed snapshot on the first frame.
+  const initialViewer = auth.currentUser
+    ? resolveStoryViewerId(auth.currentUser)
+    : "";
+  const initialGroups = initialViewer
+    ? getCachedStoryGroups(initialViewer)
+    : [];
+
+  const [groups, setGroups] = useState<StoryUserGroup[]>(initialGroups);
+  const [viewerUid, setViewerUid] = useState(initialViewer);
+  const [loading, setLoading] = useState(
+    () => initialGroups.length === 0 && !hasStoriesEverHydrated(),
+  );
 
   useEffect(() => {
     let cancelled = false;
-    let lastViewer = "";
-    let authSettled = false;
+    let lastViewer = initialViewer;
+    let authSettled = Boolean(auth.currentUser);
+    let applyGen = 0;
 
     const unsubIndex = subscribeStoriesIndex(() => {
       if (cancelled || !lastViewer) return;
@@ -46,7 +56,8 @@ export function useStoriesGroups() {
       if (lastViewer && nextViewerId !== lastViewer) {
         clearStoriesIndexCache();
         setGroups([]);
-        setLoading(true);
+        // Only block first-ever cold paint; after hydration never trap on blank shell.
+        if (!hasStoriesEverHydrated()) setLoading(true);
       }
 
       lastViewer = nextViewerId;
@@ -59,15 +70,21 @@ export function useStoriesGroups() {
         setLoading(false);
       }
 
-      void refreshStoriesIndex(nextViewerId, forceRefresh).finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      const gen = ++applyGen;
+      void refreshStoriesIndex(nextViewerId, forceRefresh)
+        .then(() => {
+          if (cancelled || gen !== applyGen) return;
+          setGroups(getCachedStoryGroups(nextViewerId));
+        })
+        .finally(() => {
+          if (cancelled || gen !== applyGen) return;
+          setLoading(false);
+        });
     };
 
     void auth.authStateReady().then(() => {
       if (cancelled) return;
       authSettled = true;
-      // Force refresh so a stuck singleton `loading` flag cannot skip the first paint.
       applyViewer(resolveStoryViewerId(auth.currentUser), true);
     });
 
@@ -81,6 +98,8 @@ export function useStoriesGroups() {
       unsubIndex();
       unsubAuth();
     };
+    // initialViewer is sync from auth at mount; effect should not rebind on it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const showLoading = shouldShowStoriesLoading({
@@ -88,7 +107,9 @@ export function useStoriesGroups() {
     groupCount: groups.length,
   });
 
-  const indexPending = loading && groups.length === 0;
+  // Never keep a blank pending shell after Stories has hydrated once this session.
+  const indexPending =
+    loading && groups.length === 0 && !hasStoriesEverHydrated();
 
   return { groups, viewerUid, loading: showLoading, indexPending };
 }
