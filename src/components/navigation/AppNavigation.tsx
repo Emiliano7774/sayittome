@@ -6,6 +6,7 @@ import { useUxMode } from "@/contexts/UxModeContext";
 import BottomNav from "@/components/navigation/BottomNav";
 import ModernBottomNav from "@/components/navigation/ModernBottomNav";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
+import { isChatThreadRoute } from "@/lib/navigation/routeKind";
 
 const HIDE_PREFIXES = ["/admin", "/login", "/register", "/privacy", "/settings/edit"];
 
@@ -14,9 +15,10 @@ export default function AppNavigation() {
   const pathname = useEffectivePathname();
   const { totalUnread } = useChatAlerts();
 
+  // /chats is a main tab — never treat it as /chat/* thread (startsWith("/chat") matches /chats).
   const navHidden =
     pathname === "/" ||
-    pathname.startsWith("/chat") ||
+    isChatThreadRoute(pathname) ||
     HIDE_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
     (uxMode === "modern" && pathname === "/shuffle");
 

@@ -23,6 +23,7 @@ import {
   db,
 } from "@/lib/firebase";
 import { withTimeout } from "@/lib/async/withTimeout";
+import { writeCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 
 type AuthUserData = {
   uid: string;
@@ -107,6 +108,12 @@ export function AuthProvider({
 
             if (snap.exists()) {
               const data = snap.data();
+              if (!user.isAnonymous) {
+                writeCachedViewerIdentity(
+                  user.uid,
+                  String(data.username || data.nombre || ""),
+                );
+              }
 
               setProfile({
                 uid: user.uid,

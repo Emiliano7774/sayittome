@@ -1,3 +1,4 @@
+import { safeChatPart, usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId, getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 import type { User } from "firebase/auth";
 
@@ -10,6 +11,7 @@ export type ProfileAnonViewerContext = {
   targetUid: string;
   chatOwnerUid: string;
   profileUid: string;
+  viewerUsername?: string;
   threadAnonId: string;
   isOwnerViewing: boolean;
 };
@@ -74,22 +76,50 @@ export function profileAuthUid(user: User | null | undefined) {
   return String(user.uid || "").trim();
 }
 
+/**
+ * Owner of a profile↔anon thread is the profile in the chatId slug
+ * (`anon_*__anon_to__{username}`), not the visitor baked into the id.
+ * Survives cold start before Firestore targetUid hydrates.
+ */
+export function isProfileThreadOwner(input: {
+  chatId: string;
+  authUid?: string;
+  profileUid?: string;
+  viewerUsername?: string;
+}) {
+  const authUid = String(input.authUid || "").trim();
+  const profileUid = String(input.profileUid || "").trim();
+  if (authUid && profileUid && authUid === profileUid) return true;
+
+  const hint = usernameHintFromAnonChatId(input.chatId);
+  const slug = safeChatPart(input.viewerUsername || "");
+  return Boolean(hint && slug && hint === slug);
+}
+
 export function buildProfileAnonViewerContext(input: {
   chatId: string;
   chatAnonSessionId: string;
   currentUid: string;
   targetUid: string;
   chatOwnerUid: string;
+  viewerUsername?: string;
 }): ProfileAnonViewerContext {
   const profileUid = String(input.targetUid || input.chatOwnerUid || "").trim();
   const currentUid = String(input.currentUid || "").trim();
-  const isOwnerViewing = Boolean(currentUid && profileUid && currentUid === profileUid);
+  const viewerUsername = String(input.viewerUsername || "").trim();
+  const isOwnerViewing = isProfileThreadOwner({
+    chatId: input.chatId,
+    authUid: currentUid,
+    profileUid,
+    viewerUsername,
+  });
   const threadAnonId = getProfileChatAnonSenderId(input.chatId, input.chatAnonSessionId);
 
   return {
     ...input,
     currentUid,
     profileUid,
+    viewerUsername,
     threadAnonId,
     isOwnerViewing,
   };

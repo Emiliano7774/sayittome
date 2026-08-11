@@ -7,6 +7,7 @@ import { clearInboxSnapshotCache } from "@/lib/chat/inboxSnapshot";
 import { auth } from "@/lib/firebase";
 import { deleteCurrentAnonymousStories } from "@/lib/stories/anonStories";
 import { clearStoriesIndexCache } from "@/lib/stories/storiesIndexStore";
+import { clearCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 
 export async function logoutAndResetAnon() {
   await deleteCurrentAnonymousStories();
@@ -14,6 +15,7 @@ export async function logoutAndResetAnon() {
   clearCachedChatMessages();
   clearInboxSnapshotCache();
   clearStoriesIndexCache();
+  clearCachedViewerIdentity();
   await deleteCurrentDeviceFcmToken(auth.currentUser?.uid || "");
 
   try {

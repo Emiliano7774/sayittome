@@ -206,6 +206,97 @@ assert.deepEqual(
   [true, false],
 );
 
+// Cold start: targetUid empty, chatId slug matches cached username → owner.
+function isProfileThreadOwner(input) {
+  const authUid = String(input.authUid || "").trim();
+  const profileUid = String(input.profileUid || "").trim();
+  if (authUid && profileUid && authUid === profileUid) return true;
+  const hint = String(input.chatId || "").split("__anon_to__")[1] || "";
+  const slug = String(input.viewerUsername || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gi, "_")
+    .slice(0, 80);
+  return Boolean(hint && slug && hint === slug);
+}
+
+const OWNER_CHAT = `${ANON}__anon_to__ownername`;
+assert.equal(
+  isProfileThreadOwner({
+    chatId: OWNER_CHAT,
+    authUid: OWNER,
+    profileUid: "",
+    viewerUsername: "ownername",
+  }),
+  true,
+  "chatId slug identifies owner before targetUid hydrates",
+);
+assert.equal(
+  isProfileThreadOwner({
+    chatId: OWNER_CHAT,
+    authUid: OWNER,
+    profileUid: "",
+    viewerUsername: "visitorname",
+  }),
+  false,
+  "visitor username must not claim owner thread",
+);
+
+{
+  const ownerBySlug = isProfileThreadOwner({
+    chatId: OWNER_CHAT,
+    authUid: OWNER,
+    profileUid: "",
+    viewerUsername: "ownername",
+  });
+  const afterSlug = classifyBatch(
+    [
+      { fromUid: PROFILE_FROM, senderKind: "profile" },
+      { fromUid: ANON, senderKind: "anon" },
+    ],
+    {
+      threadAnonId: ANON,
+      profileUid: "",
+      ownerUid: OWNER,
+      isOwnerViewing: ownerBySlug,
+      liveAnon: ANON_OTHER,
+    },
+  );
+  assert.deepEqual(
+    afterSlug,
+    [true, false],
+    "owner-by-chatId-slug: profile mine, thread anon peer",
+  );
+}
+
+// Persist must not write visitor fromUid when owner is known via slug.
+function persistAuthorId(input) {
+  const owner =
+    Boolean(input.currentUid && input.targetUid && input.currentUid === input.targetUid) ||
+    isProfileThreadOwner({
+      chatId: input.chatId,
+      authUid: input.currentUid,
+      profileUid: input.targetUid,
+      viewerUsername: input.viewerUsername,
+    }) ||
+    input.isOwnerReply === true;
+  return owner
+    ? profileReplyAuthorId(input.targetUid || input.currentUid)
+    : input.senderId;
+}
+assert.equal(
+  persistAuthorId({
+    chatId: OWNER_CHAT,
+    currentUid: OWNER,
+    targetUid: "",
+    senderId: ANON,
+    viewerUsername: "ownername",
+    isOwnerReply: false,
+  }),
+  PROFILE_FROM,
+  "persist uses profile_* for owner even when targetUid empty",
+);
+
 // Legacy profile↔profile
 assert.equal(resolveLegacyChatMessageMine(OWNER, OWNER), true);
 assert.equal(resolveLegacyChatMessageMine(PEER, OWNER), false);
@@ -221,6 +312,23 @@ assert.match(authorSrc, /profileAuthUid/);
 assert.match(authorSrc, /mapFirestoreDocsToProfileAnonMessages/);
 assert.match(authorSrc, /resolveLegacyChatMessageMine/);
 assert.match(authorSrc, /fromUid shape wins/);
+assert.match(authorSrc, /isProfileThreadOwner/);
+
+const persistSrc = fs.readFileSync(
+  path.join(root, "src/lib/chat/persistAnonMessage.ts"),
+  "utf8",
+);
+assert.match(persistSrc, /ownerByChatId/);
+assert.match(persistSrc, /viewerUsername/);
+
+const identitySrc = fs.readFileSync(
+  path.join(root, "src/lib/chat/viewerIdentityCache.ts"),
+  "utf8",
+);
+assert.match(identitySrc, /sayittome:viewer-identity:v1/);
+
+const logoutSrc = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "utf8");
+assert.match(logoutSrc, /clearCachedViewerIdentity/);
 
 const chatSrc = fs.readFileSync(
   path.join(root, "src/components/chat/ProfileAnonChat.tsx"),

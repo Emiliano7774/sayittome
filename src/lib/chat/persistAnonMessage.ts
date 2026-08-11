@@ -18,6 +18,7 @@ import {
   expandOutgoingChatMetaPatchForSet,
 } from "@/lib/chat/outgoingChatMeta";
 import {
+  isProfileThreadOwner,
   profileReplyAuthorId,
   type ProfileAnonSenderKind,
 } from "@/lib/chat/profileAnonMessageAuthor";
@@ -38,6 +39,8 @@ type PersistAnonMessageInput = {
   existingChatData?: Record<string, unknown>;
   /** Explicit owner/profile reply — must match UI isOwnerViewing, not only uid==targetUid. */
   isOwnerReply?: boolean;
+  /** Logged-in profile username; used to detect owner via chatId slug on cold start. */
+  viewerUsername?: string;
   /** Inbox preview line; defaults to messageText. For media, keep messageText empty. */
   lastMessagePreview?: string;
   reply?: string;
@@ -191,14 +194,19 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const inferredOwnerReply = Boolean(
     currentUid && resolvedTargetUid && currentUid === resolvedTargetUid,
   );
-  // Explicit false must not beat uid match during mount races (owner reply
-  // misclassified as visitor → anon sees own lastMessageSender). Trust
-  // explicit true, or inferred owner from hydrated/doc uid.
+  const ownerByChatId = isProfileThreadOwner({
+    chatId: canonicalChatId,
+    authUid: currentUid,
+    profileUid: resolvedTargetUid,
+    viewerUsername: input.viewerUsername,
+  });
+  // Explicit false must not beat uid/chatId-owner match during mount races
+  // (owner reply misclassified as visitor → fromUid written as thread anon).
   const isOwnerReply =
-    inferredOwnerReply || input.isOwnerReply === true;
+    inferredOwnerReply || ownerByChatId || input.isOwnerReply === true;
   const senderKind: ProfileAnonSenderKind = isOwnerReply ? "profile" : "anon";
   const messageAuthorId = isOwnerReply
-    ? profileReplyAuthorId(resolvedTargetUid)
+    ? profileReplyAuthorId(resolvedTargetUid || currentUid)
     : senderId;
 
   const existingParticipantes = Array.isArray(existingData.participantes)
