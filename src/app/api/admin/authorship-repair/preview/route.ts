@@ -34,12 +34,14 @@ export async function GET(req: Request) {
       ok: true,
       username,
       uidPresent: Boolean(result.uid),
-      chats: result.chats.map((chat) => ({
-        id: chat.id,
-        updatedAtMs: chat.updatedAtMs,
-        lastMessage: String(chat.lastMessage || "").slice(0, 80),
-        lastMessageSenderShape: String(chat.lastMessageSender || "").slice(0, 24),
-      })),
+      chats: result.chats.map((chat) => {
+        const row = chat as Record<string, unknown>;
+        return {
+          id: String(row.id || ""),
+          lastMessage: String(row.lastMessage || "").slice(0, 80),
+          lastMessageSenderShape: String(row.lastMessageSender || "").slice(0, 24),
+        };
+      }),
     });
   } catch (error) {
     return jsonError(error);
