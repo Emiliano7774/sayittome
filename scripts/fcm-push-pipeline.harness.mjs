@@ -103,6 +103,13 @@ assert.match(client, /unregisterFcmToken|deleteCurrentDeviceFcmToken/);
 const logout = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "utf8");
 assert.match(logout, /deleteCurrentDeviceFcmToken/);
 
+const menu = fs.readFileSync(
+  path.join(root, "src/components/profile/ProfileClaimHistoryMenu.tsx"),
+  "utf8",
+);
+assert.match(menu, /data-profile-option="notifications"/);
+assert.match(menu, /<Bell /);
+
 const firebaseJson = JSON.parse(fs.readFileSync(path.join(root, "firebase.json"), "utf8"));
 assert.ok(Array.isArray(firebaseJson.functions));
 assert.equal(firebaseJson.functions[0].source, "functions");

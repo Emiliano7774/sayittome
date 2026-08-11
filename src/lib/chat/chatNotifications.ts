@@ -94,24 +94,26 @@ export async function requestChatNotificationPermission(options?: {
 
   if (isCapacitorNative()) {
     try {
+      const { PushNotifications } = await import("@capacitor/push-notifications");
       const { LocalNotifications } = await import("@capacitor/local-notifications");
-      const current = await LocalNotifications.checkPermissions();
-      if (current.display === "granted") {
-        nativePermissionGranted = true;
+
+      let push = await PushNotifications.checkPermissions();
+      if (push.receive !== "granted") {
+        if (permissionRequested && !options?.force && push.receive !== "prompt") {
+          nativePermissionGranted = false;
+          return false;
+        }
         permissionRequested = true;
-        const { registerNativePushIfEnabled } = await import("@/lib/chat/fcmPush");
-        await registerNativePushIfEnabled();
-        return true;
+        push = await PushNotifications.requestPermissions();
       }
 
-      if (permissionRequested && !options?.force && current.display !== "prompt") {
-        nativePermissionGranted = false;
-        return false;
+      let local = await LocalNotifications.checkPermissions();
+      if (local.display !== "granted") {
+        permissionRequested = true;
+        local = await LocalNotifications.requestPermissions();
       }
 
-      permissionRequested = true;
-      const requested = await LocalNotifications.requestPermissions();
-      nativePermissionGranted = requested.display === "granted";
+      nativePermissionGranted = push.receive === "granted" || local.display === "granted";
       if (nativePermissionGranted) {
         const { registerNativePushIfEnabled } = await import("@/lib/chat/fcmPush");
         await registerNativePushIfEnabled();

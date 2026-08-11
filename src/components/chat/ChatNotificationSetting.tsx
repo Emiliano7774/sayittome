@@ -17,7 +17,7 @@ import {
 } from "@/lib/chat/chatNotificationPrefs";
 
 type Props = {
-  variant?: "classic" | "modern";
+  variant?: "classic" | "modern" | "panel";
 };
 
 type OsPermission = "unknown" | "granted" | "denied" | "prompt";
@@ -99,6 +99,42 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
           ? t("chat_notifications_os_prompt")
           : t("chat_notifications_os_unknown");
 
+  const appLabel = enabled
+    ? t("chat_notifications_enabled")
+    : t("chat_notifications_disabled");
+  const actionLabel = enabled
+    ? t("chat_notifications_disable_cta")
+    : t("chat_notifications_enable_cta");
+
+  if (variant === "panel") {
+    return (
+      <div data-chat-notification-setting="panel" className="space-y-4">
+        <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-4">
+          <p data-chat-notification-app-status={enabled ? "on" : "off"} className="text-sm font-black text-white">
+            {t("chat_notifications_label")}: {appLabel}
+          </p>
+          <p data-chat-notification-os-status={osPermission} className="mt-2 text-xs font-semibold text-white/55">
+            {osLabel}
+          </p>
+        </div>
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            data-chat-notification-toggle={enabled ? "disable" : "enable"}
+            onClick={() => void toggleEnabled()}
+            className={`rounded-full px-5 py-2.5 text-sm font-black ${
+              enabled
+                ? "border border-white/15 bg-white/10 text-white"
+                : "bg-[#6C63FF] text-white shadow-[0_0_24px_rgba(108,99,255,.35)]"
+            }`}
+          >
+            {actionLabel}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (variant === "classic") {
     return (
       <div className="border-b border-white/18 pb-8 mb-8">
@@ -115,7 +151,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
               enabled ? "bg-white text-black" : "bg-[#6C63FF] text-white"
             }`}
           >
-            {enabled ? t("chat_notifications_enabled") : t("chat_notifications_enable_cta")}
+            {actionLabel}
           </button>
         </div>
       </div>
@@ -128,6 +164,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
       <div className="mt-3 rounded-[1.25rem] border border-violet-400/35 bg-violet-500/10 px-4 py-4">
         <p className="text-sm text-zinc-300">{t("chat_notifications_hint")}</p>
         <p className="mt-2 text-xs text-white/55">{osLabel}</p>
+        <p className="mt-1 text-xs text-white/45">{appLabel}</p>
         <div className="mt-4 flex items-center justify-end">
           <button
             type="button"
@@ -136,7 +173,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
               enabled ? "bg-violet-500 text-white" : "bg-[#6C63FF] text-white shadow-[0_0_24px_rgba(108,99,255,.35)]"
             }`}
           >
-            {enabled ? t("chat_notifications_enabled") : t("chat_notifications_enable_cta")}
+            {actionLabel}
           </button>
         </div>
       </div>

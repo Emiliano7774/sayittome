@@ -1,13 +1,15 @@
 "use client";
 
-import { FileText, MoreHorizontal, X } from "lucide-react";
+import { Bell, FileText, MoreHorizontal, X } from "lucide-react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { useLocale, useT } from "@/contexts/LocaleContext";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { auth } from "@/lib/firebase";
 import { parseReportCreatedAtMs } from "@/lib/admin/reportSort";
+import ChatNotificationSetting from "@/components/chat/ChatNotificationSetting";
 
 type ClaimHistoryRow = {
   id: string;
@@ -37,9 +39,13 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
   const { locale } = useLocale();
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [claims, setClaims] = useState<ClaimHistoryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 16 });
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   useOverlayBackClose(
     historyOpen,
@@ -48,14 +54,50 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
     "sayittome:close-claim-history",
   );
 
+  useOverlayBackClose(
+    notificationsOpen,
+    () => setNotificationsOpen(false),
+    "sayittome-notification-settings-open",
+    "sayittome:close-notification-settings",
+  );
+
   useEffect(() => {
-    if (!historyOpen) return;
+    if (!historyOpen && !notificationsOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [historyOpen]);
+  }, [historyOpen, notificationsOpen]);
+
+  useLayoutEffect(() => {
+    if (!menuOpen || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 8,
+      right: Math.max(12, window.innerWidth - rect.right),
+    });
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as Node | null;
+      if (rootRef.current?.contains(target)) return;
+      const dropdown = document.querySelector("[data-profile-options-dropdown='1']");
+      if (dropdown?.contains(target)) return;
+      setMenuOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   const localeTag =
     locale === "es" ? "es-AR" : locale === "en" ? "en-US" : locale === "it" ? "it-IT" : "de-DE";
@@ -106,9 +148,11 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
 
   return (
     <>
-      <div className={`relative ${className}`}>
+      <div ref={rootRef} className={`relative ${className}`}>
         <button
+          ref={buttonRef}
           type="button"
+          data-profile-options-menu="1"
           onClick={() => setMenuOpen((current) => !current)}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/75 transition hover:bg-white/10 hover:text-white"
           aria-label={t("profile_options")}
@@ -117,19 +161,69 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
           <MoreHorizontal size={21} />
         </button>
 
-        {menuOpen ? (
-          <div className="absolute right-0 top-full z-[80] mt-2 w-64 rounded-2xl border border-white/15 bg-zinc-950 p-2 shadow-2xl">
-            <button
-              type="button"
-              onClick={() => void openHistory()}
-              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-white/85 hover:bg-white/5"
-            >
-              <FileText size={17} />
-              {t("claim_history_menu")}
-            </button>
-          </div>
-        ) : null}
+        {menuOpen && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                data-profile-options-dropdown="1"
+                className="fixed z-[1000001] w-72 overflow-hidden rounded-2xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
+                style={{ top: menuPos.top, right: menuPos.right }}
+              >
+                <button
+                  type="button"
+                  data-profile-option="notifications"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setNotificationsOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-white/85 hover:bg-white/5"
+                >
+                  <Bell size={17} />
+                  {t("chat_notifications_menu")}
+                </button>
+                <button
+                  type="button"
+                  data-profile-option="claim-history"
+                  onClick={() => void openHistory()}
+                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-white/85 hover:bg-white/5"
+                >
+                  <FileText size={17} />
+                  {t("claim_history_menu")}
+                </button>
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
+
+      {notificationsOpen ? (
+        <div
+          data-chat-notification-panel="1"
+          className="fixed inset-0 z-[1000000] flex items-end justify-center bg-black/85 p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4"
+        >
+          <section className="flex max-h-[min(88dvh,760px)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl">
+            <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="text-lg font-black text-white">{t("chat_notifications_label")}</p>
+                <p className="mt-1 text-xs font-semibold text-white/45">
+                  {t("chat_notifications_hint")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
+                aria-label={t("common_cancel")}
+              >
+                <X size={18} />
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              <ChatNotificationSetting variant="panel" />
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {historyOpen ? (
         <div className="fixed inset-0 z-[1000000] flex items-end justify-center bg-black/85 p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4">

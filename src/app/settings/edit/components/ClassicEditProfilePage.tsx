@@ -36,7 +36,6 @@ import { isUsernameAvailable, isValidUsername, normalizeUsername } from "@/lib/p
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
-import ChatNotificationSetting from "@/components/chat/ChatNotificationSetting";
 import { useT } from "@/contexts/LocaleContext";
 
 type BadgeKey = "superMessages" | "likes" | "conversations" | "followers";
@@ -751,8 +750,6 @@ export default function ClassicEditProfilePage() {
                 </button>
               </div>
             </div>
-
-            <ChatNotificationSetting variant="classic" />
           </section>
         </div>
 

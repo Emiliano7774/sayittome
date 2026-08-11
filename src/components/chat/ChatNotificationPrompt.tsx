@@ -10,6 +10,7 @@ import {
   setChatNotificationsEnabled,
 } from "@/lib/chat/chatNotificationPrefs";
 import { requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
+import { registerNativePushIfEnabled } from "@/lib/chat/fcmPush";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
 
 export default function ChatNotificationPrompt() {
@@ -38,14 +39,16 @@ export default function ChatNotificationPrompt() {
     const granted = await requestChatNotificationPermission({ force: true });
     if (!granted) {
       setChatNotificationsEnabled(false);
+      return;
     }
+    await registerNativePushIfEnabled();
   }
 
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[1000000] flex items-center justify-center bg-black/85 px-4 py-6 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="chat-notification-prompt-title"

@@ -10,7 +10,6 @@ import ModernEditMediaSheet, {
   type EditMediaItem,
 } from "@/components/modern/ModernEditMediaSheet";
 import ModernProfileEditPreview from "@/components/modern/ModernProfileEditPreview";
-import ChatNotificationSetting from "@/components/chat/ChatNotificationSetting";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import { auth, db } from "@/lib/firebase";
@@ -555,8 +554,6 @@ export default function ModernEditProfilePage() {
                   </button>
                 </div>
               </label>
-
-              <ChatNotificationSetting />
 
               <label className="block">
                 <span className="text-sm font-black text-white/70">{t("edit_interests")}</span>
