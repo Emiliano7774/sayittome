@@ -17,11 +17,8 @@ import {
   buildOutgoingChatMetaPatch,
   expandOutgoingChatMetaPatchForSet,
 } from "@/lib/chat/outgoingChatMeta";
-import {
-  isProfileThreadOwner,
-  profileReplyAuthorId,
-  type ProfileAnonSenderKind,
-} from "@/lib/chat/profileAnonMessageAuthor";
+import { buildCanonicalSender } from "@/lib/chat/canonicalSender";
+import { type ProfileAnonSenderKind } from "@/lib/chat/profileAnonMessageAuthor";
 import { registerSessionChat } from "@/lib/chat/sessionChats";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import { db } from "@/lib/firebase";
@@ -84,52 +81,39 @@ export function resolvePersistMessageAuthor(input: {
   senderId: string;
   viewerUsername?: string;
   isOwnerReply?: boolean;
+  authReady?: boolean;
 }) {
-  const currentUid = String(input.currentUid || "").trim();
-  const targetUid = String(input.targetUid || "").trim();
-  const inferredOwnerReply = Boolean(currentUid && targetUid && currentUid === targetUid);
-  const ownerByChatId = isProfileThreadOwner({
+  const built = buildCanonicalSender({
+    authReady: input.authReady !== false,
+    liveProfileUid: input.currentUid,
+    threadAnonId: input.senderId,
     chatId: input.chatId,
-    authUid: currentUid,
-    profileUid: targetUid,
     viewerUsername: input.viewerUsername,
+    explicitOwner: input.isOwnerReply,
   });
-  const isOwnerReply =
-    inferredOwnerReply || ownerByChatId || input.isOwnerReply === true;
 
-  if (isOwnerReply && !currentUid) {
+  if (!built.ok) {
+    const isOwner = built.error === "owner_identity_not_ready";
     return {
       ok: false as const,
-      error: "owner_identity_not_ready",
-      isOwnerReply: true,
-      senderKind: "profile" as const,
+      error: built.error,
+      isOwnerReply: isOwner,
+      senderKind: (isOwner ? "profile" : "anon") as ProfileAnonSenderKind,
       messageAuthorId: "",
       senderAuthUid: "",
       senderProfileId: "",
-      senderRole: "profile" as const,
-    };
-  }
-
-  if (isOwnerReply) {
-    return {
-      ok: true as const,
-      isOwnerReply: true,
-      senderKind: "profile" as const,
-      messageAuthorId: profileReplyAuthorId(currentUid),
-      senderAuthUid: currentUid,
-      senderProfileId: currentUid,
-      senderRole: "profile" as const,
+      senderRole: (isOwner ? "profile" : "anon") as ProfileAnonSenderKind,
     };
   }
 
   return {
     ok: true as const,
-    isOwnerReply: false,
-    senderKind: "anon" as const,
-    messageAuthorId: input.senderId,
-    senderAuthUid: currentUid,
-    senderProfileId: "",
-    senderRole: "anon" as const,
+    isOwnerReply: built.sender.senderRole === "profile",
+    senderKind: built.sender.senderKind,
+    messageAuthorId: built.sender.fromUid,
+    senderAuthUid: built.sender.senderAuthUid,
+    senderProfileId: built.sender.senderProfileId,
+    senderRole: built.sender.senderRole,
   };
 }
 
@@ -381,6 +365,8 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     senderAuthUid: persistAuthor.senderAuthUid || null,
     senderProfileId: persistAuthor.senderProfileId || null,
     senderRole: persistAuthor.senderRole,
+    createdByAuthUid: currentUid || null,
+    identityReadyAtWrite: true,
     ...(isOwnerReply && persistAuthor.senderProfileId
       ? { profileUid: persistAuthor.senderProfileId }
       : {}),

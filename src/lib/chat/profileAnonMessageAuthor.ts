@@ -244,6 +244,20 @@ export function resolveProfileAnonMessageMine(input: {
   // Viewer ≠ author: durable senderAuthUid wins over late targetUid.
   if (authUid && senderAuthUid && senderAuthUid === authUid) return true;
 
+  const identityReady =
+    input.identityReady !== undefined
+      ? input.identityReady
+      : Boolean(authUid || input.isOwnerViewing === true);
+
+  // Immutable senderRole from write-time identity. Do not fall through to
+  // visitor-anon heuristics that invert historical/corrupt fromUid.
+  if (senderRole === "profile" || senderRole === "anon") {
+    if (senderRole === "profile") return input.isOwnerViewing === true;
+    if (!identityReady) return false;
+    if (input.isOwnerViewing) return false;
+    return Boolean(input.threadAnonId && from === input.threadAnonId);
+  }
+
   const ownsProfileShape =
     Boolean(authUid) &&
     (from === authUid ||
@@ -268,11 +282,6 @@ export function resolveProfileAnonMessageMine(input: {
   if (senderRole === "profile" || kind === "profile" || isProfileReplyAuthorId(from)) {
     return false;
   }
-
-  const identityReady =
-    input.identityReady !== undefined
-      ? input.identityReady
-      : Boolean(authUid || ownerViewing);
 
   // Unknown viewer (auth/cache not ready): do not treat thread anon as mine.
   // That fallback is what inverts the owner after kill/reopen.

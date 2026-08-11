@@ -79,6 +79,8 @@ import {
   resolveCanonicalViewerIdentity,
   writeCachedViewerIdentity,
 } from "@/lib/chat/viewerIdentityCache";
+import { buildCanonicalSender } from "@/lib/chat/canonicalSender";
+import { applyAuthorshipCorrections } from "@/lib/chat/authorshipCorrections";
 import { PersistIdentityError } from "@/lib/chat/persistAnonMessage";
 import { useAuth } from "@/contexts/AuthContext";
 import { isChatThreadRoute } from "@/lib/navigation/routeKind";
@@ -906,7 +908,15 @@ export default function ProfileAnonChat({
       viewerUsername,
     }) || inferOwnerViewingFromAuthors(viewerUid, profileOwnerUid, messages);
   const identityReady = authReady || Boolean(viewerUid && isOwnerViewing);
-  const canSend = authReady && (isOwnerViewing ? Boolean(currentUid) : true);
+  const outgoingSender = buildCanonicalSender({
+    authReady,
+    liveProfileUid: currentUid,
+    threadAnonId: getProfileChatAnonSenderId(chatId, chatAnonSessionId),
+    chatId,
+    viewerUsername,
+    explicitOwner: isOwnerViewing,
+  });
+  const canSend = outgoingSender.ok;
   const profileUid = profileOwnerUid || targetUid;
   threadContextRef.current = {
     chatId,
@@ -920,17 +930,19 @@ export default function ProfileAnonChat({
   };
 
   // Source of truth for bubble side: recompute mine every render from durable fromUid.
-  const displayMessages = remapProfileAnonMessagesMine(
-    messages,
-    buildProfileAnonViewerContext({
-      chatId,
-      chatAnonSessionId,
-      currentUid: viewerUid,
-      targetUid,
-      chatOwnerUid: chatOwnerUid || docOwnerUid,
-      viewerUsername,
-      identityReady,
-    }),
+  const displayMessages = applyAuthorshipCorrections(
+    remapProfileAnonMessagesMine(
+      messages,
+      buildProfileAnonViewerContext({
+        chatId,
+        chatAnonSessionId,
+        currentUid: viewerUid,
+        targetUid,
+        chatOwnerUid: chatOwnerUid || docOwnerUid,
+        viewerUsername,
+        identityReady,
+      }),
+    ),
   );
 
   const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
@@ -1654,8 +1666,22 @@ export default function ProfileAnonChat({
         clientId,
         text: "",
         mine: true,
-        fromUid: isOwnerViewing ? profileReplyAuthorId(currentUid) : senderId,
-        senderKind: isOwnerViewing ? "profile" : "anon",
+        fromUid: outgoingSender.ok
+          ? outgoingSender.sender.fromUid
+          : isOwnerViewing
+            ? profileReplyAuthorId(currentUid)
+            : senderId,
+        senderAuthUid: outgoingSender.ok ? outgoingSender.sender.senderAuthUid : currentUid,
+        senderRole: outgoingSender.ok
+          ? outgoingSender.sender.senderRole
+          : isOwnerViewing
+            ? "profile"
+            : "anon",
+        senderKind: outgoingSender.ok
+          ? outgoingSender.sender.senderKind
+          : isOwnerViewing
+            ? "profile"
+            : "anon",
         type: previewType,
         mediaUrl: localPreviewUrl,
         source: previewSource,
@@ -1844,8 +1870,22 @@ export default function ProfileAnonChat({
       clientId,
       text: messageText,
       mine: true,
-      fromUid: isOwnerReply ? profileReplyAuthorId(currentUid) : senderId,
-      senderKind: (isOwnerReply ? "profile" : "anon") as Message["senderKind"],
+      fromUid: outgoingSender.ok
+        ? outgoingSender.sender.fromUid
+        : isOwnerReply
+          ? profileReplyAuthorId(currentUid)
+          : senderId,
+      senderAuthUid: outgoingSender.ok ? outgoingSender.sender.senderAuthUid : currentUid,
+      senderRole: outgoingSender.ok
+        ? outgoingSender.sender.senderRole
+        : isOwnerReply
+          ? "profile"
+          : "anon",
+      senderKind: (outgoingSender.ok
+        ? outgoingSender.sender.senderKind
+        : isOwnerReply
+          ? "profile"
+          : "anon") as Message["senderKind"],
       reply: replyText,
       status: "sending" as const,
       createdAt: { toDate: () => new Date() },

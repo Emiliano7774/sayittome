@@ -1,5 +1,6 @@
 import { auth } from "@/lib/firebase";
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
+import { profileAuthUid } from "@/lib/chat/profileAnonMessageAuthor";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import type { StoryItem } from "@/lib/stories/types";
 
@@ -36,11 +37,12 @@ export async function sendStoryReplyMessage(
     chatId: resolved.chatId,
     username: resolved.username,
     senderId: resolved.senderId,
-    currentUid: auth.currentUser?.uid || "",
+    currentUid: profileAuthUid(auth.currentUser),
     targetUid: resolved.targetUid,
     targetPhoto: resolved.targetPhoto,
     messageText: messageText.trim(),
     storyReply,
+    isOwnerReply: false,
   });
 
   return resolved.chatId;

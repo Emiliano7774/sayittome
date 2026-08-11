@@ -26,6 +26,7 @@ import {
 import { auth } from "@/lib/firebase";
 import { readAuthorshipIncidentReports } from "@/lib/chat/authorshipIncident";
 import { readNotificationIncident } from "@/lib/chat/notificationIncident";
+import AuthorshipCorrectionPanel from "@/components/dev/AuthorshipCorrectionPanel";
 
 export default function RealDeviceQaDebugOverlay() {
   const pathname = usePathname();
@@ -274,6 +275,7 @@ export default function RealDeviceQaDebugOverlay() {
       >
         {copied ? "Copied" : "Copy diagnostics"}
       </button>
+      <AuthorshipCorrectionPanel />
     </div>
   );
 }

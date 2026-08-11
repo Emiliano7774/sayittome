@@ -44,6 +44,16 @@ export async function sendMessage(
     unknown
   >,
 ) {
+  const senderRole = String(message.senderRole || "").trim();
+  const senderAuthUid = String(message.senderAuthUid || "").trim();
+  const fromUid = String(message.fromUid || "").trim();
+  if (!fromUid || (senderRole !== "profile" && senderRole !== "anon")) {
+    throw new Error("canonical_sender_required");
+  }
+  if (senderRole === "profile" && !senderAuthUid) {
+    throw new Error("canonical_sender_required");
+  }
+
   await addDoc(
     collection(
       db,

@@ -14,6 +14,7 @@ function resolveBuildSha() {
 const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_SHA: resolveBuildSha(),
+    NEXT_PUBLIC_BUILD_AT: process.env.NEXT_PUBLIC_BUILD_AT || "",
   },
   images: {
     remotePatterns: [

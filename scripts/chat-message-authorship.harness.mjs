@@ -62,6 +62,18 @@ function resolveProfileAnonMessageMine(input) {
 
   if (authUid && senderAuthUid && senderAuthUid === authUid) return true;
 
+  const identityReadyEarly =
+    input.identityReady !== undefined
+      ? input.identityReady
+      : Boolean(authUid || input.isOwnerViewing === true);
+  const senderRole = String(input.senderRole || "").trim();
+  if (senderRole === "profile" || senderRole === "anon") {
+    if (senderRole === "profile") return input.isOwnerViewing === true;
+    if (!identityReadyEarly) return false;
+    if (input.isOwnerViewing) return false;
+    return Boolean(input.threadAnonId && from === input.threadAnonId);
+  }
+
   const ownsProfileShape =
     Boolean(authUid) &&
     (from === authUid ||
@@ -377,7 +389,7 @@ const persistSrc = fs.readFileSync(
   path.join(root, "src/lib/chat/persistAnonMessage.ts"),
   "utf8",
 );
-assert.match(persistSrc, /ownerByChatId/);
+assert.match(persistSrc, /buildCanonicalSender/);
 assert.match(persistSrc, /viewerUsername/);
 assert.match(persistSrc, /senderAuthUid/);
 assert.match(persistSrc, /senderRole/);
@@ -402,6 +414,7 @@ assert.match(chatSrc, /profileAuthUid/);
 assert.match(chatSrc, /displayMessages/);
 assert.match(chatSrc, /mapFirestoreDocsToProfileAnonMessages/);
 assert.match(chatSrc, /canSend/);
+assert.match(chatSrc, /buildCanonicalSender/);
 assert.match(chatSrc, /resolveCanonicalViewerIdentity/);
 
 const legacySrc = fs.readFileSync(
@@ -411,6 +424,7 @@ const legacySrc = fs.readFileSync(
 assert.match(legacySrc, /resolveLegacyChatMessageMine/);
 assert.match(legacySrc, /profileAuthUid/);
 assert.match(legacySrc, /senderAuthUid/);
+assert.match(legacySrc, /buildLegacyCanonicalSender/);
 
 console.log(
   JSON.stringify(

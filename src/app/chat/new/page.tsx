@@ -15,10 +15,12 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
+import { buildLegacyCanonicalSender } from "@/lib/chat/canonicalSender";
 import {
   buildOutgoingChatMetaPatch,
   resolveChatRecipientIds,
 } from "@/lib/chat/outgoingChatMeta";
+import { profileAuthUid } from "@/lib/chat/profileAnonMessageAuthor";
 
 function NewChatContent() {
   const params = useSearchParams();
@@ -32,18 +34,24 @@ function NewChatContent() {
   const sendMessage = async () => {
     try {
       const currentUser = auth.currentUser;
+      const liveUid = profileAuthUid(currentUser);
+      const sender = buildLegacyCanonicalSender({
+        authReady: Boolean(currentUser),
+        liveProfileUid: liveUid,
+      });
 
-      if (!currentUser || !to || !text.trim()) return;
+      if (!sender.ok || !to || !text.trim()) return;
 
       setSending(true);
 
       const clean = text.trim();
+      const author = sender.sender;
 
       const chatsRef = collection(db, "chats");
 
       const existingQuery = query(
         chatsRef,
-        where("participantes", "array-contains", currentUser.uid)
+        where("participantes", "array-contains", author.senderAuthUid)
       );
 
       const existingChats = await getDocs(existingQuery);
@@ -56,7 +64,7 @@ function NewChatContent() {
         const participantes = data.participantes || [];
 
         if (
-          participantes.includes(currentUser.uid) &&
+          participantes.includes(author.senderAuthUid) &&
           participantes.includes(to)
         ) {
           existingChatId = docSnap.id;
@@ -67,17 +75,17 @@ function NewChatContent() {
 
       if (!chatId) {
         const newChat = await addDoc(chatsRef, {
-          participantes: [currentUser.uid, to],
+          participantes: [author.senderAuthUid, to],
           anon: true,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           lastMessage: clean,
-          lastMessageSender: currentUser.uid,
+          lastMessageSender: author.fromUid,
           readBy: {
-            [currentUser.uid]: true,
+            [author.senderAuthUid]: true,
           },
           typing: {
-            [currentUser.uid]: false,
+            [author.senderAuthUid]: false,
           },
         });
 
@@ -86,20 +94,26 @@ function NewChatContent() {
 
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: clean,
-        fromUid: currentUser.uid,
+        fromUid: author.fromUid,
+        senderAuthUid: author.senderAuthUid,
+        senderProfileId: author.senderProfileId,
+        senderRole: author.senderRole,
+        senderKind: author.senderKind,
+        createdByAuthUid: author.senderAuthUid,
+        identityReadyAtWrite: true,
         createdAt: serverTimestamp(),
         readBy: {
-          [currentUser.uid]: true,
+          [author.senderAuthUid]: true,
         },
       });
 
       await updateDoc(
         doc(db, "chats", chatId),
-        buildOutgoingChatMetaPatch(currentUser.uid, resolveChatRecipientIds(currentUser.uid, {
-          participantes: [currentUser.uid, to],
+        buildOutgoingChatMetaPatch(author.fromUid, resolveChatRecipientIds(author.senderAuthUid, {
+          participantes: [author.senderAuthUid, to],
         }), {
           lastMessage: clean,
-          lastMessageSender: currentUser.uid,
+          lastMessageSender: author.fromUid,
         }),
       );
 

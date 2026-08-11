@@ -2,6 +2,9 @@ export type CachedChatMessage = {
   id: string;
   text: string;
   fromUid?: string;
+  senderAuthUid?: string;
+  senderProfileId?: string;
+  senderRole?: string;
   senderKind?: "anon" | "profile";
   /** Last known side for warm paint before auth settles; always recomputed after. */
   mine?: boolean;
@@ -119,6 +122,9 @@ export function uiMessageToCached(message: {
   id: string;
   text: string;
   fromUid?: string;
+  senderAuthUid?: string;
+  senderProfileId?: string;
+  senderRole?: string;
   senderKind?: "anon" | "profile";
   mine?: boolean;
   reply?: string;
@@ -137,6 +143,9 @@ export function uiMessageToCached(message: {
     id: message.id,
     text: message.text,
     fromUid: message.fromUid,
+    senderAuthUid: message.senderAuthUid,
+    senderProfileId: message.senderProfileId,
+    senderRole: message.senderRole,
     senderKind: message.senderKind,
     mine: message.mine,
     reply: message.reply,

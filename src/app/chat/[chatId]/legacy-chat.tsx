@@ -39,6 +39,7 @@ import {
   profileAuthUid,
   resolveLegacyChatMessageMine,
 } from "@/lib/chat/profileAnonMessageAuthor";
+import { buildLegacyCanonicalSender } from "@/lib/chat/canonicalSender";
 import { peekCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 import {
   readCachedChatMessages,
@@ -124,6 +125,9 @@ function legacyMessageToCached(message: MessageData): CachedChatMessage {
     id: String(message.id || message.clientMessageId || ""),
     text: String(message.texto || ""),
     fromUid: message.fromUid,
+    senderAuthUid: message.senderAuthUid,
+    senderProfileId: message.senderProfileId,
+    senderRole: message.senderRole,
     type: message.mediaType,
     mediaUrl: message.mediaUrl,
     readBy: message.readBy,
@@ -136,6 +140,9 @@ function cachedToLegacyMessage(message: CachedChatMessage): MessageData {
     id: message.id,
     texto: message.text,
     fromUid: message.fromUid,
+    senderAuthUid: message.senderAuthUid,
+    senderProfileId: message.senderProfileId,
+    senderRole: message.senderRole,
     mediaUrl: message.mediaUrl,
     mediaType: message.type === "text" ? undefined : message.type,
     readBy: message.readBy,
@@ -455,22 +462,30 @@ export default function LegacyChatPage() {
     localPreviewUrl: string;
   }) => {
     const user = auth.currentUser;
+    const sender = buildLegacyCanonicalSender({
+      authReady: Boolean(user),
+      liveProfileUid: profileAuthUid(user),
+    });
 
-    if (!user || !chatId) return;
+    if (!user || !chatId || !sender.ok) return;
+    const author = sender.sender;
 
-    const clientMessageId = createClientMessageId(user.uid);
+    const clientMessageId = createClientMessageId(author.senderAuthUid);
     const replyPayload = buildReplyPayload();
 
     const optimisticMessage: MessageData = {
       id: clientMessageId,
       texto: "",
-      fromUid: user.uid,
+      fromUid: author.fromUid,
+      senderAuthUid: author.senderAuthUid,
+      senderProfileId: author.senderProfileId,
+      senderRole: author.senderRole,
       createdAt: new Date(),
       clientMessageId,
       optimistic: true,
       status: "sending",
       uploadProgress: 0,
-      readBy: { [user.uid]: true },
+      readBy: { [author.senderAuthUid]: true },
       mediaUrl: localPreviewUrl,
       mediaType,
       mediaName: fileName,
@@ -527,37 +542,40 @@ export default function LegacyChatPage() {
 
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: "",
-        fromUid: user.uid,
-        senderAuthUid: user.isAnonymous ? "" : user.uid,
-        senderProfileId: user.isAnonymous ? "" : user.uid,
-        senderRole: user.isAnonymous ? "anon" : "profile",
+        fromUid: author.fromUid,
+        senderAuthUid: author.senderAuthUid,
+        senderProfileId: author.senderProfileId,
+        senderRole: author.senderRole,
+        senderKind: author.senderKind,
+        createdByAuthUid: author.senderAuthUid,
+        identityReadyAtWrite: true,
         createdAt: serverTimestamp(),
         clientMessageId,
         mediaUrl: downloadUrl,
         mediaType,
         mediaName: fileName,
         mediaSize: blob.size,
-        readBy: { [user.uid]: true },
+        readBy: { [author.senderAuthUid]: true },
         ...replyPayload,
       });
 
       await updateDoc(
         doc(db, "chats", chatId),
         buildOutgoingChatMetaPatch(
-          user.uid,
-          resolveChatRecipientIds(user.uid, chat),
+          author.fromUid,
+          resolveChatRecipientIds(author.senderAuthUid, chat),
           {
             lastMessage: mediaLabel(mediaType),
-            lastMessageSender: user.uid,
+            lastMessageSender: author.fromUid,
           },
         ),
       );
 
       notifyModerationActivity({
         lastMessage: mediaLabel(mediaType),
-        lastMessageSender: user.uid,
-        initiatorUid: user.uid,
-        anonOwnerUid: user.uid,
+        lastMessageSender: author.fromUid,
+        initiatorUid: author.senderAuthUid,
+        anonOwnerUid: author.senderAuthUid,
       });
 
       URL.revokeObjectURL(localPreviewUrl);
@@ -578,21 +596,29 @@ export default function LegacyChatPage() {
 
   const sendMessage = async () => {
     const user = auth.currentUser;
-    if (!user || !text.trim() || !chatId) return;
+    const sender = buildLegacyCanonicalSender({
+      authReady: Boolean(user),
+      liveProfileUid: profileAuthUid(user),
+    });
+    if (!user || !text.trim() || !chatId || !sender.ok) return;
+    const author = sender.sender;
 
     const clean = text.trim();
-    const clientMessageId = createClientMessageId(user.uid);
+    const clientMessageId = createClientMessageId(author.senderAuthUid);
     const replyPayload = buildReplyPayload();
 
     const optimisticMessage: MessageData = {
       id: clientMessageId,
       texto: clean,
-      fromUid: user.uid,
+      fromUid: author.fromUid,
+      senderAuthUid: author.senderAuthUid,
+      senderProfileId: author.senderProfileId,
+      senderRole: author.senderRole,
       createdAt: new Date(),
       clientMessageId,
       optimistic: true,
       status: "sending",
-      readBy: { [user.uid]: true },
+      readBy: { [author.senderAuthUid]: true },
       ...replyPayload,
     };
 
@@ -608,33 +634,36 @@ export default function LegacyChatPage() {
     try {
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: clean,
-        fromUid: user.uid,
-        senderAuthUid: user.isAnonymous ? "" : user.uid,
-        senderProfileId: user.isAnonymous ? "" : user.uid,
-        senderRole: user.isAnonymous ? "anon" : "profile",
+        fromUid: author.fromUid,
+        senderAuthUid: author.senderAuthUid,
+        senderProfileId: author.senderProfileId,
+        senderRole: author.senderRole,
+        senderKind: author.senderKind,
+        createdByAuthUid: author.senderAuthUid,
+        identityReadyAtWrite: true,
         createdAt: serverTimestamp(),
         clientMessageId,
-        readBy: { [user.uid]: true },
+        readBy: { [author.senderAuthUid]: true },
         ...replyPayload,
       });
 
       await updateDoc(
         doc(db, "chats", chatId),
         buildOutgoingChatMetaPatch(
-          user.uid,
-          resolveChatRecipientIds(user.uid, chat),
+          author.fromUid,
+          resolveChatRecipientIds(author.senderAuthUid, chat),
           {
             lastMessage: clean,
-            lastMessageSender: user.uid,
+            lastMessageSender: author.fromUid,
           },
         ),
       );
 
       notifyModerationActivity({
         lastMessage: clean,
-        lastMessageSender: user.uid,
-        initiatorUid: user.uid,
-        anonOwnerUid: user.uid,
+        lastMessageSender: author.fromUid,
+        initiatorUid: author.senderAuthUid,
+        anonOwnerUid: author.senderAuthUid,
       });
     } catch (e) {
       console.error(e);

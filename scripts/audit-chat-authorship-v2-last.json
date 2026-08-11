@@ -1,0 +1,127 @@
+{
+  "gate": "AUTHORSHIP_V2_DRY_RUN",
+  "apply": false,
+  "writes": 0,
+  "limit": "Invert remains ambiguous without createdByAuthUid contradiction. No automatic repair.",
+  "assistedCapture": "qaDebug overlay + local authorship corrections (messageId + mine). No PII.",
+  "counts": {
+    "chats": 80,
+    "messages": 113,
+    "already_canonical": 0,
+    "demonstrable_consistent": 13,
+    "demonstrable_visitor_first": 77,
+    "demonstrable_invert": 0,
+    "ambiguous_invert": 23,
+    "writes": 0
+  },
+  "samples": [
+    {
+      "chatSuffix": "8f2c573c",
+      "messageSuffix": "pUCDFVs3",
+      "fromShape": "uid",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "ambiguous_invert",
+      "reason": "no_deterministic_author_proof"
+    },
+    {
+      "chatSuffix": "__belu37",
+      "messageSuffix": "wMccZDz4",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    },
+    {
+      "chatSuffix": "ernes444",
+      "messageSuffix": "AUAOfgsM",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    },
+    {
+      "chatSuffix": "__belu37",
+      "messageSuffix": "dYH4D9t0",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    },
+    {
+      "chatSuffix": "_dahy_17",
+      "messageSuffix": "VNVZmEIf",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    },
+    {
+      "chatSuffix": "oriana16",
+      "messageSuffix": "RR3UgZbz",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    },
+    {
+      "chatSuffix": "olcito17",
+      "messageSuffix": "CyARd9cZ",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    },
+    {
+      "chatSuffix": "__belu37",
+      "messageSuffix": "3MlFl3xd",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    },
+    {
+      "chatSuffix": "__belu37",
+      "messageSuffix": "8emXR9bb",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "ambiguous_invert",
+      "reason": "no_deterministic_author_proof"
+    },
+    {
+      "chatSuffix": "__belu37",
+      "messageSuffix": "N9m1LkxX",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "ambiguous_invert",
+      "reason": "no_deterministic_author_proof"
+    },
+    {
+      "chatSuffix": "to__katy",
+      "messageSuffix": "vL5tQ1Ja",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    },
+    {
+      "chatSuffix": "o__brisa",
+      "messageSuffix": "m4RfWwC0",
+      "fromShape": "anon",
+      "senderRole": "",
+      "createdByPresent": false,
+      "bucket": "demonstrable_visitor_first",
+      "reason": "first_matches_chatId_anon"
+    }
+  ]
+}
