@@ -69,6 +69,12 @@ import {
 } from "@/lib/chat/profileAnonMessageAuthor";
 import { recordAuthorshipProbe } from "@/lib/chat/authorshipProbe";
 import {
+  buildAuthorshipIncidentRow,
+  explainMineDecision,
+  recordAuthorshipIncident,
+  redactChatId,
+} from "@/lib/chat/authorshipIncident";
+import {
   readCachedViewerIdentity,
   resolveCanonicalViewerIdentity,
   writeCachedViewerIdentity,
@@ -927,6 +933,8 @@ export default function ProfileAnonChat({
     }),
   );
 
+  const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+
   if (displayMessages.length > 0) {
     const probeKey = `${isOwnerViewing ? 1 : 0}:${displayMessages
       .map((row) => `${row.id}:${row.mine ? 1 : 0}`)
@@ -946,13 +954,54 @@ export default function ProfileAnonChat({
         authReady,
         messages: displayMessages,
       });
+      recordAuthorshipIncident({
+        hrefPath: typeof window === "undefined" ? "" : window.location.pathname.split("?")[0],
+        renderer: "ProfileAnonChat",
+        chatKind: "profileAnon",
+        chatIdRedacted: redactChatId(chatId),
+        collection: "chats/{id}/mensajes",
+        authReady,
+        authAnonymous: Boolean(auth.currentUser?.isAnonymous),
+        authUidPresent: Boolean(currentUid),
+        viewerSlugPresent: Boolean(viewerUsername),
+        profileUidPresent: Boolean(profileOwnerUid),
+        identityReady,
+        isOwnerViewing,
+        participantsShapes: [
+          currentUid ? "profile_uid" : "",
+          anonSenderId.startsWith("anon_") ? "thread_anon" : "",
+        ].filter(Boolean),
+        rows: displayMessages.slice(-40).map((message) =>
+          buildAuthorshipIncidentRow({
+            chatId,
+            messageId: message.id,
+            fromUid: message.fromUid,
+            senderAuthUid: message.senderAuthUid,
+            senderRole: message.senderRole,
+            senderKind: message.senderKind,
+            isMine: message.mine,
+            threadAnonId: anonSenderId,
+            viewerUid,
+            source: message.status === "sending" ? "optimistic" : "server",
+            mineReason: explainMineDecision({
+              from: String(message.fromUid || ""),
+              senderAuthUid: message.senderAuthUid,
+              senderRole: message.senderRole,
+              senderKind: message.senderKind,
+              ownerUid: viewerUid,
+              isOwnerViewing,
+              identityReady,
+              threadAnonId: anonSenderId,
+            }),
+          }),
+        ),
+      });
     }
   }
   const presenceLabel =
     targetShowsLastSeen && !isOwnerViewing
       ? formatLastSeen(targetLastActive, targetOnline)
       : "";
-  const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
   const viewerId = isOwnerViewing ? currentUid : anonSenderId;
   const hasChatActivity = messages.length > 0;
   const classicChatEngaged =

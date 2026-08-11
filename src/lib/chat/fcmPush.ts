@@ -5,6 +5,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { isCapacitorNative } from "@/lib/app/nativeShell";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
+import { recordNotificationStage } from "@/lib/chat/notificationIncident";
 import { auth, functions } from "@/lib/firebase";
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
@@ -214,12 +215,14 @@ async function attachPushListeners() {
     if (!token) return;
     registeredToken = token;
     notifyTokenWaiters(token);
+    recordNotificationStage("registration_event", true, "token_present");
     if (!uid) return;
     void upsertFcmTokenForUser(uid, token);
   });
 
   await PushNotifications.addListener("registrationError", (error) => {
     console.warn("FCM registrationError", error);
+    recordNotificationStage("registration_error", false, "listener");
   });
 
   await PushNotifications.addListener("pushNotificationReceived", () => {
@@ -247,14 +250,18 @@ export async function registerNativePushIfEnabled(user?: User | null) {
 }
 
 export async function enableNativeChatPush(user?: User | null): Promise<PushEnableResult> {
+  recordNotificationStage("enable_start", true, isCapacitorNative() ? "native" : "web");
   if (!isCapacitorNative() || typeof window === "undefined") {
+    recordNotificationStage("enable_not_native", false, "not_native");
     return { ok: false, reason: "register", message: "not_native" };
   }
   if (!areChatNotificationsEnabled()) {
+    recordNotificationStage("enable_prefs", false, "prefs_off");
     return { ok: false, reason: "prefs", message: "prefs_off" };
   }
 
   const uid = asId(user?.uid || auth.currentUser?.uid);
+  recordNotificationStage("enable_auth_uid", Boolean(uid), uid ? "present" : "missing");
   if (!uid) {
     return { ok: false, reason: "no_auth", message: "missing_uid" };
   }
@@ -267,18 +274,23 @@ export async function enableNativeChatPush(user?: User | null): Promise<PushEnab
   const { PushNotifications } = await import("@capacitor/push-notifications");
 
   const current = await PushNotifications.checkPermissions();
+  recordNotificationStage("enable_push_check", true, String(current.receive || "empty"));
   let granted = current.receive === "granted";
   if (!granted) {
     const requested = await PushNotifications.requestPermissions();
     granted = requested.receive === "granted";
+    recordNotificationStage("enable_push_request", granted, String(requested.receive || "empty"));
   }
   if (!granted) {
+    recordNotificationStage("enable_denied", false, "permission_denied");
     return { ok: false, reason: "denied", message: "permission_denied" };
   }
 
   try {
     await PushNotifications.register();
+    recordNotificationStage("enable_push_register", true, "called");
   } catch (error) {
+    recordNotificationStage("enable_push_register", false, "register_failed");
     return {
       ok: false,
       reason: "register",
@@ -287,13 +299,16 @@ export async function enableNativeChatPush(user?: User | null): Promise<PushEnab
   }
 
   const token = await waitForRegisteredFcmToken(12000);
+  recordNotificationStage("enable_registration_token", Boolean(token), token ? "present" : "timeout");
   if (!token) {
     return { ok: false, reason: "token", message: "registration_timeout" };
   }
 
   try {
     await upsertFcmTokenForUser(uid, token);
+    recordNotificationStage("enable_callable_registerFcmToken", true, "ok");
   } catch (error) {
+    recordNotificationStage("enable_callable_registerFcmToken", false, "callable_failed");
     return {
       ok: false,
       reason: "callable",
@@ -301,6 +316,7 @@ export async function enableNativeChatPush(user?: User | null): Promise<PushEnab
     };
   }
 
+  recordNotificationStage("enable_done", true, "token_active");
   return { ok: true, token };
 }
 

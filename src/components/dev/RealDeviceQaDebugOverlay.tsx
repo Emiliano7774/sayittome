@@ -24,6 +24,8 @@ import {
   setQaAuthDiagnosticState,
 } from "@/lib/qa/realDeviceQaDebug";
 import { auth } from "@/lib/firebase";
+import { readAuthorshipIncidentReports } from "@/lib/chat/authorshipIncident";
+import { readNotificationIncident } from "@/lib/chat/notificationIncident";
 
 export default function RealDeviceQaDebugOverlay() {
   const pathname = usePathname();
@@ -250,9 +252,11 @@ export default function RealDeviceQaDebugOverlay() {
         type="button"
         data-qa-debug-copy="1"
         onClick={() => {
-          void copyRealDeviceQaDiagnostics(
-            (snap as { chat?: Record<string, unknown> } | null)?.chat,
-          ).then((result) => {
+          void copyRealDeviceQaDiagnostics({
+            ...((snap as { chat?: Record<string, unknown> } | null)?.chat || {}),
+            authorshipIncident: readAuthorshipIncidentReports(),
+            notificationIncident: readNotificationIncident(),
+          }).then((result) => {
             setCopied(result.ok);
             window.setTimeout(() => setCopied(false), 1500);
           });

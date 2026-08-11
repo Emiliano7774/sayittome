@@ -2,6 +2,7 @@
 
 import { isCapacitorNative, isNativeAppActive } from "@/lib/app/nativeShell";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
+import { recordNotificationStage } from "@/lib/chat/notificationIncident";
 
 const CHAT_CHANNEL_ID = "chat-messages";
 const ICON_PATH = "/icons/Icon-192.png";
@@ -92,12 +93,15 @@ export async function requestChatNotificationPermission(options?: {
 
   await initChatNotifications();
 
+  recordNotificationStage("capacitor_native", isCapacitorNative(), isCapacitorNative() ? "1" : "0");
+
   if (isCapacitorNative()) {
     try {
       const { PushNotifications } = await import("@capacitor/push-notifications");
       const { LocalNotifications } = await import("@capacitor/local-notifications");
 
       let push = await PushNotifications.checkPermissions();
+      recordNotificationStage("push_check", true, String(push.receive || "empty"));
       if (push.receive !== "granted") {
         if (permissionRequested && !options?.force && push.receive !== "prompt") {
           nativePermissionGranted = false;
@@ -105,26 +109,34 @@ export async function requestChatNotificationPermission(options?: {
         }
         permissionRequested = true;
         push = await PushNotifications.requestPermissions();
+        recordNotificationStage("push_request", push.receive === "granted", String(push.receive || "empty"));
       }
 
       let local = await LocalNotifications.checkPermissions();
+      recordNotificationStage("local_check", true, String(local.display || "empty"));
       if (local.display !== "granted") {
         permissionRequested = true;
         local = await LocalNotifications.requestPermissions();
+        recordNotificationStage("local_request", local.display === "granted", String(local.display || "empty"));
       }
 
       nativePermissionGranted = push.receive === "granted" || local.display === "granted";
+      recordNotificationStage("permission_result", nativePermissionGranted, `push:${push.receive}|local:${local.display}`);
       if (nativePermissionGranted) {
         const { registerNativePushIfEnabled } = await import("@/lib/chat/fcmPush");
         await registerNativePushIfEnabled();
       }
       return nativePermissionGranted;
-    } catch {
+    } catch (error) {
+      recordNotificationStage("native_permission_throw", false, String((error as Error)?.name || "err"));
       return false;
     }
   }
 
-  if (!("Notification" in window)) return false;
+  if (!("Notification" in window)) {
+    recordNotificationStage("web_notification_api", false, "missing");
+    return false;
+  }
   if (Notification.permission === "granted") return true;
   if (Notification.permission !== "default" && !options?.force) return false;
   if (Notification.permission !== "default") return false;

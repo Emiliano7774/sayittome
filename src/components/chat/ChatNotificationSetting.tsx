@@ -15,6 +15,10 @@ import {
   openNativeNotificationSettings,
 } from "@/lib/chat/fcmPush";
 import {
+  beginNotificationIncident,
+  notificationIncidentSummary,
+} from "@/lib/chat/notificationIncident";
+import {
   areChatNotificationsEnabled,
   getChatNotificationPrefsVersion,
   setChatNotificationsEnabled,
@@ -84,6 +88,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
     tapLock.current = true;
     setBusy(true);
     setError("");
+    beginNotificationIncident();
 
     try {
       if (enabled) {
@@ -102,7 +107,8 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
 
       if (!granted || os === "denied") {
         setChatNotificationsEnabled(false);
-        setError(t("chat_notifications_error"));
+        const fail = notificationIncidentSummary();
+        setError(`${t("chat_notifications_error")} (${fail.lastFailStage || os || "denied"})`);
         return;
       }
 
@@ -111,7 +117,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
         if (!result.ok) {
           setChatNotificationsEnabled(false);
           setTokenActive(false);
-          setError(t("chat_notifications_error"));
+          setError(`${t("chat_notifications_error")} (${result.reason})`);
           setOsPermission(await readOsPermission());
           return;
         }
@@ -123,7 +129,8 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
     } catch {
       setChatNotificationsEnabled(false);
       setTokenActive(false);
-      setError(t("chat_notifications_error"));
+      const fail = notificationIncidentSummary();
+      setError(`${t("chat_notifications_error")} (${fail.lastFailStage || "throw"})`);
     } finally {
       setBusy(false);
       tapLock.current = false;
