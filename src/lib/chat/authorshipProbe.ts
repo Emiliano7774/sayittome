@@ -29,6 +29,8 @@ export type AuthorshipProbeSnapshot = {
   viewerSlugPresent: boolean;
   profileUidPresent: boolean;
   isOwnerViewing: boolean;
+  identityReady?: boolean;
+  authReady?: boolean;
   chatKind: "profileAnon" | "legacy";
   fromCache: boolean | null;
   rows: AuthorshipProbeRow[];
@@ -52,6 +54,8 @@ export function recordAuthorshipProbe(input: {
   viewerSlug: string;
   profileUid: string;
   isOwnerViewing: boolean;
+  identityReady?: boolean;
+  authReady?: boolean;
   fromCache?: boolean | null;
   messages: Array<{
     id?: string;
@@ -75,6 +79,8 @@ export function recordAuthorshipProbe(input: {
     viewerSlugPresent: Boolean(input.viewerSlug),
     profileUidPresent: Boolean(input.profileUid),
     isOwnerViewing: input.isOwnerViewing === true,
+    identityReady: input.identityReady === true,
+    authReady: input.authReady === true,
     chatKind: isProfileAnonChatId(input.chatId) ? "profileAnon" : "legacy",
     fromCache: input.fromCache ?? null,
     rows: input.messages.slice(-MAX_ROWS).map((message) => ({

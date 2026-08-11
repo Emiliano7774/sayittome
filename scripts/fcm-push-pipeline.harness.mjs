@@ -99,6 +99,9 @@ const client = fs.readFileSync(path.join(root, "src/lib/chat/fcmPush.ts"), "utf8
 assert.match(client, /initNativePushNotifications/);
 assert.match(client, /pushNotificationActionPerformed/);
 assert.match(client, /unregisterFcmToken|deleteCurrentDeviceFcmToken/);
+assert.match(client, /enableNativeChatPush/);
+assert.match(client, /waitForRegisteredFcmToken/);
+assert.match(client, /openNativeNotificationSettings/);
 
 const logout = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "utf8");
 assert.match(logout, /deleteCurrentDeviceFcmToken/);

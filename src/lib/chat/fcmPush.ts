@@ -17,6 +17,30 @@ let registeredToken: string | null = null;
 let registeredUid: string | null = null;
 let pendingChatId: string | null = null;
 let authUnsub: (() => void) | null = null;
+let tokenWaiters: Array<(token: string) => void> = [];
+
+function notifyTokenWaiters(token: string) {
+  const waiters = tokenWaiters;
+  tokenWaiters = [];
+  for (const waiter of waiters) waiter(token);
+}
+
+export function waitForRegisteredFcmToken(timeoutMs = 12000): Promise<string> {
+  const existing = asId(registeredToken);
+  if (existing) return Promise.resolve(existing);
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      tokenWaiters = tokenWaiters.filter((waiter) => waiter !== onToken);
+      resolve("");
+    }, timeoutMs);
+    const onToken = (token: string) => {
+      clearTimeout(timer);
+      resolve(asId(token));
+    };
+    tokenWaiters.push(onToken);
+  });
+}
 
 function asId(value: unknown) {
   return String(value || "").trim();
@@ -189,6 +213,7 @@ async function attachPushListeners() {
     const uid = auth.currentUser?.uid;
     if (!token) return;
     registeredToken = token;
+    notifyTokenWaiters(token);
     if (!uid) return;
     void upsertFcmTokenForUser(uid, token);
   });
@@ -208,12 +233,35 @@ async function attachPushListeners() {
   });
 }
 
+export type PushEnableResult =
+  | { ok: true; token: string }
+  | {
+      ok: false;
+      reason: "denied" | "no_auth" | "register" | "token" | "callable" | "prefs";
+      message: string;
+    };
+
 export async function registerNativePushIfEnabled(user?: User | null) {
-  if (!isCapacitorNative() || typeof window === "undefined") return false;
-  if (!areChatNotificationsEnabled()) return false;
+  const result = await enableNativeChatPush(user);
+  return result.ok;
+}
+
+export async function enableNativeChatPush(user?: User | null): Promise<PushEnableResult> {
+  if (!isCapacitorNative() || typeof window === "undefined") {
+    return { ok: false, reason: "register", message: "not_native" };
+  }
+  if (!areChatNotificationsEnabled()) {
+    return { ok: false, reason: "prefs", message: "prefs_off" };
+  }
 
   const uid = asId(user?.uid || auth.currentUser?.uid);
-  if (!uid) return false;
+  if (!uid) {
+    return { ok: false, reason: "no_auth", message: "missing_uid" };
+  }
+
+  if (!bootstrapped) {
+    await initNativePushNotifications();
+  }
 
   await ensurePushChannel();
   const { PushNotifications } = await import("@capacitor/push-notifications");
@@ -224,10 +272,57 @@ export async function registerNativePushIfEnabled(user?: User | null) {
     const requested = await PushNotifications.requestPermissions();
     granted = requested.receive === "granted";
   }
-  if (!granted) return false;
+  if (!granted) {
+    return { ok: false, reason: "denied", message: "permission_denied" };
+  }
 
-  await PushNotifications.register();
-  return true;
+  try {
+    await PushNotifications.register();
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "register",
+      message: String((error as Error)?.message || "register_failed"),
+    };
+  }
+
+  const token = await waitForRegisteredFcmToken(12000);
+  if (!token) {
+    return { ok: false, reason: "token", message: "registration_timeout" };
+  }
+
+  try {
+    await upsertFcmTokenForUser(uid, token);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "callable",
+      message: String((error as Error)?.message || "registerFcmToken_failed"),
+    };
+  }
+
+  return { ok: true, token };
+}
+
+export async function openNativeNotificationSettings() {
+  if (typeof window === "undefined") return false;
+
+  const intent =
+    "intent:#Intent;action=android.settings.APP_NOTIFICATION_SETTINGS;S.android.provider.extra.APP_PACKAGE=com.sayittome.app;end";
+
+  try {
+    const opened = window.open(intent, "_system");
+    if (opened) return true;
+  } catch {
+    // fall through
+  }
+
+  try {
+    window.location.assign(intent);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function initNativePushNotifications() {

@@ -17,6 +17,8 @@ assert.match(menu, /notificationsOpen/);
 assert.match(menu, /variant="panel"/);
 assert.match(menu, /createPortal/);
 assert.match(menu, /ChatNotificationSetting/);
+assert.match(menu, /data-chat-notification-panel/);
+assert.match(menu, /z-\[1000002\]/);
 
 const settings = read("src/app/settings/page.tsx");
 assert.match(settings, /ProfileClaimHistoryMenu/);
@@ -38,7 +40,10 @@ const panel = read("src/components/chat/ChatNotificationSetting.tsx");
 assert.match(panel, /variant === "panel"/);
 assert.match(panel, /chat_notifications_disable_cta/);
 assert.match(panel, /deleteCurrentDeviceFcmToken/);
-assert.match(panel, /registerNativePushIfEnabled/);
+assert.match(panel, /enableNativeChatPush/);
+assert.match(panel, /onPointerUp/);
+assert.match(panel, /chat_notifications_disable_cta/);
+assert.match(panel, /openNativeNotificationSettings/);
 
 const prompt = read("src/components/chat/ChatNotificationPrompt.tsx");
 assert.match(prompt, /registerNativePushIfEnabled/);

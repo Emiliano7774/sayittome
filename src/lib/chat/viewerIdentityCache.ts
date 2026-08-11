@@ -49,6 +49,30 @@ export function writeCachedViewerIdentity(uid: string, username: string) {
   }
 }
 
+/** Peek cache even before Firebase uid is known (kill/reopen). */
+export function peekCachedViewerIdentity() {
+  return readRaw();
+}
+
+export function resolveCanonicalViewerIdentity(input: {
+  authReady: boolean;
+  authUid: string;
+  chatId: string;
+  profileUid?: string;
+  liveUsername?: string;
+}) {
+  const authUid = String(input.authUid || "").trim();
+  const cached = authUid ? readCachedViewerIdentity(authUid) : peekCachedViewerIdentity();
+  const viewerUid = authUid || cached?.uid || "";
+  const viewerUsername = String(input.liveUsername || cached?.username || "").trim();
+
+  return {
+    cached,
+    viewerUid,
+    viewerUsername,
+  };
+}
+
 export function clearCachedViewerIdentity() {
   if (typeof window === "undefined") return;
   try {

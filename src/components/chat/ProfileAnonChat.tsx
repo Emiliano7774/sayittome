@@ -70,8 +70,10 @@ import {
 import { recordAuthorshipProbe } from "@/lib/chat/authorshipProbe";
 import {
   readCachedViewerIdentity,
+  resolveCanonicalViewerIdentity,
   writeCachedViewerIdentity,
 } from "@/lib/chat/viewerIdentityCache";
+import { PersistIdentityError } from "@/lib/chat/persistAnonMessage";
 import { useAuth } from "@/contexts/AuthContext";
 import { isChatThreadRoute } from "@/lib/navigation/routeKind";
 import type { InboxChat } from "@/hooks/useChatsInbox";
@@ -131,6 +133,8 @@ type Message = {
   text: string;
   mine: boolean;
   fromUid?: string;
+  senderAuthUid?: string;
+  senderRole?: string;
   senderKind?: "anon" | "profile";
   reply?: string;
   storyReply?: {
@@ -682,23 +686,29 @@ export default function ProfileAnonChat({
       if (!cached?.length) return;
 
       setMessages((prev) => {
-        const viewerUsername =
-          readCachedViewerIdentity(uid)?.username || "";
+        const canonical = resolveCanonicalViewerIdentity({
+          authReady: true,
+          authUid: uid,
+          chatId,
+          profileUid: targetUid || chatOwnerUid,
+          liveUsername: "",
+        });
         const hydrated = hydrateCachedMessages(chatId, cached, {
           chatAnonSessionId,
-          currentUid: uid,
+          currentUid: canonical.viewerUid,
           targetUid,
           chatOwnerUid,
-          viewerUsername,
+          viewerUsername: canonical.viewerUsername,
         });
         if (prev.length === 0) return hydrated;
         const ctx = buildProfileAnonViewerContext({
           chatId,
           chatAnonSessionId,
-          currentUid: uid,
+          currentUid: canonical.viewerUid,
           targetUid,
           chatOwnerUid,
-          viewerUsername,
+          viewerUsername: canonical.viewerUsername,
+          identityReady: true,
         });
         return remapProfileAnonMessagesMine(hydrated.length ? hydrated : prev, ctx);
       });
@@ -756,8 +766,6 @@ export default function ProfileAnonChat({
 
   useEffect(() => {
     if (!chatId) return;
-
-    setChatOwnerUid("");
 
     const unsub = onSnapshot(doc(db, "chats", chatId), (snap) => {
       if (!snap.exists()) return;
@@ -875,21 +883,28 @@ export default function ProfileAnonChat({
       "",
   ).trim();
   const profileOwnerUid = targetUid || chatOwnerUid || docOwnerUid;
-  const viewerUsername =
-    String(authProfile?.username || "").trim() ||
-    readCachedViewerIdentity(currentUid)?.username ||
-    "";
+  const canonicalViewer = resolveCanonicalViewerIdentity({
+    authReady,
+    authUid: currentUid,
+    chatId,
+    profileUid: profileOwnerUid,
+    liveUsername: String(authProfile?.username || "").trim(),
+  });
+  const viewerUid = canonicalViewer.viewerUid;
+  const viewerUsername = canonicalViewer.viewerUsername;
   const isOwnerViewing =
     isProfileThreadOwner({
       chatId,
-      authUid: currentUid,
+      authUid: viewerUid,
       profileUid: profileOwnerUid,
       viewerUsername,
-    }) || inferOwnerViewingFromAuthors(currentUid, profileOwnerUid, messages);
+    }) || inferOwnerViewingFromAuthors(viewerUid, profileOwnerUid, messages);
+  const identityReady = authReady || Boolean(viewerUid && isOwnerViewing);
+  const canSend = authReady && (isOwnerViewing ? Boolean(currentUid) : true);
   const profileUid = profileOwnerUid || targetUid;
   threadContextRef.current = {
     chatId,
-    currentUid,
+    currentUid: viewerUid,
     targetUid,
     chatOwnerUid,
     chatAnonSessionId,
@@ -904,10 +919,11 @@ export default function ProfileAnonChat({
     buildProfileAnonViewerContext({
       chatId,
       chatAnonSessionId,
-      currentUid,
+      currentUid: viewerUid,
       targetUid,
       chatOwnerUid: chatOwnerUid || docOwnerUid,
       viewerUsername,
+      identityReady,
     }),
   );
 
@@ -926,6 +942,8 @@ export default function ProfileAnonChat({
         viewerSlug: viewerUsername,
         profileUid: profileOwnerUid,
         isOwnerViewing,
+        identityReady,
+        authReady,
         messages: displayMessages,
       });
     }
@@ -1188,13 +1206,11 @@ export default function ProfileAnonChat({
     const ctx = buildProfileAnonViewerContext({
       chatId,
       chatAnonSessionId,
-      currentUid,
+      currentUid: viewerUid,
       targetUid,
       chatOwnerUid,
-      viewerUsername:
-        String(authProfile?.username || "").trim() ||
-        readCachedViewerIdentity(currentUid)?.username ||
-        "",
+      viewerUsername,
+      identityReady,
     });
 
     setMessages((prev) => {
@@ -1202,7 +1218,17 @@ export default function ProfileAnonChat({
       const next = remapProfileAnonMessagesMine(prev, ctx);
       return next === prev ? prev : next;
     });
-  }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid]);
+  }, [
+    chatId,
+    authReady,
+    chatAnonSessionId,
+    currentUid,
+    targetUid,
+    chatOwnerUid,
+    viewerUid,
+    viewerUsername,
+    identityReady,
+  ]);
 
   useEffect(() => {
     if (!stickToBottomRef.current) return;
@@ -1554,7 +1580,7 @@ export default function ProfileAnonChat({
   }
 
   async function sendMedia() {
-    if (!pendingBlob || !pendingType || !authReady || !chatId) return;
+    if (!pendingBlob || !pendingType || !authReady || !chatId || !canSend) return;
     if (blockedByAbuse) {
       alert(t("chat_abuse_write_block"));
       return;
@@ -1579,7 +1605,7 @@ export default function ProfileAnonChat({
         clientId,
         text: "",
         mine: true,
-        fromUid: isOwnerViewing ? profileReplyAuthorId(profileUid || chatOwnerUid) : senderId,
+        fromUid: isOwnerViewing ? profileReplyAuthorId(currentUid) : senderId,
         senderKind: isOwnerViewing ? "profile" : "anon",
         type: previewType,
         mediaUrl: localPreviewUrl,
@@ -1687,10 +1713,7 @@ export default function ProfileAnonChat({
       reply: input.message.reply,
       existingChatData: chatDocDataRef.current,
       isOwnerReply: input.isOwnerReply,
-      viewerUsername:
-        String(authProfile?.username || "").trim() ||
-        readCachedViewerIdentity(currentUid)?.username ||
-        "",
+      viewerUsername,
       clientId,
     })
       .then(() => {
@@ -1700,6 +1723,9 @@ export default function ProfileAnonChat({
       })
       .catch((error) => {
         console.error(error);
+        if (error instanceof PersistIdentityError) {
+          alert(t("chat_load_fail"));
+        }
         setMessages((old) =>
           old.map((message) =>
             message.clientId === clientId ? { ...message, status: "error" as const } : message,
@@ -1734,7 +1760,7 @@ export default function ProfileAnonChat({
 
   async function sendMessage() {
     if (!text.trim()) return;
-    if (!authReady || !chatId) return;
+    if (!authReady || !chatId || !canSend) return;
     if (blockedByAbuse) {
       alert(t("chat_abuse_write_block"));
       return;
@@ -1769,7 +1795,7 @@ export default function ProfileAnonChat({
       clientId,
       text: messageText,
       mine: true,
-      fromUid: isOwnerReply ? profileReplyAuthorId(effectiveTargetUid) : senderId,
+      fromUid: isOwnerReply ? profileReplyAuthorId(currentUid) : senderId,
       senderKind: (isOwnerReply ? "profile" : "anon") as Message["senderKind"],
       reply: replyText,
       status: "sending" as const,
@@ -2417,11 +2443,12 @@ export default function ProfileAnonChat({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    sendMessage();
+                    if (canSend) sendMessage();
                   }
                 }}
-                placeholder="Escribi un mensaje..."
-                className="w-full bg-transparent text-base outline-none placeholder:text-white/30"
+                placeholder={canSend ? "Escribi un mensaje..." : "Esperando sesión..."}
+                disabled={!canSend}
+                className="w-full bg-transparent text-base outline-none placeholder:text-white/30 disabled:opacity-50"
               />
             </div>
 
@@ -2456,7 +2483,7 @@ export default function ProfileAnonChat({
               onMouseDown={(event) => event.preventDefault()}
               onPointerDown={(event) => {
                 event.preventDefault();
-                if (text.trim()) {
+                if (canSend && text.trim()) {
                   sendMessage();
                 }
               }}

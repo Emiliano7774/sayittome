@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
@@ -8,7 +8,12 @@ import {
   requestChatNotificationPermission,
   resetChatNotificationPermissionLatch,
 } from "@/lib/chat/chatNotifications";
-import { deleteCurrentDeviceFcmToken, registerNativePushIfEnabled } from "@/lib/chat/fcmPush";
+import {
+  deleteCurrentDeviceFcmToken,
+  enableNativeChatPush,
+  hasActiveFcmRegistration,
+  openNativeNotificationSettings,
+} from "@/lib/chat/fcmPush";
 import {
   areChatNotificationsEnabled,
   getChatNotificationPrefsVersion,
@@ -58,36 +63,71 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
   );
 
   const [osPermission, setOsPermission] = useState<OsPermission>("unknown");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [tokenActive, setTokenActive] = useState(false);
+  const tapLock = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     void readOsPermission().then((next) => {
       if (!cancelled) setOsPermission(next);
     });
+    setTokenActive(hasActiveFcmRegistration());
     return () => {
       cancelled = true;
     };
   }, [enabled]);
 
-  async function toggleEnabled() {
-    const next = !enabled;
-    if (!next) {
-      setChatNotificationsEnabled(false);
-      await deleteCurrentDeviceFcmToken();
-      setOsPermission(await readOsPermission());
-      return;
-    }
+  async function runToggle() {
+    if (busy || tapLock.current) return;
+    tapLock.current = true;
+    setBusy(true);
+    setError("");
 
-    setChatNotificationsEnabled(true);
-    resetChatNotificationPermissionLatch();
-    const granted = await requestChatNotificationPermission({ force: true });
-    if (!granted) {
+    try {
+      if (enabled) {
+        setChatNotificationsEnabled(false);
+        await deleteCurrentDeviceFcmToken();
+        setTokenActive(false);
+        setOsPermission(await readOsPermission());
+        return;
+      }
+
+      setChatNotificationsEnabled(true);
+      resetChatNotificationPermissionLatch();
+      const granted = await requestChatNotificationPermission({ force: true });
+      const os = await readOsPermission();
+      setOsPermission(os);
+
+      if (!granted || os === "denied") {
+        setChatNotificationsEnabled(false);
+        setError(t("chat_notifications_error"));
+        return;
+      }
+
+      if (isCapacitorNative()) {
+        const result = await enableNativeChatPush();
+        if (!result.ok) {
+          setChatNotificationsEnabled(false);
+          setTokenActive(false);
+          setError(t("chat_notifications_error"));
+          setOsPermission(await readOsPermission());
+          return;
+        }
+        setTokenActive(true);
+        return;
+      }
+
+      setTokenActive(true);
+    } catch {
       setChatNotificationsEnabled(false);
-      setOsPermission(await readOsPermission());
-      return;
+      setTokenActive(false);
+      setError(t("chat_notifications_error"));
+    } finally {
+      setBusy(false);
+      tapLock.current = false;
     }
-    await registerNativePushIfEnabled();
-    setOsPermission(await readOsPermission());
   }
 
   const osLabel =
@@ -102,34 +142,85 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
   const appLabel = enabled
     ? t("chat_notifications_enabled")
     : t("chat_notifications_disabled");
-  const actionLabel = enabled
-    ? t("chat_notifications_disable_cta")
-    : t("chat_notifications_enable_cta");
+  const actionLabel = busy
+    ? t("chat_notifications_busy")
+    : enabled
+      ? t("chat_notifications_disable_cta")
+      : t("chat_notifications_enable_cta");
+
+  const toggleButton = (
+    <button
+      type="button"
+      data-chat-notification-toggle={enabled ? "disable" : "enable"}
+      disabled={busy}
+      onPointerUp={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void runToggle();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void runToggle();
+      }}
+      className={`pointer-events-auto min-h-12 min-w-[9.5rem] shrink-0 rounded-full px-5 py-3 text-sm font-black disabled:opacity-60 ${
+        enabled
+          ? "border border-white/15 bg-white/10 text-white"
+          : "bg-[#6C63FF] text-white shadow-[0_0_24px_rgba(108,99,255,.35)]"
+      }`}
+    >
+      {actionLabel}
+    </button>
+  );
 
   if (variant === "panel") {
     return (
-      <div data-chat-notification-setting="panel" className="space-y-4">
-        <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-4">
-          <p data-chat-notification-app-status={enabled ? "on" : "off"} className="text-sm font-black text-white">
-            {t("chat_notifications_label")}: {appLabel}
-          </p>
-          <p data-chat-notification-os-status={osPermission} className="mt-2 text-xs font-semibold text-white/55">
-            {osLabel}
-          </p>
+      <div data-chat-notification-setting="panel" className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-4">
+            <p
+              data-chat-notification-app-status={enabled ? "on" : "off"}
+              className="text-sm font-black text-white"
+            >
+              {t("chat_notifications_label")}: {appLabel}
+            </p>
+            <p
+              data-chat-notification-os-status={osPermission}
+              className="mt-2 text-xs font-semibold text-white/55"
+            >
+              {osLabel}
+            </p>
+            <p className="mt-2 text-xs font-semibold text-white/40">
+              {tokenActive
+                ? t("chat_notifications_token_on")
+                : t("chat_notifications_token_off")}
+            </p>
+          </div>
+          {error ? (
+            <p data-chat-notification-error="1" className="text-sm font-semibold text-red-300">
+              {error}
+            </p>
+          ) : null}
+          {osPermission === "denied" ? (
+            <button
+              type="button"
+              data-chat-notification-open-settings="1"
+              onPointerUp={(event) => {
+                event.preventDefault();
+                void openNativeNotificationSettings();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                void openNativeNotificationSettings();
+              }}
+              className="w-full rounded-full border border-white/15 bg-white/5 px-4 py-3 text-sm font-black text-white"
+            >
+              {t("chat_notifications_open_settings")}
+            </button>
+          ) : null}
         </div>
-        <div className="flex items-center justify-end">
-          <button
-            type="button"
-            data-chat-notification-toggle={enabled ? "disable" : "enable"}
-            onClick={() => void toggleEnabled()}
-            className={`rounded-full px-5 py-2.5 text-sm font-black ${
-              enabled
-                ? "border border-white/15 bg-white/10 text-white"
-                : "bg-[#6C63FF] text-white shadow-[0_0_24px_rgba(108,99,255,.35)]"
-            }`}
-          >
-            {actionLabel}
-          </button>
+        <div className="pointer-events-auto sticky bottom-0 mt-4 flex justify-end bg-zinc-950 pt-2">
+          {toggleButton}
         </div>
       </div>
     );
@@ -143,17 +234,8 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
         </p>
         <p className="text-white/35">{t("chat_notifications_hint")}</p>
         <p className="mt-2 text-xs text-white/45">{osLabel}</p>
-        <div className="mt-5 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => void toggleEnabled()}
-            className={`px-5 py-3 rounded-full font-black ${
-              enabled ? "bg-white text-black" : "bg-[#6C63FF] text-white"
-            }`}
-          >
-            {actionLabel}
-          </button>
-        </div>
+        {error ? <p className="mt-2 text-sm font-semibold text-red-300">{error}</p> : null}
+        <div className="mt-5 flex items-center justify-end gap-3">{toggleButton}</div>
       </div>
     );
   }
@@ -165,17 +247,8 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
         <p className="text-sm text-zinc-300">{t("chat_notifications_hint")}</p>
         <p className="mt-2 text-xs text-white/55">{osLabel}</p>
         <p className="mt-1 text-xs text-white/45">{appLabel}</p>
-        <div className="mt-4 flex items-center justify-end">
-          <button
-            type="button"
-            onClick={() => void toggleEnabled()}
-            className={`shrink-0 rounded-full px-5 py-2.5 text-sm font-black ${
-              enabled ? "bg-violet-500 text-white" : "bg-[#6C63FF] text-white shadow-[0_0_24px_rgba(108,99,255,.35)]"
-            }`}
-          >
-            {actionLabel}
-          </button>
-        </div>
+        {error ? <p className="mt-2 text-sm font-semibold text-red-300">{error}</p> : null}
+        <div className="mt-4 flex items-center justify-end">{toggleButton}</div>
       </div>
     </div>
   );

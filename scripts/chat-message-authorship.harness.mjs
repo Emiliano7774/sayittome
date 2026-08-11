@@ -52,31 +52,37 @@ function inferOwnerViewingFromAuthors(currentUid, profileUid, rows) {
 function resolveProfileAnonMessageMine(input) {
   const from = String(input.from || "").trim();
   const authUid = String(input.ownerUid || "").trim();
-  const profileUid = String(input.profileUid || "").trim();
-  const messageProfileUid = String(input.messageProfileUid || "").trim();
+  const senderAuthUid = String(input.senderAuthUid || "").trim();
   const kind = resolveProfileAnonSenderKind({
     ...input,
     from,
-    profileUid,
-    messageProfileUid: messageProfileUid || undefined,
+    profileUid: input.profileUid,
+    messageProfileUid: input.messageProfileUid || undefined,
   });
+
+  if (authUid && senderAuthUid && senderAuthUid === authUid) return true;
 
   const ownsProfileShape =
     Boolean(authUid) &&
     (from === authUid ||
       from === profileReplyAuthorId(authUid) ||
-      messageProfileUid === authUid);
+      String(input.messageProfileUid || "") === authUid);
 
   if (ownsProfileShape) return true;
 
-  const ownerViewing =
-    input.isOwnerViewing || Boolean(authUid && profileUid && authUid === profileUid);
+  const ownerViewing = input.isOwnerViewing === true;
 
   if (ownerViewing) {
     return kind === "profile" || isProfileReplyAuthorId(from) || from === authUid;
   }
 
   if (kind === "profile" || isProfileReplyAuthorId(from)) return false;
+
+  const identityReady =
+    input.identityReady !== undefined
+      ? input.identityReady
+      : Boolean(authUid || ownerViewing);
+  if (!identityReady) return false;
 
   const threadAnon = String(input.threadAnonId || "").trim();
   const liveAnon = String(input.liveAnon || "").trim();
@@ -131,8 +137,8 @@ const ANON_OTHER = "anon_other999";
   });
   assert.deepEqual(
     before,
-    [false, true],
-    "BEFORE cold empty-auth: profile peer + anon mine (inverted for owner)",
+    [false, false],
+    "cold empty-auth no longer treats thread anon as mine (old invert was [false,true])",
   );
 }
 
@@ -184,8 +190,36 @@ assert.equal(
     isOwnerViewing: false,
     ownerUid: "",
     liveAnon: ANON_OTHER,
+    identityReady: true,
   }),
   true,
+);
+
+assert.equal(
+  resolveProfileAnonMessageMine({
+    senderKind: "anon",
+    from: ANON,
+    threadAnonId: ANON,
+    profileUid: "",
+    isOwnerViewing: false,
+    ownerUid: "",
+    identityReady: false,
+  }),
+  false,
+  "unknown viewer must not classify thread anon as mine",
+);
+
+assert.equal(
+  resolveProfileAnonMessageMine({
+    from: ANON,
+    threadAnonId: ANON,
+    profileUid: "",
+    isOwnerViewing: false,
+    ownerUid: OWNER,
+    senderAuthUid: OWNER,
+  }),
+  true,
+  "senderAuthUid match wins even if fromUid is visitor-shaped",
 );
 
 // Logged-in visitor to peer profile
@@ -280,9 +314,8 @@ function persistAuthorId(input) {
       viewerUsername: input.viewerUsername,
     }) ||
     input.isOwnerReply === true;
-  return owner
-    ? profileReplyAuthorId(input.targetUid || input.currentUid)
-    : input.senderId;
+  if (owner && !input.currentUid) return "";
+  return owner ? profileReplyAuthorId(input.currentUid) : input.senderId;
 }
 assert.equal(
   persistAuthorId({
@@ -295,6 +328,30 @@ assert.equal(
   }),
   PROFILE_FROM,
   "persist uses profile_* for owner even when targetUid empty",
+);
+assert.equal(
+  persistAuthorId({
+    chatId: OWNER_CHAT,
+    currentUid: OWNER,
+    targetUid: PEER,
+    senderId: ANON,
+    viewerUsername: "ownername",
+    isOwnerReply: true,
+  }),
+  PROFILE_FROM,
+  "persist author is currentUid, never late/peer targetUid",
+);
+assert.equal(
+  persistAuthorId({
+    chatId: OWNER_CHAT,
+    currentUid: "",
+    targetUid: OWNER,
+    senderId: ANON,
+    viewerUsername: "ownername",
+    isOwnerReply: true,
+  }),
+  "",
+  "owner persist blocked without live currentUid",
 );
 
 // Legacy profile↔profile
@@ -313,6 +370,8 @@ assert.match(authorSrc, /mapFirestoreDocsToProfileAnonMessages/);
 assert.match(authorSrc, /resolveLegacyChatMessageMine/);
 assert.match(authorSrc, /fromUid shape wins/);
 assert.match(authorSrc, /isProfileThreadOwner/);
+assert.match(authorSrc, /senderAuthUid/);
+assert.match(authorSrc, /identityReady/);
 
 const persistSrc = fs.readFileSync(
   path.join(root, "src/lib/chat/persistAnonMessage.ts"),
@@ -320,6 +379,11 @@ const persistSrc = fs.readFileSync(
 );
 assert.match(persistSrc, /ownerByChatId/);
 assert.match(persistSrc, /viewerUsername/);
+assert.match(persistSrc, /senderAuthUid/);
+assert.match(persistSrc, /senderRole/);
+assert.match(persistSrc, /hasUsableChatData/);
+assert.match(persistSrc, /resolvePersistMessageAuthor/);
+assert.doesNotMatch(persistSrc, /profileReplyAuthorId\(resolvedTargetUid \|\| currentUid\)/);
 
 const identitySrc = fs.readFileSync(
   path.join(root, "src/lib/chat/viewerIdentityCache.ts"),
@@ -337,6 +401,8 @@ const chatSrc = fs.readFileSync(
 assert.match(chatSrc, /profileAuthUid/);
 assert.match(chatSrc, /displayMessages/);
 assert.match(chatSrc, /mapFirestoreDocsToProfileAnonMessages/);
+assert.match(chatSrc, /canSend/);
+assert.match(chatSrc, /resolveCanonicalViewerIdentity/);
 
 const legacySrc = fs.readFileSync(
   path.join(root, "src/app/chat/[chatId]/legacy-chat.tsx"),
@@ -344,6 +410,7 @@ const legacySrc = fs.readFileSync(
 );
 assert.match(legacySrc, /resolveLegacyChatMessageMine/);
 assert.match(legacySrc, /profileAuthUid/);
+assert.match(legacySrc, /senderAuthUid/);
 
 console.log(
   JSON.stringify(

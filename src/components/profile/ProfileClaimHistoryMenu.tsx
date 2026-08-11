@@ -195,35 +195,38 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
           : null}
       </div>
 
-      {notificationsOpen ? (
-        <div
-          data-chat-notification-panel="1"
-          className="fixed inset-0 z-[1000000] flex items-end justify-center bg-black/85 p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4"
-        >
-          <section className="flex max-h-[min(88dvh,760px)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl">
-            <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
-              <div>
-                <p className="text-lg font-black text-white">{t("chat_notifications_label")}</p>
-                <p className="mt-1 text-xs font-semibold text-white/45">
-                  {t("chat_notifications_hint")}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setNotificationsOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
-                aria-label={t("common_cancel")}
-              >
-                <X size={18} />
-              </button>
-            </header>
+      {notificationsOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              data-chat-notification-panel="1"
+              className="pointer-events-auto fixed inset-0 z-[1000002] flex items-center justify-center bg-black/85 px-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:p-4"
+            >
+              <section className="pointer-events-auto flex max-h-[min(78dvh,680px)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl">
+                <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+                  <div>
+                    <p className="text-lg font-black text-white">{t("chat_notifications_label")}</p>
+                    <p className="mt-1 text-xs font-semibold text-white/45">
+                      {t("chat_notifications_hint")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNotificationsOpen(false)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
+                    aria-label={t("common_cancel")}
+                  >
+                    <X size={18} />
+                  </button>
+                </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              <ChatNotificationSetting variant="panel" />
-            </div>
-          </section>
-        </div>
-      ) : null}
+                <div className="flex min-h-0 flex-1 flex-col p-5">
+                  <ChatNotificationSetting variant="panel" />
+                </div>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {historyOpen ? (
         <div className="fixed inset-0 z-[1000000] flex items-end justify-center bg-black/85 p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4">

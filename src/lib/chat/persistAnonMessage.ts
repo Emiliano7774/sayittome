@@ -65,6 +65,74 @@ type PersistAnonMessageInput = {
 
 const canonicalMigrationStarted = new Set<string>();
 
+export class PersistIdentityError extends Error {
+  constructor(message = "owner_identity_not_ready") {
+    super(message);
+    this.name = "PersistIdentityError";
+  }
+}
+
+export function hasUsableChatData(data?: Record<string, unknown> | null) {
+  return Boolean(data && Object.keys(data).length > 0);
+}
+
+/** Author id is never derived from late targetUid. Owner → profile_{currentUid}. */
+export function resolvePersistMessageAuthor(input: {
+  chatId: string;
+  currentUid: string;
+  targetUid?: string;
+  senderId: string;
+  viewerUsername?: string;
+  isOwnerReply?: boolean;
+}) {
+  const currentUid = String(input.currentUid || "").trim();
+  const targetUid = String(input.targetUid || "").trim();
+  const inferredOwnerReply = Boolean(currentUid && targetUid && currentUid === targetUid);
+  const ownerByChatId = isProfileThreadOwner({
+    chatId: input.chatId,
+    authUid: currentUid,
+    profileUid: targetUid,
+    viewerUsername: input.viewerUsername,
+  });
+  const isOwnerReply =
+    inferredOwnerReply || ownerByChatId || input.isOwnerReply === true;
+
+  if (isOwnerReply && !currentUid) {
+    return {
+      ok: false as const,
+      error: "owner_identity_not_ready",
+      isOwnerReply: true,
+      senderKind: "profile" as const,
+      messageAuthorId: "",
+      senderAuthUid: "",
+      senderProfileId: "",
+      senderRole: "profile" as const,
+    };
+  }
+
+  if (isOwnerReply) {
+    return {
+      ok: true as const,
+      isOwnerReply: true,
+      senderKind: "profile" as const,
+      messageAuthorId: profileReplyAuthorId(currentUid),
+      senderAuthUid: currentUid,
+      senderProfileId: currentUid,
+      senderRole: "profile" as const,
+    };
+  }
+
+  return {
+    ok: true as const,
+    isOwnerReply: false,
+    senderKind: "anon" as const,
+    messageAuthorId: input.senderId,
+    senderAuthUid: currentUid,
+    senderProfileId: "",
+    senderRole: "anon" as const,
+  };
+}
+
 function resolveThreadAnonRecipientIds(input: {
   chatId: string;
   anonSessionId: string;
@@ -155,7 +223,7 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
   const requestedChatRef = doc(db, "chats", chatId);
   let existingData = input.existingChatData || {};
 
-  if (!input.existingChatData) {
+  if (!hasUsableChatData(input.existingChatData)) {
     const existingSnap = await getDoc(requestedChatRef);
     existingData = existingSnap.exists()
       ? (existingSnap.data() as Record<string, unknown>)
@@ -191,23 +259,20 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
       "",
   ).trim();
   const resolvedTargetUid = String(targetUid || ownerUidFromDoc || "").trim();
-  const inferredOwnerReply = Boolean(
-    currentUid && resolvedTargetUid && currentUid === resolvedTargetUid,
-  );
-  const ownerByChatId = isProfileThreadOwner({
+  const persistAuthor = resolvePersistMessageAuthor({
     chatId: canonicalChatId,
-    authUid: currentUid,
-    profileUid: resolvedTargetUid,
+    currentUid,
+    targetUid: resolvedTargetUid,
+    senderId,
     viewerUsername: input.viewerUsername,
+    isOwnerReply: input.isOwnerReply,
   });
-  // Explicit false must not beat uid/chatId-owner match during mount races
-  // (owner reply misclassified as visitor → fromUid written as thread anon).
-  const isOwnerReply =
-    inferredOwnerReply || ownerByChatId || input.isOwnerReply === true;
-  const senderKind: ProfileAnonSenderKind = isOwnerReply ? "profile" : "anon";
-  const messageAuthorId = isOwnerReply
-    ? profileReplyAuthorId(resolvedTargetUid || currentUid)
-    : senderId;
+  if (!persistAuthor.ok) {
+    throw new PersistIdentityError(persistAuthor.error);
+  }
+  const isOwnerReply = persistAuthor.isOwnerReply;
+  const senderKind: ProfileAnonSenderKind = persistAuthor.senderKind;
+  const messageAuthorId = persistAuthor.messageAuthorId;
 
   const existingParticipantes = Array.isArray(existingData.participantes)
     ? existingData.participantes.map((entry) => String(entry)).filter(Boolean)
@@ -277,10 +342,14 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     id: canonicalChatId,
     targetUsername: username,
     receptorUsername: username,
-    receptorUid: resolvedTargetUid || null,
-    targetUid: resolvedTargetUid || null,
+    ...(resolvedTargetUid
+      ? {
+          receptorUid: resolvedTargetUid,
+          targetUid: resolvedTargetUid,
+          anonOwnerUid: resolvedTargetUid,
+        }
+      : {}),
     initiatorUid,
-    anonOwnerUid: resolvedTargetUid || null,
     anonSessionId,
     participantes,
     anon: true,
@@ -309,8 +378,11 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     fromUid: messageAuthorId,
     ownerId: messageAuthorId,
     senderKind,
-    ...(isOwnerReply && resolvedTargetUid
-      ? { profileUid: resolvedTargetUid }
+    senderAuthUid: persistAuthor.senderAuthUid || null,
+    senderProfileId: persistAuthor.senderProfileId || null,
+    senderRole: persistAuthor.senderRole,
+    ...(isOwnerReply && persistAuthor.senderProfileId
+      ? { profileUid: persistAuthor.senderProfileId }
       : {}),
     readBy: { [messageAuthorId]: true },
     ...(reply ? { reply } : {}),
@@ -355,6 +427,8 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     clientId: input.clientId || "",
     senderKind,
     senderUid: messageAuthorId,
+    senderAuthUid: persistAuthor.senderAuthUid,
+    senderRole: persistAuthor.senderRole,
     anonRecipientIds: unreadRecipients.filter((id) => id.startsWith("anon_")),
     unreadRecipientCount: unreadRecipients.length,
     writeStartedAt,

@@ -39,6 +39,7 @@ import {
   profileAuthUid,
   resolveLegacyChatMessageMine,
 } from "@/lib/chat/profileAnonMessageAuthor";
+import { peekCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 import {
   readCachedChatMessages,
   writeCachedChatMessages,
@@ -52,6 +53,9 @@ type MessageData = {
   id?: string;
   texto?: string;
   fromUid?: string;
+  senderAuthUid?: string;
+  senderProfileId?: string;
+  senderRole?: string;
   createdAt?: any;
   readBy?: Record<string, boolean>;
   clientMessageId?: string;
@@ -363,7 +367,11 @@ export default function LegacyChatPage() {
     return () => unsub();
   }, [chatId]);
 
-  const viewerUid = currentUid || profileAuthUid(auth.currentUser);
+  const viewerUid =
+    currentUid ||
+    profileAuthUid(auth.currentUser) ||
+    peekCachedViewerIdentity()?.uid ||
+    "";
   useChatViewportLock(Boolean(chatId));
 
   const visibleMessages = useMemo(() => {
@@ -520,6 +528,9 @@ export default function LegacyChatPage() {
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: "",
         fromUid: user.uid,
+        senderAuthUid: user.isAnonymous ? "" : user.uid,
+        senderProfileId: user.isAnonymous ? "" : user.uid,
+        senderRole: user.isAnonymous ? "anon" : "profile",
         createdAt: serverTimestamp(),
         clientMessageId,
         mediaUrl: downloadUrl,
@@ -598,6 +609,9 @@ export default function LegacyChatPage() {
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: clean,
         fromUid: user.uid,
+        senderAuthUid: user.isAnonymous ? "" : user.uid,
+        senderProfileId: user.isAnonymous ? "" : user.uid,
+        senderRole: user.isAnonymous ? "anon" : "profile",
         createdAt: serverTimestamp(),
         clientMessageId,
         readBy: { [user.uid]: true },
@@ -787,6 +801,7 @@ if (uxMode === "classic") {
               const isMine = resolveLegacyChatMessageMine(
                 String(message.fromUid || ""),
                 viewerUid,
+                String(message.senderAuthUid || ""),
               );
               const receiptStatus = resolveMessageReceiptStatus({
                 mine: isMine,
@@ -855,7 +870,11 @@ if (uxMode === "classic") {
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {visibleMessages.map((msg) => {
-            const mine = resolveLegacyChatMessageMine(String(msg.fromUid || ""), viewerUid);
+            const mine = resolveLegacyChatMessageMine(
+              String(msg.fromUid || ""),
+              viewerUid,
+              String(msg.senderAuthUid || ""),
+            );
             const isSending = msg.status === "sending";
             const hasError = msg.status === "error";
             const receiptStatus = resolveMessageReceiptStatus({
