@@ -4,6 +4,7 @@ import {
   getFirestoreDoc,
   parseFirestoreDoc,
 } from "@/lib/firestore/rest";
+import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { fetchProfileUidByUsername } from "@/lib/moderation/fetchUserChats";
 import {
   persistedAuthorFromDoc,
@@ -17,9 +18,9 @@ export async function loadRepairThread(chatId: string): Promise<{
   messages: RepairMessageInput[];
 }> {
   const chat = (await getFirestoreDoc("chats", chatId)) || {};
-  const slug = String(
-    chat.receptorUsername || chat.targetUsername || "",
-  ).trim();
+  const slug =
+    usernameHintFromAnonChatId(chatId) ||
+    String(chat.receptorUsername || chat.targetUsername || "").trim();
   const ownerProfileIdFromUsername = slug
     ? await fetchProfileUidByUsername(slug)
     : "";
@@ -75,6 +76,7 @@ export async function listChatMensajes(chatId: string): Promise<RepairMessageInp
     id: String(doc.id || ""),
     text: String(doc.texto || doc.text || ""),
     createdAt: String(doc.createdAt || doc._firestoreCreateTime || ""),
+    updateTime: String(doc._firestoreUpdateTime || ""),
     persisted: persistedAuthorFromDoc(doc),
   }));
 }

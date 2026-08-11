@@ -90,8 +90,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      applyAllowed: false,
-      freezeReason: plan.freezeReason,
+      applyAllowed: plan.applyAllowed,
+      chatBlocked: plan.chatBlocked,
+      blockReason: plan.blockReason,
       perspective,
       plan: body.redactPii ? exportRepairPlanWithoutPii(plan) : plan,
     });

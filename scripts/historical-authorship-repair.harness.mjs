@@ -1,5 +1,5 @@
 /**
- * Historical assisted repair planner + freeze gate.
+ * Historical repair classifier + OCC + identity gates.
  * Usage: node scripts/historical-authorship-repair.harness.mjs
  */
 import assert from "node:assert/strict";
@@ -13,7 +13,11 @@ function profileReplyAuthorId(uid) {
   return uid ? `profile_${uid}` : "profile_unknown";
 }
 
-function resolveMineFromCanonicalSender(input) {
+function expectedBeforeHash(author) {
+  return ["v1", author.fromUid || "", author.senderAuthUid || "", author.senderProfileId || "", author.senderRole || "", author.senderKind || ""].join("|");
+}
+
+function resolveMine(input) {
   const viewer = String(input.viewerUid || "").trim();
   const senderAuth = String(input.senderAuthUid || "").trim();
   const role = String(input.senderRole || "").trim();
@@ -21,53 +25,47 @@ function resolveMineFromCanonicalSender(input) {
   if (viewer && senderAuth && senderAuth === viewer) return true;
   if (role === "profile") return input.isOwnerViewing === true;
   if (role === "anon") {
-    if (!input.identityReady) return false;
-    if (input.isOwnerViewing) return false;
+    if (!input.identityReady || input.isOwnerViewing) return false;
     return Boolean(input.threadAnonId && from === input.threadAnonId);
   }
   return false;
 }
 
-function markFromPerspective(perspective, messageId, mine) {
-  const ownerIsAuthor = perspective === "owner" ? mine === true : mine === false;
-  return {
-    messageId,
-    authorRole: ownerIsAuthor ? "profile" : "anon",
-    source: "operator",
-  };
+function evaluateThreadIdentity(identities) {
+  if (identities.chatKind !== "profileAnon") return { ok: false, error: "chat_not_profile_anon" };
+  if (!String(identities.threadAnonId || "").startsWith("anon_")) {
+    return { ok: false, error: "thread_anon_not_deterministic" };
+  }
+  if (identities.ownerIdSource === "ambiguous_mismatch") {
+    return { ok: false, error: "owner_identity_ambiguous" };
+  }
+  if (identities.ownerIdSource !== "username_lookup" || !identities.ownerProfileId) {
+    return { ok: false, error: "owner_identity_not_deterministic" };
+  }
+  return { ok: true, error: "" };
 }
 
-function proposeCanonicalAuthor(identities, authorRole) {
-  if (authorRole === "profile") {
-    if (!identities.ownerProfileId) return { ok: false, error: "owner_profile_id_missing" };
+function propose(identities, role) {
+  if (role === "profile") {
     return {
-      ok: true,
-      author: {
-        fromUid: profileReplyAuthorId(identities.ownerProfileId),
-        senderAuthUid: identities.ownerProfileId,
-        senderProfileId: identities.ownerProfileId,
-        senderRole: "profile",
-        senderKind: "profile",
-      },
+      fromUid: profileReplyAuthorId(identities.ownerProfileId),
+      senderAuthUid: identities.ownerProfileId,
+      senderProfileId: identities.ownerProfileId,
+      senderRole: "profile",
+      senderKind: "profile",
     };
   }
-  if (!String(identities.threadAnonId || "").startsWith("anon_")) {
-    return { ok: false, error: "thread_anon_missing" };
-  }
   return {
-    ok: true,
-    author: {
-      fromUid: identities.threadAnonId,
-      senderAuthUid: "",
-      senderProfileId: "",
-      senderRole: "anon",
-      senderKind: "anon",
-    },
+    fromUid: identities.threadAnonId,
+    senderAuthUid: "",
+    senderProfileId: "",
+    senderRole: "anon",
+    senderKind: "anon",
   };
 }
 
 function mineFor(identities, author, perspective) {
-  return resolveMineFromCanonicalSender({
+  return resolveMine({
     senderAuthUid: author.senderAuthUid,
     senderRole: author.senderRole,
     fromUid: author.fromUid,
@@ -78,144 +76,250 @@ function mineFor(identities, author, perspective) {
   });
 }
 
-const APPLY_FROZEN = true;
-function assertApplyAllowed() {
-  if (APPLY_FROZEN) throw new Error("APPLY_FROZEN_PENDING_CHATGPT_AUDIT");
+function classify({ identities, live, selections, confirmWriteCount, reason }) {
+  const identity = evaluateThreadIdentity(identities);
+  if (!identity.ok) {
+    return {
+      applied: [],
+      noop: [],
+      rejected: selections.map((s) => ({ messageId: s.messageId, reason: identity.error })),
+      blockReason: identity.error,
+    };
+  }
+  if (String(reason || "").trim().length < 8) {
+    return {
+      applied: [],
+      noop: [],
+      rejected: selections.map((s) => ({ messageId: s.messageId, reason: "reason_required" })),
+      blockReason: "reason_required",
+    };
+  }
+  const liveById = new Map(live.map((row) => [row.id, row]));
+  const applied = [];
+  const noop = [];
+  const rejected = [];
+  for (const selection of selections) {
+    const row = liveById.get(selection.messageId);
+    if (!row) {
+      rejected.push({ messageId: selection.messageId, reason: "message_missing" });
+      continue;
+    }
+    if (expectedBeforeHash(row.persisted) !== selection.expectedBeforeHash) {
+      rejected.push({ messageId: selection.messageId, reason: "stale_or_tampered_hash" });
+      continue;
+    }
+    if (row.updateTime !== selection.updateTime) {
+      rejected.push({ messageId: selection.messageId, reason: "stale_update_time" });
+      continue;
+    }
+    const after = propose(identities, selection.desiredRole);
+    if (mineFor(identities, after, "owner") === mineFor(identities, after, "visitor")) {
+      rejected.push({ messageId: selection.messageId, reason: "not_complementary_both_perspectives" });
+      continue;
+    }
+    if (expectedBeforeHash(row.persisted) === expectedBeforeHash(after)) {
+      noop.push({ messageId: selection.messageId, reason: "already_canonical" });
+      continue;
+    }
+    applied.push({ messageId: selection.messageId, before: row.persisted, after });
+  }
+  if (applied.length > 25) {
+    return {
+      applied: [],
+      noop,
+      rejected: [...rejected, ...applied.map((row) => ({ messageId: row.messageId, reason: "batch_limit" }))],
+      blockReason: "batch_limit",
+    };
+  }
+  if (confirmWriteCount !== undefined && confirmWriteCount !== applied.length) {
+    return {
+      applied: [],
+      noop,
+      rejected: [...rejected, ...applied.map((row) => ({ messageId: row.messageId, reason: "confirm_write_count_mismatch" }))],
+      blockReason: "confirm_write_count_mismatch",
+    };
+  }
+  return { applied, noop, rejected, blockReason: "" };
 }
 
 const OWNER = "ownerUid123";
 const THREAD_ANON = "anon_visitor1";
-const CHAT = `${THREAD_ANON}__anon_to__alice`;
 const identities = {
-  chatId: CHAT,
+  chatKind: "profileAnon",
   ownerProfileId: OWNER,
   threadAnonId: THREAD_ANON,
+  ownerIdSource: "username_lookup",
 };
 
-const invertedOwner = {
-  id: "m1",
-  persisted: {
-    fromUid: THREAD_ANON,
-    senderAuthUid: "",
-    senderProfileId: "",
-    senderRole: "",
-    senderKind: "anon",
-  },
+const inverted = {
+  fromUid: THREAD_ANON,
+  senderAuthUid: "",
+  senderProfileId: "",
+  senderRole: "",
+  senderKind: "anon",
 };
-const correctVisitor = {
-  id: "m2",
-  persisted: {
-    fromUid: THREAD_ANON,
-    senderAuthUid: "",
-    senderProfileId: "",
-    senderRole: "anon",
-    senderKind: "anon",
-  },
+const visitorOk = {
+  fromUid: THREAD_ANON,
+  senderAuthUid: "",
+  senderProfileId: "",
+  senderRole: "anon",
+  senderKind: "anon",
 };
+const afterOwner = propose(identities, "profile");
 
-assert.deepEqual(markFromPerspective("owner", "m1", true).authorRole, "profile");
-assert.deepEqual(markFromPerspective("visitor", "m1", true).authorRole, "anon");
-assert.deepEqual(markFromPerspective("visitor", "m1", false).authorRole, "profile");
+assert.equal(evaluateThreadIdentity({ ...identities, ownerIdSource: "chat_receptor" }).ok, false);
+assert.equal(evaluateThreadIdentity({ ...identities, ownerIdSource: "ambiguous_mismatch" }).ok, false);
+assert.equal(evaluateThreadIdentity({ ...identities, threadAnonId: "" }).ok, false);
+assert.equal(evaluateThreadIdentity(identities).ok, true);
 
-const proposedOwner = proposeCanonicalAuthor(identities, "profile");
-assert.equal(proposedOwner.author.fromUid, profileReplyAuthorId(OWNER));
-assert.equal(proposedOwner.author.senderAuthUid, OWNER);
-assert.doesNotMatch(JSON.stringify(proposedOwner.author), /targetUid/);
+assert.deepEqual(
+  { owner: mineFor(identities, afterOwner, "owner"), visitor: mineFor(identities, afterOwner, "visitor") },
+  { owner: true, visitor: false },
+);
+assert.deepEqual(
+  { owner: mineFor(identities, propose(identities, "anon"), "owner"), visitor: mineFor(identities, propose(identities, "anon"), "visitor") },
+  { owner: false, visitor: true },
+);
 
-const proposedVisitor = proposeCanonicalAuthor(identities, "anon");
-assert.equal(proposedVisitor.author.fromUid, THREAD_ANON);
+const live = [
+  { id: "m1", updateTime: "t1", persisted: inverted },
+  { id: "m2", updateTime: "t2", persisted: visitorOk },
+];
 
-const afterOwner = {
-  owner: mineFor(identities, proposedOwner.author, "owner"),
-  visitor: mineFor(identities, proposedOwner.author, "visitor"),
-};
-assert.deepEqual(afterOwner, { owner: true, visitor: false });
-
-const afterVisitor = {
-  owner: mineFor(identities, proposedVisitor.author, "owner"),
-  visitor: mineFor(identities, proposedVisitor.author, "visitor"),
-};
-assert.deepEqual(afterVisitor, { owner: false, visitor: true });
-
-// Repairing m1 as owner must not invert already-correct visitor m2 (unmarked).
-const visitorBefore = mineFor(identities, correctVisitor.persisted, "visitor");
-const visitorAfterUnmarked = mineFor(identities, correctVisitor.persisted, "visitor");
-assert.equal(visitorBefore, true);
-assert.equal(visitorAfterUnmarked, true);
-const ownerStillNotMineOnVisitorRow = mineFor(
+// Unselected m2 never appears in selections.
+const ready = classify({
   identities,
-  correctVisitor.persisted,
-  "owner",
-);
-assert.equal(ownerStillNotMineOnVisitorRow, false);
-
-// Idempotency: already canonical profile is noop.
-const already = proposedOwner.author;
-assert.equal(already.senderRole, "profile");
-assert.equal(
-  already.fromUid === proposedOwner.author.fromUid &&
-    already.senderAuthUid === proposedOwner.author.senderAuthUid,
-  true,
-);
-
-const backup = {
-  rows: [
-    {
-      messageId: "m1",
-      before: invertedOwner.persisted,
-      after: proposedOwner.author,
-    },
+  live,
+  reason: "qa invert owner bubble",
+  confirmWriteCount: 1,
+  selections: [
+    { messageId: "m1", desiredRole: "profile", expectedBeforeHash: expectedBeforeHash(inverted), updateTime: "t1" },
   ],
-};
-const rollback = backup.rows.map((row) => row.before);
-assert.deepEqual(rollback[0], invertedOwner.persisted);
+});
+assert.equal(ready.applied.length, 1);
+assert.equal(ready.rejected.length, 0);
+assert.equal(ready.applied[0].after.senderRole, "profile");
 
-assert.throws(() => assertApplyAllowed(), /APPLY_FROZEN_PENDING_CHATGPT_AUDIT/);
+// Partial: one stale, one ready
+const partial = classify({
+  identities,
+  live,
+  reason: "partial stale case",
+  confirmWriteCount: 1,
+  selections: [
+    { messageId: "m1", desiredRole: "profile", expectedBeforeHash: expectedBeforeHash(inverted), updateTime: "t1" },
+    { messageId: "m2", desiredRole: "anon", expectedBeforeHash: "tampered", updateTime: "t2" },
+  ],
+});
+assert.equal(partial.applied.map((r) => r.messageId).join(), "m1");
+assert.equal(partial.rejected[0].reason, "stale_or_tampered_hash");
 
-const src = fs.readFileSync(
-  path.join(root, "src/lib/chat/historicalAuthorshipRepair.ts"),
-  "utf8",
-);
-assert.match(src, /HISTORICAL_REPAIR_APPLY_FROZEN = true/);
-assert.doesNotMatch(src, /patchFirestoreDoc|writeBatch|updateDoc/);
+// Stale updateTime
+const staleTime = classify({
+  identities,
+  live,
+  reason: "stale preview time",
+  confirmWriteCount: 0,
+  selections: [
+    { messageId: "m1", desiredRole: "profile", expectedBeforeHash: expectedBeforeHash(inverted), updateTime: "old" },
+  ],
+});
+assert.equal(staleTime.rejected[0].reason, "stale_update_time");
+assert.equal(staleTime.applied.length, 0);
 
-const applySrc = fs.readFileSync(
-  path.join(root, "src/app/api/admin/authorship-repair/apply/route.ts"),
-  "utf8",
-);
-assert.match(applySrc, /status: 423/);
-assert.match(applySrc, /assertHistoricalRepairApplyAllowed/);
+// Retry / idempotent
+const retry = classify({
+  identities,
+  live: [{ id: "m1", updateTime: "t3", persisted: afterOwner }],
+  reason: "retry after apply",
+  confirmWriteCount: 0,
+  selections: [
+    { messageId: "m1", desiredRole: "profile", expectedBeforeHash: expectedBeforeHash(afterOwner), updateTime: "t3" },
+  ],
+});
+assert.equal(retry.noop[0].reason, "already_canonical");
+assert.equal(retry.applied.length, 0);
 
-const persistSrc = fs.readFileSync(
-  path.join(root, "src/lib/chat/persistAnonMessage.ts"),
-  "utf8",
-);
+// Batch limit
+const many = Array.from({ length: 26 }, (_, i) => ({
+  id: `b${i}`,
+  updateTime: `tb${i}`,
+  persisted: inverted,
+}));
+const overLimit = classify({
+  identities,
+  live: many,
+  reason: "too many writes",
+  confirmWriteCount: 26,
+  selections: many.map((row) => ({
+    messageId: row.id,
+    desiredRole: "profile",
+    expectedBeforeHash: expectedBeforeHash(inverted),
+    updateTime: row.updateTime,
+  })),
+});
+assert.equal(overLimit.applied.length <= 25, true);
+
+// Confirm mismatch blocks writes
+const mismatch = classify({
+  identities,
+  live,
+  reason: "wrong confirm count",
+  confirmWriteCount: 9,
+  selections: [
+    { messageId: "m1", desiredRole: "profile", expectedBeforeHash: expectedBeforeHash(inverted), updateTime: "t1" },
+  ],
+});
+assert.equal(mismatch.blockReason, "confirm_write_count_mismatch");
+assert.equal(mismatch.applied.length, 0);
+
+// Rollback only if current == after
+const liveAfter = [{ id: "m1", updateTime: "t4", persisted: afterOwner }];
+assert.equal(expectedBeforeHash(liveAfter[0].persisted), expectedBeforeHash(afterOwner));
+assert.notEqual(expectedBeforeHash(inverted), expectedBeforeHash(afterOwner));
+const tamperedLive = [{ id: "m1", updateTime: "t5", persisted: { ...afterOwner, fromUid: "nope" } }];
+assert.notEqual(expectedBeforeHash(tamperedLive[0].persisted), expectedBeforeHash(afterOwner));
+
+// Kill/reopen uses senderRole, not fromUid heuristics alone
+assert.equal(mineFor(identities, afterOwner, "owner"), true);
+assert.equal(mineFor(identities, visitorOk, "visitor"), true);
+assert.equal(mineFor(identities, visitorOk, "owner"), false);
+
+const src = fs.readFileSync(path.join(root, "src/lib/chat/historicalAuthorshipRepair.ts"), "utf8");
+assert.match(src, /HISTORICAL_REPAIR_APPLY_FROZEN = false/);
+assert.match(src, /owner_identity_not_deterministic/);
+assert.match(src, /stale_or_tampered_hash/);
+assert.doesNotMatch(src, /targetUid/);
+
+const writeSrc = fs.readFileSync(path.join(root, "src/lib/chat/historicalAuthorshipRepairWrite.ts"), "utf8");
+assert.match(writeSrc, /documents:commit/);
+assert.match(writeSrc, /backupJson/);
+assert.match(writeSrc, /currentDocument/);
+assert.match(writeSrc, /AUTHOR_FIELD_PATHS/);
+assert.doesNotMatch(writeSrc, /"texto"|"mediaUrl"|"createdAt"/);
+assert.match(writeSrc, /fromUid[\s\S]*ownerId[\s\S]*senderAuthUid[\s\S]*senderProfileId[\s\S]*senderRole/);
+
+const persistSrc = fs.readFileSync(path.join(root, "src/lib/chat/persistAnonMessage.ts"), "utf8");
 assert.match(persistSrc, /buildCanonicalSender/);
 
-const example = {
-  chatIdSuffix: CHAT.slice(-8),
-  messageIdShort: "m1",
-  before: {
-    fromShape: "anon",
-    ownerMine: mineFor(identities, invertedOwner.persisted, "owner"),
-    visitorMine: mineFor(identities, invertedOwner.persisted, "visitor"),
-  },
-  after: afterOwner,
-  proposed: {
-    senderRole: proposedOwner.author.senderRole,
-    fromShape: "profile",
-  },
-};
+const applySrc = fs.readFileSync(path.join(root, "src/app/api/admin/authorship-repair/apply/route.ts"), "utf8");
+assert.match(applySrc, /applyHistoricalAuthorshipRepair/);
+assert.doesNotMatch(applySrc, /APPLY_FROZEN_PENDING_CHATGPT_AUDIT/);
 
-console.log(
-  JSON.stringify(
-    {
-      gate: "HISTORICAL_AUTHORSHIP_REPAIR",
-      pass: true,
-      applyFrozen: true,
-      examplePreview: example,
-    },
-    null,
-    2,
-  ),
-);
+console.log(JSON.stringify({
+  gate: "HISTORICAL_AUTHORSHIP_REPAIR",
+  pass: true,
+  applyFrozen: false,
+  writerEnabled: true,
+  cases: [
+    "deterministic_identity",
+    "dual_perspective",
+    "partial_stale",
+    "stale_update_time",
+    "tamper_hash",
+    "retry_noop",
+    "confirm_mismatch",
+    "unselected_untouched",
+    "kill_reopen_senderRole",
+  ],
+}, null, 2));

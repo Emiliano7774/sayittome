@@ -1,41 +1,37 @@
 import { NextResponse } from "next/server";
 
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
-import {
-  HISTORICAL_REPAIR_FREEZE_REASON,
-  assertHistoricalRepairApplyAllowed,
-} from "@/lib/chat/historicalAuthorshipRepair";
+import { rollbackHistoricalAuthorshipRepair } from "@/lib/chat/historicalAuthorshipRepairWrite";
 
 export const dynamic = "force-dynamic";
 
-/** Checkpoint: rollback writer also frozen. No Firestore writes. */
 export async function POST(req: Request) {
+  let operator;
   try {
-    await verifyAdminIdToken(req);
+    operator = await verifyAdminIdToken(req);
   } catch (error) {
     const status = Number((error as { status?: number })?.status || 401);
     return NextResponse.json(
-      { ok: false, error: String((error as Error)?.message || "forbidden") },
+      { ok: false, error: String((error as Error)?.message || "forbidden"), writes: 0 },
       { status },
     );
   }
 
-  try {
-    assertHistoricalRepairApplyAllowed();
-  } catch {
-    return NextResponse.json(
-      {
-        ok: false,
-        rolledBack: false,
-        writes: 0,
-        error: HISTORICAL_REPAIR_FREEZE_REASON,
-      },
-      { status: 423 },
-    );
-  }
+  const body = (await req.json()) as { repairId?: string; reason?: string };
+  const result = await rollbackHistoricalAuthorshipRepair({
+    repairId: String(body.repairId || ""),
+    reason: String(body.reason || ""),
+    operatorUid: operator.uid,
+    operatorEmail: operator.email,
+  });
 
-  return NextResponse.json(
-    { ok: false, rolledBack: false, writes: 0, error: "rollback_not_implemented" },
-    { status: 501 },
-  );
+  return NextResponse.json({
+    ok: result.ok,
+    repairId: result.repairId,
+    writes: result.writes,
+    error: result.error,
+    applied: result.applied.map((row) => ({ messageId: row.messageId, status: row.status, reason: row.reason })),
+    noop: result.noop.map((row) => ({ messageId: row.messageId, status: row.status, reason: row.reason })),
+    rejected: result.rejected.map((row) => ({ messageId: row.messageId, status: row.status, reason: row.reason })),
+  }, { status: result.ok ? 200 : 409 });
 }
