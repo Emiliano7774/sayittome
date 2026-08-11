@@ -36,7 +36,7 @@ export async function GET(req: Request) {
       uidPresent: Boolean(result.uid),
       chats: result.chats.map((chat) => ({
         id: chat.id,
-        updatedAt: chat.updatedAt,
+        updatedAtMs: chat.updatedAtMs,
         lastMessage: String(chat.lastMessage || "").slice(0, 80),
         lastMessageSenderShape: String(chat.lastMessageSender || "").slice(0, 24),
       })),
