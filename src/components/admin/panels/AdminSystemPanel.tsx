@@ -78,6 +78,9 @@ export default function AdminSystemPanel() {
         <p className="font-bold text-white/55">Presencia online: ventana de 15 minutos.</p>
         <p className="font-bold text-white/55">Antiacoso default: 30 minutos por fingerprint.</p>
         <p className="font-bold text-white/55">Link verificado: /u/username?verified=1</p>
+        <p className="font-bold text-white/55">
+          Autoría histórica (dry-run): <a className="underline" href="/admin/authorship">/admin/authorship</a>
+        </p>
       </section>
 
       <section>

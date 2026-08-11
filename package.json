@@ -61,6 +61,7 @@
     "test:chat-message-authorship": "node scripts/chat-message-authorship.harness.mjs",
     "test:chat-authorship-lifecycle": "node scripts/chat-authorship-lifecycle.harness.mjs",
     "audit:authorship-v2": "node scripts/audit-chat-authorship-v2-dry-run.mjs",
+    "test:historical-authorship-repair": "node scripts/historical-authorship-repair.harness.mjs",
     "verify:hosting": "node scripts/verify-hosting-release.mjs",
     "test:chat-thread-warm-first-frame": "node scripts/chat-thread-warm-first-frame.harness.mjs",
     "test:fcm-push-pipeline": "node scripts/fcm-push-pipeline.harness.mjs",
