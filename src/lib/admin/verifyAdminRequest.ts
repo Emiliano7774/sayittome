@@ -21,6 +21,22 @@ export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFireb
   }
 
   try {
+    const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+    const { getAuth } = await import("firebase-admin/auth");
+    getRepairAdminDb();
+    const decoded = await getAuth().verifyIdToken(token, true);
+    if (decoded.email_verified !== true) {
+      throw Object.assign(new Error("email_not_verified"), { status: 401 });
+    }
+    const email = String(decoded.email || "").trim().toLowerCase();
+    return { email, uid: String(decoded.uid || "") };
+  } catch (adminError) {
+    const adminStatus = Number((adminError as { status?: number })?.status || 0);
+    if (adminStatus === 401 || adminStatus === 403) throw adminError;
+    // Fall back to Identity Toolkit lookup when Admin SDK is unavailable.
+  }
+
+  try {
     const response = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIRESTORE_API_KEY)}`,
       {
@@ -34,10 +50,16 @@ export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFireb
       throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
     }
     const payload = (await response.json()) as {
-      users?: Array<{ email?: string; localId?: string; disabled?: boolean }>;
+      users?: Array<{
+        email?: string;
+        localId?: string;
+        disabled?: boolean;
+        emailVerified?: boolean;
+        validSince?: string;
+      }>;
     };
     const user = payload.users?.[0];
-    if (!user || user.disabled === true) {
+    if (!user || user.disabled === true || user.emailVerified !== true) {
       throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
     }
     const email = String(user.email || "").trim().toLowerCase();

@@ -70,7 +70,7 @@ assert(
 
 const buffers = read("src/components/stories/StoryMediaBuffers.tsx");
 assert(
-  buffers.includes('preload={backVisible ? "auto" : "metadata"}'),
+  buffers.includes('preload={visible ? "auto" : "metadata"}'),
   "story back buffer must use metadata preload while hidden",
 );
 

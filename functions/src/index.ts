@@ -1,12 +1,28 @@
 import { createHash } from "crypto";
 
 import { getApps, initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, type Firestore, type Transaction } from "firebase-admin/firestore";
 import { getMessaging, type MulticastMessage } from "firebase-admin/messaging";
 import { logger } from "firebase-functions";
 import { setGlobalOptions } from "firebase-functions/v2/options";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+
+import { isValidFcmInstallationId, isValidInstallationProof } from "./fcmInstallation";
+import {
+  registerFcmTokenInTransaction,
+  unregisterFcmTokenInTransaction,
+} from "./fcmTokenTx";
+import { resolvePushTitle } from "./pushNotificationCopy";
+
+export {
+  assertDurableRateLimit,
+  createReadBeforeWriteGuard,
+  decideInstallationProofUpdate,
+  isLegacyInstallationProof,
+  registerFcmTokenInTransaction,
+  unregisterFcmTokenInTransaction,
+} from "./fcmTokenTx";
 
 setGlobalOptions({ region: "us-central1" });
 
@@ -42,6 +58,9 @@ type MessageDoc = {
   ownerId?: string;
   senderUid?: string;
   senderKind?: string;
+  senderRole?: string;
+  senderAuthUid?: string;
+  createdByAuthUid?: string;
   profileUid?: string;
   texto?: string;
   text?: string;
@@ -51,15 +70,6 @@ type MessageDoc = {
 
 function asId(value: unknown) {
   return String(value || "").trim();
-}
-
-function formatAnonSessionLabel(sessionId: string) {
-  const raw = asId(sessionId);
-  if (!raw) return "Anónimo";
-  if (!raw.startsWith("anon_")) return raw;
-  const parts = raw.split("_").filter(Boolean);
-  const token = parts[1] || parts[parts.length - 1] || "anon";
-  return `Anon-${token.slice(0, 10)}`;
 }
 
 function messageAuthorId(data: MessageDoc) {
@@ -109,6 +119,8 @@ export function resolvePushRecipientUids(message: MessageDoc, chat: ChatDoc): st
   }
 
   recipients.delete(from);
+  recipients.delete(asId(message.senderAuthUid));
+  recipients.delete(asId(message.createdByAuthUid));
   if (from.startsWith("profile_")) {
     recipients.delete(from.slice("profile_".length));
   }
@@ -122,14 +134,19 @@ export function notificationTitleForRecipient(
   _recipientUid: string,
 ): string {
   const from = messageAuthorId(message);
+  const role = asId(message.senderRole);
 
-  // Anon speaker → Anon-{alias}, never a real profile name/UID.
-  if (from.startsWith("anon_")) {
-    return formatAnonSessionLabel(from);
+  // Immutable senderRole wins over historical fromUid shape.
+  // Legacy role=anon must never surface a raw Firebase fromUid.
+  if (role === "anon" || from.startsWith("anon_")) {
+    return resolvePushTitle({
+      senderRole: role || "anon",
+      from: from.startsWith("anon_") ? from : "",
+      fromUid: from.startsWith("anon_") ? from : "",
+    });
   }
 
-  // Profile speaker → visible profile username only.
-  if (isOwnerReply(message, chat, from) || from.startsWith("profile_")) {
+  if (role === "profile" || isOwnerReply(message, chat, from) || from.startsWith("profile_")) {
     return asId(chat.targetUsername || chat.receptorUsername) || "Nuevo mensaje";
   }
 
@@ -196,6 +213,21 @@ async function deleteInvalidToken(uid: string, docId: string) {
   await db().collection("usuarios").doc(uid).collection("fcmTokens").doc(docId).delete();
 }
 
+function firestoreFcmTx(tx: Transaction, firestore: Firestore) {
+  return {
+    async get(ref: { path: string }) {
+      const snap = await tx.get(firestore.doc(ref.path));
+      return { exists: snap.exists, data: () => (snap.data() || {}) as Record<string, unknown> };
+    },
+    delete(ref: { path: string }) {
+      tx.delete(firestore.doc(ref.path));
+    },
+    set(ref: { path: string }, data: Record<string, unknown>) {
+      tx.set(firestore.doc(ref.path), { ...data, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    },
+  };
+}
+
 export const registerFcmToken = onCall(async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Auth required");
@@ -203,31 +235,44 @@ export const registerFcmToken = onCall(async (request) => {
 
   const uid = request.auth.uid;
   const token = asId(request.data?.token);
-  const installationId = asId(request.data?.installationId) || "unknown";
+  const installationId = asId(request.data?.installationId);
+  const proof = asId(request.data?.proof);
   const platform = asId(request.data?.platform) || "android";
 
   if (!token || token.length < 20) {
     throw new HttpsError("invalid-argument", "Invalid FCM token");
   }
+  if (!isValidFcmInstallationId(installationId) || !isValidInstallationProof(proof)) {
+    throw new HttpsError("invalid-argument", "Invalid installation proof");
+  }
 
   const id = tokenDocId(token);
-  await db()
-    .collection("usuarios")
-    .doc(uid)
-    .collection("fcmTokens")
-    .doc(id)
-    .set(
-      {
+  const firestore = db();
+  await firestore.runTransaction(async (tx) => {
+    const result = await registerFcmTokenInTransaction(firestoreFcmTx(tx, firestore), {
+      uid,
+      tokenId: id,
+      installationId,
+      proof,
+      tokenPayload: {
         token,
         platform,
         installationId,
         enabled: true,
-        updatedAt: FieldValue.serverTimestamp(),
         createdAt: FieldValue.serverTimestamp(),
         appId: "com.sayittome.app",
       },
-      { merge: true },
-    );
+    });
+    if (!result.ok) {
+      if (result.error === "rate_limited") {
+        throw new HttpsError("resource-exhausted", "rate_limited");
+      }
+      if (result.error === "installation_proof_mismatch") {
+        throw new HttpsError("permission-denied", "installation_proof_mismatch");
+      }
+      throw new HttpsError("invalid-argument", result.error || "register_failed");
+    }
+  });
 
   return { ok: true, id };
 });
@@ -239,14 +284,28 @@ export const unregisterFcmToken = onCall(async (request) => {
 
   const uid = request.auth.uid;
   const token = asId(request.data?.token);
+  const installationId = asId(request.data?.installationId);
+  const proof = asId(request.data?.proof);
   if (!token) return { ok: true };
+  if (!isValidFcmInstallationId(installationId) || !isValidInstallationProof(proof)) {
+    throw new HttpsError("invalid-argument", "Invalid installation proof");
+  }
 
-  await db()
-    .collection("usuarios")
-    .doc(uid)
-    .collection("fcmTokens")
-    .doc(tokenDocId(token))
-    .delete();
+  const tokenId = tokenDocId(token);
+  const firestore = db();
+  await firestore.runTransaction(async (tx) => {
+    const result = await unregisterFcmTokenInTransaction(firestoreFcmTx(tx, firestore), {
+      uid,
+      tokenId,
+      installationId,
+      proof,
+      expectedUid: uid,
+      validInstallationId: true,
+    });
+    if (result.error === "ownership_mismatch") {
+      return;
+    }
+  });
 
   return { ok: true };
 });

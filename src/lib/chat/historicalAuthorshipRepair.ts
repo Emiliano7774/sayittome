@@ -8,10 +8,12 @@ import {
   parseProfileAnonChatId,
   usernameHintFromAnonChatId,
 } from "@/lib/chat/anonChatId";
-import { resolveMineFromCanonicalSender } from "@/lib/chat/canonicalSender";
-import { profileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
+import {
+  profileReplyAuthorId,
+  resolveMineFromCanonicalSender,
+} from "@/lib/chat/authorshipGates";
 
-export const HISTORICAL_REPAIR_APPLY_FROZEN = false;
+export const HISTORICAL_REPAIR_APPLY_FROZEN = true;
 export const HISTORICAL_REPAIR_BATCH_LIMIT = 25;
 
 export type RepairPerspective = "owner" | "visitor";
@@ -51,6 +53,8 @@ export type OperatorMark = {
   messageId: string;
   authorRole: RepairAuthorRole;
   source: "operator";
+  selectedAnonId?: string;
+  collectionPath?: string;
 };
 
 export type ApplySelection = {
@@ -58,21 +62,50 @@ export type ApplySelection = {
   desiredRole: RepairAuthorRole;
   expectedBeforeHash: string;
   updateTime: string;
+  selectedAnonId?: string;
+  collectionName?: "mensajes" | "messages";
+  collectionPath?: string;
 };
 
 export type RepairMessageInput = {
   id: string;
   text?: string;
   createdAt?: string;
+  createTime?: string;
   updateTime?: string;
+  collectionName?: "mensajes" | "messages";
+  collectionPath?: string;
   persisted: PersistedAuthor;
 };
+
+export function detectOwnerFieldConflicts(input: {
+  ownerProfileIdFromUsername?: string;
+  receptorUid?: string;
+  anonOwnerUid?: string;
+  targetUid?: string;
+}) {
+  const lookedUp = String(input.ownerProfileIdFromUsername || "").trim();
+  const candidates = [
+    String(input.receptorUid || "").trim(),
+    String(input.anonOwnerUid || "").trim(),
+    String(input.targetUid || "").trim(),
+  ].filter(Boolean);
+  const unique = [...new Set(candidates)];
+  if (unique.length > 1) {
+    return { ok: false as const, error: "owner_identity_ambiguous" };
+  }
+  if (lookedUp && unique.length === 1 && lookedUp !== unique[0]) {
+    return { ok: false as const, error: "owner_identity_ambiguous" };
+  }
+  return { ok: true as const, error: "" };
+}
 
 export function resolveThreadIdentities(input: {
   chatId: string;
   ownerProfileIdFromUsername?: string;
   receptorUid?: string;
   anonOwnerUid?: string;
+  targetUid?: string;
 }): ThreadIdentities {
   const chatId = String(input.chatId || "").trim();
   const slug = usernameHintFromAnonChatId(chatId);
@@ -82,12 +115,19 @@ export function resolveThreadIdentities(input: {
   const lookedUp = String(input.ownerProfileIdFromUsername || "").trim();
   const receptor = String(input.receptorUid || "").trim();
   const anonOwner = String(input.anonOwnerUid || "").trim();
-  const docOwner = receptor || anonOwner;
+  const targetUid = String(input.targetUid || "").trim();
+  const conflict = detectOwnerFieldConflicts({
+    ownerProfileIdFromUsername: lookedUp,
+    receptorUid: receptor,
+    anonOwnerUid: anonOwner,
+    targetUid,
+  });
+  const docOwner = receptor || anonOwner || targetUid;
 
   let ownerProfileId = "";
   let ownerIdSource: ThreadIdentities["ownerIdSource"] = "missing";
-  if (lookedUp && docOwner && lookedUp !== docOwner) {
-    ownerProfileId = lookedUp;
+  if (!conflict.ok) {
+    ownerProfileId = lookedUp || docOwner;
     ownerIdSource = "ambiguous_mismatch";
   } else if (lookedUp) {
     ownerProfileId = lookedUp;
@@ -105,6 +145,59 @@ export function resolveThreadIdentities(input: {
     ownerUsernameSlug: slug,
     ownerIdSource,
   };
+}
+
+export function evaluateLiveIdentityOcc(input: {
+  chatId: string;
+  chatData: Record<string, unknown>;
+  chatExists?: boolean;
+  ownerProfile: { id: string; username?: string; usernameLower?: string } | null;
+  ownerLookupUid?: string;
+  expected: {
+    ownerProfileId: string;
+    ownerUsernameSlug: string;
+    threadAnonId: string;
+    ownerIdSource: string;
+  };
+}) {
+  if (input.chatExists === false) {
+    return { ok: false as const, error: "chat_doc_missing" };
+  }
+  if (!input.ownerProfile?.id) {
+    return { ok: false as const, error: "owner_doc_missing" };
+  }
+  const lookupUid = String(input.ownerLookupUid || "").trim();
+  if (String(input.expected.ownerUsernameSlug || "").trim()) {
+    if (!lookupUid) {
+      return { ok: false as const, error: "username_lookup_missing" };
+    }
+    if (lookupUid !== String(input.expected.ownerProfileId || "") || lookupUid !== input.ownerProfile.id) {
+      return { ok: false as const, error: "identity_changed" };
+    }
+  }
+  const live = resolveThreadIdentities({
+    chatId: input.chatId,
+    ownerProfileIdFromUsername: lookupUid || String(input.ownerProfile.id),
+    receptorUid: String(input.chatData.receptorUid || ""),
+    anonOwnerUid: String(input.chatData.anonOwnerUid || ""),
+    targetUid: String(input.chatData.targetUid || ""),
+  });
+  const profileSlug = String(
+    input.ownerProfile?.usernameLower || input.ownerProfile?.username || "",
+  )
+    .trim()
+    .toLowerCase();
+  const expectedSlug = String(input.expected.ownerUsernameSlug || "").trim().toLowerCase();
+  if (expectedSlug && profileSlug && profileSlug !== expectedSlug) {
+    return { ok: false as const, error: "identity_changed" };
+  }
+  if (live.ownerIdSource === "ambiguous_mismatch" || live.ownerProfileId !== input.expected.ownerProfileId) {
+    return { ok: false as const, error: live.ownerIdSource === "ambiguous_mismatch" ? "owner_identity_ambiguous" : "identity_changed" };
+  }
+  if (live.threadAnonId !== input.expected.threadAnonId) {
+    return { ok: false as const, error: "identity_changed" };
+  }
+  return { ok: true as const, error: "" };
 }
 
 export function evaluateThreadIdentity(identities: ThreadIdentities) {
@@ -128,6 +221,7 @@ export function markFromPerspective(
   perspective: RepairPerspective,
   messageId: string,
   mine: boolean,
+  extras?: { selectedAnonId?: string; collectionPath?: string },
 ): OperatorMark {
   const ownerIsAuthor =
     perspective === "owner" ? mine === true : mine === false;
@@ -135,12 +229,48 @@ export function markFromPerspective(
     messageId: String(messageId || "").trim(),
     authorRole: ownerIsAuthor ? "profile" : "anon",
     source: "operator",
+    selectedAnonId: extras?.selectedAnonId,
+    collectionPath: extras?.collectionPath,
   };
+}
+
+export function anonRepairCandidates(
+  identities: ThreadIdentities,
+  persisted?: PersistedAuthor,
+) {
+  const out: string[] = [];
+  const thread = String(identities.threadAnonId || "").trim();
+  const evidence = String(persisted?.fromUid || "").trim();
+  if (thread.startsWith("anon_")) out.push(thread);
+  if (evidence.startsWith("anon_") && evidence !== thread) out.push(evidence);
+  return out;
+}
+
+export function resolveAnonRepairFromUid(
+  persisted?: PersistedAuthor,
+  selectedAnonId?: string,
+  identities?: ThreadIdentities,
+) {
+  const selected = String(selectedAnonId || "").trim();
+  const evidence = String(persisted?.fromUid || "").trim();
+  const candidates = identities
+    ? anonRepairCandidates(identities, persisted)
+    : [evidence].filter((id) => id.startsWith("anon_"));
+  if (selected) {
+    if (!selected.startsWith("anon_") || !candidates.includes(selected)) {
+      return { ok: false as const, fromUid: "", error: "anon_id_not_in_evidence" };
+    }
+    return { ok: true as const, fromUid: selected, error: "" };
+  }
+  if (evidence.startsWith("anon_")) return { ok: true as const, fromUid: evidence, error: "" };
+  return { ok: false as const, fromUid: "", error: "anon_identity_ambiguous" };
 }
 
 export function proposeCanonicalAuthor(
   identities: ThreadIdentities,
   authorRole: RepairAuthorRole,
+  persisted?: PersistedAuthor,
+  selectedAnonId?: string,
 ): { ok: true; author: ProposedAuthor } | { ok: false; error: string } {
   if (authorRole === "profile") {
     if (!identities.ownerProfileId) {
@@ -158,15 +288,14 @@ export function proposeCanonicalAuthor(
     };
   }
 
-  if (!identities.threadAnonId.startsWith("anon_")) {
-    return { ok: false, error: "thread_anon_missing" };
-  }
+  const resolved = resolveAnonRepairFromUid(persisted, selectedAnonId, identities);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
 
   return {
     ok: true,
     author: {
-      fromUid: identities.threadAnonId,
-      senderAuthUid: "",
+      fromUid: resolved.fromUid,
+      senderAuthUid: String(persisted?.senderAuthUid || "").trim(),
       senderProfileId: "",
       senderRole: "anon",
       senderKind: "anon",
@@ -235,6 +364,8 @@ export type RepairRowPreview = {
   messageIdShort: string;
   createdAt: string;
   updateTime: string;
+  collectionName?: "mensajes" | "messages";
+  collectionPath?: string;
   expectedBeforeHash: string;
   textPreview: string;
   selected: boolean;
@@ -281,12 +412,21 @@ export function buildRepairPlan(input: {
   messages: RepairMessageInput[];
   marks: OperatorMark[];
   includeText?: boolean;
+  chat?: {
+    latestMessageId?: string;
+    lastMessageSender?: string;
+    latestSenderKind?: string;
+    latestSenderAnonSessionId?: string;
+  };
 }): RepairPlan {
   const identity = evaluateThreadIdentity(input.identities);
-  const markById = new Map(
+  const markByKey = new Map(
     input.marks
       .filter((mark) => mark.messageId && (mark.authorRole === "profile" || mark.authorRole === "anon"))
-      .map((mark) => [mark.messageId, mark]),
+      .map((mark) => [
+        String(mark.collectionPath || "").trim() || mark.messageId,
+        mark,
+      ]),
   );
 
   const rows: RepairRowPreview[] = input.messages.map((message) => {
@@ -295,12 +435,16 @@ export function buildRepairPlan(input: {
       ownerMine: mineForPerspective(input.identities, persisted, "owner"),
       visitorMine: mineForPerspective(input.identities, persisted, "visitor"),
     };
-    const mark = markById.get(message.id);
+    const mark =
+      markByKey.get(String(message.collectionPath || "").trim()) ||
+      markByKey.get(message.id);
     const base = {
       messageId: message.id,
       messageIdShort: shortId(message.id),
       createdAt: String(message.createdAt || ""),
       updateTime: String(message.updateTime || ""),
+      collectionName: message.collectionName,
+      collectionPath: message.collectionPath,
       expectedBeforeHash: expectedBeforeHash(persisted),
       textPreview: input.includeText ? clipText(message.text || "") : "",
       persisted,
@@ -320,7 +464,12 @@ export function buildRepairPlan(input: {
       };
     }
 
-    const proposedResult = proposeCanonicalAuthor(input.identities, mark.authorRole);
+    const proposedResult = proposeCanonicalAuthor(
+      input.identities,
+      mark.authorRole,
+      persisted,
+      mark.selectedAnonId,
+    );
     if (!proposedResult.ok) {
       return {
         ...base,
@@ -354,6 +503,25 @@ export function buildRepairPlan(input: {
   const selected = rows.filter((row) => row.selected);
   const last = rows[rows.length - 1];
   const lastAfterAuthor = last?.proposed || last?.persisted;
+  if (
+    last &&
+    last.selected &&
+    last.noop &&
+    !last.error &&
+    input.chat &&
+    String(input.chat.latestMessageId || "") === last.messageId
+  ) {
+    const kind = String(lastAfterAuthor?.senderKind || lastAfterAuthor?.senderRole || "");
+    const fromUid = String(lastAfterAuthor?.fromUid || "");
+    const wantAnon = kind === "anon" && fromUid.startsWith("anon_") ? fromUid : "";
+    if (
+      String(input.chat.lastMessageSender || "") !== fromUid ||
+      String(input.chat.latestSenderKind || "") !== kind ||
+      String(input.chat.latestSenderAnonSessionId || "") !== wantAnon
+    ) {
+      last.error = "summary_inconsistent";
+    }
+  }
   const writeCount = selected.filter((row) => row.proposed && !row.noop && !row.error).length;
 
   return {
@@ -382,7 +550,29 @@ export type ClassifiedApplyRow = {
   before?: PersistedAuthor;
   after?: ProposedAuthor;
   updateTime?: string;
+  collectionName?: "mensajes" | "messages";
+  collectionPath?: string;
 };
+
+function resolveLiveMessage(
+  live: RepairMessageInput[],
+  selection: { messageId: string; collectionName?: string; collectionPath?: string },
+) {
+  const path = String(selection.collectionPath || "").trim();
+  if (path) {
+    const hit = live.find((row) => row.collectionPath === path);
+    return hit ? { live: hit, error: "" } : { live: null, error: "message_missing" };
+  }
+  const name = String(selection.collectionName || "").trim();
+  const matches = live.filter(
+    (row) =>
+      row.id === selection.messageId &&
+      (!name || row.collectionName === name),
+  );
+  if (matches.length > 1) return { live: null, error: "ambiguous_collection" };
+  if (matches.length === 0) return { live: null, error: "message_missing" };
+  return { live: matches[0], error: "" };
+}
 
 export function classifyApplySelections(input: {
   identities: ThreadIdentities;
@@ -427,7 +617,6 @@ export function classifyApplySelections(input: {
     };
   }
 
-  const liveById = new Map(input.live.map((row) => [row.id, row]));
   const applied: ClassifiedApplyRow[] = [];
   const noop: ClassifiedApplyRow[] = [];
   const rejected: ClassifiedApplyRow[] = [];
@@ -449,15 +638,16 @@ export function classifyApplySelections(input: {
       });
       continue;
     }
-    const live = liveById.get(selection.messageId);
-    if (!live) {
+    const resolved = resolveLiveMessage(input.live, selection);
+    if (!resolved.live) {
       rejected.push({
         messageId: selection.messageId,
         status: "rejected",
-        reason: "message_missing",
+        reason: resolved.error,
       });
       continue;
     }
+    const live = resolved.live;
     const liveHash = expectedBeforeHash(live.persisted);
     if (liveHash !== selection.expectedBeforeHash) {
       rejected.push({
@@ -475,7 +665,12 @@ export function classifyApplySelections(input: {
       });
       continue;
     }
-    const proposed = proposeCanonicalAuthor(input.identities, selection.desiredRole);
+    const proposed = proposeCanonicalAuthor(
+      input.identities,
+      selection.desiredRole,
+      live.persisted,
+      selection.selectedAnonId,
+    );
     if (!proposed.ok) {
       rejected.push({
         messageId: selection.messageId,
@@ -504,6 +699,8 @@ export function classifyApplySelections(input: {
         before: live.persisted,
         after: proposed.author,
         updateTime: live.updateTime,
+        collectionName: live.collectionName,
+        collectionPath: live.collectionPath,
       });
       continue;
     }
@@ -514,7 +711,28 @@ export function classifyApplySelections(input: {
       before: live.persisted,
       after: proposed.author,
       updateTime: live.updateTime,
+      collectionName: live.collectionName,
+      collectionPath: live.collectionPath,
     });
+  }
+
+  if (rejected.length > 0) {
+    return {
+      blocked: true,
+      blockReason: "mixed_invalid_request",
+      applied: [],
+      noop: [],
+      rejected: input.selections.map((selection) => ({
+        messageId: selection.messageId,
+        status: "rejected" as const,
+        reason:
+          rejected.find(
+            (row) =>
+              row.messageId === selection.messageId &&
+              (!selection.collectionPath || row.collectionPath === selection.collectionPath),
+          )?.reason || "mixed_invalid_request",
+      })),
+    };
   }
 
   if (applied.length > HISTORICAL_REPAIR_BATCH_LIMIT) {
@@ -558,18 +776,28 @@ export function classifyApplySelections(input: {
 }
 
 export function classifyRollbackRows(input: {
-  backupRows: Array<{ messageId: string; before: PersistedAuthor; after: ProposedAuthor }>;
+  backupRows: Array<{
+    messageId: string;
+    before: PersistedAuthor;
+    after: ProposedAuthor;
+    collectionName?: string;
+    collectionPath?: string;
+  }>;
   live: RepairMessageInput[];
 }) {
-  const liveById = new Map(input.live.map((row) => [row.id, row]));
   const restore: ClassifiedApplyRow[] = [];
   const noop: ClassifiedApplyRow[] = [];
   const rejected: ClassifiedApplyRow[] = [];
 
   for (const row of input.backupRows) {
-    const live = liveById.get(row.messageId);
+    const resolved = resolveLiveMessage(input.live, row);
+    const live = resolved.live;
     if (!live) {
-      rejected.push({ messageId: row.messageId, status: "rejected", reason: "message_missing" });
+      rejected.push({
+        messageId: row.messageId,
+        status: "rejected",
+        reason: resolved.error || "message_missing",
+      });
       continue;
     }
     const liveHash = expectedBeforeHash(live.persisted);
@@ -580,6 +808,9 @@ export function classifyRollbackRows(input: {
         reason: "already_before",
         before: row.before,
         after: row.after,
+        updateTime: live.updateTime,
+        collectionName: live.collectionName,
+        collectionPath: live.collectionPath || row.collectionPath,
       });
       continue;
     }
@@ -599,6 +830,8 @@ export function classifyRollbackRows(input: {
       before: row.before,
       after: row.after,
       updateTime: live.updateTime,
+      collectionName: live.collectionName,
+      collectionPath: live.collectionPath || row.collectionPath,
     });
   }
 
@@ -613,8 +846,6 @@ export function exportRepairPlanWithoutPii(plan: RepairPlan) {
     chatBlocked: plan.chatBlocked,
     blockReason: plan.blockReason,
     chatKind: plan.identities.chatKind,
-    chatIdSuffix: shortId(plan.identities.chatId),
-    threadAnonSuffix: shortId(plan.identities.threadAnonId),
     ownerIdSource: plan.identities.ownerIdSource,
     ownerPresent: Boolean(plan.identities.ownerProfileId),
     selectedCount: plan.selectedCount,
@@ -623,18 +854,16 @@ export function exportRepairPlanWithoutPii(plan: RepairPlan) {
     errorCount: plan.errorCount,
     complementaryFailures: plan.complementaryFailures,
     inbox: {
-      lastMessageSuffix: shortId(plan.inbox.lastMessageId),
       lastFromShapeBefore: shapeOf(plan.inbox.lastMessageSenderBefore),
       lastFromShapeAfter: shapeOf(plan.inbox.lastMessageSenderAfter),
     },
-    rows: plan.rows.map((row) => ({
-      messageIdShort: row.messageIdShort,
+    rows: plan.rows.map((row, rowIndex) => ({
+      rowIndex,
       selected: row.selected,
       persistedShape: shapeOf(row.persisted.fromUid),
       persistedRole: row.persisted.senderRole || "",
       proposedRole: row.proposed?.senderRole || "",
       proposedShape: row.proposed ? shapeOf(row.proposed.fromUid) : "",
-      expectedBeforeHash: row.expectedBeforeHash,
       updateTimePresent: Boolean(row.updateTime),
       noop: row.noop,
       error: row.error,

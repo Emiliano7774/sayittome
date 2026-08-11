@@ -28,8 +28,11 @@ async function resolveProfileUid(username: string) {
         undefined,
         "DESCENDING",
         3,
-        1,
+        3,
       );
+      if (byUsername.length > 1) {
+        throw Object.assign(new Error("username_not_unique"), { status: 409 });
+      }
       if (byUsername[0]?.id) return String(byUsername[0].id);
     } catch {
       // try next field
@@ -43,8 +46,11 @@ async function resolveProfileUid(username: string) {
         undefined,
         "DESCENDING",
         3,
-        1,
+        3,
       );
+      if (byLower.length > 1) {
+        throw Object.assign(new Error("username_not_unique"), { status: 409 });
+      }
       if (byLower[0]?.id) return String(byLower[0].id);
     } catch {
       // try next field
@@ -64,8 +70,8 @@ async function collectFilteredChats(field: string, value: string) {
       value,
       "updatedAt",
       "DESCENDING",
-      300,
-      50,
+      200,
+      Number.MAX_SAFE_INTEGER,
     );
   } catch {
     try {
@@ -75,8 +81,8 @@ async function collectFilteredChats(field: string, value: string) {
         value,
         undefined,
         "DESCENDING",
-        300,
-        50,
+        200,
+        Number.MAX_SAFE_INTEGER,
       );
     } catch {
       return [];
@@ -89,7 +95,13 @@ async function collectAnonChatsByUsername(username: string) {
   const rows: Record<string, unknown>[] = [];
 
   try {
-    const all = await runCollectionQueryAll("chats", "updatedAt", "DESCENDING", 500, 30);
+    const all = await runCollectionQueryAll(
+      "chats",
+      "updatedAt",
+      "DESCENDING",
+      200,
+      Number.MAX_SAFE_INTEGER,
+    );
     for (const chat of all) {
       if (String(chat.id || "").includes(marker)) {
         rows.push(chat);

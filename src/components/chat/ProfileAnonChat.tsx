@@ -8,11 +8,9 @@ import {
   Mic,
   Play,
   Send,
-  UserRound,
   Video,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
@@ -42,6 +40,7 @@ import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
+import { rememberOwnThreadAnonId, rootAnonContinuityId } from "@/lib/chat/threadAnonContinuity";
 import {
   findAnonIdentityChangeInsertIndex,
   getAnonSessionVersion,
@@ -79,7 +78,7 @@ import {
   resolveCanonicalViewerIdentity,
   writeCachedViewerIdentity,
 } from "@/lib/chat/viewerIdentityCache";
-import { buildCanonicalSender } from "@/lib/chat/canonicalSender";
+import { buildCanonicalSender, isRoleIdentityReady } from "@/lib/chat/canonicalSender";
 import { applyAuthorshipCorrections } from "@/lib/chat/authorshipCorrections";
 import { PersistIdentityError } from "@/lib/chat/persistAnonMessage";
 import { useAuth } from "@/contexts/AuthContext";
@@ -112,7 +111,7 @@ import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
 import { useT } from "@/contexts/LocaleContext";
-import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import { fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import {
   isInstantShuffleReturnDestination,
   isShuffleKeepAliveActive,
@@ -193,6 +192,8 @@ function hydrateCachedMessages(
     targetUid: string;
     chatOwnerUid: string;
     viewerUsername?: string;
+    identityReady?: boolean;
+    authReady?: boolean;
   },
 ): Message[] {
   if (!rows?.length) return [];
@@ -204,6 +205,8 @@ function hydrateCachedMessages(
     targetUid: input.targetUid,
     chatOwnerUid: input.chatOwnerUid,
     viewerUsername: input.viewerUsername,
+    identityReady: input.identityReady,
+    authReady: input.authReady,
   });
   const isOwnerViewing =
     ctx.isOwnerViewing ||
@@ -216,9 +219,11 @@ function hydrateCachedMessages(
       ? from.slice("profile_".length)
       : undefined;
 
-    // Before auth settles, keep last known side from cache to avoid left/right flip.
-    // Never keep cached mine when chatId slug already proves we are the profile owner.
-    if (!ctx.currentUid && !isOwnerViewing && typeof row.mine === "boolean") {
+    // Hold cached side until role identity is ready (auth+profile is not enough).
+    if (
+      (ctx.identityReady !== true || (!ctx.currentUid && !isOwnerViewing)) &&
+      typeof row.mine === "boolean"
+    ) {
       return {
         ...base,
         mine: row.mine,
@@ -231,10 +236,15 @@ function hydrateCachedMessages(
       senderKind: row.senderKind,
       from,
       threadAnonId: ctx.threadAnonId,
+      liveAnonId: ctx.liveAnonId,
+      knownAnonIds: ctx.knownAnonIds,
       profileUid: ctx.profileUid,
       messageProfileUid,
       isOwnerViewing,
       ownerUid: ctx.currentUid,
+      senderAuthUid: row.senderAuthUid,
+      senderRole: row.senderRole,
+      identityReady: ctx.identityReady,
     });
 
     return {
@@ -366,6 +376,16 @@ export default function ProfileAnonChat({
       chatOwnerUid: "",
       viewerUsername:
         readCachedViewerIdentity(profileAuthUid(auth.currentUser))?.username || "",
+      authReady: false,
+      identityReady: isRoleIdentityReady({
+        liveProfileUid: profileAuthUid(auth.currentUser),
+        chatId,
+        viewerUsername:
+          readCachedViewerIdentity(profileAuthUid(auth.currentUser))?.username || "",
+        profileUid: String(initialProfile?.uid || ""),
+        threadAnonId: getProfileChatAnonSenderId(chatId, ""),
+        authReady: false,
+      }),
     });
   });
   const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(initialThreadActive);
@@ -380,7 +400,6 @@ export default function ProfileAnonChat({
   const [pendingSource, setPendingSource] = useState<"camera" | "gallery" | "audio" | undefined>();
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewOnce, setViewOnce] = useState(false);
-  const [anonSession, setAnonSession] = useState("anon_server");
   const [authReady, setAuthReady] = useState(false);
   const [currentUid, setCurrentUid] = useState(() => profileAuthUid(auth.currentUser));
   const [targetUid, setTargetUid] = useState(initialProfile?.uid || "");
@@ -433,6 +452,7 @@ export default function ProfileAnonChat({
     viewerUsername: "",
     isOwnerViewing: false,
     profileUid: "",
+    identityReady: false,
   });
 
   function scrollChatToBottom() {
@@ -626,7 +646,6 @@ export default function ProfileAnonChat({
   useChatViewportLock(chatViewportLockActive);
 
   useEffect(() => {
-    setAnonSession(getAnonSessionId());
     let cancelled = false;
 
     void auth.authStateReady().then(() => {
@@ -701,12 +720,28 @@ export default function ProfileAnonChat({
           profileUid: targetUid || chatOwnerUid,
           liveUsername: "",
         });
+        const roleReady = isRoleIdentityReady({
+          liveProfileUid: canonical.viewerUid,
+          chatId,
+          viewerUsername: canonical.viewerUsername,
+          profileUid: targetUid || chatOwnerUid,
+          explicitOwner: isProfileThreadOwner({
+            chatId,
+            authUid: canonical.viewerUid,
+            profileUid: targetUid || chatOwnerUid,
+            viewerUsername: canonical.viewerUsername,
+          }),
+          threadAnonId: getProfileChatAnonSenderId(chatId, chatAnonSessionId),
+          authReady: true,
+        });
         const hydrated = hydrateCachedMessages(chatId, cached, {
           chatAnonSessionId,
           currentUid: canonical.viewerUid,
           targetUid,
           chatOwnerUid,
           viewerUsername: canonical.viewerUsername,
+          authReady: true,
+          identityReady: roleReady,
         });
         if (prev.length === 0) return hydrated;
         const ctx = buildProfileAnonViewerContext({
@@ -716,7 +751,8 @@ export default function ProfileAnonChat({
           targetUid,
           chatOwnerUid,
           viewerUsername: canonical.viewerUsername,
-          identityReady: true,
+          authReady: true,
+          identityReady: roleReady,
         });
         return remapProfileAnonMessagesMine(hydrated.length ? hydrated : prev, ctx);
       });
@@ -900,21 +936,33 @@ export default function ProfileAnonChat({
   });
   const viewerUid = canonicalViewer.viewerUid;
   const viewerUsername = canonicalViewer.viewerUsername;
+  const provenOwner = isProfileThreadOwner({
+    chatId,
+    authUid: viewerUid,
+    profileUid: profileOwnerUid,
+    viewerUsername,
+  });
   const isOwnerViewing =
-    isProfileThreadOwner({
-      chatId,
-      authUid: viewerUid,
-      profileUid: profileOwnerUid,
-      viewerUsername,
-    }) || inferOwnerViewingFromAuthors(viewerUid, profileOwnerUid, messages);
-  const identityReady = authReady || Boolean(viewerUid && isOwnerViewing);
+    provenOwner || inferOwnerViewingFromAuthors(viewerUid, profileOwnerUid, messages);
+  const identityReady = isRoleIdentityReady({
+    liveProfileUid: currentUid,
+    chatId,
+    viewerUsername,
+    profileUid: profileOwnerUid,
+    explicitOwner: provenOwner,
+    threadAnonId: getProfileChatAnonSenderId(chatId, chatAnonSessionId),
+    authReady,
+  });
+  const liveVisitorAnonId = getAnonSessionId();
   const outgoingSender = buildCanonicalSender({
     authReady,
     liveProfileUid: currentUid,
     threadAnonId: getProfileChatAnonSenderId(chatId, chatAnonSessionId),
+    liveAnonId: provenOwner ? "" : liveVisitorAnonId,
     chatId,
     viewerUsername,
-    explicitOwner: isOwnerViewing,
+    profileUid: profileOwnerUid,
+    explicitOwner: provenOwner,
   });
   const canSend = outgoingSender.ok;
   const profileUid = profileOwnerUid || targetUid;
@@ -927,6 +975,7 @@ export default function ProfileAnonChat({
     viewerUsername,
     isOwnerViewing,
     profileUid,
+    identityReady,
   };
 
   // Source of truth for bubble side: recompute mine every render from durable fromUid.
@@ -941,6 +990,8 @@ export default function ProfileAnonChat({
         chatOwnerUid: chatOwnerUid || docOwnerUid,
         viewerUsername,
         identityReady,
+        authReady,
+        liveAnonId: provenOwner ? "" : liveVisitorAnonId,
       }),
     ),
   );
@@ -1016,15 +1067,16 @@ export default function ProfileAnonChat({
       : "";
   const viewerId = isOwnerViewing ? currentUid : anonSenderId;
   const hasChatActivity = messages.length > 0;
+  const surfaceEngaged = chatSurfaceEngaged || hasChatActivity;
   const classicChatEngaged =
     isClassic &&
     (isOwnerViewing
       ? hasChatActivity
       : displayMessages.some((message) => message.mine) || hasChatActivity);
   const showClassicIntro =
-    isClassic && authReady && !isOwnerViewing && !chatSurfaceEngaged;
+    isClassic && authReady && !isOwnerViewing && !surfaceEngaged;
   const showModernVisitorIntro =
-    !isClassic && authReady && !isOwnerViewing && !chatSurfaceEngaged;
+    !isClassic && authReady && !isOwnerViewing && !surfaceEngaged;
   const anonIdentity = resolveProfileChatAnonIdentity(chatId, chatAnonSessionId, {
     isOwnerViewing,
   });
@@ -1081,11 +1133,6 @@ export default function ProfileAnonChat({
     username,
   };
 
-  useEffect(() => {
-    if (messages.length > 0) {
-      setChatSurfaceEngaged(true);
-    }
-  }, [messages.length]);
 
   const latestRenderedMessageId = messages[messages.length - 1]?.id || "";
   useEffect(() => {
@@ -1156,6 +1203,8 @@ export default function ProfileAnonChat({
           targetUid: threadContextRef.current.targetUid,
           chatOwnerUid: threadContextRef.current.chatOwnerUid,
           viewerUsername: threadContextRef.current.viewerUsername,
+          authReady: true,
+          identityReady: threadContextRef.current.identityReady,
         });
         const loaded = mapFirestoreDocsToProfileAnonMessages(
           snapshot.docs.map((docSnap) => ({
@@ -1272,12 +1321,15 @@ export default function ProfileAnonChat({
       chatOwnerUid,
       viewerUsername,
       identityReady,
+      authReady: true,
     });
 
-    setMessages((prev) => {
-      if (prev.length === 0) return prev;
-      const next = remapProfileAnonMessagesMine(prev, ctx);
-      return next === prev ? prev : next;
+    queueMicrotask(() => {
+      setMessages((prev) => {
+        if (prev.length === 0) return prev;
+        const next = remapProfileAnonMessagesMine(prev, ctx);
+        return next === prev ? prev : next;
+      });
     });
   }, [
     chatId,
@@ -1651,7 +1703,9 @@ export default function ProfileAnonChat({
       return;
     }
 
-    const senderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+    const senderId = outgoingSender.ok
+      ? outgoingSender.sender.fromUid
+      : getProfileChatAnonSenderId(chatId, chatAnonSessionId);
     const clientId = crypto.randomUUID();
     const previewType = pendingType;
     const previewSource = pendingSource;
@@ -1740,12 +1794,19 @@ export default function ProfileAnonChat({
         viewOnce: previewViewOnce,
         existingChatData: chatDocDataRef.current,
         clientId,
-        isOwnerReply: isOwnerViewing,
+        isOwnerReply: provenOwner,
         viewerUsername,
         autoModerationRequiresBlur: scanResult.requiresBlur,
         moderationRequiresBlur: scanResult.requiresBlur,
       });
 
+      if (!provenOwner && identityReady) {
+        rememberOwnThreadAnonId(chatId, senderId, {
+          authUid: currentUid,
+          rootAnonSessionId: rootAnonContinuityId(),
+          ownerUncertain: !identityReady,
+        });
+      }
       messagePersistedRef.current = true;
       setUploadProgress(null);
     } catch (e) {
@@ -1792,6 +1853,13 @@ export default function ProfileAnonChat({
       clientId,
     })
       .then(() => {
+        if (!input.isOwnerReply && identityReady) {
+          rememberOwnThreadAnonId(chatId, input.senderId, {
+            authUid: currentUid,
+            rootAnonSessionId: rootAnonContinuityId(),
+            ownerUncertain: !identityReady,
+          });
+        }
         messagePersistedRef.current = true;
         keepComposerFocusRef.current = true;
         refocusComposer();
@@ -1847,10 +1915,10 @@ export default function ProfileAnonChat({
       return;
     }
 
-    const senderId = anonIdentity.identityChanged
-      ? getAnonSessionId()
+    const senderId = outgoingSender.ok
+      ? outgoingSender.sender.fromUid
       : getProfileChatAnonSenderId(chatId, chatAnonSessionId);
-    const isOwnerReply = isOwnerViewing;
+    const isOwnerReply = provenOwner;
 
     if (anonIdentity.identityChanged && typeof window !== "undefined") {
       const dividerKey = `sayittome:anon-divider:${chatId}`;
@@ -2006,7 +2074,7 @@ export default function ProfileAnonChat({
           ) : null}
         </header>
 
-        {isClassic && !isOwnerViewing && !chatSurfaceEngaged ? (
+        {isClassic && !isOwnerViewing && !surfaceEngaged ? (
           <div className="shrink-0">
             <div className="flex flex-col items-center justify-center px-6 pb-2 pt-[min(12vh,5rem)]">
               <StoryAvatarButton
@@ -2022,7 +2090,7 @@ export default function ProfileAnonChat({
           <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
             {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
           </p>
-        ) : !isClassic && !isOwnerViewing && !chatSurfaceEngaged ? (
+        ) : !isClassic && !isOwnerViewing && !surfaceEngaged ? (
           <div className="shrink-0">
             <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
               <div className="flex flex-col items-center">

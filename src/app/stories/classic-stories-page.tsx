@@ -10,7 +10,7 @@ import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 
 export default function ClassicStoriesPage() {
   const t = useT();
-  const { groups, viewerUid, loading, indexPending } = useStoriesGroups();
+  const { groups, viewerUid, ownerKey, loading, indexPending } = useStoriesGroups();
   useNavUsefulPaint(!loading && !indexPending, "/stories");
 
   return (
@@ -22,7 +22,7 @@ export default function ClassicStoriesPage() {
       </div>
 
       {groups.length > 0 ? (
-        <StoriesHub groups={groups} viewerUid={viewerUid} />
+        <StoriesHub groups={groups} viewerUid={viewerUid} ownerKey={ownerKey} />
       ) : indexPending ? (
         <div
           className="flex min-h-[50vh] flex-col items-center justify-center text-center"

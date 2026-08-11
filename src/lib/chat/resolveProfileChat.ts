@@ -1,5 +1,8 @@
 import { auth } from "@/lib/firebase";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import { getAnonSessionId } from "@/lib/chat/anonSession";
+import { profileAuthUid } from "@/lib/chat/profileAnonMessageAuthor";
+import { profileChatCacheKey } from "@/lib/chat/profileChatResolveKey";
 import {
   buildLegacyProfileChatIds,
   buildProfileAnonChatId,
@@ -134,9 +137,30 @@ export type ResolvedProfileChat = {
 
 const profileChatCache = new Map<string, Promise<ResolvedProfileChat>>();
 
+export function currentProfileChatCacheKey(username: string) {
+  return profileChatCacheKey({
+    username,
+    authUid: profileAuthUid(auth.currentUser),
+    anonSessionId: getAnonSessionId(),
+  });
+}
+
+export function invalidateProfileChatCache(username?: string) {
+  if (!username) {
+    profileChatCache.clear();
+    return;
+  }
+  const needle = username.trim().toLowerCase();
+  for (const key of profileChatCache.keys()) {
+    if (key === needle || key.startsWith(`${needle}|`)) {
+      profileChatCache.delete(key);
+    }
+  }
+}
+
 export async function resolveProfileChat(username: string): Promise<ResolvedProfileChat> {
-  const key = username.trim().toLowerCase();
-  if (!key) {
+  const key = currentProfileChatCacheKey(username);
+  if (!username.trim()) {
     throw new Error("missing_profile_username");
   }
 

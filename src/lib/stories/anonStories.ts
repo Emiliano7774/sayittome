@@ -16,6 +16,7 @@ export {
   isInvalidPublicStoryUsername,
   resolveStoryAuthor,
   resolveStoryViewerId,
+  resolveStoryViewerIdReady,
   usernameFromProfileData,
 } from "@/lib/stories/storyAuthor";
 export type { StoryAuthor } from "@/lib/stories/storyAuthor";

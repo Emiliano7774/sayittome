@@ -87,8 +87,10 @@ export function resolvePersistMessageAuthor(input: {
     authReady: input.authReady !== false,
     liveProfileUid: input.currentUid,
     threadAnonId: input.senderId,
+    liveAnonId: input.senderId,
     chatId: input.chatId,
     viewerUsername: input.viewerUsername,
+    profileUid: input.targetUid,
     explicitOwner: input.isOwnerReply,
   });
 

@@ -1,350 +1,506 @@
 /**
- * Deterministic send → snapshot cache/server → kill → reopen.
- * Covers profile↔profile (legacy) and profile↔Anon, including offline merge.
+ * UI/listener/cache→server/clientId + text/media/story/offline/legacy.
+ * Imports production authorshipGates, profileAnonMessageAuthor, profileChatResolveKey.
  *
- * Usage: node scripts/chat-authorship-lifecycle.harness.mjs
+ * Usage: node --experimental-strip-types scripts/chat-authorship-lifecycle.harness.mjs
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import module from "node:module";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-function profileReplyAuthorId(uid) {
-  const clean = String(uid || "").trim();
-  return clean ? `profile_${clean}` : "profile_unknown";
-}
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function isProfileThreadOwner(input) {
-  const authUid = String(input.authUid || "").trim();
-  const profileUid = String(input.profileUid || "").trim();
-  if (authUid && profileUid && authUid === profileUid) return true;
-  const hint = String(input.chatId || "").split("__anon_to__")[1] || "";
-  const slug = String(input.viewerUsername || "").trim().toLowerCase();
-  return Boolean(hint && slug && hint === slug);
-}
-
-function buildCanonicalSender(input) {
-  if (!input.authReady) return { ok: false, error: "auth_not_ready" };
-  const liveUid = String(input.liveProfileUid || "").trim();
-  const threadAnon = String(input.threadAnonId || "").trim();
-  const isOwner =
-    input.explicitOwner === true && liveUid
-      ? true
-      : isProfileThreadOwner({
-          chatId: input.chatId,
-          authUid: liveUid,
-          viewerUsername: input.viewerUsername,
-        });
-  if (isOwner) {
-    if (!liveUid) return { ok: false, error: "owner_identity_not_ready" };
-    return {
-      ok: true,
-      sender: {
-        senderAuthUid: liveUid,
-        senderProfileId: liveUid,
-        senderRole: "profile",
-        fromUid: profileReplyAuthorId(liveUid),
-      },
-    };
-  }
-  if (!threadAnon.startsWith("anon_")) {
-    return { ok: false, error: "visitor_identity_not_ready" };
-  }
-  return {
-    ok: true,
-    sender: {
-      senderAuthUid: liveUid,
-      senderProfileId: "",
-      senderRole: "anon",
-      fromUid: threadAnon,
-    },
-  };
-}
-
-function buildLegacyCanonicalSender(input) {
-  if (!input.authReady) return { ok: false, error: "auth_not_ready" };
-  const liveUid = String(input.liveProfileUid || "").trim();
-  if (!liveUid) return { ok: false, error: "owner_identity_not_ready" };
-  return {
-    ok: true,
-    sender: {
-      senderAuthUid: liveUid,
-      senderProfileId: liveUid,
-      senderRole: "profile",
-      fromUid: liveUid,
-    },
-  };
-}
-
-function resolveMine(input) {
-  const viewer = String(input.viewerUid || "").trim();
-  const senderAuth = String(input.senderAuthUid || "").trim();
-  const role = String(input.senderRole || "").trim();
-  const from = String(input.fromUid || "").trim();
-  if (viewer && senderAuth && senderAuth === viewer) return true;
-  if (role === "profile") return input.isOwnerViewing === true;
-  if (role === "anon") {
-    if (!input.identityReady) return false;
-    if (input.isOwnerViewing) return false;
-    return Boolean(input.threadAnonId && from === input.threadAnonId);
-  }
-  return false;
-}
-
-function resolveLegacyMine(fromUid, viewerUid, senderAuthUid) {
-  const viewer = String(viewerUid || "").trim();
-  const senderAuth = String(senderAuthUid || "").trim();
-  if (!viewer) return false;
-  if (senderAuth && senderAuth === viewer) return true;
-  return String(fromUid || "") === viewer;
-}
-
-function mergeLoaded(loaded, pending) {
-  const merged = loaded.map((row) => ({ ...row }));
-  const claimed = new Set();
-  for (const optimistic of pending) {
-    let match = -1;
-    if (optimistic.clientId) {
-      match = merged.findIndex(
-        (row, index) => !claimed.has(index) && row.clientId === optimistic.clientId,
-      );
+function resolveAlias(specifier) {
+  if (!specifier.startsWith("@/")) return "";
+  const abs = path.join(root, "src", specifier.slice(2));
+  const candidates = [abs, `${abs}.ts`, `${abs}.tsx`, `${abs}.js`, path.join(abs, "index.ts")];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return pathToFileURL(candidate).href;
     }
-    if (match < 0) {
-      match = merged.findIndex(
-        (row, index) =>
-          !claimed.has(index) &&
-          optimistic.mine &&
-          row.mine &&
-          row.fromUid === optimistic.fromUid &&
-          row.text === optimistic.text,
-      );
-    }
-    if (match >= 0) claimed.add(match);
-    else merged.push(optimistic);
   }
-  return merged;
+  return "";
 }
 
-const OWNER = "ownerUid123";
-const PEER = "peerUid456";
-const CHAT = "anon_visitor1__anon_to__alice";
-const THREAD_ANON = "anon_visitor1";
-
-function simulateKillReopen(serverDocs, viewer) {
-  const cache = serverDocs.map((doc) => ({ ...doc }));
-  const afterKill = cache.map((doc) => ({
-    ...doc,
-    mine: resolveMine({
-      ...doc,
-      viewerUid: "",
-      isOwnerViewing: false,
-      identityReady: false,
-      threadAnonId: THREAD_ANON,
-    }),
-  }));
-  const afterReopen = cache.map((doc) => ({
-    ...doc,
-    mine: resolveMine({
-      ...doc,
-      viewerUid: viewer.uid,
-      isOwnerViewing: viewer.owner,
-      identityReady: true,
-      threadAnonId: THREAD_ANON,
-    }),
-  }));
-  return { cache, afterKill, afterReopen };
-}
-
-// Block send until identity ready
-assert.equal(
-  buildCanonicalSender({
-    authReady: false,
-    liveProfileUid: OWNER,
-    threadAnonId: THREAD_ANON,
-    chatId: CHAT,
-    viewerUsername: "alice",
-  }).ok,
-  false,
-);
-assert.equal(
-  buildCanonicalSender({
-    authReady: true,
-    liveProfileUid: "",
-    threadAnonId: THREAD_ANON,
-    chatId: CHAT,
-    viewerUsername: "alice",
-    explicitOwner: true,
-  }).error,
-  "owner_identity_not_ready",
-);
-assert.equal(
-  buildCanonicalSender({
-    authReady: true,
-    liveProfileUid: "",
-    threadAnonId: "",
-    chatId: CHAT,
-  }).error,
-  "visitor_identity_not_ready",
-);
-
-// profile↔Anon owner send → cache/server → kill → reopen
-{
-  const sent = buildCanonicalSender({
-    authReady: true,
-    liveProfileUid: OWNER,
-    threadAnonId: THREAD_ANON,
-    chatId: CHAT,
-    viewerUsername: "alice",
+if (typeof module.registerHooks === "function") {
+  module.registerHooks({
+    resolve(specifier, context, nextResolve) {
+      const mapped = resolveAlias(specifier);
+      if (mapped) return { url: mapped, shortCircuit: true };
+      return nextResolve(specifier, context);
+    },
   });
-  assert.equal(sent.ok, true);
-  assert.equal(sent.sender.fromUid, profileReplyAuthorId(OWNER));
-  assert.equal(sent.sender.senderRole, "profile");
-  const server = [
-    {
-      id: "m1",
-      clientId: "c1",
-      text: "hola",
-      ...sent.sender,
-    },
-    {
-      id: "m2",
-      clientId: "c2",
-      text: "visita",
-      senderAuthUid: "",
-      senderRole: "anon",
-      fromUid: THREAD_ANON,
-    },
-  ];
-  const cycle = simulateKillReopen(server, { uid: OWNER, owner: true });
-  assert.deepEqual(
-    cycle.afterReopen.map((row) => row.mine),
-    [true, false],
-    "owner kill/reopen keeps profile mine and visitor peer",
-  );
-  assert.deepEqual(
-    cycle.afterKill.map((row) => row.mine),
-    [false, false],
-    "owner kill before identity does not treat thread anon as mine",
-  );
 }
 
-// profile↔Anon visitor send → kill → reopen
+const gates = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/authorshipGates.ts")).href
+);
+const author = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/profileAnonMessageAuthor.ts")).href
+);
+const cacheKey = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/profileChatResolveKey.ts")).href
+);
+const continuity = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/threadAnonContinuity.ts")).href
+);
+const chatIdMod = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/anonChatId.ts")).href
+);
+
+const chatId = "anon_aaaa__anon_to__maria";
+const threadA = "anon_aaaa";
+const liveB = "anon_bbbb";
+const ownerUid = "owner_1";
+
+function persistAndReopen(sender, threadAnonId, liveAnonId, viewer) {
+  return gates.resolveProfileAnonMessageMine({
+    from: sender.fromUid,
+    threadAnonId,
+    liveAnonId,
+    profileUid: viewer.profileUid,
+    isOwnerViewing: viewer.isOwnerViewing,
+    ownerUid: viewer.ownerUid,
+    senderAuthUid: sender.senderAuthUid,
+    senderRole: sender.senderRole,
+    identityReady: true,
+  });
+}
+
 {
-  const sent = buildCanonicalSender({
+  const built = gates.buildCanonicalSender({
     authReady: true,
     liveProfileUid: "",
-    threadAnonId: THREAD_ANON,
-    chatId: CHAT,
+    threadAnonId: threadA,
+    liveAnonId: threadA,
+    chatId,
+    profileUid: ownerUid,
   });
-  assert.equal(sent.sender.fromUid, THREAD_ANON);
-  assert.equal(sent.sender.senderRole, "anon");
-  const server = [
-    { id: "m1", ...sent.sender, text: "visita" },
-    {
-      id: "m2",
-      senderAuthUid: OWNER,
-      senderRole: "profile",
-      fromUid: profileReplyAuthorId(OWNER),
-      text: "owner",
-    },
-  ];
-  const cycle = simulateKillReopen(server, { uid: "", owner: false });
-  assert.deepEqual(cycle.afterReopen.map((row) => row.mine), [true, false]);
-}
-
-// New senderRole beats corrupt historical fromUid for FUTURE rows
-assert.equal(
-  resolveMine({
-    senderAuthUid: OWNER,
-    senderRole: "profile",
-    fromUid: THREAD_ANON,
-    viewerUid: OWNER,
-    isOwnerViewing: true,
-    identityReady: true,
-    threadAnonId: THREAD_ANON,
-  }),
-  true,
-);
-
-// Historical without senderRole stays unclassified here (no auto invert)
-assert.equal(
-  resolveMine({
-    fromUid: THREAD_ANON,
-    viewerUid: OWNER,
-    isOwnerViewing: true,
-    identityReady: true,
-    threadAnonId: THREAD_ANON,
-  }),
-  false,
-);
-
-// profile↔profile legacy
-{
-  const a = buildLegacyCanonicalSender({ authReady: true, liveProfileUid: OWNER });
-  const b = buildLegacyCanonicalSender({ authReady: true, liveProfileUid: PEER });
-  assert.equal(a.sender.fromUid, OWNER);
-  const server = [
-    { id: "l1", ...a.sender, text: "a" },
-    { id: "l2", ...b.sender, text: "b" },
-  ];
-  const afterReopenA = server.map((doc) =>
-    resolveLegacyMine(doc.fromUid, OWNER, doc.senderAuthUid),
-  );
-  const afterReopenB = server.map((doc) =>
-    resolveLegacyMine(doc.fromUid, PEER, doc.senderAuthUid),
-  );
-  assert.deepEqual(afterReopenA, [true, false]);
-  assert.deepEqual(afterReopenB, [false, true]);
+  assert.equal(built.ok, true);
   assert.equal(
-    buildLegacyCanonicalSender({ authReady: true, liveProfileUid: "" }).ok,
+    persistAndReopen(built.sender, threadA, threadA, {
+      profileUid: ownerUid,
+      isOwnerViewing: false,
+      ownerUid: "",
+    }),
+    true,
+  );
+}
+
+{
+  const built = gates.buildCanonicalSender({
+    authReady: true,
+    liveProfileUid: "visitor_1",
+    threadAnonId: threadA,
+    liveAnonId: liveB,
+    chatId,
+    profileUid: ownerUid,
+  });
+  assert.equal(built.ok, true);
+  assert.equal(built.sender.fromUid, liveB);
+  assert.equal(
+    persistAndReopen(built.sender, threadA, liveB, {
+      profileUid: ownerUid,
+      isOwnerViewing: false,
+      ownerUid: "visitor_1",
+    }),
+    true,
+  );
+}
+
+{
+  const offline = gates.buildCanonicalSender({
+    authReady: true,
+    liveProfileUid: "",
+    threadAnonId: threadA,
+    liveAnonId: liveB,
+    chatId,
+    profileUid: ownerUid,
+  });
+  assert.equal(offline.ok, true);
+  assert.equal(offline.sender.fromUid, liveB);
+}
+
+// A6 — sequential auth pending → owner UID → late metadata. No visible flip.
+{
+  const cached = [
+    {
+      fromUid: `profile_${ownerUid}`,
+      senderKind: "profile",
+      senderRole: "profile",
+      senderAuthUid: ownerUid,
+      mine: true,
+    },
+    {
+      fromUid: threadA,
+      senderKind: "anon",
+      senderRole: "anon",
+      mine: false,
+    },
+  ];
+
+  const pendingReady = gates.isRoleIdentityReady({
+    liveProfileUid: "",
+    chatId,
+    profileUid: "",
+    threadAnonId: threadA,
+    authReady: false,
+  });
+  assert.equal(pendingReady, false);
+  assert.equal(
+    gates.buildCanonicalSender({
+      authReady: false,
+      liveProfileUid: "",
+      threadAnonId: threadA,
+      chatId,
+      profileUid: "",
+    }).ok,
     false,
   );
-}
-
-// Offline optimistic merge by clientId, not by late targetUid
-{
-  const sent = buildCanonicalSender({
-    authReady: true,
-    liveProfileUid: OWNER,
-    threadAnonId: THREAD_ANON,
-    chatId: CHAT,
-    viewerUsername: "alice",
+  const pendingCtx = author.buildProfileAnonViewerContext({
+    chatId,
+    chatAnonSessionId: threadA,
+    currentUid: "",
+    targetUid: "",
+    chatOwnerUid: "",
+    viewerUsername: "",
+    authReady: false,
+    identityReady: pendingReady,
   });
-  const optimistic = {
-    id: "local",
-    clientId: "cid-9",
-    text: "offline",
-    mine: true,
-    ...sent.sender,
-  };
-  const server = [
-    {
-      id: "srv",
-      clientId: "cid-9",
-      text: "offline",
-      mine: true,
-      ...sent.sender,
-    },
-  ];
-  const merged = mergeLoaded(server, [optimistic]);
-  assert.equal(merged.length, 1);
-  assert.equal(merged[0].id, "srv");
-  assert.equal(merged[0].senderRole, "profile");
+  const pendingMapped = author.remapProfileAnonMessagesMine(cached, pendingCtx);
+  assert.deepEqual(
+    pendingMapped.map((row) => row.mine),
+    [true, false],
+    "auth pending must hold cached sides, not classify as visitor",
+  );
+
+  const ownerUidReady = gates.isRoleIdentityReady({
+    liveProfileUid: ownerUid,
+    chatId,
+    profileUid: "",
+    viewerUsername: "",
+    threadAnonId: threadA,
+    authReady: true,
+  });
+  assert.equal(ownerUidReady, false, "owner UID without metadata is not role-ready");
+  assert.equal(
+    gates.buildCanonicalSender({
+      authReady: true,
+      liveProfileUid: ownerUid,
+      threadAnonId: threadA,
+      chatId,
+      profileUid: "",
+      viewerUsername: "",
+    }).ok,
+    false,
+    "writer stays disabled until role resolves",
+  );
+  const uidCtx = author.buildProfileAnonViewerContext({
+    chatId,
+    chatAnonSessionId: threadA,
+    currentUid: ownerUid,
+    targetUid: "",
+    chatOwnerUid: "",
+    viewerUsername: "",
+    authReady: true,
+    identityReady: ownerUidReady,
+  });
+  const uidMapped = author.remapProfileAnonMessagesMine(pendingMapped, uidCtx);
+  assert.deepEqual(uidMapped.map((row) => row.mine), [true, false]);
+
+  const metaReady = gates.isRoleIdentityReady({
+    liveProfileUid: ownerUid,
+    chatId,
+    profileUid: ownerUid,
+    viewerUsername: "maria",
+    threadAnonId: threadA,
+    authReady: true,
+    explicitOwner: true,
+  });
+  assert.equal(metaReady, true);
+  const metaCtx = author.buildProfileAnonViewerContext({
+    chatId,
+    chatAnonSessionId: threadA,
+    currentUid: ownerUid,
+    targetUid: ownerUid,
+    chatOwnerUid: ownerUid,
+    viewerUsername: "maria",
+    authReady: true,
+    identityReady: metaReady,
+  });
+  const snapshot = author.mapFirestoreDocsToProfileAnonMessages(
+    [
+      {
+        id: "s1",
+        data: {
+          texto: "yo",
+          fromUid: `profile_${ownerUid}`,
+          senderRole: "profile",
+          senderAuthUid: ownerUid,
+          senderKind: "profile",
+        },
+      },
+      {
+        id: "s2",
+        data: {
+          texto: "hola",
+          fromUid: threadA,
+          senderRole: "anon",
+          senderKind: "anon",
+        },
+      },
+    ],
+    metaCtx,
+  );
+  const remapped = author.remapProfileAnonMessagesMine(
+    uidMapped.map((row, index) => ({ ...row, fromUid: cached[index].fromUid })),
+    metaCtx,
+  );
+  assert.deepEqual(remapped.map((row) => row.mine), [true, false]);
+  assert.deepEqual(snapshot.map((row) => row.mine), [true, false]);
+  assert.notDeepEqual(
+    pendingMapped.map((row) => row.mine),
+    [false, true],
+  );
 }
 
-console.log(
-  JSON.stringify(
-    {
-      gate: "CHAT_AUTHORSHIP_LIFECYCLE",
-      pass: true,
-      cases: [
-        "block_until_identity",
-        "profile_anon_owner_kill_reopen",
-        "profile_anon_visitor_kill_reopen",
-        "senderRole_beats_corrupt_fromUid",
-        "historical_without_role_not_auto_fixed",
-        "legacy_profile_profile",
-        "offline_clientId_merge",
-      ],
-    },
-    null,
-    2,
-  ),
+// cache → server / clientId identity for text + media
+{
+  const viewerCtx = {
+    chatId,
+    chatAnonSessionId: threadA,
+    currentUid: "",
+    targetUid: ownerUid,
+    chatOwnerUid: ownerUid,
+    profileUid: ownerUid,
+    threadAnonId: threadA,
+    liveAnonId: liveB,
+    isOwnerViewing: false,
+    identityReady: true,
+  };
+  const text = author.mapFirestoreDocsToProfileAnonMessages(
+    [
+      {
+        id: "server_1",
+        data: {
+          texto: "hola",
+          fromUid: liveB,
+          senderRole: "anon",
+          senderAuthUid: "visitor_1",
+          senderKind: "anon",
+          clientId: "cid_text",
+          type: "text",
+        },
+      },
+    ],
+    viewerCtx,
+  );
+  assert.equal(text[0].clientId, "cid_text");
+  assert.equal(text[0].mine, true);
+  assert.equal(text[0].text, "hola");
+
+  const media = author.mapFirestoreDocsToProfileAnonMessages(
+    [
+      {
+        id: "server_2",
+        data: {
+          fromUid: liveB,
+          senderRole: "anon",
+          senderKind: "anon",
+          clientId: "cid_media",
+          type: "image",
+          mediaUrl: "https://example.com/a.jpg",
+        },
+      },
+    ],
+    viewerCtx,
+  );
+  assert.equal(media[0].type, "image");
+  assert.equal(media[0].clientId, "cid_media");
+  assert.equal(media[0].mine, true);
+}
+
+// story reply A → rotate B → same username uses B
+{
+  const keyA = cacheKey.profileChatCacheKey({
+    username: "maria",
+    authUid: "",
+    anonSessionId: threadA,
+  });
+  const keyB = cacheKey.profileChatCacheKey({
+    username: "maria",
+    authUid: "",
+    anonSessionId: liveB,
+  });
+  const keyAccount = cacheKey.profileChatCacheKey({
+    username: "maria",
+    authUid: "acct_b",
+    anonSessionId: liveB,
+  });
+  assert.notEqual(keyA, keyB);
+  assert.notEqual(keyB, keyAccount);
+  const chatA = chatIdMod.buildProfileAnonChatId(threadA, "maria");
+  const chatB = chatIdMod.buildProfileAnonChatId(liveB, "maria");
+  assert.notEqual(chatA, chatB);
+  assert.match(chatB, /anon_bbbb/);
+}
+
+// offline retry keeps live fromUid
+{
+  const offline = gates.buildCanonicalSender({
+    authReady: true,
+    liveProfileUid: "",
+    threadAnonId: threadA,
+    liveAnonId: liveB,
+    chatId,
+    profileUid: ownerUid,
+  });
+  assert.equal(offline.sender.fromUid, liveB);
+  assert.equal(
+    persistAndReopen(offline.sender, threadA, liveB, {
+      profileUid: ownerUid,
+      isOwnerViewing: false,
+      ownerUid: "",
+    }),
+    true,
+  );
+}
+
+// legacy profile-profile
+{
+  const legacy = gates.buildLegacyCanonicalSender({
+    authReady: true,
+    liveProfileUid: "peer_a",
+  });
+  assert.equal(legacy.ok, true);
+  assert.equal(
+    gates.resolveMineFromCanonicalSender({
+      senderAuthUid: legacy.sender.senderAuthUid,
+      senderRole: legacy.sender.senderRole,
+      fromUid: legacy.sender.fromUid,
+      viewerUid: "peer_a",
+      isOwnerViewing: true,
+      threadAnonId: "",
+      identityReady: true,
+    }),
+    true,
+  );
+}
+
+const incoming = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/incomingChatActivity.ts")).href
 );
+const pending = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/threadPending.ts")).href
+);
+
+{
+  const liveC = "anon_cccc";
+  continuity.resetThreadAnonContinuityForTests();
+  assert.deepEqual(
+    continuity.rememberThreadAnonId(chatId, liveB, { ownerUncertain: true, provenOwn: true }),
+    [],
+  );
+  continuity.rememberOwnThreadAnonId(chatId, threadA, {});
+  continuity.rememberOwnThreadAnonId(chatId, liveB, {});
+  const chat = {
+    id: chatId,
+    canonicalChatId: chatId,
+    lastMessage: "desde B",
+    lastMessageSender: liveB,
+    latestMessageId: "m_b",
+    latestSenderKind: "anon",
+    latestSenderAnonSessionId: liveB,
+    unreadCounts: {},
+    readBy: {},
+  };
+  assert.equal(
+    incoming.isOwnChatSender(liveB, liveC, "", chat),
+    true,
+    "B stays own in inbox after rotate to C",
+  );
+  assert.equal(incoming.isIncomingChatActivity(chat, liveC, ""), false);
+  assert.equal(incoming.isOwnInboxLastSender(chat, liveC, ""), true);
+  const threadState = pending.computeThreadPendingForViewer(chat, "", "");
+  assert.equal(threadState.isOwnLatestMessage, true);
+  assert.equal(threadState.computedPending, false);
+
+  continuity.rememberOwnThreadAnonId(chatId, threadA, {});
+  continuity.rememberOwnThreadAnonId(chatId, "anon_cccc", {});
+  const ownerChat = {
+    id: chatId,
+    canonicalChatId: chatId,
+    targetUid: ownerUid,
+    receptorUid: ownerUid,
+    lastMessage: "desde A",
+    lastMessageSender: threadA,
+    latestMessageId: "m_a_in",
+    latestSenderKind: "anon",
+    latestSenderAnonSessionId: threadA,
+    unreadCounts: { [ownerUid]: 1 },
+    readBy: { [ownerUid]: false },
+  };
+  const ownerRole = incoming.resolveChatViewerRole({
+    viewerId: ownerUid,
+    firebaseUid: ownerUid,
+    chat: ownerChat,
+    viewerKind: "owner",
+    provenOwner: true,
+  });
+  assert.equal(ownerRole.provenOwner, true);
+  assert.equal(
+    incoming.isOwnChatSender(threadA, ownerUid, ownerUid, ownerChat, ownerRole),
+    false,
+    "owner must not own visitor continuity A",
+  );
+  assert.equal(
+    incoming.isIncomingChatActivity(ownerChat, ownerUid, ownerUid, ownerRole),
+    true,
+  );
+  const ownerPending = pending.computeThreadPendingForViewer(
+    ownerChat,
+    ownerUid,
+    "",
+    ownerRole,
+  );
+  assert.equal(ownerPending.isOwnLatestMessage, false);
+  assert.equal(ownerPending.computedPending, true);
+
+  const accountA = { authUid: "acct_a", provenOwn: true };
+  const accountB = { authUid: "acct_b", provenOwn: true };
+  continuity.resetThreadAnonContinuityForTests();
+  continuity.rememberOwnThreadAnonId(chatId, liveB, accountA);
+  assert.equal(continuity.listThreadAnonIds(chatId, [], accountA).includes(liveB), true);
+  continuity.clearThreadAnonContinuity(accountA);
+  assert.equal(
+    continuity.listThreadAnonIds(chatId, [], accountB).includes(liveB),
+    false,
+    "logout A must not leak B into account B",
+  );
+  assert.deepEqual(
+    continuity.rememberThreadAnonId(chatId, liveB, {
+      authUid: "acct_b",
+      ownerUncertain: true,
+      provenOwn: true,
+    }),
+    [],
+    "owner-uncertain must not register continuity",
+  );
+}
+
+continuity.resetThreadAnonContinuityForTests?.();
+
+const resolveSrc = fs.readFileSync(
+  path.join(root, "src/lib/chat/resolveProfileChat.ts"),
+  "utf8",
+);
+assert.match(resolveSrc, /currentProfileChatCacheKey|profileChatCacheKey/);
+assert.match(resolveSrc, /invalidateProfileChatCache/);
+assert.match(
+  fs.readFileSync(path.join(root, "src/lib/chat/anonSession.ts"), "utf8"),
+  /invalidateProfileChatCache/,
+);
+
+console.log("pass authorship_lifecycle mine_stable=true ui_listener=true story_reply_key=true");

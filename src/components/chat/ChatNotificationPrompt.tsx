@@ -1,47 +1,98 @@
 "use client";
 
 import { Bell } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   completeChatNotificationPrompt,
   getChatNotificationPrefs,
+  getChatNotificationPrefsVersion,
+  resetChatNotificationPromptOnLogout,
   setChatNotificationsEnabled,
+  subscribeChatNotificationPrefs,
 } from "@/lib/chat/chatNotificationPrefs";
 import { requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
-import { registerNativePushIfEnabled } from "@/lib/chat/fcmPush";
+import { enableNativeChatPush } from "@/lib/chat/fcmPush";
+import { isNotificationProfileReady } from "@/lib/chat/notificationProfileReady";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
+
+export function chatNotificationPromptOpen(input: {
+  loading: boolean;
+  hasUser: boolean;
+  profileReady: boolean;
+  notificationApiReady: boolean;
+  prompted: boolean;
+}) {
+  if (input.loading || !input.hasUser || !input.profileReady) return false;
+  if (!input.notificationApiReady) return false;
+  return input.prompted !== true;
+}
 
 export default function ChatNotificationPrompt() {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const { firebaseUser, profile, loading } = useAuth();
+  const prefsVersion = useSyncExternalStore(
+    subscribeChatNotificationPrefs,
+    getChatNotificationPrefsVersion,
+    () => "0-0",
+  );
+  void prefsVersion;
+  const prefs = getChatNotificationPrefs();
+  const profileReady = Boolean(
+    firebaseUser &&
+      isNotificationProfileReady({
+        loading,
+        isAnonymous: firebaseUser.isAnonymous,
+        uid: firebaseUser.uid,
+        username: profile?.username,
+        profileSetupComplete: profile?.profileSetupComplete,
+        email: profile?.email || firebaseUser.email || "",
+        emailVerified: firebaseUser.emailVerified,
+      }),
+  );
+  const notificationApiReady =
+    isCapacitorNative() || (typeof Notification !== "undefined");
+  const open = chatNotificationPromptOpen({
+    loading,
+    hasUser: Boolean(firebaseUser),
+    profileReady,
+    notificationApiReady,
+    prompted: prefs.prompted,
+  });
 
   useEffect(() => {
-    // Soft ask before enabling OS notifications — primarily for native shells.
-    if (!isCapacitorNative() && typeof Notification === "undefined") return;
-    const prefs = getChatNotificationPrefs();
-    if (!prefs.prompted) {
-      setOpen(true);
+    if (loading) return;
+    if (!firebaseUser) {
+      resetChatNotificationPromptOnLogout();
     }
-  }, []);
+  }, [firebaseUser, loading]);
 
   async function choose(enabled: boolean) {
     if (!enabled) {
       completeChatNotificationPrompt(false);
-      setOpen(false);
       return;
     }
 
-    // Mark prompted + provisional enable, then confirm OS grant.
-    completeChatNotificationPrompt(true);
-    setOpen(false);
+    setChatNotificationsEnabled(true);
     const granted = await requestChatNotificationPermission({ force: true });
     if (!granted) {
       setChatNotificationsEnabled(false);
+      completeChatNotificationPrompt(false);
       return;
     }
-    await registerNativePushIfEnabled();
+
+    if (isCapacitorNative()) {
+      const result = await enableNativeChatPush(firebaseUser);
+      if (!result.ok && result.reason !== "not_native") {
+        setChatNotificationsEnabled(false);
+        if (result.reason === "denied") completeChatNotificationPrompt(false);
+        return;
+      }
+    }
+
+    completeChatNotificationPrompt(true);
   }
 
   if (!open) return null;
@@ -79,7 +130,7 @@ export default function ChatNotificationPrompt() {
           <button
             type="button"
             onClick={() => void choose(false)}
-            className="w-full rounded-[18px] border border-white/10 bg-white/[0.055] py-3.5 text-sm font-extrabold text-white/80"
+            className="w-full rounded-[18px] border border-white/15 bg-white/5 py-3.5 text-sm font-black text-white"
           >
             {t("chat_notifications_prompt_no")}
           </button>

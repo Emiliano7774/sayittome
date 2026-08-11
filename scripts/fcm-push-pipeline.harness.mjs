@@ -85,6 +85,15 @@ assert.equal(
 );
 
 assert.equal(
+  notificationTitleForRecipient(
+    { fromUid: "AbCdEfGhIjKlMnOpQrStUv", senderRole: "anon", senderKind: "anon" },
+    { targetUid: OWNER, targetUsername: "alice" },
+    OWNER,
+  ),
+  "Anon",
+);
+
+assert.equal(
   notificationBodyFromMessage({ texto: "", mediaUrl: "x" }),
   "Nuevo mensaje",
 );

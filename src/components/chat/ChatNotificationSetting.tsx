@@ -8,6 +8,13 @@ import {
   requestChatNotificationPermission,
   resetChatNotificationPermissionLatch,
 } from "@/lib/chat/chatNotifications";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  classifyOsPermission,
+  subscribeFcmRegistration,
+  type FcmRegistrationState,
+  type OsPermissionStage,
+} from "@/lib/chat/fcmRegistrationStore";
 import {
   deleteCurrentDeviceFcmToken,
   enableNativeChatPush,
@@ -20,6 +27,7 @@ import {
 } from "@/lib/chat/notificationIncident";
 import {
   areChatNotificationsEnabled,
+  completeChatNotificationPrompt,
   getChatNotificationPrefsVersion,
   setChatNotificationsEnabled,
   subscribeChatNotificationPrefs,
@@ -29,31 +37,28 @@ type Props = {
   variant?: "classic" | "modern" | "panel";
 };
 
-type OsPermission = "unknown" | "granted" | "denied" | "prompt";
-
-async function readOsPermission(): Promise<OsPermission> {
+async function readOsPermission(): Promise<OsPermissionStage> {
   try {
     if (isCapacitorNative()) {
       const { PushNotifications } = await import("@capacitor/push-notifications");
       const current = await PushNotifications.checkPermissions();
-      const receive = String(current.receive || "");
-      if (receive === "granted") return "granted";
-      if (receive === "denied") return "denied";
-      return "prompt";
+      return classifyOsPermission(String(current.receive || ""));
     }
     if (typeof Notification !== "undefined") {
       if (Notification.permission === "granted") return "granted";
       if (Notification.permission === "denied") return "denied";
-      return "prompt";
+      if (Notification.permission === "default") return "not_asked";
+      return "unknown";
     }
   } catch {
-    // ignore
+    return "error";
   }
   return "unknown";
 }
 
 export default function ChatNotificationSetting({ variant = "modern" }: Props) {
   const t = useT();
+  const { firebaseUser } = useAuth();
   const enabled = useSyncExternalStore(
     subscribeChatNotificationPrefs,
     areChatNotificationsEnabled,
@@ -66,22 +71,83 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
     () => "0-0",
   );
 
-  const [osPermission, setOsPermission] = useState<OsPermission>("unknown");
+  const [osPermission, setOsPermission] = useState<OsPermissionStage>("unknown");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [tokenActive, setTokenActive] = useState(false);
+  const [tokenForUid, setTokenForUid] = useState<{ uid: string; active: boolean }>({
+    uid: "",
+    active: false,
+  });
+  const [regForUid, setRegForUid] = useState<{
+    uid: string;
+    state: FcmRegistrationState | null;
+  }>({ uid: "", state: null });
   const tapLock = useRef(false);
+  const uid = String(firebaseUser?.uid || "");
+  const regState = uid && regForUid.uid === uid ? regForUid.state : null;
+  const tokenActive = Boolean(uid) && tokenForUid.uid === uid && tokenForUid.active;
+
+  useEffect(() => {
+    if (!uid) return undefined;
+    return subscribeFcmRegistration(uid, (state) => {
+      setRegForUid({ uid, state });
+    });
+  }, [uid]);
 
   useEffect(() => {
     let cancelled = false;
-    void readOsPermission().then((next) => {
-      if (!cancelled) setOsPermission(next);
-    });
-    setTokenActive(hasActiveFcmRegistration());
+    const refreshOs = () => {
+      void readOsPermission().then((next) => {
+        if (!cancelled) setOsPermission(next);
+      });
+    };
+    const refreshTokenFromCallback = () => {
+      if (!uid) return;
+      setTokenForUid({
+        uid,
+        active: hasActiveFcmRegistration() || regState?.status === "active",
+      });
+    };
+    refreshOs();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshOs();
+        refreshTokenFromCallback();
+      }
+    };
+    const onFocus = () => {
+      refreshOs();
+      refreshTokenFromCallback();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    let removeApp: (() => void) | undefined;
+    if (isCapacitorNative()) {
+      void import("@capacitor/app").then(({ App }) => {
+        if (cancelled) return;
+        void App.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) {
+            refreshOs();
+            refreshTokenFromCallback();
+          }
+        }).then((handle) => {
+          if (cancelled) {
+            void handle.remove();
+            return;
+          }
+          removeApp = () => {
+            void handle.remove();
+          };
+        });
+      });
+    }
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+      removeApp?.();
     };
-  }, [enabled]);
+  }, [enabled, regState?.status, uid]);
 
   async function runToggle() {
     if (busy || tapLock.current) return;
@@ -94,7 +160,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
       if (enabled) {
         setChatNotificationsEnabled(false);
         await deleteCurrentDeviceFcmToken();
-        setTokenActive(false);
+        setTokenForUid({ uid, active: false });
         setOsPermission(await readOsPermission());
         return;
       }
@@ -107,6 +173,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
 
       if (!granted || os === "denied") {
         setChatNotificationsEnabled(false);
+        completeChatNotificationPrompt(false);
         const fail = notificationIncidentSummary();
         setError(`${t("chat_notifications_error")} (${fail.lastFailStage || os || "denied"})`);
         return;
@@ -116,19 +183,20 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
         const result = await enableNativeChatPush();
         if (!result.ok) {
           setChatNotificationsEnabled(false);
-          setTokenActive(false);
+          setTokenForUid({ uid, active: false });
+          if (result.reason === "denied") completeChatNotificationPrompt(false);
           setError(`${t("chat_notifications_error")} (${result.reason})`);
           setOsPermission(await readOsPermission());
           return;
         }
-        setTokenActive(true);
+        setTokenForUid({ uid, active: true });
         return;
       }
 
-      setTokenActive(true);
+      setTokenForUid({ uid, active: true });
     } catch {
       setChatNotificationsEnabled(false);
-      setTokenActive(false);
+      setTokenForUid({ uid, active: false });
       const fail = notificationIncidentSummary();
       setError(`${t("chat_notifications_error")} (${fail.lastFailStage || "throw"})`);
     } finally {
@@ -142,9 +210,12 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
       ? t("chat_notifications_os_granted")
       : osPermission === "denied"
         ? t("chat_notifications_os_denied")
-        : osPermission === "prompt"
+        : osPermission === "not_asked" || osPermission === "prompt"
           ? t("chat_notifications_os_prompt")
-          : t("chat_notifications_os_unknown");
+          : osPermission === "error"
+            ? t("chat_notifications_error")
+            : t("chat_notifications_os_unknown");
+  const tokenActiveUi = Boolean(uid) && (tokenActive || regState?.status === "active");
 
   const appLabel = enabled
     ? t("chat_notifications_enabled")
@@ -197,8 +268,11 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
             >
               {osLabel}
             </p>
-            <p className="mt-2 text-xs font-semibold text-white/40">
-              {tokenActive
+            <p
+              data-chat-notification-fcm-status={regState?.status || "unknown"}
+              className="mt-2 text-xs font-semibold text-white/40"
+            >
+              {tokenActiveUi
                 ? t("chat_notifications_token_on")
                 : t("chat_notifications_token_off")}
             </p>

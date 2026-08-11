@@ -1,25 +1,46 @@
-import type { StoryUserGroup } from "@/lib/stories/types";
+import {
+  buildStoriesSnapshotWrite,
+  didTruncateStoriesSnapshot,
+  isActiveSnapshotStory,
+  pickLatestStoriesSnapshot,
+  selectLatestStoriesSnapshot,
+  STORIES_SNAPSHOT_MAX_GROUPS,
+  STORIES_SNAPSHOT_MAX_STORIES,
+  type StoriesSnapshotWriteSource,
+} from "./storiesQueryGuard";
+import type { StoryUserGroup } from "./types";
 
 const STORAGE_KEY = "sayittome:stories-snapshot:v1";
-const MAX_GROUPS = 40;
+const LOCAL_KEY = "sayittome:stories-snapshot:v2";
 
 type StoriesSnapshot = {
   viewerUid: string;
   groups: StoryUserGroup[];
   savedAtMs: number;
+  persistedAtMs: number;
+  fetchedAtMs: number;
+  generation: number;
+  truncated?: boolean;
+};
+
+export type { StoriesSnapshotWriteSource };
+
+export type WriteStoriesSnapshotOptions = {
+  source?: StoriesSnapshotWriteSource;
+  now?: number;
+  generation?: number;
 };
 
 let memory: StoriesSnapshot | null = null;
 
 function sanitizeGroups(groups: StoryUserGroup[]): StoryUserGroup[] {
-  return groups.slice(0, MAX_GROUPS).map((group) => ({
+  return groups.slice(0, STORIES_SNAPSHOT_MAX_GROUPS).map((group) => ({
     ownerUid: group.ownerUid,
     ownerUsername: group.ownerUsername,
     ownerPhoto: group.ownerPhoto,
     isAnonymousStory: group.isAnonymousStory,
-    // hasUnseen is recomputed on restore via mergeViewerSeenState + local viewed cache.
     hasUnseen: group.hasUnseen === true,
-    stories: (group.stories || []).slice(0, 20).map((story) => ({
+    stories: (group.stories || []).slice(0, STORIES_SNAPSHOT_MAX_STORIES).map((story) => ({
       id: story.id,
       ownerUid: story.ownerUid,
       ownerUsername: story.ownerUsername,
@@ -39,53 +60,152 @@ function sanitizeGroups(groups: StoryUserGroup[]): StoryUserGroup[] {
       autoModerationRequiresBlur: story.autoModerationRequiresBlur,
       adminForceBlur: story.adminForceBlur,
       adminDeleted: story.adminDeleted,
-      // Keep viewer maps so restore does not rely only on hasUnseen boolean.
       viewedBy: story.viewedBy,
       viewedByAnon: story.viewedByAnon,
     })),
   }));
 }
 
-export function readStoriesSnapshot(viewerUid: string): StoryUserGroup[] | null {
-  const viewer = String(viewerUid || "").trim();
-  if (!viewer) return null;
+function dropInactive(groups: StoryUserGroup[], now = Date.now()) {
+  return groups
+    .map((group) => ({
+      ...group,
+      stories: (group.stories || []).filter((story) => isActiveSnapshotStory(story, now)),
+    }))
+    .filter((group) => group.stories.length > 0);
+}
 
-  if (memory?.viewerUid === viewer && memory.groups.length > 0) {
-    return memory.groups;
-  }
-
-  if (typeof window === "undefined") return null;
-
+function persistSnapshot(next: StoriesSnapshot) {
+  const accepted = selectLatestStoriesSnapshot(memory, next);
+  if (!accepted) return;
+  if (accepted !== next && accepted === memory) return;
+  memory = accepted === next ? next : accepted;
+  if (typeof window === "undefined") return;
+  const raw = JSON.stringify(memory);
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoriesSnapshot;
+    window.sessionStorage.setItem(STORAGE_KEY, raw);
+  } catch {
+    // quota
+  }
+  try {
+    window.localStorage.setItem(LOCAL_KEY, raw);
+  } catch {
+    // quota
+  }
+}
+
+function normalizeSnapshot(parsed: Partial<StoriesSnapshot>, now = Date.now()): StoriesSnapshot | null {
+  if (!parsed || !parsed.viewerUid || !Array.isArray(parsed.groups)) return null;
+  const fetchedAtMs = Number(parsed.fetchedAtMs || 0);
+  const savedAtMs = Number(parsed.savedAtMs || parsed.persistedAtMs || 0);
+  const persistedAtMs = Number(parsed.persistedAtMs || parsed.savedAtMs || 0);
+  return {
+    viewerUid: String(parsed.viewerUid),
+    groups: dropInactive(parsed.groups, now),
+    savedAtMs,
+    persistedAtMs,
+    fetchedAtMs,
+    generation: Number(parsed.generation || 0),
+    truncated: parsed.truncated === true,
+  };
+}
+
+function parseSnapshot(raw: string | null, viewer: string, now = Date.now()): StoriesSnapshot | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoriesSnapshot>;
     if (!parsed || parsed.viewerUid !== viewer) return null;
-    if (!Array.isArray(parsed.groups) || parsed.groups.length === 0) return null;
-    memory = parsed;
-    return parsed.groups;
+    return normalizeSnapshot(parsed, now);
   } catch {
     return null;
   }
 }
 
-export function writeStoriesSnapshot(viewerUid: string, groups: StoryUserGroup[]) {
+export type StoriesSnapshotRead = {
+  groups: StoryUserGroup[];
+  empty: boolean;
+  truncated: boolean;
+  savedAtMs: number;
+  persistedAtMs: number;
+  fetchedAtMs: number;
+  generation: number;
+};
+
+export function readStoriesSnapshotSavedAt(viewerUid: string) {
   const viewer = String(viewerUid || "").trim();
-  if (!viewer || !groups.length) return;
+  if (memory?.viewerUid === viewer) return Number(memory.savedAtMs || 0);
+  return 0;
+}
 
-  const next: StoriesSnapshot = {
-    viewerUid: viewer,
-    groups: sanitizeGroups(groups),
-    savedAtMs: Date.now(),
+export function readStoriesSnapshotFetchedAt(viewerUid: string) {
+  const viewer = String(viewerUid || "").trim();
+  if (memory?.viewerUid === viewer) return Number(memory.fetchedAtMs || 0);
+  return 0;
+}
+
+export function readStoriesSnapshotState(
+  viewerUid: string,
+  now = Date.now(),
+): StoriesSnapshotRead | null {
+  const viewer = String(viewerUid || "").trim();
+  if (!viewer) return null;
+
+  const fromMemory =
+    memory?.viewerUid === viewer
+      ? { ...memory, groups: dropInactive(memory.groups, now) }
+      : null;
+  const fromSession =
+    typeof window !== "undefined"
+      ? parseSnapshot(window.sessionStorage.getItem(STORAGE_KEY), viewer, now)
+      : null;
+  const fromLocal =
+    typeof window !== "undefined"
+      ? parseSnapshot(window.localStorage.getItem(LOCAL_KEY), viewer, now)
+      : null;
+
+  const parsed = pickLatestStoriesSnapshot([fromMemory, fromSession, fromLocal], now);
+  if (!parsed) return null;
+  memory = parsed;
+  return {
+    groups: parsed.groups,
+    empty: parsed.groups.length === 0,
+    truncated: parsed.truncated === true,
+    savedAtMs: Number(parsed.savedAtMs || 0),
+    persistedAtMs: Number(parsed.persistedAtMs || parsed.savedAtMs || 0),
+    fetchedAtMs: Number(parsed.fetchedAtMs || 0),
+    generation: Number(parsed.generation || 0),
   };
-  memory = next;
+}
 
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // quota
-  }
+export function readStoriesSnapshot(viewerUid: string): StoryUserGroup[] | null {
+  const state = readStoriesSnapshotState(viewerUid);
+  if (!state) return null;
+  return state.groups;
+}
+
+export function writeStoriesSnapshot(
+  viewerUid: string,
+  groups: StoryUserGroup[],
+  options?: WriteStoriesSnapshotOptions,
+) {
+  const viewer = String(viewerUid || "").trim();
+  if (!viewer) return;
+
+  const now = Number(options?.now ?? Date.now());
+  const source = options?.source || "network";
+  const previous = memory?.viewerUid === viewer ? memory : null;
+  const truncated = didTruncateStoriesSnapshot(groups);
+  persistSnapshot({
+    ...buildStoriesSnapshotWrite({
+      viewerUid: viewer,
+      groups: groups.length ? sanitizeGroups(groups) : [],
+      previous,
+      source,
+      now,
+      generation: options?.generation,
+    }),
+    truncated,
+  });
 }
 
 export function clearStoriesSnapshot() {
@@ -93,7 +213,18 @@ export function clearStoriesSnapshot() {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LOCAL_KEY);
   } catch {
     // ignore
   }
 }
+
+export function resetStoriesSnapshotForTests() {
+  memory = null;
+}
+
+export function seedStoriesSnapshotMemoryForTests(next: StoriesSnapshot | null) {
+  memory = next;
+}
+
+export { didTruncateStoriesSnapshot };

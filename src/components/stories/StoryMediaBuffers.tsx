@@ -14,14 +14,22 @@ import {
   storyPipelineMarkResponseReady,
   storyPipelineMarkVideoPhase,
 } from "@/lib/perf/storyPipelineTrace";
+import { NEXT_MEDIA_READY_TIMEOUT_MS } from "@/lib/stories/storiesQueryGuard";
+import {
+  acceptMediaSlotEvent,
+  applyMediaSlotMutation,
+  durationFromPromotedElement,
+  emptyMediaSlot,
+  mediaElementUrl,
+  mediaSlotDomKey,
+  mediaSlotFromStory,
+  otherMediaSlot,
+  planMediaSlotPromotion,
+  type MediaSlotEvent,
+  type MediaSlotId,
+  type MediaSlotState,
+} from "@/lib/stories/storyMediaSlots";
 import type { StoryItem } from "@/lib/stories/types";
-
-type Slot = {
-  storyId: string;
-  mediaUrl: string;
-  mediaType: "image" | "video";
-  ready: boolean;
-};
 
 type Props = {
   current: StoryItem;
@@ -29,17 +37,10 @@ type Props = {
   needsBlur: boolean;
   blurLocked: boolean;
   onNextReadyChange?: (ready: boolean) => void;
-  onFrontVideoMetadata?: (durationSec: number) => void;
+  onFrontReady?: () => void;
+  onFrontError?: () => void;
+  onFrontVideoMetadata?: (event: MediaSlotEvent) => void;
 };
-
-function slotFromStory(story: StoryItem): Slot {
-  return {
-    storyId: story.id,
-    mediaUrl: story.mediaUrl || "",
-    mediaType: story.mediaType === "video" ? "video" : "image",
-    ready: false,
-  };
-}
 
 function mediaClass(needsBlur: boolean, blurLocked: boolean, visible: boolean) {
   return [
@@ -57,179 +58,279 @@ export default function StoryMediaBuffers({
   needsBlur,
   blurLocked,
   onNextReadyChange,
+  onFrontReady,
+  onFrontError,
   onFrontVideoMetadata,
 }: Props) {
-  const frontRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
-  const backRef = useRef<HTMLImageElement | HTMLVideoElement | null>(null);
-  const [front, setFront] = useState<Slot>(() => slotFromStory(current));
-  const [back, setBack] = useState<Slot | null>(() =>
-    nextStory?.mediaUrl ? slotFromStory(nextStory) : null,
+  const refs = {
+    a: useRef<HTMLImageElement | HTMLVideoElement | null>(null),
+    b: useRef<HTMLImageElement | HTMLVideoElement | null>(null),
+  };
+  const [active, setActive] = useState<MediaSlotId>("a");
+  const [slots, setSlots] = useState<Record<MediaSlotId, MediaSlotState>>(() => ({
+    a: current.mediaUrl ? mediaSlotFromStory(current) : emptyMediaSlot(),
+    b: nextStory?.mediaUrl ? mediaSlotFromStory(nextStory) : emptyMediaSlot(),
+  }));
+
+  const front = slots[active];
+  const backId = otherMediaSlot(active);
+  const back = slots[backId];
+  const frontMatches =
+    current.id === front.storyId && current.mediaUrl === front.mediaUrl;
+
+  if (!frontMatches) {
+    const plan = planMediaSlotPromotion({
+      active,
+      currentId: current.id,
+      slots,
+    });
+    if (plan.promoted) {
+      setActive(plan.active);
+      const nextBack = otherMediaSlot(plan.active);
+      if (nextStory?.mediaUrl && slots[nextBack].storyId !== nextStory.id) {
+        setSlots((prev) => ({
+          ...prev,
+          [nextBack]: mediaSlotFromStory(nextStory),
+        }));
+      }
+    } else {
+      setSlots((prev) => ({
+        ...prev,
+        [active]: current.mediaUrl ? mediaSlotFromStory(current) : emptyMediaSlot(),
+      }));
+    }
+  } else if (nextStory?.mediaUrl) {
+    if (back.storyId !== nextStory.id || back.mediaUrl !== nextStory.mediaUrl) {
+      setSlots((prev) => ({
+        ...prev,
+        [backId]: mediaSlotFromStory(nextStory),
+      }));
+    }
+  } else if (back.storyId) {
+    setSlots((prev) => ({ ...prev, [backId]: emptyMediaSlot() }));
+  }
+
+  const emitMetadata = useCallback(
+    (event: MediaSlotEvent) => {
+      if (
+        !acceptMediaSlotEvent(event, {
+          storyId: current.id,
+          mediaUrl: current.mediaUrl || "",
+        })
+      ) {
+        return;
+      }
+      onFrontVideoMetadata?.(event);
+    },
+    [current.id, current.mediaUrl, onFrontVideoMetadata],
   );
-  const [showFront, setShowFront] = useState(true);
 
-  const markFrontReady = useCallback(() => {
-    setFront((prev) => ({ ...prev, ready: true }));
-    storyBlankFrameEnd();
-    if (isNavTraceEnabled()) storyPipelineMark("viewer-dom");
-    recordConsumedBytes(front.mediaUrl.length);
-  }, [front.mediaUrl]);
+  const markSlotReady = useCallback(
+    (event: { slotId: MediaSlotId; storyId: string; mediaUrl: string }) => {
+      setSlots((prev) => {
+        const slot = prev[event.slotId];
+        if (!slot?.storyId || slot.ready) return prev;
+        return applyMediaSlotMutation(prev, event, { ready: true, errored: false });
+      });
+    },
+    [],
+  );
 
-  const markBackReady = useCallback(() => {
-    setBack((prev) => (prev ? { ...prev, ready: true } : prev));
-    onNextReadyChange?.(true);
-  }, [onNextReadyChange]);
+  const markSlotError = useCallback(
+    (event: { slotId: MediaSlotId; storyId: string; mediaUrl: string }) => {
+      setSlots((prev) => applyMediaSlotMutation(prev, event, { ready: false, errored: true }));
+    },
+    [],
+  );
+
+  const markSlotDuration = useCallback(
+    (event: { slotId: MediaSlotId; storyId: string; mediaUrl: string; durationSec: number }) => {
+      setSlots((prev) =>
+        applyMediaSlotMutation(prev, event, { durationSec: event.durationSec }),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
-    onNextReadyChange?.(Boolean(back?.ready));
-  }, [back?.ready, onNextReadyChange]);
+    onNextReadyChange?.(Boolean((back.ready || back.errored) && back.storyId));
+  }, [back.ready, back.errored, back.storyId, onNextReadyChange]);
 
   useEffect(() => {
-    if (current.id === front.storyId && current.mediaUrl === front.mediaUrl) return;
-
-    if (back && back.storyId === current.id && back.mediaUrl === current.mediaUrl && back.ready) {
-      setFront(back);
-      setBack(nextStory?.mediaUrl ? slotFromStory(nextStory) : null);
-      setShowFront(true);
+    if (front.errored && front.storyId === current.id) {
+      onFrontError?.();
+      return;
+    }
+    if (front.ready && !front.errored && front.storyId === current.id) {
+      onFrontReady?.();
       storyBlankFrameEnd();
-      onNextReadyChange?.(false);
-      return;
+      if (isNavTraceEnabled()) storyPipelineMark("viewer-dom");
+      recordConsumedBytes(front.mediaUrl.length);
     }
-
-    storyBlankFrameBegin();
-    setFront(slotFromStory(current));
-    setShowFront(true);
-  }, [
-    current.id,
-    current.mediaUrl,
-    current.mediaType,
-    front.storyId,
-    front.mediaUrl,
-    back,
-    nextStory?.id,
-    nextStory?.mediaUrl,
-    onNextReadyChange,
-  ]);
+  }, [current.id, front.errored, front.ready, front.storyId, front.mediaUrl, onFrontError, onFrontReady]);
 
   useEffect(() => {
-    if (!nextStory?.mediaUrl) {
-      setBack(null);
-      onNextReadyChange?.(false);
+    if (current.id === front.storyId && current.mediaUrl === front.mediaUrl) {
+      storyBlankFrameEnd();
       return;
     }
-    if (back?.storyId === nextStory.id && back.mediaUrl === nextStory.mediaUrl) return;
-    setBack({ ...slotFromStory(nextStory), ready: false });
-    onNextReadyChange?.(false);
-  }, [nextStory?.id, nextStory?.mediaUrl, nextStory?.mediaType, back?.storyId, back?.mediaUrl, onNextReadyChange]);
+    storyBlankFrameBegin();
+  }, [current.id, current.mediaUrl, front.storyId, front.mediaUrl]);
 
-  const frontVisible = showFront;
-  const backVisible = !showFront;
+  useEffect(() => {
+    const el = refs[active].current;
+    const promoted = slots[active];
+    if (!promoted.storyId || promoted.storyId !== current.id) return;
+    const durationSec =
+      promoted.durationSec ||
+      durationFromPromotedElement(el as { duration?: number; readyState?: number } | null);
+    if (durationSec > 0) {
+      emitMetadata({
+        slotId: active,
+        storyId: promoted.storyId,
+        mediaUrl: promoted.mediaUrl,
+        durationSec,
+        readyState: Number((el as HTMLVideoElement | null)?.readyState || 0),
+        visible: true,
+      });
+    }
+    if (el && "play" in el) {
+      void (el as HTMLVideoElement).play?.().catch(() => {});
+    }
+    if (el && "readyState" in el && Number((el as HTMLVideoElement).readyState || 0) >= 2) {
+      const readyEvent = {
+        slotId: active,
+        storyId: promoted.storyId,
+        mediaUrl: mediaElementUrl(el) || promoted.mediaUrl,
+      };
+      queueMicrotask(() => markSlotReady(readyEvent));
+    }
+  }, [active, current.id, emitMetadata, markSlotReady, slots]);
+
+  useEffect(() => {
+    if (!back.mediaUrl || back.ready || back.errored) return undefined;
+    const timer = window.setTimeout(() => {
+      onNextReadyChange?.(true);
+    }, NEXT_MEDIA_READY_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [back.mediaUrl, back.ready, back.errored, back.storyId, onNextReadyChange]);
+
+  function renderSlot(slotId: MediaSlotId, visible: boolean) {
+    const slot = slots[slotId];
+    if (!slot.mediaUrl) return null;
+    const captured = {
+      slotId,
+      storyId: slot.storyId,
+      mediaUrl: slot.mediaUrl,
+    };
+    const markReady = (el?: { currentSrc?: string; src?: string } | null) =>
+      markSlotReady({
+        ...captured,
+        mediaUrl: mediaElementUrl(el || null) || captured.mediaUrl,
+      });
+    if (slot.mediaType === "video") {
+      return (
+        <video
+          ref={(node) => {
+            refs[slotId].current = node;
+          }}
+          key={mediaSlotDomKey(slotId)}
+          src={slot.mediaUrl}
+          className={mediaClass(needsBlur, blurLocked, visible)}
+          autoPlay={visible}
+          playsInline
+          muted={!visible}
+          preload={visible ? "auto" : "metadata"}
+          onLoadedMetadata={(e) => {
+            const duration = e.currentTarget.duration;
+            const durationSec = Number.isFinite(duration) && duration > 0 ? duration : 0;
+            const event = {
+              ...captured,
+              mediaUrl: mediaElementUrl(e.currentTarget) || captured.mediaUrl,
+              durationSec,
+            };
+            markSlotDuration(event);
+            emitMetadata({
+              slotId: event.slotId,
+              storyId: event.storyId,
+              mediaUrl: event.mediaUrl,
+              durationSec,
+              readyState: e.currentTarget.readyState,
+              visible,
+            });
+            if (isNavTraceEnabled()) {
+              storyPipelineMarkVideoPhase(slot.mediaUrl, "loadedmetadata", slot.storyId);
+              storyPipelineMarkResponseReady(slot.mediaUrl, "video", slot.storyId);
+            }
+          }}
+          onLoadedData={(e) => markReady(e.currentTarget)}
+          onCanPlay={(e) => {
+            if (isNavTraceEnabled() && visible) {
+              storyPipelineMarkVideoPhase(slot.mediaUrl, "canplay", slot.storyId);
+            }
+            markReady(e.currentTarget);
+          }}
+          onPlaying={(e) => {
+            if (isNavTraceEnabled() && visible) {
+              storyPipelineMarkVideoPhase(slot.mediaUrl, "first-frame", slot.storyId);
+            }
+            markReady(e.currentTarget);
+          }}
+          onError={(e) =>
+            markSlotError({
+              ...captured,
+              mediaUrl: mediaElementUrl(e.currentTarget) || captured.mediaUrl,
+            })
+          }
+        />
+      );
+    }
+    return (
+      <img
+        ref={(node) => {
+          refs[slotId].current = node;
+        }}
+        key={mediaSlotDomKey(slotId)}
+        src={slot.mediaUrl}
+        alt=""
+        className={mediaClass(needsBlur, blurLocked, visible)}
+        decoding="async"
+        onLoad={(e) => {
+          const img = e.currentTarget;
+          if (isNavTraceEnabled() && visible) {
+            storyPipelineMarkResponseReady(slot.mediaUrl, "image", slot.storyId);
+            storyPipelineMarkImageDecodeReady(
+              slot.mediaUrl,
+              slot.storyId,
+              img.complete,
+              img.naturalWidth,
+              img.naturalHeight,
+            );
+          }
+          if (typeof img.decode === "function") {
+            void img.decode().then(() => markReady(img)).catch(() => markReady(img));
+          } else {
+            markReady(img);
+          }
+        }}
+        onError={(e) =>
+          markSlotError({
+            ...captured,
+            mediaUrl: mediaElementUrl(e.currentTarget) || captured.mediaUrl,
+          })
+        }
+      />
+    );
+  }
 
   return (
     <div className="relative h-full w-full">
-      {front.mediaUrl ? (
-        front.mediaType === "video" ? (
-          <video
-            ref={(node) => {
-              frontRef.current = node;
-            }}
-            key={`front-${front.storyId}`}
-            src={front.mediaUrl}
-            className={mediaClass(needsBlur, blurLocked, frontVisible)}
-            autoPlay
-            playsInline
-            muted={false}
-            preload="auto"
-            onLoadedMetadata={(e) => {
-              const duration = e.currentTarget.duration;
-              if (Number.isFinite(duration) && duration > 0) {
-                onFrontVideoMetadata?.(duration);
-              }
-              if (isNavTraceEnabled()) {
-                storyPipelineMarkVideoPhase(front.mediaUrl, "loadedmetadata", front.storyId);
-                storyPipelineMarkResponseReady(front.mediaUrl, "video", front.storyId);
-              }
-            }}
-            onLoadedData={markFrontReady}
-            onCanPlay={() => {
-              if (isNavTraceEnabled()) {
-                storyPipelineMarkVideoPhase(front.mediaUrl, "canplay", front.storyId);
-              }
-            }}
-            onPlaying={() => {
-              if (isNavTraceEnabled()) {
-                storyPipelineMarkVideoPhase(front.mediaUrl, "first-frame", front.storyId);
-              }
-              markFrontReady();
-            }}
-          />
-        ) : (
-          <img
-            ref={(node) => {
-              frontRef.current = node;
-            }}
-            key={`front-${front.storyId}`}
-            src={front.mediaUrl}
-            alt=""
-            className={mediaClass(needsBlur, blurLocked, frontVisible)}
-            decoding="async"
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              if (isNavTraceEnabled()) {
-                storyPipelineMarkResponseReady(front.mediaUrl, "image", front.storyId);
-                storyPipelineMarkImageDecodeReady(
-                  front.mediaUrl,
-                  front.storyId,
-                  img.complete,
-                  img.naturalWidth,
-                  img.naturalHeight,
-                );
-              }
-              if (typeof img.decode === "function") {
-                void img.decode().then(markFrontReady).catch(markFrontReady);
-              } else {
-                markFrontReady();
-              }
-            }}
-          />
-        )
-      ) : null}
-
-      {back?.mediaUrl ? (
-        back.mediaType === "video" ? (
-          <video
-            ref={(node) => {
-              backRef.current = node;
-            }}
-            key={`back-${back.storyId}`}
-            src={back.mediaUrl}
-            className={mediaClass(needsBlur, blurLocked, backVisible)}
-            autoPlay={backVisible}
-            playsInline
-            muted
-            preload={backVisible ? "auto" : "metadata"}
-            onCanPlay={markBackReady}
-            onPlaying={markBackReady}
-          />
-        ) : (
-          <img
-            ref={(node) => {
-              backRef.current = node;
-            }}
-            key={`back-${back.storyId}`}
-            src={back.mediaUrl}
-            alt=""
-            className={mediaClass(needsBlur, blurLocked, backVisible)}
-            decoding="async"
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              if (typeof img.decode === "function") {
-                void img.decode().then(markBackReady).catch(markBackReady);
-              } else {
-                markBackReady();
-              }
-            }}
-          />
-        )
+      {renderSlot("a", active === "a")}
+      {renderSlot("b", active === "b")}
+      {front.errored ? (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 text-sm font-bold text-white/80">
+          No se pudo cargar
+        </div>
       ) : null}
     </div>
   );

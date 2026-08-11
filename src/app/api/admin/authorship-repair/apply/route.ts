@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
-import { type ApplySelection } from "@/lib/chat/historicalAuthorshipRepair";
+import {
+  HISTORICAL_REPAIR_APPLY_FROZEN,
+  type ApplySelection,
+} from "@/lib/chat/historicalAuthorshipRepair";
+import { applyFrozenHttpBody } from "@/lib/chat/historicalRepairSafety";
 import { applyHistoricalAuthorshipRepair } from "@/lib/chat/historicalAuthorshipRepairWrite";
 
 export const dynamic = "force-dynamic";
@@ -23,20 +27,52 @@ export async function POST(req: Request) {
     reason?: string;
     confirmWriteCount?: number;
     selections?: ApplySelection[];
+    previewId?: string;
+    previewHash?: string;
+    operationId?: string;
+    sealedPreview?: import("@/lib/chat/historicalRepairSafety").SealedRepairPreview;
   };
 
   const chatId = String(body.chatId || "").trim();
-  const selections: ApplySelection[] = (body.selections || [])
-    .map((row) => {
-      if (row?.desiredRole !== "profile" && row?.desiredRole !== "anon") return null;
-      return {
-        messageId: String(row.messageId || ""),
-        desiredRole: row.desiredRole,
-        expectedBeforeHash: String(row.expectedBeforeHash || ""),
-        updateTime: String(row.updateTime || ""),
-      };
-    })
-    .filter((row): row is ApplySelection => Boolean(row?.messageId));
+  const rawSelections = Array.isArray(body.selections) ? body.selections : [];
+  const mixed = rawSelections.some((row) => {
+    if (!row || typeof row !== "object") return true;
+    if (row.desiredRole !== "profile" && row.desiredRole !== "anon") return true;
+    if (!String(row.messageId || "").trim()) return true;
+    return false;
+  });
+
+  if (HISTORICAL_REPAIR_APPLY_FROZEN) {
+    return NextResponse.json(applyFrozenHttpBody(), { status: 403 });
+  }
+
+  if (mixed) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "mixed_invalid_request",
+        writes: 0,
+        applied: [],
+        noop: [],
+        rejected: rawSelections.map((row) => ({
+          messageId: String(row?.messageId || ""),
+          status: "rejected",
+          reason: "mixed_invalid_request",
+        })),
+      },
+      { status: 409 },
+    );
+  }
+
+  const selections: ApplySelection[] = rawSelections.map((row) => ({
+    messageId: String(row.messageId || ""),
+    desiredRole: row.desiredRole,
+    expectedBeforeHash: String(row.expectedBeforeHash || ""),
+    updateTime: String(row.updateTime || ""),
+    collectionName: row.collectionName,
+    collectionPath: row.collectionPath,
+    selectedAnonId: row.selectedAnonId,
+  }));
 
   if (!chatId || selections.length === 0) {
     return NextResponse.json(
@@ -52,6 +88,10 @@ export async function POST(req: Request) {
     confirmWriteCount: Number(body.confirmWriteCount),
     operatorUid: operator.uid,
     operatorEmail: operator.email,
+    previewId: String(body.previewId || ""),
+    previewHash: String(body.previewHash || ""),
+    operationId: String(body.operationId || ""),
+    sealedPreview: body.sealedPreview,
   });
 
   return NextResponse.json({

@@ -6,29 +6,32 @@ import { useMemo } from "react";
 import StoriesMosaic from "@/components/stories/StoriesMosaic";
 import StoriesTray from "@/components/stories/StoriesTray";
 import { useT } from "@/contexts/LocaleContext";
+import { getStoryOwnerKey } from "@/lib/stories/storyAuthor";
+import { splitMineStoryGroups } from "@/lib/stories/storyOwnerIdentity";
 import type { StoryUserGroup } from "@/lib/stories/types";
 
 type Props = {
   groups: StoryUserGroup[];
   viewerUid?: string;
+  ownerKey?: string;
   variant?: "classic" | "modern";
 };
 
-export default function StoriesHub({ groups, viewerUid = "", variant = "modern" }: Props) {
+export default function StoriesHub({
+  groups,
+  ownerKey = "",
+  variant = "modern",
+}: Props) {
   const t = useT();
+  const mineKey = ownerKey || getStoryOwnerKey();
 
-  const { mine, everyone } = useMemo(() => {
-    if (!viewerUid) {
-      return { mine: [] as StoryUserGroup[], everyone: groups };
-    }
+  const { mine, everyone } = useMemo(
+    () => splitMineStoryGroups(groups, mineKey),
+    [groups, mineKey],
+  );
 
-    const mineGroups = groups.filter((g) => g.ownerUid === viewerUid);
-    const rest = groups.filter((g) => g.ownerUid !== viewerUid);
-    return { mine: mineGroups, everyone: rest.length ? rest : groups };
-  }, [groups, viewerUid]);
-
-  const trayGroups = viewerUid && mine.length ? mine : groups;
-  const mosaicGroups = viewerUid && mine.length ? [...mine, ...everyone] : groups;
+  const trayGroups = mineKey && mine.length ? mine : groups;
+  const mosaicGroups = mineKey && mine.length ? [...mine, ...everyone] : groups;
 
   const isModern = variant === "modern";
 
@@ -43,7 +46,7 @@ export default function StoriesHub({ groups, viewerUid = "", variant = "modern" 
                 : "text-3xl font-black tracking-[-0.06em]"
             }
           >
-            {viewerUid && mine.length ? t("stories_yours") : t("stories_title")}
+            {mineKey && mine.length ? t("stories_yours") : t("stories_title")}
           </h2>
           <Link
             href="/stories/new"

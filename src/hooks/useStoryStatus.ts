@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 
+import { getStoryViewerKey } from "@/lib/stories/storyAuthor";
 import {
   getStoryGroup,
   getStoriesIndexVersion,
@@ -12,10 +13,11 @@ export function useStoryStatus(ownerUid?: string, username?: string) {
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
 
   const group = getStoryGroup(ownerUid, username);
+  const viewerReady = Boolean(getStoryViewerKey());
 
   return {
     hasActive: Boolean(group && group.stories.length > 0),
-    hasUnseen: group?.hasUnseen ?? false,
+    hasUnseen: viewerReady && (group?.hasUnseen ?? false),
     storyCount: group?.stories.length ?? 0,
     group,
     storyPath: group

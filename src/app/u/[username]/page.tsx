@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { resolveStoryViewerId } from "@/lib/stories/storyAuthor";
+import { resolveStoryViewerIdReady } from "@/lib/stories/storyAuthor";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
@@ -272,7 +272,9 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     if (!profile?.uid) return;
-    refreshStoriesIndex(resolveStoryViewerId(auth.currentUser), false).catch(() => {});
+    void resolveStoryViewerIdReady().then((viewerId) => {
+      if (viewerId) refreshStoriesIndex(viewerId, false).catch(() => {});
+    });
     prefetchOwnerStories(profile.uid, profile.username);
   }, [profile?.uid, profile?.username, currentUid]);
 

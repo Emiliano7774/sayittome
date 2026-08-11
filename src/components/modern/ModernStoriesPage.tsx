@@ -10,7 +10,7 @@ import { useT } from "@/contexts/LocaleContext";
 
 export default function ModernStoriesPage() {
   const t = useT();
-  const { groups, viewerUid, loading, indexPending } = useStoriesGroups();
+  const { groups, viewerUid, ownerKey, loading, indexPending } = useStoriesGroups();
 
   useNavUsefulPaint(!loading && !indexPending, "/stories");
 
@@ -20,7 +20,7 @@ export default function ModernStoriesPage() {
         <ModernPageHeader title={t("stories_title")} subtitle={t("stories_subtitle")} />
 
         {groups.length > 0 ? (
-          <StoriesHub groups={groups} viewerUid={viewerUid} />
+          <StoriesHub groups={groups} viewerUid={viewerUid} ownerKey={ownerKey} />
         ) : indexPending ? (
           // Stable awaiting shell (no "Cargando historias..." / data-nav-loading-copy).
           // Tab stay gates treat that copy as FAIL when Stories is already final.

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
+import { HISTORICAL_REPAIR_APPLY_FROZEN } from "@/lib/chat/historicalAuthorshipRepair";
+import { applyFrozenHttpBody } from "@/lib/chat/historicalRepairSafety";
 import { rollbackHistoricalAuthorshipRepair } from "@/lib/chat/historicalAuthorshipRepairWrite";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,10 @@ export async function POST(req: Request) {
       { ok: false, error: String((error as Error)?.message || "forbidden"), writes: 0 },
       { status },
     );
+  }
+
+  if (HISTORICAL_REPAIR_APPLY_FROZEN) {
+    return NextResponse.json(applyFrozenHttpBody(), { status: 403 });
   }
 
   const body = (await req.json()) as { repairId?: string; reason?: string };

@@ -53,6 +53,10 @@ export function completeChatNotificationPrompt(enabled: boolean) {
   writePrefs({ enabled, prompted: true });
 }
 
+export function resetChatNotificationPromptOnLogout() {
+  writePrefs({ enabled: false, prompted: false });
+}
+
 export function subscribeChatNotificationPrefs(listener: () => void) {
   if (typeof window === "undefined") return () => undefined;
 

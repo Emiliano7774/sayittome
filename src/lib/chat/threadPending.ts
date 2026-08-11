@@ -3,9 +3,10 @@ import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
   isIncomingChatActivity,
   isOwnChatSender,
+  resolveChatViewerRole,
+  type ChatViewerRoleInput,
 } from "@/lib/chat/incomingChatActivity";
 import {
-  isIncomingAnonChatForOwner,
   profileAnonSenderFromChat,
   resolveChatViewerId,
 } from "@/lib/chat/inboxPeerTitle";
@@ -61,19 +62,29 @@ export function computeThreadPendingForViewer(
   chat: InboxChat,
   firebaseUid = "",
   activeDetailThreadId = "",
+  roleInput?: ChatViewerRoleInput,
 ): ThreadPendingResult {
   const threadId = chat.canonicalChatId || chat.id;
   const viewerId = resolveChatViewerId(chat, firebaseUid);
+  const role = resolveChatViewerRole({
+    viewerId,
+    firebaseUid,
+    chat,
+    viewerKind: roleInput?.viewerKind,
+    provenOwner: roleInput?.provenOwner,
+  });
   const currentAnonSessionId = getChatAnonSenderId();
   const threadAnon = profileAnonSenderFromChat(chat);
   const candidates = new Set<string>();
   if (viewerId) candidates.add(viewerId);
 
-  if (!isIncomingAnonChatForOwner(chat, firebaseUid)) {
+  if (role.viewerKind === "anon" && !role.provenOwner) {
     if (threadAnon.startsWith("anon_")) candidates.add(threadAnon);
     if (currentAnonSessionId.startsWith("anon_")) {
       candidates.add(currentAnonSessionId);
     }
+  } else if (firebaseUid) {
+    candidates.add(firebaseUid);
   }
 
   const candidateViewerIds = [...candidates];
@@ -94,15 +105,13 @@ export function computeThreadPendingForViewer(
   const activeDetail =
     Boolean(activeDetailThreadId) &&
     (activeDetailThreadId === threadId || activeDetailThreadId === chat.id);
-  const isOwnLatestMessage = isOwnChatSender(
-    latestSenderUid,
-    viewerId,
-    firebaseUid,
-    chat,
-  );
+  const isOwnLatestMessage =
+    isOwnChatSender(latestSenderUid, viewerId, firebaseUid, chat, role) ||
+    (latestSenderAnonSessionId.startsWith("anon_") &&
+      isOwnChatSender(latestSenderAnonSessionId, viewerId, firebaseUid, chat, role));
   const incoming =
     Boolean(String(chat.lastMessage || "").trim()) &&
-    isIncomingChatActivity(chat, viewerId, firebaseUid);
+    isIncomingChatActivity(chat, viewerId, firebaseUid, role);
 
   let serverUnreadSignal = false;
   let readAt = 0;

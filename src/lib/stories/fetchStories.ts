@@ -1,4 +1,4 @@
-import { collection, getDocs, limit, query, Timestamp, where } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query, startAfter, Timestamp, where } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
 import {
@@ -8,9 +8,13 @@ import {
 import {
   applyViewedCacheToStory,
   isOwnerGroupSnapshotComplete,
-  isStoryViewedInCache,
+  isStoryUnseenForViewer,
 } from "@/lib/stories/storyViewedCache";
 
+import {
+  selectStoriesForIndex,
+  shouldKeepScanningStoryFallback,
+} from "@/lib/stories/selectStoriesForIndex";
 import type { StoryItem, StoryUserGroup } from "./types";
 
 function tsToMs(value: unknown) {
@@ -22,8 +26,8 @@ function tsToMs(value: unknown) {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
-function parseStoryDoc(docSnap: { id: string; data: () => Record<string, unknown> }, now: number) {
-  const data = docSnap.data();
+function parseStoryDoc(docSnap: { id: string; data: () => unknown }, now: number) {
+  const data = (docSnap.data() || {}) as Record<string, unknown>;
 
   if (data.adminDeleted === true || data.active === false) return null;
 
@@ -65,28 +69,19 @@ function parseStoryDoc(docSnap: { id: string; data: () => Record<string, unknown
   return item;
 }
 
-function storyUnseenForViewer(story: StoryItem, viewerUid: string) {
-  if (!viewerUid) return true;
-  if (isStoryViewedInCache(viewerUid, story.id)) return false;
-  if (viewerUid.startsWith("anon_")) {
-    return !story.viewedByAnon?.[viewerUid];
-  }
-  return !story.viewedBy?.[viewerUid];
-}
-
 function computeGroupHasUnseen(
   stories: StoryItem[],
   viewerUid: string,
   ownerUid: string,
 ) {
-  if (!viewerUid) return true;
+  if (!viewerUid) return false;
 
   const storyIds = stories.map((story) => story.id);
   if (isOwnerGroupSnapshotComplete(viewerUid, ownerUid, storyIds)) {
     return false;
   }
 
-  return stories.some((story) => storyUnseenForViewer(story, viewerUid));
+  return stories.some((story) => isStoryUnseenForViewer(story, viewerUid));
 }
 
 function groupStories(stories: StoryItem[], viewerUid: string) {
@@ -181,14 +176,87 @@ async function fetchActiveStoryDocs(now: number) {
         collection(db, "historias"),
         where("active", "==", true),
         where("expiresAt", ">", expiresAfter),
+        orderBy("expiresAt", "desc"),
         limit(STORIES_QUERY_LIMIT),
       ),
     );
     return indexed;
   } catch (error) {
-    console.warn("historias indexed query failed, falling back to limited scan", error);
-    return getDocs(query(collection(db, "historias"), limit(STORIES_QUERY_LIMIT)));
+    console.warn("historias newest-first query failed, falling back to deterministic scan", error);
+    const pageSize = 400;
+    const scannedDocs: Array<{ id: string; data: () => unknown }> = [];
+    let lastId = "";
+    let pageCount = 0;
+    let lastPageSize = pageSize;
+    do {
+      const pageQuery = lastId
+        ? query(
+            collection(db, "historias"),
+            orderBy("__name__"),
+            startAfter(lastId),
+            limit(pageSize),
+          )
+        : query(collection(db, "historias"), orderBy("__name__"), limit(pageSize));
+      const page = await getDocs(pageQuery);
+      pageCount += 1;
+      lastPageSize = page.size;
+      scannedDocs.push(...page.docs);
+      lastId = page.docs[page.docs.length - 1]?.id || "";
+    } while (
+      lastId &&
+      shouldKeepScanningStoryFallback({
+        pageSize,
+        pageCount,
+        lastPageSize,
+      })
+    );
+    const selected = new Set(
+      selectStoriesForIndex(
+        scannedDocs.map((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          return {
+            id: docSnap.id,
+            active: data.active !== false,
+            adminDeleted: data.adminDeleted === true,
+            expiresAtMs: tsToMs(data.expiresAt),
+            createdAtMs: tsToMs(data.createdAt),
+          };
+        }),
+        { limit: STORIES_QUERY_LIMIT, now },
+      ).map((row) => row.id),
+    );
+    const docs = scannedDocs.filter((docSnap) => selected.has(docSnap.id));
+    return {
+      docs,
+      forEach(callback: (doc: (typeof docs)[number]) => void) {
+        docs.forEach((docSnap) => callback(docSnap));
+      },
+    } as Awaited<ReturnType<typeof getDocs>>;
   }
+}
+
+export function applyHydratedProfiles(
+  groups: StoryUserGroup[],
+  profileByUid: Map<string, { username: string; photo: string }>,
+) {
+  let changed = false;
+  const next = groups.map((group) => {
+    if (group.isAnonymousStory) return group;
+    const profile = profileByUid.get(group.ownerUid);
+    if (!profile?.username) return group;
+    changed = true;
+    return {
+      ...group,
+      ownerUsername: profile.username,
+      ownerPhoto: profile.photo || group.ownerPhoto,
+      stories: group.stories.map((story) => ({
+        ...story,
+        ownerUsername: profile.username,
+        ownerPhoto: profile.photo || story.ownerPhoto,
+      })),
+    };
+  });
+  return changed ? next : groups.slice();
 }
 
 async function hydrateRegisteredProfiles(groups: StoryUserGroup[]) {
@@ -204,7 +272,7 @@ async function hydrateRegisteredProfiles(groups: StoryUserGroup[]) {
     ),
   ];
 
-  if (registeredOwnerUids.length === 0) return;
+  if (registeredOwnerUids.length === 0) return groups.slice();
 
   const profiles = await Promise.all(
     registeredOwnerUids.map(async (ownerUid) => {
@@ -213,25 +281,15 @@ async function hydrateRegisteredProfiles(groups: StoryUserGroup[]) {
     }),
   );
 
-  const profileByUid = new Map(profiles);
-
-  for (const group of groups) {
-    if (group.isAnonymousStory) continue;
-
-    const profile = profileByUid.get(group.ownerUid);
-    if (!profile?.username) continue;
-
-    group.ownerUsername = profile.username;
-    if (profile.photo) group.ownerPhoto = profile.photo;
-
-    for (const story of group.stories) {
-      story.ownerUsername = profile.username;
-      if (profile.photo) story.ownerPhoto = profile.photo;
-    }
-  }
+  return applyHydratedProfiles(groups, new Map(profiles));
 }
 
-export async function fetchActiveStoriesGrouped(viewerUid = "") {
+export { hydrateRegisteredProfiles };
+
+export async function fetchActiveStoriesGrouped(
+  viewerUid = "",
+  options?: { hydrate?: boolean },
+) {
   const now = Date.now();
   const snap = await fetchActiveStoryDocs(now);
 
@@ -242,6 +300,6 @@ export async function fetchActiveStoriesGrouped(viewerUid = "") {
   });
 
   const groups = groupStories(stories, viewerUid);
-  await hydrateRegisteredProfiles(groups);
-  return groups;
+  if (options?.hydrate === false) return groups;
+  return hydrateRegisteredProfiles(groups);
 }

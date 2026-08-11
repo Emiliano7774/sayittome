@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { auth } from "@/lib/firebase";
 import type { RepairPlan, RepairPerspective } from "@/lib/chat/historicalAuthorshipRepair";
@@ -11,20 +11,29 @@ type ChatRow = {
   lastMessage?: string;
 };
 
-type Mark = { messageId: string; mine: boolean };
+type Mark = { messageId: string; mine: boolean; collectionPath?: string; selectedAnonId?: string };
+
+function markKey(row: { messageId?: string; collectionPath?: string }) {
+  return String(row.collectionPath || "").trim() || String(row.messageId || "");
+}
 
 async function adminFetch(url: string, init?: RequestInit) {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+  const requestId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `req_${Date.now()}`;
   const res = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       Authorization: token ? `Bearer ${token}` : "",
+      "x-request-id": requestId,
       ...(init?.headers || {}),
     },
   });
   const json = await res.json();
-  return { res, json };
+  return { res, json, requestId };
 }
 
 export default function AdminAuthorshipRepairPanel() {
@@ -41,13 +50,21 @@ export default function AdminAuthorshipRepairPanel() {
   const [confirmCount, setConfirmCount] = useState("");
   const [reviewed, setReviewed] = useState(false);
   const [repairId, setRepairId] = useState("");
+  const [previewId, setPreviewId] = useState("");
+  const [previewHash, setPreviewHash] = useState("");
+  const [sealedPreview, setSealedPreview] = useState<unknown>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const previewRequestIdRef = useRef(0);
 
-  const markById = useMemo(
-    () => new Map(marks.map((mark) => [mark.messageId, mark])),
+  const markByKey = useMemo(
+    () => new Map(marks.map((mark) => [markKey(mark), mark])),
     [marks],
   );
+  const busyGenRef = useRef(0);
 
   async function loadChats() {
+    const gen = busyGenRef.current + 1;
+    busyGenRef.current = gen;
     setBusy("chats");
     setError("");
     setPlan(null);
@@ -60,7 +77,7 @@ export default function AdminAuthorshipRepairPanel() {
     } catch (err) {
       setError(String((err as Error).message || err));
     } finally {
-      setBusy("");
+      if (busyGenRef.current === gen) setBusy("");
     }
   }
 
@@ -70,18 +87,28 @@ export default function AdminAuthorshipRepairPanel() {
     nextChatId = chatId,
   ) {
     if (!nextChatId) return;
+    const gen = busyGenRef.current + 1;
+    busyGenRef.current = gen;
     setBusy(redactPii ? "export" : "preview");
     setError("");
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const requestId = previewRequestIdRef.current + 1;
+    previewRequestIdRef.current = requestId;
     try {
       const { res, json } = await adminFetch("/api/admin/authorship-repair/preview", {
         method: "POST",
+        signal: ac.signal,
         body: JSON.stringify({
           chatId: nextChatId,
           perspective,
           marks: nextMarks,
           redactPii,
+          previewRequestId: requestId,
         }),
       });
+      if (requestId !== previewRequestIdRef.current) return;
       if (!res.ok || !json.ok) throw new Error(json.error || `http_${res.status}`);
       if (redactPii) {
         await navigator.clipboard.writeText(JSON.stringify(json.plan, null, 2));
@@ -89,19 +116,36 @@ export default function AdminAuthorshipRepairPanel() {
         return;
       }
       setPlan(json.plan as RepairPlan);
+      setPreviewId(String(json.previewId || ""));
+      setPreviewHash(String(json.previewHash || ""));
+      setSealedPreview(json.sealedPreview || null);
       setReviewed(false);
       setConfirmCount("");
     } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
+      if (requestId !== previewRequestIdRef.current) return;
       setError(String((err as Error).message || err));
     } finally {
-      setBusy("");
+      if (requestId === previewRequestIdRef.current && busyGenRef.current === gen) {
+        setBusy("");
+      }
     }
   }
 
-  function setMark(messageId: string, mine: boolean) {
+  function setMark(
+    messageId: string,
+    mine: boolean,
+    extras?: { collectionPath?: string; selectedAnonId?: string },
+  ) {
+    const key = markKey({ messageId, collectionPath: extras?.collectionPath });
     const next = [
-      ...marks.filter((mark) => mark.messageId !== messageId),
-      { messageId, mine },
+      ...marks.filter((mark) => markKey(mark) !== key),
+      {
+        messageId,
+        mine,
+        collectionPath: extras?.collectionPath,
+        selectedAnonId: extras?.selectedAnonId,
+      },
     ];
     setMarks(next);
     void preview(next);
@@ -109,20 +153,25 @@ export default function AdminAuthorshipRepairPanel() {
 
   function markRange(mine: boolean) {
     if (!plan) return;
-    const selected = plan.rows.filter((row) => markById.has(row.messageId));
+    const selected = plan.rows.filter((row) => markByKey.has(markKey(row)));
     if (selected.length < 2) return;
-    const first = plan.rows.findIndex((row) => row.messageId === selected[0].messageId);
+    const first = plan.rows.findIndex((row) => markKey(row) === markKey(selected[0]));
     const last = plan.rows.findIndex(
-      (row) => row.messageId === selected[selected.length - 1].messageId,
+      (row) => markKey(row) === markKey(selected[selected.length - 1]),
     );
     const [start, end] = first < last ? [first, last] : [last, first];
     const next = [...marks];
     for (let i = start; i <= end; i += 1) {
-      const id = plan.rows[i].messageId;
-      const idx = next.findIndex((mark) => mark.messageId === id);
-      const row = { messageId: id, mine };
-      if (idx >= 0) next[idx] = row;
-      else next.push(row);
+      const row = plan.rows[i];
+      const item = {
+        messageId: row.messageId,
+        mine,
+        collectionPath: row.collectionPath,
+        selectedAnonId: plan.identities.threadAnonId,
+      };
+      const idx = next.findIndex((mark) => markKey(mark) === markKey(row));
+      if (idx >= 0) next[idx] = item;
+      else next.push(item);
     }
     setMarks(next);
     void preview(next);
@@ -133,15 +182,21 @@ export default function AdminAuthorshipRepairPanel() {
     return plan.rows
       .filter((row) => row.selected)
       .map((row) => {
-        const mark = markById.get(row.messageId);
+        const mark = markByKey.get(markKey(row));
         const desiredRole = mark
-          ? markFromPerspective(perspective, row.messageId, mark.mine).authorRole
+          ? markFromPerspective(perspective, row.messageId, mark.mine, {
+              collectionPath: row.collectionPath,
+              selectedAnonId: mark.selectedAnonId || plan.identities.threadAnonId,
+            }).authorRole
           : row.proposed?.senderRole;
         return {
           messageId: row.messageId,
           desiredRole,
           expectedBeforeHash: row.expectedBeforeHash,
           updateTime: row.updateTime,
+          collectionName: row.collectionName,
+          collectionPath: row.collectionPath,
+          selectedAnonId: mark?.selectedAnonId || plan.identities.threadAnonId,
         };
       });
   }
@@ -152,6 +207,8 @@ export default function AdminAuthorshipRepairPanel() {
       setError("Revisá el conteo, confirmá y escribí un motivo (≥8).");
       return;
     }
+    const gen = busyGenRef.current + 1;
+    busyGenRef.current = gen;
     setBusy("apply");
     setResult("");
     try {
@@ -163,6 +220,9 @@ export default function AdminAuthorshipRepairPanel() {
           reason: reason.trim(),
           confirmWriteCount: plan.writeCount,
           selections: buildSelections(),
+          previewId,
+          previewHash,
+          sealedPreview,
         }),
       });
       setResult(JSON.stringify({
@@ -177,7 +237,7 @@ export default function AdminAuthorshipRepairPanel() {
       if (json.repairId) setRepairId(json.repairId);
       if (json.ok) void preview(marks, false);
     } finally {
-      setBusy("");
+      if (busyGenRef.current === gen) setBusy("");
     }
   }
 
@@ -186,6 +246,8 @@ export default function AdminAuthorshipRepairPanel() {
       setError("Rollback necesita repairId y motivo (≥8).");
       return;
     }
+    const gen = busyGenRef.current + 1;
+    busyGenRef.current = gen;
     setBusy("rollback");
     try {
       const { res, json } = await adminFetch("/api/admin/authorship-repair/rollback", {
@@ -203,7 +265,7 @@ export default function AdminAuthorshipRepairPanel() {
       }, null, 2));
       if (json.ok) void preview(marks, false);
     } finally {
-      setBusy("");
+      if (busyGenRef.current === gen) setBusy("");
     }
   }
 
@@ -219,8 +281,8 @@ export default function AdminAuthorshipRepairPanel() {
       <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5">
         <p className="text-lg font-black">Reparación histórica asistida</p>
         <p className="mt-2 text-sm font-bold text-white/70">
-          Writer habilitado. Solo selecciones explícitas, OCC por hash+updateTime,
-          backup atómico. No toca 107cae5. Aplicá sólo chats que hayas revisado.
+          Apply/rollback congelados (APPLY_FROZEN). Preview y export sin PII
+          siguen disponibles. No toca 107cae5.
         </p>
       </section>
 
@@ -279,9 +341,17 @@ export default function AdminAuthorshipRepairPanel() {
             <select
               value={perspective}
               onChange={(event) => {
+                abortRef.current?.abort();
+                previewRequestIdRef.current += 1;
+                busyGenRef.current += 1;
                 setPerspective(event.target.value as RepairPerspective);
                 setMarks([]);
                 setPlan(null);
+                setPreviewId("");
+                setPreviewHash("");
+                setSealedPreview(null);
+                setReviewed(false);
+                setBusy("");
               }}
               className="rounded-xl border border-white/15 bg-black px-3 py-2"
             >
@@ -317,9 +387,9 @@ export default function AdminAuthorshipRepairPanel() {
 
           <div className="space-y-2">
             {(plan?.rows || []).map((row) => {
-              const mark = markById.get(row.messageId);
+              const mark = markByKey.get(markKey(row));
               return (
-                <div key={row.messageId} className="rounded-2xl border border-white/10 bg-black/50 p-3 text-sm">
+                <div key={markKey(row)} className="rounded-2xl border border-white/10 bg-black/50 p-3 text-sm">
                   <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-white/60">
                     <span>{row.messageIdShort}</span>
                     <span>{row.createdAt ? row.createdAt.slice(11, 19) : "--:--"}</span>
@@ -329,14 +399,24 @@ export default function AdminAuthorshipRepairPanel() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => setMark(row.messageId, true)}
+                      onClick={() =>
+                        setMark(row.messageId, true, {
+                          collectionPath: row.collectionPath,
+                          selectedAnonId: plan?.identities.threadAnonId,
+                        })
+                      }
                       className={mark?.mine === true ? "rounded-lg bg-emerald-400 px-3 py-1 text-xs font-black text-black" : "rounded-lg border border-white/20 px-3 py-1 text-xs font-black"}
                     >
                       mío
                     </button>
                     <button
                       type="button"
-                      onClick={() => setMark(row.messageId, false)}
+                      onClick={() =>
+                        setMark(row.messageId, false, {
+                          collectionPath: row.collectionPath,
+                          selectedAnonId: plan?.identities.threadAnonId,
+                        })
+                      }
                       className={mark?.mine === false ? "rounded-lg bg-sky-400 px-3 py-1 text-xs font-black text-black" : "rounded-lg border border-white/20 px-3 py-1 text-xs font-black"}
                     >
                       de la otra

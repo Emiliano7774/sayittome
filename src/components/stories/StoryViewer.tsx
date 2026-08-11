@@ -18,25 +18,46 @@ import { auth, db } from "@/lib/firebase";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
 import { getLikerId } from "@/lib/likes/profileLike";
 import { deleteStoryById } from "@/lib/stories/deleteStory";
-import { canManageStory, resolveStoryViewerId } from "@/lib/stories/anonStories";
-import { isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
+import { canManageStory, resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/anonStories";
+import { getStoryOwnerKey, isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
+import {
+  shouldPersistVideoDuration,
+  videoDurationMsFromMetadata,
+} from "@/lib/stories/storyMediaSlots";
+import {
+  ackStoryView,
+  enqueueStoryViewAckRetry,
+  isolateStoryViewAckQueue,
+  scheduleStoryViewAckFlush,
+} from "@/lib/stories/ackStoryView";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
-import { isStoryViewedInCache } from "@/lib/stories/storyViewedCache";
+import {
+  isOwnerGroupSnapshotComplete,
+  isStoryUnseenForViewer,
+} from "@/lib/stories/storyViewedCache";
 import {
   getCachedStoryGroups,
-  getNextStoryGroup,
   getPreviousStoryGroup,
   markStoryViewedLocally,
-  prefetchUpcomingStoryGroups,
 } from "@/lib/stories/storiesIndexStore";
-import { preloadStoryPlaybackChain } from "@/lib/stories/preload";
+import {
+  firstUnseenStoryIndex,
+  NEXT_MEDIA_READY_TIMEOUT_MS,
+  isStoryViewerUsefulPaint,
+  resolveNextPlayTarget,
+  shouldMarkStoryViewed,
+  shouldReleaseMediaGate,
+  shouldReplayStoryPlayback,
+  shouldStartStoryProgress,
+} from "@/lib/stories/storiesQueryGuard";
+import { preloadNextPlayTarget, preloadStoryMedia } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { resolveStoryViewerExitDestination } from "@/lib/navigation/storyReturnNav";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
 import StoryMediaBuffers from "@/components/stories/StoryMediaBuffers";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import ContentReportDialog from "@/components/moderation/ContentReportDialog";
-import type { StoryItem } from "@/lib/stories/types";
+import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
 import { useT } from "@/contexts/LocaleContext";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
@@ -58,6 +79,28 @@ const SWIPE_REPLY_PX = 56;
 const SWIPE_DISMISS_PX = 48;
 const TAP_MAX_MS = 380;
 
+function groupIsUnseenForViewer(group: StoryUserGroup, viewerId: string) {
+  if (!viewerId) return false;
+  const storyIds = group.stories.map((story) => story.id);
+  if (group.ownerUid && isOwnerGroupSnapshotComplete(viewerId, group.ownerUid, storyIds)) {
+    return false;
+  }
+  return group.stories.some((story) => isStoryUnseenForViewer(story, viewerId));
+}
+
+function initialStoryIndex(
+  stories: StoryItem[],
+  initialStoryId: string | undefined,
+  viewerId: string,
+) {
+  if (initialStoryId) {
+    const nextIndex = stories.findIndex((story) => story.id === initialStoryId);
+    return nextIndex >= 0 ? nextIndex : 0;
+  }
+  const firstUnseen = firstUnseenStoryIndex(stories, viewerId, isStoryUnseenForViewer);
+  return firstUnseen >= 0 ? firstUnseen : 0;
+}
+
 export default function StoryViewer({
   stories,
   ownerUsername,
@@ -72,8 +115,11 @@ export default function StoryViewer({
   const [activeOwnerUsername, setActiveOwnerUsername] = useState(ownerUsername || "");
   const [paused, setPaused] = useState(false);
   const [blurLocked, setBlurLocked] = useState(false);
+  const [appliedBlurId, setAppliedBlurId] = useState("");
   const [likeBusy, setLikeBusy] = useState(false);
   const [viewerUid, setViewerUid] = useState("");
+  const [ownerKey, setOwnerKey] = useState("");
+  const [replayLocked, setReplayLocked] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState("");
@@ -81,30 +127,42 @@ export default function StoryViewer({
   const [replyDragging, setReplyDragging] = useState(false);
   const [replySentToast, setReplySentToast] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const startedRef = useRef(false);
+  const durationWrittenIdRef = useRef("");
   const viewedRef = useRef<Set<string>>(new Set());
+  const [frontReady, setFrontReady] = useState(false);
+  const [frontError, setFrontError] = useState(false);
+  const [appliedFrontId, setAppliedFrontId] = useState("");
   const [nextMediaReady, setNextMediaReady] = useState(false);
   const pendingAdvanceRef = useRef(false);
   const pointerRef = useRef({ x: 0, y: 0, t: 0, swiped: false });
   const replyPointerRef = useRef({ y: 0, dragging: false });
   const replySentTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
+  const incomingStoryKey = [
+    ownerUid || "",
+    ownerUsername || "",
+    initialStoryId || "",
+    stories.map((story) => story.id).join(","),
+    viewerUid,
+  ].join("|");
+  const [appliedStoryKey, setAppliedStoryKey] = useState(incomingStoryKey);
+  if (appliedStoryKey !== incomingStoryKey) {
+    setAppliedStoryKey(incomingStoryKey);
     setLocalStories(stories);
     if (ownerUid) setActiveOwnerUid(ownerUid);
     if (ownerUsername) setActiveOwnerUsername(ownerUsername);
-    if (initialStoryId) {
-      const nextIndex = stories.findIndex((story) => story.id === initialStoryId);
-      setIndex(nextIndex >= 0 ? nextIndex : 0);
-      return;
-    }
-    // Resume at first unseen story for this viewer (durable localStorage cache).
-    const viewer = resolveStoryViewerId(auth.currentUser);
-    const firstUnseen = stories.findIndex(
-      (story) => viewer && !isStoryViewedInCache(viewer, story.id),
+    setReplayLocked(
+      Boolean(viewerUid) &&
+        shouldReplayStoryPlayback({
+          stories,
+          viewerId: viewerUid,
+          initialStoryId,
+          isUnseen: isStoryUnseenForViewer,
+        }),
     );
-    setIndex(firstUnseen >= 0 ? firstUnseen : 0);
-  }, [initialStoryId, ownerUid, ownerUsername, stories]);
+    setIndex(viewerUid ? initialStoryIndex(stories, initialStoryId, viewerUid) : 0);
+    setFrontReady(false);
+    setFrontError(false);
+  }
 
   useEffect(() => {
     document.body.classList.add("sayittome-story-viewer-open");
@@ -132,17 +190,38 @@ export default function StoryViewer({
   }, [exitStoryViewer]);
 
   const current = localStories[index];
+  if ((current?.id || "") !== appliedFrontId) {
+    setAppliedFrontId(current?.id || "");
+    setFrontReady(false);
+    setFrontError(false);
+  }
+  const viewerReady = Boolean(viewerUid);
   const resolvedOwnerUid = activeOwnerUid || ownerUid || current?.ownerUid || "";
+  const nextTarget = useMemo(
+    () =>
+      resolveNextPlayTarget({
+        viewerId: viewerUid,
+        currentOwnerUid: resolvedOwnerUid,
+        currentIndex: index,
+        currentStories: localStories,
+        groups: getCachedStoryGroups(viewerUid),
+        replay: replayLocked,
+        isUnseen: isStoryUnseenForViewer,
+        groupIsUnseen: groupIsUnseenForViewer,
+      }),
+    [index, localStories, replayLocked, resolvedOwnerUid, viewerUid],
+  );
   const nextStory = useMemo(() => {
-    if (!current) return null;
-    if (index < localStories.length - 1) {
-      return localStories[index + 1] ?? null;
+    if (nextTarget.kind === "same-group") {
+      return localStories[nextTarget.storyIndex] ?? null;
     }
-    const nextGroup = getNextStoryGroup(resolvedOwnerUid);
-    return nextGroup?.stories[0] ?? null;
-  }, [current, index, localStories, resolvedOwnerUid]);
+    if (nextTarget.kind === "next-group") {
+      return nextTarget.group?.stories[nextTarget.storyIndex] ?? null;
+    }
+    return null;
+  }, [localStories, nextTarget]);
 
-  useNavUsefulPaint(Boolean(current));
+  useNavUsefulPaint(isStoryViewerUsefulPaint({ current, frontReady, errored: frontError }));
   const resolvedOwnerUsername =
     activeOwnerUsername || ownerUsername || current?.ownerUsername || "";
 
@@ -187,8 +266,24 @@ export default function StoryViewer({
     !isInvalidPublicStoryUsername(profileUsername);
   const canReply = canOpenProfile;
   const needsBlur = current ? storyRequiresBlur(current) : false;
-  const isPaused = paused || replyOpen || (needsBlur && blurLocked);
-  const canDelete = current ? canManageStory(current, viewerUid) : false;
+  const playbackReady = shouldStartStoryProgress({
+    viewerReady,
+    hasMediaUrl: Boolean(current?.mediaUrl),
+    mediaType: current?.mediaType,
+    frontReady,
+    errored: frontError,
+    durationMs: current?.durationMs,
+  });
+  const viewedReady = shouldMarkStoryViewed({
+    viewerReady,
+    hasMediaUrl: Boolean(current?.mediaUrl),
+    mediaType: current?.mediaType,
+    frontReady,
+    errored: frontError,
+    durationMs: current?.durationMs,
+  });
+  const isPaused = paused || replyOpen || (needsBlur && blurLocked) || !playbackReady;
+  const canDelete = current ? canManageStory(current, ownerKey || getStoryOwnerKey()) : false;
   const likerId = getLikerId();
   const storyLiked = Boolean(likerId && current?.likedBy?.[likerId]);
   const storyLikeCount = Number(current?.likeCount || 0);
@@ -225,10 +320,33 @@ export default function StoryViewer({
   }, []);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setViewerUid(resolveStoryViewerId(user));
+    let cancelled = false;
+    let ready = false;
+    void resolveStoryViewerIdReady().then((viewerId) => {
+      if (cancelled) return;
+      ready = true;
+      setViewerUid(viewerId);
+      isolateStoryViewAckQueue(viewerId);
+      void scheduleStoryViewAckFlush(viewerId);
+      setOwnerKey(getStoryOwnerKey());
     });
-    return () => unsub();
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!ready) return;
+      const next = resolveStoryViewerId(user);
+      setViewerUid((prev) => {
+        if (prev && next && prev !== next) {
+          viewedRef.current = new Set();
+          isolateStoryViewAckQueue(next);
+          void scheduleStoryViewAckFlush(next);
+        }
+        return next;
+      });
+      setOwnerKey(getStoryOwnerKey());
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -237,15 +355,12 @@ export default function StoryViewer({
   }, [profileUsername, canReply]);
 
   useEffect(() => {
-    if (!resolvedOwnerUid) return;
-    prefetchUpcomingStoryGroups(resolvedOwnerUid, 2);
-    preloadStoryPlaybackChain(
-      getCachedStoryGroups(),
-      resolvedOwnerUid,
-      index,
-      localStories,
-    );
-  }, [index, localStories, resolvedOwnerUid]);
+    preloadNextPlayTarget(nextTarget, localStories, { videoPreload: "metadata" });
+    if (nextTarget.kind === "same-group") {
+      const upcoming = localStories[nextTarget.storyIndex + 1];
+      if (upcoming) preloadStoryMedia(upcoming, { videoPreload: "metadata" });
+    }
+  }, [localStories, nextTarget]);
 
   useEffect(() => {
     if (!replyOpen) return;
@@ -267,80 +382,105 @@ export default function StoryViewer({
   }, []);
 
   const markViewed = useCallback(async (story: StoryItem) => {
-    if (viewedRef.current.has(story.id)) return;
-    viewedRef.current.add(story.id);
+    if (!viewerUid) return;
+    const viewerId = viewerUid;
+    const seenKey = `${viewerId}:${story.id}`;
+    if (viewedRef.current.has(seenKey)) return;
 
-    const viewerId = resolveStoryViewerId(auth.currentUser);
-    const payload: Record<string, unknown> = {
-      viewCount: increment(1),
-    };
+    viewedRef.current.add(seenKey);
 
-    if (viewerId.startsWith("anon_")) {
-      payload[`viewedByAnon.${viewerId}`] = true;
-    } else if (viewerId) {
-      payload[`viewedBy.${viewerId}`] = true;
-    }
-
-    if (viewerId && story.ownerUid) {
-      markStoryViewedLocally(story.ownerUid, story.id, viewerId);
-    }
-
-    try {
-      await updateDoc(doc(db, "historias", story.id), payload);
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
-
-  const goNext = useCallback(() => {
-    setBlurLocked(storyRequiresBlur(localStories[Math.min(index + 1, localStories.length - 1)] || current));
-    setReplyOpen(false);
-    setReplyText("");
-
-    if (index >= localStories.length - 1) {
-      const viewerId = resolveStoryViewerId(auth.currentUser);
-      const owner = resolvedOwnerUid;
-      if (viewerId && owner) {
-        for (const story of localStories) {
-          markStoryViewedLocally(owner, story.id, viewerId);
-        }
-      }
-
-      const nextGroup = getNextStoryGroup(resolvedOwnerUid);
-      if (nextGroup?.stories.length) {
-        prefetchUpcomingStoryGroups(nextGroup.ownerUid, 2);
-        preloadStoryPlaybackChain(getCachedStoryGroups(), nextGroup.ownerUid, -1, nextGroup.stories);
-        setLocalStories(nextGroup.stories);
-        setActiveOwnerUid(nextGroup.ownerUid);
-        setActiveOwnerUsername(nextGroup.ownerUsername);
-        setIndex(0);
-        setBlurLocked(storyRequiresBlur(nextGroup.stories[0]));
-        const nextPath = `/stories/${encodeURIComponent(nextGroup.ownerUid)}`;
-        window.history.replaceState(window.history.state, "", nextPath);
-        return;
-      }
-
-      exitStoryViewer();
+    const queued = enqueueStoryViewAckRetry(story.id, viewerId);
+    if (!queued.ok) {
+      viewedRef.current.delete(seenKey);
       return;
     }
 
-    setIndex((i) => i + 1);
-  }, [current, exitStoryViewer, index, localStories, resolvedOwnerUid]);
+    if (story.ownerUid) {
+      markStoryViewedLocally(story.ownerUid, story.id, viewerId);
+    }
+
+    void ackStoryView(story.id, viewerId)
+      .then((result) => {
+        if (!result.wrote) return;
+        setLocalStories((prev) =>
+          prev.map((row) =>
+            row.id === story.id
+              ? viewerId.startsWith("anon_")
+                ? { ...row, viewedByAnon: { ...(row.viewedByAnon || {}), [viewerId]: true } }
+                : { ...row, viewedBy: { ...(row.viewedBy || {}), [viewerId]: true } }
+              : row,
+          ),
+        );
+      })
+      .catch((e) => {
+        void scheduleStoryViewAckFlush(viewerId);
+        console.error(e);
+      });
+  }, [viewerUid]);
+
+  const goNext = useCallback(() => {
+    if (!viewerUid) return;
+    setReplyOpen(false);
+    setReplyText("");
+
+    if (nextTarget.kind === "same-group") {
+      const nextItem = localStories[nextTarget.storyIndex];
+      setBlurLocked(storyRequiresBlur(nextItem || current));
+      setIndex(nextTarget.storyIndex);
+      return;
+    }
+
+    if (nextTarget.kind === "next-group" && nextTarget.group?.stories.length) {
+      const nextGroup = nextTarget.group;
+      const nextIndex = Math.max(0, nextTarget.storyIndex);
+      setReplayLocked(false);
+      preloadNextPlayTarget(
+        { kind: "same-group", group: null, storyIndex: nextIndex },
+        nextGroup.stories,
+        { videoPreload: "metadata" },
+      );
+      setLocalStories(nextGroup.stories);
+      setActiveOwnerUid(nextGroup.ownerUid);
+      setActiveOwnerUsername(nextGroup.ownerUsername);
+      setIndex(nextIndex);
+      setBlurLocked(storyRequiresBlur(nextGroup.stories[nextIndex]));
+      const nextPath = `/stories/${encodeURIComponent(nextGroup.ownerUid)}`;
+      window.history.replaceState(window.history.state, "", nextPath);
+      return;
+    }
+
+    exitStoryViewer();
+  }, [current, exitStoryViewer, localStories, nextTarget, viewerUid]);
 
   const tryAdvance = useCallback(() => {
-    if (nextStory?.mediaUrl && !nextMediaReady) {
+    if (!viewerUid) return;
+    if (
+      !shouldReleaseMediaGate({
+        hasUrl: Boolean(nextStory?.mediaUrl),
+        ready: nextMediaReady,
+        errored: frontError,
+      })
+    ) {
       pendingAdvanceRef.current = true;
       return;
     }
     pendingAdvanceRef.current = false;
     goNext();
-  }, [goNext, nextMediaReady, nextStory?.mediaUrl]);
+  }, [frontError, goNext, nextMediaReady, nextStory?.mediaUrl, viewerUid]);
 
   useEffect(() => {
     if (!nextMediaReady || !pendingAdvanceRef.current) return;
     pendingAdvanceRef.current = false;
     goNext();
   }, [goNext, nextMediaReady]);
+
+  useEffect(() => {
+    if (!nextStory?.mediaUrl || nextMediaReady) return undefined;
+    const timer = window.setTimeout(() => {
+      setNextMediaReady(true);
+    }, NEXT_MEDIA_READY_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [nextMediaReady, nextStory?.id, nextStory?.mediaUrl]);
 
   const goPrev = useCallback(() => {
     if (index <= 0) {
@@ -366,13 +506,16 @@ export default function StoryViewer({
   }, [index, localStories, resolvedOwnerUid]);
 
   useEffect(() => {
-    if (!current || isPaused) return;
+    if (!current || !viewedReady || isPaused) return;
     markViewed(current);
-  }, [current, isPaused, markViewed]);
+  }, [current, isPaused, markViewed, viewedReady]);
 
-  useEffect(() => {
-    if (current) setBlurLocked(storyRequiresBlur(current));
-  }, [current?.id]);
+  const currentBlurId = current?.id || "";
+  const currentNeedsBlur = current ? storyRequiresBlur(current) : false;
+  if (currentBlurId !== appliedBlurId) {
+    setAppliedBlurId(currentBlurId);
+    setBlurLocked(currentNeedsBlur);
+  }
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("[data-story-chrome]")) return;
@@ -672,15 +815,37 @@ export default function StoryViewer({
             needsBlur={needsBlur}
             blurLocked={blurLocked}
             onNextReadyChange={setNextMediaReady}
-            onFrontVideoMetadata={(durationSec) => {
-              if (!startedRef.current && durationSec > 0 && current) {
-                startedRef.current = true;
-                setDoc(
-                  doc(db, "historias", current.id),
-                  { durationMs: Math.round(durationSec * 1000) },
-                  { merge: true },
-                ).catch(() => {});
+            onFrontReady={() => {
+              setFrontReady(true);
+              setFrontError(false);
+            }}
+            onFrontError={() => {
+              setFrontError(true);
+              setFrontReady(false);
+            }}
+            onFrontVideoMetadata={(event) => {
+              if (!current) return;
+              const durationMs = videoDurationMsFromMetadata(Number(event.durationSec || 0));
+              if (
+                !shouldPersistVideoDuration({
+                  storyId: current.id,
+                  durationMs,
+                  writtenForId: durationWrittenIdRef.current,
+                })
+              ) {
+                return;
               }
+              durationWrittenIdRef.current = current.id;
+              setLocalStories((prev) =>
+                prev.map((story) =>
+                  story.id === current.id ? { ...story, durationMs } : story,
+                ),
+              );
+              setDoc(
+                doc(db, "historias", current.id),
+                { durationMs },
+                { merge: true },
+              ).catch(() => {});
             }}
           />
         ) : (

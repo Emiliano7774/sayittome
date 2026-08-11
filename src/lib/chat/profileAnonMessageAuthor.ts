@@ -1,6 +1,22 @@
-import { safeChatPart, usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId, getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
+import { listThreadAnonIds, rootAnonContinuityId } from "@/lib/chat/threadAnonContinuity";
 import type { User } from "firebase/auth";
+import {
+  inferOwnerViewingFromAuthors,
+  isProfileThreadOwner,
+  isRoleIdentityReady,
+  profileReplyAuthorId,
+  isProfileReplyAuthorId,
+  resolveProfileAnonMessageMine as resolveProfileAnonMessageMineCore,
+  shouldHoldVisualAuthorship,
+} from "@/lib/chat/authorshipGates";
+
+export {
+  inferOwnerViewingFromAuthors,
+  isProfileThreadOwner,
+  profileReplyAuthorId,
+  isProfileReplyAuthorId,
+};
 
 export type ProfileAnonSenderKind = "anon" | "profile";
 
@@ -13,6 +29,8 @@ export type ProfileAnonViewerContext = {
   profileUid: string;
   viewerUsername?: string;
   threadAnonId: string;
+  liveAnonId?: string;
+  knownAnonIds?: string[];
   isOwnerViewing: boolean;
   identityReady?: boolean;
   senderAuthUid?: string;
@@ -69,39 +87,10 @@ export type ProfileAnonUiMessage = {
   createdAt?: { toDate?: () => Date };
 };
 
-export function profileReplyAuthorId(targetUid: string) {
-  const uid = String(targetUid || "").trim();
-  return uid ? `profile_${uid}` : "profile_unknown";
-}
-
-export function isProfileReplyAuthorId(from: string) {
-  return String(from || "").startsWith("profile_");
-}
-
 /** Profile Firebase uid only — never anonymous Auth uids (those invert owner/visitor). */
 export function profileAuthUid(user: User | null | undefined) {
   if (!user || user.isAnonymous) return "";
   return String(user.uid || "").trim();
-}
-
-/**
- * Owner of a profile↔anon thread is the profile in the chatId slug
- * (`anon_*__anon_to__{username}`), not the visitor baked into the id.
- * Survives cold start before Firestore targetUid hydrates.
- */
-export function isProfileThreadOwner(input: {
-  chatId: string;
-  authUid?: string;
-  profileUid?: string;
-  viewerUsername?: string;
-}) {
-  const authUid = String(input.authUid || "").trim();
-  const profileUid = String(input.profileUid || "").trim();
-  if (authUid && profileUid && authUid === profileUid) return true;
-
-  const hint = usernameHintFromAnonChatId(input.chatId);
-  const slug = safeChatPart(input.viewerUsername || "");
-  return Boolean(hint && slug && hint === slug);
 }
 
 export function buildProfileAnonViewerContext(input: {
@@ -112,6 +101,9 @@ export function buildProfileAnonViewerContext(input: {
   chatOwnerUid: string;
   viewerUsername?: string;
   identityReady?: boolean;
+  authReady?: boolean;
+  liveAnonId?: string;
+  knownAnonIds?: string[];
 }): ProfileAnonViewerContext {
   const profileUid = String(input.targetUid || input.chatOwnerUid || "").trim();
   const currentUid = String(input.currentUid || "").trim();
@@ -126,7 +118,15 @@ export function buildProfileAnonViewerContext(input: {
   const identityReady =
     input.identityReady !== undefined
       ? input.identityReady
-      : Boolean(currentUid || isOwnerViewing);
+      : isRoleIdentityReady({
+          liveProfileUid: currentUid,
+          chatId: input.chatId,
+          viewerUsername,
+          profileUid,
+          explicitOwner: isOwnerViewing,
+          threadAnonId,
+          authReady: input.authReady,
+        });
 
   return {
     ...input,
@@ -134,6 +134,17 @@ export function buildProfileAnonViewerContext(input: {
     profileUid,
     viewerUsername,
     threadAnonId,
+    liveAnonId: input.liveAnonId || getChatAnonSenderId(),
+    knownAnonIds:
+      input.knownAnonIds ||
+      listThreadAnonIds(
+        input.chatId,
+        [threadAnonId, input.liveAnonId || getChatAnonSenderId()],
+        {
+          authUid: currentUid,
+          rootAnonSessionId: rootAnonContinuityId(),
+        },
+      ),
     isOwnerViewing,
     identityReady,
   };
@@ -191,111 +202,13 @@ export function resolveProfileAnonSenderKind(input: {
   return "unknown";
 }
 
-/**
- * Infer owner viewing from message authors when profileUid context is still empty
- * on cold reopen (avoids classifying own profile_* as peer and peer anon as mine).
- */
-export function inferOwnerViewingFromAuthors(
-  currentUid: string,
-  profileUid: string,
-  rows: Array<{ fromUid?: string }>,
+export function resolveProfileAnonMessageMine(
+  input: Parameters<typeof resolveProfileAnonMessageMineCore>[0],
 ) {
-  const uid = String(currentUid || "").trim();
-  const profile = String(profileUid || "").trim();
-  if (uid && profile && uid === profile) return true;
-  if (!uid) return false;
-  const mineProfile = profileReplyAuthorId(uid);
-  return rows.some((row) => {
-    const from = String(row.fromUid || "").trim();
-    return from === mineProfile || from === uid;
+  return resolveProfileAnonMessageMineCore({
+    ...input,
+    liveAnonId: input.liveAnonId || getChatAnonSenderId(),
   });
-}
-
-/**
- * Durable mine classifier. Source of truth is fromUid shape + non-anonymous auth uid.
- * Never treats Firebase anonymous Auth uid as a profile owner.
- */
-export function resolveProfileAnonMessageMine(input: {
-  senderKind?: string;
-  from: string;
-  threadAnonId: string;
-  profileUid: string;
-  messageProfileUid?: string;
-  isOwnerViewing: boolean;
-  ownerUid?: string;
-  senderAuthUid?: string;
-  senderRole?: string;
-  identityReady?: boolean;
-}) {
-  const from = String(input.from || "").trim();
-  const authUid = String(input.ownerUid || "").trim();
-  const senderAuthUid = String(input.senderAuthUid || "").trim();
-  const senderRole = String(input.senderRole || "").trim();
-  const profileUid = String(input.profileUid || "").trim();
-  const messageProfileUid = String(input.messageProfileUid || "").trim();
-  const kind = resolveProfileAnonSenderKind({
-    senderKind: input.senderKind || senderRole,
-    from,
-    threadAnonId: input.threadAnonId,
-    profileUid,
-    messageProfileUid: messageProfileUid || undefined,
-  });
-
-  // Viewer ≠ author: durable senderAuthUid wins over late targetUid.
-  if (authUid && senderAuthUid && senderAuthUid === authUid) return true;
-
-  const identityReady =
-    input.identityReady !== undefined
-      ? input.identityReady
-      : Boolean(authUid || input.isOwnerViewing === true);
-
-  // Immutable senderRole from write-time identity. Do not fall through to
-  // visitor-anon heuristics that invert historical/corrupt fromUid.
-  if (senderRole === "profile" || senderRole === "anon") {
-    if (senderRole === "profile") return input.isOwnerViewing === true;
-    if (!identityReady) return false;
-    if (input.isOwnerViewing) return false;
-    return Boolean(input.threadAnonId && from === input.threadAnonId);
-  }
-
-  const ownsProfileShape =
-    Boolean(authUid) &&
-    (from === authUid ||
-      from === profileReplyAuthorId(authUid) ||
-      messageProfileUid === authUid);
-
-  // Highest priority: this non-anonymous account authored the profile-shaped row.
-  if (ownsProfileShape) return true;
-
-  const ownerViewing = input.isOwnerViewing === true;
-
-  if (ownerViewing) {
-    return (
-      senderRole === "profile" ||
-      kind === "profile" ||
-      isProfileReplyAuthorId(from) ||
-      from === authUid
-    );
-  }
-
-  // Peer profile replies are never mine for a visitor.
-  if (senderRole === "profile" || kind === "profile" || isProfileReplyAuthorId(from)) {
-    return false;
-  }
-
-  // Unknown viewer (auth/cache not ready): do not treat thread anon as mine.
-  // That fallback is what inverts the owner after kill/reopen.
-  if (!identityReady) return false;
-
-  const threadAnon = String(input.threadAnonId || "").trim();
-  const liveAnon = getChatAnonSenderId();
-
-  // Visitor continuity: prefer chatId-baked thread anon (survives kill/reopen),
-  // then live browser anon session.
-  if (threadAnon && from === threadAnon) return true;
-  if (liveAnon.startsWith("anon_") && from === liveAnon) return true;
-
-  return false;
 }
 
 /** Profile↔profile / legacy threads: compare durable fromUid to viewer. */
@@ -378,6 +291,8 @@ export function mapFirestoreDocToProfileAnonMessage(
     senderKind: data.senderKind,
     from,
     threadAnonId: ctx.threadAnonId,
+    liveAnonId: ctx.liveAnonId,
+    knownAnonIds: ctx.knownAnonIds,
     profileUid: ctx.profileUid,
     messageProfileUid,
     isOwnerViewing: ctx.isOwnerViewing,
@@ -425,6 +340,12 @@ export function remapProfileAnonMessagesMine<
     inferOwnerViewingFromAuthors(ctx.currentUid, ctx.profileUid, messages);
 
   const next = messages.map((message) => {
+    if (
+      shouldHoldVisualAuthorship(ctx.identityReady === true) &&
+      typeof message.mine === "boolean"
+    ) {
+      return message;
+    }
     const from = String(message.fromUid || "");
     const messageProfileUid = isProfileReplyAuthorId(from)
       ? from.slice("profile_".length)
@@ -433,6 +354,8 @@ export function remapProfileAnonMessagesMine<
       senderKind: message.senderKind,
       from,
       threadAnonId: ctx.threadAnonId,
+      liveAnonId: ctx.liveAnonId,
+      knownAnonIds: ctx.knownAnonIds,
       profileUid: ctx.profileUid,
       messageProfileUid,
       isOwnerViewing,

@@ -22,6 +22,7 @@ import {
   uploadFileToStorage,
 } from "@/lib/media/uploadFileToStorage";
 import { resolveStoryAuthor } from "@/lib/stories/anonStories";
+import { invalidateStoriesIndexAfterMutation } from "@/lib/stories/storiesIndexStore";
 import type { StoryMediaSource } from "@/lib/stories/types";
 import { firestoreScanFields, scanUploadFile } from "@/lib/moderation/scanMedia";
 
@@ -190,6 +191,7 @@ export default function NewStoryPage() {
         ...scanFields,
       });
 
+      invalidateStoriesIndexAfterMutation();
       router.push("/stories");
     } catch (error) {
       console.error(error);

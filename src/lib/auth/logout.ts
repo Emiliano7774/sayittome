@@ -1,6 +1,8 @@
 import { signOut } from "firebase/auth";
 
+import { resetChatNotificationPromptOnLogout } from "@/lib/chat/chatNotificationPrefs";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
+import { invalidateProfileChatCache } from "@/lib/chat/resolveProfileChat";
 import { clearCachedChatMessages } from "@/lib/chat/chatMessageCache";
 import { deleteCurrentDeviceFcmToken } from "@/lib/chat/fcmPush";
 import { clearInboxSnapshotCache } from "@/lib/chat/inboxSnapshot";
@@ -9,16 +11,20 @@ import { deleteCurrentAnonymousStories } from "@/lib/stories/anonStories";
 import { clearStoriesIndexCache } from "@/lib/stories/storiesIndexStore";
 import { clearAuthorshipCorrections } from "@/lib/chat/authorshipCorrections";
 import { clearCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
+import { clearThreadAnonContinuity } from "@/lib/chat/threadAnonContinuity";
 
 export async function logoutAndResetAnon() {
   await deleteCurrentAnonymousStories();
   beginFreshAnonSession();
+  invalidateProfileChatCache();
   clearCachedChatMessages();
   clearInboxSnapshotCache();
   clearStoriesIndexCache();
   clearCachedViewerIdentity();
   clearAuthorshipCorrections();
+  clearThreadAnonContinuity();
   await deleteCurrentDeviceFcmToken(auth.currentUser?.uid || "");
+  resetChatNotificationPromptOnLogout();
 
   try {
     await signOut(auth);

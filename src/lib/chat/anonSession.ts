@@ -75,10 +75,16 @@ export function beginFreshAnonSession() {
     clearLocalChatReadForViewer(oldSession);
     void deleteAnonymousStoriesForSession(oldSession);
     void deleteAnonymousChatsForSession(oldSession);
+    void import("@/lib/chat/threadAnonContinuity").then((mod) => {
+      mod.clearThreadAnonContinuity({ rootAnonSessionId: oldSession });
+    });
   }
 
   const next = getAnonSessionId();
   notifyAnonSessionChanged();
+  void import("@/lib/chat/resolveProfileChat").then((mod) => {
+    mod.invalidateProfileChatCache();
+  });
   return next;
 }
 

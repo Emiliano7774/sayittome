@@ -4,6 +4,7 @@ import type { User } from "firebase/auth";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { auth, db } from "@/lib/firebase";
 import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
+import { resolveStoryOwnerKeyFromState } from "@/lib/stories/storyOwnerIdentity";
 
 export type StoryAuthor = {
   ownerUid: string;
@@ -80,12 +81,71 @@ export async function resolveStoryAuthor(user: User | null): Promise<StoryAuthor
   };
 }
 
+const STORY_ANON_VIEWER_KEY = "sayittome_story_viewer_anon_v1";
+
+let storyViewerAuthReady = false;
+
+export function markStoryViewerAuthReady() {
+  storyViewerAuthReady = true;
+}
+
+export function isStoryViewerPending() {
+  return !storyViewerAuthReady && !(auth.currentUser && !auth.currentUser.isAnonymous);
+}
+
+export function peekDurableStoryAnonViewerId() {
+  if (typeof window === "undefined") return "";
+  try {
+    const existing = localStorage.getItem(STORY_ANON_VIEWER_KEY);
+    return existing && existing.startsWith("anon_") ? existing : "";
+  } catch {
+    return "";
+  }
+}
+
+export function syncDurableStoryAnonViewerId(nextId: string) {
+  const next = String(nextId || "").trim();
+  if (!next.startsWith("anon_")) return;
+  try {
+    localStorage.setItem(STORY_ANON_VIEWER_KEY, next);
+  } catch {
+    // ignore
+  }
+}
+
+/** Same anon id for create, view, manage. Migrates from chat session once. */
+export function getDurableStoryAnonViewerId() {
+  if (typeof window === "undefined") return "";
+
+  const existing = peekDurableStoryAnonViewerId();
+  if (existing) return existing;
+
+  let session = "";
+  try {
+    session = sessionStorage.getItem("sayittome_anon_session") || "";
+  } catch {
+    session = "";
+  }
+  const next = session.startsWith("anon_") ? session : getAnonSessionId();
+  syncDurableStoryAnonViewerId(next);
+  return next;
+}
+
 export function resolveStoryViewerId(user: User | null) {
   if (user && !user.isAnonymous) {
     return user.uid;
   }
+  if (!user && !storyViewerAuthReady) {
+    return "";
+  }
+  return getDurableStoryAnonViewerId();
+}
 
-  return getAnonSessionId();
+/** Await Firebase auth + Stories readiness, then resolve the viewer id. */
+export async function resolveStoryViewerIdReady(user?: User | null) {
+  await auth.authStateReady();
+  markStoryViewerAuthReady();
+  return resolveStoryViewerId(user === undefined ? auth.currentUser : user);
 }
 
 /** Same identity used to mark and read story views (not getLikerId). */
@@ -94,21 +154,21 @@ export function getStoryViewerKey() {
   return resolveStoryViewerId(auth.currentUser);
 }
 
-export function canManageStory(
-  story: {
-    ownerUid?: string;
-    anonSessionId?: string;
-    isAnonymousStory?: boolean;
-  },
-  viewerUid: string,
-) {
-  const ownerUid = String(story.ownerUid || "");
-  if (!ownerUid || !viewerUid) return false;
-
-  if (story.isAnonymousStory || ownerUid.startsWith("anon_")) {
-    const anonSessionId = String(story.anonSessionId || ownerUid);
-    return viewerUid === anonSessionId;
-  }
-
-  return viewerUid === ownerUid;
+/** Session id for create / manage / cleanup. Never the durable seen-id. */
+export function getStoryOwnerKey() {
+  if (typeof window === "undefined") return "";
+  const user = auth.currentUser;
+  return resolveStoryOwnerKeyFromState({
+    uid: user?.uid || "",
+    isAnonymous: !user || user.isAnonymous,
+    authReady: storyViewerAuthReady,
+    sessionId: getAnonSessionId(),
+  });
 }
+
+export {
+  canManageStory,
+  isMineStoryGroup,
+  resolveStoryOwnerKeyFromState,
+  splitMineStoryGroups,
+} from "@/lib/stories/storyOwnerIdentity";

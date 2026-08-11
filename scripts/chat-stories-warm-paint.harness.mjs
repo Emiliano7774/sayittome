@@ -1,40 +1,109 @@
 /**
- * Chat warm cache must hit by chatId even when auth.currentUser is still null
- * (guest vs uid namespacing regression).
+ * Chat warm cache is chatId-keyed; Stories snapshot is viewer-isolated.
+ * Usage: node --experimental-strip-types scripts/chat-stories-warm-paint.harness.mjs
  */
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const cacheSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatMessageCache.ts"), "utf8");
-const chatSrc = fs.readFileSync(path.join(root, "src/components/chat/ProfileAnonChat.tsx"), "utf8");
-const legacyChatSrc = fs.readFileSync(path.join(root, "src/app/chat/[chatId]/legacy-chat.tsx"), "utf8");
-const storiesGroups = fs.readFileSync(path.join(root, "src/hooks/useStoriesGroups.ts"), "utf8");
-const storiesStore = fs.readFileSync(path.join(root, "src/lib/stories/storiesIndexStore.ts"), "utf8");
-const storiesSnap = fs.readFileSync(path.join(root, "src/lib/stories/storiesSnapshot.ts"), "utf8");
-const logout = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "utf8");
+const src = (rel) => pathToFileURL(path.join(root, rel)).href;
 
-assert.match(cacheSrc, /sayittome:chat-msgs:v3:/);
-assert.match(cacheSrc, /Fall back to any v2 scoped/);
-assert.doesNotMatch(cacheSrc, /resolveViewerKey/);
-assert.match(chatSrc, /auth\.authStateReady\(\)/);
-assert.match(chatSrc, /authReady && !isOwnerViewing && !chatSurfaceEngaged/);
-assert.match(legacyChatSrc, /hydrateLegacyCachedMessages/);
-assert.match(legacyChatSrc, /writeCachedChatMessages/);
-assert.match(legacyChatSrc, /auth\.authStateReady\(\)/);
-assert.match(legacyChatSrc, /viewerUid/);
-assert.match(storiesSnap, /sayittome:stories-snapshot:v1/);
-assert.match(storiesStore, /writeStoriesSnapshot/);
-assert.match(storiesStore, /readStoriesSnapshot/);
-assert.match(storiesStore, /clearStoriesIndexCache/);
-assert.match(storiesStore, /In-memory mosaic belongs/);
-assert.match(storiesStore, /viewer === viewerUid/);
-assert.match(storiesGroups, /auth\.authStateReady\(\)/);
-assert.match(storiesGroups, /authSettled/);
-assert.match(storiesGroups, /getCachedStoryGroups\(initialViewer\)|getCachedStoryGroups\(nextViewerId\)/);
-assert.match(storiesGroups, /!hasStoriesEverHydrated\(\)/);
-assert.match(logout, /clearStoriesIndexCache/);
+const {
+  writeCachedChatMessages,
+  readCachedChatMessages,
+  clearCachedChatMessages,
+} = await import(src("src/lib/chat/chatMessageCache.ts"));
+const {
+  previousSeenStateAllowed,
+  shouldSkipStoriesRefresh,
+  buildStoriesSnapshotWrite,
+  pickLatestStoriesSnapshot,
+} = await import(src("src/lib/stories/storiesQueryGuard.ts"));
 
-console.log(JSON.stringify({ gate: "CHAT_STORIES_WARM_PAINT", pass: true }, null, 2));
+clearCachedChatMessages();
+writeCachedChatMessages("chat_1", [{ id: "m1", text: "hi" }]);
+assert.equal(readCachedChatMessages("chat_1")?.[0]?.id, "m1");
+assert.equal(readCachedChatMessages("chat_missing"), null);
+
+assert.equal(
+  previousSeenStateAllowed({
+    requestViewer: "viewer_a",
+    storeViewer: "viewer_a",
+    viewerChanged: false,
+  }),
+  true,
+);
+assert.equal(
+  previousSeenStateAllowed({
+    requestViewer: "viewer_a",
+    storeViewer: "viewer_b",
+    viewerChanged: true,
+  }),
+  false,
+);
+
+assert.equal(
+  shouldSkipStoriesRefresh({
+    force: false,
+    viewerChanged: false,
+    now: 10_000,
+    lastFetch: 1_000,
+    ttlMs: 10 * 60_000,
+    hasMaterialized: true,
+  }),
+  true,
+);
+assert.equal(
+  shouldSkipStoriesRefresh({
+    force: false,
+    viewerChanged: true,
+    now: 10_000,
+    lastFetch: 1_000,
+    ttlMs: 10 * 60_000,
+    hasMaterialized: true,
+  }),
+  false,
+);
+
+const now = Date.now();
+const snapA = buildStoriesSnapshotWrite({
+  viewerUid: "viewer_a",
+  groups: [{ ownerUid: "owner_1" }],
+  previous: null,
+  source: "network",
+  now,
+});
+assert.equal(snapA.viewerUid, "viewer_a");
+assert.equal(snapA.groups.length, 1);
+const snapB = buildStoriesSnapshotWrite({
+  viewerUid: "viewer_b",
+  groups: [{ ownerUid: "owner_2" }],
+  previous: snapA,
+  source: "network",
+  now,
+});
+assert.equal(snapB.viewerUid, "viewer_b");
+assert.notEqual(snapB.viewerUid, snapA.viewerUid);
+
+const warmStarted = Date.now();
+const warmSnap = buildStoriesSnapshotWrite({
+  viewerUid: "viewer_a",
+  groups: [{ ownerUid: "owner_1", stories: [{ id: "s1" }] }],
+  previous: null,
+  source: "network",
+  now,
+});
+const latest = pickLatestStoriesSnapshot([warmSnap, null], now);
+const warmMs = Date.now() - warmStarted;
+assert.equal(latest?.groups.length, 1);
+assert.ok(warmMs < 50, `warm snapshot paint too slow: ${warmMs}ms`);
+const blank = pickLatestStoriesSnapshot([null, null], now);
+assert.equal(blank, null);
+
+console.log(JSON.stringify({
+  gate: "CHAT_STORIES_WARM_PAINT",
+  pass: true,
+  warmMs,
+  blank: blank === null,
+}, null, 2));

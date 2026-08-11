@@ -7,7 +7,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useDocumentHidden } from "@/hooks/useDocumentHidden";
 import { auth } from "@/lib/firebase";
 import { shouldEnableStoriesRefresh } from "@/lib/chat/inboxListenerRoutes";
-import { resolveStoryViewerId } from "@/lib/stories/storyAuthor";
+import { resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/storyAuthor";
 import { refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 
 const STORIES_REFRESH_MS = 10 * 60_000;
@@ -34,12 +34,11 @@ export default function StoriesBootstrap() {
     };
 
     let authSettled = false;
-    void auth.authStateReady().then(() => {
+    void resolveStoryViewerIdReady().then((viewerKey) => {
       if (cancelled) return;
       authSettled = true;
-      const viewerKey = resolveStoryViewerId(auth.currentUser);
       if (!viewerKey) return;
-      refreshStoriesIndex(viewerKey, true).catch(() => {});
+      refreshStoriesIndex(viewerKey, false).catch(() => {});
     });
 
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -49,9 +48,10 @@ export default function StoriesBootstrap() {
 
     const timer = window.setInterval(() => {
       if (!authSettled) return;
-      refreshStoriesIndex(resolveStoryViewerId(auth.currentUser), false).catch(
-        () => {},
-      );
+      void resolveStoryViewerIdReady().then((viewerKey) => {
+        if (cancelled || !viewerKey) return;
+        refreshStoriesIndex(viewerKey, false).catch(() => {});
+      });
     }, STORIES_REFRESH_MS);
 
     return () => {

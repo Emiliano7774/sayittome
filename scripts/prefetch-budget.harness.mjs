@@ -34,10 +34,10 @@ const buffers = readFileSync(
   "utf8",
 );
 assert(
-  buffers.includes('preload={backVisible ? "auto" : "metadata"}'),
+  buffers.includes('preload={visible ? "auto" : "metadata"}'),
   "hidden story video must not force preload=auto",
 );
-assert((buffers.match(/preload="auto"/g) || []).length === 1, "only front story video may use preload=auto");
+assert(!buffers.includes('preload="auto"'), "only the visible slot may use preload=auto via visible?auto:metadata");
 
 if (fails.length) {
   console.error("prefetch-budget FAILED");

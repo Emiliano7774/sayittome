@@ -4,11 +4,34 @@
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import module from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
+
+function resolveAlias(specifier) {
+  if (!specifier.startsWith("@/")) return "";
+  const abs = path.join(root, "src", specifier.slice(2));
+  const candidates = [abs, `${abs}.ts`, `${abs}.tsx`, `${abs}.js`, path.join(abs, "index.ts")];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return pathToFileURL(candidate).href;
+    }
+  }
+  return "";
+}
+
+if (typeof module.registerHooks === "function") {
+  module.registerHooks({
+    resolve(specifier, context, nextResolve) {
+      const mapped = resolveAlias(specifier);
+      if (mapped) return { url: mapped, shortCircuit: true };
+      return nextResolve(specifier, context);
+    },
+  });
+}
 
 const menu = read("src/components/profile/ProfileClaimHistoryMenu.tsx");
 assert.match(menu, /data-profile-option="notifications"/);
@@ -44,10 +67,89 @@ assert.match(panel, /enableNativeChatPush/);
 assert.match(panel, /onPointerUp/);
 assert.match(panel, /chat_notifications_disable_cta/);
 assert.match(panel, /openNativeNotificationSettings/);
+assert.match(panel, /regForUid.uid === uid \? regForUid.state : null/);
+assert.match(panel, /Boolean\(uid\) && tokenForUid.uid === uid/);
+assert.match(panel, /if \(cancelled\) return/);
+assert.match(panel, /completeChatNotificationPrompt\(false\)/);
 
 const prompt = read("src/components/chat/ChatNotificationPrompt.tsx");
-assert.match(prompt, /registerNativePushIfEnabled/);
+assert.match(prompt, /isNotificationProfileReady/);
+assert.match(prompt, /enableNativeChatPush/);
+assert.match(prompt, /reason !== "not_native"/);
+assert.match(prompt, /resetChatNotificationPromptOnLogout/);
+assert.match(prompt, /chatNotificationPromptOpen/);
+assert.doesNotMatch(prompt, /registerNativePushIfEnabled/);
 assert.match(prompt, /z-\[1000000\]/);
+assert.match(prompt, /completeChatNotificationPrompt\(false\)/);
+
+const fcmSrc = read("src/lib/chat/fcmPush.ts");
+assert.match(fcmSrc, /enableInFlightByUid/);
+assert.match(fcmSrc, /skipAutoEnable/);
+assert.match(fcmSrc, /reconcilePendingForEnable/);
+assert.doesNotMatch(fcmSrc, /export function shouldFlushPendingUnregister/);
+
+const install = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/fcmInstallation.ts")).href
+);
+const pipeline = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/fcmEnablePipeline.ts")).href
+);
+assert.equal(
+  install.shouldFlushPendingUnregister({
+    pendingUid: "uid_a",
+    currentUid: "uid_a",
+    pendingToken: "old_token",
+    currentToken: "new_token",
+  }),
+  true,
+);
+assert.equal(
+  install.shouldFlushPendingUnregister({
+    pendingUid: "uid_a",
+    currentUid: "uid_a",
+    pendingToken: "same",
+    currentToken: "same",
+  }),
+  false,
+  "same token does not flush",
+);
+let flushedPrefsOff = false;
+const flushed = await pipeline.flushPendingUnlocked(
+  {
+    liveUid: () => "uid_a",
+    readPending: () => ({
+      uid: "uid_a",
+      token: "old_token",
+      installationId: "inst_1",
+      proof: "p",
+    }),
+    clearPending: () => undefined,
+    flushCall: async () => {
+      flushedPrefsOff = true;
+    },
+    registerCall: async () => {
+      throw new Error("register_should_not_run_on_prefs_off_flush");
+    },
+  },
+  {
+    currentUid: "uid_a",
+    installationId: "inst_1",
+    currentToken: "new_token",
+    proof: "p",
+  },
+);
+assert.equal(flushed, true);
+assert.equal(flushedPrefsOff, true, "prefs-off flush still calls productive helper");
+assert.match(fcmSrc, /PushNotifications.unregister/);
+assert.match(fcmSrc, /readInstallationProof/);
+assert.match(fcmSrc, /withInstallationLock/);
+assert.match(fcmSrc, /liveAuthUid\(\) !== cleanUid/);
+assert.match(fcmSrc, /clearPendingIfSameInstallation/);
+assert.match(
+  fcmSrc,
+  /await flushPendingFcmUnregister\(\);\s*\n\s*if \(areChatNotificationsEnabled\(\)\)/,
+);
+assert.doesNotMatch(fcmSrc, /void upsertFcmTokenForUser\(uid, token\)/);
 
 const perms = read("src/lib/chat/chatNotifications.ts");
 assert.match(perms, /PushNotifications/);

@@ -1,69 +1,367 @@
-import { writeAdminLog } from "@/lib/admin/adminLogs";
-import {
-  FIRESTORE_API_KEY,
-  FIRESTORE_PROJECT_ID,
-  getFirestoreDoc,
-  toFirestoreFields,
-} from "@/lib/firestore/rest";
+/**
+ * Admin-SDK historical authorship repair writer.
+ * APPLY_FROZEN is checked first on apply AND rollback. No runtime bypass.
+ * Unfrozen orchestration lives in historicalAuthorshipRepairApplyCore (injected backend only).
+ * Does not use the REST API-key commit path. Does not touch 107cae5 persist.
+ */
+import type { Firestore } from "firebase-admin/firestore";
 import {
   authorPatchFields,
-  classifyApplySelections,
-  classifyRollbackRows,
+  evaluateLiveIdentityOcc,
+  expectedBeforeHash,
+  HISTORICAL_REPAIR_APPLY_FROZEN,
   type ApplySelection,
-  type PersistedAuthor,
-  type ProposedAuthor,
   type RepairMessageInput,
-  type ThreadIdentities,
 } from "@/lib/chat/historicalAuthorshipRepair";
-import { loadRepairThread } from "@/lib/chat/historicalAuthorshipRepairIo";
+import {
+  applyFrozenDenial,
+  AUTHOR_BACKUP_KEYS,
+  CHAT_SUMMARY_FIELD_KEYS,
+  rollbackSummaryGate,
+  canonicalFirestoreUpdateTime,
+  evaluateOccAllOrNone,
+  parseMessageCollectionPath,
+  restoreDocFields,
+  type SealedRepairPreview,
+} from "@/lib/chat/historicalRepairSafety";
+import {
+  buildOccSnapshot,
+  runApplyHistoricalRepair,
+  runRollbackHistoricalRepair,
+  type HistoricalRepairBackend,
+  type HistoricalRepairWriteResult,
+} from "@/lib/chat/historicalAuthorshipRepairApplyCore";
 
-const AUTHOR_FIELD_PATHS = [
-  "fromUid",
-  "ownerId",
-  "senderAuthUid",
-  "senderProfileId",
-  "senderRole",
-  "senderKind",
-  "profileUid",
-];
+export {
+  buildOccSnapshot,
+  keepCanonicalAnonAuthor,
+  messageCollectionName,
+  type ChatSummarySnapshot,
+  type HistoricalRepairBackend,
+  type HistoricalRepairWriteResult,
+  type PreparedApplyPlan,
+  type PreparedRollbackPlan,
+  type RepairDocSnapshot,
+} from "@/lib/chat/historicalAuthorshipRepairApplyCore";
 
-function messageDocName(chatId: string, messageId: string) {
-  return `projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/chats/${encodeURIComponent(chatId)}/mensajes/${encodeURIComponent(messageId)}`;
-}
+const DELETE_SENTINEL = { __repairDelete: true } as const;
 
-function repairDocName(repairId: string) {
-  return `projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/authorshipRepairs/${encodeURIComponent(repairId)}`;
-}
-
-async function commitWrites(writes: unknown[]) {
-  const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents:commit?key=${encodeURIComponent(FIRESTORE_API_KEY)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify({ writes }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const message = String((json as { error?: { message?: string } })?.error?.message || res.status);
-    throw new Error(`commit_failed:${message}`);
-  }
-  return json;
-}
-
-function authorUpdateWrite(
+function messageRefForRow(
+  db: Firestore,
   chatId: string,
-  messageId: string,
-  author: ProposedAuthor | PersistedAuthor,
-  updateTime?: string,
+  row: { messageId: string; collectionPath?: string },
 ) {
+  const path = String(row.collectionPath || "").trim();
+  const parsed = parseMessageCollectionPath(path);
+  if (!parsed || parsed.chatId !== chatId || parsed.messageId !== row.messageId) {
+    throw new Error("backup_path_invalid");
+  }
+  return db.doc(path);
+}
+
+function frozenResult(): HistoricalRepairWriteResult {
+  return applyFrozenDenial();
+}
+
+async function defaultBackend(): Promise<HistoricalRepairBackend> {
+  const { loadRepairThread, loadRepairChatSnapshot, loadRepairMessageDocs } = await import(
+    "@/lib/chat/historicalAuthorshipRepairIo"
+  );
+  const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+  const { FieldValue } = await import("firebase-admin/firestore");
+
+  const materialize = (patch: Record<string, unknown>) => {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      out[key] = value === DELETE_SENTINEL ? FieldValue.delete() : value;
+    }
+    return out;
+  };
+
   return {
-    update: {
-      name: messageDocName(chatId, messageId),
-      fields: toFirestoreFields(authorPatchFields(author)),
+    async getRepairById(repairId) {
+      const db = getRepairAdminDb();
+      const snap = await db.collection("authorshipRepairs").doc(repairId).get();
+      if (!snap.exists) return null;
+      const data = snap.data() || {};
+      return {
+        repairId,
+        operationId: String(data.operationId || ""),
+        status: String(data.status || ""),
+        chatId: String(data.chatId || ""),
+        updateTime: canonicalFirestoreUpdateTime(snap.updateTime),
+        previewHash: String(data.previewHash || ""),
+        backupJson: String(data.backupJson || ""),
+        chatBackupJson: String(data.chatBackupJson || ""),
+        schemaVersion: Number(data.schemaVersion || 0),
+        writeCount: Number(data.writeCount || 0),
+        backupDigest: String(data.backupDigest || ""),
+        applied: Array.isArray(data.applied) ? data.applied : [],
+        noop: Array.isArray(data.noop) ? data.noop : [],
+      };
     },
-    updateMask: { fieldPaths: AUTHOR_FIELD_PATHS },
-    currentDocument: updateTime ? { updateTime } : { exists: true },
+    async getPreview(previewId) {
+      const db = getRepairAdminDb();
+      const snap = await db.collection("authorshipRepairPreviews").doc(previewId).get();
+      if (!snap.exists) return null;
+      return (snap.data() || null) as SealedRepairPreview | null;
+    },
+    async loadThread(chatId) {
+      const loaded = await loadRepairThread(chatId);
+      const chat = await loadRepairChatSnapshot(chatId);
+      const messageDocs = await loadRepairMessageDocs(chatId, loaded.messages);
+      return { ...loaded, chat, messageDocs };
+    },
+    async commitApply(plan) {
+      const db = getRepairAdminDb();
+      await db.runTransaction(async (tx) => {
+        const chatRef = db.collection("chats").doc(plan.chatId);
+        const repairRef = db.collection("authorshipRepairs").doc(plan.repairId);
+        const locked = [...plan.applied, ...plan.noop];
+        const messageRefs = locked.map((row) => messageRefForRow(db, plan.chatId, row));
+        const ownerRef = plan.identities.ownerProfileId
+          ? db.collection("usuarios").doc(plan.identities.ownerProfileId)
+          : null;
+        const usernameQuery = plan.identities.ownerUsernameSlug
+          ? db
+              .collection("usuarios")
+              .where("usernameLower", "==", plan.identities.ownerUsernameSlug)
+              .limit(3)
+          : null;
+        const previewRef = plan.consumePreviewId
+          ? db.collection("authorshipRepairPreviews").doc(plan.consumePreviewId)
+          : null;
+        const [chatSnap, repairSnap, ownerSnap, usernameSnap, previewSnap, ...messageSnaps] = await Promise.all([
+          tx.get(chatRef),
+          tx.get(repairRef),
+          ownerRef ? tx.get(ownerRef) : Promise.resolve(null),
+          usernameQuery ? tx.get(usernameQuery) : Promise.resolve(null),
+          previewRef ? tx.get(previewRef) : Promise.resolve(null),
+          ...messageRefs.map((ref) => tx.get(ref)),
+        ]);
+        if (previewRef) {
+          if (!previewSnap || !("exists" in previewSnap) || !previewSnap.exists) {
+            throw new Error("preview_missing");
+          }
+          if (previewSnap.data()?.consumed === true) throw new Error("preview_consumed");
+        }
+        const ownerLookupUid =
+          usernameSnap && "docs" in usernameSnap && usernameSnap.size === 1
+            ? usernameSnap.docs[0].id
+            : "";
+
+        const liveIdentity = evaluateLiveIdentityOcc({
+          chatId: plan.chatId,
+          chatData: (chatSnap.data() || {}) as Record<string, unknown>,
+          chatExists: chatSnap.exists,
+          ownerProfile: ownerSnap?.exists
+            ? {
+                id: ownerSnap.id,
+                username: String(ownerSnap.data()?.username || ""),
+                usernameLower: String(ownerSnap.data()?.usernameLower || ""),
+              }
+            : null,
+          ownerLookupUid,
+          expected: plan.identities,
+        });
+        if (!liveIdentity.ok) throw new Error(liveIdentity.error);
+
+        const liveMessages = messageSnaps.map((snap, index) => {
+          const row = [...plan.applied, ...plan.noop][index];
+          const data = (snap.data() || {}) as Record<string, unknown>;
+          return {
+            messageId: row.messageId,
+            updateTime: canonicalFirestoreUpdateTime(snap.updateTime),
+            beforeHash: expectedBeforeHash({
+              fromUid: String(data.fromUid || data.ownerId || data.senderUid || ""),
+              senderAuthUid: String(data.senderAuthUid || ""),
+              senderProfileId: String(data.senderProfileId || data.profileUid || ""),
+              senderRole: String(data.senderRole || ""),
+              senderKind: String(data.senderKind || ""),
+            }),
+            kind: index < plan.applied.length ? ("apply" as const) : ("noop" as const),
+          };
+        });
+        const liveOcc = buildOccSnapshot({
+          identities: {
+            ...plan.identities,
+            ownerIdSource: liveIdentity.ok ? plan.identities.ownerIdSource : "ambiguous_mismatch",
+          },
+          chatUpdateTime: canonicalFirestoreUpdateTime(chatSnap.updateTime),
+          repairUpdateTime: canonicalFirestoreUpdateTime(repairSnap.updateTime),
+          rows: liveMessages,
+        });
+        const occ = evaluateOccAllOrNone(plan.occ, liveOcc);
+        if (!occ.ok) throw new Error(occ.error);
+
+        tx.create(repairRef, {
+          repairId: plan.repairId,
+          operationId: plan.operationId,
+          previewId: plan.previewId,
+          previewHash: plan.previewHash,
+          chatId: plan.chatId,
+          operatorUid: plan.operatorUid,
+          operatorEmail: plan.operatorEmail,
+          createdAt: new Date().toISOString(),
+          reason: plan.reason,
+          status: "applied",
+          schemaVersion: plan.schemaVersion,
+          ownerIdSource: plan.identities.ownerIdSource,
+          threadAnonPresent: plan.identities.threadAnonId ? "1" : "0",
+          writeCount: plan.writeCount,
+          backupDigest: plan.backupDigest,
+          applied: plan.applied.map((row) => ({
+            messageId: row.messageId,
+            status: "applied",
+            reason: "ready",
+          })),
+          noop: plan.noop.map((row) => ({
+            messageId: row.messageId,
+            status: "noop",
+            reason: "already_canonical",
+          })),
+          backupJson: JSON.stringify(plan.applied),
+          chatBackupJson: JSON.stringify({
+            patched: plan.patchChatSummary,
+            fields: plan.chatBackup,
+            afterPatch: plan.chatAfterPatch || {},
+            latestMessageId: plan.plannedLatestMessageId || "",
+            writeCount: plan.writeCount,
+            backupDigest: plan.backupDigest,
+          }),
+        });
+        if (previewRef) {
+          tx.update(previewRef, { consumed: true, consumedBy: plan.repairId });
+        }
+
+        tx.create(db.collection("admin_logs").doc(`log_${plan.repairId}`), {
+          timestamp: new Date().toISOString(),
+          adminEmail: plan.operatorEmail,
+          action: "authorship_repair_apply",
+          targetId: plan.repairId,
+          metadata: JSON.stringify({
+            repairId: plan.repairId,
+            writes: plan.applied.length,
+            error: "",
+          }),
+        });
+
+        for (const row of plan.applied) {
+          tx.update(messageRefForRow(db, plan.chatId, row), materialize(authorPatchFields(row.after)));
+        }
+
+        if (plan.patchChatSummary) {
+          tx.update(chatRef, materialize(plan.chatPatch));
+        }
+      });
+    },
+    async commitRollback(plan) {
+      const db = getRepairAdminDb();
+      await db.runTransaction(async (tx) => {
+        const chatRef = db.collection("chats").doc(plan.chatId);
+        const repairRef = db.collection("authorshipRepairs").doc(plan.repairId);
+        const locked = [...plan.restore, ...plan.noop];
+        const messageRefs = locked.map((row) => messageRefForRow(db, plan.chatId, row));
+        const ownerRef = plan.identities.ownerProfileId
+          ? db.collection("usuarios").doc(plan.identities.ownerProfileId)
+          : null;
+        const usernameQuery = plan.identities.ownerUsernameSlug
+          ? db
+              .collection("usuarios")
+              .where("usernameLower", "==", plan.identities.ownerUsernameSlug)
+              .limit(3)
+          : null;
+        const [chatSnap, repairSnap, ownerSnap, usernameSnap, ...messageSnaps] = await Promise.all([
+          tx.get(chatRef),
+          tx.get(repairRef),
+          ownerRef ? tx.get(ownerRef) : Promise.resolve(null),
+          usernameQuery ? tx.get(usernameQuery) : Promise.resolve(null),
+          ...messageRefs.map((ref) => tx.get(ref)),
+        ]);
+        if (String(repairSnap.data()?.status || "") !== "applied") {
+          throw new Error("repair_not_applied");
+        }
+        const ownerLookupUid =
+          usernameSnap && "docs" in usernameSnap && usernameSnap.size === 1
+            ? usernameSnap.docs[0].id
+            : "";
+        const liveIdentity = evaluateLiveIdentityOcc({
+          chatId: plan.chatId,
+          chatData: (chatSnap.data() || {}) as Record<string, unknown>,
+          chatExists: chatSnap.exists,
+          ownerProfile: ownerSnap?.exists
+            ? {
+                id: ownerSnap.id,
+                username: String(ownerSnap.data()?.username || ""),
+                usernameLower: String(ownerSnap.data()?.usernameLower || ""),
+              }
+            : null,
+          ownerLookupUid,
+          expected: plan.identities,
+        });
+        if (!liveIdentity.ok) throw new Error(liveIdentity.error);
+        const chatData = (chatSnap.data() || {}) as Record<string, unknown>;
+        const summaryGate = rollbackSummaryGate({
+          liveLatestMessageId: String(chatData.latestMessageId || ""),
+          plannedLatestMessageId: plan.plannedLatestMessageId || "",
+          liveSummary: chatData,
+          afterPatch: plan.chatAfterPatch || {},
+        });
+        if (plan.restoreChatSummary && !summaryGate.ok) throw new Error(summaryGate.error);
+        const liveOcc = buildOccSnapshot({
+          identities: plan.identities,
+          chatUpdateTime: canonicalFirestoreUpdateTime(chatSnap.updateTime),
+          repairUpdateTime: canonicalFirestoreUpdateTime(repairSnap.updateTime),
+          rows: messageSnaps.map((snap, index) => {
+            const row = locked[index];
+            const data = (snap.data() || {}) as Record<string, unknown>;
+            return {
+              messageId: row.messageId,
+              updateTime: canonicalFirestoreUpdateTime(snap.updateTime),
+              beforeHash: expectedBeforeHash({
+                fromUid: String(data.fromUid || data.ownerId || data.senderUid || ""),
+                senderAuthUid: String(data.senderAuthUid || ""),
+                senderProfileId: String(data.senderProfileId || data.profileUid || ""),
+                senderRole: String(data.senderRole || ""),
+                senderKind: String(data.senderKind || ""),
+              }),
+              kind: index < plan.restore.length ? ("apply" as const) : ("noop" as const),
+            };
+          }),
+        });
+        const occ = evaluateOccAllOrNone(plan.occ, liveOcc);
+        if (!occ.ok) throw new Error(occ.error);
+        for (const row of plan.restore) {
+          const snap = messageSnaps.find((item) => item.id === row.messageId);
+          if (!snap?.exists) throw new Error("message_missing");
+          const restored: Record<string, unknown> = {};
+          restoreDocFields(restored, row.fields, DELETE_SENTINEL, AUTHOR_BACKUP_KEYS);
+          tx.update(messageRefForRow(db, plan.chatId, row), materialize(restored));
+        }
+        if (plan.restoreChatSummary) {
+          const restoredChat: Record<string, unknown> = {};
+          restoreDocFields(restoredChat, plan.chatBackup, DELETE_SENTINEL, CHAT_SUMMARY_FIELD_KEYS);
+          tx.update(chatRef, materialize(restoredChat));
+        }
+        tx.update(repairRef, {
+          status: "rolled_back",
+          rolledBackAt: new Date().toISOString(),
+          rolledBackBy: plan.operatorEmail,
+          rollbackReason: plan.reason,
+        });
+        tx.create(db.collection("admin_logs").doc(`log_${plan.repairId}_rb`), {
+          timestamp: new Date().toISOString(),
+          adminEmail: plan.operatorEmail,
+          action: "authorship_repair_rollback",
+          targetId: plan.repairId,
+          metadata: JSON.stringify({
+            repairId: plan.repairId,
+            writes: plan.restore.length,
+            error: "",
+          }),
+        });
+      });
+    },
   };
 }
 
@@ -74,123 +372,15 @@ export async function applyHistoricalAuthorshipRepair(input: {
   confirmWriteCount: number;
   operatorUid: string;
   operatorEmail: string;
-}) {
-  const loaded = await loadRepairThread(input.chatId);
-  const classified = classifyApplySelections({
-    identities: loaded.identities,
-    live: loaded.messages,
-    selections: input.selections,
-    confirmWriteCount: input.confirmWriteCount,
-    reason: input.reason,
-  });
-
-  if (classified.blocked) {
-    return {
-      ok: false,
-      repairId: "",
-      applied: classified.applied,
-      noop: classified.noop,
-      rejected: classified.rejected,
-      writes: 0,
-      error: classified.blockReason,
-    };
-  }
-
-  if (classified.applied.length === 0) {
-    return {
-      ok: true,
-      repairId: "",
-      applied: [],
-      noop: classified.noop,
-      rejected: classified.rejected,
-      writes: 0,
-      error: "",
-    };
-  }
-
-  const repairId = `rep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const createdAt = new Date().toISOString();
-  const backupRows = classified.applied.map((row) => ({
-    messageId: row.messageId,
-    before: row.before,
-    after: row.after,
-    updateTime: row.updateTime || "",
-  }));
-
-  const writes = [
-    {
-      update: {
-        name: repairDocName(repairId),
-        fields: toFirestoreFields({
-          repairId,
-          chatId: input.chatId,
-          operatorUid: input.operatorUid,
-          operatorEmail: input.operatorEmail,
-          createdAt,
-          reason: input.reason,
-          status: "applied",
-          ownerIdSource: loaded.identities.ownerIdSource,
-          threadAnonPresent: loaded.identities.threadAnonId ? "1" : "0",
-          backupJson: JSON.stringify(backupRows),
-        }),
-      },
-      currentDocument: { exists: false },
-    },
-    ...classified.applied.map((row) =>
-      authorUpdateWrite(input.chatId, row.messageId, row.after as ProposedAuthor, row.updateTime),
-    ),
-  ];
-
-  try {
-    await commitWrites(writes);
-  } catch (error) {
-    const reason = String((error as Error).message || "commit_failed");
-    return {
-      ok: false,
-      repairId: "",
-      applied: [],
-      noop: classified.noop,
-      rejected: [
-        ...classified.rejected,
-        ...classified.applied.map((row) => ({
-          ...row,
-          status: "rejected" as const,
-          reason: reason.includes("does not match") || reason.includes("FAILED_PRECONDITION")
-            ? "stale_update_time"
-            : "commit_failed",
-        })),
-      ],
-      writes: 0,
-      error: reason.startsWith("commit_failed") ? "commit_failed" : reason,
-    };
-  }
-
-  try {
-    await writeAdminLog({
-      adminEmail: input.operatorEmail,
-      action: "authorship_repair_apply",
-      targetId: repairId,
-      metadata: {
-        repairId,
-        chatIdSuffix: input.chatId.slice(-8),
-        writes: classified.applied.length,
-        noop: classified.noop.length,
-        rejected: classified.rejected.length,
-      },
-    });
-  } catch {
-    // audit log is best-effort after durable commit
-  }
-
-  return {
-    ok: true,
-    repairId,
-    applied: classified.applied,
-    noop: classified.noop,
-    rejected: classified.rejected,
-    writes: classified.applied.length,
-    error: "",
-  };
+  previewId?: string;
+  previewHash?: string;
+  operationId?: string;
+  sealedPreview?: SealedRepairPreview;
+  backend?: HistoricalRepairBackend;
+}): Promise<HistoricalRepairWriteResult> {
+  if (HISTORICAL_REPAIR_APPLY_FROZEN) return frozenResult();
+  const backend = input.backend || (await defaultBackend());
+  return runApplyHistoricalRepair({ ...input, backend });
 }
 
 export async function rollbackHistoricalAuthorshipRepair(input: {
@@ -198,112 +388,11 @@ export async function rollbackHistoricalAuthorshipRepair(input: {
   operatorUid: string;
   operatorEmail: string;
   reason: string;
-}) {
-  const repairId = String(input.repairId || "").trim();
-  if (!repairId) {
-    return { ok: false, repairId: "", writes: 0, error: "repairId_required", applied: [], noop: [], rejected: [] };
-  }
-  if (String(input.reason || "").trim().length < 8) {
-    return { ok: false, repairId, writes: 0, error: "reason_required", applied: [], noop: [], rejected: [] };
-  }
-
-  const repair = await getFirestoreDoc("authorshipRepairs", repairId);
-  if (!repair) {
-    return { ok: false, repairId, writes: 0, error: "repair_not_found", applied: [], noop: [], rejected: [] };
-  }
-  if (String(repair.status || "") === "rolled_back") {
-    return { ok: true, repairId, writes: 0, error: "", applied: [], noop: [], rejected: [] };
-  }
-  if (String(repair.status || "") !== "applied") {
-    return { ok: false, repairId, writes: 0, error: "repair_not_applied", applied: [], noop: [], rejected: [] };
-  }
-
-  const chatId = String(repair.chatId || "").trim();
-  let backupRows: Array<{ messageId: string; before: PersistedAuthor; after: ProposedAuthor }> = [];
-  try {
-    backupRows = JSON.parse(String(repair.backupJson || "[]"));
-  } catch {
-    return { ok: false, repairId, writes: 0, error: "backup_corrupt", applied: [], noop: [], rejected: [] };
-  }
-
-  const loaded = await loadRepairThread(chatId);
-  const classified = classifyRollbackRows({ backupRows, live: loaded.messages });
-  if (classified.rejected.length > 0) {
-    return {
-      ok: false,
-      repairId,
-      writes: 0,
-      error: classified.rejected[0]?.reason || "rollback_rejected",
-      applied: [],
-      noop: classified.noop,
-      rejected: classified.rejected,
-    };
-  }
-
-  const writes = [
-    ...classified.restore.map((row) =>
-      authorUpdateWrite(chatId, row.messageId, row.before as PersistedAuthor, row.updateTime),
-    ),
-    {
-      update: {
-        name: repairDocName(repairId),
-        fields: toFirestoreFields({
-          status: "rolled_back",
-          rolledBackAt: new Date().toISOString(),
-          rolledBackBy: input.operatorEmail,
-          rollbackReason: input.reason,
-        }),
-      },
-      updateMask: { fieldPaths: ["status", "rolledBackAt", "rolledBackBy", "rollbackReason"] },
-      currentDocument: { exists: true },
-    },
-  ];
-
-  try {
-    await commitWrites(writes);
-  } catch (error) {
-    return {
-      ok: false,
-      repairId,
-      writes: 0,
-      error: "commit_failed",
-      applied: [],
-      noop: classified.noop,
-      rejected: [
-        ...classified.rejected,
-        ...classified.restore.map((row) => ({
-          ...row,
-          status: "rejected" as const,
-          reason: "commit_failed",
-        })),
-      ],
-    };
-  }
-
-  try {
-    await writeAdminLog({
-      adminEmail: input.operatorEmail,
-      action: "authorship_repair_rollback",
-      targetId: repairId,
-      metadata: {
-        repairId,
-        writes: classified.restore.length,
-        operatorUid: input.operatorUid,
-      },
-    });
-  } catch {
-    // best-effort
-  }
-
-  return {
-    ok: true,
-    repairId,
-    writes: classified.restore.length,
-    error: "",
-    applied: classified.restore,
-    noop: classified.noop,
-    rejected: classified.rejected,
-  };
+  backend?: HistoricalRepairBackend;
+}): Promise<HistoricalRepairWriteResult> {
+  if (HISTORICAL_REPAIR_APPLY_FROZEN) return frozenResult();
+  const backend = input.backend || (await defaultBackend());
+  return runRollbackHistoricalRepair({ ...input, backend });
 }
 
-export type { ThreadIdentities, RepairMessageInput };
+export type { RepairMessageInput };

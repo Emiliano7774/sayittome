@@ -81,6 +81,7 @@ export function AuthProvider({
   const loadedProfileUidRef = useRef<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const unsub =
       onAuthStateChanged(
         auth,
@@ -105,6 +106,7 @@ export function AuthProvider({
               8000,
               "auth_profile_timeout",
             );
+            if (cancelled || auth.currentUser?.uid !== user.uid) return;
 
             if (snap.exists()) {
               const data = snap.data();
@@ -151,6 +153,7 @@ export function AuthProvider({
             loadedProfileUidRef.current = user.uid;
           } catch (e) {
             console.error(e);
+            if (cancelled || auth.currentUser?.uid !== user.uid) return;
             setProfile({
               uid: user.uid,
               username: "",
@@ -162,12 +165,15 @@ export function AuthProvider({
             });
             loadedProfileUidRef.current = user.uid;
           } finally {
-            setLoading(false);
+            if (!cancelled) setLoading(false);
           }
         }
       );
 
-    return () => unsub();
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, []);
 
   return (

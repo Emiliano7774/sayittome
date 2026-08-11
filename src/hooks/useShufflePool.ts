@@ -1016,22 +1016,18 @@ export function useShufflePool() {
     }
 
     const scheduleStoriesIndex = () => {
-      const run = () =>
-        refreshStoriesIndex(getStoryViewerKey(), false)
-          .then(() => {
-            storyOwnerUidsRef.current = new Set(
-              getCachedStoryGroups().map((group) => group.ownerUid),
-            );
-            if (!shuffleFeedFrozenRef.current && !shouldSuppressShuffleWindowRefresh()) {
-              filterActivePool(search, filtersRef.current);
-            }
-          })
-          .catch(() => {});
-      if (typeof requestIdleCallback === "function") {
-        requestIdleCallback(run, { timeout: 3000 });
-      } else {
-        window.setTimeout(run, 0);
-      }
+      const viewer = getStoryViewerKey();
+      getCachedStoryGroups(viewer);
+      void refreshStoriesIndex(viewer, false)
+        .then(() => {
+          storyOwnerUidsRef.current = new Set(
+            getCachedStoryGroups(viewer).map((group) => group.ownerUid),
+          );
+          if (!shuffleFeedFrozenRef.current && !shouldSuppressShuffleWindowRefresh()) {
+            filterActivePool(search, filtersRef.current);
+          }
+        })
+        .catch(() => {});
     };
     scheduleStoriesIndex();
 

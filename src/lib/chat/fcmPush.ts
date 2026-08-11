@@ -6,10 +6,33 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
 import { recordNotificationStage } from "@/lib/chat/notificationIncident";
+import {
+  clearPendingUnregister,
+  hashFcmToken,
+  readPendingUnregister,
+  setFcmRegistrationState,
+  writePendingUnregister,
+} from "@/lib/chat/fcmRegistrationStore";
+import {
+  generateInstallationSecret,
+  isValidFcmInstallationId,
+  isValidInstallationProof,
+  isValidInstallationSecret,
+  makeInstallationProof,
+  shouldClearPendingUnregister,
+} from "@/lib/chat/fcmInstallation";
+import {
+  flushPendingUnlocked,
+  reconcileThenRegisterUnlocked,
+  withInstallationLock,
+  type FcmPipelineDeps,
+  type FcmUpsertResult,
+} from "@/lib/chat/fcmEnablePipeline";
 import { auth, functions } from "@/lib/firebase";
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
 const INSTALLATION_KEY = "sayittome:fcm-installation-id";
+const INSTALLATION_SECRET_KEY = "sayittome:fcm-installation-secret";
 const PERSISTED_TOKEN_KEY = "sayittome:fcm-device-token";
 const PERSISTED_UID_KEY = "sayittome:fcm-device-uid";
 
@@ -19,6 +42,9 @@ let registeredUid: string | null = null;
 let pendingChatId: string | null = null;
 let authUnsub: (() => void) | null = null;
 let tokenWaiters: Array<(token: string) => void> = [];
+const enableInFlightByUid = new Map<string, Promise<PushEnableResult>>();
+let initInFlight: Promise<void> | null = null;
+let authCallbackChain: Promise<void> = Promise.resolve();
 
 function notifyTokenWaiters(token: string) {
   const waiters = tokenWaiters;
@@ -47,20 +73,76 @@ function asId(value: unknown) {
   return String(value || "").trim();
 }
 
-function readInstallationId() {
-  if (typeof window === "undefined") return "web";
+function randomUuid() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => {
+    const n = (Math.random() * 16) | 0;
+    const v = ch === "x" ? n : (n & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function readInstallationSecret() {
+  const next = generateInstallationSecret();
+  if (typeof window === "undefined") return next;
   try {
-    const existing = window.localStorage.getItem(INSTALLATION_KEY);
-    if (existing) return existing;
-    const next =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `inst_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const existing = window.localStorage.getItem(INSTALLATION_SECRET_KEY) || "";
+    if (isValidInstallationSecret(existing)) return existing;
+    window.localStorage.setItem(INSTALLATION_SECRET_KEY, next);
+    return next;
+  } catch {
+    return next;
+  }
+}
+
+function liveAuthUid() {
+  return asId(auth.currentUser?.uid);
+}
+
+function clearPendingIfSameInstallation(installationId: string) {
+  const pending = readPendingUnregister();
+  if (!pending) return false;
+  if (
+    !shouldClearPendingUnregister({
+      pendingInstallationId: pending.installationId,
+      currentInstallationId: installationId,
+    })
+  ) {
+    return false;
+  }
+  clearPendingUnregister();
+  return true;
+}
+
+function clearLocalTokenIfMatches(token: string) {
+  const clean = asId(token);
+  if (clean && registeredToken === clean) {
+    registeredToken = null;
+    registeredUid = null;
+  }
+  const persisted = readPersistedDeviceToken();
+  if (clean && persisted.token === clean) {
+    clearPersistedDeviceToken();
+  }
+}
+
+function readInstallationId() {
+  if (typeof window === "undefined") return `inst_${randomUuid()}`;
+  try {
+    const existing = window.localStorage.getItem(INSTALLATION_KEY) || "";
+    if (isValidFcmInstallationId(existing)) return existing;
+    const next = `inst_${randomUuid()}`;
     window.localStorage.setItem(INSTALLATION_KEY, next);
     return next;
   } catch {
-    return `inst_${Date.now()}`;
+    return `inst_${randomUuid()}`;
   }
+}
+
+async function readInstallationProof() {
+  return makeInstallationProof(readInstallationId(), readInstallationSecret());
 }
 
 function persistDeviceToken(uid: string, token: string) {
@@ -139,21 +221,138 @@ function drainQueuedPushChatId() {
   }
 }
 
-export async function upsertFcmTokenForUser(uid: string, token: string) {
+async function invalidateLocalNativeRegistration() {
+  registeredToken = null;
+  registeredUid = null;
+  if (!isCapacitorNative() || typeof window === "undefined") return;
+  try {
+    const { PushNotifications } = await import("@capacitor/push-notifications");
+    await PushNotifications.unregister();
+  } catch {
+    // local disable is best-effort; pending unregister stays durable
+  }
+}
+
+function pipelineDeps(proof: string): FcmPipelineDeps {
+  return {
+    liveUid: liveAuthUid,
+    readPending: () => readPendingUnregister(),
+    clearPending: clearPendingUnregister,
+    flushCall: async (input) => {
+      const unregister = httpsCallable(functions, "unregisterFcmToken");
+      await unregister({
+        token: input.token,
+        installationId: input.installationId,
+        proof: input.proof || proof,
+      });
+    },
+    registerCall: async (input) => {
+      const register = httpsCallable(functions, "registerFcmToken");
+      await register({
+        token: input.token,
+        installationId: input.installationId,
+        proof,
+        tokenHash: hashFcmToken(input.token),
+        platform: "android",
+      });
+    },
+  };
+}
+
+export async function reconcilePendingForEnable(uid: string, nextToken = "") {
+  const pending = readPendingUnregister();
+  if (!pending?.token) return false;
+  const installationId = readInstallationId();
+  const proof = isValidInstallationProof(pending.proof || "")
+    ? String(pending.proof)
+    : await readInstallationProof();
+  return withInstallationLock(installationId, async () => {
+    void nextToken;
+    try {
+      return await flushPendingUnlocked(pipelineDeps(proof), {
+        currentUid: uid,
+        installationId,
+        currentToken: registeredToken || "",
+        proof,
+      });
+    } catch {
+      return false;
+    }
+  });
+}
+
+export async function upsertFcmTokenForUser(
+  uid: string,
+  token: string,
+): Promise<FcmUpsertResult> {
   const cleanUid = asId(uid);
   const cleanToken = asId(token);
-  if (!cleanUid || !cleanToken) return;
+  if (!cleanUid || !cleanToken) return { ok: false, reason: "cancelled" };
+  const installationId = readInstallationId();
 
-  const register = httpsCallable(functions, "registerFcmToken");
-  await register({
-    token: cleanToken,
-    installationId: readInstallationId(),
-    platform: "android",
+  return withInstallationLock(installationId, async () => {
+    if (liveAuthUid() !== cleanUid) return { ok: false, reason: "stale" };
+    setFcmRegistrationState(cleanUid, { status: "registering", error: "" });
+    const proof = await readInstallationProof();
+    if (!isValidInstallationProof(proof)) {
+      return { ok: false, reason: "invalid_proof" };
+    }
+    const result = await reconcileThenRegisterUnlocked(pipelineDeps(proof), {
+      uid: cleanUid,
+      token: cleanToken,
+      installationId,
+      proof,
+      currentToken: registeredToken || "",
+    });
+    if (!result.ok) {
+      if (result.reason === "stale" || result.reason === "cancelled") {
+        return result;
+      }
+      setFcmRegistrationState(cleanUid, { status: "error", error: "callable_failed" });
+      return result;
+    }
+    if (liveAuthUid() !== cleanUid) return { ok: false, reason: "stale" };
+    registeredToken = cleanToken;
+    registeredUid = cleanUid;
+    persistDeviceToken(cleanUid, cleanToken);
+    setFcmRegistrationState(cleanUid, {
+      status: "active",
+      tokenHash: hashFcmToken(cleanToken),
+      error: "",
+    });
+    return { ok: true };
   });
+}
 
-  registeredToken = cleanToken;
-  registeredUid = cleanUid;
-  persistDeviceToken(cleanUid, cleanToken);
+export async function flushPendingFcmUnregister() {
+  const pending = readPendingUnregister();
+  if (!pending?.token) return false;
+  const currentUid = liveAuthUid();
+  const installationId = readInstallationId();
+  const proof = isValidInstallationProof(pending.proof || "")
+    ? String(pending.proof)
+    : await readInstallationProof();
+  if (!isValidInstallationProof(proof) || !isValidFcmInstallationId(pending.installationId || installationId)) {
+    return false;
+  }
+  return withInstallationLock(pending.installationId || installationId, async () => {
+    try {
+      const flushed = await flushPendingUnlocked(pipelineDeps(proof), {
+        currentUid,
+        installationId: pending.installationId || installationId,
+        currentToken: registeredToken || "",
+        proof,
+      });
+      if (flushed) {
+        clearPendingUnregister();
+        clearLocalTokenIfMatches(pending.token);
+        setFcmRegistrationState(pending.uid, { status: "unknown", tokenHash: "", error: "" });
+      }
+      return flushed;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export async function deleteCurrentDeviceFcmToken(
@@ -162,19 +361,43 @@ export async function deleteCurrentDeviceFcmToken(
   const persisted = readPersistedDeviceToken();
   const cleanUid = asId(uid || persisted.uid);
   const token = asId(registeredToken || persisted.token);
-
-  registeredToken = null;
-  registeredUid = null;
-  clearPersistedDeviceToken();
-
-  if (!cleanUid || !token) return;
-
-  try {
-    const unregister = httpsCallable(functions, "unregisterFcmToken");
-    await unregister({ token });
-  } catch {
-    // Best-effort purge on logout / disable.
+  const installationId = readInstallationId();
+  if (!cleanUid || !token) {
+    registeredToken = null;
+    registeredUid = null;
+    return;
   }
+
+  await withInstallationLock(installationId, async () => {
+    const proof = await readInstallationProof();
+    writePendingUnregister({
+      uid: cleanUid,
+      token,
+      tokenHash: hashFcmToken(token),
+      installationId,
+      proof,
+      createdAtMs: Date.now(),
+    });
+
+    await invalidateLocalNativeRegistration();
+
+    try {
+      if (liveAuthUid() && liveAuthUid() !== cleanUid) return;
+      const unregister = httpsCallable(functions, "unregisterFcmToken");
+      await unregister({
+        token,
+        installationId,
+        proof,
+      });
+      if (liveAuthUid() && liveAuthUid() !== cleanUid) return;
+      if (clearPendingIfSameInstallation(installationId)) {
+        clearLocalTokenIfMatches(token);
+        setFcmRegistrationState(cleanUid, { status: "unknown", tokenHash: "", error: "" });
+      }
+    } catch {
+      setFcmRegistrationState(cleanUid, { status: "error", error: "unregister_failed" });
+    }
+  });
 }
 
 async function ensurePushChannel() {
@@ -211,13 +434,10 @@ async function attachPushListeners() {
 
   await PushNotifications.addListener("registration", (event) => {
     const token = asId(event.value);
-    const uid = auth.currentUser?.uid;
     if (!token) return;
     registeredToken = token;
     notifyTokenWaiters(token);
     recordNotificationStage("registration_event", true, "token_present");
-    if (!uid) return;
-    void upsertFcmTokenForUser(uid, token);
   });
 
   await PushNotifications.addListener("registrationError", (error) => {
@@ -240,7 +460,16 @@ export type PushEnableResult =
   | { ok: true; token: string }
   | {
       ok: false;
-      reason: "denied" | "no_auth" | "register" | "token" | "callable" | "prefs";
+      reason:
+        | "denied"
+        | "no_auth"
+        | "register"
+        | "token"
+        | "callable"
+        | "prefs"
+        | "not_native"
+        | "stale"
+        | "cancelled";
       message: string;
     };
 
@@ -250,10 +479,28 @@ export async function registerNativePushIfEnabled(user?: User | null) {
 }
 
 export async function enableNativeChatPush(user?: User | null): Promise<PushEnableResult> {
+  if (!isCapacitorNative() || typeof window === "undefined") {
+    recordNotificationStage("enable_not_native", false, "not_native");
+    return { ok: false, reason: "not_native", message: "not_native" };
+  }
+  const uid = asId(user?.uid || auth.currentUser?.uid);
+  if (!uid) {
+    return { ok: false, reason: "no_auth", message: "missing_uid" };
+  }
+  const existing = enableInFlightByUid.get(uid);
+  if (existing) return existing;
+  const next = enableNativeChatPushOnce(user).finally(() => {
+    enableInFlightByUid.delete(uid);
+  });
+  enableInFlightByUid.set(uid, next);
+  return next;
+}
+
+async function enableNativeChatPushOnce(user?: User | null): Promise<PushEnableResult> {
   recordNotificationStage("enable_start", true, isCapacitorNative() ? "native" : "web");
   if (!isCapacitorNative() || typeof window === "undefined") {
     recordNotificationStage("enable_not_native", false, "not_native");
-    return { ok: false, reason: "register", message: "not_native" };
+    return { ok: false, reason: "not_native", message: "not_native" };
   }
   if (!areChatNotificationsEnabled()) {
     recordNotificationStage("enable_prefs", false, "prefs_off");
@@ -263,12 +510,11 @@ export async function enableNativeChatPush(user?: User | null): Promise<PushEnab
   const uid = asId(user?.uid || auth.currentUser?.uid);
   recordNotificationStage("enable_auth_uid", Boolean(uid), uid ? "present" : "missing");
   if (!uid) {
+    recordNotificationStage("enable_no_auth", false, "missing_uid");
     return { ok: false, reason: "no_auth", message: "missing_uid" };
   }
 
-  if (!bootstrapped) {
-    await initNativePushNotifications();
-  }
+  await initNativePushNotifications({ skipAutoEnable: true });
 
   await ensurePushChannel();
   const { PushNotifications } = await import("@capacitor/push-notifications");
@@ -305,9 +551,20 @@ export async function enableNativeChatPush(user?: User | null): Promise<PushEnab
   }
 
   try {
-    await upsertFcmTokenForUser(uid, token);
+    const upserted = await upsertFcmTokenForUser(uid, token);
+    if (!upserted.ok) {
+      recordNotificationStage("enable_callable_registerFcmToken", false, upserted.reason);
+      return {
+        ok: false,
+        reason: upserted.reason === "stale" || upserted.reason === "cancelled"
+          ? upserted.reason
+          : "callable",
+        message: upserted.reason,
+      };
+    }
     recordNotificationStage("enable_callable_registerFcmToken", true, "ok");
   } catch (error) {
+    setFcmRegistrationState(uid, { status: "error", error: "callable_failed" });
     recordNotificationStage("enable_callable_registerFcmToken", false, "callable_failed");
     return {
       ok: false,
@@ -341,31 +598,46 @@ export async function openNativeNotificationSettings() {
   }
 }
 
-export async function initNativePushNotifications() {
-  if (bootstrapped || typeof window === "undefined") return;
-  if (!isCapacitorNative()) return;
-  bootstrapped = true;
-
-  await attachPushListeners();
-  await ensurePushChannel();
-
-  if (!authUnsub) {
-    authUnsub = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        registeredUid = null;
-        return;
-      }
-      if (areChatNotificationsEnabled()) {
-        void registerNativePushIfEnabled(user);
-      }
-      const pending = drainQueuedPushChatId();
-      if (pending && user.uid) {
-        window.location.assign(`/chat/${encodeURIComponent(pending)}`);
-      }
-    });
+export async function initNativePushNotifications(options?: { skipAutoEnable?: boolean }) {
+  if (typeof window === "undefined" || !isCapacitorNative()) return;
+  if (bootstrapped) return;
+  if (initInFlight) {
+    await initInFlight;
+    return;
   }
 
-  if (areChatNotificationsEnabled() && auth.currentUser) {
+  initInFlight = (async () => {
+    await attachPushListeners();
+    await ensurePushChannel();
+
+    if (!authUnsub) {
+      authUnsub = onAuthStateChanged(auth, (user) => {
+        if (!user) {
+          registeredUid = null;
+          return;
+        }
+        authCallbackChain = authCallbackChain
+          .catch(() => undefined)
+          .then(async () => {
+            await flushPendingFcmUnregister();
+            if (areChatNotificationsEnabled()) {
+              await reconcilePendingForEnable(user.uid);
+              await registerNativePushIfEnabled(user);
+            }
+            const pendingChat = drainQueuedPushChatId();
+            if (pendingChat && user.uid) {
+              window.location.assign(`/chat/${encodeURIComponent(pendingChat)}`);
+            }
+          });
+      });
+    }
+    bootstrapped = true;
+  })().finally(() => {
+    initInFlight = null;
+  });
+  await initInFlight;
+
+  if (!options?.skipAutoEnable && areChatNotificationsEnabled() && auth.currentUser) {
     await registerNativePushIfEnabled(auth.currentUser);
   }
 }

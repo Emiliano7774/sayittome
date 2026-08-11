@@ -6,7 +6,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import StoriesTray from "@/components/stories/StoriesTray";
 import NativeAwareLink from "@/components/navigation/NativeAwareLink";
 import { auth } from "@/lib/firebase";
-import { resolveStoryViewerId } from "@/lib/stories/anonStories";
+import { resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/anonStories";
 import {
   getCachedStoryGroups,
   refreshStoriesIndex,
@@ -25,14 +25,28 @@ export default function ModernStoriesBar({ compact = false }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    setGroups(getCachedStoryGroups());
+    let viewer = "";
 
-    const unsubIndex = subscribeStoriesIndex(() => {
-      if (!cancelled) setGroups(getCachedStoryGroups());
+    const paint = () => {
+      if (!cancelled) setGroups(getCachedStoryGroups(viewer));
+    };
+
+    const unsubIndex = subscribeStoriesIndex(paint);
+
+    let authSettled = false;
+    void resolveStoryViewerIdReady().then((viewerId) => {
+      if (cancelled) return;
+      authSettled = true;
+      viewer = viewerId;
+      paint();
+      void refreshStoriesIndex(viewer, false).catch(() => {});
     });
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
-      void refreshStoriesIndex(resolveStoryViewerId(user)).catch(() => {});
+      if (!authSettled) return;
+      viewer = resolveStoryViewerId(user);
+      paint();
+      void refreshStoriesIndex(viewer, false).catch(() => {});
     });
 
     return () => {

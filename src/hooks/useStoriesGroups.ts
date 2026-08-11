@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import { resolveStoryViewerId } from "@/lib/stories/storyAuthor";
+import { getStoryOwnerKey, resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/storyAuthor";
 import {
   clearStoriesIndexCache,
   getCachedStoryGroups,
@@ -30,6 +30,7 @@ export function useStoriesGroups() {
 
   const [groups, setGroups] = useState<StoryUserGroup[]>(initialGroups);
   const [viewerUid, setViewerUid] = useState(initialViewer);
+  const [ownerKey, setOwnerKey] = useState(() => getStoryOwnerKey());
   const [loading, setLoading] = useState(
     () => initialGroups.length === 0 && !hasStoriesEverHydrated(),
   );
@@ -62,6 +63,7 @@ export function useStoriesGroups() {
 
       lastViewer = nextViewerId;
       setViewerUid(nextViewerId);
+      setOwnerKey(getStoryOwnerKey());
 
       const cached = getCachedStoryGroups(nextViewerId);
       if (cached.length > 0) {
@@ -82,10 +84,10 @@ export function useStoriesGroups() {
         });
     };
 
-    void auth.authStateReady().then(() => {
+    void resolveStoryViewerIdReady().then((viewerId) => {
       if (cancelled) return;
       authSettled = true;
-      applyViewer(resolveStoryViewerId(auth.currentUser), true);
+      applyViewer(viewerId, false);
     });
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
@@ -111,5 +113,5 @@ export function useStoriesGroups() {
   const indexPending =
     loading && groups.length === 0 && !hasStoriesEverHydrated();
 
-  return { groups, viewerUid, loading: showLoading, indexPending };
+  return { groups, viewerUid, ownerKey, loading: showLoading, indexPending };
 }

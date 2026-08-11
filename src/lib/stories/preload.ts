@@ -1,3 +1,6 @@
+import { getStoryViewerKey } from "@/lib/stories/storyAuthor";
+import type { NextPlayTarget } from "@/lib/stories/storiesQueryGuard";
+import { isStoryUnseenForViewer } from "@/lib/stories/storyViewedCache";
 import type { StoryItem, StoryUserGroup } from "@/lib/stories/types";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import {
@@ -122,6 +125,12 @@ export function preloadStoryMedia(story: StoryItem, options?: { videoPreload?: "
   );
 }
 
+export function firstUnseenOrLatestStory(group: StoryUserGroup, viewerId = "") {
+  const viewer = viewerId || getStoryViewerKey();
+  const unseen = group.stories.find((story) => isStoryUnseenForViewer(story, viewer));
+  return unseen || group.stories[group.stories.length - 1] || group.stories[0];
+}
+
 export function preloadStoryGroup(
   group?: StoryUserGroup | null,
   max = 2,
@@ -129,7 +138,29 @@ export function preloadStoryGroup(
 ) {
   if (!group) return;
 
-  group.stories.slice(0, max).forEach((story) => preloadStoryMedia(story, options));
+  const first = firstUnseenOrLatestStory(group);
+  const rest = group.stories.filter((story) => story.id !== first?.id);
+  [first, ...rest]
+    .filter(Boolean)
+    .slice(0, max)
+    .forEach((story) => preloadStoryMedia(story, options));
+}
+
+export function preloadNextPlayTarget(
+  nextTarget: NextPlayTarget<StoryUserGroup>,
+  currentStories: StoryItem[],
+  options?: { videoPreload?: "auto" | "metadata" },
+) {
+  if (nextTarget.kind === "same-group") {
+    const story = currentStories[nextTarget.storyIndex];
+    if (story) preloadStoryMedia(story, options);
+    return;
+  }
+  if (nextTarget.kind === "next-group" && nextTarget.group) {
+    const story = nextTarget.group.stories[nextTarget.storyIndex];
+    if (story) preloadStoryMedia(story, options);
+    else preloadStoryGroup(nextTarget.group, 1, options);
+  }
 }
 
 /** Preload the next story in the current group plus the first stories of upcoming groups. */

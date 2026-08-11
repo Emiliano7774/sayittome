@@ -122,10 +122,6 @@ export async function requestChatNotificationPermission(options?: {
 
       nativePermissionGranted = push.receive === "granted" || local.display === "granted";
       recordNotificationStage("permission_result", nativePermissionGranted, `push:${push.receive}|local:${local.display}`);
-      if (nativePermissionGranted) {
-        const { registerNativePushIfEnabled } = await import("@/lib/chat/fcmPush");
-        await registerNativePushIfEnabled();
-      }
       return nativePermissionGranted;
     } catch (error) {
       recordNotificationStage("native_permission_throw", false, String((error as Error)?.name || "err"));
