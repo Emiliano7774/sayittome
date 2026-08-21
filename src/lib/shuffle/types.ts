@@ -31,6 +31,12 @@ export type ShuffleProfile = {
   showOnline: boolean;
   mostrarUltimaVez?: boolean;
   blurPhoto: boolean;
+  aliasIds?: string[];
+  usernameAliases?: string[];
+  firebaseUid?: string;
+  profileUid?: string;
+  ownerUid?: string;
+  shuffleSource?: "cache" | "live" | "featured" | "page" | "unknown";
   /** Perfil destacado con boost activo (prioridad en ventana shuffle). */
   shuffleFeatured?: boolean;
 };

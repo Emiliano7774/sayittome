@@ -9,11 +9,31 @@ import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVis
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { resolveProfileCountryCode } from "@/lib/geo/countries";
 import { normalizeUsername } from "@/lib/profile/username";
-import { dedupeShuffleProfiles, resolveUsernameLower, shuffleProfileDedupeKeys } from "@/lib/shuffle/dedupeProfiles";
+import {
+  SHUFFLE_DEDUPE_VERSION,
+  dedupeShuffleProfiles,
+  resolveUsernameLower,
+  shuffleProfileDedupeKeys,
+  uniqueShuffleWindow,
+} from "@/lib/shuffle/dedupeProfiles";
+import { shuffleProfileMatchesBoostUid } from "@/lib/shuffle/shuffleActionTargets";
 import {
   parseShuffleFiltersFromSearchParams,
   profileMatchesShuffleServerFilters,
 } from "@/lib/shuffle/serverFilters";
+
+const SHUFFLE_JSON_HEADERS = {
+  "Cache-Control": "private, no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  "x-shuffle-dedupe-version": String(SHUFFLE_DEDUPE_VERSION),
+};
+
+function shuffleJson(body: Record<string, unknown>, init?: { status?: number }) {
+  return NextResponse.json(body, {
+    status: init?.status,
+    headers: SHUFFLE_JSON_HEADERS,
+  });
+}
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +55,13 @@ const ANON_ACTIVE_MS = 90 * 1000;
 type ApiProfile = {
   uid: string;
   authUid?: string;
+  firebaseUid?: string;
+  profileUid?: string;
+  ownerUid?: string;
+  aliasIds?: string[];
   username: string;
   usernameLower?: string;
+  usernameAliases?: string[];
   email?: string;
   bio: string;
   photo: string;
@@ -65,6 +90,7 @@ type ApiProfile = {
   mediaBlurFlags?: Record<string, boolean>;
   banned?: boolean;
   moderationTag?: string;
+  shuffleFeatured?: boolean;
 };
 
 let cachedProfiles: ApiProfile[] = [];
@@ -262,11 +288,24 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
     Number(raw.historias || 0);
 
   const docId = String(raw.id || fallbackUid || "").trim();
-  const firebaseUid = String(raw.uid || "").trim();
+  const firebaseUid = String(raw.uid || raw.firebaseUid || "").trim();
+  const profileUid = String(raw.profileUid || "").trim();
+  const ownerUid = String(raw.ownerUid || "").trim();
+  const aliasIds = Array.isArray(raw.aliasIds)
+    ? raw.aliasIds.map((value) => String(value || "")).filter(Boolean)
+    : [];
 
   const profile: ApiProfile = {
     uid: docId || firebaseUid || fallbackUid || "",
     authUid: firebaseUid || docId || fallbackUid || "",
+    firebaseUid: firebaseUid || undefined,
+    profileUid: profileUid || undefined,
+    ownerUid: ownerUid || undefined,
+    aliasIds: [
+      ...new Set(
+        [docId, firebaseUid, profileUid, ownerUid, fallbackUid, ...aliasIds].filter(Boolean),
+      ),
+    ],
     username:
       normalizeUsername(
         String(raw.username || raw.usernameLower || raw.nombre || "usuario"),
@@ -581,14 +620,16 @@ export async function GET(req: Request) {
     const { profilesCreated, anonymousOnline, totalLive } = await resolveLiveCounts(countOnly);
 
     if (countOnly) {
-      return NextResponse.json({
+      return shuffleJson({
         ok: true,
         profiles: [],
+        featuredProfiles: [],
         profilesCreated,
         anonymousOnline,
         totalLive,
         filteredCount: 0,
         returned: 0,
+        dedupeVersion: SHUFFLE_DEDUPE_VERSION,
         ts: Date.now(),
       });
     }
@@ -610,9 +651,13 @@ export async function GET(req: Request) {
       .map((row) => String(row.uid || ""))
       .filter(Boolean);
 
-    const featuredProfiles = dedupeShuffleProfiles(
+    const featuredProfiles = uniqueShuffleWindow(
       boostUidOrder
-        .map((uid) => filteredByDiscovery.find((profile) => profile.uid === uid))
+        .map((uid) =>
+          filteredByDiscovery.find((profile) =>
+            shuffleProfileMatchesBoostUid(profile, uid),
+          ),
+        )
         .filter(Boolean)
         .map((profile) => ({ ...withPresenceBadge(profile!), shuffleFeatured: true })),
     );
@@ -640,30 +685,37 @@ export async function GET(req: Request) {
         .map((profile) => withPresenceBadge(profile)),
     );
 
-    return NextResponse.json({
+    const uniqueAll = uniqueShuffleWindow([...featuredProfiles, ...selected]);
+    const uniqueFeatured = uniqueAll.filter((profile) => profile.shuffleFeatured);
+    const uniqueSelected = uniqueAll.filter((profile) => !profile.shuffleFeatured);
+
+    return shuffleJson({
       ok: true,
-      profiles: selected,
-      featuredProfiles,
+      profiles: uniqueSelected,
+      featuredProfiles: uniqueFeatured,
       profilesCreated,
       anonymousOnline,
       totalLive,
       filteredCount: filteredByDiscovery.length,
-      returned: selected.length,
+      returned: uniqueSelected.length,
+      dedupeVersion: SHUFFLE_DEDUPE_VERSION,
       ts: Date.now(),
     });
   } catch (e: any) {
     const profilesCreated = cachedRegisteredCount || cachedProfiles.length;
     const totalLive = profilesCreated + cachedAnonymousOnline;
 
-    return NextResponse.json(
+    return shuffleJson(
       {
         ok: false,
         error: e?.message || "unknown",
-        profiles: dedupeShuffleProfiles(cachedProfiles).slice(0, 35),
+        profiles: uniqueShuffleWindow(cachedProfiles).slice(0, 35),
+        featuredProfiles: [],
         profilesCreated,
         anonymousOnline: cachedAnonymousOnline,
         totalLive,
         returned: Math.min(35, cachedProfiles.length),
+        dedupeVersion: SHUFFLE_DEDUPE_VERSION,
         ts: Date.now(),
       },
       { status: 200 },

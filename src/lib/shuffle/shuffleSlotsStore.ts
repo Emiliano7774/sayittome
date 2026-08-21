@@ -1,4 +1,4 @@
-import { shuffleProfileDedupeKeys, uniqueShuffleWindow } from "@/lib/shuffle/dedupeProfiles";
+import { assembleShuffleSlotProfiles, shuffleProfileIdentityKey, uniqueShuffleWindow } from "@/lib/shuffle/dedupeProfiles";
 import {
   applyShuffleProfileBlurFlags,
 } from "@/lib/shuffle/resolveShuffleBlur";
@@ -84,7 +84,7 @@ export function setShuffleSlots(
     const next = pool[indices[slot]] ?? null;
     const prev = slots[slot];
 
-    if (prev?.uid === next?.uid && prev?.username === next?.username) {
+    if (prev && next && shuffleProfileIdentityKey(prev) === shuffleProfileIdentityKey(next) && shuffleProfileIdentityKey(prev)) {
       const updated: ShuffleProfile = {
         ...prev,
         blurPhoto: next.blurPhoto,
@@ -181,70 +181,43 @@ export function setShuffleSlotsWithFeatured(
     windowGeneration += 1;
   }
 
-  const used = new Set<string>();
-  const uniqueFeatured: ShuffleProfile[] = [];
+  const unique = assembleShuffleSlotProfiles(
+    featured,
+    pool,
+    indices,
+    count,
+  );
+  const filledCount = Math.min(unique.length, SHUFFLE_WINDOW_SIZE);
 
-  for (const profile of featured) {
-    const keys = shuffleProfileDedupeKeys(profile);
-    if (keys.length > 0 && keys.some((key) => used.has(key))) continue;
-    for (const key of keys) used.add(key);
-    uniqueFeatured.push(profile);
-  }
-
-  const featuredCount = Math.min(uniqueFeatured.length, SHUFFLE_WINDOW_SIZE);
-  const regularSlots: Array<{ slot: number; profile: ShuffleProfile }> = [];
-
-  for (let slot = 0; slot < count && featuredCount + regularSlots.length < SHUFFLE_WINDOW_SIZE; slot++) {
-    const profile = pool[indices[slot]];
-    if (!profile) continue;
-
-    const keys = shuffleProfileDedupeKeys(profile);
-    if (keys.length > 0 && keys.some((key) => used.has(key))) continue;
-    for (const key of keys) used.add(key);
-    regularSlots.push({ slot, profile });
-  }
-
-  const regularCount = regularSlots.length;
-
-  for (let slot = 0; slot < featuredCount; slot++) {
-    const next = uniqueFeatured[slot] ?? null;
-    slots[slot] = next;
+  for (let slot = 0; slot < filledCount; slot++) {
+    slots[slot] = unique[slot] ?? null;
     dirtySlots.add(slot);
   }
 
-  for (let slot = 0; slot < regularCount; slot++) {
-    const targetSlot = featuredCount + slot;
-    slots[targetSlot] = regularSlots[slot]?.profile ?? null;
-    dirtySlots.add(targetSlot);
-  }
-
-  for (let slot = featuredCount + regularCount; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+  for (let slot = filledCount; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     if (slots[slot] !== null) {
       slots[slot] = null;
       dirtySlots.add(slot);
     }
   }
 
-  dedupeFilledSlots();
   compactShuffleSlotsLeft();
   scheduleFlush({ sync: forceReplace });
 }
 
 function dedupeFilledSlots() {
-  const used = new Set<string>();
-
+  const filled: ShuffleProfile[] = [];
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
-    if (!profile) continue;
+    if (profile) filled.push(profile);
+  }
 
-    const keys = shuffleProfileDedupeKeys(profile);
-    if (keys.length > 0 && keys.some((key) => used.has(key))) {
-      slots[slot] = null;
-      dirtySlots.add(slot);
-      continue;
-    }
-
-    for (const key of keys) used.add(key);
+  const unique = uniqueShuffleWindow(filled);
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const next = unique[slot] ?? null;
+    if (slots[slot] === next) continue;
+    slots[slot] = next;
+    dirtySlots.add(slot);
   }
 }
 

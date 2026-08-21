@@ -5,11 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 
 import {
+  assembleShuffleSlotProfiles,
   dedupeShuffleProfiles,
+  describeShuffleIdentityDebug,
+  findUnprovenShuffleNameCollisions,
+  overlayShuffleProfileSnapshots,
   profileMatchesShuffleExcludeKeys,
   shuffleProfileBatchExcludeKeys,
   shuffleProfileDedupeKeys,
-  uniqueShuffleWindow,
+  shuffleProfileIdentityKey,
+  shuffleProfilesShareIdentity,
 } from "@/lib/shuffle/dedupeProfiles";
 import { getShuffleExcludeKeys, subscribeShuffleExclude } from "@/lib/shuffle/shuffleExcludeStore";
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
@@ -171,7 +176,7 @@ export function useShufflePool() {
 
   function windowSignature(profiles: ShuffleProfile[]) {
     return profiles
-      .map((profile) => profile.uid || profile.username)
+      .map((profile) => shuffleProfileIdentityKey(profile) || profile.uid || profile.username)
       .sort()
       .join("|");
   }
@@ -424,10 +429,12 @@ export function useShufflePool() {
 
       windowCountRef.current = featuredCount + regularCount;
 
-      const shownProfiles = uniqueShuffleWindow([
-        ...featured,
-        ...Array.from({ length: regularCount }, (_, slot) => eligiblePool[windowIndicesRef.current[slot]]),
-      ].filter(Boolean) as ShuffleProfile[]);
+      const shownProfiles = assembleShuffleSlotProfiles(
+        featured,
+        eligiblePool,
+        windowIndicesRef.current,
+        regularCount,
+      );
 
       if (options?.recordBatchMemory !== false) {
         rememberBatchMemory(shownProfiles, {
@@ -443,6 +450,20 @@ export function useShufflePool() {
         regularCount,
         forceReplace,
       );
+      const painted = getVisibleShuffleProfiles();
+      const canonicals = painted
+        .map((profile) => shuffleProfileIdentityKey(profile))
+        .filter(Boolean);
+      const collisions = findUnprovenShuffleNameCollisions(painted);
+      setQaShuffleDiagnosticState({
+        identityVersion: 16,
+        visibleCount: painted.length,
+        visibleCanonicalCount: new Set(canonicals).size,
+        duplicateCanonicalCount: Math.max(0, canonicals.length - new Set(canonicals).size),
+        identities: painted.map(describeShuffleIdentityDebug),
+        unprovenNameCollisions: collisions,
+        identityMigration: collisions.length > 0 ? "PENDING" : "ok",
+      });
       warmShuffleImages(shownProfiles, 12, { urgent: forceReplace });
       setListReady(true);
       markShuffleHydrated(shownProfiles.length);
@@ -464,7 +485,7 @@ export function useShufflePool() {
     (profiles: ShuffleProfile[], total: number) => {
       if (profiles.length === 0) return;
 
-      poolRef.current = dedupeShuffleProfiles(profiles);
+      poolRef.current = overlayShuffleProfileSnapshots(poolRef.current, profiles);
 
       if (total > 0) totalLiveRef.current = total;
 
@@ -607,15 +628,15 @@ export function useShufflePool() {
         const nextProfiles = normalizeShuffleProfiles(json?.profiles).map((profile) =>
           mergeShuffleProfileModeration(
             profile,
-            poolRef.current.find((row) => row.uid === profile.uid) ||
-              activePoolRef.current.find((row) => row.uid === profile.uid),
+            poolRef.current.find((row) => shuffleProfilesShareIdentity(row, profile)) ||
+              activePoolRef.current.find((row) => shuffleProfilesShareIdentity(row, profile)),
           ),
         );
         const nextFeatured = dedupeShuffleProfiles(
           normalizeShuffleProfiles(json?.featuredProfiles).map((profile) =>
             mergeShuffleProfileModeration(
               profile,
-              featuredRef.current.find((row) => row.uid === profile.uid),
+              featuredRef.current.find((row) => shuffleProfilesShareIdentity(row, profile)),
             ),
           ),
         );
@@ -656,7 +677,7 @@ export function useShufflePool() {
 
         if (nextProfiles.length > 0) {
           applyPool(nextProfiles, total || profilesCreated || nextProfiles.length);
-          writeCachedShufflePool(nextProfiles);
+          writeCachedShufflePool(poolRef.current);
           writeCachedShuffleStats({
             profilesCreated,
             anonymousOnline,

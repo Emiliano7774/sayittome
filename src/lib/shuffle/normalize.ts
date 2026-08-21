@@ -32,12 +32,22 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         ? item.searchKeywords.map(String)
         : [];
 
-      const docId = String(item?.id || item?.uid || "").trim();
-      const authUid = String(item?.authUid || "").trim();
+      const docId = String(item?.id || item?.uid || item?.docId || "").trim();
+      const firebaseUid = String(item?.firebaseUid || item?.uid || "").trim();
+      const authUid = String(item?.authUid || firebaseUid || "").trim();
+      const profileUid = String(item?.profileUid || "").trim();
+      const ownerUid = String(item?.ownerUid || "").trim();
+      const aliasIds = Array.isArray(item?.aliasIds)
+        ? item.aliasIds.map(String)
+        : [];
 
       return {
-        uid: docId || String(item?.username || `profile-${index}`),
+        uid: docId || firebaseUid || String(item?.username || `profile-${index}`),
         authUid: authUid || docId || String(item?.username || `profile-${index}`),
+        firebaseUid: firebaseUid || undefined,
+        profileUid: profileUid || undefined,
+        ownerUid: ownerUid || undefined,
+        aliasIds: [...new Set([docId, firebaseUid, authUid, profileUid, ownerUid, ...aliasIds].filter(Boolean))],
         username:
           normalizeUsername(String(item?.username || item?.usernameLower || "usuario")) ||
           "usuario",

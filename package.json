@@ -75,7 +75,9 @@
     "test:stories-index-121": "node --experimental-strip-types scripts/stories-index-121.harness.mjs",
     "test:stories-next-target": "node --experimental-strip-types scripts/stories-next-target.harness.mjs",
     "test:stories-snapshot-ttl": "node --experimental-strip-types scripts/stories-snapshot-ttl.harness.mjs",
-    "test:session-notify-restore": "node scripts/session-notify-restore.harness.mjs"
+    "test:session-notify-restore": "node scripts/session-notify-restore.harness.mjs",
+    "test:shuffle-visible-identity": "node --experimental-strip-types scripts/shuffle-visible-identity.harness.mjs",
+    "test:shuffle-dedupe": "node --experimental-strip-types scripts/shuffle-dedupe.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

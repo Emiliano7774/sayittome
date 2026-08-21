@@ -1,9 +1,9 @@
 import { readClientCache, writeClientCache } from "@/lib/cache/clientCache";
-import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
+import { SHUFFLE_DEDUPE_VERSION, dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
-const SHUFFLE_POOL_KEY = "sayittome:shuffle:pool:v13";
-const SHUFFLE_STATS_KEY = "sayittome:shuffle:stats:v1";
+export const SHUFFLE_POOL_KEY = `sayittome:shuffle:pool:v${SHUFFLE_DEDUPE_VERSION}`;
+const SHUFFLE_STATS_KEY = "sayittome:shuffle:stats:v16";
 const POOL_TTL_MS = 8 * 60_000;
 const STATS_TTL_MS = 5 * 60_000;
 
