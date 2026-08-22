@@ -25,7 +25,7 @@ type Props = {
   mode: "modern" | "classic";
   variant: "grid" | "list";
   className?: string;
-  renderProfile: (profile: ShuffleProfile, feedIndex: number) => ReactNode;
+  renderProfile: (profile: ShuffleProfile, profileIndex: number) => ReactNode;
 };
 
 /** Feed ad insertion every N profiles — slots render when ADS_ENABLED is true. */
@@ -72,10 +72,15 @@ export default function ShuffleFeedWithNativeAds({
           );
         }
 
-        const profile = profiles[getShuffleProfileIndex(index)];
+        const profileIndex = getShuffleProfileIndex(
+          index,
+          profiles.length,
+          showAds,
+        );
+        const profile = profiles[profileIndex];
         if (!profile) return null;
 
-        return renderProfile(profile, index);
+        return renderProfile(profile, profileIndex);
       })}
       <div aria-hidden className="sayittome-nav-scroll-spacer" />
     </div>

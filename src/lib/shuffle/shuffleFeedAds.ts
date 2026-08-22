@@ -63,8 +63,31 @@ export function isShuffleNativeAdIndex(
 }
 
 /** Maps a visual feed index to the underlying profile array index. */
-export function getShuffleProfileIndex(index: number) {
+export function getShuffleProfileIndex(
+  index: number,
+  profileCount: number,
+  showAds: boolean,
+) {
+  if (!showAds || profileCount < SHUFFLE_AD_INTERVAL) return index;
   return index - Math.floor((index + 1) / (SHUFFLE_AD_INTERVAL + 1));
+}
+
+/** Profile indices actually rendered for a feed of `profileCount` cards. */
+export function enumerateShuffleFeedProfileIndices(
+  profileCount: number,
+  showAds: boolean,
+) {
+  const itemCount = getShuffleFeedItemCount(profileCount, showAds);
+  const indices: number[] = [];
+  for (let index = 0; index < itemCount; index += 1) {
+    if (isShuffleFeedAdIndex(index, profileCount, showAds)) continue;
+    indices.push(getShuffleProfileIndex(index, profileCount, showAds));
+  }
+  return indices;
+}
+
+export function getShuffleFeedAdInterval() {
+  return SHUFFLE_AD_INTERVAL;
 }
 
 export function getShuffleAdSlotId(mode: "modern" | "classic", feedIndex: number) {
