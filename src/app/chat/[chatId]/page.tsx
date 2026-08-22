@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 
 import ProfileAnonChat from "@/components/chat/ProfileAnonChat";
 import { ChatErrorScreen, ChatLoadingScreen } from "@/components/chat/ChatScreens";
-import { isProfileAnonChatId, usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
+import { isProfileAnonChatId, usernameHintFromAnonChatId, chatPageComposer } from "@/lib/chat/anonChatId";
 import { resolveProfileChat, isOwnerProfileInboxRedirect } from "@/lib/chat/resolveProfileChat";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useT } from "@/contexts/LocaleContext";
@@ -185,7 +185,7 @@ function ChatEntryPage() {
   const params = useParams();
   const chatId = decodeURIComponent(String(params.chatId || ""));
 
-  if (isProfileAnonChatId(chatId)) {
+  if (chatPageComposer(chatId) === "profile-anon") {
     return (
       <Suspense fallback={null}>
         <ProfileAnonChatRoute />

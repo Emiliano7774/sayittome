@@ -16,6 +16,7 @@ import {
   unregisterFcmTokenInTransaction,
 } from "./fcmTokenTx";
 import { resolvePushTitle } from "./pushNotificationCopy";
+import { deleteStorageObject, handleDeleteChatMessage } from "./deleteChatMessage";
 
 export {
   assertDurableRateLimit,
@@ -25,7 +26,16 @@ export {
   registerFcmTokenInTransaction,
   unregisterFcmTokenInTransaction,
 } from "./fcmTokenTx";
+export { handleDeleteChatMessage } from "./deleteChatMessage";
 export { db, ensureAdminApp, resolveAdminApp } from "./adminApp";
+export {
+  decideChatMessageDelete,
+  isCanonicalMessageAuthor,
+  isChatMember,
+  isQuietEveryoneDeleteSummary,
+  pickUniqueChatMessageLocation,
+  tombstonePublicFields,
+} from "./deleteChatMessageCore";
 
 setGlobalOptions({ region: "us-central1" });
 
@@ -271,6 +281,13 @@ export const registerFcmToken = onCall(async (request) => {
   });
 
   return { ok: true, id };
+});
+
+export const deleteChatMessage = onCall(async (request) => {
+  return handleDeleteChatMessage(request, {
+    db: db(),
+    deleteStoragePath: deleteStorageObject,
+  });
 });
 
 export const unregisterFcmToken = onCall(async (request) => {

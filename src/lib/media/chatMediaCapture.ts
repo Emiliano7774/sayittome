@@ -8,10 +8,54 @@ export type ChatMediaCaptureResult = {
   source: "camera" | "gallery";
 };
 
+export type ChatMediaCaptureFailure = "cancelled" | "denied" | "failed";
+
 type PermissionKind = "camera" | "gallery" | "microphone";
 
-function isNativeShell() {
+export function isNativeChatShell() {
   return Capacitor.isNativePlatform();
+}
+
+export function isChatMediaUserCancelled(error: unknown) {
+  const message = String(
+    error instanceof Error
+      ? error.message
+      : (error as { message?: string } | null)?.message || error || "",
+  ).toLowerCase();
+  return (
+    message.includes("cancel") ||
+    message.includes("no image picked") ||
+    message.includes("no photos picked")
+  );
+}
+
+export function isChatMediaPermissionDenied(error: unknown) {
+  const name =
+    error instanceof DOMException
+      ? error.name
+      : String((error as { name?: string } | null)?.name || "");
+  const message = String(
+    error instanceof Error
+      ? error.message
+      : (error as { message?: string } | null)?.message || error || "",
+  ).toLowerCase();
+  return (
+    name === "NotAllowedError" ||
+    name === "PermissionDeniedError" ||
+    message.includes("notallowed") ||
+    (message.includes("permission") &&
+      (message.includes("denied") || message.includes("dismiss")))
+  );
+}
+
+export function classifyChatMediaFailure(error: unknown): ChatMediaCaptureFailure {
+  if (isChatMediaUserCancelled(error)) return "cancelled";
+  if (isChatMediaPermissionDenied(error)) return "denied";
+  return "failed";
+}
+
+function isNativeShell() {
+  return isNativeChatShell();
 }
 
 async function loadCameraPlugin() {
@@ -19,42 +63,37 @@ async function loadCameraPlugin() {
   return Camera;
 }
 
+/**
+ * Runtime CAMERA / RECORD_AUDIO only. Gallery on modern Android uses the
+ * system picker (GET_CONTENT / Photo Picker) and must not request
+ * READ_MEDIA_* / photos permission first — that steals the user gesture
+ * and is unnecessary after Android 13.
+ */
 export async function ensureChatMediaPermission(kind: PermissionKind) {
   if (!isNativeShell()) return true;
+  if (kind === "gallery") return true;
+  if (kind === "microphone") return true;
 
   try {
     const Camera = await loadCameraPlugin();
-    const permissions =
-      kind === "microphone"
-        ? (["camera"] as const)
-        : kind === "camera"
-          ? (["camera"] as const)
-          : (["photos"] as const);
-
     const current = await Camera.checkPermissions();
-    const alreadyGranted =
-      kind === "gallery"
-        ? current.photos === "granted"
-        : current.camera === "granted";
-
-    if (alreadyGranted) return true;
-
-    const requested = await Camera.requestPermissions({ permissions: [...permissions] });
-
-    if (kind === "gallery") {
-      return requested.photos === "granted";
-    }
-
+    if (current.camera === "granted") return true;
+    const requested = await Camera.requestPermissions({
+      permissions: ["camera"],
+    });
     return requested.camera === "granted";
   } catch {
-    return false;
+    // WebView getUserMedia / capture intents still prompt themselves.
+    return true;
   }
 }
 
 async function uriToFile(uri: string, fileName: string, mimeType: string) {
   const response = await fetch(uri);
   const blob = await response.blob();
-  return new File([blob], fileName, { type: mimeType || blob.type || "application/octet-stream" });
+  return new File([blob], fileName, {
+    type: mimeType || blob.type || "application/octet-stream",
+  });
 }
 
 function mimeFromFormat(format?: string) {
@@ -65,14 +104,19 @@ function mimeFromFormat(format?: string) {
   return "image/jpeg";
 }
 
+function fileKind(file: File): "image" | "video" {
+  if (file.type.startsWith("video/")) return "video";
+  return "image";
+}
+
+/** Capacitor Camera photos only. Video always uses the file input capture path. */
 export async function captureChatPhotoFromCamera(): Promise<ChatMediaCaptureResult | null> {
   if (!isNativeShell()) return null;
 
-  const allowed = await ensureChatMediaPermission("camera");
-  if (!allowed) return null;
-
   try {
-    const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+    const { Camera, CameraResultType, CameraSource } = await import(
+      "@capacitor/camera"
+    );
     const photo = await Camera.getPhoto({
       source: CameraSource.Camera,
       resultType: CameraResultType.Uri,
@@ -85,80 +129,80 @@ export async function captureChatPhotoFromCamera(): Promise<ChatMediaCaptureResu
     if (!uri) return null;
 
     const mimeType = mimeFromFormat(photo.format);
-    const file = await uriToFile(uri, `chat-camera.${photo.format || "jpg"}`, mimeType);
+    const file = await uriToFile(
+      uri,
+      `chat-camera.${photo.format || "jpg"}`,
+      mimeType,
+    );
 
     return {
       file,
       type: "image",
       source: "camera",
     };
-  } catch {
+  } catch (error) {
+    if (classifyChatMediaFailure(error) === "cancelled") {
+      throw Object.assign(new Error("chat_media_cancelled"), {
+        code: "chat_media_cancelled",
+      });
+    }
     return null;
   }
 }
 
 export async function pickChatPhotoFromGallery(): Promise<ChatMediaCaptureResult | null> {
-  if (!isNativeShell()) return null;
-
-  const allowed = await ensureChatMediaPermission("gallery");
-  if (!allowed) return null;
-
-  try {
-    const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
-    const photo = await Camera.getPhoto({
-      source: CameraSource.Photos,
-      resultType: CameraResultType.Uri,
-      quality: 95,
-      correctOrientation: true,
-    });
-
-    const uri = photo.webPath || photo.path || "";
-    if (!uri) return null;
-
-    const mimeType = mimeFromFormat(photo.format);
-    const file = await uriToFile(uri, `chat-gallery.${photo.format || "jpg"}`, mimeType);
-
-    return {
-      file,
-      type: "image",
-      source: "gallery",
-    };
-  } catch {
-    return null;
-  }
+  // Native gallery must use the hidden file input so video is included and
+  // the click stays in the user-gesture stack. The Camera plugin is photos-only.
+  return null;
 }
 
 export async function ensureChatMicrophonePermission() {
-  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-    return false;
-  }
-
-  if (!isNativeShell()) {
-    return true;
-  }
-
-  // Native WebView prompts for RECORD_AUDIO via getUserMedia itself.
-  // Do not gate audio-only capture on the Capacitor Camera plugin.
-  return true;
+  const { ensureChatMicrophonePermission: requestNative } = await import(
+    "@/lib/media/chatMicrophonePermission"
+  );
+  const result = await requestNative();
+  return result.allowed;
 }
 
 export async function ensureChatCameraStreamPermission(includeAudio: boolean) {
   if (!isNativeShell()) return true;
-
-  const cameraOk = await ensureChatMediaPermission("camera");
-  if (!cameraOk) return false;
-
-  if (!includeAudio) return true;
-
-  return ensureChatMicrophonePermission();
+  void includeAudio;
+  // Capture intents / getUserMedia request CAMERA (+ RECORD_AUDIO) themselves.
+  return true;
 }
 
-export async function openNativeGalleryFilePicker(input: HTMLInputElement | null) {
+export function resetChatFileInput(input: HTMLInputElement | null) {
+  if (!input) return;
+  input.value = "";
+}
+
+/**
+ * Must run in the same turn as the user click. Awaiting permissions first
+ * drops the Android WebView user gesture and onShowFileChooser never fires.
+ */
+export function openNativeGalleryFilePicker(input: HTMLInputElement | null) {
   if (!input) return false;
-
-  const allowed = await ensureChatMediaPermission("gallery");
-  if (!allowed) return false;
-
+  resetChatFileInput(input);
   input.click();
   return true;
+}
+
+export function openChatFileInput(input: HTMLInputElement | null) {
+  return openNativeGalleryFilePicker(input);
+}
+
+/** Android WebView ignores programmatic click on `display:none` file inputs. */
+export const CHAT_FILE_INPUT_CLASS =
+  "pointer-events-none absolute h-px w-px overflow-hidden opacity-0";
+
+export function fileFromChatInput(
+  file: File | null | undefined,
+  source: "camera" | "gallery",
+): ChatMediaCaptureResult | null {
+  if (!file) return null;
+  return {
+    file,
+    type: fileKind(file),
+    source,
+  };
 }

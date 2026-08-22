@@ -5,10 +5,18 @@
   uploadBytesResumable,
 } from "firebase/storage";
 
+import { ensureStorageAuth } from "@/lib/auth/ensureStorageAuth";
+import { chatAudioExtension } from "@/lib/media/chatAudioPlayback";
+import { formatStorageUploadError } from "@/lib/media/uploadFileToStorage";
 import {
   storageUploadMetadata,
   type StorageCacheOptions,
 } from "@/lib/media/storageCacheControl";
+
+export type ChatMediaUploadDeps = {
+  ensureStorageAuth?: typeof ensureStorageAuth;
+  uploadMedia?: typeof uploadMedia;
+};
 
 export async function uploadMedia(
   path: string,
@@ -43,6 +51,25 @@ export async function uploadMedia(
   return getDownloadURL(storageRef);
 }
 
+export function chatMessageMediaPath(
+  chatId: string,
+  clientId: string,
+  kind: "image" | "video" | "audio",
+  mime?: string,
+) {
+  const ext =
+    kind === "audio"
+      ? chatAudioExtension(mime || "audio/webm")
+      : kind === "video"
+        ? "mp4"
+        : "jpg";
+  return `chats/${chatId}/${clientId}_${ext}`;
+}
+
+export function isChatMediaStorageUnauthorized(error: unknown) {
+  return formatStorageUploadError(error) === "storage_unauthorized";
+}
+
 export async function uploadChatMessageMedia(
   chatId: string,
   clientId: string,
@@ -50,8 +77,10 @@ export async function uploadChatMessageMedia(
   kind: "image" | "video" | "audio",
   onProgress?: (pct: number) => void,
   options?: { viewOnce?: boolean },
+  deps?: ChatMediaUploadDeps,
 ) {
-  const ext = kind === "audio" ? "webm" : kind === "video" ? "mp4" : "jpg";
+  await (deps?.ensureStorageAuth ?? ensureStorageAuth)({ allowAnonymous: true });
+
   const contentType =
     file.type ||
     (kind === "audio"
@@ -60,8 +89,9 @@ export async function uploadChatMessageMedia(
         ? "video/mp4"
         : "image/jpeg");
 
-  const path = `chats/${chatId}/${clientId}_${ext}`;
-  return uploadMedia(path, file, onProgress, contentType, {
+  const path = chatMessageMediaPath(chatId, clientId, kind, contentType);
+  const upload = deps?.uploadMedia ?? uploadMedia;
+  return upload(path, file, onProgress, contentType, {
     viewOnce: options?.viewOnce === true,
     category: options?.viewOnce ? "view_once" : "chat",
   });

@@ -2,6 +2,15 @@ import { signInAnonymously, type User } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
 
+export function resolveStorageAuthAction(
+  currentUser: { uid?: string; isAnonymous?: boolean } | null | undefined,
+  options?: { allowAnonymous?: boolean },
+): "use-current" | "sign-in-anonymous" | "reject" {
+  if (currentUser) return "use-current";
+  if (options?.allowAnonymous) return "sign-in-anonymous";
+  return "reject";
+}
+
 export async function waitForAuthReady(): Promise<void> {
   await auth.authStateReady();
 }
@@ -27,11 +36,11 @@ export async function ensureStorageAuth(options?: {
 }): Promise<User> {
   await auth.authStateReady();
 
-  if (auth.currentUser) {
+  const action = resolveStorageAuthAction(auth.currentUser, options);
+  if (action === "use-current" && auth.currentUser) {
     return auth.currentUser;
   }
-
-  if (!options?.allowAnonymous) {
+  if (action === "reject") {
     throw new Error("auth_required");
   }
 

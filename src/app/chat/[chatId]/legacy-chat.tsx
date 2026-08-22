@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUxMode } from "@/contexts/UxModeContext";
+import { useT } from "@/contexts/LocaleContext";
 import UxModeSwitcher from "@/components/UxModeSwitcher";
 
 import {
@@ -18,21 +19,53 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
-
 import { onAuthStateChanged } from "firebase/auth";
 
-import { auth, db, storage } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { uploadChatMessageMedia } from "@/lib/media/upload";
+import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
+import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
+import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
-import { ensureChatCameraStreamPermission, openNativeGalleryFilePicker } from "@/lib/media/chatMediaCapture";
+import { CHAT_FILE_INPUT_CLASS, openNativeGalleryFilePicker } from "@/lib/media/chatMediaCapture";
+import {
+  CHAT_AUDIO_MIN_BYTES,
+  classifyChatAudioCaptureFailure,
+  pickSupportedAudioMimeType,
+  reduceChatAudioEvent,
+  type ChatAudioPhase,
+} from "@/lib/media/chatAudioCapture";
+import {
+  ensureChatMicrophonePermission,
+  isNativeChatMicrophoneShell,
+  noticeFromMicrophonePermission,
+  openChatMicrophoneSettings,
+  type ChatMicNotice,
+} from "@/lib/media/chatMicrophonePermission";
+import { preparePlayableChatAudio } from "@/lib/media/chatAudioPlayback";
+import {
+  DELETED_MESSAGE_PREVIEW,
+  deleteOpId,
+  isCanonicalDeleteAuthor,
+  isHiddenForViewer,
+  tombstoneDeletedMessage,
+} from "@/lib/chat/messageDelete";
+import { viewerHideKeys } from "@/lib/chat/messageDeleteServer";
+import { persistMessageDelete } from "@/lib/chat/persistMessageDelete";
+import {
+  dequeueMessageDelete,
+  forgetLocalHiddenMessage,
+  queueMessageDelete,
+  readLocalHiddenMessageIds,
+  rememberLocalHiddenMessage,
+} from "@/lib/chat/messageDeleteLocal";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import { inboxChatFromFirestore, markChatAsRead } from "@/lib/chat/unread";
 import {
   buildOutgoingChatMetaPatch,
   resolveChatRecipientIds,
 } from "@/lib/chat/outgoingChatMeta";
-import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import {
@@ -57,7 +90,7 @@ type MessageData = {
   senderAuthUid?: string;
   senderProfileId?: string;
   senderRole?: string;
-  createdAt?: any;
+  createdAt?: unknown;
   readBy?: Record<string, boolean>;
   clientMessageId?: string;
   optimistic?: boolean;
@@ -70,6 +103,8 @@ type MessageData = {
   mediaType?: MediaType;
   mediaName?: string;
   mediaSize?: number;
+  hiddenFor?: Record<string, boolean>;
+  deletedForEveryone?: boolean;
 };
 
 type ChatData = {
@@ -114,13 +149,37 @@ function mediaLabel(type?: MediaType) {
   return "Multimedia";
 }
 
+function createdAtToMs(value: unknown): number | undefined {
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as {
+    toMillis?: () => unknown;
+    toDate?: () => unknown;
+    getTime?: () => unknown;
+  };
+  if (typeof candidate.toMillis === "function") {
+    const ms = Number(candidate.toMillis());
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+  if (typeof candidate.toDate === "function") {
+    const date = candidate.toDate();
+    if (date instanceof Date) {
+      const ms = date.getTime();
+      return Number.isFinite(ms) ? ms : undefined;
+    }
+  }
+  if (typeof candidate.getTime === "function") {
+    const ms = Number(candidate.getTime());
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+  return undefined;
+}
+
 function legacyMessageToCached(message: MessageData): CachedChatMessage {
-  const createdAtMs =
-    typeof message.createdAt?.toMillis === "function"
-      ? message.createdAt.toMillis()
-      : typeof message.createdAt?.toDate === "function"
-        ? message.createdAt.toDate().getTime()
-        : undefined;
+  const createdAtMs = createdAtToMs(message.createdAt);
   return {
     id: String(message.id || message.clientMessageId || ""),
     text: String(message.texto || ""),
@@ -131,6 +190,8 @@ function legacyMessageToCached(message: MessageData): CachedChatMessage {
     type: message.mediaType,
     mediaUrl: message.mediaUrl,
     readBy: message.readBy,
+    hiddenFor: message.hiddenFor,
+    deletedForEveryone: message.deletedForEveryone,
     ...(createdAtMs ? { createdAtMs } : {}),
   };
 }
@@ -146,6 +207,8 @@ function cachedToLegacyMessage(message: CachedChatMessage): MessageData {
     mediaUrl: message.mediaUrl,
     mediaType: message.type === "text" ? undefined : message.type,
     readBy: message.readBy,
+    hiddenFor: message.hiddenFor,
+    deletedForEveryone: message.deletedForEveryone,
     status: "sent",
     createdAt: message.createdAtMs
       ? { toMillis: () => message.createdAtMs!, toDate: () => new Date(message.createdAtMs!) }
@@ -162,6 +225,7 @@ function hydrateLegacyCachedMessages(chatId: string): MessageData[] {
 }
 
 export default function LegacyChatPage() {
+  const t = useT();
   const { uxMode } = useUxMode();
   const params = useParams();
   const chatId = decodeURIComponent(String(params.chatId || ""));
@@ -175,7 +239,12 @@ export default function LegacyChatPage() {
   const [replyingTo, setReplyingTo] = useState<MessageData | null>(null);
   const [viewer, setViewer] = useState<MessageData | null>(null);
   const [recording, setRecording] = useState(false);
+  const [micNotice, setMicNotice] = useState<ChatMicNotice>(null);
   const [currentUid, setCurrentUid] = useState(() => profileAuthUid(auth.currentUser));
+  const [firebaseUid, setFirebaseUid] = useState(() => String(auth.currentUser?.uid || ""));
+  const [pendingAudio, setPendingAudio] = useState<{ blob: Blob; url: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MessageData | null>(null);
+  const [deleteStage, setDeleteStage] = useState<"choose" | "confirm-me" | "confirm-everyone">("choose");
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -189,6 +258,8 @@ export default function LegacyChatPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
+  const audioPhaseRef = useRef<ChatAudioPhase>("idle");
+  const audioRecordingSessionRef = useRef(0);
 
   function notifyModerationActivity(
     overrides: Partial<ChatData> & { lastMessage?: string; lastMessageSender?: string },
@@ -199,8 +270,8 @@ export default function LegacyChatPage() {
       receptorUsername: overrides.receptorUsername ?? chat?.receptorUsername,
       receptorUid: overrides.receptorUid ?? chat?.receptorUid,
       targetUid: overrides.targetUid ?? chat?.targetUid,
-      initiatorUid: overrides.initiatorUid ?? chat?.initiatorUid ?? currentUid,
-      anonOwnerUid: overrides.anonOwnerUid ?? chat?.anonOwnerUid ?? currentUid,
+      initiatorUid: overrides.initiatorUid ?? chat?.initiatorUid,
+      anonOwnerUid: overrides.anonOwnerUid ?? chat?.anonOwnerUid,
       lastMessage: overrides.lastMessage ?? chat?.lastMessage,
       lastMessageSender: overrides.lastMessageSender ?? chat?.lastMessageSender,
       anon: overrides.anon ?? chat?.anon,
@@ -213,10 +284,12 @@ export default function LegacyChatPage() {
     void auth.authStateReady().then(() => {
       if (cancelled) return;
       setCurrentUid(profileAuthUid(auth.currentUser));
+      setFirebaseUid(String(auth.currentUser?.uid || ""));
     });
 
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUid(profileAuthUid(user));
+      setFirebaseUid(String(user?.uid || ""));
     });
 
     return () => {
@@ -224,13 +297,6 @@ export default function LegacyChatPage() {
       unsub();
     };
   }, []);
-
-  useEffect(() => {
-    if (!chatId) return;
-    const cached = hydrateLegacyCachedMessages(chatId);
-    if (!cached.length) return;
-    setMessages((prev) => (prev.length ? prev : cached));
-  }, [chatId]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -280,17 +346,35 @@ export default function LegacyChatPage() {
       const docs: MessageData[] = [];
 
       snapshot.forEach((docu) => {
+        const data = docu.data() as MessageData;
         docs.push({
           id: docu.id,
           status: "sent",
-          ...(docu.data() as any),
+          ...data,
+          ...(data.deletedForEveryone
+            ? {
+                texto: DELETED_MESSAGE_PREVIEW,
+                mediaUrl: "",
+                mediaType: undefined,
+              }
+            : {}),
         });
       });
 
       const user = auth.currentUser;
+      const hideKeys = viewerHideKeys({
+        authUid: user?.uid || firebaseUid,
+        profileUid: profileAuthUid(user) || currentUid,
+      });
+      const localHidden = new Set(readLocalHiddenMessageIds(chatId));
+      const visibleDocs = docs.filter((row) => {
+        const id = String(row.id || "");
+        if (id && localHidden.has(id)) return false;
+        return !isHiddenForViewer(row.hiddenFor, hideKeys);
+      });
 
-      if (user && docs.length > 0) {
-        const lastRealMessage = docs[docs.length - 1];
+      if (user && visibleDocs.length > 0) {
+        const lastRealMessage = visibleDocs[visibleDocs.length - 1];
         const lastRealMessageId =
           lastRealMessage.id || lastRealMessage.clientMessageId || null;
 
@@ -309,13 +393,13 @@ export default function LegacyChatPage() {
         docs.map((message) => message.id || message.clientMessageId || "").filter(Boolean),
       );
 
-      setMessages(docs);
+      setMessages(visibleDocs);
       writeCachedChatMessages(
         chatId,
-        docs
+        visibleDocs
           .filter((message) => message.id)
           .map(legacyMessageToCached)
-          .filter((message) => message.id && (message.text || message.mediaUrl)),
+          .filter((message) => message.id && (message.text || message.mediaUrl || message.deletedForEveryone)),
       );
 
       setOptimisticMessages((prev) =>
@@ -372,7 +456,7 @@ export default function LegacyChatPage() {
     });
 
     return () => unsub();
-  }, [chatId]);
+  }, [chatId, firebaseUid, currentUid]);
 
   const viewerUid =
     currentUid ||
@@ -436,6 +520,107 @@ export default function LegacyChatPage() {
     setTimeout(() => inputRef.current?.focus(), 30);
   };
 
+  const discardPendingAudio = () => {
+    setPendingAudio((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+    audioPhaseRef.current = "idle";
+  };
+
+  const closeDeleteMenu = () => {
+    setDeleteTarget(null);
+    setDeleteStage("choose");
+  };
+
+  const runMessageDelete = async (mode: "me" | "everyone") => {
+    const target = deleteTarget;
+    if (!target?.id || !chatId) return;
+    const messageId = target.id;
+    const previous = messages;
+    closeDeleteMenu();
+    if (mode === "me") {
+      rememberLocalHiddenMessage(chatId, messageId);
+      setMessages((old) => old.filter((row) => row.id !== messageId));
+    } else {
+      const tombstone = tombstoneDeletedMessage();
+      setMessages((old) =>
+        old.map((row) =>
+          row.id === messageId
+            ? {
+                ...row,
+                texto: tombstone.texto,
+                mediaUrl: "",
+                mediaType: undefined,
+                deletedForEveryone: true,
+              }
+            : row,
+        ),
+      );
+    }
+    try {
+      const result = await persistMessageDelete({ chatId, messageId, mode });
+      if (result?.cleanupPending) {
+        queueMessageDelete({
+          id: deleteOpId(chatId, messageId, mode),
+          chatId,
+          messageId,
+          mode,
+          identity: firebaseUid,
+        });
+      } else {
+        dequeueMessageDelete(deleteOpId(chatId, messageId, mode));
+      }
+    } catch {
+      queueMessageDelete({
+        id: deleteOpId(chatId, messageId, mode),
+        chatId,
+        messageId,
+        mode,
+        identity: firebaseUid,
+      });
+      if (mode === "me") {
+        forgetLocalHiddenMessage(chatId, messageId);
+        setMessages(previous);
+      } else if (typeof navigator !== "undefined" && navigator.onLine) {
+        setMessages(previous);
+        alert("No se pudo eliminar el mensaje. Probá de nuevo.");
+      }
+    }
+  };
+
+  const deleteMenu = (
+    <ChatMessageDeleteMenu
+      open={Boolean(deleteTarget)}
+      canDeleteForEveryone={Boolean(
+        deleteTarget &&
+          isCanonicalDeleteAuthor(
+            {
+              fromUid: deleteTarget.fromUid,
+              senderAuthUid: deleteTarget.senderAuthUid,
+              senderRole: deleteTarget.senderRole,
+            },
+            { authUid: firebaseUid, profileUid: currentUid, identityReady: true },
+          ),
+      )}
+      stage={deleteStage}
+      onChooseMe={() => setDeleteStage("confirm-me")}
+      onChooseEveryone={() => setDeleteStage("confirm-everyone")}
+      onConfirmMe={() => void runMessageDelete("me")}
+      onConfirmEveryone={() => void runMessageDelete("everyone")}
+      onClose={closeDeleteMenu}
+      labels={{
+        forMe: "Eliminar para mí",
+        forEveryone: "Eliminar para todos",
+        confirmMe: "El mensaje se ocultará solo para vos. La otra persona lo va a seguir viendo.",
+        confirmEveryone:
+          "El mensaje se reemplazará por “Mensaje eliminado” para todos y se quitarán los adjuntos.",
+        confirm: "Eliminar",
+        cancel: "Cancelar",
+      }}
+    />
+  );
+
   const buildReplyPayload = () => {
     return replyingTo
       ? {
@@ -451,13 +636,12 @@ export default function LegacyChatPage() {
   const uploadMediaMessage = async ({
     blob,
     fileName,
-    contentType,
     mediaType,
     localPreviewUrl,
   }: {
     blob: Blob;
     fileName: string;
-    contentType: string;
+    contentType?: string;
     mediaType: MediaType;
     localPreviewUrl: string;
   }) => {
@@ -502,43 +686,23 @@ export default function LegacyChatPage() {
     }, 20);
 
     try {
-      const safeName = fileName.replace(/[^\w.\-]+/g, "_");
-      const storagePath = `chats/${chatId}/${clientMessageId}_${safeName}`;
-      const storageRef = ref(storage, storagePath);
-
-      const uploadTask = uploadBytesResumable(storageRef, blob, {
-        contentType,
-        // Chat paths are private-browser cache only; never shared/public.
-        cacheControl: "private,max-age=86400",
-      });
-
-      const downloadUrl = await new Promise<string>((resolve, reject) => {
-        uploadTask.on(
-          "state_changed",
-          (snapshot) => {
-            const progress = Math.round(
-              (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-            );
-
-            setOptimisticMessages((prev) =>
-              prev.map((msg) =>
-                msg.clientMessageId === clientMessageId
-                  ? { ...msg, uploadProgress: progress }
-                  : msg
-              )
-            );
-          },
-          reject,
-          async () => {
-            try {
-              const url = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve(url);
-            } catch (e) {
-              reject(e);
-            }
-          }
-        );
-      });
+      const kind =
+        mediaType === "video" ? "video" : mediaType === "audio" ? "audio" : "image";
+      const downloadUrl = await uploadChatMessageMedia(
+        chatId,
+        clientMessageId,
+        blob,
+        kind,
+        (progress) => {
+          setOptimisticMessages((prev) =>
+            prev.map((msg) =>
+              msg.clientMessageId === clientMessageId
+                ? { ...msg, uploadProgress: progress }
+                : msg
+            )
+          );
+        },
+      );
 
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: "",
@@ -574,8 +738,6 @@ export default function LegacyChatPage() {
       notifyModerationActivity({
         lastMessage: mediaLabel(mediaType),
         lastMessageSender: author.fromUid,
-        initiatorUid: author.senderAuthUid,
-        anonOwnerUid: author.senderAuthUid,
       });
 
       URL.revokeObjectURL(localPreviewUrl);
@@ -593,6 +755,49 @@ export default function LegacyChatPage() {
       alert("No se pudo enviar el archivo.");
     }
   };
+
+  const sendPendingAudio = async () => {
+    if (!pendingAudio) return;
+    const { blob, url } = pendingAudio;
+    setPendingAudio(null);
+    audioPhaseRef.current = "idle";
+    const ext = blob.type.includes("wav")
+      ? "wav"
+      : blob.type.includes("mp3")
+        ? "mp3"
+        : blob.type.includes("mp4") || blob.type.includes("aac")
+          ? "m4a"
+          : "webm";
+    await uploadMediaMessage({
+      blob,
+      fileName: "audio_" + Date.now() + "." + ext,
+      contentType: blob.type || "audio/webm",
+      mediaType: "audio",
+      localPreviewUrl: url,
+    });
+  };
+
+  const audioPreviewCard = pendingAudio ? (
+    <div className="mb-3 rounded-[1.5rem] border border-white/10 bg-black px-4 py-3">
+      <ChatAudioPlayer src={pendingAudio.url} failLabel="No se pudo reproducir el audio." />
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => void sendPendingAudio()}
+          className="rounded-full bg-white px-4 py-2 text-xs font-black text-black"
+        >
+          Enviar
+        </button>
+        <button
+          type="button"
+          onClick={discardPendingAudio}
+          className="rounded-full border border-white/10 px-4 py-2 text-xs font-black text-white"
+        >
+          Descartar
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   const sendMessage = async () => {
     const user = auth.currentUser;
@@ -662,8 +867,6 @@ export default function LegacyChatPage() {
       notifyModerationActivity({
         lastMessage: clean,
         lastMessageSender: author.fromUid,
-        initiatorUid: author.senderAuthUid,
-        anonOwnerUid: author.senderAuthUid,
       });
     } catch (e) {
       console.error(e);
@@ -680,8 +883,8 @@ export default function LegacyChatPage() {
     }
   };
 
-  const handlePickMedia = async () => {
-    const opened = await openNativeGalleryFilePicker(fileInputRef.current);
+  const handlePickMedia = () => {
+    const opened = openNativeGalleryFilePicker(fileInputRef.current);
     if (!opened) {
       alert("No se pudo abrir la galería. Revisá los permisos del navegador o la app.");
     }
@@ -721,21 +924,54 @@ export default function LegacyChatPage() {
   };
 
   const startRecording = async () => {
-    if (recording) return;
-
-    const allowed = await ensureChatCameraStreamPermission(true);
-    if (!allowed) {
-      alert("No se pudo acceder al micrófono. Revisá los permisos del navegador o la app.");
+    const decision = reduceChatAudioEvent(audioPhaseRef.current, { type: "tap" });
+    audioPhaseRef.current = decision.phase;
+    if (decision.stopCapture) {
+      stopRecording();
       return;
     }
+    if (!decision.startCapture) return;
+
+    const session = audioRecordingSessionRef.current + 1;
+    audioRecordingSessionRef.current = session;
+    setRecording(true);
+    setMicNotice(null);
 
     try {
+      const permission = await ensureChatMicrophonePermission();
+      if (session !== audioRecordingSessionRef.current) {
+        setRecording(false);
+        audioPhaseRef.current = "idle";
+        return;
+      }
+      if (!permission.allowed) {
+        setRecording(false);
+        audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+          type: permission.denied ? "permission-denied" : "error",
+        }).phase;
+        setMicNotice(noticeFromMicrophonePermission(permission));
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (session !== audioRecordingSessionRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        setRecording(false);
+        audioPhaseRef.current = "idle";
+        return;
+      }
+
+      audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+        type: "stream-ready",
+      }).phase;
 
       recordingStreamRef.current = stream;
       audioChunksRef.current = [];
 
-      const recorder = new MediaRecorder(stream);
+      const mimeType = pickSupportedAudioMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
 
       mediaRecorderRef.current = recorder;
 
@@ -746,8 +982,18 @@ export default function LegacyChatPage() {
       };
 
       recorder.onstop = async () => {
+        if (session !== audioRecordingSessionRef.current) {
+          recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+          recordingStreamRef.current = null;
+          mediaRecorderRef.current = null;
+          audioChunksRef.current = [];
+          setRecording(false);
+          audioPhaseRef.current = "idle";
+          return;
+        }
+
         const audioBlob = new Blob(audioChunksRef.current, {
-          type: recorder.mimeType || "audio/webm",
+          type: recorder.mimeType || mimeType || "audio/webm",
         });
 
         recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -756,38 +1002,87 @@ export default function LegacyChatPage() {
         audioChunksRef.current = [];
         setRecording(false);
 
-        if (audioBlob.size <= 0) return;
+        if (audioBlob.size < CHAT_AUDIO_MIN_BYTES) {
+          audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+            type: "blob-too-small",
+          }).phase;
+          setMicNotice("failed");
+          return;
+        }
 
-        const localPreviewUrl = URL.createObjectURL(audioBlob);
+        audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+          type: "blob-ready",
+        }).phase;
 
-        await uploadMediaMessage({
-          blob: audioBlob,
-          fileName: "audio_" + Date.now() + ".webm",
-          contentType: audioBlob.type || "audio/webm",
-          mediaType: "audio",
-          localPreviewUrl,
+        let playable = audioBlob;
+        try {
+          const prepared = await preparePlayableChatAudio(audioBlob);
+          playable = prepared.blob;
+        } catch {
+          // keep original blob for preview attempt
+        }
+
+        if (session !== audioRecordingSessionRef.current) return;
+
+        setPendingAudio((prev) => {
+          if (prev?.url) URL.revokeObjectURL(prev.url);
+          return {
+            blob: playable,
+            url: URL.createObjectURL(playable),
+          };
         });
       };
 
-      recorder.start();
-      setRecording(true);
+      recorder.start(250);
     } catch (e) {
-      console.error(e);
+      if (session !== audioRecordingSessionRef.current) return;
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      mediaRecorderRef.current = null;
       setRecording(false);
-      alert("No se pudo acceder al micr├│fono.");
+      const denied =
+        classifyChatAudioCaptureFailure(e, {
+          nativeDenied: false,
+          nativePlatform: isNativeChatMicrophoneShell(),
+        }) === "denied";
+      audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+        type: denied ? "permission-denied" : "error",
+      }).phase;
+      setMicNotice(denied ? "denied" : "failed");
     }
   };
 
   const stopRecording = () => {
-    if (!recording) return;
+    const ignored = reduceChatAudioEvent(audioPhaseRef.current, { type: "pointer-up" });
+    if (ignored.phase === "arming" && !ignored.stopCapture) {
+      audioPhaseRef.current = "arming";
+      return;
+    }
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) {
+      if (audioPhaseRef.current === "arming") return;
+      if (recording) {
+        audioRecordingSessionRef.current += 1;
+        recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        setRecording(false);
+        audioPhaseRef.current = "idle";
+      }
+      return;
+    }
 
     try {
-      mediaRecorderRef.current?.stop();
+      if (typeof recorder.requestData === "function") {
+        recorder.requestData();
+      }
+      recorder.stop();
     } catch (e) {
       console.error(e);
       setRecording(false);
       recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
       recordingStreamRef.current = null;
+      audioPhaseRef.current = "idle";
     }
   };
 
@@ -826,7 +1121,7 @@ if (uxMode === "classic") {
 
         <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-40 pt-5">
           <div className="space-y-3">
-            {visibleMessages.map((message: any) => {
+            {visibleMessages.map((message: MessageData) => {
               const isMine = resolveLegacyChatMessageMine(
                 String(message.fromUid || ""),
                 viewerUid,
@@ -846,6 +1141,12 @@ if (uxMode === "classic") {
                     isMine ? "items-end" : "items-start",
                   ].join(" ")}
                 >
+                  <ChatMessageLongPress
+                    onLongPress={() => {
+                      setDeleteTarget(message);
+                      setDeleteStage("choose");
+                    }}
+                  >
                   <div
                     className={
                       isMine
@@ -853,8 +1154,18 @@ if (uxMode === "classic") {
                         : "max-w-[82%] rounded-lg rounded-bl-sm border border-white/10 bg-[#111111] px-4 py-2.5 text-sm leading-snug text-zinc-200"
                     }
                   >
-                    {message.texto || "Mensaje"}
+                    {message.deletedForEveryone ? (
+                      DELETED_MESSAGE_PREVIEW
+                    ) : message.mediaType === "audio" && message.mediaUrl ? (
+                      <ChatAudioPlayer
+                        src={message.mediaUrl}
+                        failLabel="No se pudo reproducir el audio."
+                      />
+                    ) : (
+                      message.texto || "Mensaje"
+                    )}
                   </div>
+                  </ChatMessageLongPress>
 
                   {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
                 </div>
@@ -864,7 +1175,9 @@ if (uxMode === "classic") {
         </section>
 
         <div className="sayittome-fixed-bottom fixed left-0 right-0 border-t border-white/10 bg-black/95 backdrop-blur">
-          <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-4">
+          <div className="mx-auto max-w-3xl px-4 py-4">
+            {audioPreviewCard}
+            <div className="flex items-center gap-3">
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -878,8 +1191,10 @@ if (uxMode === "classic") {
             >
               Enviar
             </button>
+            </div>
           </div>
         </div>
+        {deleteMenu}
       </main>
     );
   }
@@ -926,9 +1241,18 @@ if (uxMode === "classic") {
                 key={msg.id || msg.clientMessageId}
                 className={mine ? "ml-auto max-w-[80%]" : "mr-auto max-w-[80%]"}
               >
+                <ChatMessageLongPress
+                  onLongPress={() => {
+                    setDeleteTarget(msg);
+                    setDeleteStage("choose");
+                  }}
+                >
                 <button
                   type="button"
-                  onClick={() => startReply(msg)}
+                  onClick={() => {
+                    if (msg.deletedForEveryone) return;
+                    startReply(msg);
+                  }}
                   title="Responder"
                   className={
                     mine
@@ -999,35 +1323,29 @@ if (uxMode === "classic") {
                     </div>
                   )}
 
-                  {hasMedia && msg.mediaType === "audio" && (
+                  {hasMedia && msg.mediaType === "audio" && !msg.deletedForEveryone && (
                     <div className="rounded-[1.5rem] border border-white/10 bg-black/30 px-4 py-4">
                       <p className="mb-3 text-xs font-black uppercase tracking-[0.2em] text-fuchsia-200">
                         Audio
                       </p>
-
-                      <audio
-                        src={msg.mediaUrl}
-                        controls
-                        className="w-full max-w-[260px]"
-                        onClick={(e) => e.stopPropagation()}
+                      <ChatAudioPlayer
+                        src={msg.mediaUrl || ""}
+                        failLabel="No se pudo reproducir el audio."
                       />
-
-                      {isSending && (
-                        <p className="mt-3 text-xs font-black text-white/80">
-                          Subiendo... {msg.uploadProgress || 0}%
-                        </p>
-                      )}
                     </div>
                   )}
 
-                  {msg.texto && (
+                  {msg.deletedForEveryone ? (
+                    <p>{DELETED_MESSAGE_PREVIEW}</p>
+                  ) : msg.texto ? (
                     <p className={hasMedia ? "mt-3" : ""}>{msg.texto}</p>
-                  )}
+                  ) : null}
 
-                  {!msg.texto && !hasMedia && (
+                  {!msg.texto && !hasMedia && !msg.deletedForEveryone && (
                     <p className="text-white/70">Mensaje</p>
                   )}
                 </button>
+                </ChatMessageLongPress>
 
                 {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
 
@@ -1052,6 +1370,7 @@ if (uxMode === "classic") {
 
       <div className="border-t border-white/10 bg-zinc-950 p-4">
         <div className="mx-auto max-w-3xl">
+          {audioPreviewCard}
           {replyingTo && (
             <div className="mb-3 rounded-[1.5rem] border border-fuchsia-500/30 bg-black px-4 py-3">
               <div className="flex items-start justify-between gap-4">
@@ -1080,9 +1399,30 @@ if (uxMode === "classic") {
             ref={fileInputRef}
             type="file"
             accept="image/*,video/*"
-            className="hidden"
+            className={CHAT_FILE_INPUT_CLASS}
             onChange={handleMediaSelected}
           />
+
+          {micNotice ? (
+            <div className="mb-3 rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-center text-sm text-white/80">
+              <p>
+                {micNotice === "blocked"
+                  ? t("chat_mic_permission_blocked")
+                  : micNotice === "denied"
+                    ? t("chat_mic_permission_denied")
+                    : t("chat_mic_fail")}
+              </p>
+              {micNotice === "blocked" ? (
+                <button
+                  type="button"
+                  className="mt-2 text-sm font-bold text-fuchsia-300"
+                  onClick={() => openChatMicrophoneSettings()}
+                >
+                  {t("chat_mic_open_settings")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="flex gap-3">
             <button
@@ -1108,7 +1448,16 @@ if (uxMode === "classic") {
 
             <button
               type="button"
-              onClick={recording ? stopRecording : startRecording}
+              onMouseDown={(event) => event.preventDefault()}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.preventDefault();
+                if (recording && audioPhaseRef.current !== "arming") {
+                  stopRecording();
+                  return;
+                }
+                void startRecording();
+              }}
               className={
                 recording
                   ? "rounded-full bg-red-500 px-5 py-4 text-sm font-black text-white transition hover:scale-[1.02]"
@@ -1163,6 +1512,7 @@ if (uxMode === "classic") {
           </div>
         </div>
       )}
+      {deleteMenu}
     </main>
   );
 }

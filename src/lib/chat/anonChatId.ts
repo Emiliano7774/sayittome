@@ -19,6 +19,11 @@ export function isProfileAnonChatId(chatId: string) {
   return String(chatId || "").includes(ANON_TO_MARKER);
 }
 
+/** Same branch as `app/chat/[chatId]/page.tsx` — profile-anon never mounts legacy-chat. */
+export function chatPageComposer(chatId: string): "profile-anon" | "legacy" {
+  return isProfileAnonChatId(chatId) ? "profile-anon" : "legacy";
+}
+
 export function parseProfileAnonChatId(chatId: string) {
   const [senderId = "", targetKey = ""] = String(chatId || "").split(ANON_TO_MARKER);
   return { senderId, targetKey };

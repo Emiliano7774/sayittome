@@ -6,7 +6,6 @@ import {
   Camera,
   Image as ImageIcon,
   Mic,
-  Play,
   Send,
   Video,
   X,
@@ -15,17 +14,34 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
-import AudioWave from "@/components/chat/media/AudioWave";
+import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
+import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
+import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
-import { uploadChatMessageMedia } from "@/lib/media/upload";
+import { uploadChatMessageMedia, isChatMediaStorageUnauthorized } from "@/lib/media/upload";
 import {
-  captureChatPhotoFromCamera,
+  classifyChatMediaFailure,
+  CHAT_FILE_INPUT_CLASS,
   ensureChatCameraStreamPermission,
-  ensureChatMicrophonePermission,
-  openNativeGalleryFilePicker,
-  pickChatPhotoFromGallery,
+  fileFromChatInput,
+  isNativeChatShell,
+  openChatFileInput,
 } from "@/lib/media/chatMediaCapture";
+import {
+  CHAT_AUDIO_MIN_BYTES,
+  classifyChatAudioCaptureFailure,
+  pickSupportedAudioMimeType,
+  reduceChatAudioEvent,
+  type ChatAudioPhase,
+} from "@/lib/media/chatAudioCapture";
+import {
+  ensureChatMicrophonePermission,
+  noticeFromMicrophonePermission,
+  openChatMicrophoneSettings,
+  type ChatMicNotice,
+} from "@/lib/media/chatMicrophonePermission";
+import { preparePlayableChatAudio } from "@/lib/media/chatAudioPlayback";
 import { canOpenViewOnce, markOpened } from "@/lib/media/viewOnce";
 import AbuseProtectionMenu from "@/components/chat/AbuseProtectionMenu";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
@@ -106,6 +122,21 @@ import {
 } from "@/lib/chat/chatMessageCache";
 import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
+import { persistMessageDelete } from "@/lib/chat/persistMessageDelete";
+import {
+  DELETED_MESSAGE_PREVIEW,
+  deleteOpId,
+  isCanonicalDeleteAuthor,
+} from "@/lib/chat/messageDelete";
+import { viewerHideKeys } from "@/lib/chat/messageDeleteServer";
+import {
+  dequeueMessageDelete,
+  forgetLocalHiddenMessage,
+  queueMessageDelete,
+  readLocalHiddenMessageIds,
+  readQueuedMessageDeletes,
+  rememberLocalHiddenMessage,
+} from "@/lib/chat/messageDeleteLocal";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
@@ -160,6 +191,8 @@ type Message = {
   status?: "sending" | "error";
   clientId?: string;
   createdAt?: { toDate?: () => Date };
+  hiddenFor?: Record<string, boolean>;
+  deletedForEveryone?: boolean;
 };
 
 function formatMessageTime(createdAt?: { toDate?: () => Date }) {
@@ -178,7 +211,7 @@ function chatMessagesSignature(messages: Message[]) {
   return messages
     .map(
       (message) =>
-        `${messageRowKey(message)}:${message.mine ? 1 : 0}:${message.status || ""}:${message.text}:${message.mediaUrl || ""}`,
+        `${messageRowKey(message)}:${message.mine ? 1 : 0}:${message.status || ""}:${message.text}:${message.mediaUrl || ""}:${message.deletedForEveryone ? 1 : 0}`,
     )
     .join("|");
 }
@@ -400,6 +433,9 @@ export default function ProfileAnonChat({
   const [pendingSource, setPendingSource] = useState<"camera" | "gallery" | "audio" | undefined>();
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewOnce, setViewOnce] = useState(false);
+  const [firebaseUid, setFirebaseUid] = useState(() => String(auth.currentUser?.uid || ""));
+  const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const [deleteStage, setDeleteStage] = useState<"choose" | "confirm-me" | "confirm-everyone">("choose");
   const [authReady, setAuthReady] = useState(false);
   const [currentUid, setCurrentUid] = useState(() => profileAuthUid(auth.currentUser));
   const [targetUid, setTargetUid] = useState(initialProfile?.uid || "");
@@ -412,6 +448,8 @@ export default function ProfileAnonChat({
   const [chatAnonSessionId, setChatAnonSessionId] = useState("");
   const [chatOwnerUid, setChatOwnerUid] = useState("");
   const [recording, setRecording] = useState(false);
+  const [micNotice, setMicNotice] = useState<ChatMicNotice>(null);
+  const audioPhaseRef = useRef<ChatAudioPhase>("idle");
   const [cameraMode, setCameraMode] = useState<"photo" | "video" | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const cameraVideoElementRef = useRef<HTMLVideoElement>(null);
@@ -651,11 +689,13 @@ export default function ProfileAnonChat({
     void auth.authStateReady().then(() => {
       if (cancelled) return;
       setCurrentUid(profileAuthUid(auth.currentUser));
+      setFirebaseUid(String(auth.currentUser?.uid || ""));
       setAuthReady(true);
     });
 
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUid(profileAuthUid(user));
+      setFirebaseUid(String(user?.uid || ""));
       setAuthReady(true);
     });
 
@@ -774,13 +814,17 @@ export default function ProfileAnonChat({
 
     return () => {
       if (messagePersistedRef.current) return;
+      const leavingId = chatId;
 
       void (async () => {
-        const hasActivity = await chatHasActivity(chatId);
-        if (hasActivity) return;
-
-        await deleteEmptyChatIfIdle(chatId);
-        unregisterSessionChat(chatId);
+        try {
+          const hasActivity = await chatHasActivity(leavingId);
+          if (hasActivity) return;
+          await deleteEmptyChatIfIdle(leavingId);
+          unregisterSessionChat(leavingId);
+        } catch {
+          // Keep the authorized thread in session history if the idle check fails.
+        }
       })();
     };
   }, [chatId]);
@@ -1206,13 +1250,19 @@ export default function ProfileAnonChat({
           authReady: true,
           identityReady: threadContextRef.current.identityReady,
         });
+        const hideIdentities = viewerHideKeys({
+          authUid: firebaseUid || auth.currentUser?.uid || "",
+          profileUid: baseCtx.currentUid,
+          anonId: baseCtx.threadAnonId,
+        });
+        const localHidden = new Set(readLocalHiddenMessageIds(chatId));
         const loaded = mapFirestoreDocsToProfileAnonMessages(
           snapshot.docs.map((docSnap) => ({
             id: docSnap.id,
             data: docSnap.data() as ProfileAnonFirestoreMessage,
           })),
-          baseCtx,
-        );
+          { ...baseCtx, hideIdentities },
+        ).filter((row) => !localHidden.has(row.id));
         const ctx = {
           ...baseCtx,
           isOwnerViewing:
@@ -1308,7 +1358,7 @@ export default function ProfileAnonChat({
       }
       unsub();
     };
-  }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid, pathname]);
+  }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid, pathname, firebaseUid]);
 
   useEffect(() => {
     if (!chatId || !authReady) return;
@@ -1349,17 +1399,17 @@ export default function ProfileAnonChat({
   }, [messages.length]);
 
   async function openRealCamera(mode: "photo" | "video") {
-    if (mode === "photo") {
-      const nativePhoto = await captureChatPhotoFromCamera();
-      if (nativePhoto) {
-        handleFile(nativePhoto.file, nativePhoto.source);
-        return;
-      }
+    if (isNativeChatShell()) {
+      const opened = openChatFileInput(
+        mode === "photo" ? cameraPhotoRef.current : cameraVideoRef.current,
+      );
+      if (!opened) alert(t("chat_camera_fail"));
+      return;
     }
 
     const allowed = await ensureChatCameraStreamPermission(mode === "video");
     if (!allowed) {
-      alert(t("chat_camera_fail"));
+      alert(t("chat_media_permission_denied"));
       return;
     }
 
@@ -1380,8 +1430,12 @@ export default function ProfileAnonChat({
           cameraVideoElementRef.current.play().catch(() => {});
         }
       }, 50);
-    } catch {
-      alert(t("chat_camera_fail"));
+    } catch (error) {
+      const failure = classifyChatMediaFailure(error);
+      if (failure === "cancelled") return;
+      alert(
+        failure === "denied" ? t("chat_media_permission_denied") : t("chat_camera_fail"),
+      );
     }
   }
 
@@ -1465,26 +1519,6 @@ export default function ProfileAnonChat({
     setRecording(false);
   }
 
-  function pickSupportedAudioMimeType() {
-    if (typeof MediaRecorder === "undefined") return "";
-
-    const candidates = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/mp4",
-      "audio/aac",
-      "audio/ogg;codecs=opus",
-    ];
-
-    for (const type of candidates) {
-      if (MediaRecorder.isTypeSupported(type)) {
-        return type;
-      }
-    }
-
-    return "";
-  }
-
   function revokePreviewUrls() {
     if (audioPreviewUrlRef.current) {
       URL.revokeObjectURL(audioPreviewUrlRef.current);
@@ -1536,64 +1570,76 @@ export default function ProfileAnonChat({
     setUploadProgress(null);
     setViewOnce(false);
     setRecording(false);
+    audioPhaseRef.current = "idle";
   }
 
   function handleFile(file: File | null, source: "camera" | "gallery") {
-    if (!file) return;
+    const picked = fileFromChatInput(file, source);
+    if (!picked) return;
 
-    const isVideo = file.type.startsWith("video/");
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(picked.file);
     revokePreviewUrls();
-    if (isVideo) {
+    if (picked.type === "video") {
       videoPreviewUrlRef.current = url;
     } else {
       imagePreviewUrlRef.current = url;
     }
 
-    setPendingBlob(file);
-    setPendingType(isVideo ? "video" : "image");
+    setPendingBlob(picked.file);
+    setPendingType(picked.type);
     setPendingSource(source);
     setViewOnce(source === "camera" ? viewOnce : false);
-    setImagePreview(isVideo ? "" : url);
-    setVideoPreview(isVideo ? url : "");
+    setImagePreview(picked.type === "video" ? "" : url);
+    setVideoPreview(picked.type === "video" ? url : "");
   }
 
-  async function openGalleryPicker() {
-    const nativePhoto = await pickChatPhotoFromGallery();
-    if (nativePhoto) {
-      handleFile(nativePhoto.file, nativePhoto.source);
-      return;
-    }
-
-    const opened = await openNativeGalleryFilePicker(galleryRef.current);
+  function openGalleryPicker() {
+    const opened = openChatFileInput(galleryRef.current);
     if (!opened) {
-      alert(t("chat_camera_fail"));
+      alert(t("chat_gallery_fail"));
     }
   }
 
   async function startAudioRecording() {
-    if (recording || mediaRecorderRef.current) return;
+    const decision = reduceChatAudioEvent(audioPhaseRef.current, { type: "tap" });
+    audioPhaseRef.current = decision.phase;
+    if (decision.stopCapture) {
+      stopAudioRecording();
+      return;
+    }
+    if (!decision.startCapture) return;
 
     const session = audioRecordingSessionRef.current + 1;
     audioRecordingSessionRef.current = session;
     setRecording(true);
-
-    const allowed = await ensureChatMicrophonePermission();
-    if (session !== audioRecordingSessionRef.current) return;
-
-    if (!allowed) {
-      setRecording(false);
-      alert(t("chat_mic_fail"));
-      return;
-    }
+    setMicNotice(null);
 
     try {
+      const permission = await ensureChatMicrophonePermission();
+      if (session !== audioRecordingSessionRef.current) {
+        setRecording(false);
+        audioPhaseRef.current = "idle";
+        return;
+      }
+      if (!permission.allowed) {
+        setRecording(false);
+        audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+          type: permission.denied ? "permission-denied" : "error",
+        }).phase;
+        setMicNotice(noticeFromMicrophonePermission(permission));
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (session !== audioRecordingSessionRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         setRecording(false);
+        audioPhaseRef.current = "idle";
         return;
       }
+
+      const ready = reduceChatAudioEvent(audioPhaseRef.current, { type: "stream-ready" });
+      audioPhaseRef.current = ready.phase;
 
       revokePreviewUrls();
       setAudioPreview("");
@@ -1621,57 +1667,99 @@ export default function ProfileAnonChat({
       };
 
       recorder.onstop = () => {
+        void (async () => {
         if (session !== audioRecordingSessionRef.current) {
           resetAudioRecorder();
           setRecording(false);
+          audioPhaseRef.current = "idle";
           return;
         }
 
-        const blob = new Blob(audioChunksRef.current, {
+        const rawBlob = new Blob(audioChunksRef.current, {
           type: recorder.mimeType || mimeType || "audio/webm",
         });
 
         resetAudioRecorder();
         setRecording(false);
 
-        if (blob.size < 512) {
-          alert(t("chat_mic_fail"));
+        if (rawBlob.size < CHAT_AUDIO_MIN_BYTES) {
+          audioPhaseRef.current = reduceChatAudioEvent(
+            audioPhaseRef.current,
+            { type: "blob-too-small" },
+          ).phase;
+          setMicNotice("failed");
           return;
         }
 
+        let playable = rawBlob;
+        try {
+          const prepared = await preparePlayableChatAudio(rawBlob);
+          playable = prepared.blob;
+          if (prepared.decodeFailed) {
+            alert(t("chat_audio_preview_fail"));
+          }
+        } catch {
+          alert(t("chat_audio_preview_fail"));
+        }
+
+        if (session !== audioRecordingSessionRef.current) return;
+
         revokePreviewUrls();
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(playable);
         audioPreviewUrlRef.current = url;
-        setPendingBlob(blob);
+        setPendingBlob(playable);
         setPendingType("audio");
         setPendingSource("audio");
         setAudioPreview(url);
+        audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+          type: "blob-ready",
+        }).phase;
+        })();
       };
 
       recorder.onerror = () => {
         if (session !== audioRecordingSessionRef.current) return;
         resetAudioRecorder();
         setRecording(false);
-        alert(t("chat_mic_fail"));
+        audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+          type: "error",
+        }).phase;
+        setMicNotice("failed");
       };
 
       recorder.start(250);
-    } catch {
+    } catch (error) {
       if (session !== audioRecordingSessionRef.current) return;
       resetAudioRecorder();
       setRecording(false);
-      alert(t("chat_mic_fail"));
+      const denied =
+        classifyChatAudioCaptureFailure(error, {
+          nativeDenied: false,
+          nativePlatform: isNativeChatShell(),
+        }) === "denied";
+      audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+        type: denied ? "permission-denied" : "error",
+      }).phase;
+      setMicNotice(denied ? "denied" : "failed");
     }
   }
 
   function stopAudioRecording() {
+    const ignored = reduceChatAudioEvent(audioPhaseRef.current, { type: "pointer-up" });
+    if (ignored.phase === "arming" && !ignored.stopCapture) {
+      audioPhaseRef.current = "arming";
+      return;
+    }
+
     const recorder = mediaRecorderRef.current;
 
     if (!recorder) {
+      if (audioPhaseRef.current === "arming") return;
       if (recording) {
         audioRecordingSessionRef.current += 1;
         resetAudioRecorder();
         setRecording(false);
+        audioPhaseRef.current = "idle";
       }
       return;
     }
@@ -1689,6 +1777,7 @@ export default function ProfileAnonChat({
     } catch {
       resetAudioRecorder();
       setRecording(false);
+      audioPhaseRef.current = "idle";
     }
   }
 
@@ -1819,7 +1908,13 @@ export default function ProfileAnonChat({
       const code = String((e as { code?: string }).code || "");
       const message = String((e as Error).message || "");
       const uploadFailed = code.includes("storage") || message.includes("storage");
-      alert(uploadFailed ? t("chat_upload_fail") : t("chat_save_fail"));
+      alert(
+        isChatMediaStorageUnauthorized(e)
+          ? t("chat_upload_unauthorized")
+          : uploadFailed
+            ? t("chat_upload_fail")
+            : t("chat_save_fail"),
+      );
     }
   }
 
@@ -2027,6 +2122,105 @@ export default function ProfileAnonChat({
     return "";
   }
 
+  function closeDeleteMenu() {
+    setDeleteTarget(null);
+    setDeleteStage("choose");
+  }
+
+  async function runMessageDelete(mode: "me" | "everyone", target = deleteTarget) {
+    if (!target || !chatId) return;
+    const messageId = target.id;
+    const previous = messages;
+    closeDeleteMenu();
+
+    if (mode === "me") {
+      rememberLocalHiddenMessage(chatId, messageId);
+      setMessages((old) => old.filter((row) => row.id !== messageId && row.clientId !== target.clientId));
+    } else {
+      setMessages((old) =>
+        old.map((row) =>
+          row.id === messageId || (target.clientId && row.clientId === target.clientId)
+            ? {
+                ...row,
+                text: DELETED_MESSAGE_PREVIEW,
+                mediaUrl: "",
+                type: "text" as const,
+                storyReply: undefined,
+                deletedForEveryone: true,
+                source: undefined,
+              }
+            : row,
+        ),
+      );
+    }
+
+    try {
+      const result = await persistMessageDelete({ chatId, messageId, mode });
+      if (result?.cleanupPending) {
+        queueMessageDelete({
+          id: deleteOpId(chatId, messageId, mode),
+          chatId,
+          messageId,
+          mode,
+          identity: firebaseUid,
+        });
+      } else {
+        dequeueMessageDelete(deleteOpId(chatId, messageId, mode));
+      }
+    } catch {
+      queueMessageDelete({
+        id: deleteOpId(chatId, messageId, mode),
+        chatId,
+        messageId,
+        mode,
+        identity: firebaseUid,
+      });
+      if (mode === "me") {
+        forgetLocalHiddenMessage(chatId, messageId);
+        setMessages(previous);
+      } else if (typeof navigator !== "undefined" && navigator.onLine) {
+        setMessages(previous);
+        alert(t("chat_delete_fail"));
+      }
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        return;
+      }
+      if (mode === "everyone" && typeof navigator !== "undefined" && navigator.onLine) {
+        return;
+      }
+    }
+  }
+
+  useEffect(() => {
+    function flushQueuedDeletes() {
+      const queued = readQueuedMessageDeletes(firebaseUid);
+      for (const item of queued) {
+        void persistMessageDelete({
+          chatId: item.chatId,
+          messageId: item.messageId,
+          mode: item.mode,
+        })
+          .then((result) => {
+            if (!result?.cleanupPending) dequeueMessageDelete(item.id);
+          })
+          .catch(() => undefined);
+      }
+    }
+    flushQueuedDeletes();
+    window.addEventListener("online", flushQueuedDeletes);
+    return () => window.removeEventListener("online", flushQueuedDeletes);
+  }, [firebaseUid]);
+
+  const deleteViewer = {
+    authUid: firebaseUid,
+    profileUid: currentUid,
+    anonId: anonSenderId,
+    identityReady: authReady,
+  };
+  const canDeleteTargetForEveryone = Boolean(
+    deleteTarget && isCanonicalDeleteAuthor(deleteTarget, deleteViewer),
+  );
+
   const hasMediaPreview = Boolean(audioPreview || imagePreview || videoPreview);
 
   return (
@@ -2204,27 +2398,60 @@ export default function ProfileAnonChat({
                     </p>
                   </div>
                 ) : null}
+              <ChatMessageLongPress
+                onLongPress={() => {
+                  setDeleteTarget(message);
+                  setDeleteStage("choose");
+                }}
+              >
               <ChatSwipeRevealTime
                 timeLabel={formatMessageTime(message.createdAt)}
                 align={message.mine ? "right" : "left"}
               >
                 <div
-                  onDoubleClick={() => setReplyingTo(message)}
+                  onDoubleClick={() => {
+                    if (message.deletedForEveryone) return;
+                    setReplyingTo(message);
+                  }}
                   className={chatBubbleShellClass(isClassic, message.mine, messageUnread)}
                 >
+                  {message.deletedForEveryone ? (
+                    <ChatMessageText
+                      text={t("chat_message_deleted")}
+                      verifiedLink={null}
+                      className={chatBubbleTextClass(isClassic, messageUnread)}
+                    />
+                  ) : (
+                    <>
                   {message.reply && (
                     <div className={`mb-2 rounded-md bg-black/30 px-3 py-2 ${isClassic ? "text-sm" : "text-base"} text-zinc-300`}>
                       {message.reply}
                     </div>
                   )}
 
-                  {message.storyReply?.mediaUrl ? (
+                  {message.storyReply ? (
                     <div className="mb-2 overflow-hidden rounded-lg border border-white/10 bg-black/30">
-                      <img
-                        src={message.storyReply.mediaUrl}
-                        alt=""
-                        className="max-h-28 w-full object-cover"
-                      />
+                      {message.storyReply.mediaUrl &&
+                      message.storyReply.mediaType !== "text" ? (
+                        message.storyReply.mediaType === "video" ? (
+                          <video
+                            src={message.storyReply.mediaUrl}
+                            className="max-h-28 w-full object-cover"
+                            muted
+                            playsInline
+                          />
+                        ) : (
+                          <img
+                            src={message.storyReply.mediaUrl}
+                            alt=""
+                            className="max-h-28 w-full object-cover"
+                          />
+                        )
+                      ) : (
+                        <div className="flex min-h-16 items-center px-3 py-2 text-xs font-semibold text-white/55">
+                          {t("story_reply_expired")}
+                        </div>
+                      )}
                       {message.storyReply.ownerUsername ? (
                         <p className="px-3 py-1.5 text-xs font-semibold text-white/55">
                           @{message.storyReply.ownerUsername}
@@ -2247,19 +2474,10 @@ export default function ProfileAnonChat({
                       <p className="mt-1 text-sm text-orange-200/70">Ver una sola vez</p>
                     </button>
                   ) : message.type === "audio" ? (
-                    <div className="flex items-center gap-4">
-                      <button
-                        onClick={() => {
-                          const a = new Audio(message.mediaUrl || "");
-                          a.play();
-                        }}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-black/20"
-                      >
-                        <Play size={18} />
-                      </button>
-
-                      <AudioWave url={message.mediaUrl || ""} />
-                    </div>
+                    <ChatAudioPlayer
+                      src={message.mediaUrl || ""}
+                      failLabel={t("chat_audio_play_fail")}
+                    />
                   ) : message.type === "image" ? (
                     <SensitiveMediaShell
                       url={message.mediaUrl}
@@ -2306,6 +2524,8 @@ export default function ProfileAnonChat({
                       className={chatBubbleTextClass(isClassic, messageUnread)}
                     />
                   )}
+                    </>
+                  )}
 
                   {sourceLabel(message) ? (
                     <p className="mt-2 text-right text-xs uppercase tracking-[0.18em] text-white/45">
@@ -2315,6 +2535,7 @@ export default function ProfileAnonChat({
                   ) : null}
                 </div>
               </ChatSwipeRevealTime>
+              </ChatMessageLongPress>
 
               {verifiedProfileLink ? (
                 <ChatVerifiedProfileLinkCard
@@ -2423,12 +2644,9 @@ export default function ProfileAnonChat({
             <div className={`${chatWidthClass} sayittome-chat-media-preview rounded-[28px] bg-[#070707] p-4`}>
               <div className="sayittome-chat-media-preview-body">
                 {audioPreview ? (
-                  <audio
-                    controls
-                    playsInline
-                    preload="metadata"
+                  <ChatAudioPlayer
                     src={audioPreview}
-                    className="w-full"
+                    failLabel={t("chat_audio_play_fail")}
                   />
                 ) : null}
 
@@ -2522,7 +2740,28 @@ export default function ProfileAnonChat({
 
           {!hasMediaPreview && recording ? (
             <div className={`${chatWidthClass} mb-3 rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-300`}>
-              Grabando audio... solta para terminar
+              Grabando audio... tocá para terminar
+            </div>
+          ) : null}
+
+          {!hasMediaPreview && micNotice ? (
+            <div className={`${chatWidthClass} mb-3 rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-center text-sm text-white/80`}>
+              <p>
+                {micNotice === "blocked"
+                  ? t("chat_mic_permission_blocked")
+                  : micNotice === "denied"
+                    ? t("chat_mic_permission_denied")
+                    : t("chat_mic_fail")}
+              </p>
+              {micNotice === "blocked" ? (
+                <button
+                  type="button"
+                  className="mt-2 text-sm font-bold text-violet-300"
+                  onClick={() => openChatMicrophoneSettings()}
+                >
+                  {t("chat_mic_open_settings")}
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -2533,8 +2772,11 @@ export default function ProfileAnonChat({
               type="file"
               accept="image/*"
               capture="environment"
-              className="hidden"
-              onChange={(e) => handleFile(e.target.files?.[0] || null, "camera")}
+              className={CHAT_FILE_INPUT_CLASS}
+              onChange={(e) => {
+                handleFile(e.target.files?.[0] || null, "camera");
+                e.target.value = "";
+              }}
             />
 
             <input
@@ -2542,16 +2784,22 @@ export default function ProfileAnonChat({
               type="file"
               accept="video/*"
               capture="environment"
-              className="hidden"
-              onChange={(e) => handleFile(e.target.files?.[0] || null, "camera")}
+              className={CHAT_FILE_INPUT_CLASS}
+              onChange={(e) => {
+                handleFile(e.target.files?.[0] || null, "camera");
+                e.target.value = "";
+              }}
             />
 
             <input
               ref={galleryRef}
               type="file"
               accept="image/*,video/*"
-              className="hidden"
-              onChange={(e) => handleFile(e.target.files?.[0] || null, "gallery")}
+              className={CHAT_FILE_INPUT_CLASS}
+              onChange={(e) => {
+                handleFile(e.target.files?.[0] || null, "gallery");
+                e.target.value = "";
+              }}
             />
 
             <button
@@ -2574,7 +2822,7 @@ export default function ProfileAnonChat({
 
             <button
               type="button"
-              onClick={() => void openGalleryPicker()}
+              onClick={() => openGalleryPicker()}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80"
               title="Galeria"
             >
@@ -2612,17 +2860,14 @@ export default function ProfileAnonChat({
             <button
               type="button"
               onMouseDown={(event) => event.preventDefault()}
-              onPointerDown={(event) => {
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={(event) => {
                 event.preventDefault();
+                if (recording && audioPhaseRef.current !== "arming") {
+                  stopAudioRecording();
+                  return;
+                }
                 void startAudioRecording();
-              }}
-              onPointerUp={(event) => {
-                event.preventDefault();
-                stopAudioRecording();
-              }}
-              onPointerCancel={(event) => {
-                event.preventDefault();
-                stopAudioRecording();
               }}
               className={[
                 "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border transition",
@@ -2630,7 +2875,7 @@ export default function ProfileAnonChat({
                   ? "border-red-400/50 bg-red-500/20 text-red-300"
                   : "border-white/10 bg-white/[0.06] text-white/70",
               ].join(" ")}
-              title="Mantener para audio"
+              title="Grabar audio"
             >
               <Mic size={19} />
             </button>
@@ -2656,6 +2901,24 @@ export default function ProfileAnonChat({
           ) : null}
         </div>
       </section>
+      <ChatMessageDeleteMenu
+        open={Boolean(deleteTarget)}
+        canDeleteForEveryone={canDeleteTargetForEveryone}
+        stage={deleteStage}
+        onChooseMe={() => setDeleteStage("confirm-me")}
+        onChooseEveryone={() => setDeleteStage("confirm-everyone")}
+        onConfirmMe={() => void runMessageDelete("me")}
+        onConfirmEveryone={() => void runMessageDelete("everyone")}
+        onClose={closeDeleteMenu}
+        labels={{
+          forMe: t("chat_delete_for_me"),
+          forEveryone: t("chat_delete_for_everyone"),
+          confirmMe: t("chat_delete_confirm_me"),
+          confirmEveryone: t("chat_delete_confirm_everyone"),
+          confirm: t("chat_delete_confirm"),
+          cancel: t("common_cancel"),
+        }}
+      />
     </main>
   );
 }

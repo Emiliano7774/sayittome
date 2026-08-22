@@ -23,6 +23,8 @@ export type CachedChatMessage = {
   moderationRequiresBlur?: boolean;
   readBy?: Record<string, boolean>;
   createdAtMs?: number;
+  hiddenFor?: Record<string, boolean>;
+  deletedForEveryone?: boolean;
 };
 
 const memory = new Map<string, CachedChatMessage[]>();
@@ -137,6 +139,8 @@ export function uiMessageToCached(message: {
   moderationRequiresBlur?: boolean;
   readBy?: Record<string, boolean>;
   createdAt?: { toDate?: () => Date };
+  hiddenFor?: Record<string, boolean>;
+  deletedForEveryone?: boolean;
 }): CachedChatMessage {
   const createdAtMs = message.createdAt?.toDate?.()?.getTime();
   return {
@@ -157,6 +161,8 @@ export function uiMessageToCached(message: {
     autoModerationRequiresBlur: message.autoModerationRequiresBlur,
     moderationRequiresBlur: message.moderationRequiresBlur,
     readBy: message.readBy,
+    hiddenFor: message.hiddenFor,
+    deletedForEveryone: message.deletedForEveryone,
     ...(createdAtMs ? { createdAtMs } : {}),
   };
 }
