@@ -131,8 +131,9 @@ export function writeCachedFollowingSnapshot(
 
 export function readCachedAnonCardSnapshot(uid?: string) {
   const expected = String(uid || "").trim();
+  if (!expected) return null;
   if (anonCardRam && anonCardRam.version === SHUFFLE_CHROME_CACHE_VERSION) {
-    if (!expected || anonCardRam.uid === expected) return cloneAnon(anonCardRam);
+    if (anonCardRam.uid === expected) return cloneAnon(anonCardRam);
     return null;
   }
 
@@ -142,7 +143,7 @@ export function readCachedAnonCardSnapshot(uid?: string) {
   );
   if (!isAnonCardSnapshot(stored)) return null;
   anonCardRam = cloneAnon(stored);
-  if (!expected || stored.uid === expected) return cloneAnon(stored);
+  if (stored.uid === expected) return cloneAnon(stored);
   return null;
 }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import HeaderControls from "@/components/HeaderControls";
 import EnterShuffleButton from "@/components/legal/EnterShuffleButton";
 import ApkDownloadSection from "@/components/monetization/ApkDownloadSection";
+import WebVersionPromoBanner from "@/components/promo/WebVersionPromoBanner";
 import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -138,6 +139,7 @@ export default function ClassicHome() {
         </div>
 
         <ApkDownloadSection variant="classic" />
+        <WebVersionPromoBanner variant="classic" />
         <PublicLegalFooter className="mt-8" />
       </section>
     </main>

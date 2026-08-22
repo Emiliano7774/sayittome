@@ -44,6 +44,7 @@ import {
 } from "@/lib/chat/profileChatWarmup";
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import { prepareInstantShuffleReturn } from "@/lib/navigation/shuffleKeepAlive";
 import { stashStoryReturnTo } from "@/lib/navigation/storyReturnNav";
 import {
   consumeProfileReturnTo,
@@ -241,6 +242,9 @@ export default function ModernPublicProfile({
   const handleProfileBack = useCallback(() => {
     const returnTo = peekProfileReturnTo() || "/shuffle";
     consumeProfileReturnTo();
+    if (returnTo === "/shuffle") {
+      prepareInstantShuffleReturn();
+    }
     fastRouterReplace(router, returnTo);
   }, [router]);
 

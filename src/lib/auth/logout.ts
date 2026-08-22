@@ -12,6 +12,8 @@ import { clearStoriesIndexCache } from "@/lib/stories/storiesIndexStore";
 import { clearAuthorshipCorrections } from "@/lib/chat/authorshipCorrections";
 import { clearCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 import { clearThreadAnonContinuity } from "@/lib/chat/threadAnonContinuity";
+import { clearShuffleChromeCache } from "@/lib/shuffle/shuffleChromeCache";
+import { clearCachedFullProfile } from "@/lib/profile/profileCache";
 
 export async function logoutAndResetAnon() {
   await deleteCurrentAnonymousStories();
@@ -21,6 +23,8 @@ export async function logoutAndResetAnon() {
   clearInboxSnapshotCache();
   clearStoriesIndexCache();
   clearCachedViewerIdentity();
+  clearShuffleChromeCache();
+  clearCachedFullProfile();
   clearAuthorshipCorrections();
   clearThreadAnonContinuity();
   await deleteCurrentDeviceFcmToken(auth.currentUser?.uid || "");

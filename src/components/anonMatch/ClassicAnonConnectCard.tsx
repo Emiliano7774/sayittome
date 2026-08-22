@@ -9,11 +9,13 @@ import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { useT } from "@/contexts/LocaleContext";
 import { hasAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
+import { peekCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 import { getClassicShuffleHeaderUi } from "@/lib/shuffle/classicHeaderUi";
 import {
   readCachedAnonCardSnapshot,
   writeCachedAnonCardSnapshot,
 } from "@/lib/shuffle/shuffleChromeCache";
+import { decideAnonCardChrome, commitAnonSlotHeight, classicAnonSlotStyles } from "@/lib/shuffle/shuffleChromeStable";
 
 function hasActiveDirectChat(match: NonNullable<ReturnType<typeof useAnonMatchOptional>>) {
   return Boolean(
@@ -30,15 +32,12 @@ export default function ClassicAnonConnectCard() {
   const { density } = useClassicShuffleDensity();
   const ui = getClassicShuffleHeaderUi(density);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
-  const [incognitoMode, setIncognitoMode] = useState(false);
-
-  useEffect(() => {
-    setIncognitoMode(hasAnonLegalAcceptance());
-  }, []);
+  const [anonCommitPx, setAnonCommitPx] = useState<number | null>(null);
+  const incognitoMode = hasAnonLegalAcceptance();
 
   const closeDisclaimer = useCallback(() => {
     setDisclaimerOpen(false);
-  }, []);
+  }, [setDisclaimerOpen]);
 
   useOverlayBackClose(
     disclaimerOpen,
@@ -47,57 +46,130 @@ export default function ClassicAnonConnectCard() {
     "sayittome:close-anon-disclaimer",
   );
 
-  const cached = readCachedAnonCardSnapshot();
+  const uid = String(
+    firebaseUser?.uid ||
+      (loading ? peekCachedViewerIdentity()?.uid || "" : "") ||
+      "",
+  );
   const authPending = !match || loading;
-
-  if (authPending && !cached?.show) return null;
-
-  const isProfileUser = authPending
-    ? Boolean(cached?.isProfileUser)
-    : Boolean(firebaseUser?.uid);
+  const cached = uid ? readCachedAnonCardSnapshot(uid) : null;
+  const isProfileUser = authPending ? Boolean(cached?.isProfileUser || uid) : Boolean(uid);
   const isIncognitoVisitor = authPending
     ? Boolean(cached?.isIncognitoVisitor)
     : incognitoMode && !isProfileUser;
+  const searching = authPending
+    ? Boolean(cached?.searching)
+    : Boolean(match?.searchSessionActive);
+  const decision = decideAnonCardChrome({
+    authPending,
+    uid,
+    cached,
+    hasActiveDirectChat: !authPending && match ? hasActiveDirectChat(match) : false,
+    isProfileUser,
+    isIncognitoVisitor,
+    searching,
+  });
+  const committedPx = commitAnonSlotHeight({
+    previousPx: anonCommitPx,
+    density,
+    authPending,
+    visibility: decision.visibility,
+    hiddenForActiveChat: decision.hiddenForActiveChat,
+  });
+  if (anonCommitPx !== committedPx) {
+    setAnonCommitPx(committedPx);
+  }
+  const occupy = committedPx > 0;
+  const slotBox = classicAnonSlotStyles(ui, occupy);
 
-  if (!authPending && hasActiveDirectChat(match)) return null;
-  if (!authPending && !isProfileUser && !isIncognitoVisitor) return null;
+  useEffect(() => {
+    if (authPending) return;
+    writeCachedAnonCardSnapshot({
+      uid,
+      show: decision.visibility === "show",
+      hiddenForActiveChat: decision.hiddenForActiveChat,
+      isIncognitoVisitor: decision.isIncognitoVisitor,
+      isProfileUser: decision.isProfileUser,
+      searching: decision.searching,
+    });
+  }, [
+    authPending,
+    uid,
+    decision.visibility,
+    decision.hiddenForActiveChat,
+    decision.isIncognitoVisitor,
+    decision.isProfileUser,
+    decision.searching,
+  ]);
 
-  const searching = authPending ? Boolean(cached?.searching) : match.searchSessionActive;
-  const cardTitle = isIncognitoVisitor
+  const cardTitle = decision.isIncognitoVisitor
     ? t("anon_match_card_title_anon")
     : t("anon_match_card_title");
-  const disclaimerTitle = isIncognitoVisitor
+  const disclaimerTitle = decision.isIncognitoVisitor
     ? t("anon_match_disclaimer_title_anon")
     : t("anon_match_disclaimer_title");
-  const disclaimerBody = isIncognitoVisitor
+  const disclaimerBody = decision.isIncognitoVisitor
     ? t("anon_match_disclaimer_body_anon")
     : t("anon_match_disclaimer_body");
-
-  if (!authPending) {
-    writeCachedAnonCardSnapshot({
-      show: true,
-      isIncognitoVisitor,
-      isProfileUser,
-      searching,
-    });
-  }
 
   function handleConfirmSearch() {
     closeDisclaimer();
     void match?.startSearchSession();
   }
 
+  if (!occupy) return null;
+
+  const slotStyle = {
+    marginTop: slotBox.marginTop,
+    paddingTop: slotBox.paddingTop,
+    marginBottom: slotBox.marginBottom,
+    minHeight: slotBox.minHeight,
+    height: slotBox.height,
+    overflow: slotBox.overflow,
+  };
+
+  if (decision.visibility === "hidden" || decision.visibility === "reserved") {
+    return (
+      <div
+        className="border-t border-white/[0.06]"
+        style={slotStyle}
+        data-shuffle-anon-slot="1"
+        data-shuffle-anon-state={decision.visibility}
+        data-shuffle-anon-commit={String(committedPx)}
+        aria-hidden
+      >
+        {decision.visibility === "reserved" ? (
+          <>
+            <div className="flex items-center" style={{ gap: ui.followingGapPx }}>
+              <div
+                className="rounded-full bg-white/[0.06]"
+                style={{ width: ui.anonIconPx, height: ui.anonIconPx }}
+              />
+              <div
+                className="rounded-full bg-white/[0.06]"
+                style={{ height: ui.anonTitlePx, width: "42%" }}
+              />
+            </div>
+            <div
+              className="mt-1.5 w-full rounded-lg bg-white/[0.06]"
+              style={{ height: ui.anonBtnPadYPx * 2 + ui.anonBtnPx }}
+            />
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <>
       <div
         className="border-t border-white/[0.06]"
-        style={{
-          marginTop: ui.anonMtPx,
-          paddingTop: ui.anonPtPx,
-          marginBottom: ui.anonMbPx,
-        }}
+        style={slotStyle}
+        data-shuffle-anon-slot="1"
+        data-shuffle-anon-state="show"
+        data-shuffle-anon-commit={String(committedPx)}
       >
-        {isIncognitoVisitor ? (
+        {decision.isIncognitoVisitor ? (
           <>
             <div className="flex items-center" style={{ gap: ui.followingGapPx }}>
               <Globe2
@@ -130,10 +202,10 @@ export default function ClassicAnonConnectCard() {
           className="flex items-center"
           style={{
             gap: ui.followingGapPx,
-            marginTop: isIncognitoVisitor ? ui.filterMtPx : 0,
+            marginTop: decision.isIncognitoVisitor ? ui.filterMtPx : 0,
           }}
         >
-          {!isIncognitoVisitor ? (
+          {!decision.isIncognitoVisitor ? (
             <Globe2
               size={ui.anonIconPx}
               strokeWidth={1.6}
@@ -145,14 +217,16 @@ export default function ClassicAnonConnectCard() {
             className="font-semibold tracking-[-0.02em] text-white/88"
             style={{
               fontSize: ui.anonTitlePx,
-              paddingLeft: isIncognitoVisitor ? ui.anonIconPx + ui.followingGapPx : 0,
+              paddingLeft: decision.isIncognitoVisitor
+                ? ui.anonIconPx + ui.followingGapPx
+                : 0,
             }}
           >
             {cardTitle}
           </p>
         </div>
 
-        {searching ? (
+        {decision.searching ? (
           <p
             className="mt-1.5 font-medium tracking-[-0.01em] text-white/42"
             style={{

@@ -267,7 +267,7 @@ export async function fetchShuffleApi(
     shuffleLastApiError: null,
   });
   try {
-    const response = await fetch(input, init);
+    const response = await fetch(input, { cache: "no-store", ...init });
     const contentType = response.headers.get("content-type") || "";
     setQaShuffleDiagnosticState({
       shufflePoolStatus: response.ok ? "response" : "http-error",

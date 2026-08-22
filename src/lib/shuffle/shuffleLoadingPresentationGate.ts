@@ -183,8 +183,17 @@ export function computeMayPresentShuffleLoading(input: ShuffleLoadingGateCompute
     return { mayPresent: true, blockReason: "direct-cold-entry" };
   }
 
+  // Productive path: micro-slide is off. Never paint loading on warm hops.
   if (!input.microSlideEnabled) {
-    return { mayPresent: true, blockReason: "micro-slide-disabled" };
+    if (
+      input.warmKeepAliveActive ||
+      input.warmHopIntentActive ||
+      input.revealDeferred ||
+      input.handoffPreparing ||
+      !input.trueCold
+    ) {
+      return { mayPresent: false, blockReason: "instant-shuffle-entry-no-loading" };
+    }
   }
 
   if (input.noLoadingMidSlideContractActive) {

@@ -63,7 +63,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
 
   function openShuffleTab(event?: { preventDefault: () => void }) {
     // <a href="/shuffle"> is the progressive fallback when JS has not hydrated.
-    // When hydrated, preventDefault + sync/micro-slide commit owns navigation.
+    // When hydrated, preventDefault + instant same-document commit owns navigation.
     event?.preventDefault();
     if (blockMainTabNavigationDuringSlide()) return;
     if (!navSelectable || isNonMainRoute(pathname)) {

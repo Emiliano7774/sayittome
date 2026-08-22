@@ -68,6 +68,7 @@ import {
 
 ensureShuffleSearchTypingGuardInstalled();
 import { registerShuffleClickHandler } from "@/lib/shuffle/shuffleClickBridge";
+import { seedFullProfilesFromShuffleCards } from "@/lib/profile/profileCache";
 import { warmShuffleImages } from "@/lib/shuffle/warmImages";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
 import { scrollShuffleFeedToTop } from "@/lib/shuffle/scrollShuffleFeed";
@@ -465,6 +466,14 @@ export function useShufflePool() {
         identityMigration: collisions.length > 0 ? "PENDING" : "ok",
       });
       warmShuffleImages(shownProfiles, 12, { urgent: forceReplace });
+      const idleSeed = () => {
+        seedFullProfilesFromShuffleCards(shownProfiles.slice(0, 12));
+      };
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(idleSeed, { timeout: 800 });
+      } else {
+        setTimeout(idleSeed, 0);
+      }
       setListReady(true);
       markShuffleHydrated(shownProfiles.length);
     },

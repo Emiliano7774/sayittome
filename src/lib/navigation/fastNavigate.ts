@@ -3,7 +3,11 @@
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
-import { isNavTraceEnabled, navTraceMark } from "@/lib/perf/navTrace";
+import {
+  captureShuffleFeedScroll,
+  restoreShuffleFeedScroll,
+  shouldSkipHardNavigateForWarmShuffle,
+} from "@/lib/navigation/shuffleFeedScroll";
 import {
   beginShuffleWarmHandoff,
   clearInstantShuffleReturn,
@@ -34,6 +38,7 @@ import {
   getTransitionModuleInstanceIdForDiag,
 } from "@/lib/navigation/mainTabToShuffleTransition";
 import { MAIN_TAB_HREFS } from "@/lib/navigation/mainTabs";
+import { isNavTraceEnabled, navTraceMark } from "@/lib/perf/navTrace";
 import {
   commitMainTabPathnameForHistoryNavigation,
   installMainTabInternalPathnameStore,
@@ -50,6 +55,7 @@ export type FastRouterPushOptions = {
 
 function pinShuffleWindowIfNeeded(currentPath: string) {
   if (currentPath === "/shuffle" || isShuffleKeepAliveActive()) {
+    captureShuffleFeedScroll();
     pinShuffleWindowWhileAway();
   }
 }
@@ -223,6 +229,10 @@ export function fastRouterPush(
   }
 
   const hardNavWouldApply = shouldHardNavigate() && shouldHardNavigatePath(href);
+  const skipHardNavForWarmShuffle = shouldSkipHardNavigateForWarmShuffle({
+    href,
+    keepAliveActive: isShuffleKeepAliveActive(),
+  });
 
   // Native-shell micro-slide: history.pushState — no Next router.push (avoids realm wipe).
   if (options?.forceHistoryNavigation) {
@@ -289,9 +299,15 @@ export function fastRouterPush(
     return;
   }
 
-  if (hardNavWouldApply) {
+  if (hardNavWouldApply && !skipHardNavForWarmShuffle) {
     clearStaleMainTabPathnameOverrideForHref(href);
     hardNavigate(href);
+    return;
+  }
+
+  if (isInstantShuffleReturnDestination(href)) {
+    prepareInstantShuffleReturn();
+    router.push(href);
     return;
   }
 
@@ -309,13 +325,23 @@ export function fastRouterReplace(router: AppRouterInstance, href: string) {
     pinShuffleWindowIfNeeded(currentPath);
   }
 
-  if (shouldHardNavigate() && shouldHardNavigatePath(href)) {
+  const skipHardNavForWarmShuffle = shouldSkipHardNavigateForWarmShuffle({
+    href,
+    keepAliveActive: isShuffleKeepAliveActive(),
+  });
+
+  if (
+    shouldHardNavigate() &&
+    shouldHardNavigatePath(href) &&
+    !skipHardNavForWarmShuffle
+  ) {
     hardNavigate(href);
     return;
   }
 
-  if (isInstantShuffleReturnDestination(href)) {
+  if (isInstantShuffleReturnDestination(href) || skipHardNavForWarmShuffle) {
     prepareInstantShuffleReturn();
+    restoreShuffleFeedScroll();
     router.replace(href);
     return;
   }

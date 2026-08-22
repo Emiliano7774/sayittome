@@ -63,7 +63,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
 
   function openShuffleTab(event?: { preventDefault: () => void }) {
     // Always preventDefault when hydrated so <a href> is a cold/unhydrated fallback
-    // only — micro-slide / sync commit owns the soft path.
+    // only — instant same-document commit owns the soft path.
     event?.preventDefault();
     if (blockMainTabNavigationDuringSlide()) return;
     if (!navSelectable || isNonMainRoute(pathname)) {

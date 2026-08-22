@@ -24,16 +24,13 @@ import {
 } from "@/lib/navigation/shuffleHandoffState";
 import {
   abortMainTabToShuffleTransition,
-  beginInternalMainTabToShuffleTransition,
   blockMainTabNavigationDuringSlide,
   cancelPendingShuffleRouteCommits,
   isInternalMainTabToShuffleTransitionActive,
   noteConcreteMainTabSupersede,
-  pathToMainTabShuffleSource,
 } from "@/lib/navigation/mainTabToShuffleTransition";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
-import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import {
   ghostFrameWatchBegin,
@@ -125,10 +122,6 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
           if (isNavTraceEnabled()) {
             ghostFrameWatchBegin(`warm:${currentPath}->/shuffle`);
             ghostFrameWatchInspect("pointerdown-prepare");
-          }
-          const source = pathToMainTabShuffleSource(currentPath);
-          if (isMainTabToShuffleMicroSlideEnabled() && source) {
-            beginInternalMainTabToShuffleTransition(source);
           }
           beginShuffleWarmHandoff(currentPath);
         }

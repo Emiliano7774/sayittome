@@ -8,22 +8,18 @@ import {
 import { presentShuffleSurface } from "@/lib/navigation/shuffleHandoffState";
 import {
   abortMainTabToShuffleTransition,
-  beginInternalMainTabToShuffleTransition,
-  getMainTabToShufflePhase,
   getConcreteMainTabSupersedeEpoch,
   getShuffleRouteCommitEpoch,
   isInternalMainTabToShuffleTransitionActive,
-  notifyMainTabToShuffleNavigationCommitted,
-  pathToMainTabShuffleSource,
-  registerDeferredMicroSlideRouteCommit,
   scheduleShuffleRouteCommit,
 } from "@/lib/navigation/mainTabToShuffleTransition";
 import { isMainTabToShuffleMicroSlideEnabled } from "@/lib/perf/instantaneityFlags";
+import { emitMicroSlideCommitNavDiag } from "@/lib/navigation/mainTabShuffleCommitNavigation";
+import { planInstantShuffleEntry } from "@/lib/navigation/instantShuffleEntry";
 import {
-  emitMicroSlideCommitNavDiag,
-  getMainTabToShuffleCommitNavigationMode,
-  isMicroSlideCommitActiveForShuffle,
-} from "@/lib/navigation/mainTabShuffleCommitNavigation";
+  shouldHardNavigate,
+  shouldHardNavigatePath,
+} from "@/lib/navigation/hardNavigate";
 import {
   observeShuffleNavClickCommit,
   observeShuffleNavPointerdown,
@@ -41,7 +37,6 @@ import {
   type MicroSlideNavTriggerType,
 } from "@/lib/navigation/mainTabShuffleNavIntent";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { getPostSettleBridgeRouteCommitDelayMs } from "@/lib/navigation/postSettleBridgeDiagJitter";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { ensureShufflePoolWarmForMicroSlide } from "@/lib/shuffle/shufflePoolWarmup";
 import {
@@ -49,6 +44,11 @@ import {
   presentShuffleHostForNonMainReveal,
 } from "@/lib/navigation/nonMainToShuffleReveal";
 import { isNonMainRoute } from "@/lib/navigation/routeKind";
+
+function presentInstantShuffleHostSync() {
+  presentShuffleSurface();
+  activateShuffleTabSurface({ microSlideSettle: true });
+}
 
 /** Begin warm shuffle handoff from the current main-tab path (Chats, Stories, etc.). */
 export function beginWarmShuffleTabNavigation(
@@ -63,6 +63,12 @@ export function beginWarmShuffleTabNavigation(
     "/chats";
 
   const triggerType: MicroSlideNavTriggerType = options?.triggerType ?? "user-main-tab-pointerdown";
+  const plan = planInstantShuffleEntry({
+    fromPath: path,
+    popstateRestore:
+      isHistoryPopstateRestoreInProgress() || triggerType === "popstate-restore",
+    microSlideEnabled: isMainTabToShuffleMicroSlideEnabled(),
+  });
 
   observeShuffleNavPointerdown(path, Boolean(options?.blockedDuringSlide));
   traceDryRunIntegration("PREPARE_MAIN_TAB_TO_SHUFFLE", `path=${path}`);
@@ -72,14 +78,13 @@ export function beginWarmShuffleTabNavigation(
   // before the profile route shell is released (Android black-frame guard).
   pinShuffleKeepAlive();
 
-  // Own-profile /u/* and settings/edit are outside micro-slide sources — clear
-  // sticky routeKind + profile viewer overlays synchronously (Android WebView).
+  // Own-profile /u/* and settings/edit — clear sticky routeKind + overlays now.
   const fromNonMain = prepareShuffleRevealFromNonMainRoute(path);
 
-  // Kick existing cached pool warmup early for fresh/anon (deduped; no per-click Firestore).
+  // Cached pool warmup (deduped; no per-click Firestore).
   void ensureShufflePoolWarmForMicroSlide();
 
-  // Popstate/back remount can fire pointerenter over Shuffle — never start micro-slide then.
+  // Popstate/back remount can fire pointerenter over Shuffle — never start a slide.
   if (isHistoryPopstateRestoreInProgress() || !canBeginMicroSlideFromWarmTrigger(triggerType)) {
     emitMicroSlideCommitNavDiag("MICRO_SLIDE_TRANSITION_BEGIN_BLOCKED_POPSTATE", {
       href: "/shuffle",
@@ -89,18 +94,18 @@ export function beginWarmShuffleTabNavigation(
       commitMode: "history",
     });
     if (!isShuffleKeepAliveActive()) return false;
-    return beginShuffleWarmHandoff(path);
+    const restored = beginShuffleWarmHandoff(path);
+    if (plan.presentHostSync) {
+      presentInstantShuffleHostSync();
+    }
+    return restored;
   }
 
   if (triggerType === "user-main-tab-pointerdown" || triggerType === "user-main-tab-click") {
     armMicroSlideUserClickIntent(path, triggerType);
   }
 
-  const source = pathToMainTabShuffleSource(path);
-  if (isMainTabToShuffleMicroSlideEnabled() && source) {
-    beginInternalMainTabToShuffleTransition(source, { triggerType });
-  }
-
+  // Productive path: never arm WAAPI / stage / deferred commit.
   if (!isShuffleKeepAliveActive()) {
     if (isInternalMainTabToShuffleTransitionActive()) {
       abortMainTabToShuffleTransition("keepalive-inactive");
@@ -113,21 +118,18 @@ export function beginWarmShuffleTabNavigation(
     abortMainTabToShuffleTransition("handoff-unavailable");
   }
 
-  // Non-main (profile/chat) has no micro-slide source — force panel activate on
-  // the next frames once /shuffle commits so nav≠content cannot stick.
+  if (plan.presentHostSync) {
+    presentInstantShuffleHostSync();
+  }
+
+  // Non-main: one RAF backup if pathname commit lands on the next frame.
   if (handoffOk && (fromNonMain || isNonMainRoute(path))) {
     const armActivate = () => {
-      if (window.location.pathname.split("?")[0].split("#")[0] !== "/shuffle") {
-        return;
-      }
-      activateShuffleTabSurface();
+      const live = window.location.pathname.split("?")[0].split("#")[0];
+      if (live !== "/shuffle") return;
+      presentInstantShuffleHostSync();
     };
-    requestAnimationFrame(() => {
-      armActivate();
-      requestAnimationFrame(armActivate);
-      window.setTimeout(armActivate, 50);
-      window.setTimeout(armActivate, 180);
-    });
+    requestAnimationFrame(armActivate);
   }
 
   return handoffOk;
@@ -152,65 +154,45 @@ function executeShuffleRouteCommit(
   traceDryRunIntegration("ROUTER_PUSH_SHUFFLE", `path=${path}`);
   traceRouterNavCalled("/shuffle", path);
 
-  const microSlideActive = isMicroSlideCommitActiveForShuffle("/shuffle");
-  const modeReport = microSlideActive
-    ? getMainTabToShuffleCommitNavigationMode("/shuffle")
-    : null;
-  const useHistory = modeReport?.effectiveCommitNavigationMode === "history";
-  const useSoft =
-    modeReport?.effectiveCommitNavigationMode === "soft" ||
-    (microSlideActive && !useHistory && modeReport?.microSlideCommitOverrideApplies === true);
-  const pushOptions = useHistory
-    ? { forceHistoryNavigation: true as const, reason: "main-tab-to-shuffle-micro-slide-history" }
-    : useSoft
-      ? { forceSoftNavigation: true as const, reason: "main-tab-to-shuffle-micro-slide" }
-      : undefined;
-  if (useHistory) {
-    emitMicroSlideCommitNavDiag("MICRO_SLIDE_HISTORY_NAVIGATION_REQUIRED", {
+  const nativeHard =
+    typeof window !== "undefined" &&
+    shouldHardNavigate() &&
+    shouldHardNavigatePath("/shuffle");
+  const plan = planInstantShuffleEntry({
+    fromPath: path,
+    nativeShellHardNavWouldApply: nativeHard,
+    microSlideEnabled: isMainTabToShuffleMicroSlideEnabled(),
+  });
+  const pushOptions = plan.forceHistoryNavigation
+    ? {
+        forceHistoryNavigation: true as const,
+        reason: "instant-shuffle-entry-history",
+      }
+    : {
+        forceSoftNavigation: true as const,
+        reason: "instant-shuffle-entry-soft",
+      };
+  emitMicroSlideCommitNavDiag(
+    plan.forceHistoryNavigation
+      ? "MICRO_SLIDE_HISTORY_NAVIGATION_REQUIRED"
+      : "MICRO_SLIDE_SOFT_NAVIGATION_REQUIRED",
+    {
       href: "/shuffle",
-      reason: "main-tab-to-shuffle-micro-slide-history",
-      forcedSoft: false,
-      forcedHistory: true,
+      reason: pushOptions.reason,
+      forcedSoft: plan.forceSoftNavigation,
+      forcedHistory: plan.forceHistoryNavigation,
       caller: "commitPreparedMainTabToShuffleNavigation",
-      commitMode: "history",
-    });
-  } else if (useSoft) {
-    emitMicroSlideCommitNavDiag("MICRO_SLIDE_SOFT_NAVIGATION_REQUIRED", {
-      href: "/shuffle",
-      reason: "main-tab-to-shuffle-micro-slide",
-      forcedSoft: true,
-      caller: "commitPreparedMainTabToShuffleNavigation",
-      commitMode: "soft",
-    });
-  }
+      commitMode: plan.forceHistoryNavigation ? "history" : "soft",
+    },
+  );
 
-  const routeCommitDelayMs = getPostSettleBridgeRouteCommitDelayMs();
   const epoch = getShuffleRouteCommitEpoch();
   const supersedeEpoch = getConcreteMainTabSupersedeEpoch();
   scheduleShuffleRouteCommit(() => {
     if (epoch !== getShuffleRouteCommitEpoch()) return;
     if (supersedeEpoch !== getConcreteMainTabSupersedeEpoch()) return;
-    // Skip only when a concrete main-tab already won AND the micro-slide is
-    // gone. While committing from /chats|/settings|/stories|/boost the live
-    // path is still the source until this push runs — do not treat that as
-    // supersede.
-    if (
-      typeof window !== "undefined" &&
-      !isInternalMainTabToShuffleTransitionActive() &&
-      getMainTabToShufflePhase() === "idle"
-    ) {
-      const live = window.location.pathname.split("?")[0].split("#")[0];
-      if (
-        live === "/stories" ||
-        live === "/chats" ||
-        live === "/boost" ||
-        live === "/settings"
-      ) {
-        return;
-      }
-    }
     push(router, "/shuffle", pushOptions);
-  }, routeCommitDelayMs);
+  }, 0);
 }
 
 /**
@@ -239,19 +221,33 @@ export function commitNonMainRouteToShuffleNavigation(
   prepareShuffleRevealFromNonMainRoute(path);
   void ensureShufflePoolWarmForMicroSlide();
   beginShuffleWarmHandoff(path);
+  presentInstantShuffleHostSync();
   observeShuffleNavClickCommit(path);
   traceDryRunIntegration("ROUTER_PUSH_SHUFFLE", `path=${path}|nonmain-sync`);
   traceCompleteWarmNavCalled(path);
   traceRouterNavCalled("/shuffle", path);
 
-  push(router, "/shuffle", {
-    forceSoftNavigation: true,
-    reason: "non-main-to-shuffle-sync",
+  const nativeHard = shouldHardNavigate() && shouldHardNavigatePath("/shuffle");
+  const plan = planInstantShuffleEntry({
+    fromPath: path,
+    nativeShellHardNavWouldApply: nativeHard,
+    microSlideEnabled: isMainTabToShuffleMicroSlideEnabled(),
   });
+  push(
+    router,
+    "/shuffle",
+    plan.forceHistoryNavigation
+      ? {
+          forceHistoryNavigation: true as const,
+          reason: "instant-shuffle-entry-nonmain-history",
+        }
+      : {
+          forceSoftNavigation: true as const,
+          reason: "instant-shuffle-entry-nonmain-soft",
+        },
+  );
 
-  // Soft router commit can update pathname after the first frames. Poll until
-  // the keepalive host is actually presented — path-only success with opacity 0
-  // is still a user-visible blank Shuffle shell on Android.
+  // Same-gesture present already ran. One RAF backup if pathname lands next frame.
   const armActivate = () => {
     const live = window.location.pathname.split("?")[0].split("#")[0];
     const html = document.documentElement;
@@ -260,17 +256,12 @@ export function commitNonMainRouteToShuffleNavigation(
       html.hasAttribute("data-sayittome-shuffle-reveal-pending") ||
       html.getAttribute("data-sayittome-route-kind") === "shuffle";
     if (!revealing) return false;
-    // microSlideSettle bypasses warm geometry gates that no-op on Android
-    // profile→Shuffle and leave the host frozen under a hidden route shell.
-    activateShuffleTabSurface({ microSlideSettle: true });
+    presentInstantShuffleHostSync();
     presentShuffleHostForNonMainReveal({ hideShell: live === "/shuffle" });
     const host = document.getElementById("sayittome-shuffle-keepalive-host");
     return !!host?.classList.contains("sayittome-shuffle-keepalive-visible");
   };
-  requestAnimationFrame(() => {
-    armActivate();
-    requestAnimationFrame(armActivate);
-  });
+  requestAnimationFrame(armActivate);
   let tries = 0;
   const pollId = window.setInterval(() => {
     tries += 1;
@@ -343,7 +334,7 @@ function armAndroidShufflePresentationFailsafe(
   }, 900);
 }
 
-/** Click: commit transaction intent, start readiness ownership, defer route until no-loading ready. */
+/** Click: present host + commit URL in the same gesture. Never defer for readiness/WAAPI. */
 export function commitPreparedMainTabToShuffleNavigation(
   router: AppRouterInstance,
   push: typeof fastRouterPush = fastRouterPush,
@@ -356,29 +347,12 @@ export function commitPreparedMainTabToShuffleNavigation(
   traceCompleteWarmNavCalled(path);
   observeShuffleNavClickCommit(path);
 
-  // Profile/settings/chat threads: never defer through micro-slide schedule.
   if (isNonMainRoute(path)) {
     commitNonMainRouteToShuffleNavigation(router, push, path);
     return;
   }
 
-  const microSlidePreparing =
-    isMainTabToShuffleMicroSlideEnabled() && getMainTabToShufflePhase() === "preparing";
-
-  if (microSlidePreparing) {
-    void ensureShufflePoolWarmForMicroSlide();
-    notifyMainTabToShuffleNavigationCommitted();
-    // NO-LOADING MID-SLIDE: do not navigate into a loading destination.
-    // Route commit flushes only when destination visual readiness is ready.
-    registerDeferredMicroSlideRouteCommit(() => {
-      executeShuffleRouteCommit(router, push, path);
-    });
-    // Android cold main-tab→Shuffle: deferred readiness can stall with no second
-    // tap available. Bounded failsafe commits + presents if still blank.
-    armAndroidShufflePresentationFailsafe(router, push, path);
-    return;
-  }
-
+  presentInstantShuffleHostSync();
   executeShuffleRouteCommit(router, push, path);
   armAndroidShufflePresentationFailsafe(router, push, path);
 }

@@ -1,14 +1,29 @@
 /**
  * ANDROID_PROFILE_TO_SHUFFLE_ISOLATION_GATE
  *   node scripts/android-profile-to-shuffle-isolation.harness.mjs
+ *   node --experimental-strip-types scripts/android-profile-to-shuffle-isolation.harness.mjs
  *   node scripts/android-profile-to-shuffle-isolation.harness.mjs --live --base http://127.0.0.1:3010
  *
  * Fail-closed: final pathname /u/* is FAIL even when overlay=0 and sticky=0.
  * No second tap. No post-failure goto.
+ * Static NON_MAIN_* commit checks import production (host-before-push, sync,
+ * soft web / history native, zero slide/defer) — not reason-string regex.
  */
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { installHarnessAlias, installHarnessWindow } from "./harness-alias.mjs";
+
+if (!process.execArgv.includes("--experimental-strip-types")) {
+  const rerun = spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", ...process.argv.slice(1)],
+    { stdio: "inherit", cwd: process.cwd() },
+  );
+  process.exit(rerun.status ?? 1);
+}
 
 const root = process.cwd();
 const args = process.argv.slice(2);
@@ -181,11 +196,192 @@ check(
     warmSrc.includes("fromNonMain"),
 );
 
+function classListStub(initial = []) {
+  const set = new Set(initial);
+  return {
+    add: (...xs) => xs.forEach((x) => set.add(x)),
+    remove: (...xs) => xs.forEach((x) => set.delete(x)),
+    contains: (x) => set.has(x),
+  };
+}
+
+installHarnessWindow();
+installHarnessAlias(root);
+
+const hostClassList = classListStub(["sayittome-shuffle-keepalive-frozen"]);
+const host = {
+  id: "sayittome-shuffle-keepalive-host",
+  classList: hostClassList,
+  style: {},
+  hidden: false,
+  querySelector() {
+    return null;
+  },
+  querySelectorAll() {
+    return [];
+  },
+  appendChild(node) {
+    return node;
+  },
+  setAttribute() {},
+  removeAttribute() {},
+  hasAttribute() {
+    return false;
+  },
+  getAttribute() {
+    return null;
+  },
+  getBoundingClientRect() {
+    return { width: 390, height: 720, top: 0, left: 0, right: 390, bottom: 720 };
+  },
+};
+const htmlEl = {
+  classList: classListStub(),
+  hasAttribute() {
+    return false;
+  },
+  getAttribute() {
+    return null;
+  },
+  setAttribute() {},
+  removeAttribute() {},
+};
+globalThis.document = {
+  documentElement: htmlEl,
+  body: { classList: classListStub() },
+  addEventListener() {},
+  removeEventListener() {},
+  getElementById(id) {
+    return id === "sayittome-shuffle-keepalive-host" ? host : null;
+  },
+  querySelector() {
+    return null;
+  },
+  querySelectorAll() {
+    return [];
+  },
+  createElement() {
+    return { style: { cssText: "" }, textContent: "", setAttribute() {} };
+  },
+};
+globalThis.window.document = globalThis.document;
+globalThis.window.location.pathname = "/u/ada";
+globalThis.window.history = {
+  length: 3,
+  state: null,
+  pushState(_state, _title, url) {
+    this.state = _state;
+    if (url) globalThis.window.location.pathname = String(url).split("?")[0];
+  },
+  replaceState(_state, _title, url) {
+    this.state = _state;
+    if (url) globalThis.window.location.pathname = String(url).split("?")[0];
+  },
+};
+globalThis.window.getComputedStyle = () => ({
+  display: "block",
+  visibility: "visible",
+  opacity: "1",
+});
+
+const entryMod = await import(
+  pathToFileURL(path.join(root, "src/lib/navigation/instantShuffleEntry.ts")).href
+);
+const flagsMod = await import(
+  pathToFileURL(path.join(root, "src/lib/perf/instantaneityFlags.ts")).href
+);
+const transitionMod = await import(
+  pathToFileURL(path.join(root, "src/lib/navigation/mainTabToShuffleTransition.ts")).href
+);
+const warmMod = await import(
+  pathToFileURL(path.join(root, "src/lib/navigation/warmShuffleTabNavigation.ts")).href
+);
+
+const webPlan = entryMod.planInstantShuffleEntry({
+  fromPath: "/u/ada",
+  nativeShellHardNavWouldApply: false,
+});
+const nativePlan = entryMod.planInstantShuffleEntry({
+  fromPath: "/u/ada",
+  nativeShellHardNavWouldApply: true,
+});
+
+const pushes = [];
+let hostVisibleAtPush = false;
+let pushTurn = 0;
+function fakePush(_router, href, options) {
+  pushTurn += 1;
+  hostVisibleAtPush = host.classList.contains(
+    "sayittome-shuffle-keepalive-visible",
+  );
+  pushes.push({ href, options, hostVisibleAtPush });
+  globalThis.window.location.pathname = href;
+}
+
+globalThis.window.location.pathname = "/u/ada";
+warmMod.commitNonMainRouteToShuffleNavigation({}, fakePush, "/u/ada");
+const phaseAfter = transitionMod.getMainTabToShufflePhase();
+const slideAfter = transitionMod.isInternalMainTabToShuffleTransitionActive();
+
 check(
   "NON_MAIN_SYNC_ROUTE_COMMIT",
   warmSrc.includes("commitNonMainRouteToShuffleNavigation") &&
-    warmSrc.includes("non-main-to-shuffle-sync") &&
-    warmSrc.includes("forceSoftNavigation: true"),
+    flagsMod.isMainTabToShuffleMicroSlideEnabled() === false &&
+    webPlan.presentHostSync === true &&
+    webPlan.commitUrlSync === true &&
+    webPlan.commitWithinRafs === 0 &&
+    webPlan.beginMicroSlide === false &&
+    webPlan.deferRouteCommit === false &&
+    webPlan.useStageOrTransform === false &&
+    webPlan.commitMode === "soft" &&
+    nativePlan.commitMode === "history" &&
+    pushes.length === 1 &&
+    pushes[0].href === "/shuffle" &&
+    hostVisibleAtPush === true &&
+    pushTurn === 1 &&
+    pushes[0].options?.forceSoftNavigation === true &&
+    pushes[0].options?.forceHistoryNavigation !== true &&
+    nativePlan.forceHistoryNavigation === true &&
+    nativePlan.forceSoftNavigation === false &&
+    phaseAfter === "idle" &&
+    slideAfter === false,
+  {
+    microSlideEnabled: flagsMod.isMainTabToShuffleMicroSlideEnabled(),
+    webCommitMode: webPlan.commitMode,
+    nativeCommitMode: nativePlan.commitMode,
+    pushCount: pushes.length,
+    hostVisibleAtPush,
+    phaseAfter,
+    slideAfter,
+  },
+);
+check(
+  "NON_MAIN_HOST_PRESENTED_BEFORE_PUSH",
+  hostVisibleAtPush === true && pushes.length === 1,
+  { hostVisibleAtPush, pushCount: pushes.length },
+);
+check(
+  "NON_MAIN_PUSH_SYNC_SAME_TURN",
+  pushes.length === 1 && webPlan.commitWithinRafs === 0 && webPlan.deferRouteCommit === false,
+  { pushCount: pushes.length, commitWithinRafs: webPlan.commitWithinRafs },
+);
+check(
+  "NON_MAIN_SOFT_WEB_HISTORY_NATIVE",
+  webPlan.commitMode === "soft" &&
+    nativePlan.commitMode === "history" &&
+    pushes[0]?.options?.forceSoftNavigation === true &&
+    nativePlan.forceHistoryNavigation === true,
+  { webCommitMode: webPlan.commitMode, nativeCommitMode: nativePlan.commitMode },
+);
+check(
+  "NON_MAIN_ZERO_SLIDE_DEFER",
+  webPlan.beginMicroSlide === false &&
+    webPlan.deferRouteCommit === false &&
+    webPlan.useStageOrTransform === false &&
+    phaseAfter === "idle" &&
+    slideAfter === false &&
+    flagsMod.isMainTabToShuffleMicroSlideEnabled() === false,
+  { phaseAfter, slideAfter },
 );
 
 check(

@@ -20,14 +20,15 @@ import { auth, db } from "@/lib/firebase";
 import { useT } from "@/contexts/LocaleContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 
+import {
+  buildFollowId,
+  resolveFollowButtonTargetUid,
+} from "@/lib/profile/followTargetUid";
+
 type Props = {
   targetUid: string;
   variant?: "default" | "profileClassic";
 };
-
-function buildFollowId(myUid: string, targetUid: string) {
-  return myUid + "_" + targetUid;
-}
 
 export default function FollowButton({ targetUid, variant = "default" }: Props) {
   const { uxMode } = useUxMode();
@@ -40,12 +41,13 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
   const [checkingFollow, setCheckingFollow] = useState(true);
   const [loading, setLoading] = useState(false);
 
-  const isSelf = Boolean(myUid && targetUid && myUid === targetUid);
+  const resolvedTargetUid = resolveFollowButtonTargetUid(targetUid);
+  const isSelf = Boolean(myUid && resolvedTargetUid && myUid === resolvedTargetUid);
 
   const followId = useMemo(() => {
-    if (!myUid || !targetUid) return "";
-    return buildFollowId(myUid, targetUid);
-  }, [myUid, targetUid]);
+    if (!myUid || !resolvedTargetUid) return "";
+    return buildFollowId(myUid, resolvedTargetUid);
+  }, [myUid, resolvedTargetUid]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -57,7 +59,7 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
   }, []);
 
   useEffect(() => {
-    if (!myUid || !targetUid || myUid === targetUid) {
+    if (!myUid || !resolvedTargetUid || myUid === resolvedTargetUid) {
       setFollowing(false);
       setCheckingFollow(false);
       return;
@@ -65,7 +67,7 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
 
     setCheckingFollow(true);
 
-    const ref = doc(db, "seguidores", buildFollowId(myUid, targetUid));
+    const ref = doc(db, "seguidores", buildFollowId(myUid, resolvedTargetUid));
 
     const unsub = onSnapshot(
       ref,
@@ -80,10 +82,10 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
     );
 
     return () => unsub();
-  }, [myUid, targetUid]);
+  }, [myUid, resolvedTargetUid]);
 
   async function toggleFollow() {
-    if (!myUid || !targetUid || myUid === targetUid || loading) return;
+    if (!myUid || !resolvedTargetUid || myUid === resolvedTargetUid || loading) return;
 
     const nextFollowing = !following;
 
@@ -97,7 +99,7 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
       const followerSubRef = doc(
         db,
         "usuarios",
-        targetUid,
+        resolvedTargetUid,
         "seguidores",
         myUid
       );
@@ -106,17 +108,17 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
         "usuarios",
         myUid,
         "siguiendo",
-        targetUid
+        resolvedTargetUid
       );
 
-      const targetUserRef = doc(db, "usuarios", targetUid);
+      const targetUserRef = doc(db, "usuarios", resolvedTargetUid);
       const myUserRef = doc(db, "usuarios", myUid);
 
       if (nextFollowing) {
         const payload = {
           id: followId,
           seguidorUid: myUid,
-          seguidoUid: targetUid,
+          seguidoUid: resolvedTargetUid,
           createdAt: serverTimestamp(),
         };
 
@@ -127,7 +129,7 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
           {
             id: followId,
             seguidorUid: myUid,
-            seguidoUid: targetUid,
+            seguidoUid: resolvedTargetUid,
             createdAt: serverTimestamp(),
           },
           { merge: true }
@@ -184,7 +186,7 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
     }
   }
 
-  if (!authReady || !targetUid || isSelf) return null;
+  if (!authReady || !resolvedTargetUid || isSelf) return null;
 
   if (!myUid) {
     if (variant === "profileClassic") {

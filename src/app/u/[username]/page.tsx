@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useLayoutEffect } from "react";
+import { useEffect, useMemo, useState, useCallback, useLayoutEffect, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -44,7 +44,7 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { lookupProfileByUsername } from "@/lib/chat/resolveProfileChat";
-import { getCachedFullProfile, setCachedFullProfile } from "@/lib/profile/profileCache";
+import { getCachedFullProfile, setCachedFullProfile, shouldIdleRevalidateFullProfile } from "@/lib/profile/profileCache";
 import { markProfileHydrated, shouldShowProfileLoading } from "@/hooks/useProfileReady";
 import {
   profilePipelineBegin,
@@ -112,7 +112,6 @@ export default function PublicProfilePage() {
   const { locale } = useLocale();
   const params = useParams();
   const router = useRouter();
-  const [verifiedVisit, setVerifiedVisit] = useState(false);
   const [usernameChanged, setUsernameChanged] = useState<{
     requestedUsername: string;
     currentUsername: string;
@@ -120,6 +119,11 @@ export default function PublicProfilePage() {
 
   const usernameParam =
     typeof params?.username === "string" ? params.username : "";
+  const verifiedVisit = useSyncExternalStore(
+    () => () => {},
+    () => isVerifiedProfileLink(window.location.search),
+    () => false,
+  );
 
   const [profile, setProfile] = useState<Profile | null>(() => {
     const cached = usernameParam ? getCachedFullProfile(usernameParam) : null;
@@ -167,8 +171,24 @@ export default function PublicProfilePage() {
         profilePipelineMark("set-profile", { hasProfile: true, loading: false });
         profilePipelineMark("loading-false", { loading: false, hasProfile: true });
 
-        // Fresh full-profile cache already painted the route. Avoid a forced
-        // network refresh that races the warm back/reopen path.
+        // Fresh API cache already painted the route. Do not fetch again.
+        // Stale API snapshots revalidate in idle without blanking.
+        if (shouldIdleRevalidateFullProfile(usernameParam)) {
+          const revalidate = () => {
+            void lookupProfileByUsername(usernameParam, true)
+              .then((lookup) => {
+                if (lookup.usernameChanged || !lookup.profile) return;
+                setCachedFullProfile(usernameParam, lookup.profile, { source: "api" });
+                setProfile(lookup.profile as Profile);
+              })
+              .catch(() => undefined);
+          };
+          if (typeof requestIdleCallback === "function") {
+            requestIdleCallback(revalidate, { timeout: 1500 });
+          } else {
+            window.setTimeout(revalidate, 0);
+          }
+        }
         return;
       }
 
@@ -195,7 +215,7 @@ export default function PublicProfilePage() {
         loadedProfile = (lookup.profile as Profile | null) || null;
         setProfile(loadedProfile);
         if (loadedProfile) {
-          setCachedFullProfile(usernameParam, loadedProfile);
+          setCachedFullProfile(usernameParam, loadedProfile, { source: "api" });
           markProfileHydrated();
           profilePipelineMark("set-profile", { hasProfile: true });
         } else {
@@ -260,10 +280,6 @@ export default function PublicProfilePage() {
   const historiasCount = Number(profile?.historias || profile?.stories || 0);
   const blurPhoto = profile ? profilePhotoRequiresBlur(profile) : false;
   const storyStatus = useStoryStatus(profile?.uid, profile?.username || usernameParam);
-
-  useEffect(() => {
-    setVerifiedVisit(isVerifiedProfileLink(window.location.search));
-  }, [usernameParam]);
 
   useEffect(() => {
     if (!profile?.username) return;
@@ -364,9 +380,12 @@ export default function PublicProfilePage() {
     onSwipeRight: prevPhotoCb,
   });
 
-  useEffect(() => {
+  const galleryKey = `${usernameParam}:${gallery.length}`;
+  const [heroResetKey, setHeroResetKey] = useState(galleryKey);
+  if (heroResetKey !== galleryKey) {
+    setHeroResetKey(galleryKey);
     setHeroIndex(0);
-  }, [usernameParam, gallery.length]);
+  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

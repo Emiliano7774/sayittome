@@ -13,6 +13,7 @@ import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useProfilePrefetchIntent } from "@/hooks/useProfilePrefetchIntent";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
+import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ModernShuffleCard({
@@ -23,7 +24,7 @@ function ModernShuffleCard({
   feedIndex?: number;
 }) {
   const router = useRouter();
-  const story = useStoryStatus(profile.uid, profile.username);
+  const story = useStoryStatus(storyOwnerUidFromShuffleCard(profile), profile.username);
   const opensStory =
     story.hasActive && story.hasUnseen && Boolean(story.storyPath);
   const prefetchIntent = useProfilePrefetchIntent(profile.username, {

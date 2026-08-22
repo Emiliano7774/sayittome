@@ -41,6 +41,7 @@ import {
   isValidWarmShuffleHandoffActive,
   pinShuffleKeepAlive,
   pinShuffleWindowWhileAway,
+  parkShuffleKeepAliveForNonMainRoute,
   prepareShuffleTabReturn,
   reconcileOrphanedShuffleHandoffDom,
   releaseShuffleTabSurface,
@@ -794,7 +795,7 @@ export default function ShuffleKeepAliveHost() {
         };
       }
 
-      releaseShuffleTabSurface();
+      parkShuffleKeepAliveForNonMainRoute();
       pinShuffleWindowWhileAway();
       clearQueuedShuffleTriggers();
       resetShuffleGeometryStability();

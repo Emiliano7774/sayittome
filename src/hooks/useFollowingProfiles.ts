@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   doc,
@@ -10,21 +9,19 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
+import { useAuth } from "@/contexts/AuthContext";
+import { peekCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 import { withTimeout } from "@/lib/async/withTimeout";
 import { isRecentlyActive } from "@/lib/presence";
+import type { FollowingProfile } from "@/lib/shuffle/followingTypes";
 import {
   readCachedFollowingSnapshot,
   writeCachedFollowingSnapshot,
 } from "@/lib/shuffle/shuffleChromeCache";
+import { decideFollowingChrome } from "@/lib/shuffle/shuffleChromeStable";
+import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 
-export type FollowingProfile = {
-  uid: string;
-  username: string;
-  photo: string;
-  lastActive?: string;
-  online?: boolean;
-  showOnline: boolean;
-};
+export type { FollowingProfile } from "@/lib/shuffle/followingTypes";
 
 async function loadFollowingProfile(targetUid: string): Promise<FollowingProfile | null> {
   const snap = await withTimeout(
@@ -41,8 +38,11 @@ async function loadFollowingProfile(targetUid: string): Promise<FollowingProfile
   const lastActive = String(data.presenceAt || data.lastActive || "");
   const online = data.online === true;
 
+  const firebaseUid = String(data.uid || "").trim();
   return {
     uid: targetUid,
+    authUid: firebaseUid || targetUid,
+    aliasIds: [targetUid, firebaseUid].filter(Boolean),
     username,
     photo: String(data.fotoPrincipal || data.photoURL || ""),
     lastActive,
@@ -52,40 +52,45 @@ async function loadFollowingProfile(targetUid: string): Promise<FollowingProfile
 }
 
 export function useFollowingProfiles() {
-  const [uid, setUid] = useState("");
-  const [profiles, setProfiles] = useState<FollowingProfile[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { firebaseUser, loading: authLoading } = useAuth();
+  const uid = String(
+    firebaseUser?.uid ||
+      auth.currentUser?.uid ||
+      (authLoading ? peekCachedViewerIdentity()?.uid || "" : "") ||
+      "",
+  );
+  const authPending = authLoading && !firebaseUser?.uid && !auth.currentUser?.uid;
   const profileCacheRef = useRef(new Map<string, FollowingProfile>());
+  const [live, setLive] = useState<{ uid: string; profiles: FollowingProfile[] } | null>(
+    null,
+  );
+
+  const cached = uid ? readCachedFollowingSnapshot(uid) : null;
+  const liveProfiles = uid && live?.uid === uid ? live.profiles : null;
+  const liveReady = Boolean(uid && live?.uid === uid);
+  const decision = decideFollowingChrome({
+    authPending,
+    uid,
+    cached,
+    liveProfiles,
+    liveReady,
+  });
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setUid(user?.uid || "");
-    });
-
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
+    if (authPending) return;
     if (!uid) {
-      setProfiles([]);
-      setLoading(false);
       writeCachedFollowingSnapshot("", [], false);
       return;
     }
 
-    const cached = readCachedFollowingSnapshot(uid);
-    if (cached) {
-      for (const profile of cached.profiles) {
+    const seeded = readCachedFollowingSnapshot(uid);
+    if (seeded) {
+      for (const profile of seeded.profiles) {
         profileCacheRef.current.set(profile.uid, profile);
       }
-      setProfiles(cached.profiles);
-      setLoading(false);
-    } else {
-      setLoading(true);
     }
 
     const ref = collection(db, "usuarios", uid, "siguiendo");
-
     const unsub = onSnapshot(
       ref,
       async (snap) => {
@@ -102,25 +107,33 @@ export function useFollowingProfiles() {
           }
         }
 
-        const next = targetUids
-          .map((targetUid) => profileCacheRef.current.get(targetUid))
-          .filter((profile): profile is FollowingProfile => Boolean(profile));
+        const next = dedupeShuffleProfiles(
+          targetUids
+            .map((targetUid) => profileCacheRef.current.get(targetUid))
+            .filter((profile): profile is FollowingProfile => Boolean(profile)),
+        );
 
-        setProfiles(next);
-        setLoading(false);
+        setLive({ uid, profiles: next });
         writeCachedFollowingSnapshot(uid, next, true);
       },
       (error) => {
         console.error("useFollowingProfiles", error);
         if (!readCachedFollowingSnapshot(uid)) {
-          setProfiles([]);
+          setLive({ uid, profiles: [] });
         }
-        setLoading(false);
       },
     );
 
     return () => unsub();
-  }, [uid]);
+  }, [authPending, uid]);
 
-  return { uid, profiles, loading, hasSession: Boolean(uid) };
+  return {
+    uid,
+    profiles: decision.profiles,
+    loading: decision.showSkeleton,
+    hasSession: decision.hasSession,
+    authPending,
+    showGuest: decision.showGuest,
+    state: decision.state,
+  };
 }

@@ -29,6 +29,7 @@ export function ChatAlertsProvider({ children }: { children: ReactNode }) {
       alerts.loading,
       alerts.isAnonymousSession,
       alerts.inboxQueriesEnabled,
+      alerts.firestoreSynced,
     ],
   );
 

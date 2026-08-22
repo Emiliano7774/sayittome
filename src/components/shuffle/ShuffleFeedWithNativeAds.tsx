@@ -50,11 +50,11 @@ export default function ShuffleFeedWithNativeAds({
 
   return (
     <div
-      key={windowGeneration}
       className={className}
       data-shuffle-list
       data-nav-shuffle-primary
       data-stm-no-polish
+      data-window-generation={windowGeneration}
     >
       {Array.from({ length: itemCount }, (_, index) => {
         if (isShuffleNativeAdIndex(index, profiles.length, showAds)) {

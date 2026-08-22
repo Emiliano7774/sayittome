@@ -4,6 +4,7 @@ import HeaderControls from "@/components/HeaderControls";
 import EnterShuffleButton from "@/components/legal/EnterShuffleButton";
 import NativeAwareLink from "@/components/navigation/NativeAwareLink";
 import ApkDownloadSection from "@/components/monetization/ApkDownloadSection";
+import WebVersionPromoBanner from "@/components/promo/WebVersionPromoBanner";
 import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -67,6 +68,7 @@ export default function ModernHome() {
         </div>
 
         <ApkDownloadSection variant="modern" />
+        <WebVersionPromoBanner variant="modern" />
         <PublicLegalFooter className="mt-10" />
       </section>
     </main>

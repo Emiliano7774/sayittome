@@ -208,7 +208,7 @@ async function executeProfilePrefetch(
 
       const json = await res.json();
       if (json?.profile) {
-        setCachedFullProfile(key, json.profile);
+        setCachedFullProfile(key, json.profile, { source: "api" });
         const photo = String(
           json.profile.fotoPrincipal || json.profile.photo || "",
         ).trim();

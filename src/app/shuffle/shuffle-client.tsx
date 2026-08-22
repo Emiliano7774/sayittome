@@ -154,6 +154,9 @@ export default function ShuffleClient() {
             profiles={following.profiles}
             loading={following.loading}
             hasSession={following.hasSession}
+            authPending={following.authPending}
+            showGuest={following.showGuest}
+            state={following.state}
           />
 
           <div

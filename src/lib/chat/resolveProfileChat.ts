@@ -96,7 +96,7 @@ export async function lookupProfileByUsername(
 
   const profile = json?.profile || null;
   if (profile) {
-    setCachedFullProfile(key, profile);
+    setCachedFullProfile(key, profile, { source: "api" });
     if (isNavTraceEnabled()) {
       profilePipelineMark("profile-normalized", {
         found: true,

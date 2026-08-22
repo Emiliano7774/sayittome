@@ -6,6 +6,7 @@ import {
   usernameHintFromAnonChatId,
 } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
+import { hasInboxPreview, isVisibleInboxChat } from "@/lib/chat/inboxVisible";
 
 export function formatAnonSessionLabel(sessionId: string) {
   const raw = String(sessionId || "").trim();
@@ -140,12 +141,97 @@ export function inboxPeerDedupeKey(chat: InboxChat, viewerUid?: string) {
     return `anon-visitor:${chatId}`;
   }
 
+  // Distinct authorized threads stay distinct. Username-only keys collapsed
+  // separate anon sessions / chatIds into one inbox row.
+  if (chatId) return `thread:${chatId}`;
+
   const title = profileUsername(chat);
   if (title) return `profile:${safeChatPart(title)}`;
   if (isProfileAnonChatId(chatId)) {
     return `profile:${parseProfileAnonChatId(chatId).targetKey}`;
   }
   return `id:${chatId}`;
+}
+
+export function dedupeInboxChats(chats: InboxChat[], viewerUid = "") {
+  const map = new Map<string, InboxChat>();
+
+  for (const chat of chats) {
+    const key = inboxPeerDedupeKey(chat, viewerUid || undefined);
+    const existing = map.get(key);
+    const chatMs = chat.updatedAt?.toMillis?.() ?? 0;
+    const existingMs = existing?.updatedAt?.toMillis?.() ?? 0;
+    const mergedPhoto = chat.targetPhoto || existing?.targetPhoto;
+    const chatVisible = hasInboxPreview(chat);
+    const existingVisible = existing ? hasInboxPreview(existing) : false;
+
+    let winner = chat;
+    if (existing) {
+      if (chatVisible && !existingVisible) {
+        winner = chat;
+      } else if (!chatVisible && existingVisible) {
+        winner = existing;
+      } else if (chatMs >= existingMs) {
+        winner = chat;
+      } else {
+        winner = existing;
+      }
+    }
+
+    const mergedTargetPhoto = winner.targetPhoto || mergedPhoto;
+    map.set(
+      key,
+      mergedTargetPhoto ? { ...winner, targetPhoto: mergedTargetPhoto } : winner,
+    );
+  }
+
+  return [...map.values()].sort((a, b) => {
+    const av = a.updatedAt?.toMillis?.() ?? 0;
+    const bv = b.updatedAt?.toMillis?.() ?? 0;
+    return bv - av;
+  });
+}
+
+export function mergeVisibleInboxThreads(
+  previous: InboxChat[],
+  live: InboxChat[],
+  viewerUid = "",
+  firestoreSynced = false,
+) {
+  const nextLive = dedupeInboxChats(live, viewerUid).filter(isVisibleInboxChat);
+  if (firestoreSynced || previous.length === 0 || nextLive.length >= previous.length) {
+    return nextLive;
+  }
+  return dedupeInboxChats([...previous, ...nextLive], viewerUid).filter(
+    isVisibleInboxChat,
+  );
+}
+
+export const UID_INBOX_QUERY_KEYS = [
+  "participantes",
+  "anonOwner",
+  "receptor",
+  "target",
+] as const;
+
+export const ANON_INBOX_QUERY_KEYS = [
+  "anonParticipantes",
+  "anonSession",
+] as const;
+
+/** Live inbox is complete only after every active query family has a first snapshot. */
+export function areInboxQuerySnapshotsComplete(
+  receivedKeys: Iterable<string>,
+  activeFamilies: { uid?: boolean; anon?: boolean },
+) {
+  const received = new Set(
+    [...receivedKeys].map((key) => String(key || "").trim()).filter(Boolean),
+  );
+  const required = [
+    ...(activeFamilies.uid ? UID_INBOX_QUERY_KEYS : []),
+    ...(activeFamilies.anon ? ANON_INBOX_QUERY_KEYS : []),
+  ];
+  return required.length > 0 && required.every((key) => received.has(key));
 }
 
 export function shouldHidePeerProfilePhoto(chat: InboxChat, viewerUid?: string) {

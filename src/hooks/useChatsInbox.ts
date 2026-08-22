@@ -16,8 +16,14 @@ import { auth, db } from "@/lib/firebase";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { ANON_SESSION_CHANGED_EVENT } from "@/lib/chat/anonSession";
 import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
-import { inboxPeerDedupeKey } from "@/lib/chat/inboxPeerTitle";
-import { hasInboxPreview, isVisibleInboxChat } from "@/lib/chat/inboxVisible";
+import { profileAuthUid } from "@/lib/chat/profileAnonMessageAuthor";
+import { dedupeInboxChats, mergeVisibleInboxThreads } from "@/lib/chat/inboxPeerTitle";
+import {
+  createInboxQueryCohortState,
+  inboxQueryCohortKey,
+  reduceInboxQueryCohort,
+} from "@/lib/chat/inboxQueryCohort";
+import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
 import { normalizeInboxChat } from "@/lib/chat/normalizeInboxChat";
 import { markChatsInboxHydrated, rememberInboxChatCount } from "@/hooks/useChatsInboxReady";
 import { readInboxSnapshot, writeInboxSnapshot } from "@/lib/chat/inboxSnapshot";
@@ -78,44 +84,7 @@ export function chatHref(chat: InboxChat) {
   return `/chat/${encodeURIComponent(id)}`;
 }
 
-function dedupeChats(chats: InboxChat[], viewerUid = "") {
-  const map = new Map<string, InboxChat>();
-
-  for (const chat of chats) {
-    const key = inboxPeerDedupeKey(chat, viewerUid || undefined);
-    const existing = map.get(key);
-    const chatMs = chat.updatedAt?.toMillis?.() ?? 0;
-    const existingMs = existing?.updatedAt?.toMillis?.() ?? 0;
-    const mergedPhoto = chat.targetPhoto || existing?.targetPhoto;
-    const chatVisible = hasInboxPreview(chat);
-    const existingVisible = existing ? hasInboxPreview(existing) : false;
-
-    let winner = chat;
-    if (existing) {
-      if (chatVisible && !existingVisible) {
-        winner = chat;
-      } else if (!chatVisible && existingVisible) {
-        winner = existing;
-      } else if (chatMs >= existingMs) {
-        winner = chat;
-      } else {
-        winner = existing;
-      }
-    }
-
-    const mergedTargetPhoto = winner.targetPhoto || mergedPhoto;
-    map.set(
-      key,
-      mergedTargetPhoto ? { ...winner, targetPhoto: mergedTargetPhoto } : winner,
-    );
-  }
-
-  return [...map.values()].sort((a, b) => {
-    const av = a.updatedAt?.toMillis?.() ?? 0;
-    const bv = b.updatedAt?.toMillis?.() ?? 0;
-    return bv - av;
-  });
-}
+export { dedupeInboxChats as dedupeChats, mergeVisibleInboxThreads };
 
 export type UseChatsInboxOptions = {
   /** Logged-in user: four Firestore inbox queries. */
@@ -141,9 +110,9 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   const [sessionChatIds, setSessionChatIds] = useState<string[]>([]);
   const [anonSessionId, setAnonSessionId] = useState("");
   const [firestoreSynced, setFirestoreSynced] = useState(false);
-  const firestoreFirstRef = useRef(false);
+  const inboxCohortRef = useRef(createInboxQueryCohortState());
 
-  const uid = firebaseUser?.uid || auth.currentUser?.uid || "";
+  const uid = profileAuthUid(firebaseUser) || profileAuthUid(auth.currentUser);
 
   useEffect(() => {
     if (loading || !isNavTraceEnabled()) return;
@@ -195,7 +164,6 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     anonParticipantes: new Map(),
     anonSession: new Map(),
   });
-  const inboxUidRef = useRef("");
   const snapshotBootstrappedRef = useRef(false);
   const lastSortedChatsRef = useRef<InboxChat[]>(readInboxSnapshot());
   if (!snapshotBootstrappedRef.current && lastSortedChatsRef.current.length > 0) {
@@ -215,35 +183,65 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
 
   useEffect(() => {
     if (loading) return;
+    const anonId = anonSessionId || getChatAnonSenderId();
+    const next = reduceInboxQueryCohort(inboxCohortRef.current, {
+      type: "rotate",
+      key: inboxQueryCohortKey({
+        uid,
+        anonId,
+        uidFamily: Boolean(enableInboxQueries && uid),
+        anonFamily: Boolean(enableAnonInboxQuery && anonId.startsWith("anon_")),
+      }),
+    });
+    if (
+      next.generation === inboxCohortRef.current.generation &&
+      next.cohortKey === inboxCohortRef.current.cohortKey
+    ) {
+      return;
+    }
+    inboxCohortRef.current = next;
+    for (const key of next.mapsToClear) {
+      queryMapsRef.current[key] = new Map();
+    }
+    setFirestoreSynced(false);
+    if (next.uidChanged) {
+      lastSortedChatsRef.current = [];
+      setChats([]);
+    }
+  }, [loading, uid, anonSessionId, enableInboxQueries, enableAnonInboxQuery]);
+
+  useEffect(() => {
+    if (loading) return;
 
     if (!enableInboxQueries || !uid) {
       return;
     }
 
-    if (inboxUidRef.current !== uid) {
-      const previousUid = inboxUidRef.current;
-      inboxUidRef.current = uid;
-      queryMapsRef.current.participantes = new Map();
-      queryMapsRef.current.anonOwner = new Map();
-      queryMapsRef.current.receptor = new Map();
-      queryMapsRef.current.target = new Map();
-      // Account switch: drop previous UID inbox. Cold auth settle ("" → uid)
-      // must keep the warm snapshot until the first Firestore merge arrives.
-      if (previousUid && previousUid !== uid) {
-        lastSortedChatsRef.current = [];
-        setChats([]);
-      }
-    }
-
+    const generation = inboxCohortRef.current.generation;
     let cancelled = false;
     const unsubscribers: Array<() => void> = [];
+    const inboxFamilies = {
+      uid: true,
+      anon: Boolean(
+        enableAnonInboxQuery &&
+          (anonSessionId || getChatAnonSenderId()).startsWith("anon_"),
+      ),
+    };
 
     const registerInboxQueries = () => {
       if (cancelled) return;
 
       const mergeQuery = (key: string) => (snap: QuerySnapshot) => {
-        if (!firestoreFirstRef.current) {
-          firestoreFirstRef.current = true;
+        if (cancelled) return;
+        const next = reduceInboxQueryCohort(inboxCohortRef.current, {
+          type: "snapshot",
+          generation,
+          queryKey: key,
+          families: inboxFamilies,
+        });
+        if (next.ignored) return;
+        inboxCohortRef.current = next;
+        if (next.synced) {
           setFirestoreSynced(true);
           if (isNavTraceEnabled()) {
             chatsPipelineMark("firestore-first-callback", { firestoreDocs: snap.docs.length });
@@ -314,7 +312,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       cancelled = true;
       for (const unsub of unsubscribers) unsub();
     };
-  }, [uid, loading, enableInboxQueries]);
+  }, [uid, loading, enableInboxQueries, enableAnonInboxQuery, anonSessionId]);
 
   useEffect(() => {
     if (loading) return;
@@ -323,7 +321,24 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     const anonId = anonSessionId || getChatAnonSenderId();
     if (!anonId.startsWith("anon_")) return;
 
+    const generation = inboxCohortRef.current.generation;
+    const inboxFamilies = {
+      uid: Boolean(enableInboxQueries && uid),
+      anon: true,
+    };
+
     const mergeAnonQuery = (key: string) => (snap: QuerySnapshot) => {
+      const next = reduceInboxQueryCohort(inboxCohortRef.current, {
+        type: "snapshot",
+        generation,
+        queryKey: key,
+        families: inboxFamilies,
+      });
+      if (next.ignored) return;
+      inboxCohortRef.current = next;
+      if (next.synced) {
+        setFirestoreSynced(true);
+      }
       const map = new Map<string, InboxChat>();
       for (const docSnap of snap.docs) {
         const normalized = normalizeInboxChat({
@@ -367,7 +382,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       unsubA();
       unsubB();
     };
-  }, [enableAnonInboxQuery, loading, anonSessionId]);
+  }, [enableAnonInboxQuery, enableInboxQueries, loading, anonSessionId, uid]);
 
   useEffect(() => {
     if (loading) return;
@@ -407,7 +422,9 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
 
   const sortedChats = useMemo(() => {
     const sortStart = performance.now();
-    const next = dedupeChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);
+    const live = dedupeInboxChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);
+    const previous = lastSortedChatsRef.current;
+    const next = mergeVisibleInboxThreads(previous, live, uid, firestoreSynced);
     const sortMs = Math.round(performance.now() - sortStart);
     if (isNavTraceEnabled() && next.length > 0) {
       chatsPipelineMark("inbox-sort-done", { sortMs, inboxCount: next.length });
@@ -418,7 +435,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       rememberInboxChatCount(next.length);
     }
     return next;
-  }, [chats, sessionChats, uid]);
+  }, [chats, sessionChats, uid, firestoreSynced]);
 
   const displaySortedChats =
     sortedChats.length > 0 ? sortedChats : lastSortedChatsRef.current;

@@ -21,6 +21,14 @@ import {
 } from "@/lib/navigation/shuffleHandoffState";
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 import {
+  prepareShuffleRevealFromNonMainRoute,
+} from "@/lib/navigation/nonMainToShuffleReveal";
+import {
+  captureShuffleFeedScroll,
+  installShuffleFeedScrollHistoryRestore,
+  restoreShuffleFeedScroll,
+} from "@/lib/navigation/shuffleFeedScroll";
+import {
   isInternalMainTabToShuffleTransitionActive,
   getMainTabToShufflePhase,
   getMainTabToShuffleTransaction,
@@ -216,6 +224,7 @@ export function releaseShuffleWindowRefreshSuppression() {
 /** Keep the current shuffle window while the user browses other tabs. */
 export function pinShuffleWindowWhileAway() {
   suppressShuffleWindowRefresh = true;
+  captureShuffleFeedScroll();
 }
 
 let staleHandoffSweepId = 0;
@@ -861,6 +870,7 @@ export function commitShuffleTabReturn() {
 
 export function canShowShuffleKeepAliveSurface(pathname: string) {
   const path = normalizePath(pathname);
+  if (isInstantShuffleReturnPending()) return true;
   // Non-main → Shuffle reveal must paint the host even while the URL is still
   // /u/* or /chat/* — otherwise CSS hides the route shell with nothing visible.
   if (typeof document !== "undefined") {
@@ -903,18 +913,33 @@ export function canShowShuffleKeepAliveSurface(pathname: string) {
   return true;
 }
 
+/** Hide Shuffle under profile/chat without dropping the snapshot or presented latch. */
+export function parkShuffleKeepAliveForNonMainRoute() {
+  suppressShuffleWindowRefresh = true;
+  captureShuffleFeedScroll();
+  freezeShuffleKeepAliveHostSync();
+  if (typeof document !== "undefined") {
+    document.body.classList.remove("sayittome-shuffle-route");
+    document.body.classList.remove("sayittome-shuffle-surface-active");
+  }
+}
+
 /** Reveal the pinned shuffle before chat unmounts so back feels instant. */
 export function prepareInstantShuffleReturn() {
-  if (typeof document === "undefined" || !keepAliveActive) return;
+  if (typeof document === "undefined") return;
 
+  pinShuffleKeepAlive();
   instantReturnPending = true;
   suppressShuffleWindowRefresh = true;
   notifyKeepAliveListeners();
+
+  prepareShuffleRevealFromNonMainRoute();
 
   document.documentElement.classList.add("sayittome-shuffle-return-pending");
   document.body.classList.add("sayittome-shuffle-route");
   document.body.classList.add("sayittome-shuffle-surface-active");
   revealShuffleKeepAliveHost();
+  restoreShuffleFeedScroll();
   stripNativeChatFullscreen();
   releaseChatViewportLock();
 }
@@ -928,6 +953,7 @@ export function clearInstantShuffleReturn() {
 }
 
 if (typeof window !== "undefined") {
+  installShuffleFeedScrollHistoryRestore();
   const runStaleHandoffReconcile = () => {
     reconcileStaleShuffleHandoffState();
     scheduleStaleHandoffSweep();
@@ -935,6 +961,11 @@ if (typeof window !== "undefined") {
 
   queueMicrotask(runStaleHandoffReconcile);
   window.addEventListener("pageshow", runStaleHandoffReconcile);
+  window.addEventListener("popstate", () => {
+    if (normalizePath(window.location.pathname) === "/shuffle" && keepAliveActive) {
+      prepareInstantShuffleReturn();
+    }
+  });
   window.addEventListener("focus", runStaleHandoffReconcile);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
