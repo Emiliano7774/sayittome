@@ -217,12 +217,12 @@ export function useUserModerationChats(username: string) {
 
     async function loadHistory() {
       try {
-        const email = auth.currentUser?.email || "";
+        const token = await auth.currentUser?.getIdToken?.();
         const res = await fetch(
           `/api/admin/user-chats?username=${encodeURIComponent(username)}`,
           {
             cache: "no-store",
-            headers: email ? { "x-admin-email": email } : {},
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
           },
         );
         const json = await res.json();

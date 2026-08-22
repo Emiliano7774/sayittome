@@ -1,117 +1,58 @@
-import { ANON_TO_MARKER, safeChatPart } from "@/lib/chat/anonChatId";
-import {
-  getFirestoreDoc,
-  runCollectionQueryAll,
-  runFilteredCollectionQueryAll,
-} from "@/lib/firestore/rest";
+import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 import {
   chatBelongsToProfile,
+  MODERATION_OWNER_UID_FIELDS,
   normalizeModerationChatRow,
   serializeModerationChatForApi,
   timestampMs,
 } from "@/lib/moderation/chatHistory";
 import type { ModerationChatRow } from "@/lib/moderation/types";
 
-const UID_FIELDS = ["receptorUid", "targetUid", "initiatorUid", "anonOwnerUid"] as const;
+const USERNAME_FIELDS = ["targetUsername", "receptorUsername"] as const;
 
-async function resolveProfileUid(username: string) {
+async function resolveProfileUidExact(username: string) {
   const clean = String(username || "").trim();
   if (!clean) return "";
+  const db = getRepairAdminDb();
+  const lower = clean.toLowerCase();
+  const lookups: Array<[string, string]> = [["username", clean]];
+  if (lower !== clean) lookups.push(["username", lower]);
+  lookups.push(["usernameLower", lower]);
 
-  const lookups = [clean, clean.toLowerCase()];
-  for (const value of lookups) {
-    try {
-      const byUsername = await runFilteredCollectionQueryAll(
-        "usuarios",
-        "username",
-        value,
-        undefined,
-        "DESCENDING",
-        3,
-        3,
-      );
-      if (byUsername.length > 1) {
-        throw Object.assign(new Error("username_not_unique"), { status: 409 });
-      }
-      if (byUsername[0]?.id) return String(byUsername[0].id);
-    } catch {
-      // try next field
+  for (const [field, value] of lookups) {
+    const snap = await db.collection("usuarios").where(field, "==", value).limit(3).get();
+    if (snap.size > 1) {
+      throw Object.assign(new Error("username_not_unique"), { status: 409 });
     }
-
-    try {
-      const byLower = await runFilteredCollectionQueryAll(
-        "usuarios",
-        "usernameLower",
-        value.toLowerCase(),
-        undefined,
-        "DESCENDING",
-        3,
-        3,
-      );
-      if (byLower.length > 1) {
-        throw Object.assign(new Error("username_not_unique"), { status: 409 });
-      }
-      if (byLower[0]?.id) return String(byLower[0].id);
-    } catch {
-      // try next field
-    }
+    if (snap.docs[0]?.id) return snap.docs[0].id;
   }
-
   return "";
+}
+
+function rowFromAdminDoc(id: string, data: Record<string, unknown>) {
+  return { id, ...data };
 }
 
 async function collectFilteredChats(field: string, value: string) {
   if (!value) return [] as Record<string, unknown>[];
 
+  const db = getRepairAdminDb();
   try {
-    return await runFilteredCollectionQueryAll(
-      "chats",
-      field,
-      value,
-      "updatedAt",
-      "DESCENDING",
-      200,
-      Number.MAX_SAFE_INTEGER,
+    const snap = await db
+      .collection("chats")
+      .where(field, "==", value)
+      .orderBy("updatedAt", "desc")
+      .limit(200)
+      .get();
+    return snap.docs.map((docSnap) =>
+      rowFromAdminDoc(docSnap.id, docSnap.data() as Record<string, unknown>),
     );
   } catch {
-    try {
-      return await runFilteredCollectionQueryAll(
-        "chats",
-        field,
-        value,
-        undefined,
-        "DESCENDING",
-        200,
-        Number.MAX_SAFE_INTEGER,
-      );
-    } catch {
-      return [];
-    }
-  }
-}
-
-async function collectAnonChatsByUsername(username: string) {
-  const marker = `${ANON_TO_MARKER}${safeChatPart(username)}`;
-  const rows: Record<string, unknown>[] = [];
-
-  try {
-    const all = await runCollectionQueryAll(
-      "chats",
-      "updatedAt",
-      "DESCENDING",
-      200,
-      Number.MAX_SAFE_INTEGER,
+    const snap = await db.collection("chats").where(field, "==", value).limit(200).get();
+    return snap.docs.map((docSnap) =>
+      rowFromAdminDoc(docSnap.id, docSnap.data() as Record<string, unknown>),
     );
-    for (const chat of all) {
-      if (String(chat.id || "").includes(marker)) {
-        rows.push(chat);
-      }
-    }
-  } catch {
-    // Ignore scan failures.
   }
-
-  return rows;
 }
 
 export async function fetchAllModerationChatsForUser(username: string) {
@@ -120,7 +61,7 @@ export async function fetchAllModerationChatsForUser(username: string) {
     return { uid: "", chats: [] as ModerationChatRow[], scanned: 0 };
   }
 
-  const uid = await resolveProfileUid(clean);
+  const uid = await resolveProfileUidExact(clean);
   const merged = new Map<string, Record<string, unknown>>();
 
   const queries: Array<Promise<Record<string, unknown>[]>> = [
@@ -128,16 +69,18 @@ export async function fetchAllModerationChatsForUser(username: string) {
     collectFilteredChats("receptorUsername", clean),
   ];
 
-  if (clean.toLowerCase() !== clean) {
-    queries.push(collectFilteredChats("targetUsername", clean.toLowerCase()));
-    queries.push(collectFilteredChats("receptorUsername", clean.toLowerCase()));
+  const lower = clean.toLowerCase();
+  if (lower !== clean) {
+    for (const field of USERNAME_FIELDS) {
+      queries.push(collectFilteredChats(field, lower));
+    }
   }
 
-  for (const field of UID_FIELDS) {
-    if (uid) queries.push(collectFilteredChats(field, uid));
+  if (uid) {
+    for (const field of MODERATION_OWNER_UID_FIELDS) {
+      queries.push(collectFilteredChats(field, uid));
+    }
   }
-
-  queries.push(collectAnonChatsByUsername(clean));
 
   const batches = await Promise.all(queries);
   let scanned = 0;
@@ -163,16 +106,5 @@ export async function fetchAllModerationChatsForUser(username: string) {
 export async function fetchProfileUidByUsername(username: string) {
   const clean = String(username || "").trim();
   if (!clean) return "";
-
-  const fromIndex = await resolveProfileUid(clean);
-  if (fromIndex) return fromIndex;
-
-  try {
-    const profile = await getFirestoreDoc("usuarios", clean);
-    if (profile?.id) return String(profile.id);
-  } catch {
-    // ignore
-  }
-
-  return "";
+  return resolveProfileUidExact(clean);
 }

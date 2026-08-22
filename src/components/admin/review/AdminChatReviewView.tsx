@@ -94,6 +94,7 @@ export default function AdminChatReviewView({
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-[#080808]">
           <AdminChatMirror
+            key={selectedChat.id}
             profileUsername={username}
             profileUid={uid}
             chat={selectedChat}
@@ -147,6 +148,7 @@ export default function AdminChatReviewView({
         {!phoneShell ? (
           <div className="min-h-0 flex-1">
             <AdminChatMirror
+              key={selectedChat?.id || "empty"}
               profileUsername={username}
               profileUid={uid}
               chat={selectedChat}

@@ -8,32 +8,71 @@ export type VerifiedFirebaseUser = {
 
 export type VerifiedAdmin = VerifiedFirebaseUser;
 
+export function adminAuthFromHeaders(input: {
+  authorization?: string | null;
+  xAdminEmail?: string | null;
+}): { ok: true; token: string } | { ok: false; status: 401; error: "unauthorized" } {
+  void input.xAdminEmail;
+  const match = String(input.authorization || "").match(/^Bearer\s+(.+)$/i);
+  const token = String(match?.[1] || "").trim();
+  if (!token) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+  return { ok: true, token };
+}
+
+export function readBearerToken(req: Request): string {
+  const parsed = adminAuthFromHeaders({
+    authorization: req.headers.get("authorization") || req.headers.get("Authorization"),
+    xAdminEmail: req.headers.get("x-admin-email"),
+  });
+  if (!parsed.ok) {
+    throw Object.assign(new Error(parsed.error), { status: parsed.status });
+  }
+  return parsed.token;
+}
+
+export function mapAdminAuthFailure(error: unknown): { status: number; error: string } {
+  const status = Number((error as { status?: number })?.status || 401);
+  if (status === 403) return { status: 403, error: "forbidden" };
+  if (status === 503) return { status: 503, error: "unavailable" };
+  return { status: 401, error: "unauthorized" };
+}
+
+export function assertAdminAllowlist(email: string) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!isAdminEmail(normalized) || normalized !== ADMIN_EMAIL) {
+    throw Object.assign(new Error("forbidden"), { status: 403 });
+  }
+}
+
+async function verifyIdTokenWithAdminSdk(token: string): Promise<VerifiedFirebaseUser> {
+  const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+  const { getAuth } = await import("firebase-admin/auth");
+  getRepairAdminDb();
+  const decoded = await getAuth().verifyIdToken(token, true);
+  if (decoded.email_verified !== true) {
+    throw Object.assign(new Error("unauthorized"), { status: 401 });
+  }
+  return {
+    email: String(decoded.email || "").trim().toLowerCase(),
+    uid: String(decoded.uid || ""),
+  };
+}
+
 /**
  * Requires Authorization: Bearer <Firebase ID token> and resolves the Firebase
  * user without trusting a UID or email supplied by the client.
+ * Non-admin callers may fall back to Identity Toolkit when Admin SDK is down.
  */
 export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFirebaseUser> {
-  const header = req.headers.get("authorization") || req.headers.get("Authorization") || "";
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  const token = String(match?.[1] || "").trim();
-  if (!token) {
-    throw Object.assign(new Error("missing_auth_token"), { status: 401 });
-  }
+  const token = readBearerToken(req);
 
   try {
-    const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
-    const { getAuth } = await import("firebase-admin/auth");
-    getRepairAdminDb();
-    const decoded = await getAuth().verifyIdToken(token, true);
-    if (decoded.email_verified !== true) {
-      throw Object.assign(new Error("email_not_verified"), { status: 401 });
-    }
-    const email = String(decoded.email || "").trim().toLowerCase();
-    return { email, uid: String(decoded.uid || "") };
+    return await verifyIdTokenWithAdminSdk(token);
   } catch (adminError) {
     const adminStatus = Number((adminError as { status?: number })?.status || 0);
     if (adminStatus === 401 || adminStatus === 403) throw adminError;
-    // Fall back to Identity Toolkit lookup when Admin SDK is unavailable.
   }
 
   try {
@@ -62,8 +101,10 @@ export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFireb
     if (!user || user.disabled === true || user.emailVerified !== true) {
       throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
     }
-    const email = String(user.email || "").trim().toLowerCase();
-    return { email, uid: String(user.localId || "") };
+    return {
+      email: String(user.email || "").trim().toLowerCase(),
+      uid: String(user.localId || ""),
+    };
   } catch (error) {
     const status = Number((error as { status?: number })?.status || 0);
     if (status === 403) throw error;
@@ -72,13 +113,18 @@ export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFireb
 }
 
 /**
- * Requires a verified Firebase user whose email is in the hard-coded admin
- * allowlist. Rejects spoofable x-admin-email / body email alone.
+ * Admin reads/writes: Bearer Firebase ID token via Admin SDK only.
+ * Never trusts x-admin-email and never uses REST+API key.
  */
 export async function verifyAdminIdToken(req: Request): Promise<VerifiedAdmin> {
-  const verified = await verifyFirebaseIdToken(req);
-  if (!isAdminEmail(verified.email) || verified.email !== ADMIN_EMAIL) {
-    throw Object.assign(new Error("forbidden"), { status: 403 });
+  const token = readBearerToken(req);
+  let verified: VerifiedFirebaseUser;
+  try {
+    verified = await verifyIdTokenWithAdminSdk(token);
+  } catch (error) {
+    const mapped = mapAdminAuthFailure(error);
+    throw Object.assign(new Error(mapped.error), { status: mapped.status });
   }
+  assertAdminAllowlist(verified.email);
   return verified;
 }

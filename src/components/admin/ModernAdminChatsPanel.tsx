@@ -4,8 +4,10 @@ import Link from "next/link";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
-import AdminShell, { useAdminApi } from "@/components/admin/AdminShell";
+import { useAdminApi } from "@/components/admin/AdminShell";
+import { useSpectatorChatMessages } from "@/hooks/useSpectatorTheater";
 import { db } from "@/lib/firebase";
+import { messageDisplayText } from "@/lib/moderation/spectator";
 
 type ChatRow = {
   id: string;
@@ -16,18 +18,11 @@ type ChatRow = {
   suspicious?: boolean;
 };
 
-type MessageRow = {
-  id: string;
-  text?: string;
-  texto?: string;
-  type?: string;
-};
-
 export default function ModernAdminChatsPanel() {
   const admin = useAdminApi();
   const [chats, setChats] = useState<ChatRow[]>([]);
   const [selected, setSelected] = useState("");
-  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const { chronological: messages } = useSpectatorChatMessages(selected, 40);
 
   useEffect(() => {
     const q = query(collection(db, "chats"), orderBy("updatedAt", "desc"), limit(80));
@@ -45,24 +40,6 @@ export default function ModernAdminChatsPanel() {
     });
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-
-    const q = query(
-      collection(db, "chats", selected, "mensajes"),
-      orderBy("createdAt", "desc"),
-      limit(40),
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(
-        snap.docs.map((row) => ({ id: row.id, ...(row.data() as Omit<MessageRow, "id">) })),
-      );
-    });
-
-    return () => unsub();
-  }, [selected]);
 
   return (
     <div className="grid lg:grid-cols-2 gap-6">
@@ -119,10 +96,8 @@ export default function ModernAdminChatsPanel() {
 
             <div className="space-y-2 max-h-[70vh] overflow-y-auto">
               {messages.map((msg) => (
-                <div key={msg.id} className="rounded-xl bg-white/5 p-3">
-                  <p className="font-bold text-white/80">
-                    {msg.text || msg.texto || `[${msg.type || "text"}]`}
-                  </p>
+                <div key={msg.collectionPath || msg.id} className="rounded-xl bg-white/5 p-3">
+                  <p className="font-bold text-white/80">{messageDisplayText(msg)}</p>
                   <button
                     type="button"
                     onClick={() =>
@@ -130,6 +105,7 @@ export default function ModernAdminChatsPanel() {
                         action: "delete_message",
                         chatId: selected,
                         messageId: msg.id,
+                        collectionName: msg.collectionName,
                       })
                     }
                     className="mt-2 text-xs font-black text-red-300"

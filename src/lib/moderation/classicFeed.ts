@@ -1,4 +1,4 @@
-import { groupChatsByCalendarDay, timestampMs } from "@/lib/moderation/chatHistory";
+import { canonicalOwnerUids, groupChatsByCalendarDay, timestampMs } from "@/lib/moderation/chatHistory";
 
 import type {
   ModerationChatRow,
@@ -85,12 +85,7 @@ export function aggregateChatsToUserFeed(
       touch(username, chat, chat.receptorUid || chat.targetUid);
     }
 
-    for (const uid of [
-      chat.receptorUid,
-      chat.targetUid,
-      chat.initiatorUid,
-      chat.anonOwnerUid,
-    ]) {
+    for (const uid of canonicalOwnerUids(chat as unknown as Record<string, unknown>)) {
       if (!uid) continue;
       const username = uidToUsername[uid];
       if (username) touch(username, chat, uid);

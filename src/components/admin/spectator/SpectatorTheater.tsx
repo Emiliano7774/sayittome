@@ -182,6 +182,7 @@ export default function SpectatorTheater({
                             action: "delete_message",
                             chatId: chat.id,
                             messageId: msg.id,
+                            collectionName: msg.collectionName,
                           })
                         }
                         className="text-[10px] font-bold text-red-300/80 hover:text-red-200"

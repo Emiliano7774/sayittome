@@ -8,6 +8,7 @@ import {
 } from "@/lib/chat/profileAnonMessageAuthor";
 import { formatTimeAgo } from "@/lib/time";
 
+import { canonicalOwnerUids } from "@/lib/moderation/chatHistory";
 import {
   getModerationChatPeerLabel,
   resolveModerationParticipants,
@@ -18,6 +19,7 @@ export type SpectatorMessage = {
   id: string;
   text?: string;
   texto?: string;
+  reply?: string;
   type?: string;
   fromUid?: string;
   ownerId?: string;
@@ -26,6 +28,8 @@ export type SpectatorMessage = {
   senderUsername?: string;
   senderIsAnonymous?: boolean;
   senderKind?: string;
+  collectionName?: "mensajes" | "messages";
+  collectionPath?: string;
   createdAt?: Timestamp;
 };
 
@@ -38,7 +42,9 @@ export function formatRelativeActivity(ms: number) {
 
 export function messageDisplayText(msg: SpectatorMessage) {
   const text = String(msg.text || msg.texto || "").trim();
+  const reply = String(msg.reply || "").trim();
   if (text) return text;
+  if (reply) return "↩ Respuesta";
   const type = String(msg.type || "text").trim();
   if (type === "image" || type === "photo") return "📷 Foto";
   if (type === "audio" || type === "voice") return "🎤 Audio";
@@ -85,21 +91,13 @@ function profileUidsForChat(
   return ids;
 }
 
-function peerUidsForChat(chat: ModerationChatRow, profileUsername: string) {
-  const profile = profileUsername.toLowerCase();
-  const isTarget = String(chat.targetUsername || "").toLowerCase() === profile;
+function peerUidsForChat(chat: ModerationChatRow) {
+  const owners = new Set(
+    canonicalOwnerUids(chat as unknown as Record<string, unknown>),
+  );
   const ids = new Set<string>();
-
-  if (isTarget) {
-    if (chat.receptorUid) ids.add(chat.receptorUid);
-    if (chat.initiatorUid) ids.add(chat.initiatorUid);
-    if (chat.anonOwnerUid) ids.add(chat.anonOwnerUid);
-  } else {
-    if (chat.targetUid) ids.add(chat.targetUid);
-    if (chat.initiatorUid) ids.add(chat.initiatorUid);
-    if (chat.anonOwnerUid) ids.add(chat.anonOwnerUid);
-  }
-
+  const initiator = String(chat.initiatorUid || "").trim();
+  if (initiator && !owners.has(initiator)) ids.add(initiator);
   return ids;
 }
 
@@ -112,7 +110,7 @@ export function resolveSpectatorMessageSide(
   const from = messageAuthorId(msg);
   const profileLower = profileUsername.toLowerCase();
   const profileIds = profileUidsForChat(chat, profileUsername, profileUid);
-  const peerIds = peerUidsForChat(chat, profileUsername);
+  const peerIds = peerUidsForChat(chat);
 
   const anonThread =
     isProfileAnonChatId(chat.id) ||

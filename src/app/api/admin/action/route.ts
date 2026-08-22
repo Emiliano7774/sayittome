@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { writeAdminLog } from "@/lib/admin/adminLogs";
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
+import { exactMessageCollectionName } from "@/lib/moderation/moderationMessageCollections";
 import {
   createFirestoreDoc,
   deleteFirestoreDoc,
@@ -190,7 +191,11 @@ export async function POST(req: Request) {
         active: false,
       });
     } else if (action === "delete_message" && chatId && messageId) {
-      await patchFirestoreDoc(`chats/${chatId}/mensajes`, messageId, {
+      const collectionName = exactMessageCollectionName(String(body.collectionName || ""));
+      if (!collectionName) {
+        return NextResponse.json({ ok: false, error: "collection_required" }, { status: 400 });
+      }
+      await patchFirestoreDoc(`chats/${chatId}/${collectionName}`, messageId, {
         deleted: true,
         texto: "[mensaje eliminado por admin]",
         text: "[mensaje eliminado por admin]",

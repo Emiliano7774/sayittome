@@ -7,6 +7,7 @@ import {
 
 import { db } from "@/lib/firebase";
 
+import { canonicalOwnerUids, moderationActivityWriteUsernames } from "@/lib/moderation/chatHistory";
 import type { ModerationChatRow } from "./types";
 import { safeProfileKey } from "./classicFeed";
 
@@ -26,30 +27,26 @@ async function resolveUsernameFromUid(uid: string) {
   }
 }
 
-/** Actualiza lastModerationActivityAt en moderation_profiles para cada perfil involucrado. */
+/** Actualiza lastModerationActivityAt solo para el destinatario/owner canónico corroborado. */
 export async function touchModerationActivityFromChat(chat: ModerationChatRow) {
   if (typeof window === "undefined") return;
 
-  const usernames = new Set<string>();
-  const uids = new Set<string>();
-
-  if (chat.targetUsername) usernames.add(chat.targetUsername);
-  if (chat.receptorUsername) usernames.add(chat.receptorUsername);
-
-  for (const uid of [chat.receptorUid, chat.targetUid, chat.initiatorUid, chat.anonOwnerUid]) {
-    if (uid) uids.add(uid);
-  }
-
-  for (const uid of uids) {
+  const resolvedByUid: Record<string, string> = {};
+  for (const uid of canonicalOwnerUids(chat as unknown as Record<string, unknown>)) {
     const resolved = await resolveUsernameFromUid(uid);
-    if (resolved) usernames.add(resolved);
+    if (resolved) resolvedByUid[uid] = resolved;
   }
+
+  const usernames = moderationActivityWriteUsernames(
+    chat as unknown as Record<string, unknown>,
+    resolvedByUid,
+  );
 
   const activityMs = Date.now();
   const preview = String(chat.lastMessage || "").trim() || "Nueva actividad";
 
   await Promise.all(
-    [...usernames].map(async (username) => {
+    usernames.map(async (username) => {
       const key = safeProfileKeyLocal(username);
       if (!key) return;
 
@@ -72,7 +69,16 @@ export async function touchModerationActivityFromChat(chat: ModerationChatRow) {
 }
 
 /** Fire-and-forget wrapper — nunca bloquea el envío de mensajes. */
+export function shouldScheduleModerationActivityTouch(
+  chat: ModerationChatRow | Record<string, unknown>,
+) {
+  return (
+    moderationActivityWriteUsernames(chat as Record<string, unknown>).length > 0
+  );
+}
+
 export function scheduleModerationActivityTouch(chat: ModerationChatRow) {
+  if (!shouldScheduleModerationActivityTouch(chat)) return;
   void touchModerationActivityFromChat(chat).catch((error) => {
     console.error("touchModerationActivityFromChat", error);
   });

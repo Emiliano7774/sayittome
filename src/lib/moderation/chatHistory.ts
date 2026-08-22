@@ -1,4 +1,4 @@
-import { ANON_TO_MARKER, safeChatPart } from "@/lib/chat/anonChatId";
+import { isProfileAnonChatId, parseProfileAnonChatId, safeChatPart } from "@/lib/chat/anonChatId";
 import { chatActivityMs } from "@/lib/moderation/classicFeed";
 import type { ModerationChatRow, TemporalChatSection } from "@/lib/moderation/types";
 
@@ -70,31 +70,88 @@ export function normalizeModerationChatRow(
   };
 }
 
+export function exactUsernameEquals(left: string, right: string) {
+  const a = String(left || "").trim().toLowerCase();
+  const b = String(right || "").trim().toLowerCase();
+  return Boolean(a) && a === b;
+}
+
+export function exactChatIdEquals(left: string, right: string) {
+  return String(left || "") === String(right || "");
+}
+
+/**
+ * Queryable destination/owner UID fields.
+ * initiatorUid is never owner. anonOwnerUid alone is never proof — do not query it.
+ */
+export const MODERATION_OWNER_UID_FIELDS = ["receptorUid", "targetUid"] as const;
+
+export function canonicalOwnerUids(chat: Record<string, unknown>) {
+  const out: string[] = [];
+  for (const key of MODERATION_OWNER_UID_FIELDS) {
+    const value = String(chat[key] || "").trim();
+    if (value && !out.includes(value)) out.push(value);
+  }
+  return out;
+}
+
+export function planModerationActivityTouches(chat: Record<string, unknown>) {
+  const ownerUsernames: string[] = [];
+  const target = String(chat.targetUsername || "").trim();
+  const receptor = String(chat.receptorUsername || "").trim();
+  if (target) ownerUsernames.push(target);
+  if (receptor && !exactUsernameEquals(receptor, target)) ownerUsernames.push(receptor);
+  return {
+    ownerUsernames,
+    ownerUids: canonicalOwnerUids(chat),
+  };
+}
+
+export function moderationActivityWriteUsernames(
+  chat: Record<string, unknown>,
+  resolvedByUid: Record<string, string> = {},
+) {
+  const plan = planModerationActivityTouches(chat);
+  const names = new Set<string>();
+  for (const username of plan.ownerUsernames) {
+    const clean = String(username || "").trim();
+    if (clean) names.add(clean);
+  }
+  for (const uid of plan.ownerUids) {
+    const resolved = String(resolvedByUid[uid] || "").trim();
+    if (resolved) names.add(resolved);
+  }
+  return [...names];
+}
+
 export function chatBelongsToProfile(
   chat: Record<string, unknown>,
   username: string,
   uid = "",
 ) {
-  const profile = String(username || "").trim().toLowerCase();
+  const profile = String(username || "").trim();
   if (!profile) return false;
 
-  const target = String(chat.targetUsername || "").trim().toLowerCase();
-  const receptor = String(chat.receptorUsername || "").trim().toLowerCase();
+  if (exactUsernameEquals(String(chat.targetUsername || ""), profile)) return true;
+  if (exactUsernameEquals(String(chat.receptorUsername || ""), profile)) return true;
 
-  if (target === profile || receptor === profile) return true;
+  const ownerUid = String(uid || "").trim();
+  if (ownerUid && canonicalOwnerUids(chat).includes(ownerUid)) return true;
 
-  if (uid) {
-    const uidFields = [
-      chat.targetUid,
-      chat.receptorUid,
-      chat.initiatorUid,
-      chat.anonOwnerUid,
-    ].map((value) => String(value || ""));
-    if (uidFields.includes(uid)) return true;
+  const chatId = String(chat.id || "");
+  if (isProfileAnonChatId(chatId)) {
+    return parseProfileAnonChatId(chatId).targetKey === safeChatPart(profile);
   }
 
-  const anonMarker = `${ANON_TO_MARKER}${safeChatPart(username)}`;
-  return String(chat.id || "").includes(anonMarker);
+  return false;
+}
+
+export function filterChatsOwnedByProfile(
+  chats: Record<string, unknown>[],
+  username: string,
+  uid = "",
+) {
+  return chats.filter((chat) => chatBelongsToProfile(chat, username, uid));
 }
 
 export function dayKeyFromMs(ms: number) {
