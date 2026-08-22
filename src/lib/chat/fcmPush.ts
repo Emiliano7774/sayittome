@@ -502,7 +502,11 @@ async function enableNativeChatPushOnce(user?: User | null): Promise<PushEnableR
     recordNotificationStage("enable_not_native", false, "not_native");
     return { ok: false, reason: "not_native", message: "not_native" };
   }
+
+  await initNativePushNotifications({ skipAutoEnable: true });
+
   if (!areChatNotificationsEnabled()) {
+    await flushPendingFcmUnregister();
     recordNotificationStage("enable_prefs", false, "prefs_off");
     return { ok: false, reason: "prefs", message: "prefs_off" };
   }
@@ -513,8 +517,6 @@ async function enableNativeChatPushOnce(user?: User | null): Promise<PushEnableR
     recordNotificationStage("enable_no_auth", false, "missing_uid");
     return { ok: false, reason: "no_auth", message: "missing_uid" };
   }
-
-  await initNativePushNotifications({ skipAutoEnable: true });
 
   await ensurePushChannel();
   const { PushNotifications } = await import("@capacitor/push-notifications");
@@ -619,10 +621,10 @@ export async function initNativePushNotifications(options?: { skipAutoEnable?: b
         authCallbackChain = authCallbackChain
           .catch(() => undefined)
           .then(async () => {
-            await flushPendingFcmUnregister();
             if (areChatNotificationsEnabled()) {
-              await reconcilePendingForEnable(user.uid);
               await registerNativePushIfEnabled(user);
+            } else {
+              await flushPendingFcmUnregister();
             }
             const pendingChat = drainQueuedPushChatId();
             if (pendingChat && user.uid) {
@@ -637,8 +639,11 @@ export async function initNativePushNotifications(options?: { skipAutoEnable?: b
   });
   await initInFlight;
 
-  if (!options?.skipAutoEnable && areChatNotificationsEnabled() && auth.currentUser) {
+  if (options?.skipAutoEnable) return;
+  if (areChatNotificationsEnabled() && auth.currentUser) {
     await registerNativePushIfEnabled(auth.currentUser);
+  } else {
+    await flushPendingFcmUnregister();
   }
 }
 
@@ -648,3 +653,13 @@ export function shouldSuppressLocalOsNotification() {
 }
 
 export { FCM_CHANNEL_ID };
+
+/** Resume: retry durable pending unregister even if prefs are off; register only if prefs on. */
+export async function onNativePushForegroundResume() {
+  const user = auth.currentUser;
+  if (!user || !areChatNotificationsEnabled()) {
+    await flushPendingFcmUnregister();
+    return;
+  }
+  await registerNativePushIfEnabled(user);
+}

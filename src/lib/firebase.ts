@@ -34,6 +34,8 @@ export const db =
 export const storage =
   getStorage(app);
 
-export const functions = getFunctions(app, "us-central1");
+export const FUNCTIONS_REGION = "us-central1";
+
+export const functions = getFunctions(app, FUNCTIONS_REGION);
 
 export default app;

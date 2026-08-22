@@ -104,14 +104,20 @@ export function shouldFlushPendingUnregister(input: {
   currentUid?: string;
   pendingToken?: string;
   currentToken?: string;
+  nextToken?: string;
+  liveUid?: string;
 }) {
   const pendingUid = String(input.pendingUid || "").trim();
   const currentUid = String(input.currentUid || "").trim();
+  const liveUid = String(input.liveUid || currentUid).trim();
   const pendingToken = String(input.pendingToken || "").trim();
   const currentToken = String(input.currentToken || "").trim();
+  const nextToken = String(input.nextToken || "").trim();
   if (!pendingUid || !currentUid || !pendingToken) return false;
   if (pendingUid !== currentUid) return false;
-  if (currentToken && currentToken === pendingToken) return false;
+  if (liveUid && pendingUid !== liveUid) return false;
+  if (nextToken && nextToken === pendingToken) return false;
+  if (!nextToken && currentToken && currentToken === pendingToken) return false;
   return true;
 }
 

@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
 import NativeBackHint from "@/components/app/NativeBackHint";
 import { isNativeAppShell, setNativeAppActive } from "@/lib/app/nativeShell";
 import { initChatNotifications } from "@/lib/chat/chatNotifications";
-import { initNativePushNotifications } from "@/lib/chat/fcmPush";
+import { initNativePushNotifications, onNativePushForegroundResume } from "@/lib/chat/fcmPush";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { reprimeWhipSound } from "@/lib/chat/whipSound";
 import {
@@ -25,6 +25,7 @@ import {
   pinShuffleWindowWhileAway,
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
+import { restoreShuffleFeedScroll } from "@/lib/navigation/shuffleFeedScroll";
 import { consumeProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 
 const HARDWARE_BACK_EVENT = "sayittomeHardwareBack";
@@ -48,6 +49,7 @@ function runNativeBackNavigation(
     }
     if (isInstantShuffleReturnDestination(action.navigateTo)) {
       prepareInstantShuffleReturn();
+      restoreShuffleFeedScroll();
       router.replace(action.navigateTo);
       return;
     }
@@ -146,6 +148,7 @@ export default function NativeAppBootstrap() {
         await App.addListener("appStateChange", ({ isActive }) => {
           setNativeAppActive(isActive);
           if (isActive) {
+            void onNativePushForegroundResume();
             globalChatWhipManager.refresh();
             // WebView often suspends HTMLAudio after background; force re-prime.
             reprimeWhipSound();

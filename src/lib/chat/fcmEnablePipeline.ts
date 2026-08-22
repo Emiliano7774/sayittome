@@ -5,6 +5,28 @@ import {
 } from "@/lib/chat/fcmInstallation";
 
 const installOpLocks = new Map<string, Promise<unknown>>();
+const lockActive = new Map<string, number>();
+const lockMaxActive = new Map<string, number>();
+
+export function resetInstallationLockStats() {
+  lockActive.clear();
+  lockMaxActive.clear();
+}
+
+export function peekInstallationLockStats(installationId?: string) {
+  const key = String(installationId || "").trim();
+  if (key) {
+    return {
+      active: lockActive.get(key) || 0,
+      maxActive: lockMaxActive.get(key) || 0,
+    };
+  }
+  let maxActive = 0;
+  for (const value of lockMaxActive.values()) {
+    if (value > maxActive) maxActive = value;
+  }
+  return { active: 0, maxActive };
+}
 
 export type FcmUpsertResult =
   | { ok: true }
@@ -47,9 +69,13 @@ export async function withInstallationLock<T>(
     ),
   );
   await prev.catch(() => undefined);
+  const active = (lockActive.get(key) || 0) + 1;
+  lockActive.set(key, active);
+  lockMaxActive.set(key, Math.max(lockMaxActive.get(key) || 0, active));
   try {
     return await fn();
   } finally {
+    lockActive.set(key, Math.max(0, (lockActive.get(key) || 1) - 1));
     release();
   }
 }
@@ -67,22 +93,26 @@ export async function flushPendingUnlocked(
     currentUid: string;
     installationId: string;
     currentToken?: string;
+    nextToken?: string;
     proof: string;
   },
 ): Promise<boolean> {
   const pending = deps.readPending();
   if (!pending?.token) return false;
+  const liveUid = deps.liveUid();
   if (
     !shouldFlushPendingUnregister({
       pendingUid: pending.uid,
       currentUid: input.currentUid,
+      liveUid,
       pendingToken: pending.token,
       currentToken: input.currentToken || "",
+      nextToken: input.nextToken || "",
     })
   ) {
     return false;
   }
-  if (deps.liveUid() !== input.currentUid) return false;
+  if (liveUid !== input.currentUid) return false;
   await deps.flushCall({
     token: pending.token,
     installationId: pending.installationId || input.installationId,
@@ -116,12 +146,15 @@ export async function reconcileThenRegisterUnlocked(
       })
     : "none";
 
-  if (action === "flush_then_register") {
+  if (action === "clear_local") {
+    deps.clearPending();
+  } else if (action === "flush_then_register") {
     try {
       const flushed = await flushPendingUnlocked(deps, {
         currentUid: input.uid,
         installationId: input.installationId,
         currentToken: input.currentToken,
+        nextToken: input.token,
         proof: pending?.proof || input.proof,
       });
       if (!flushed && deps.readPending()) {

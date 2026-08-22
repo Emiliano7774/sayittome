@@ -1,15 +1,17 @@
 import { createHash } from "crypto";
 
-import { getApps, initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore, type Firestore, type Transaction } from "firebase-admin/firestore";
-import { getMessaging, type MulticastMessage } from "firebase-admin/messaging";
+import { FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
+import { type MulticastMessage } from "firebase-admin/messaging";
 import { logger } from "firebase-functions";
 import { setGlobalOptions } from "firebase-functions/v2/options";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
+import { db, ensureAdminApp, messaging } from "./adminApp";
+
 import { isValidFcmInstallationId, isValidInstallationProof } from "./fcmInstallation";
 import {
+  createReadBeforeWriteGuard,
   registerFcmTokenInTransaction,
   unregisterFcmTokenInTransaction,
 } from "./fcmTokenTx";
@@ -23,19 +25,9 @@ export {
   registerFcmTokenInTransaction,
   unregisterFcmTokenInTransaction,
 } from "./fcmTokenTx";
+export { db, ensureAdminApp, resolveAdminApp } from "./adminApp";
 
 setGlobalOptions({ region: "us-central1" });
-
-function ensureApp() {
-  if (!getApps().length) {
-    initializeApp();
-  }
-}
-
-function db(): Firestore {
-  ensureApp();
-  return getFirestore();
-}
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
 const MAX_TOKENS_PER_USER = 20;
@@ -214,15 +206,19 @@ async function deleteInvalidToken(uid: string, docId: string) {
 }
 
 function firestoreFcmTx(tx: Transaction, firestore: Firestore) {
+  const guard = createReadBeforeWriteGuard();
   return {
     async get(ref: { path: string }) {
+      guard.assertCanRead();
       const snap = await tx.get(firestore.doc(ref.path));
       return { exists: snap.exists, data: () => (snap.data() || {}) as Record<string, unknown> };
     },
     delete(ref: { path: string }) {
+      guard.markWrite();
       tx.delete(firestore.doc(ref.path));
     },
     set(ref: { path: string }, data: Record<string, unknown>) {
+      guard.markWrite();
       tx.set(firestore.doc(ref.path), { ...data, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     },
   };
@@ -346,7 +342,7 @@ export const onChatMessageCreated = onDocumentCreated(
       if (tokens.length === 0) continue;
 
       const title = notificationTitleForRecipient(message, chat, recipientUid);
-      ensureApp();
+      ensureAdminApp();
       const multicast: MulticastMessage = {
         tokens: tokens.map((row) => row.token),
         notification: {
@@ -372,7 +368,7 @@ export const onChatMessageCreated = onDocumentCreated(
         },
       };
 
-      const response = await getMessaging().sendEachForMulticast(multicast);
+      const response = await messaging().sendEachForMulticast(multicast);
       sent += response.successCount;
       failed += response.failureCount;
 

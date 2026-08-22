@@ -105,6 +105,48 @@ assert.equal(install.shouldFlushPendingUnregister({
   currentToken: "tok",
 }), false, "must not flush the token just registered");
 assert.equal(
+  install.shouldFlushPendingUnregister({
+    pendingUid: "uid_a",
+    currentUid: "uid_a",
+    pendingToken: "old",
+    currentToken: "old",
+    nextToken: "new",
+  }),
+  true,
+  "rotated token must flush old even if memory still holds old",
+);
+assert.equal(
+  install.shouldFlushPendingUnregister({
+    pendingUid: "uid_a",
+    currentUid: "uid_a",
+    pendingToken: "new",
+    currentToken: "old",
+    nextToken: "new",
+  }),
+  false,
+  "must not flush the token about to register",
+);
+assert.equal(
+  install.shouldFlushPendingUnregister({
+    pendingUid: "uid_a",
+    currentUid: "uid_a",
+    liveUid: "uid_a",
+    pendingToken: "old",
+  }),
+  true,
+  "offline pending retry with prefs-off still flushes when uid matches",
+);
+assert.equal(
+  install.shouldFlushPendingUnregister({
+    pendingUid: "uid_a",
+    currentUid: "uid_b",
+    liveUid: "uid_b",
+    pendingToken: "tok_a",
+  }),
+  false,
+  "pending A must never flush while live as B",
+);
+assert.equal(
   install.reconcilePendingBeforeRegister({
     pendingUid: "uid_a",
     pendingToken: "tok",
@@ -422,11 +464,12 @@ assert.match(fcmSrc, /reconcileThenRegisterUnlocked/);
 assert.match(fcmSrc, /isValidInstallationProof/);
 assert.match(fcmSrc, /generateInstallationSecret/);
 assert.match(fcmSrc, /reason: "stale"|reason: upserted.reason/);
-assert.ok(fcmSrc.indexOf("reconcilePendingForEnable") < fcmSrc.indexOf("registerNativePushIfEnabled(user)"));
+assert.match(fcmSrc, /if \(options\?\.skipAutoEnable\) return;/);
 assert.match(
   fcmSrc,
-  /await flushPendingFcmUnregister\(\);\s*\n\s*if \(areChatNotificationsEnabled\(\)\)/,
+  /if \(!areChatNotificationsEnabled\(\)\) \{\s*\n\s*await flushPendingFcmUnregister\(\);/,
 );
+assert.doesNotMatch(pipelineSrc, /heldInstallationLocks/);
 assert.match(pipelineSrc, /flushPendingUnlocked/);
 const flushFn = pipelineSrc.slice(
   pipelineSrc.indexOf("export async function flushPendingUnlocked"),
@@ -438,6 +481,12 @@ const reconcileFn = pipelineSrc.slice(
 );
 assert.doesNotMatch(flushFn, /withInstallationLock/);
 assert.doesNotMatch(reconcileFn, /withInstallationLock/);
+for (const body of fcmSrc.matchAll(/withInstallationLock\([^,]+,\s*async \(\) => \{([\s\S]*?)\n  \}\);/g)) {
+  assert.doesNotMatch(body[1], /withInstallationLock/);
+  assert.doesNotMatch(body[1], /flushPendingFcmUnregister\(/);
+  assert.doesNotMatch(body[1], /upsertFcmTokenForUser\(/);
+  assert.doesNotMatch(body[1], /reconcilePendingForEnable\(/);
+}
 
 const fnIndex = fs.readFileSync(path.join(root, "functions/src/index.ts"), "utf8");
 assert.match(fnIndex, /isValidInstallationProof\(proof\)/);
@@ -447,5 +496,319 @@ assert.doesNotMatch(fnIndex, /FCM_ENFORCE_APP_CHECK/);
 assert.doesNotMatch(fnIndex, /enforceAppCheck/);
 assert.doesNotMatch(fnIndex, /makeInstallationProof/);
 assert.doesNotMatch(fnIndex, /new Map<\s*string,\s*number/);
+
+{
+  pipeline.resetInstallationLockStats();
+  const order = [];
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const first = pipeline.withInstallationLock(INST, async () => {
+    order.push("a-start");
+    await sleep(40);
+    order.push("a-end");
+    return "a";
+  });
+  const second = pipeline.withInstallationLock(INST, async () => {
+    order.push("b-start");
+    await sleep(10);
+    order.push("b-end");
+    return "b";
+  });
+  const finished = await Promise.race([
+    Promise.all([first, second]),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("deadlock_timeout")), 2000),
+    ),
+  ]);
+  assert.deepEqual(finished, ["a", "b"]);
+  assert.deepEqual(order, ["a-start", "a-end", "b-start", "b-end"]);
+  assert.equal(pipeline.peekInstallationLockStats(INST).maxActive, 1);
+}
+
+{
+  pipeline.resetInstallationLockStats();
+  let pending = {
+    uid: "uid_a",
+    token: OLD,
+    installationId: INST,
+    proof: HMAC,
+  };
+  const events = [];
+  const deps = {
+    liveUid: () => "uid_a",
+    readPending: () => pending,
+    clearPending: () => {
+      pending = null;
+    },
+    flushCall: async () => {
+      events.push("flush");
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    },
+    registerCall: async () => {
+      events.push("register");
+    },
+  };
+  const rotated = Promise.all([
+    pipeline.runSerializedEnable(INST, deps, {
+      uid: "uid_a",
+      token: NEXT,
+      proof: HMAC,
+      currentToken: OLD,
+    }),
+    pipeline.runSerializedEnable(INST, deps, {
+      uid: "uid_a",
+      token: NEXT,
+      proof: HMAC,
+      currentToken: NEXT,
+    }),
+  ]);
+  const results = await Promise.race([
+    rotated,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("deadlock_timeout")), 2000),
+    ),
+  ]);
+  assert.equal(results[0].ok, true);
+  assert.equal(results[1].ok, true);
+  assert.equal(pipeline.peekInstallationLockStats(INST).maxActive, 1);
+  assert.ok(events.includes("flush"));
+  assert.ok(events.includes("register"));
+  assert.equal(pending, null);
+}
+
+{
+  let pending = {
+    uid: "uid_a",
+    token: OLD,
+    installationId: INST,
+    proof: HMAC,
+  };
+  const deleted = [];
+  const switchDeps = {
+    liveUid: () => "uid_b",
+    readPending: () => pending,
+    clearPending: () => {
+      pending = null;
+    },
+    flushCall: async (input) => {
+      deleted.push(input.token);
+    },
+    registerCall: async () => {
+      deleted.push("register");
+    },
+  };
+  const flushed = await pipeline.flushPendingUnlocked(switchDeps, {
+    currentUid: "uid_a",
+    installationId: INST,
+    currentToken: "",
+    proof: HMAC,
+  });
+  assert.equal(flushed, false);
+  assert.deepEqual(deleted, []);
+  assert.equal(pending?.token, OLD);
+  const claimed = await pipeline.reconcileThenRegisterUnlocked(switchDeps, {
+    uid: "uid_b",
+    token: NEXT,
+    installationId: INST,
+    proof: HMAC,
+  });
+  assert.equal(claimed.ok, true);
+  assert.ok(!deleted.includes(OLD), "pending A must not delete mapping while registering B");
+
+  pipeline.resetInstallationLockStats();
+  let liveUid = "uid_a";
+  const cross = [];
+  const crossDeps = {
+    liveUid: () => liveUid,
+    readPending: () => pending,
+    clearPending: () => {
+      pending = null;
+    },
+    flushCall: async (input) => {
+      cross.push(`flush:${input.token}`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    },
+    registerCall: async (input) => {
+      cross.push(`register:${input.uid}`);
+    },
+  };
+  pending = {
+    uid: "uid_a",
+    token: OLD,
+    installationId: INST,
+    proof: HMAC,
+  };
+  const switchRace = Promise.all([
+    pipeline.withInstallationLock(INST, () =>
+      pipeline.flushPendingUnlocked(crossDeps, {
+        currentUid: "uid_a",
+        installationId: INST,
+        proof: HMAC,
+      }),
+    ),
+    (async () => {
+      liveUid = "uid_b";
+      return pipeline.runSerializedEnable(INST, crossDeps, {
+        uid: "uid_b",
+        token: NEXT,
+        proof: HMAC,
+      });
+    })(),
+  ]);
+  const switchResult = await Promise.race([
+    switchRace,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("deadlock_timeout")), 2000),
+    ),
+  ]);
+  assert.equal(pipeline.peekInstallationLockStats(INST).maxActive, 1);
+  assert.equal(switchResult[1].ok, true);
+  assert.ok(!cross.includes(`flush:${NEXT}`));
+}
+
+{
+  let pending = {
+    uid: "uid_a",
+    token: OLD,
+    installationId: INST,
+    proof: HMAC,
+  };
+  let attempts = 0;
+  const durableDeps = {
+    liveUid: () => "uid_a",
+    readPending: () => pending,
+    clearPending: () => {
+      pending = null;
+    },
+    flushCall: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("offline");
+    },
+    registerCall: async () => undefined,
+  };
+  let first = false;
+  try {
+    first = await pipeline.flushPendingUnlocked(durableDeps, {
+      currentUid: "uid_a",
+      installationId: INST,
+      proof: HMAC,
+    });
+  } catch {
+    first = false;
+  }
+  assert.equal(first, false);
+  assert.equal(pending?.token, OLD);
+  const second = await pipeline.flushPendingUnlocked(durableDeps, {
+    currentUid: "uid_a",
+    installationId: INST,
+    proof: HMAC,
+  });
+  assert.equal(second, true);
+  assert.equal(attempts, 2);
+}
+
+{
+  const owned = new Map([
+    [
+      `fcmInstallations/${INST}`,
+      {
+        exists: true,
+        data: () => ({ uid: "uid_a", tokenHash: "tok_a", proofHash: HMAC }),
+      },
+    ],
+    [
+      "usuarios/uid_a/fcmTokens/tok_a",
+      { exists: true, data: () => ({ token: "x" }) },
+    ],
+  ]);
+  const writes = [];
+  const reads = [];
+  const guard = compiled.createReadBeforeWriteGuard();
+  const tx = {
+    async get(ref) {
+      guard.assertCanRead();
+      reads.push(ref.path);
+      return owned.get(ref.path) || { exists: false, data: () => undefined };
+    },
+    delete(ref) {
+      guard.markWrite();
+      writes.push(ref.path);
+      owned.delete(ref.path);
+    },
+    set() {
+      guard.markWrite();
+    },
+  };
+  const result = await compiled.unregisterFcmTokenInTransaction(tx, {
+    uid: "uid_a",
+    tokenId: "tok_a",
+    installationId: INST,
+    proof: HMAC,
+    expectedUid: "uid_a",
+    validInstallationId: true,
+  });
+  assert.equal(result.error, "");
+  assert.ok(reads.length >= 2);
+  assert.ok(writes.length > 0);
+  const lastRead = Math.max(...reads.map((_, i) => i));
+  const firstWriteAt = reads.length;
+  assert.ok(lastRead < firstWriteAt + writes.length);
+}
+
+const prompt = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/chatNotificationPromptOpen.ts")).href
+);
+assert.equal(
+  prompt.chatNotificationPromptOpen({
+    loading: true,
+    hasUser: true,
+    profileReady: true,
+    notificationApiReady: true,
+    prompted: false,
+  }),
+  false,
+);
+assert.equal(
+  prompt.chatNotificationPromptOpen({
+    loading: false,
+    hasUser: true,
+    profileReady: false,
+    notificationApiReady: true,
+    prompted: false,
+  }),
+  false,
+);
+assert.equal(
+  prompt.chatNotificationPromptOpen({
+    loading: false,
+    hasUser: true,
+    profileReady: true,
+    notificationApiReady: true,
+    prompted: false,
+  }),
+  true,
+);
+
+assert.match(fcmSrc, /onNativePushForegroundResume/);
+assert.match(
+  fcmSrc,
+  /if \(!user \|\| !areChatNotificationsEnabled\(\)\) \{\s*\n\s*await flushPendingFcmUnregister\(\);/,
+);
+assert.doesNotMatch(
+  fcmSrc,
+  /await flushPendingFcmUnregister\(\);\s*\n\s*if \(areChatNotificationsEnabled\(\)\) \{\s*\n\s*await reconcilePendingForEnable/,
+);
+const bootstrapSrc = fs.readFileSync(
+  path.join(root, "src/components/app/NativeAppBootstrap.tsx"),
+  "utf8",
+);
+assert.match(bootstrapSrc, /onNativePushForegroundResume/);
+assert.match(fnIndex, /createReadBeforeWriteGuard/);
+assert.match(fnIndex, /guard\.assertCanRead/);
+const unregisterTxSrc = fs.readFileSync(
+  path.join(root, "functions/src/fcmUnregisterTx.ts"),
+  "utf8",
+);
+assert.match(unregisterTxSrc, /from "\.\/fcmTokenTx"/);
+assert.doesNotMatch(unregisterTxSrc, /async function unregisterFcmTokenInTransaction/);
 
 console.log("pass fcm_registration");

@@ -16,19 +16,10 @@ import {
 import { requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
 import { enableNativeChatPush } from "@/lib/chat/fcmPush";
 import { isNotificationProfileReady } from "@/lib/chat/notificationProfileReady";
+import { chatNotificationPromptOpen } from "@/lib/chat/chatNotificationPromptOpen";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
 
-export function chatNotificationPromptOpen(input: {
-  loading: boolean;
-  hasUser: boolean;
-  profileReady: boolean;
-  notificationApiReady: boolean;
-  prompted: boolean;
-}) {
-  if (input.loading || !input.hasUser || !input.profileReady) return false;
-  if (!input.notificationApiReady) return false;
-  return input.prompted !== true;
-}
+export { chatNotificationPromptOpen } from "@/lib/chat/chatNotificationPromptOpen";
 
 export default function ChatNotificationPrompt() {
   const t = useT();
