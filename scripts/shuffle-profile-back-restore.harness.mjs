@@ -143,7 +143,17 @@ const keepSrc = fs.readFileSync(
 );
 
 assert.match(nativeBoot, /prepareInstantShuffleReturn/);
+assert.match(nativeBoot, /recoverShuffleOnForeground/);
+assert.match(nativeBoot, /appStateChange/);
 assert.match(profileUi, /prepareInstantShuffleReturn/);
+const classicProfile = fs.readFileSync(
+  path.join(root, "src/app/u/[username]/page.tsx"),
+  "utf8",
+);
+assert.match(classicProfile, /prepareInstantShuffleReturn/);
+assert.match(classicProfile, /data-profile-back/);
+assert.match(keepSrc, /presentExistingShuffleSnapshot/);
+assert.match(hostSrc, /presentExistingShuffleSnapshot/);
 assert.match(hostSrc, /parkShuffleKeepAliveForNonMainRoute/);
 assert.match(keepSrc, /prepareShuffleRevealFromNonMainRoute/);
 assert.match(keepSrc, /parkShuffleKeepAliveForNonMainRoute/);

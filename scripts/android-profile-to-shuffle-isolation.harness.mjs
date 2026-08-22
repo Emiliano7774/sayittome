@@ -158,6 +158,19 @@ check(
     ) &&
     css.includes(".sayittome-route-shell"),
 );
+const returnPendingBlock = css.slice(
+  css.indexOf("html.sayittome-shuffle-return-pending"),
+);
+const unconditionalReturnHide = /html\.sayittome-shuffle-return-pending\s+\.sayittome-route-shell/.test(
+  css.split("html.sayittome-shuffle-return-pending:has")[0] || "",
+);
+check(
+  "CSS_RETURN_PENDING_SHELL_REQUIRES_VISIBLE_UNFROZEN_HOST",
+  returnPendingBlock.includes(":has(") &&
+    returnPendingBlock.includes("sayittome-shuffle-keepalive-visible") &&
+    returnPendingBlock.includes("sayittome-shuffle-keepalive-frozen") &&
+    !unconditionalReturnHide,
+);
 check(
   "CSS_SHUFFLE_HOST_NONTRANSPARENT_ON_REVEAL",
   css.includes("background: #0b0b0b !important") &&
