@@ -1,4 +1,10 @@
 import { markShuffleHydrated, hasShuffleEverHydrated } from "@/hooks/useShuffleReady";
+import {
+  clearShuffleViewportSnapshot,
+  hasUsableShuffleViewportSnapshot,
+  matchShuffleProfileByCardId,
+  peekShuffleViewportSnapshot,
+} from "@/lib/navigation/shuffleViewportSnapshot";
 import { readCachedShufflePool } from "@/lib/shuffle/shuffleClientCache";
 import {
   pickRandomUniqueWindowIndices,
@@ -65,17 +71,65 @@ export function capturePinnedShuffleWindow(
   };
 }
 
-/** PREPARE — restore last valid shuffle window synchronously (no React commit). */
-export function restorePinnedShuffleWindowSync() {
-  const visibleNow = getVisibleShuffleProfiles();
-  if (visibleNow.length > 0) {
-    markShuffleHydrated(visibleNow.length);
-    return true;
+export function clearPinnedShuffleWindow() {
+  pinned = null;
+}
+
+function restoreWindowFromSnapshotCache() {
+  const snapshot = peekShuffleViewportSnapshot();
+  if (!snapshot || !hasUsableShuffleViewportSnapshot() || snapshot.cardIds.length === 0) {
+    return false;
+  }
+  const cached = readCachedShufflePool();
+  if (!cached || cached.length === 0) {
+    clearShuffleViewportSnapshot();
+    return restoreFromCachedPoolSync();
   }
 
-  if (!pinned) {
-    if (restoreFromCachedPoolSync()) return true;
-    return hasShuffleEverHydrated();
+  const ordered: ShuffleProfile[] = [];
+  const used = new Set<string>();
+  for (const cardId of snapshot.cardIds) {
+    const found = cached.find((profile) => matchShuffleProfileByCardId(profile, cardId));
+    if (!found) continue;
+    const key = shuffleProfileKey(found);
+    if (used.has(key)) continue;
+    used.add(key);
+    ordered.push(found);
+  }
+
+  if (ordered.length === 0) {
+    clearShuffleViewportSnapshot();
+    return restoreFromCachedPoolSync();
+  }
+
+  const indices = new Int32Array(SHUFFLE_WINDOW_SIZE);
+  const count = Math.min(ordered.length, SHUFFLE_WINDOW_SIZE);
+  for (let slot = 0; slot < count; slot += 1) indices[slot] = slot;
+  setShuffleSlotsWithFeatured([], ordered, indices, count, false);
+  flushShuffleSlotsSync();
+  capturePinnedShuffleWindow([], ordered, indices, count);
+
+  const restored = getVisibleShuffleProfiles();
+  if (restored.length > 0) {
+    markShuffleHydrated(restored.length);
+    return true;
+  }
+  clearShuffleViewportSnapshot();
+  return restoreFromCachedPoolSync();
+}
+
+function shuffleProfileKey(profile: ShuffleProfile) {
+  return `${profile.uid || ""}:${profile.username || ""}`;
+}
+
+export function applyPinnedShuffleWindowSync(options?: { force?: boolean }) {
+  if (!pinned) return false;
+  if (!options?.force) {
+    const visibleNow = getVisibleShuffleProfiles();
+    if (visibleNow.length > 0) {
+      markShuffleHydrated(visibleNow.length);
+      return true;
+    }
   }
 
   setShuffleSlotsWithFeatured(
@@ -92,7 +146,30 @@ export function restorePinnedShuffleWindowSync() {
     markShuffleHydrated(restored.length);
     return true;
   }
+  return false;
+}
 
+/** PREPARE — restore last valid shuffle window synchronously (no React commit). */
+export function restorePinnedShuffleWindowSync() {
+  if (hasUsableShuffleViewportSnapshot() && pinned) {
+    return applyPinnedShuffleWindowSync({ force: true });
+  }
+
+  const visibleNow = getVisibleShuffleProfiles();
+  if (visibleNow.length > 0) {
+    markShuffleHydrated(visibleNow.length);
+    return true;
+  }
+
+  if (pinned) {
+    return applyPinnedShuffleWindowSync() || hasShuffleEverHydrated();
+  }
+
+  if (hasUsableShuffleViewportSnapshot()) {
+    if (restoreWindowFromSnapshotCache()) return true;
+  }
+
+  if (restoreFromCachedPoolSync()) return true;
   return hasShuffleEverHydrated();
 }
 

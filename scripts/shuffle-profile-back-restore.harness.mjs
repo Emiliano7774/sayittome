@@ -124,6 +124,12 @@ const keep = await import(
 const restore = await import(
   pathToFileURL(path.join(root, "src/lib/navigation/shuffleProfileBackRestore.ts")).href
 );
+const snapshot = await import(
+  pathToFileURL(path.join(root, "src/lib/navigation/shuffleViewportSnapshot.ts")).href
+);
+const present = await import(
+  pathToFileURL(path.join(root, "src/lib/navigation/shuffleSnapshotPresent.ts")).href
+);
 const fs = await import("node:fs");
 const nativeBoot = fs.readFileSync(
   path.join(root, "src/components/app/NativeAppBootstrap.tsx"),
@@ -230,5 +236,28 @@ for (let i = 0; i < 3; i += 1) {
   assert.equal(state.remounted, false);
   assert.equal(restore.isShuffleProfileBackBlackFrame(state), false);
 }
+
+snapshot.captureShuffleViewportSnapshot({
+  cardId: "sid:mid",
+  index: 3,
+  scrollTop: 960,
+  cardIds: ["sid:a", "sid:b", "sid:c", "sid:mid"],
+});
+const zeroed = snapshot.captureShuffleViewportSnapshot({
+  cardId: "",
+  index: 0,
+  scrollTop: 0,
+});
+assert.equal(zeroed.cardId, "sid:mid");
+assert.equal(zeroed.scrollTop, 960);
+assert.equal(
+  present.canHideCurrentShellForShuffle({
+    classList: { contains: () => false },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getBoundingClientRect: () => ({ width: 0, height: 0 }),
+  }),
+  false,
+);
 
 console.log(JSON.stringify({ gate: "SHUFFLE_PROFILE_BACK_RESTORE", pass: true }, null, 2));

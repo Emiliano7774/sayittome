@@ -5,26 +5,17 @@
  */
 import { classifyAppRouteKind, isNonMainRoute } from "@/lib/navigation/routeKind";
 import { forcePresentShuffleSurfaceForNonMainReveal } from "@/lib/navigation/shuffleHandoffState";
+import {
+  canHideCurrentShellForShuffle,
+  hasRealShuffleFeedContent,
+} from "@/lib/navigation/shuffleSnapshotPresent";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 
 let recoveryTimer: number | null = null;
 let recoveryUntil = 0;
 
 function isHostPresentable(host: HTMLElement | null) {
-  if (!host) return false;
-  if (host.hasAttribute("hidden") || host.hasAttribute("inert")) return false;
-  if (!host.classList.contains("sayittome-shuffle-keepalive-visible")) return false;
-  if (host.classList.contains("sayittome-shuffle-keepalive-frozen")) return false;
-  const rect = host.getBoundingClientRect();
-  if (rect.width < 8 || rect.height < 8) return false;
-  try {
-    const style = window.getComputedStyle(host);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    if (Number(style.opacity || "1") < 0.05) return false;
-  } catch {
-    /* ignore */
-  }
-  return true;
+  return canHideCurrentShellForShuffle(host);
 }
 
 export function clearProfileViewerOverlayForShuffleNav() {
@@ -73,25 +64,6 @@ export function restoreNonMainRouteShellAfterShuffleReveal() {
   shell.removeAttribute("data-sayittome-nonmain-released-for-shuffle");
 }
 
-function ensureShuffleHostMinimumShell(host: HTMLElement) {
-  // If the host has no meaningful paint children, inject a local loading shell
-  // so Android never ends on a pure black body background.
-  const hasPaintChild = Boolean(
-    host.querySelector(
-      "[data-shuffle-list], .sayittome-shuffle-surface-prep, main, [data-nav-primary-content]",
-    ),
-  );
-  if (hasPaintChild) return;
-  if (host.querySelector("[data-sayittome-shuffle-min-shell='1']")) return;
-  const shell = document.createElement("div");
-  shell.setAttribute("data-sayittome-shuffle-min-shell", "1");
-  shell.setAttribute("aria-hidden", "true");
-  shell.style.cssText =
-    "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0b0b;color:#cfcfcf;font:600 14px/1.2 system-ui,sans-serif;z-index:1;pointer-events:none;";
-  shell.textContent = "Shuffle";
-  host.appendChild(shell);
-}
-
 function unfreezeShuffleHost(host: HTMLElement) {
   host.classList.remove("sayittome-shuffle-keepalive-frozen");
   host.classList.add(
@@ -104,13 +76,11 @@ function unfreezeShuffleHost(host: HTMLElement) {
   if (style.opacity === "0") style.opacity = "1";
   if (style.visibility === "hidden") style.visibility = "visible";
   if (style.pointerEvents === "none") style.pointerEvents = "";
-  // Own the paint plane above lingering profile route content.
   style.zIndex = "5";
   style.position = style.position || "fixed";
   if (!style.inset && !style.top) {
     style.inset = "0";
   }
-  style.background = style.background || "#0b0b0b";
 
   const prep = host.querySelector(
     ".sayittome-shuffle-surface-prep",
@@ -120,8 +90,6 @@ function unfreezeShuffleHost(host: HTMLElement) {
     if (prep.style.opacity === "0") prep.style.opacity = "1";
     if (prep.style.pointerEvents === "none") prep.style.pointerEvents = "";
   }
-
-  ensureShuffleHostMinimumShell(host);
 }
 
 function armDualHideRecovery() {
@@ -185,6 +153,10 @@ export function presentShuffleHostForNonMainReveal(options?: {
   // Never release the profile/settings shell until Shuffle can own paint —
   // otherwise Android shows a sustained black frame (both surfaces hidden).
   if (!host) return false;
+  if (!hasRealShuffleFeedContent(host)) {
+    armDualHideRecovery();
+    return false;
+  }
 
   forcePresentShuffleSurfaceForNonMainReveal();
   unfreezeShuffleHost(host);

@@ -45,6 +45,9 @@ const back = await import(
 const recover = await import(
   pathToFileURL(path.join(root, "src/lib/navigation/shuffleForegroundRecover.ts")).href
 );
+const snapshot = await import(
+  pathToFileURL(path.join(root, "src/lib/navigation/shuffleViewportSnapshot.ts")).href
+);
 
 let state = back.initialShuffleProfileBackState();
 for (let i = 0; i < 6; i += 1) {
@@ -60,6 +63,18 @@ for (let i = 0; i < 6; i += 1) {
   assert.equal(back.isShuffleProfileBackBlackFrame(next), false);
   state = back.reduceShuffleProfileBack(next, { type: "route-commit-shuffle" });
 }
+
+snapshot.captureShuffleViewportSnapshot({
+  cardId: "sid:repeat",
+  index: 2,
+  scrollTop: 720,
+  cardIds: ["sid:a", "sid:b", "sid:repeat"],
+});
+assert.equal(snapshot.peekShuffleViewportSnapshot()?.scrollTop, 720);
+assert.equal(
+  snapshot.captureShuffleViewportSnapshot({ scrollTop: 0, cardId: "", index: 0 }).scrollTop,
+  720,
+);
 
 assert.equal(recover.RESUME_RECOVER_DROPS_HANDOFF_SNAPSHOT, false);
 assert.equal(

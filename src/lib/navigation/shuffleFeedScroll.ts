@@ -20,13 +20,20 @@ function shuffleScrollRoot() {
   return findShuffleKeepAliveScrollRoot();
 }
 
-export function captureShuffleFeedScroll(scrollTop?: number) {
+export function captureShuffleFeedScroll(
+  scrollTop?: number,
+  options?: { allowZero?: boolean },
+) {
   if (typeof window === "undefined") return 0;
   const root = shuffleScrollRoot();
   const next =
     typeof scrollTop === "number"
       ? Math.max(0, scrollTop)
-      : Math.max(0, root?.scrollTop ?? window.scrollY ?? 0);
+      : Math.max(0, root?.scrollTop ?? 0);
+  const previous = peekShuffleFeedScroll();
+  if (!options?.allowZero && next <= 0 && previous > 0) {
+    return previous;
+  }
   try {
     sessionStorage.setItem(SHUFFLE_FEED_SCROLL_KEY, String(Math.round(next)));
   } catch {

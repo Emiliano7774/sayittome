@@ -2,25 +2,42 @@
 
 import { useLayoutEffect } from "react";
 
-function syncChatViewportVars() {
-  const viewport = window.visualViewport;
-  if (!viewport) {
-    document.documentElement.style.setProperty(
-      "--sayittome-chat-vvh",
-      `${window.innerHeight}px`,
-    );
-    document.documentElement.style.setProperty("--sayittome-chat-vv-offset-top", "0px");
-    return;
-  }
+import { isNativeAppShell } from "@/lib/app/nativeShell";
+import {
+  applyChatComposerViewportVars,
+  computeChatComposerViewport,
+} from "@/lib/chat/chatComposerViewport";
 
-  document.documentElement.style.setProperty(
-    "--sayittome-chat-vvh",
-    `${Math.round(viewport.height)}px`,
-  );
-  document.documentElement.style.setProperty(
-    "--sayittome-chat-vv-offset-top",
-    `${Math.round(viewport.offsetTop)}px`,
-  );
+function readSafeAreaBottom() {
+  if (typeof window === "undefined") return 0;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--sayittome-safe-area-bottom")
+    .trim();
+  const parsed = Number.parseFloat(raw);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:absolute;visibility:hidden;padding-bottom:env(safe-area-inset-bottom, 0px)";
+  document.body.appendChild(probe);
+  const value = Number.parseFloat(getComputedStyle(probe).paddingBottom || "0");
+  probe.remove();
+  return Number.isFinite(value) ? value : 0;
+}
+
+function syncChatViewportVars() {
+  const inset = computeChatComposerViewport({
+    innerHeight: window.innerHeight,
+    visualViewport: window.visualViewport
+      ? {
+          height: window.visualViewport.height,
+          offsetTop: window.visualViewport.offsetTop,
+          offsetLeft: window.visualViewport.offsetLeft,
+        }
+      : null,
+    safeAreaBottom: readSafeAreaBottom(),
+    isNativeShell: isNativeAppShell(),
+  });
+  applyChatComposerViewportVars(document, inset);
 }
 
 /** Undo chat viewport lock even if the chat component is still mounted off-screen. */
@@ -39,6 +56,7 @@ export function releaseChatViewportLock() {
   body.style.width = "";
   documentElement.style.removeProperty("--sayittome-chat-vvh");
   documentElement.style.removeProperty("--sayittome-chat-vv-offset-top");
+  documentElement.style.removeProperty("--sayittome-chat-composer-pad");
   window.scrollTo(0, scrollY);
 }
 
@@ -77,6 +95,7 @@ export function useChatViewportLock(active = true) {
       body.style.width = "";
       documentElement.style.removeProperty("--sayittome-chat-vvh");
       documentElement.style.removeProperty("--sayittome-chat-vv-offset-top");
+      documentElement.style.removeProperty("--sayittome-chat-composer-pad");
 
       window.scrollTo(0, scrollY);
     };

@@ -13,6 +13,8 @@ import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useProfilePrefetchIntent } from "@/hooks/useProfilePrefetchIntent";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
+import { captureShuffleViewportSnapshot } from "@/lib/navigation/shuffleViewportSnapshot";
+import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
 import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -42,11 +44,18 @@ function ModernShuffleCard({
   function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
     stashProfileReturnTo("/shuffle");
+    captureShuffleViewportSnapshot({
+      cardId: shuffleProfileIdentityKey(profile) || profile.username,
+    });
     fastRouterPush(router, href);
   }
 
   return (
-    <div className="relative block w-full">
+    <div
+      className="relative block w-full"
+      data-shuffle-card="1"
+      data-card-id={shuffleProfileIdentityKey(profile) || profile.username}
+    >
       <div
         className={[
           "pointer-events-auto absolute right-3 z-30 flex shrink-0 flex-col gap-1.5",

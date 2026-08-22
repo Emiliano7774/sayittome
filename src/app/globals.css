@@ -869,7 +869,11 @@ html.sayittome-shuffle-return-pending
 
 .sayittome-chat-composer {
   flex-shrink: 0;
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--sayittome-chat-composer-pad, 0.75rem);
+}
+
+body.sayittome-native-shell .sayittome-chat-composer {
+  padding-bottom: var(--sayittome-chat-composer-pad, 0.75rem);
 }
 
 .sayittome-chat-composer--preview {

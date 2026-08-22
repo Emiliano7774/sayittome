@@ -195,6 +195,15 @@ const activeChat = stable.decideAnonCardChrome({
   searching: false,
 });
 assert.equal(activeChat.hiddenForActiveChat, true);
+assert.equal(
+  stable.resolveAnonCardOccupy({
+    authPending: false,
+    firstPaintOccupy: true,
+    hiddenForActiveChat: true,
+    liveOccupy: true,
+  }),
+  false,
+);
 
 const cachedChatHide = stable.decideAnonCardChrome({
   authPending: true,
@@ -273,11 +282,14 @@ for (const density of CLASSIC_SHUFFLE_DENSITY_OPTIONS) {
   assert.equal(followingStyles.marginTop, ui.followingMtPx);
   assert.equal(followingDom.offsetHeight, ui.followingSlotPx);
   assert.equal(followingDom.layoutPx, ui.followingMtPx + ui.followingSlotPx);
-  assert.equal(anonStyles.minHeight, ui.anonSlotPx);
+  assert.equal(anonStyles.minHeight, 0);
+  assert.equal(anonStyles.height, "auto");
+  assert.equal(anonStyles.overflow, "visible");
   assert.equal(anonStyles.marginTop, ui.anonMtPx);
   assert.equal(anonStyles.marginBottom, ui.anonMbPx);
-  assert.equal(anonDom.offsetHeight, ui.anonSlotPx);
-  assert.equal(anonDom.layoutPx, ui.anonMtPx + ui.anonSlotPx + ui.anonMbPx);
+  assert.equal(anonDom.offsetHeight, 0);
+  assert.equal(anonDom.layoutPx, ui.anonMtPx + ui.anonMbPx);
+  assert.ok(stable.measureAnonCardFlowHeight(ui, { occupy: true, incognito: false }) > 0);
   assert.equal(collapsed.layoutPx, 0);
 
   const mount = stable.createShuffleChromeMount(density);
@@ -354,7 +366,8 @@ const shuffleClient = fs.readFileSync(
 const logout = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "utf8");
 
 assert.equal(classicCard.includes("if (authPending && !cached?.show) return null"), false);
-assert.equal(classicCard.includes("commitAnonSlotHeight"), true);
+assert.equal(classicCard.includes("resolveAnonCardOccupy"), true);
+assert.equal(classicCard.includes("resolveAnonCardIdentity"), true);
 assert.equal(classicCard.includes("classicAnonSlotStyles"), true);
 assert.equal(classicCard.includes("readCachedAnonCardSnapshot(uid)"), true);
 assert.equal(/readCachedAnonCardSnapshot\(\s*\)/.test(classicCard), false);

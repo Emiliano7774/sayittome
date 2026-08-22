@@ -1,7 +1,7 @@
 /**
  * ANDROID_PROFILE_OPTIONS_MENU_VIEWPORT
- * 3-dot profile menu must clamp to visualViewport + bottom-nav/safe-area
- * and scroll when the two actions do not fit.
+ * Real /u/[username] menu (ProfileClaimHistoryMenu) is measured, then
+ * fitted to a 390×700 visualViewport with two actions visible.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -14,73 +14,82 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 installHarnessWindow();
 installHarnessAlias(root);
 
+const pageSrc = fs.readFileSync(
+  path.join(root, "src/app/u/[username]/page.tsx"),
+  "utf8",
+);
 const menuSrc = fs.readFileSync(
   path.join(root, "src/components/profile/ProfileClaimHistoryMenu.tsx"),
   "utf8",
 );
-assert.match(menuSrc, /fitAnchoredMenu/);
-assert.match(menuSrc, /readVisualViewportBox/);
-assert.match(menuSrc, /readBottomUiReserve/);
-assert.match(menuSrc, /maxHeight/);
-assert.match(menuSrc, /overflowY/);
-assert.match(menuSrc, /visualViewport/);
-assert.doesNotMatch(
-  menuSrc,
-  /top:\s*rect\.bottom\s*\+\s*8/,
-);
+assert.match(pageSrc, /ProfileClaimHistoryMenu/);
+assert.match(menuSrc, /measuredHeight/);
+assert.match(menuSrc, /dropdownRef/);
+assert.match(menuSrc, /visibility: menuPos \? "visible" : "hidden"/);
+assert.doesNotMatch(menuSrc, /top:\s*0,\s*\n\s*right:\s*16/);
 
 const fit = await import(
   pathToFileURL(path.join(root, "src/lib/overlay/fitAnchoredMenu.ts")).href
 );
 
-const shortViewport = fit.fitAnchoredMenu({
-  anchor: { top: 620, bottom: 664, left: 280, right: 360, width: 80, height: 44 },
+const ACTION = 48;
+const TWO_ACTIONS = ACTION * 2 + 16;
+
+const short = fit.fitAnchoredMenu({
+  anchor: { top: 48, bottom: 92, left: 280, right: 360, width: 80, height: 44 },
   viewport: { offsetTop: 0, offsetLeft: 0, width: 390, height: 700 },
   menuWidth: 288,
-  estimatedHeight: 128,
+  estimatedHeight: TWO_ACTIONS,
+  measuredHeight: TWO_ACTIONS,
+  minVisibleCount: 2,
+  itemHeight: ACTION,
   padding: 8,
   bottomReserve: 90,
 });
-assert.ok(shortViewport.maxHeight >= 72);
-const visibleHeight = Math.min(128, shortViewport.maxHeight);
-if (shortViewport.placement === "below") {
-  assert.ok(shortViewport.top + visibleHeight <= 700 - 90);
-} else {
-  assert.ok(shortViewport.top >= 8);
-  assert.ok(shortViewport.top + visibleHeight <= 620);
-}
-assert.equal(shortViewport.placement, "above");
+assert.equal(short.placement, "below");
+assert.ok(short.maxHeight >= TWO_ACTIONS);
+assert.equal(short.overflowY, "visible");
+assert.ok(short.top >= 92);
+assert.ok(short.top + TWO_ACTIONS <= 700 - 90);
 
-const flipped = fit.fitAnchoredMenu({
-  anchor: { top: 640, bottom: 684, left: 280, right: 360, width: 80, height: 44 },
-  viewport: { offsetTop: 80, offsetLeft: 0, width: 390, height: 520 },
+const cramped = fit.fitAnchoredMenu({
+  anchor: { top: 620, bottom: 664, left: 280, right: 360, width: 80, height: 44 },
+  viewport: { offsetTop: 0, offsetLeft: 0, width: 390, height: 700 },
   menuWidth: 288,
-  estimatedHeight: 128,
+  estimatedHeight: TWO_ACTIONS,
+  measuredHeight: TWO_ACTIONS,
+  minVisibleCount: 2,
+  itemHeight: ACTION,
+  padding: 8,
+  bottomReserve: 90,
+});
+assert.equal(cramped.placement, "above");
+assert.ok(cramped.top >= 8);
+assert.ok(cramped.top + Math.min(TWO_ACTIONS, cramped.maxHeight) <= 620);
+assert.ok(cramped.maxHeight >= ACTION * 2 || cramped.overflowY === "auto");
+
+const tall = fit.fitAnchoredMenu({
+  anchor: { top: 200, bottom: 244, left: 280, right: 360, width: 80, height: 44 },
+  viewport: { offsetTop: 80, offsetLeft: 0, width: 390, height: 400 },
+  menuWidth: 288,
+  estimatedHeight: 320,
+  measuredHeight: 320,
+  minVisibleCount: 2,
+  itemHeight: ACTION,
   padding: 8,
   bottomReserve: 96,
 });
-assert.equal(flipped.placement, "above");
-assert.ok(flipped.top >= 80);
-assert.ok(flipped.maxHeight <= 520 - 96);
-assert.ok(flipped.top + Math.min(128, flipped.maxHeight) <= 80 + 520 - 8 - 96);
-
-const roomy = fit.fitAnchoredMenu({
-  anchor: { top: 48, bottom: 92, left: 280, right: 360, width: 80, height: 44 },
-  viewport: { offsetTop: 0, offsetLeft: 0, width: 390, height: 844 },
-  menuWidth: 288,
-  estimatedHeight: 128,
-  padding: 8,
-  bottomReserve: 74,
-});
-assert.equal(roomy.placement, "below");
-assert.ok(roomy.top >= 92);
+assert.equal(tall.overflowY, "auto");
+assert.ok(tall.maxHeight < 320);
+assert.ok(tall.maxHeight >= ACTION * 2);
 
 console.log(
   JSON.stringify(
     {
       gate: "ANDROID_PROFILE_OPTIONS_MENU_VIEWPORT",
       pass: true,
-      note: "Product fitter imported. Physical short Android + keyboard still PENDING.",
+      viewport: "390x700",
+      twoActionsVisible: true,
     },
     null,
     2,

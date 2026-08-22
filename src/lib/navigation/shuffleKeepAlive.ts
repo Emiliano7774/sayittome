@@ -30,6 +30,10 @@ import {
   restoreShuffleFeedScroll,
 } from "@/lib/navigation/shuffleFeedScroll";
 import {
+  captureShuffleViewportSnapshot,
+  restoreShuffleViewportSnapshot,
+} from "@/lib/navigation/shuffleViewportSnapshot";
+import {
   isInternalMainTabToShuffleTransitionActive,
   getMainTabToShufflePhase,
   getMainTabToShuffleTransaction,
@@ -229,6 +233,7 @@ export function releaseShuffleWindowRefreshSuppression() {
 export function pinShuffleWindowWhileAway() {
   suppressShuffleWindowRefresh = true;
   captureShuffleFeedScroll();
+  captureShuffleViewportSnapshot();
 }
 
 let staleHandoffSweepId = 0;
@@ -616,7 +621,8 @@ function presentShuffleAfterWarmRestore() {
   settleShuffleDestinationWarmIntent();
   document.body.classList.add("sayittome-shuffle-route");
   document.body.classList.add("sayittome-shuffle-surface-active");
-  window.scrollTo(0, 0);
+  restoreShuffleViewportSnapshot();
+  restoreShuffleFeedScroll();
   notifyKeepAliveListeners();
   return true;
 }
@@ -680,7 +686,8 @@ export function enterColdShufflePresentation(options?: { force?: boolean }) {
   presentShuffleSurface();
   document.body.classList.add("sayittome-shuffle-route");
   document.body.classList.add("sayittome-shuffle-surface-active");
-  window.scrollTo(0, 0);
+  restoreShuffleViewportSnapshot();
+  restoreShuffleFeedScroll();
   notifyKeepAliveListeners();
 }
 
@@ -840,7 +847,8 @@ export function activateShuffleTabSurface(options?: { microSlideSettle?: boolean
   // Force-clear: presentation ownership can still latch at settle and otherwise
   // leave sayittome-shuffle-handoff-pending armed into the next Stories tap.
   clearShuffleHandoffPendingDom({ force: true });
-  window.scrollTo(0, 0);
+  restoreShuffleViewportSnapshot();
+  restoreShuffleFeedScroll();
 
   if (isNavTraceEnabled()) {
     navTraceMarkDetail("shuffle-tab-activate");
@@ -921,6 +929,7 @@ export function canShowShuffleKeepAliveSurface(pathname: string) {
 export function parkShuffleKeepAliveForNonMainRoute() {
   suppressShuffleWindowRefresh = true;
   captureShuffleFeedScroll();
+  captureShuffleViewportSnapshot();
   freezeShuffleKeepAliveHostSync();
   if (typeof document !== "undefined") {
     document.body.classList.remove("sayittome-shuffle-route");
@@ -948,6 +957,7 @@ export function prepareInstantShuffleReturn() {
   }
   // CSS only hides the route shell when the host is already visible+unfrozen.
   document.documentElement.classList.add("sayittome-shuffle-return-pending");
+  restoreShuffleViewportSnapshot();
   restoreShuffleFeedScroll();
   stripNativeChatFullscreen();
   releaseChatViewportLock();

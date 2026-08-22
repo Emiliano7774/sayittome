@@ -10,6 +10,11 @@ import {
   isShuffleExitToMainTabPending,
   isShuffleRevealDeferred,
 } from "@/lib/navigation/shuffleHandoffState";
+import {
+  canHideCurrentShellForShuffle,
+  hasRealShuffleFeedContent,
+} from "@/lib/navigation/shuffleSnapshotPresent";
+import { restoreShuffleViewportSnapshot } from "@/lib/navigation/shuffleViewportSnapshot";
 import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
 
 export const SHUFFLE_KEEPALIVE_HOST_ID = "sayittome-shuffle-keepalive-host";
@@ -20,7 +25,8 @@ export type ShuffleRecoverReason =
   | "visibility"
   | "pageshow"
   | "stale-reconcile"
-  | "shuffle-profile-hop";
+  | "shuffle-profile-hop"
+  | "chats-to-shuffle";
 
 export type ShuffleRecoverResult = {
   reason: ShuffleRecoverReason | "not-shuffle";
@@ -66,24 +72,11 @@ export function shouldRecoverShuffleOnForeground(pathname = readLivePath()) {
 }
 
 export function shouldHideRouteShellForShuffleReturn(host: Element | null) {
-  if (!host) return false;
-  if (!host.classList.contains("sayittome-shuffle-keepalive-visible")) return false;
-  if (host.classList.contains("sayittome-shuffle-keepalive-frozen")) return false;
-  return hasShuffleSnapshotPaint(host);
+  return canHideCurrentShellForShuffle(host);
 }
 
 export function hasShuffleSnapshotPaint(host: Element | null) {
-  if (!host) return false;
-  const list = host.querySelector("[data-shuffle-list]");
-  if (list && list.querySelector(":scope > *:not(.sayittome-nav-scroll-spacer)")) {
-    return true;
-  }
-  if (host.querySelector("[data-shuffle-slot], [data-nav-shuffle-primary]")) {
-    return true;
-  }
-  if (host.querySelector("[data-shuffle-search='1']")) return true;
-  if (host.querySelector("main[data-scroll-root]")) return true;
-  return false;
+  return hasRealShuffleFeedContent(host);
 }
 
 function isEmptyBlackHost(host: HTMLElement | null) {
@@ -152,6 +145,10 @@ export function presentExistingShuffleSnapshot(options: {
     return empty;
   }
 
+  // Reconstruct window before sampling. An empty restart host must not
+  // return before restore, or retry/failsafe never sees the rebuilt pool.
+  restorePinnedShuffleWindowSync();
+
   const snapshotPainted = hasShuffleSnapshotPaint(host);
   if (!snapshotPainted && isEmptyBlackHost(host)) {
     return {
@@ -161,10 +158,10 @@ export function presentExistingShuffleSnapshot(options: {
     };
   }
 
-  restorePinnedShuffleWindowSync();
   clearStaleShuffleLatches(path);
   unfreezeExistingHost(host);
   forcePresentShuffleSurfaceForNonMainReveal();
+  restoreShuffleViewportSnapshot();
   restoreShuffleFeedScroll();
 
   if (typeof document !== "undefined" && path === "/shuffle") {

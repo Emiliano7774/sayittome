@@ -19,6 +19,9 @@ export type FitAnchoredMenuInput = {
   viewport: ViewportBox;
   menuWidth: number;
   estimatedHeight: number;
+  measuredHeight?: number;
+  minVisibleCount?: number;
+  itemHeight?: number;
   padding?: number;
   bottomReserve?: number;
 };
@@ -64,6 +67,15 @@ export function readBottomUiReserve(doc: Document | null | undefined) {
 export function fitAnchoredMenu(input: FitAnchoredMenuInput): FitAnchoredMenuResult {
   const padding = input.padding ?? 8;
   const bottomReserve = Math.max(0, input.bottomReserve ?? 0);
+  const measured =
+    input.measuredHeight && input.measuredHeight > 0
+      ? input.measuredHeight
+      : input.estimatedHeight;
+  const itemHeight = input.itemHeight ?? 48;
+  const minVisible = Math.max(
+    72,
+    (input.minVisibleCount ?? 2) * itemHeight + padding,
+  );
   const viewportTop = input.viewport.offsetTop;
   const viewportLeft = input.viewport.offsetLeft;
   const viewportBottom = viewportTop + input.viewport.height;
@@ -73,17 +85,20 @@ export function fitAnchoredMenu(input: FitAnchoredMenuInput): FitAnchoredMenuRes
 
   const spaceBelow = Math.max(0, usableBottom - input.anchor.bottom);
   const spaceAbove = Math.max(0, input.anchor.top - usableTop);
-  const minMenu = Math.min(96, input.estimatedHeight);
+  const minMenu = Math.min(minVisible, measured);
   const viewportBudget = Math.max(
-    72,
+    minVisible,
     Math.floor(input.viewport.height - padding * 2 - bottomReserve),
   );
   const placeBelow =
     spaceBelow >= minMenu || spaceBelow >= spaceAbove || spaceAbove < minMenu;
 
   const rawMax = placeBelow ? spaceBelow : spaceAbove;
-  const maxHeight = Math.max(72, Math.min(viewportBudget, Math.floor(rawMax || viewportBudget)));
-  const height = Math.min(input.estimatedHeight, maxHeight);
+  const maxHeight = Math.max(
+    minVisible,
+    Math.min(viewportBudget, Math.floor(rawMax || viewportBudget)),
+  );
+  const height = Math.min(measured, maxHeight);
   const unclampedTop = placeBelow
     ? input.anchor.bottom + padding
     : input.anchor.top - padding - height;
@@ -93,9 +108,7 @@ export function fitAnchoredMenu(input: FitAnchoredMenuInput): FitAnchoredMenuRes
   );
 
   const right = Math.max(padding, viewportRight - input.anchor.right);
-  const overflowY = height < input.estimatedHeight - 1 || maxHeight < input.estimatedHeight
-    ? "auto"
-    : "visible";
+  const overflowY = measured > maxHeight + 1 ? "auto" : "visible";
 
   return {
     top: Math.round(top),

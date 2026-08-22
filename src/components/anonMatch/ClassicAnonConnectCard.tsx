@@ -15,7 +15,13 @@ import {
   readCachedAnonCardSnapshot,
   writeCachedAnonCardSnapshot,
 } from "@/lib/shuffle/shuffleChromeCache";
-import { decideAnonCardChrome, commitAnonSlotHeight, classicAnonSlotStyles } from "@/lib/shuffle/shuffleChromeStable";
+import {
+  decideAnonCardChrome,
+  classicAnonSlotStyles,
+  resolveAnonCardFirstPaint,
+  resolveAnonCardIdentity,
+  resolveAnonCardOccupy,
+} from "@/lib/shuffle/shuffleChromeStable";
 
 function hasActiveDirectChat(match: NonNullable<ReturnType<typeof useAnonMatchOptional>>) {
   return Boolean(
@@ -32,8 +38,16 @@ export default function ClassicAnonConnectCard() {
   const { density } = useClassicShuffleDensity();
   const ui = getClassicShuffleHeaderUi(density);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
-  const [anonCommitPx, setAnonCommitPx] = useState<number | null>(null);
   const incognitoMode = hasAnonLegalAcceptance();
+  const [firstPaint] = useState(() =>
+    resolveAnonCardFirstPaint({
+      uid: String(peekCachedViewerIdentity()?.uid || ""),
+      cached: peekCachedViewerIdentity()?.uid
+        ? readCachedAnonCardSnapshot(String(peekCachedViewerIdentity()?.uid || ""))
+        : null,
+      legalIncognito: hasAnonLegalAcceptance(),
+    }),
+  );
 
   const closeDisclaimer = useCallback(() => {
     setDisclaimerOpen(false);
@@ -69,21 +83,24 @@ export default function ClassicAnonConnectCard() {
     isIncognitoVisitor,
     searching,
   });
-  const committedPx = commitAnonSlotHeight({
-    previousPx: anonCommitPx,
-    density,
+  const occupy = resolveAnonCardOccupy({
     authPending,
-    visibility: decision.visibility,
+    firstPaintOccupy: firstPaint.occupy,
     hiddenForActiveChat: decision.hiddenForActiveChat,
-    incognito: isIncognitoVisitor,
+    liveOccupy: decision.visibility === "show",
   });
-  if (anonCommitPx !== committedPx) {
-    setAnonCommitPx(committedPx);
-  }
-  const occupy = committedPx > 0;
-  const slotBox = classicAnonSlotStyles(ui, occupy, {
-    incognito: isIncognitoVisitor,
+  const identity = resolveAnonCardIdentity({
+    authPending,
+    firstPaint: {
+      isIncognitoVisitor: firstPaint.isIncognitoVisitor,
+      isProfileUser: firstPaint.isProfileUser,
+    },
+    live: {
+      isIncognitoVisitor: decision.isIncognitoVisitor,
+      isProfileUser: decision.isProfileUser,
+    },
   });
+  const slotBox = classicAnonSlotStyles(ui, occupy);
 
   useEffect(() => {
     if (authPending) return;
@@ -105,7 +122,7 @@ export default function ClassicAnonConnectCard() {
     decision.searching,
   ]);
 
-  const cardTitle = decision.isIncognitoVisitor
+  const cardTitle = identity.isIncognitoVisitor
     ? t("anon_match_card_title_anon")
     : t("anon_match_card_title");
   const disclaimerTitle = decision.isIncognitoVisitor
@@ -126,43 +143,10 @@ export default function ClassicAnonConnectCard() {
     marginTop: slotBox.marginTop,
     paddingTop: slotBox.paddingTop,
     marginBottom: slotBox.marginBottom,
-    minHeight: slotBox.minHeight,
-    height: slotBox.height,
-    overflow: slotBox.overflow,
+    overflow: "visible" as const,
   };
 
-  if (decision.visibility === "hidden" || decision.visibility === "reserved") {
-    return (
-      <div
-        className="border-t border-white/[0.06]"
-        style={slotStyle}
-        data-shuffle-anon-slot="1"
-        data-shuffle-anon-state={decision.visibility}
-        data-shuffle-anon-incognito={isIncognitoVisitor ? "1" : "0"}
-        data-shuffle-anon-commit={String(committedPx)}
-        aria-hidden
-      >
-        {decision.visibility === "reserved" ? (
-          <>
-            <div className="flex items-center" style={{ gap: ui.followingGapPx }}>
-              <div
-                className="rounded-full bg-white/[0.06]"
-                style={{ width: ui.anonIconPx, height: ui.anonIconPx }}
-              />
-              <div
-                className="rounded-full bg-white/[0.06]"
-                style={{ height: ui.anonTitlePx, width: "42%" }}
-              />
-            </div>
-            <div
-              className="mt-1.5 w-full rounded-lg bg-white/[0.06]"
-              style={{ height: ui.anonBtnPadYPx * 2 + ui.anonBtnPx }}
-            />
-          </>
-        ) : null}
-      </div>
-    );
-  }
+  const showIncognito = identity.isIncognitoVisitor;
 
   return (
     <>
@@ -171,10 +155,10 @@ export default function ClassicAnonConnectCard() {
         style={slotStyle}
         data-shuffle-anon-slot="1"
         data-shuffle-anon-state="show"
-        data-shuffle-anon-incognito={isIncognitoVisitor ? "1" : "0"}
-        data-shuffle-anon-commit={String(committedPx)}
+        data-shuffle-anon-incognito={showIncognito ? "1" : "0"}
+        data-shuffle-anon-commit="flow"
       >
-        {decision.isIncognitoVisitor ? (
+        {showIncognito ? (
           <>
             <div className="flex items-center" style={{ gap: ui.followingGapPx }}>
               <Globe2
@@ -207,10 +191,10 @@ export default function ClassicAnonConnectCard() {
           className="flex items-center"
           style={{
             gap: ui.followingGapPx,
-            marginTop: decision.isIncognitoVisitor ? ui.filterMtPx : 0,
+            marginTop: showIncognito ? ui.filterMtPx : 0,
           }}
         >
-          {!decision.isIncognitoVisitor ? (
+          {!showIncognito ? (
             <Globe2
               size={ui.anonIconPx}
               strokeWidth={1.6}
@@ -222,7 +206,7 @@ export default function ClassicAnonConnectCard() {
             className="font-semibold tracking-[-0.02em] text-white/88"
             style={{
               fontSize: ui.anonTitlePx,
-              paddingLeft: decision.isIncognitoVisitor
+              paddingLeft: showIncognito
                 ? ui.anonIconPx + ui.followingGapPx
                 : 0,
             }}

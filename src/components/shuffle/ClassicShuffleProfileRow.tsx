@@ -10,6 +10,7 @@ import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 import { isShuffleProfileModerated } from "@/lib/shuffle/resolveShuffleBlur";
 import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
+import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ClassicShuffleProfileRow({
@@ -26,7 +27,11 @@ function ClassicShuffleProfileRow({
   const photoLoading = feedIndex < 15 ? "eager" : "lazy";
 
   return (
-    <div className="relative w-full border-b border-white/10 contain-[layout_paint_style]">
+    <div
+      className="relative w-full border-b border-white/10 contain-[layout_paint_style]"
+      data-shuffle-card="1"
+      data-card-id={shuffleProfileIdentityKey(profile) || profile.username}
+    >
       <div className={`flex w-full items-center ${tokens.gapClass} ${tokens.rowPadding}`}>
         <StoryAvatarButton
           ownerUid={storyOwnerUidFromShuffleCard(profile)}

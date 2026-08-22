@@ -50,12 +50,29 @@ const painted = {
       return name === "sayittome-shuffle-keepalive-visible";
     },
   },
+  getBoundingClientRect() {
+    return { width: 390, height: 700, top: 0, left: 0, right: 390, bottom: 700 };
+  },
   querySelector(sel) {
     if (String(sel).includes("data-shuffle-list")) {
       return {
-        querySelector() {
-          return { tagName: "ARTICLE" };
-        },
+        children: [
+          {
+            classList: { contains: () => false },
+            getAttribute: () => null,
+            childNodes: [1],
+            offsetWidth: 390,
+            offsetHeight: 420,
+            getBoundingClientRect: () => ({
+              width: 390,
+              height: 420,
+              top: 0,
+              left: 0,
+              right: 390,
+              bottom: 420,
+            }),
+          },
+        ],
       };
     }
     return null;

@@ -30,7 +30,7 @@ export type ShuffleChromeSlotBox = {
   paddingTop: number;
   paddingBottom: number;
   minHeight: number;
-  height: number;
+  height: number | "auto";
   overflow: "hidden" | "visible";
   borderTopWidth: number;
   borderBottomWidth: number;
@@ -92,7 +92,6 @@ export function classicFollowingSlotStyles(
 export function classicAnonSlotStyles(
   ui: ClassicShuffleHeaderUi,
   occupy: boolean,
-  options?: { incognito?: boolean },
 ): ShuffleChromeSlotBox {
   if (!occupy) {
     return {
@@ -107,26 +106,96 @@ export function classicAnonSlotStyles(
       borderBottomWidth: 0,
     };
   }
-  const slotPx = options?.incognito ? ui.anonIncognitoSlotPx : ui.anonSlotPx;
   return {
     marginTop: ui.anonMtPx,
     marginBottom: ui.anonMbPx,
     paddingTop: ui.anonPtPx,
     paddingBottom: 0,
-    minHeight: slotPx,
-    height: slotPx,
-    overflow: "hidden",
+    minHeight: 0,
+    height: "auto",
+    overflow: "visible",
     borderTopWidth: 1,
     borderBottomWidth: 0,
   };
 }
 
 export function measureSlotBox(styles: ShuffleChromeSlotBox): ShuffleChromeSlotMeasure {
-  const offsetHeight = styles.minHeight;
+  const offsetHeight =
+    typeof styles.height === "number" ? styles.height : styles.minHeight;
   return {
     offsetHeight,
     layoutPx: styles.marginTop + offsetHeight + styles.marginBottom,
   };
+}
+
+export function resolveAnonCardFirstPaint(input: {
+  uid: string;
+  cached: AnonCardSnapshot | null;
+  legalIncognito: boolean;
+  hasActiveDirectChat?: boolean;
+}) {
+  const isProfileUser = Boolean(input.cached?.isProfileUser || input.uid);
+  const isIncognitoVisitor = Boolean(
+    input.cached?.isIncognitoVisitor || (input.legalIncognito && !isProfileUser),
+  );
+  if (input.cached?.hiddenForActiveChat || input.hasActiveDirectChat) {
+    return {
+      occupy: false,
+      visibility: "hidden" as const,
+      isIncognitoVisitor,
+      isProfileUser,
+      searching: false,
+    };
+  }
+  const occupy = isProfileUser || isIncognitoVisitor || Boolean(input.cached?.show);
+  return {
+    occupy,
+    visibility: occupy ? ("show" as const) : ("hidden" as const),
+    isIncognitoVisitor,
+    isProfileUser,
+    searching: Boolean(input.cached?.searching),
+  };
+}
+
+/** First-paint occupy is sticky only while auth is pending. After that, liveOccupy wins. */
+export function resolveAnonCardOccupy(input: {
+  authPending: boolean;
+  firstPaintOccupy: boolean;
+  hiddenForActiveChat: boolean;
+  liveOccupy?: boolean;
+}) {
+  if (input.authPending) return input.firstPaintOccupy || Boolean(input.liveOccupy);
+  if (input.hiddenForActiveChat) return false;
+  return Boolean(input.liveOccupy);
+}
+
+export function resolveAnonCardIdentity(input: {
+  authPending: boolean;
+  firstPaint: { isIncognitoVisitor: boolean; isProfileUser: boolean };
+  live: { isIncognitoVisitor: boolean; isProfileUser: boolean };
+}) {
+  if (input.authPending) {
+    return {
+      isIncognitoVisitor:
+        input.firstPaint.isIncognitoVisitor || input.live.isIncognitoVisitor,
+      isProfileUser: input.firstPaint.isProfileUser || input.live.isProfileUser,
+    };
+  }
+  return {
+    isIncognitoVisitor: input.live.isIncognitoVisitor,
+    isProfileUser: input.live.isProfileUser,
+  };
+}
+
+export function measureAnonCardFlowHeight(
+  ui: ClassicShuffleHeaderUi,
+  input: { occupy: boolean; incognito: boolean },
+) {
+  if (!input.occupy) return 0;
+  const inner = input.incognito
+    ? ui.anonIncognitoSlotPx - ui.anonPtPx
+    : ui.anonSlotPx - ui.anonPtPx;
+  return ui.anonMtPx + ui.anonPtPx + inner + ui.anonMbPx;
 }
 
 export function decideFollowingChrome(input: {
@@ -334,9 +403,7 @@ export function committedShuffleChromeLayout(input: {
 }): ShuffleChromeLayout {
   const ui = getClassicShuffleHeaderUi(input.density);
   const following = measureSlotBox(classicFollowingSlotStyles(ui));
-  const anon = measureSlotBox(
-    classicAnonSlotStyles(ui, input.anonOccupy, { incognito: input.incognito }),
-  );
+  const anon = measureSlotBox(classicAnonSlotStyles(ui, input.anonOccupy));
   return {
     followingSlotPx: ui.followingSlotPx,
     followingBodyPx: ui.followingBodyPx,
@@ -377,11 +444,7 @@ export function createShuffleChromeMount(density: ClassicShuffleDensity) {
       previousAnonPx = committedPx;
       const occupy = committedPx > 0;
       const following = measureSlotBox(classicFollowingSlotStyles(ui));
-      const anon = measureSlotBox(
-        classicAnonSlotStyles(ui, occupy, {
-          incognito: input.anon.isIncognitoVisitor,
-        }),
-      );
+      const anon = measureSlotBox(classicAnonSlotStyles(ui, occupy));
       return {
         following,
         anon,

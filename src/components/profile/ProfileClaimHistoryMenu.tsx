@@ -48,14 +48,15 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
   const [claims, setClaims] = useState<ClaimHistoryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [menuPos, setMenuPos] = useState({
-    top: 0,
-    right: 16,
-    maxHeight: 240,
-    overflowY: "auto" as "auto" | "visible",
-  });
+  const [menuPos, setMenuPos] = useState<{
+    top: number;
+    right: number;
+    maxHeight: number;
+    overflowY: "auto" | "visible";
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useOverlayBackClose(
     historyOpen,
@@ -81,16 +82,23 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
   }, [historyOpen, notificationsOpen]);
 
   useLayoutEffect(() => {
-    if (!menuOpen || !buttonRef.current) return;
+    if (!menuOpen || !buttonRef.current) {
+      setMenuPos(null);
+      return;
+    }
 
     const syncMenu = () => {
       if (!buttonRef.current) return;
       const rect = buttonRef.current.getBoundingClientRect();
+      const measured = dropdownRef.current?.getBoundingClientRect().height ?? 0;
       const fitted = fitAnchoredMenu({
         anchor: rect,
         viewport: readVisualViewportBox(window),
-        menuWidth: 288,
-        estimatedHeight: 128,
+        menuWidth: dropdownRef.current?.offsetWidth || 288,
+        estimatedHeight: measured || 128,
+        measuredHeight: measured,
+        minVisibleCount: 2,
+        itemHeight: 48,
         padding: 8,
         bottomReserve: readBottomUiReserve(document),
       });
@@ -103,6 +111,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
     };
 
     syncMenu();
+    requestAnimationFrame(syncMenu);
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", syncMenu);
     viewport?.addEventListener("scroll", syncMenu);
@@ -201,13 +210,15 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
         {menuOpen && typeof document !== "undefined"
           ? createPortal(
               <div
+                ref={dropdownRef}
                 data-profile-options-dropdown="1"
                 className="fixed z-[1000001] w-72 rounded-2xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
                 style={{
-                  top: menuPos.top,
-                  right: menuPos.right,
-                  maxHeight: menuPos.maxHeight,
-                  overflowY: menuPos.overflowY,
+                  top: menuPos?.top ?? -9999,
+                  right: menuPos?.right ?? 16,
+                  maxHeight: menuPos?.maxHeight,
+                  overflowY: menuPos?.overflowY ?? "visible",
+                  visibility: menuPos ? "visible" : "hidden",
                 }}
               >
                 <button

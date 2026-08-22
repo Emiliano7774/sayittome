@@ -9,6 +9,13 @@ import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useT } from "@/contexts/LocaleContext";
 import { hasAnonLegalAcceptance } from "@/lib/legal/anonEntryTerms";
+import { peekCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
+import { readCachedAnonCardSnapshot } from "@/lib/shuffle/shuffleChromeCache";
+import {
+  resolveAnonCardFirstPaint,
+  resolveAnonCardIdentity,
+  resolveAnonCardOccupy,
+} from "@/lib/shuffle/shuffleChromeStable";
 
 function hasActiveDirectChat(match: NonNullable<ReturnType<typeof useAnonMatchOptional>>) {
   return Boolean(
@@ -24,6 +31,15 @@ export default function ModernAnonConnectCard() {
   const t = useT();
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [incognitoMode] = useState(() => hasAnonLegalAcceptance());
+  const [firstPaint] = useState(() =>
+    resolveAnonCardFirstPaint({
+      uid: String(peekCachedViewerIdentity()?.uid || ""),
+      cached: peekCachedViewerIdentity()?.uid
+        ? readCachedAnonCardSnapshot(String(peekCachedViewerIdentity()?.uid || ""))
+        : null,
+      legalIncognito: hasAnonLegalAcceptance(),
+    }),
+  );
 
   // Hooks must run unconditionally. Early returns used to skip these and crash
   // modern Shuffle ("Rendered more hooks than during the previous render") once
@@ -39,14 +55,31 @@ export default function ModernAnonConnectCard() {
     "sayittome:close-anon-disclaimer",
   );
 
-  const isProfileUser = Boolean(firebaseUser?.uid);
-  const isIncognitoVisitor = incognitoMode && !isProfileUser;
+  const authPending = !match || loading;
+  const liveProfile = Boolean(firebaseUser?.uid);
+  const liveIncognito = Boolean(incognitoMode && !liveProfile);
+  const identity = resolveAnonCardIdentity({
+    authPending,
+    firstPaint: {
+      isIncognitoVisitor: firstPaint.isIncognitoVisitor,
+      isProfileUser: firstPaint.isProfileUser,
+    },
+    live: {
+      isIncognitoVisitor: liveIncognito,
+      isProfileUser: liveProfile,
+    },
+  });
+  const isIncognitoVisitor = identity.isIncognitoVisitor;
+  const occupy = resolveAnonCardOccupy({
+    authPending,
+    firstPaintOccupy: firstPaint.occupy,
+    hiddenForActiveChat: Boolean(match && !loading && hasActiveDirectChat(match)),
+    liveOccupy: liveProfile || liveIncognito,
+  });
 
-  if (!match || loading) return null;
-  if (hasActiveDirectChat(match)) return null;
-  if (!isProfileUser && !isIncognitoVisitor) return null;
+  if (!occupy) return null;
 
-  const searching = match.searchSessionActive;
+  const searching = Boolean(match?.searchSessionActive || firstPaint.searching);
   const cardTitle = isIncognitoVisitor
     ? t("anon_match_card_title_anon")
     : t("anon_match_card_title");
@@ -73,7 +106,6 @@ export default function ModernAnonConnectCard() {
       <section
         className={shellClass}
         data-shuffle-anon-incognito={isIncognitoVisitor ? "1" : "0"}
-        style={isIncognitoVisitor ? { minHeight: 168 } : undefined}
       >
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="text-sm font-black tracking-[0.18em] text-violet-200/80">{sectionLabel}</p>

@@ -59,11 +59,16 @@ export default function ShuffleFeedWithNativeAds({
       {Array.from({ length: itemCount }, (_, index) => {
         if (isShuffleNativeAdIndex(index, profiles.length, showAds)) {
           return (
-            <ShuffleAdSlot
+            <div
               key={getShuffleAdSlotId(mode, index)}
-              slotId={getShuffleAdSlotId(mode, index)}
-              variant={variant}
-            />
+              data-shuffle-ad="1"
+              className="sayittome-shuffle-ad"
+            >
+              <ShuffleAdSlot
+                slotId={getShuffleAdSlotId(mode, index)}
+                variant={variant}
+              />
+            </div>
           );
         }
 

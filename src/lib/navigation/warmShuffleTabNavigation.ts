@@ -1,11 +1,13 @@
 import {
   activateShuffleTabSurface,
   beginShuffleWarmHandoff,
-  enterColdShufflePresentation,
   isShuffleKeepAliveActive,
   pinShuffleKeepAlive,
 } from "@/lib/navigation/shuffleKeepAlive";
 import { presentShuffleSurface } from "@/lib/navigation/shuffleHandoffState";
+import { presentExistingShuffleSnapshot } from "@/lib/navigation/shuffleForegroundRecover";
+import { canHideCurrentShellForShuffle } from "@/lib/navigation/shuffleSnapshotPresent";
+import { restoreShuffleViewportSnapshot } from "@/lib/navigation/shuffleViewportSnapshot";
 import {
   abortMainTabToShuffleTransition,
   getConcreteMainTabSupersedeEpoch,
@@ -46,8 +48,16 @@ import {
 import { isNonMainRoute } from "@/lib/navigation/routeKind";
 
 function presentInstantShuffleHostSync() {
+  const recovered = presentExistingShuffleSnapshot({ reason: "chats-to-shuffle" });
+  restoreShuffleViewportSnapshot();
+  if (!recovered.presented || !recovered.snapshotPainted || recovered.hostFrozen) {
+    return false;
+  }
+  const host = document.getElementById("sayittome-shuffle-keepalive-host");
+  if (!canHideCurrentShellForShuffle(host)) return false;
   presentShuffleSurface();
   activateShuffleTabSurface({ microSlideSettle: true });
+  return true;
 }
 
 /** Begin warm shuffle handoff from the current main-tab path (Chats, Stories, etc.). */
@@ -316,11 +326,19 @@ function armAndroidShufflePresentationFailsafe(
         if (isInternalMainTabToShuffleTransitionActive()) {
           abortMainTabToShuffleTransition("android-failsafe-present");
         }
-        // Force React-visible presentation (classList alone is wiped on render).
-        presentShuffleSurface();
-        enterColdShufflePresentation({ force: true });
-        activateShuffleTabSurface({ microSlideSettle: true });
-        presentShuffleHostForNonMainReveal({ hideShell: true });
+        const recovered = presentExistingShuffleSnapshot({
+          reason: "chats-to-shuffle",
+        });
+        if (recovered.presented && recovered.snapshotPainted) {
+          presentShuffleSurface();
+          activateShuffleTabSurface({ microSlideSettle: true });
+          const hostNow = document.getElementById(
+            "sayittome-shuffle-keepalive-host",
+          );
+          presentShuffleHostForNonMainReveal({
+            hideShell: canHideCurrentShellForShuffle(hostNow),
+          });
+        }
       }
       if (
         document

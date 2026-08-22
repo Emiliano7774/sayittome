@@ -1,7 +1,7 @@
 /**
  * ANDROID_INCOGNITO_SLOT_RESERVE
- * Anon direct-to-Shuffle incognito banner reserves layout (wrap + chrome)
- * without overlay or post-auth jump.
+ * Real classic+modern first-paint block occupies normal flow. Late auth
+ * must not shift the measured flow height, clip, or overlay.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -14,13 +14,24 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 installHarnessWindow();
 installHarnessAlias(root);
 
-const card = fs.readFileSync(
+const classicSrc = fs.readFileSync(
   path.join(root, "src/components/anonMatch/ClassicAnonConnectCard.tsx"),
   "utf8",
 );
-assert.match(card, /incognitoMode && !isProfileUser/);
-assert.match(card, /anonIncognito|incognito: isIncognitoVisitor/);
-assert.match(card, /data-shuffle-anon-incognito/);
+const modernSrc = fs.readFileSync(
+  path.join(root, "src/components/anonMatch/ModernAnonConnectCard.tsx"),
+  "utf8",
+);
+assert.match(classicSrc, /resolveAnonCardFirstPaint/);
+assert.match(classicSrc, /resolveAnonCardOccupy/);
+assert.match(classicSrc, /resolveAnonCardIdentity/);
+assert.doesNotMatch(classicSrc, /setAnonCommitPx\(committedPx\)/);
+assert.doesNotMatch(classicSrc, /overflow:\s*slotBox\.overflow/);
+assert.match(modernSrc, /resolveAnonCardFirstPaint/);
+assert.match(modernSrc, /resolveAnonCardOccupy/);
+assert.match(modernSrc, /resolveAnonCardIdentity/);
+assert.doesNotMatch(modernSrc, /if \(!match \|\| loading\) return null/);
+assert.doesNotMatch(modernSrc, /!firstPaint\.occupy\) return null/);
 
 const headerUi = await import(
   pathToFileURL(path.join(root, "src/lib/shuffle/classicHeaderUi.ts")).href
@@ -30,19 +41,90 @@ const stable = await import(
 );
 
 const ui = headerUi.getClassicShuffleHeaderUi(5);
-assert.ok(ui.anonIncognitoSlotPx > ui.anonSlotPx, "incognito must reserve extra wrap lines");
+const first = stable.resolveAnonCardFirstPaint({
+  uid: "",
+  cached: null,
+  legalIncognito: true,
+});
+assert.equal(first.occupy, true);
+assert.equal(first.isIncognitoVisitor, true);
+
+const lateAuthSame = stable.resolveAnonCardFirstPaint({
+  uid: "",
+  cached: {
+    version: 3,
+    uid: "",
+    show: true,
+    hiddenForActiveChat: false,
+    isIncognitoVisitor: true,
+    isProfileUser: false,
+    searching: false,
+  },
+  legalIncognito: true,
+});
+const firstPx = stable.measureAnonCardFlowHeight(ui, {
+  occupy: first.occupy,
+  incognito: first.isIncognitoVisitor,
+});
+const livePx = stable.measureAnonCardFlowHeight(ui, {
+  occupy: lateAuthSame.occupy,
+  incognito: lateAuthSame.isIncognitoVisitor,
+});
+assert.equal(firstPx, livePx);
+assert.ok(firstPx > 0);
+
+const slot = stable.classicAnonSlotStyles(ui, true);
+assert.equal(slot.overflow, "visible");
+assert.equal(slot.height, "auto");
+assert.equal(slot.minHeight, 0);
+
 assert.equal(
-  ui.anonIncognitoSlotPx,
-  ui.anonPtPx + 1 + headerUi.classicAnonIncognitoInnerPx(ui),
+  stable.resolveAnonCardOccupy({
+    authPending: true,
+    firstPaintOccupy: true,
+    hiddenForActiveChat: false,
+    liveOccupy: false,
+  }),
+  true,
+  "late auth keeps first-paint occupy",
+);
+assert.equal(
+  stable.resolveAnonCardOccupy({
+    authPending: false,
+    firstPaintOccupy: true,
+    hiddenForActiveChat: false,
+    liveOccupy: false,
+  }),
+  false,
+  "resolved auth uses liveOccupy only",
+);
+assert.equal(
+  stable.resolveAnonCardOccupy({
+    authPending: false,
+    firstPaintOccupy: true,
+    hiddenForActiveChat: true,
+    liveOccupy: true,
+  }),
+  false,
+  "accepted direct chat must hide sticky occupy",
 );
 
-const reserved = stable.classicAnonSlotStyles(ui, true, { incognito: true });
-const regular = stable.classicAnonSlotStyles(ui, true);
-assert.ok(reserved.minHeight > regular.minHeight);
-assert.equal(reserved.minHeight, reserved.height);
-assert.equal(reserved.overflow, "hidden");
+const pendingAnonId = stable.resolveAnonCardIdentity({
+  authPending: true,
+  firstPaint: { isIncognitoVisitor: true, isProfileUser: false },
+  live: { isIncognitoVisitor: false, isProfileUser: true },
+});
+assert.equal(pendingAnonId.isIncognitoVisitor, true, "pending keeps first-paint incognito");
 
-const pendingIncognito = stable.decideAnonCardChrome({
+const liveProfileId = stable.resolveAnonCardIdentity({
+  authPending: false,
+  firstPaint: { isIncognitoVisitor: true, isProfileUser: false },
+  live: { isIncognitoVisitor: false, isProfileUser: true },
+});
+assert.equal(liveProfileId.isIncognitoVisitor, false, "anon→profile must drop incognito label");
+assert.equal(liveProfileId.isProfileUser, true);
+
+const decision = stable.decideAnonCardChrome({
   authPending: true,
   uid: "",
   cached: null,
@@ -51,50 +133,33 @@ const pendingIncognito = stable.decideAnonCardChrome({
   isIncognitoVisitor: true,
   searching: false,
 });
-assert.equal(pendingIncognito.visibility, "reserved");
-assert.equal(pendingIncognito.isIncognitoVisitor, true);
-
-const mount = stable.createShuffleChromeMount(5);
-const first = mount.paint({
-  authPending: true,
-  following: {
-    hasSession: false,
-    profiles: [],
-    showSkeleton: true,
-    showGuest: false,
-    state: "skeleton",
-  },
-  anon: pendingIncognito,
-});
-const live = mount.paint({
+const afterAuth = stable.decideAnonCardChrome({
   authPending: false,
-  following: {
-    hasSession: false,
-    profiles: [],
-    showSkeleton: false,
-    showGuest: true,
-    state: "guest",
-  },
-  anon: {
-    visibility: "show",
-    hiddenForActiveChat: false,
-    isIncognitoVisitor: true,
-    isProfileUser: false,
-    searching: false,
-    uid: "",
-    state: "show",
-  },
+  uid: "",
+  cached: null,
+  hasActiveDirectChat: false,
+  isProfileUser: false,
+  isIncognitoVisitor: true,
+  searching: false,
 });
-assert.equal(first.committedPx, ui.anonIncognitoSlotPx);
-assert.equal(live.committedPx, first.committedPx, "no jump after auth resolves");
-assert.equal(first.feedOffsetPx, live.feedOffsetPx, "feed offset stays reserved");
+assert.equal(
+  stable.measureAnonCardFlowHeight(ui, {
+    occupy: true,
+    incognito: decision.isIncognitoVisitor,
+  }),
+  stable.measureAnonCardFlowHeight(ui, {
+    occupy: afterAuth.visibility === "show",
+    incognito: afterAuth.isIncognitoVisitor,
+  }),
+);
 
 console.log(
   JSON.stringify(
     {
       gate: "ANDROID_INCOGNITO_SLOT_RESERVE",
       pass: true,
-      note: "Product chrome imported. Physical anon Android layout still PENDING.",
+      firstPx,
+      livePx,
     },
     null,
     2,

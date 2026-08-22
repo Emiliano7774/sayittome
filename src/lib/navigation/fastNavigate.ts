@@ -8,6 +8,7 @@ import {
   restoreShuffleFeedScroll,
   shouldSkipHardNavigateForWarmShuffle,
 } from "@/lib/navigation/shuffleFeedScroll";
+import { captureShuffleViewportSnapshot } from "@/lib/navigation/shuffleViewportSnapshot";
 import {
   beginShuffleWarmHandoff,
   clearInstantShuffleReturn,
@@ -56,6 +57,7 @@ export type FastRouterPushOptions = {
 function pinShuffleWindowIfNeeded(currentPath: string) {
   if (currentPath === "/shuffle" || isShuffleKeepAliveActive()) {
     captureShuffleFeedScroll();
+    captureShuffleViewportSnapshot();
     pinShuffleWindowWhileAway();
   }
 }
