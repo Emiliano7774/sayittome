@@ -25,6 +25,7 @@ import {
   pinShuffleWindowWhileAway,
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
+import { recoverShuffleOnForeground } from "@/lib/navigation/shuffleForegroundRecover";
 import { restoreShuffleFeedScroll } from "@/lib/navigation/shuffleFeedScroll";
 import { consumeProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 
@@ -152,6 +153,7 @@ export default function NativeAppBootstrap() {
             globalChatWhipManager.refresh();
             // WebView often suspends HTMLAudio after background; force re-prime.
             reprimeWhipSound();
+            recoverShuffleOnForeground("app-resume");
           }
         });
       } catch {

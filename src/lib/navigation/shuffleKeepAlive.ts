@@ -23,6 +23,7 @@ import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 import {
   prepareShuffleRevealFromNonMainRoute,
 } from "@/lib/navigation/nonMainToShuffleReveal";
+import { presentExistingShuffleSnapshot } from "@/lib/navigation/shuffleForegroundRecover";
 import {
   captureShuffleFeedScroll,
   installShuffleFeedScrollHistoryRestore,
@@ -125,6 +126,9 @@ export function reconcileStaleShuffleHandoffState() {
   if (typeof window === "undefined") return;
   if (isInternalMainTabToShuffleTransitionActive()) return;
   if (normalizePath(window.location.pathname) !== "/shuffle") return;
+
+  const recovered = presentExistingShuffleSnapshot({ reason: "stale-reconcile" });
+  if (recovered.presented) return;
 
   const pendingDom = document.documentElement.classList.contains("sayittome-shuffle-handoff-pending");
 
@@ -935,10 +939,15 @@ export function prepareInstantShuffleReturn() {
 
   prepareShuffleRevealFromNonMainRoute();
 
+  const recovered = presentExistingShuffleSnapshot({ reason: "profile-back" });
+  if (recovered.presented) {
+    document.body.classList.add("sayittome-shuffle-route");
+    document.body.classList.add("sayittome-shuffle-surface-active");
+  } else {
+    revealShuffleKeepAliveHost();
+  }
+  // CSS only hides the route shell when the host is already visible+unfrozen.
   document.documentElement.classList.add("sayittome-shuffle-return-pending");
-  document.body.classList.add("sayittome-shuffle-route");
-  document.body.classList.add("sayittome-shuffle-surface-active");
-  revealShuffleKeepAliveHost();
   restoreShuffleFeedScroll();
   stripNativeChatFullscreen();
   releaseChatViewportLock();

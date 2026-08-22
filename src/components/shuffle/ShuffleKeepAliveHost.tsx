@@ -62,6 +62,7 @@ import {
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
 import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
+import { presentExistingShuffleSnapshot } from "@/lib/navigation/shuffleForegroundRecover";
 import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
 import { isMainTabHref, type MainTabHref } from "@/lib/navigation/mainTabs";
 
@@ -569,6 +570,16 @@ export default function ShuffleKeepAliveHost() {
     if (path === "/shuffle" && isShuffleKeepAliveActive()) {
       if (isInternalMainTabToShuffleTransitionActive()) {
         return;
+      }
+
+      if (prev.startsWith("/u/") || isInstantShuffleReturnPending()) {
+        const hopRecovered = presentExistingShuffleSnapshot({
+          reason: "shuffle-profile-hop",
+        });
+        if (hopRecovered.presented) {
+          reconcileOrphanedShuffleHandoffDom();
+          return;
+        }
       }
 
       const warmHandoff = isValidWarmShuffleHandoffActive();

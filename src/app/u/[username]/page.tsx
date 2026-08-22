@@ -7,6 +7,7 @@ import {
   Heart,
   MessageCircle,
   Users,
+  ArrowLeft,
   CheckCircle2,
   X,
   ChevronLeft,
@@ -59,7 +60,12 @@ import {
   prepareProfileChat,
 } from "@/lib/chat/profileChatWarmup";
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
-import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import { prepareInstantShuffleReturn } from "@/lib/navigation/shuffleKeepAlive";
+import {
+  consumeProfileReturnTo,
+  peekProfileReturnTo,
+} from "@/lib/navigation/profileReturnNav";
 import { useAdaptiveUsernameFontSize } from "@/lib/profile/adaptiveUsernameSize";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
@@ -330,6 +336,15 @@ export default function PublicProfilePage() {
     setViewerOpen(false);
   }, []);
 
+  const handleProfileBack = useCallback(() => {
+    const returnTo = peekProfileReturnTo() || "/shuffle";
+    consumeProfileReturnTo();
+    if (returnTo === "/shuffle") {
+      prepareInstantShuffleReturn();
+    }
+    fastRouterReplace(router, returnTo);
+  }, [router]);
+
   useOverlayBackClose(
     viewerOpen,
     closeViewer,
@@ -541,6 +556,15 @@ export default function PublicProfilePage() {
         style={{ minHeight: profileUi.heroHeight }}
       >
         <div className="pointer-events-auto absolute left-8 top-[max(1rem,env(safe-area-inset-top))] z-[40] flex items-center gap-2 md:left-24 md:top-10">
+          <button
+            type="button"
+            data-profile-back="1"
+            onClick={handleProfileBack}
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-md"
+            aria-label="Shuffle"
+          >
+            <ArrowLeft size={20} />
+          </button>
           {isOwner && profile.uid ? (
             <RoleplayAppealFlagButton
               uid={profile.uid}

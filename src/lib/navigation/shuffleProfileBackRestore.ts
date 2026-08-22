@@ -15,6 +15,7 @@ export type ShuffleProfileBackState = {
   hostVisible: boolean;
   surfacePresented: boolean;
   snapshotRetained: boolean;
+  snapshotPainted: boolean;
   routeShellHidden: boolean;
   remounted: boolean;
 };
@@ -35,6 +36,7 @@ export function initialShuffleProfileBackState(): ShuffleProfileBackState {
     hostVisible: true,
     surfacePresented: true,
     snapshotRetained: true,
+    snapshotPainted: true,
     routeShellHidden: false,
     remounted: false,
   };
@@ -46,7 +48,8 @@ export function isShuffleProfileBackBlackFrame(state: ShuffleProfileBackState) {
     state.instantReturnPending ||
     state.revealFromArmed;
   if (!revealing) return false;
-  if (state.routeShellHidden && !state.hostVisible) return true;
+  if (state.routeShellHidden && (!state.hostVisible || state.hostFrozen)) return true;
+  if (state.routeShellHidden && !state.snapshotPainted) return true;
   if (state.path === "/shuffle" && !state.hostVisible) return true;
   if (state.hostFrozen && state.path === "/shuffle") return true;
   return false;
@@ -61,6 +64,7 @@ function beginProfileBack(state: ShuffleProfileBackState): ShuffleProfileBackSta
     hostVisible: true,
     surfacePresented: true,
     snapshotRetained: true,
+    snapshotPainted: true,
     remounted: false,
     routeShellHidden: false,
   };
@@ -81,6 +85,7 @@ export function reduceShuffleProfileBack(
       hostVisible: false,
       surfacePresented: true,
       snapshotRetained: true,
+      snapshotPainted: true,
       routeShellHidden: false,
       remounted: false,
     };
@@ -100,6 +105,7 @@ export function reduceShuffleProfileBack(
       hostVisible: true,
       surfacePresented: true,
       snapshotRetained: true,
+      snapshotPainted: true,
       remounted: false,
       routeShellHidden: false,
     };

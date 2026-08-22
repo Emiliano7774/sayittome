@@ -813,13 +813,33 @@ html.sayittome-shuffle-return-pending body {
   background: #000;
 }
 
-html.sayittome-shuffle-return-pending .sayittome-chat-shell,
-html.sayittome-shuffle-return-pending .sayittome-route-shell {
+/*
+ * P0: return-pending must NOT hide the route/chat shell unless Shuffle already
+ * owns a visible, unfrozen host. The older unconditional hide contradicted the
+ * :has(host visible) reveal guard and produced a dual-hidden black frame when
+ * the host was still frozen or EMPTY (profile back / resume).
+ * Never treat a blank #0b0b0b host as a successful paint.
+ */
+html.sayittome-shuffle-return-pending:has(
+    #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible:not(
+      .sayittome-shuffle-keepalive-frozen
+    )
+  )
+  .sayittome-chat-shell,
+html.sayittome-shuffle-return-pending:has(
+    #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible:not(
+      .sayittome-shuffle-keepalive-frozen
+    )
+  )
+  .sayittome-route-shell {
   visibility: hidden !important;
   pointer-events: none !important;
 }
 
-html.sayittome-shuffle-return-pending #sayittome-shuffle-keepalive-host {
+html.sayittome-shuffle-return-pending
+  #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible:not(
+    .sayittome-shuffle-keepalive-frozen
+  ) {
   position: fixed;
   inset: 0;
   z-index: 1;
@@ -827,6 +847,8 @@ html.sayittome-shuffle-return-pending #sayittome-shuffle-keepalive-host {
   overflow: hidden;
   overscroll-behavior: none;
   contain: none;
+  visibility: visible;
+  opacity: 1;
 }
 
 .sayittome-chat-shell {
