@@ -1,7 +1,7 @@
 "use client";
 
 import { Globe2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 
@@ -23,11 +23,7 @@ export default function ModernAnonConnectCard() {
   const { firebaseUser, loading } = useAuth();
   const t = useT();
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
-  const [incognitoMode, setIncognitoMode] = useState(false);
-
-  useEffect(() => {
-    setIncognitoMode(hasAnonLegalAcceptance());
-  }, []);
+  const [incognitoMode] = useState(() => hasAnonLegalAcceptance());
 
   // Hooks must run unconditionally. Early returns used to skip these and crash
   // modern Shuffle ("Rendered more hooks than during the previous render") once
@@ -74,7 +70,11 @@ export default function ModernAnonConnectCard() {
 
   return (
     <>
-      <section className={shellClass}>
+      <section
+        className={shellClass}
+        data-shuffle-anon-incognito={isIncognitoVisitor ? "1" : "0"}
+        style={isIncognitoVisitor ? { minHeight: 168 } : undefined}
+      >
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="text-sm font-black tracking-[0.18em] text-violet-200/80">{sectionLabel}</p>
           {isIncognitoVisitor ? (

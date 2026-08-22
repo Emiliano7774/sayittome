@@ -10,6 +10,11 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { auth } from "@/lib/firebase";
 import { parseReportCreatedAtMs } from "@/lib/admin/reportSort";
 import ChatNotificationSetting from "@/components/chat/ChatNotificationSetting";
+import {
+  fitAnchoredMenu,
+  readBottomUiReserve,
+  readVisualViewportBox,
+} from "@/lib/overlay/fitAnchoredMenu";
 
 type ClaimHistoryRow = {
   id: string;
@@ -43,7 +48,12 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
   const [claims, setClaims] = useState<ClaimHistoryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [menuPos, setMenuPos] = useState({ top: 0, right: 16 });
+  const [menuPos, setMenuPos] = useState({
+    top: 0,
+    right: 16,
+    maxHeight: 240,
+    overflowY: "auto" as "auto" | "visible",
+  });
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -72,11 +82,38 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
 
   useLayoutEffect(() => {
     if (!menuOpen || !buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
-    setMenuPos({
-      top: rect.bottom + 8,
-      right: Math.max(12, window.innerWidth - rect.right),
-    });
+
+    const syncMenu = () => {
+      if (!buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      const fitted = fitAnchoredMenu({
+        anchor: rect,
+        viewport: readVisualViewportBox(window),
+        menuWidth: 288,
+        estimatedHeight: 128,
+        padding: 8,
+        bottomReserve: readBottomUiReserve(document),
+      });
+      setMenuPos({
+        top: fitted.top,
+        right: fitted.right,
+        maxHeight: fitted.maxHeight,
+        overflowY: fitted.overflowY,
+      });
+    };
+
+    syncMenu();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", syncMenu);
+    viewport?.addEventListener("scroll", syncMenu);
+    window.addEventListener("resize", syncMenu);
+    window.addEventListener("orientationchange", syncMenu);
+    return () => {
+      viewport?.removeEventListener("resize", syncMenu);
+      viewport?.removeEventListener("scroll", syncMenu);
+      window.removeEventListener("resize", syncMenu);
+      window.removeEventListener("orientationchange", syncMenu);
+    };
   }, [menuOpen]);
 
   useEffect(() => {
@@ -165,8 +202,13 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
           ? createPortal(
               <div
                 data-profile-options-dropdown="1"
-                className="fixed z-[1000001] w-72 overflow-hidden rounded-2xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
-                style={{ top: menuPos.top, right: menuPos.right }}
+                className="fixed z-[1000001] w-72 rounded-2xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
+                style={{
+                  top: menuPos.top,
+                  right: menuPos.right,
+                  maxHeight: menuPos.maxHeight,
+                  overflowY: menuPos.overflowY,
+                }}
               >
                 <button
                   type="button"

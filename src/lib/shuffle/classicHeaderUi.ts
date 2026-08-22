@@ -94,6 +94,7 @@ export type ClassicShuffleHeaderUi = {
   followingBodyPx: number;
   followingSlotPx: number;
   anonSlotPx: number;
+  anonIncognitoSlotPx: number;
 };
 
 function linePx(size: number) {
@@ -127,6 +128,20 @@ export function classicAnonInnerPx(ui: {
   );
 }
 
+/** Incognito title + wrapping body + connect title + CTA. Reserves layout, no overlay. */
+export function classicAnonIncognitoInnerPx(ui: {
+  anonTitlePx: number;
+  anonBodyPx: number;
+  anonBtnPx: number;
+  anonBtnPadYPx: number;
+  filterMtPx: number;
+}) {
+  const title = linePx(ui.anonTitlePx);
+  const body = linePx(ui.anonBodyPx) * 3;
+  const btn = ui.anonBtnPadYPx * 2 + linePx(ui.anonBtnPx);
+  return title + 6 + body + ui.filterMtPx + title + 6 + btn;
+}
+
 export function getClassicShuffleHeaderUi(
   density: ClassicShuffleDensity,
 ): ClassicShuffleHeaderUi {
@@ -154,16 +169,22 @@ export function getClassicShuffleHeaderUi(
   );
   const followingSlotPx =
     followingPbPx + 1 + classicFollowingInnerPx({ followingLabelPx, followingBodyPx });
-  const anonSlotPx =
-    anonPtPx +
-    1 +
-    classicAnonInnerPx({
-      anonTitlePx,
-      anonBodyPx,
-      anonBtnPx,
-      anonBtnPadYPx,
-      filterMtPx,
-    });
+  const anonInner = classicAnonInnerPx({
+    anonTitlePx,
+    anonBodyPx,
+    anonBtnPx,
+    anonBtnPadYPx,
+    filterMtPx,
+  });
+  const anonIncognitoInner = classicAnonIncognitoInnerPx({
+    anonTitlePx,
+    anonBodyPx,
+    anonBtnPx,
+    anonBtnPadYPx,
+    filterMtPx,
+  });
+  const anonSlotPx = anonPtPx + 1 + anonInner;
+  const anonIncognitoSlotPx = anonPtPx + 1 + anonIncognitoInner;
 
   return {
     scale,
@@ -209,5 +230,6 @@ export function getClassicShuffleHeaderUi(
     followingBodyPx,
     followingSlotPx,
     anonSlotPx,
+    anonIncognitoSlotPx,
   };
 }

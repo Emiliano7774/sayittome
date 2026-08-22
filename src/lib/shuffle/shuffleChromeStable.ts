@@ -92,6 +92,7 @@ export function classicFollowingSlotStyles(
 export function classicAnonSlotStyles(
   ui: ClassicShuffleHeaderUi,
   occupy: boolean,
+  options?: { incognito?: boolean },
 ): ShuffleChromeSlotBox {
   if (!occupy) {
     return {
@@ -106,13 +107,14 @@ export function classicAnonSlotStyles(
       borderBottomWidth: 0,
     };
   }
+  const slotPx = options?.incognito ? ui.anonIncognitoSlotPx : ui.anonSlotPx;
   return {
     marginTop: ui.anonMtPx,
     marginBottom: ui.anonMbPx,
     paddingTop: ui.anonPtPx,
     paddingBottom: 0,
-    minHeight: ui.anonSlotPx,
-    height: ui.anonSlotPx,
+    minHeight: slotPx,
+    height: slotPx,
     overflow: "hidden",
     borderTopWidth: 1,
     borderBottomWidth: 0,
@@ -263,7 +265,9 @@ export function decideAnonCardChrome(input: {
       return {
         visibility: "show",
         hiddenForActiveChat: false,
-        isIncognitoVisitor: Boolean(cached.isIncognitoVisitor),
+        isIncognitoVisitor: Boolean(
+          input.isIncognitoVisitor || cached.isIncognitoVisitor,
+        ),
         isProfileUser: Boolean(cached.isProfileUser),
         searching: Boolean(cached.searching),
         uid,
@@ -273,7 +277,9 @@ export function decideAnonCardChrome(input: {
     return {
       visibility: "reserved",
       hiddenForActiveChat: false,
-      isIncognitoVisitor: Boolean(cached?.isIncognitoVisitor),
+      isIncognitoVisitor: Boolean(
+        input.isIncognitoVisitor || cached?.isIncognitoVisitor,
+      ),
       isProfileUser: Boolean(cached?.isProfileUser || uid),
       searching: Boolean(cached?.searching),
       uid,
@@ -292,34 +298,53 @@ export function decideAnonCardChrome(input: {
   };
 }
 
+export function resolveAnonReservePx(input: {
+  density: ClassicShuffleDensity;
+  incognito: boolean;
+}) {
+  const ui = getClassicShuffleHeaderUi(input.density);
+  return input.incognito ? ui.anonIncognitoSlotPx : ui.anonSlotPx;
+}
+
 export function commitAnonSlotHeight(input: {
   previousPx: number | null;
   density: ClassicShuffleDensity;
   authPending: boolean;
   visibility: AnonCardChromeDecision["visibility"];
   hiddenForActiveChat: boolean;
+  incognito?: boolean;
 }) {
+  const reservedPx = resolveAnonReservePx({
+    density: input.density,
+    incognito: Boolean(input.incognito),
+  });
   if (input.previousPx != null) return input.previousPx;
-  const ui = getClassicShuffleHeaderUi(input.density);
   if (input.visibility === "show" || input.visibility === "reserved") {
-    return ui.anonSlotPx;
+    return reservedPx;
   }
   if (input.hiddenForActiveChat) return 0;
-  if (input.authPending) return ui.anonSlotPx;
+  if (input.authPending) return reservedPx;
   return 0;
 }
 
 export function committedShuffleChromeLayout(input: {
   density: ClassicShuffleDensity;
   anonOccupy: boolean;
+  incognito?: boolean;
 }): ShuffleChromeLayout {
   const ui = getClassicShuffleHeaderUi(input.density);
   const following = measureSlotBox(classicFollowingSlotStyles(ui));
-  const anon = measureSlotBox(classicAnonSlotStyles(ui, input.anonOccupy));
+  const anon = measureSlotBox(
+    classicAnonSlotStyles(ui, input.anonOccupy, { incognito: input.incognito }),
+  );
   return {
     followingSlotPx: ui.followingSlotPx,
     followingBodyPx: ui.followingBodyPx,
-    anonSlotPx: input.anonOccupy ? ui.anonSlotPx : 0,
+    anonSlotPx: input.anonOccupy
+      ? input.incognito
+        ? ui.anonIncognitoSlotPx
+        : ui.anonSlotPx
+      : 0,
     feedOffsetPx: following.layoutPx + anon.layoutPx,
   };
 }
@@ -347,11 +372,16 @@ export function createShuffleChromeMount(density: ClassicShuffleDensity) {
         authPending: input.authPending,
         visibility: input.anon.visibility,
         hiddenForActiveChat: input.anon.hiddenForActiveChat,
+        incognito: input.anon.isIncognitoVisitor,
       });
       previousAnonPx = committedPx;
       const occupy = committedPx > 0;
       const following = measureSlotBox(classicFollowingSlotStyles(ui));
-      const anon = measureSlotBox(classicAnonSlotStyles(ui, occupy));
+      const anon = measureSlotBox(
+        classicAnonSlotStyles(ui, occupy, {
+          incognito: input.anon.isIncognitoVisitor,
+        }),
+      );
       return {
         following,
         anon,

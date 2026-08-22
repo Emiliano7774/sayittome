@@ -55,7 +55,7 @@ export default function ClassicAnonConnectCard() {
   const cached = uid ? readCachedAnonCardSnapshot(uid) : null;
   const isProfileUser = authPending ? Boolean(cached?.isProfileUser || uid) : Boolean(uid);
   const isIncognitoVisitor = authPending
-    ? Boolean(cached?.isIncognitoVisitor)
+    ? Boolean(cached?.isIncognitoVisitor || (incognitoMode && !isProfileUser))
     : incognitoMode && !isProfileUser;
   const searching = authPending
     ? Boolean(cached?.searching)
@@ -75,12 +75,15 @@ export default function ClassicAnonConnectCard() {
     authPending,
     visibility: decision.visibility,
     hiddenForActiveChat: decision.hiddenForActiveChat,
+    incognito: isIncognitoVisitor,
   });
   if (anonCommitPx !== committedPx) {
     setAnonCommitPx(committedPx);
   }
   const occupy = committedPx > 0;
-  const slotBox = classicAnonSlotStyles(ui, occupy);
+  const slotBox = classicAnonSlotStyles(ui, occupy, {
+    incognito: isIncognitoVisitor,
+  });
 
   useEffect(() => {
     if (authPending) return;
@@ -135,6 +138,7 @@ export default function ClassicAnonConnectCard() {
         style={slotStyle}
         data-shuffle-anon-slot="1"
         data-shuffle-anon-state={decision.visibility}
+        data-shuffle-anon-incognito={isIncognitoVisitor ? "1" : "0"}
         data-shuffle-anon-commit={String(committedPx)}
         aria-hidden
       >
@@ -167,6 +171,7 @@ export default function ClassicAnonConnectCard() {
         style={slotStyle}
         data-shuffle-anon-slot="1"
         data-shuffle-anon-state="show"
+        data-shuffle-anon-incognito={isIncognitoVisitor ? "1" : "0"}
         data-shuffle-anon-commit={String(committedPx)}
       >
         {decision.isIncognitoVisitor ? (
