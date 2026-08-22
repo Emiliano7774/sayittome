@@ -10,11 +10,11 @@ export default function ModernShuffleGrid() {
       mode="modern"
       variant="grid"
       className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-3"
-      renderProfile={(profile, feedIndex) => {
+      renderProfile={(profile, profileIndex) => {
         const identity =
           shuffleProfileIdentityKey(profile) || `${profile.uid}-${profile.username}`;
         return (
-          <ModernShuffleCard key={identity} profile={profile} feedIndex={feedIndex} />
+          <ModernShuffleCard key={identity} profile={profile} feedIndex={profileIndex} />
         );
       }}
     />

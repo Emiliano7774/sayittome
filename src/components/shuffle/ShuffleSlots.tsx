@@ -11,10 +11,10 @@ function ShuffleSlots() {
     <ShuffleFeedWithNativeAds
       mode="classic"
       variant="list"
-      renderProfile={(profile, feedIndex) => {
+      renderProfile={(profile, profileIndex) => {
         const identity =
           shuffleProfileIdentityKey(profile) || `${profile.uid}-${profile.username}`;
-        return <ClassicShuffleProfileRow key={identity} profile={profile} feedIndex={feedIndex} />;
+        return <ClassicShuffleProfileRow key={identity} profile={profile} feedIndex={profileIndex} />;
       }}
     />
   );
