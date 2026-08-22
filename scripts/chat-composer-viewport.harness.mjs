@@ -30,9 +30,25 @@ assert.ok(webChrome.composerPadPx <= composer.WEB_COMPOSER_PAD_CAP);
 assert.ok(webChrome.composerPadPx < 80, "reduced vv must not produce 178 double-clip pad");
 assert.notEqual(webChrome.composerPadPx, 178);
 assert.equal(webChrome.composerPadPx, 34);
+assert.equal(webChrome.overlayInsetPx, 34);
 assert.equal(webChrome.doubleNativeSafeArea, false);
 assert.equal(composer.isComposerWithinVisibleViewport(webChrome), true);
-assert.ok(webChrome.composerBottom <= webChrome.visibleBottom);
+assert.equal(composer.isComposerControlsTouchable(webChrome), true);
+assert.ok(webChrome.controlRowBottom <= webChrome.visibleBottom - webChrome.overlayInsetPx);
+
+const unclipped = composer.computeChatComposerViewport({
+  innerHeight: 844,
+  visualViewport: { height: 844, offsetTop: 0 },
+  safeAreaBottom: 0,
+  isNativeShell: false,
+});
+assert.equal(unclipped.chromeBottomPx, 0);
+assert.ok(
+  unclipped.composerPadPx >= composer.WEB_OVERLAY_FLOOR_PX,
+  "published pad=12 leaves controls under the phone edge when vv does not shrink",
+);
+assert.equal(composer.isComposerControlsTouchable(unclipped), true);
+assert.ok(unclipped.controlRowBottom <= unclipped.visibleBottom - unclipped.overlayInsetPx);
 
 const keyboard = composer.computeChatComposerViewport({
   innerHeight: 844,

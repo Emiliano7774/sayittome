@@ -105,6 +105,11 @@ import {
   shouldSuppressShuffleWindowRefresh,
 } from "@/lib/navigation/shuffleKeepAlive";
 import { isShuffleRevealDeferred } from "@/lib/navigation/shuffleHandoffState";
+import {
+  captureShuffleViewportSnapshot,
+  restoreShuffleViewportSnapshot,
+  shouldPreserveShuffleWindowOnRestore,
+} from "@/lib/navigation/shuffleViewportSnapshot";
 
 function readInitialShuffleState() {
   // SSR and the first client render must be identical. Browser cache/store
@@ -947,6 +952,9 @@ export function useShufflePool() {
         fastRouterPush(router, `/stories/${encodeURIComponent(ownerUid || username)}`);
       } else if (action === "profile") {
         stashProfileReturnTo("/shuffle");
+        captureShuffleViewportSnapshot({
+          cardId: username,
+        });
         fastRouterPush(router, `/u/${encodeURIComponent(username)}`);
       } else if (action === "chat") {
         const senderId = getChatAnonSenderId();
@@ -976,12 +984,19 @@ export function useShufflePool() {
     const cachedProfiles = readCachedShufflePool();
     const cachedStats = readCachedShuffleStats();
     const visible = getVisibleShuffleProfiles();
+    const preserve = shouldPreserveShuffleWindowOnRestore({
+      suppressRefresh: shouldSuppressShuffleWindowRefresh(),
+      pinnedCount: peekPinnedShuffleWindowCount(),
+      visibleCount: visible.length,
+    });
     if (cachedProfiles?.length) {
       applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
-      if (visible.length === 0) {
+      if (visible.length === 0 && !preserve) {
         filterActivePool("", storedFilters, { forceWindow: true });
       } else {
-        markShuffleHydrated(visible.length);
+        if (visible.length === 0) restorePinnedShuffleWindowSync();
+        restoreShuffleViewportSnapshot();
+        markShuffleHydrated(Math.max(visible.length, peekPinnedShuffleWindowCount()));
       }
     } else if (visible.length > 0 || peekPinnedShuffleWindowCount() >= 3) {
       restorePinnedShuffleWindowSync();
@@ -1020,10 +1035,18 @@ export function useShufflePool() {
     if (cachedProfiles?.length) {
       applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
       const visible = getVisibleShuffleProfiles();
-      if (visible.length === 0) {
+      const preserve = shouldPreserveShuffleWindowOnRestore({
+        suppressRefresh: shouldSuppressShuffleWindowRefresh(),
+        pinnedCount: peekPinnedShuffleWindowCount(),
+        visibleCount: visible.length,
+      });
+      if (visible.length === 0 && !preserve) {
         // Cold entry: deal a fresh random 35 and reset batch memory.
         clearBatchMemory();
         filterActivePool("", filtersRef.current, { forceWindow: true });
+      } else if (visible.length === 0 && preserve) {
+        restorePinnedShuffleWindowSync();
+        restoreShuffleViewportSnapshot();
       } else if (recentBatchKeysQueueRef.current.length === 0) {
         // Warm/pinned or cache-restore already painted — seed memory, don't reshuffle.
         rememberBatchMemory(visible, { resetBatchMemory: true });
@@ -1099,8 +1122,16 @@ export function useShufflePool() {
       const warmedStats = readCachedShuffleStats();
       if (!warmed?.length) return;
       applyPool(warmed, warmedStats?.totalLive || warmed.length);
-      if (!shuffleFeedFrozenRef.current) {
+      const preserve = shouldPreserveShuffleWindowOnRestore({
+        suppressRefresh: shouldSuppressShuffleWindowRefresh(),
+        pinnedCount: peekPinnedShuffleWindowCount(),
+        visibleCount: getVisibleShuffleProfiles().length,
+      });
+      if (!shuffleFeedFrozenRef.current && !preserve) {
         filterActivePool(searchRef.current.trim(), filtersRef.current, { forceWindow: true });
+      } else if (preserve) {
+        restorePinnedShuffleWindowSync();
+        restoreShuffleViewportSnapshot();
       }
       setLoading(false);
       setListReady(true);

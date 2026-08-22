@@ -15,6 +15,11 @@ import {
   readBottomUiReserve,
   readVisualViewportBox,
 } from "@/lib/overlay/fitAnchoredMenu";
+import {
+  measureMenuBox,
+  unlockDocumentFixedClip,
+} from "@/lib/overlay/menuClipAudit";
+import { resolveProfileOptionsMenuPortalRoot } from "@/lib/overlay/profileOptionsMenuPortal";
 
 type ClaimHistoryRow = {
   id: string;
@@ -90,13 +95,19 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
     const syncMenu = () => {
       if (!buttonRef.current) return;
       const rect = buttonRef.current.getBoundingClientRect();
-      const measured = dropdownRef.current?.getBoundingClientRect().height ?? 0;
+      const dropdown = dropdownRef.current;
+      const box = measureMenuBox({
+        scrollHeight: dropdown?.scrollHeight ?? 0,
+        clientHeight: dropdown?.clientHeight ?? 0,
+        boundingHeight: dropdown?.getBoundingClientRect().height ?? 0,
+      });
+      const measured = Math.max(box.intrinsicHeight, box.visibleHeight, 0);
       const fitted = fitAnchoredMenu({
         anchor: rect,
         viewport: readVisualViewportBox(window),
-        menuWidth: dropdownRef.current?.offsetWidth || 288,
+        menuWidth: dropdown?.offsetWidth || 288,
         estimatedHeight: measured || 128,
-        measuredHeight: measured,
+        measuredHeight: measured || 128,
         minVisibleCount: 2,
         itemHeight: 48,
         padding: 8,
@@ -110,6 +121,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
       });
     };
 
+    const unlock = unlockDocumentFixedClip(document);
     syncMenu();
     requestAnimationFrame(syncMenu);
     const viewport = window.visualViewport;
@@ -122,6 +134,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
       viewport?.removeEventListener("scroll", syncMenu);
       window.removeEventListener("resize", syncMenu);
       window.removeEventListener("orientationchange", syncMenu);
+      unlock();
     };
   }, [menuOpen]);
 
@@ -243,7 +256,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
                   {t("claim_history_menu")}
                 </button>
               </div>,
-              document.body,
+              resolveProfileOptionsMenuPortalRoot(document) || document.body,
             )
           : null}
       </div>

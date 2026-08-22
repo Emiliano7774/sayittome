@@ -9,7 +9,7 @@ body {
   background: #000;
   color: white;
   font-family: Arial, Helvetica, sans-serif;
-  overflow-x: hidden;
+  overflow-x: clip;
   min-height: 100dvh;
   -webkit-tap-highlight-color: transparent;
   text-size-adjust: 100%;
@@ -869,11 +869,17 @@ html.sayittome-shuffle-return-pending
 
 .sayittome-chat-composer {
   flex-shrink: 0;
-  padding-bottom: var(--sayittome-chat-composer-pad, 0.75rem);
+  padding-bottom: max(
+    var(--sayittome-chat-composer-pad, 12px),
+    env(safe-area-inset-bottom, 0px)
+  );
 }
 
 body.sayittome-native-shell .sayittome-chat-composer {
-  padding-bottom: var(--sayittome-chat-composer-pad, 0.75rem);
+  padding-bottom: max(
+    var(--sayittome-chat-composer-pad, 12px),
+    env(safe-area-inset-bottom, 0px)
+  );
 }
 
 .sayittome-chat-composer--preview {

@@ -13,8 +13,10 @@ import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useProfilePrefetchIntent } from "@/hooks/useProfilePrefetchIntent";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
+import { findShuffleKeepAliveScrollRoot } from "@/lib/navigation/shuffleFeedScroll";
 import { captureShuffleViewportSnapshot } from "@/lib/navigation/shuffleViewportSnapshot";
 import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
+import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -44,8 +46,16 @@ function ModernShuffleCard({
   function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
     stashProfileReturnTo("/shuffle");
+    const cardId = shuffleProfileIdentityKey(profile) || profile.username;
+    const root = findShuffleKeepAliveScrollRoot();
+    const liveScroll = root && root.scrollTop > 0 ? root.scrollTop : undefined;
     captureShuffleViewportSnapshot({
-      cardId: shuffleProfileIdentityKey(profile) || profile.username,
+      cardId,
+      index: feedIndex,
+      scrollTop: liveScroll,
+      cardIds: getVisibleShuffleProfiles()
+        .map((row) => shuffleProfileIdentityKey(row) || row.username)
+        .filter(Boolean),
     });
     fastRouterPush(router, href);
   }

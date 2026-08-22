@@ -25,10 +25,14 @@ export type ChatComposerViewportResult = {
   doubleNativeSafeArea: false;
   visibleBottom: number;
   composerBottom: number;
+  overlayInsetPx: number;
+  controlRowBottom: number;
 };
 
 /** Safe-area overlay still inside the visual viewport. Chrome already clipped by vv must not be added again. */
 export const WEB_COMPOSER_PAD_CAP = 48;
+/** Home indicator / gesture bar when visualViewport does not shrink (mobile web overlay). */
+export const WEB_OVERLAY_FLOOR_PX = 34;
 
 export function isChatKeyboardOpen(input: {
   innerHeight: number;
@@ -45,6 +49,21 @@ export function readBrowserChromeBottom(input: {
   const viewport = input.visualViewport;
   if (!viewport) return 0;
   return Math.max(0, Math.round(input.innerHeight - viewport.height - viewport.offsetTop));
+}
+
+export function readComposerOverlayInset(input: {
+  chromeBottomPx: number;
+  safeAreaBottom: number;
+  keyboardOpen: boolean;
+  isNativeShell: boolean;
+}) {
+  if (input.isNativeShell || input.keyboardOpen) return 0;
+  const safe = Math.max(0, Math.round(input.safeAreaBottom));
+  // vv already reduced: chrome sits outside the shell. Only lift for safe-area
+  // still inside that box. Unclipped vv (≈ innerHeight): home/chrome overlays
+  // the shell and must be reserved.
+  if (input.chromeBottomPx > 8) return safe;
+  return Math.max(WEB_OVERLAY_FLOOR_PX, safe);
 }
 
 export function computeChatComposerViewport(
@@ -64,17 +83,22 @@ export function computeChatComposerViewport(
       visualViewportHeight: viewport?.height,
     });
 
-  // Shell is already sized to visualViewport.height. Chrome outside that box
-  // (innerHeight - vv.height - offsetTop) is already clipped — do not add it again.
+  const overlayInsetPx = readComposerOverlayInset({
+    chromeBottomPx,
+    safeAreaBottom: input.safeAreaBottom,
+    keyboardOpen,
+    isNativeShell: input.isNativeShell,
+  });
+
   let composerPadPx = 12;
   if (input.isNativeShell || keyboardOpen) {
     composerPadPx = 12;
   } else {
-    const overlayInsideVv = Math.max(0, Math.round(input.safeAreaBottom));
-    composerPadPx = Math.max(12, Math.min(WEB_COMPOSER_PAD_CAP, overlayInsideVv));
+    composerPadPx = Math.max(12, Math.min(WEB_COMPOSER_PAD_CAP, overlayInsetPx));
   }
 
   const visibleBottom = shellOffsetTop + shellHeight;
+  const controlRowBottom = visibleBottom - composerPadPx;
   return {
     shellHeight,
     shellOffsetTop,
@@ -83,12 +107,21 @@ export function computeChatComposerViewport(
     keyboardOpen,
     doubleNativeSafeArea: false,
     visibleBottom,
-    composerBottom: visibleBottom,
+    composerBottom: controlRowBottom,
+    overlayInsetPx,
+    controlRowBottom,
   };
 }
 
 export function isComposerWithinVisibleViewport(inset: ChatComposerViewportResult) {
-  return inset.composerBottom <= inset.visibleBottom;
+  return inset.controlRowBottom <= inset.visibleBottom - inset.overlayInsetPx + 0.5;
+}
+
+export function isComposerControlsTouchable(inset: ChatComposerViewportResult) {
+  return (
+    inset.composerPadPx >= inset.overlayInsetPx &&
+    isComposerWithinVisibleViewport(inset)
+  );
 }
 
 export function applyChatComposerViewportVars(

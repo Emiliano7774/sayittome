@@ -5,6 +5,7 @@
  */
 
 import {
+  captureShuffleFeedScroll,
   findShuffleKeepAliveScrollRoot,
   peekShuffleFeedScroll,
 } from "@/lib/navigation/shuffleFeedScroll";
@@ -135,7 +136,20 @@ export function hasUsableShuffleViewportSnapshot() {
   return isUsableShuffleViewportSnapshot(peekShuffleViewportSnapshot());
 }
 
+/** Remount / pool-warm must not deal a new window over a captured mid-feed snapshot. */
+export function shouldPreserveShuffleWindowOnRestore(input: {
+  suppressRefresh: boolean;
+  pinnedCount: number;
+  visibleCount: number;
+}) {
+  if (input.suppressRefresh) return true;
+  if (hasUsableShuffleViewportSnapshot()) return true;
+  if (input.pinnedCount >= 3 && input.visibleCount > 0) return true;
+  return false;
+}
+
 function persist(snapshot: ShuffleViewportSnapshot | null) {
+  cancelShuffleViewportSnapshotRestore();
   ram = snapshot
     ? {
         ...snapshot,
@@ -285,24 +299,130 @@ export function captureShuffleViewportSnapshot(input?: {
   }
 
   persist(next);
+  captureShuffleFeedScroll(next.scrollTop);
   return next;
+}
+
+export const SHUFFLE_SCROLL_RESTORE_TOLERANCE_PX = 4;
+
+let restoreRetryGeneration = 0;
+
+export function cancelShuffleViewportSnapshotRestore() {
+  restoreRetryGeneration += 1;
+}
+
+export function peekShuffleViewportRestoreGeneration() {
+  return restoreRetryGeneration;
+}
+
+export function isShuffleScrollRestoreExact(
+  actual: number,
+  target: number,
+  tolerance = SHUFFLE_SCROLL_RESTORE_TOLERANCE_PX,
+) {
+  return Math.abs(Number(actual) - Number(target)) <= tolerance;
+}
+
+export function isShuffleScrollRestoreClampedByHeight(input: {
+  actual: number;
+  target: number;
+  scrollHeight?: number;
+  clientHeight?: number;
+}) {
+  const maxScroll = Math.max(
+    0,
+    Number(input.scrollHeight || 0) - Number(input.clientHeight || 0),
+  );
+  return (
+    input.target > maxScroll + SHUFFLE_SCROLL_RESTORE_TOLERANCE_PX &&
+    input.actual <= maxScroll + SHUFFLE_SCROLL_RESTORE_TOLERANCE_PX
+  );
+}
+
+export function isShuffleTargetCardAnchored(input: {
+  cardId: string;
+  scrollTop: number;
+  viewportHeight?: number;
+  nodes?: Array<{
+    offsetTop?: number;
+    offsetHeight?: number;
+    getAttribute?: (name: string) => string | null;
+  }>;
+}) {
+  if (!input.cardId || !input.nodes?.length) return false;
+  const viewportHeight = Math.max(1, Number(input.viewportHeight || 0));
+  const viewTop = input.scrollTop;
+  const viewBottom = viewTop + viewportHeight;
+  return input.nodes.some((node) => {
+    const id = String(node.getAttribute?.("data-card-id") || "");
+    if (id !== input.cardId) return false;
+    const top = Number(node.offsetTop || 0);
+    const bottom = top + Number(node.offsetHeight || 0);
+    return bottom > viewTop + 8 && top < viewBottom - 8;
+  });
+}
+
+export function isShuffleRestoreApplySuccess(input: {
+  actual: number;
+  target: number;
+  scrollHeight?: number;
+  clientHeight?: number;
+  targetCardVisible?: boolean;
+}) {
+  // Captured scroll is the authority. A merely visible card can sit hundreds
+  // of px off the previous position and must not end retries.
+  void input.scrollHeight;
+  void input.clientHeight;
+  void input.targetCardVisible;
+  return isShuffleScrollRestoreExact(input.actual, input.target);
+}
+
+function defaultApplyShuffleRestoreScroll(target: number) {
+  const root = findShuffleKeepAliveScrollRoot();
+  if (!root) return false;
+  root.scrollTop = target;
+  return isShuffleRestoreApplySuccess({
+    actual: Number(root.scrollTop || 0),
+    target,
+    scrollHeight: Number(root.scrollHeight || 0),
+    clientHeight: Number(root.clientHeight || 0),
+  });
 }
 
 export function restoreShuffleViewportSnapshot(options?: {
   applyScroll?: (scrollTop: number) => boolean;
+  attempts?: number;
+  schedule?: (cb: () => void) => void;
 }) {
   const snapshot = peekShuffleViewportSnapshot();
   if (!isUsableShuffleViewportSnapshot(snapshot)) return null;
 
+  const token = ++restoreRetryGeneration;
   const apply =
     options?.applyScroll ??
-    ((scrollTop: number) => {
-      const root = findShuffleKeepAliveScrollRoot();
-      if (!root) return false;
-      root.scrollTop = scrollTop;
-      return root.scrollTop === scrollTop || root.scrollTop > 0;
+    ((scrollTop: number) => defaultApplyShuffleRestoreScroll(scrollTop));
+
+  if (apply(snapshot.scrollTop)) return snapshot;
+
+  const maxAttempts = Math.max(1, Math.min(options?.attempts ?? 8, 12));
+  const schedule =
+    options?.schedule ??
+    ((cb: () => void) => {
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(cb);
+        return;
+      }
+      setTimeout(cb, 0);
     });
-  apply(snapshot.scrollTop);
+  let attempt = 1;
+  const tick = () => {
+    if (token !== restoreRetryGeneration) return;
+    if (apply(snapshot.scrollTop)) return;
+    if (attempt >= maxAttempts) return;
+    attempt += 1;
+    schedule(tick);
+  };
+  schedule(tick);
   return snapshot;
 }
 
