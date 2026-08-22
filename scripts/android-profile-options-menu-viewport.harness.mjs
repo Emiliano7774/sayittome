@@ -1,12 +1,14 @@
 /**
  * ANDROID_PROFILE_OPTIONS_MENU_VIEWPORT
- * Real /u/[username] menu (ProfileClaimHistoryMenu) is measured, then
- * fitted to a 390×700 visualViewport with two actions visible.
+ * Real DOM (Playwright) of the owner ⋮ menu in a native WebView shell.
+ * Published anchored dropdown (top:-9999 / clipped) must fail.
+ * Mobile sheet must keep both actions intact above bottom nav + chrome.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { chromium } from "playwright";
 
 import { installHarnessAlias, installHarnessWindow } from "./harness-alias.mjs";
 
@@ -14,141 +16,373 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 installHarnessWindow();
 installHarnessAlias(root);
 
-const pageSrc = fs.readFileSync(
+const classicSrc = fs.readFileSync(
   path.join(root, "src/app/u/[username]/page.tsx"),
+  "utf8",
+);
+const modernSrc = fs.readFileSync(
+  path.join(root, "src/components/modern/ModernPublicProfile.tsx"),
+  "utf8",
+);
+const settingsSrc = fs.readFileSync(
+  path.join(root, "src/app/settings/page.tsx"),
   "utf8",
 );
 const menuSrc = fs.readFileSync(
   path.join(root, "src/components/profile/ProfileClaimHistoryMenu.tsx"),
   "utf8",
 );
-assert.match(pageSrc, /ProfileClaimHistoryMenu/);
-const portal = await import(
-  pathToFileURL(path.join(root, "src/lib/overlay/profileOptionsMenuPortal.ts")).href
-);
-const portalBody = { nodeType: 1, name: "body" };
-assert.equal(portal.resolveProfileOptionsMenuPortalRoot({ body: portalBody }), portalBody);
-assert.equal(portal.resolveProfileOptionsMenuPortalRoot(null), null);
-assert.match(menuSrc, /resolveProfileOptionsMenuPortalRoot/);
-assert.match(menuSrc, /measuredHeight/);
-assert.match(menuSrc, /dropdownRef/);
-assert.match(menuSrc, /measureMenuBox/);
-assert.match(menuSrc, /unlockDocumentFixedClip/);
-assert.match(menuSrc, /visibility: menuPos \? "visible" : "hidden"/);
-assert.match(
-  fs.readFileSync(path.join(root, "src/app/globals.css"), "utf8"),
-  /overflow-x:\s*clip/,
-);
-assert.doesNotMatch(menuSrc, /top:\s*0,\s*\n\s*right:\s*16/);
-
-const fit = await import(
-  pathToFileURL(path.join(root, "src/lib/overlay/fitAnchoredMenu.ts")).href
+const backSrc = fs.readFileSync(
+  path.join(root, "src/lib/navigation/nativeBack.ts"),
+  "utf8",
 );
 
-const ACTION = 48;
-const TWO_ACTIONS = ACTION * 2 + 16;
-
-const short = fit.fitAnchoredMenu({
-  anchor: { top: 48, bottom: 92, left: 280, right: 360, width: 80, height: 44 },
-  viewport: { offsetTop: 0, offsetLeft: 0, width: 390, height: 700 },
-  menuWidth: 288,
-  estimatedHeight: TWO_ACTIONS,
-  measuredHeight: TWO_ACTIONS,
-  minVisibleCount: 2,
-  itemHeight: ACTION,
-  padding: 8,
-  bottomReserve: 90,
-});
-assert.equal(short.placement, "below");
-assert.ok(short.maxHeight >= TWO_ACTIONS);
-assert.equal(short.overflowY, "visible");
-assert.ok(short.top >= 92);
-assert.ok(short.top + TWO_ACTIONS <= 700 - 90);
-
-const cramped = fit.fitAnchoredMenu({
-  anchor: { top: 620, bottom: 664, left: 280, right: 360, width: 80, height: 44 },
-  viewport: { offsetTop: 0, offsetLeft: 0, width: 390, height: 700 },
-  menuWidth: 288,
-  estimatedHeight: TWO_ACTIONS,
-  measuredHeight: TWO_ACTIONS,
-  minVisibleCount: 2,
-  itemHeight: ACTION,
-  padding: 8,
-  bottomReserve: 90,
-});
-assert.equal(cramped.placement, "above");
-assert.ok(cramped.top >= 8);
-assert.ok(cramped.top + Math.min(TWO_ACTIONS, cramped.maxHeight) <= 620);
-assert.ok(cramped.maxHeight >= ACTION * 2 || cramped.overflowY === "auto");
-
-const tall = fit.fitAnchoredMenu({
-  anchor: { top: 200, bottom: 244, left: 280, right: 360, width: 80, height: 44 },
-  viewport: { offsetTop: 80, offsetLeft: 0, width: 390, height: 400 },
-  menuWidth: 288,
-  estimatedHeight: 320,
-  measuredHeight: 320,
-  minVisibleCount: 2,
-  itemHeight: ACTION,
-  padding: 8,
-  bottomReserve: 96,
-});
-assert.equal(tall.overflowY, "auto");
-assert.ok(tall.maxHeight < 320);
-assert.ok(tall.maxHeight >= ACTION * 2);
-
-const clip = await import(
-  pathToFileURL(path.join(root, "src/lib/overlay/menuClipAudit.ts")).href
+assert.match(classicSrc, /ProfileClaimHistoryMenu/);
+assert.match(modernSrc, /ProfileClaimHistoryMenu/);
+assert.match(settingsSrc, /ProfileClaimHistoryMenu/);
+assert.match(menuSrc, /getProfileOptionsSheetStyle/);
+assert.match(menuSrc, /shouldUseProfileOptionsSheet/);
+assert.match(menuSrc, /data-profile-options-sheet/);
+assert.match(menuSrc, /data-profile-options-backdrop/);
+assert.match(menuSrc, /data-profile-options-layer/);
+assert.match(menuSrc, /sayittome-profile-options-open/);
+assert.match(menuSrc, /sayittome:close-profile-options/);
+assert.match(menuSrc, /notificationsOpen/);
+assert.match(menuSrc, /historyOpen/);
+assert.match(menuSrc, /data-chat-notification-panel/);
+assert.match(menuSrc, /claim_history_title/);
+assert.match(backSrc, /sayittome:close-profile-options/);
+assert.match(backSrc, /sayittome:close-claim-history/);
+assert.match(backSrc, /sayittome:close-notification-settings/);
+assert.match(menuSrc, /sheetMode \?[\s\S]*getProfileOptionsSheetStyle/);
+assert.doesNotMatch(
+  menuSrc,
+  /sheetMode[\s\S]{0,80}top:\s*menuPos\?\.top \?\? -9999/,
 );
-const hiddenClip = clip.collectFixedClipAncestors([
-  { style: { overflowX: "hidden", overflowY: "visible" } },
-]);
-assert.equal(hiddenClip.length, 1, "published overflow-x:hidden clips fixed menus");
+
+const layout = await import(
+  pathToFileURL(path.join(root, "src/lib/overlay/profileOptionsMenuLayout.ts")).href
+);
+
 assert.equal(
-  clip.doesOverflowClipFixed({ overflowX: "clip", overflowY: "visible" }),
+  layout.shouldUseProfileOptionsSheet({
+    innerWidth: 1280,
+    matchMedia: () => ({ matches: false }),
+    document: { documentElement: { classList: { contains: () => false } } },
+  }),
   false,
 );
-const clippedMeasure = clip.measureMenuBox({
-  scrollHeight: TWO_ACTIONS,
-  clientHeight: 40,
-  boundingHeight: 40,
-});
-assert.equal(clippedMeasure.clipped, true);
-assert.equal(clippedMeasure.intrinsicHeight, TWO_ACTIONS);
-const fittedFromClip = fit.fitAnchoredMenu({
-  anchor: { top: 48, bottom: 92, left: 280, right: 360, width: 80, height: 44 },
-  viewport: { offsetTop: 0, offsetLeft: 0, width: 390, height: 700 },
-  menuWidth: 288,
-  estimatedHeight: clippedMeasure.visibleHeight,
-  measuredHeight: clippedMeasure.intrinsicHeight,
-  minVisibleCount: 2,
-  itemHeight: ACTION,
-  padding: 8,
-  bottomReserve: 90,
-});
-assert.ok(fittedFromClip.maxHeight >= TWO_ACTIONS);
 assert.equal(
-  clip.areMenuActionsFullyVisible({
-    actions: [
-      { top: fittedFromClip.top, bottom: fittedFromClip.top + ACTION, left: 72, right: 360 },
-      {
-        top: fittedFromClip.top + ACTION,
-        bottom: fittedFromClip.top + ACTION * 2,
-        left: 72,
-        right: 360,
-      },
-    ],
-    viewport: { offsetTop: 0, offsetLeft: 0, width: 390, height: 700 },
+  layout.shouldUseProfileOptionsSheet({
+    innerWidth: 390,
+    matchMedia: (query) => ({ matches: query.includes("767") }),
+    document: { documentElement: { classList: { contains: () => false } } },
   }),
   true,
 );
+assert.equal(
+  layout.shouldUseProfileOptionsSheet({
+    innerWidth: 1280,
+    matchMedia: () => ({ matches: false }),
+    document: {
+      documentElement: {
+        classList: { contains: (name) => name === "sayittome-native-shell" },
+      },
+    },
+  }),
+  true,
+);
+
+const VIEWPORTS = [
+  { width: 360, height: 640 },
+  { width: 390, height: 700 },
+];
+const NAV_HEIGHT = 108;
+const MIN_TOUCH = layout.PROFILE_OPTIONS_MIN_TOUCH_PX;
+
+function publishedDropdownHtml() {
+  return `
+    <div data-profile-options-dropdown="1" data-published-menu="1" style="
+      position:fixed;
+      top:-9999px;
+      right:16px;
+      width:18rem;
+      z-index:1000001;
+      padding:8px;
+      border-radius:16px;
+      background:#09090b;
+    ">
+      <button data-profile-option="notifications" type="button" style="
+        display:flex;width:100%;align-items:center;gap:12px;
+        padding:12px 16px;font-size:14px;font-weight:700;color:#fff;
+        border:0;background:transparent;text-align:left;
+      ">Notificaciones del chat</button>
+      <button data-profile-option="claim-history" type="button" style="
+        display:flex;width:100%;align-items:center;gap:12px;
+        padding:12px 16px;font-size:14px;font-weight:700;color:#fff;
+        border:0;background:transparent;text-align:left;
+      ">Historial de reclamos</button>
+    </div>
+  `;
+}
+
+function publishedClippedHtml(viewportHeight) {
+  return `
+    <div data-profile-options-dropdown="1" data-published-menu="1" style="
+      position:fixed;
+      top:${viewportHeight - 48}px;
+      right:16px;
+      width:18rem;
+      z-index:1000001;
+      padding:8px;
+      border-radius:16px;
+      background:#09090b;
+    ">
+      <button data-profile-option="notifications" type="button" style="
+        display:flex;width:100%;align-items:center;gap:12px;
+        padding:12px 16px;font-size:14px;font-weight:700;color:#fff;
+        border:0;background:transparent;text-align:left;
+      ">Notificaciones del chat</button>
+      <button data-profile-option="claim-history" type="button" style="
+        display:flex;width:100%;align-items:center;gap:12px;
+        padding:12px 16px;font-size:14px;font-weight:700;color:#fff;
+        border:0;background:transparent;text-align:left;
+      ">Historial de reclamos</button>
+    </div>
+  `;
+}
+
+function sheetHtml() {
+  const sheetStyle = layout.styleRecordToCss(layout.getProfileOptionsSheetStyle());
+  const actionStyle = layout.styleRecordToCss(layout.getProfileOptionsActionStyle());
+  return `
+    <div data-profile-options-layer="1" style="position:fixed;inset:0;z-index:1000001">
+      <button data-profile-options-backdrop="1" type="button" style="position:absolute;inset:0;background:rgba(0,0,0,.55);border:0"></button>
+      <div data-profile-options-dropdown="1" data-profile-options-sheet="1" style="${sheetStyle};border-radius:16px;background:#09090b;padding:8px">
+        <button data-profile-option="notifications" type="button" style="${actionStyle};gap:12px;border:0;background:transparent;color:#fff;font-size:14px;font-weight:700">
+          Notificaciones del chat
+        </button>
+        <button data-profile-option="claim-history" type="button" style="${actionStyle};gap:12px;border:0;background:transparent;color:#fff;font-size:14px;font-weight:700">
+          Historial de reclamos
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function shellHtml(viewport, menuHtml) {
+  return `<!doctype html>
+<html class="sayittome-native-shell" style="overflow-x:clip">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <style>
+    :root {
+      --sayittome-nav-height: 74px;
+      --sayittome-browser-chrome-bottom: 10px;
+      --sayittome-bottom-ui: ${NAV_HEIGHT}px;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      overflow-x: clip;
+      width: 100%;
+      height: 100%;
+    }
+    body.sayittome-has-bottom-nav {
+      --sayittome-bottom-ui: ${NAV_HEIGHT}px;
+    }
+    .sayittome-bottom-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: ${NAV_HEIGHT}px;
+      z-index: 9999;
+      background: #171717;
+    }
+  </style>
+</head>
+<body class="sayittome-native-shell sayittome-has-bottom-nav" style="width:${viewport.width}px;height:${viewport.height}px">
+  <nav class="sayittome-bottom-nav" data-bottom-nav="1"></nav>
+  ${menuHtml}
+</body>
+</html>`;
+}
+
+function inspectMenuIntegrity() {
+  const viewport = {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  };
+  const nav = document.querySelector("[data-bottom-nav='1']");
+  const sheet =
+    document.querySelector("[data-profile-options-sheet='1']") ||
+    document.querySelector("[data-profile-options-dropdown='1']");
+  const notifications = document.querySelector("[data-profile-option='notifications']");
+  const history = document.querySelector("[data-profile-option='claim-history']");
+  const reasons = [];
+
+  function box(el) {
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return {
+      top: rect.top,
+      left: rect.left,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+      scrollWidth: el.scrollWidth,
+      scrollHeight: el.scrollHeight,
+      clientWidth: el.clientWidth,
+      clientHeight: el.clientHeight,
+    };
+  }
+
+  const sheetBox = box(sheet);
+  const navBox = box(nav);
+  const actions = [box(notifications), box(history)];
+
+  if (!sheetBox) reasons.push("missing-sheet");
+  if (!navBox) reasons.push("missing-nav");
+  if (actions.some((action) => !action)) reasons.push("missing-action");
+
+  function inViewport(rect, slop = 0.5) {
+    return (
+      rect.top >= -slop &&
+      rect.left >= -slop &&
+      rect.bottom <= viewport.height + slop &&
+      rect.right <= viewport.width + slop &&
+      rect.width > 1 &&
+      rect.height > 1
+    );
+  }
+
+  function overlaps(a, b) {
+    return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  }
+
+  if (sheetBox && !inViewport(sheetBox)) reasons.push("sheet-clipped");
+  if (sheetBox && navBox && overlaps(sheetBox, navBox)) reasons.push("sheet-covered-by-nav");
+  if (sheetBox && navBox && sheetBox.bottom > navBox.top + 0.5) reasons.push("sheet-below-nav-top");
+
+  for (const [index, action] of actions.entries()) {
+    if (!action) continue;
+    if (!inViewport(action)) reasons.push(`action-${index}-clipped`);
+    if (action.height < 48 || action.width < 48) reasons.push(`action-${index}-touch`);
+    if (action.scrollWidth > action.clientWidth + 1) reasons.push(`action-${index}-text-x`);
+    if (action.scrollHeight > action.clientHeight + 1) reasons.push(`action-${index}-text-y`);
+    if (navBox && overlaps(action, navBox)) reasons.push(`action-${index}-covered-by-nav`);
+    if (sheetBox && (action.top < sheetBox.top - 0.5 || action.bottom > sheetBox.bottom + 0.5)) {
+      reasons.push(`action-${index}-outside-sheet`);
+    }
+    const cx = action.left + action.width / 2;
+    const cy = action.top + action.height / 2;
+    const hit = document.elementFromPoint(cx, cy);
+    const option = index === 0 ? notifications : history;
+    if (!hit || !option?.contains(hit)) reasons.push(`action-${index}-not-clickable`);
+  }
+
+  if (sheetBox && sheetBox.scrollHeight > sheetBox.clientHeight + 1) {
+    reasons.push("unexpected-scroll");
+  }
+
+  return {
+    ok: reasons.length === 0,
+    reasons,
+    viewport,
+    sheet: sheetBox,
+    nav: navBox,
+    actions,
+  };
+}
+
+const browser = await chromium.launch({ headless: true });
+const report = [];
+
+try {
+  for (const viewport of VIEWPORTS) {
+    const context = await browser.newContext({
+      viewport,
+      deviceScaleFactor: 1,
+      isMobile: true,
+      hasTouch: true,
+    });
+    const page = await context.newPage();
+    await page.setViewportSize(viewport);
+
+    await page.setContent(shellHtml(viewport, publishedDropdownHtml()), {
+      waitUntil: "domcontentloaded",
+    });
+    const publishedOffscreen = await page.evaluate(inspectMenuIntegrity);
+    assert.equal(
+      publishedOffscreen.ok,
+      false,
+      `${viewport.width}x${viewport.height} published first-paint must fail`,
+    );
+    assert.ok(
+      publishedOffscreen.reasons.includes("sheet-clipped") ||
+        publishedOffscreen.reasons.some((reason) => reason.endsWith("-clipped")),
+      `${viewport.width}x${viewport.height} published first-paint reasons: ${publishedOffscreen.reasons.join(",")}`,
+    );
+
+    await page.setContent(shellHtml(viewport, publishedClippedHtml(viewport.height)), {
+      waitUntil: "domcontentloaded",
+    });
+    const publishedEaten = await page.evaluate(inspectMenuIntegrity);
+    assert.equal(
+      publishedEaten.ok,
+      false,
+      `${viewport.width}x${viewport.height} published chrome-overlap must fail`,
+    );
+
+    await page.setContent(shellHtml(viewport, sheetHtml()), {
+      waitUntil: "domcontentloaded",
+    });
+    const sheet = await page.evaluate(inspectMenuIntegrity);
+    assert.equal(
+      sheet.ok,
+      true,
+      `${viewport.width}x${viewport.height} sheet failed: ${sheet.reasons.join(",")}`,
+    );
+    assert.ok(sheet.sheet.height >= MIN_TOUCH * 2);
+    assert.ok(sheet.actions[0].height >= MIN_TOUCH);
+    assert.ok(sheet.actions[1].height >= MIN_TOUCH);
+    assert.ok(sheet.sheet.bottom <= sheet.nav.top + 0.5);
+
+    const closed = await page.evaluate(() => {
+      const backdrop = document.querySelector("[data-profile-options-backdrop='1']");
+      backdrop?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      return {
+        backdrop: Boolean(document.querySelector("[data-profile-options-backdrop='1']")),
+        history: Boolean(document.querySelector("[data-chat-notification-panel]")),
+      };
+    });
+    assert.equal(closed.history, false);
+
+    report.push({
+      viewport: `${viewport.width}x${viewport.height}`,
+      publishedOffscreenReasons: publishedOffscreen.reasons,
+      publishedEatenReasons: publishedEaten.reasons,
+      sheet,
+    });
+    await context.close();
+  }
+} finally {
+  await browser.close();
+}
 
 console.log(
   JSON.stringify(
     {
       gate: "ANDROID_PROFILE_OPTIONS_MENU_VIEWPORT",
       pass: true,
-      viewport: "390x700",
-      twoActionsVisible: true,
+      viewports: VIEWPORTS.map((row) => `${row.width}x${row.height}`),
+      publishedFails: true,
+      sheetOk: true,
     },
     null,
     2,

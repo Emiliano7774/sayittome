@@ -116,6 +116,21 @@ export function tryCloseNativeOverlays(): boolean {
     return true;
   }
 
+  if (body.classList.contains("sayittome-claim-history-open")) {
+    window.dispatchEvent(new Event("sayittome:close-claim-history"));
+    return true;
+  }
+
+  if (body.classList.contains("sayittome-notification-settings-open")) {
+    window.dispatchEvent(new Event("sayittome:close-notification-settings"));
+    return true;
+  }
+
+  if (body.classList.contains("sayittome-profile-options-open")) {
+    window.dispatchEvent(new Event("sayittome:close-profile-options"));
+    return true;
+  }
+
   return false;
 }
 

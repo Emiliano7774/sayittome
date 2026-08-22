@@ -19,6 +19,11 @@ import {
   measureMenuBox,
   unlockDocumentFixedClip,
 } from "@/lib/overlay/menuClipAudit";
+import {
+  getProfileOptionsActionStyle,
+  getProfileOptionsSheetStyle,
+  shouldUseProfileOptionsSheet,
+} from "@/lib/overlay/profileOptionsMenuLayout";
 import { resolveProfileOptionsMenuPortalRoot } from "@/lib/overlay/profileOptionsMenuPortal";
 
 type ClaimHistoryRow = {
@@ -59,9 +64,19 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
     maxHeight: number;
     overflowY: "auto" | "visible";
   } | null>(null);
+  const [sheetMode, setSheetMode] = useState(() =>
+    typeof window !== "undefined" ? shouldUseProfileOptionsSheet(window) : false,
+  );
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useOverlayBackClose(
+    menuOpen,
+    () => setMenuOpen(false),
+    "sayittome-profile-options-open",
+    "sayittome:close-profile-options",
+  );
 
   useOverlayBackClose(
     historyOpen,
@@ -78,6 +93,13 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
   );
 
   useEffect(() => {
+    const syncSheet = () => setSheetMode(shouldUseProfileOptionsSheet(window));
+    syncSheet();
+    window.addEventListener("resize", syncSheet);
+    return () => window.removeEventListener("resize", syncSheet);
+  }, []);
+
+  useEffect(() => {
     if (!historyOpen && !notificationsOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -87,8 +109,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
   }, [historyOpen, notificationsOpen]);
 
   useLayoutEffect(() => {
-    if (!menuOpen || !buttonRef.current) {
-      setMenuPos(null);
+    if (!menuOpen || sheetMode || !buttonRef.current) {
       return;
     }
 
@@ -136,7 +157,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
       window.removeEventListener("orientationchange", syncMenu);
       unlock();
     };
-  }, [menuOpen]);
+  }, [menuOpen, sheetMode]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -145,6 +166,8 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
       if (rootRef.current?.contains(target)) return;
       const dropdown = document.querySelector("[data-profile-options-dropdown='1']");
       if (dropdown?.contains(target)) return;
+      const sheet = document.querySelector("[data-profile-options-sheet='1']");
+      if (sheet?.contains(target)) return;
       setMenuOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
@@ -223,38 +246,66 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
         {menuOpen && typeof document !== "undefined"
           ? createPortal(
               <div
-                ref={dropdownRef}
-                data-profile-options-dropdown="1"
-                className="fixed z-[1000001] w-72 rounded-2xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
-                style={{
-                  top: menuPos?.top ?? -9999,
-                  right: menuPos?.right ?? 16,
-                  maxHeight: menuPos?.maxHeight,
-                  overflowY: menuPos?.overflowY ?? "visible",
-                  visibility: menuPos ? "visible" : "hidden",
-                }}
+                data-profile-options-layer="1"
+                data-profile-options-mode={sheetMode ? "sheet" : "dropdown"}
+                className="fixed inset-0 z-[1000001]"
               >
                 <button
                   type="button"
-                  data-profile-option="notifications"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setNotificationsOpen(true);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-white/85 hover:bg-white/5"
+                  data-profile-options-backdrop="1"
+                  className={
+                    sheetMode
+                      ? "absolute inset-0 bg-black/55"
+                      : "absolute inset-0 bg-transparent"
+                  }
+                  aria-label={t("common_cancel")}
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div
+                  ref={dropdownRef}
+                  data-profile-options-dropdown="1"
+                  data-profile-options-sheet={sheetMode ? "1" : undefined}
+                  className={
+                    sheetMode
+                      ? "rounded-2xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
+                      : "fixed z-[1000002] w-72 rounded-2xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
+                  }
+                  style={
+                    sheetMode
+                      ? getProfileOptionsSheetStyle()
+                      : {
+                          top: menuPos?.top ?? -9999,
+                          right: menuPos?.right ?? 16,
+                          maxHeight: menuPos?.maxHeight,
+                          overflowY: menuPos?.overflowY ?? "visible",
+                          visibility: menuPos ? "visible" : "hidden",
+                        }
+                  }
                 >
-                  <Bell size={17} />
-                  {t("chat_notifications_menu")}
-                </button>
-                <button
-                  type="button"
-                  data-profile-option="claim-history"
-                  onClick={() => void openHistory()}
-                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-white/85 hover:bg-white/5"
-                >
-                  <FileText size={17} />
-                  {t("claim_history_menu")}
-                </button>
+                  <button
+                    type="button"
+                    data-profile-option="notifications"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setNotificationsOpen(true);
+                    }}
+                    className="gap-3 rounded-xl text-sm font-bold text-white/85 hover:bg-white/5"
+                    style={getProfileOptionsActionStyle()}
+                  >
+                    <Bell size={17} />
+                    {t("chat_notifications_menu")}
+                  </button>
+                  <button
+                    type="button"
+                    data-profile-option="claim-history"
+                    onClick={() => void openHistory()}
+                    className="gap-3 rounded-xl text-sm font-bold text-white/85 hover:bg-white/5"
+                    style={getProfileOptionsActionStyle()}
+                  >
+                    <FileText size={17} />
+                    {t("claim_history_menu")}
+                  </button>
+                </div>
               </div>,
               resolveProfileOptionsMenuPortalRoot(document) || document.body,
             )
