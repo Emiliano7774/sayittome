@@ -97,6 +97,17 @@ import {
 import { buildCanonicalSender, isRoleIdentityReady } from "@/lib/chat/canonicalSender";
 import { applyAuthorshipCorrections } from "@/lib/chat/authorshipCorrections";
 import { PersistIdentityError } from "@/lib/chat/persistAnonMessage";
+import {
+  CHAT_THREAD_COLUMN_CLASS,
+  CHAT_THREAD_COMPOSER_CLASS,
+  CHAT_THREAD_HEADER_CLASS,
+  CHAT_THREAD_INTRO_CLASS,
+  CHAT_THREAD_SCROLLER_CLASS,
+  CLASSIC_INTRO_INNER_CLASS,
+  MODERN_INTRO_INNER_CLASS,
+  resolveAnonChatThreadIntro,
+  shouldAutoscrollChatThread,
+} from "@/lib/chat/chatThreadLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { isChatThreadRoute } from "@/lib/navigation/routeKind";
 import type { InboxChat } from "@/hooks/useChatsInbox";
@@ -1117,10 +1128,14 @@ export default function ProfileAnonChat({
     (isOwnerViewing
       ? hasChatActivity
       : displayMessages.some((message) => message.mine) || hasChatActivity);
-  const showClassicIntro =
-    isClassic && authReady && !isOwnerViewing && !surfaceEngaged;
-  const showModernVisitorIntro =
-    !isClassic && authReady && !isOwnerViewing && !surfaceEngaged;
+  const threadIntro = resolveAnonChatThreadIntro({
+    isClassic,
+    isOwnerViewing,
+    surfaceEngaged,
+    authReady,
+  });
+  const showClassicIntro = threadIntro.showClassicIntro;
+  const showModernVisitorIntro = threadIntro.showModernIntro;
   const anonIdentity = resolveProfileChatAnonIdentity(chatId, chatAnonSessionId, {
     isOwnerViewing,
   });
@@ -1394,9 +1409,16 @@ export default function ProfileAnonChat({
   ]);
 
   useEffect(() => {
-    if (!stickToBottomRef.current) return;
+    if (
+      !shouldAutoscrollChatThread({
+        stickToBottom: stickToBottomRef.current,
+        showIntro: showClassicIntro || showModernVisitorIntro,
+      })
+    ) {
+      return;
+    }
     scheduleScrollToBottom();
-  }, [messages.length]);
+  }, [messages.length, showClassicIntro, showModernVisitorIntro]);
 
   async function openRealCamera(mode: "photo" | "video") {
     if (isNativeChatShell()) {
@@ -2229,8 +2251,8 @@ export default function ProfileAnonChat({
         <FullscreenMedia url={fullscreenUrl} onClose={() => setFullscreenUrl("")} />
       ) : null}
 
-      <section className="flex h-full min-h-0 flex-col bg-black">
-        <header className="flex shrink-0 items-center gap-4 bg-black px-5 py-4">
+      <section className={`${CHAT_THREAD_COLUMN_CLASS} bg-black`}>
+        <header data-chat-thread-header="1" className={CHAT_THREAD_HEADER_CLASS}>
           <button
             type="button"
             onClick={goBackFromChat}
@@ -2268,66 +2290,10 @@ export default function ProfileAnonChat({
           ) : null}
         </header>
 
-        {isClassic && !isOwnerViewing && !surfaceEngaged ? (
-          <div className="shrink-0">
-            <div className="flex flex-col items-center justify-center px-6 pb-2 pt-[min(12vh,5rem)]">
-              <StoryAvatarButton
-                {...avatarProps}
-                size="xl"
-                iconSize={88}
-                className="!scale-100"
-              />
-              <ClassicAnonPresenceBubble session={anonIdentity.liveLabel} />
-            </div>
-          </div>
-        ) : showClassicIdentityBar ? (
-          <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
-            {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
-          </p>
-        ) : !isClassic && !isOwnerViewing && !surfaceEngaged ? (
-          <div className="shrink-0">
-            <div className="flex min-h-[42vh] flex-col items-center justify-center px-6">
-              <div className="flex flex-col items-center">
-                <StoryAvatarButton
-                  {...avatarProps}
-                  size="lg"
-                  iconSize={72}
-                  className="!scale-100"
-                />
-
-                <h2 className="mt-6 text-5xl font-black tracking-[-0.08em]">
-                  {username}
-                </h2>
-              </div>
-
-              <div className="mt-8 rounded-[28px] bg-[#ececec] px-6 py-5 text-left text-black shadow-2xl">
-                <p className="text-2xl font-bold text-violet-600">
-                  {t("chat_anon_keep")}
-                </p>
-
-                <p className="mt-1 text-xl text-zinc-600">
-                  {t("chat_anon_identity_hidden")}
-                </p>
-
-                <p className="mt-3 text-base text-zinc-400">
-                  {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
-                </p>
-
-                <p className="mt-4 text-sm leading-6 text-zinc-500">
-                  {t("chat_anon_message_delivery")}
-                </p>
-
-                <p className="mt-2 text-xs leading-5 text-zinc-400">
-                  {t("chat_anon_reply_alert")}
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
         <div
           ref={messagesScrollRef}
           data-stm-no-polish
+          data-chat-thread-scroller="1"
           onScroll={() => {
             const node = messagesScrollRef.current;
             if (!node) return;
@@ -2335,12 +2301,73 @@ export default function ProfileAnonChat({
             stickToBottomRef.current = distance < 120;
           }}
           className={[
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            CHAT_THREAD_SCROLLER_CLASS,
             isClassic ? "px-3 sm:px-4" : "px-5",
             classicChatEngaged ? "pt-3" : "",
           ].join(" ")}
         >
-          <div className={`${chatWidthClass} flex min-h-full flex-col justify-end`}>
+          {showClassicIntro ? (
+            <div data-chat-thread-intro="classic" className={CHAT_THREAD_INTRO_CLASS}>
+              <div className={CLASSIC_INTRO_INNER_CLASS}>
+                <StoryAvatarButton
+                  {...avatarProps}
+                  size="xl"
+                  iconSize={88}
+                  className="!scale-100"
+                />
+                <ClassicAnonPresenceBubble session={anonIdentity.liveLabel} />
+              </div>
+            </div>
+          ) : showClassicIdentityBar ? (
+            <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
+              {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
+            </p>
+          ) : showModernVisitorIntro ? (
+            <div data-chat-thread-intro="modern" className={CHAT_THREAD_INTRO_CLASS}>
+              <div className={MODERN_INTRO_INNER_CLASS}>
+                <div className="flex flex-col items-center">
+                  <StoryAvatarButton
+                    {...avatarProps}
+                    size="lg"
+                    iconSize={72}
+                    className="!scale-100"
+                  />
+
+                  <h2 className="mt-6 text-5xl font-black tracking-[-0.08em]">
+                    {username}
+                  </h2>
+                </div>
+
+                <div className="mt-8 rounded-[28px] bg-[#ececec] px-6 py-5 text-left text-black shadow-2xl">
+                  <p className="text-2xl font-bold text-violet-600">
+                    {t("chat_anon_keep")}
+                  </p>
+
+                  <p className="mt-1 text-xl text-zinc-600">
+                    {t("chat_anon_identity_hidden")}
+                  </p>
+
+                  <p className="mt-3 text-base text-zinc-400">
+                    {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
+                  </p>
+
+                  <p className="mt-4 text-sm leading-6 text-zinc-500">
+                    {t("chat_anon_message_delivery")}
+                  </p>
+
+                  <p className="mt-2 text-xs leading-5 text-zinc-400">
+                    {t("chat_anon_reply_alert")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div
+            className={`${chatWidthClass} flex flex-col ${
+              threadIntro.showIntro ? "" : "min-h-full justify-end"
+            }`}
+          >
             {displayMessages.map((message, index) => {
               const previousFrom = index > 0 ? String(displayMessages[index - 1]?.fromUid || "") : "";
               const currentFrom = String(message.fromUid || "");
@@ -2620,8 +2647,10 @@ export default function ProfileAnonChat({
         ) : null}
 
         <div
+          data-chat-thread-composer="1"
           className={[
-            "sayittome-chat-composer shrink-0 border-t border-white/5 bg-black/95 px-4 pt-3 backdrop-blur-xl",
+            CHAT_THREAD_COMPOSER_CLASS,
+            "border-t border-white/5 bg-black/95 px-4 pt-3 backdrop-blur-xl",
             hasMediaPreview ? "sayittome-chat-composer--preview" : "",
           ].join(" ")}
         >

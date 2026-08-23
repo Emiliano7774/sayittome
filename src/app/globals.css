@@ -867,6 +867,28 @@ html.sayittome-shuffle-return-pending
   z-index: 10000;
 }
 
+.sayittome-chat-thread {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.sayittome-chat-thread-header {
+  flex: 0 0 auto;
+}
+
+.sayittome-chat-thread-scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sayittome-chat-thread-composer {
+  flex: 0 0 auto;
+}
+
 .sayittome-chat-composer {
   flex-shrink: 0;
   padding-bottom: max(
