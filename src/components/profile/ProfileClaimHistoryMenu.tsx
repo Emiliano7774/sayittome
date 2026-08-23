@@ -26,6 +26,18 @@ import {
   shouldUseProfileOptionsSheet,
 } from "@/lib/overlay/profileOptionsMenuLayout";
 import { resolveProfileOptionsMenuPortalRoot } from "@/lib/overlay/profileOptionsMenuPortal";
+import {
+  CLAIM_HISTORY_CLOSE_ATTR,
+  CLAIM_HISTORY_HEADER_ATTR,
+  CLAIM_HISTORY_LAYER_ATTR,
+  CLAIM_HISTORY_SCROLL_ATTR,
+  CLAIM_HISTORY_SHEET_ATTR,
+  getClaimHistoryHeaderStyle,
+  getClaimHistoryOverlayStyle,
+  getClaimHistoryScrollStyle,
+  getClaimHistorySheetStyle,
+  resolveClaimHistoryModalPortalRoot,
+} from "@/lib/overlay/claimHistoryModalLayout";
 
 type ClaimHistoryRow = {
   id: string;
@@ -358,10 +370,23 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
           )
         : null}
 
-      {historyOpen ? (
-        <div className="fixed inset-0 z-[1000000] flex items-end justify-center bg-black/85 p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:p-4">
-          <section className="flex max-h-[min(88dvh,760px)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl">
-            <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
+      {historyOpen && typeof document !== "undefined"
+        ? createPortal(
+        <div
+          {...{ [CLAIM_HISTORY_LAYER_ATTR]: "1" }}
+          className="bg-black/85"
+          style={getClaimHistoryOverlayStyle()}
+        >
+          <section
+            {...{ [CLAIM_HISTORY_SHEET_ATTR]: "1" }}
+            className="rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl"
+            style={getClaimHistorySheetStyle()}
+          >
+            <header
+              {...{ [CLAIM_HISTORY_HEADER_ATTR]: "1" }}
+              className="flex items-center justify-between border-b border-white/10 px-5 py-4"
+              style={getClaimHistoryHeaderStyle()}
+            >
               <div>
                 <p className="text-lg font-black text-white">{t("claim_history_title")}</p>
                 <p className="mt-1 text-xs font-semibold text-white/45">
@@ -370,6 +395,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
               </div>
               <button
                 type="button"
+                {...{ [CLAIM_HISTORY_CLOSE_ATTR]: "1" }}
                 onClick={() => setHistoryOpen(false)}
                 className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
                 aria-label={t("common_cancel")}
@@ -378,7 +404,11 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
+            <div
+              {...{ [CLAIM_HISTORY_SCROLL_ATTR]: "1" }}
+              className="space-y-3 p-4 sm:p-5"
+              style={getClaimHistoryScrollStyle()}
+            >
               {loading ? (
                 <p className="py-10 text-center text-sm font-semibold text-white/45">
                   {t("common_loading")}
@@ -434,8 +464,10 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
               )}
             </div>
           </section>
-        </div>
-      ) : null}
+        </div>,
+            resolveClaimHistoryModalPortalRoot(document) || document.body,
+          )
+        : null}
     </>
   );
 }

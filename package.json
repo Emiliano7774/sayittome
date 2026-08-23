@@ -94,6 +94,7 @@
     "test:android-shuffle-resume-recover": "node --experimental-strip-types scripts/android-shuffle-resume-recover.harness.mjs",
     "test:android-cold-launch-notice": "node --experimental-strip-types scripts/android-cold-launch-notice.harness.mjs",
     "test:android-profile-options-menu-viewport": "node --experimental-strip-types scripts/android-profile-options-menu-viewport.harness.mjs",
+    "test:claim-history-modal-scroll": "node --experimental-strip-types scripts/claim-history-modal-scroll.harness.mjs",
     "test:android-chat-back-ime": "node --experimental-strip-types scripts/android-chat-back-ime.harness.mjs",
     "test:push-chat-read-persist": "node --experimental-strip-types scripts/push-chat-read-persist.harness.mjs",
     "test:shuffle-active-filter": "node --experimental-strip-types scripts/shuffle-active-filter.harness.mjs",
