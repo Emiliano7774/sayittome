@@ -100,13 +100,22 @@ export function isChatAudioPermissionDenied(error: unknown) {
 
 export function classifyChatAudioCaptureFailure(
   error: unknown,
-  native?: { denied?: boolean; nativeDenied?: boolean; granted?: boolean; nativePlatform?: boolean },
+  native?: {
+    denied?: boolean;
+    nativeDenied?: boolean;
+    granted?: boolean;
+    nativePlatform?: boolean;
+    permissionState?: "granted" | "denied" | "prompt" | "blocked" | "unavailable" | "missing";
+  },
 ): "denied" | "failed" {
+  const osGranted = native?.granted === true || native?.permissionState === "granted";
   if (
     isRealChatMicrophoneDenial({
       error,
       nativeDenied: native?.nativeDenied === true || native?.denied === true,
       nativePlatform: native?.nativePlatform === true,
+      osGranted,
+      permissionState: native?.permissionState,
     })
   ) {
     return "denied";

@@ -1,5 +1,6 @@
 /**
- * Android RECORD_AUDIO: ask once on record, never on send, deny alert only on real denial.
+ * Android RECORD_AUDIO: ask once on record, never on send.
+ * OS-granted never surfaces chat_mic_permission_denied.
  * Usage: node --experimental-strip-types scripts/chat-audio-android-permission.harness.mjs
  */
 import assert from "node:assert/strict";
@@ -21,6 +22,10 @@ const mainActivity = fs.readFileSync(
   path.join(root, "android/app/src/main/java/com/sayittome/app/MainActivity.java"),
   "utf8",
 );
+const policy = fs.readFileSync(
+  path.join(root, "android/app/src/main/java/com/sayittome/app/MicCapturePolicy.java"),
+  "utf8",
+);
 const profileChat = fs.readFileSync(
   path.join(root, "src/components/chat/ProfileAnonChat.tsx"),
   "utf8",
@@ -35,36 +40,48 @@ assert.match(manifest, /android\.permission\.MODIFY_AUDIO_SETTINGS/);
 assert.match(mainActivity, /SayItToMeMic/);
 assert.match(mainActivity, /RequestPermission/);
 assert.match(mainActivity, /RECORD_AUDIO/);
-assert.match(mainActivity, /sayittome-app\.web\.app/);
-assert.match(mainActivity, /isTrustedTopLevelOrigin/);
-assert.match(mainActivity, /MicAwareChromeClient/);
-assert.match(mainActivity, /pendingWebPermissionRequest/);
+assert.match(mainActivity, /MicCapturePolicy/);
+assert.match(mainActivity, /grantAudioCaptureOnly/);
+assert.match(mainActivity, /shouldGrantAudioCapture/);
+assert.match(mainActivity, /shouldDenyRequest/);
 assert.match(mainActivity, /launchRecordAudioRequest/);
 assert.match(mainActivity, /ACTION_APPLICATION_DETAILS_SETTINGS/);
 assert.match(mainActivity, /shouldShowRequestPermissionRationale/);
 assert.match(mainActivity, /openSettings/);
 assert.match(mainActivity, /onResume/);
 assert.match(mainActivity, /__sayittomeMicResume/);
+assert.match(mainActivity, /setMediaPlaybackRequiresUserGesture\(false\)/);
+assert.doesNotMatch(mainActivity, /super\.onPermissionRequest/);
 assert.doesNotMatch(mainActivity, /MODIFY_AUDIO_SETTINGS/);
 assert.doesNotMatch(mainActivity, /allowNavigation/);
 
+assert.match(policy, /sayittome-app\.web\.app/);
+assert.match(policy, /RESOURCE_AUDIO_CAPTURE/);
+assert.match(policy, /shouldGrantAudioCapture/);
+assert.match(policy, /shouldDenyRequest/);
+assert.doesNotMatch(policy, /RESOURCE_VIDEO_CAPTURE/);
+
 const permissionRequestFn = mainActivity.slice(
   mainActivity.indexOf("public void onPermissionRequest"),
-  mainActivity.lastIndexOf("super.onPermissionRequest"),
+  mainActivity.lastIndexOf("pendingWebPermissionRequest = request"),
 );
-assert.match(permissionRequestFn, /RESOURCE_AUDIO_CAPTURE/);
-assert.match(permissionRequestFn, /launchRecordAudioRequest/);
+assert.match(permissionRequestFn, /shouldGrantAudioCapture/);
+assert.match(permissionRequestFn, /grantAudioCaptureOnly/);
 assert.equal(
   permissionRequestFn.includes("super.onPermissionRequest"),
   false,
-  "audio-only getUserMedia must use the Activity RECORD_AUDIO launcher, not Capacitor super",
+  "audio capture must not fall through to Capacitor super (CAMERA+MODIFY_AUDIO_SETTINGS batch deny)",
 );
 
 assert.match(profileChat, /ensureChatMicrophonePermission/);
 assert.match(profileChat, /planChatMicrophoneStart/);
+assert.match(profileChat, /captureTrustedChatAudioStream/);
 assert.match(profileChat, /classifyChatAudioCaptureFailure/);
+assert.match(profileChat, /subscribeChatMicrophonePermissionRefresh/);
 assert.match(profileChat, /openChatMicrophoneSettings/);
 assert.match(legacyChat, /ensureChatMicrophonePermission/);
+assert.match(legacyChat, /captureTrustedChatAudioStream/);
+assert.match(legacyChat, /subscribeChatMicrophonePermissionRefresh/);
 assert.match(legacyChat, /openChatMicrophoneSettings/);
 assert.doesNotMatch(profileChat, /alert\(t\("chat_mic_fail"\)\)/);
 assert.doesNotMatch(profileChat, /alert\(t\("chat_mic_permission_denied"\)\)/);
@@ -75,6 +92,7 @@ const sendMedia = profileChat.slice(
 );
 assert.equal(sendMedia.includes("ensureChatMicrophonePermission"), false);
 assert.equal(sendMedia.includes("getUserMedia"), false);
+assert.equal(sendMedia.includes("captureTrustedChatAudioStream"), false);
 
 const sendPending = legacyChat.slice(
   legacyChat.indexOf("const sendPendingAudio"),
@@ -82,13 +100,15 @@ const sendPending = legacyChat.slice(
 );
 assert.equal(sendPending.includes("ensureChatMicrophonePermission"), false);
 assert.equal(sendPending.includes("getUserMedia"), false);
+assert.equal(sendPending.includes("captureTrustedChatAudioStream"), false);
 
 const recordStart = profileChat.slice(
   profileChat.indexOf("async function startAudioRecording()"),
   profileChat.indexOf("function stopAudioRecording()"),
 );
 assert.ok(
-  recordStart.indexOf("ensureChatMicrophonePermission") < recordStart.indexOf("getUserMedia"),
+  recordStart.indexOf("ensureChatMicrophonePermission") <
+    recordStart.indexOf("captureTrustedChatAudioStream"),
   "native RECORD_AUDIO must be requested before getUserMedia",
 );
 assert.doesNotMatch(recordStart, /permisos del navegador/);
@@ -113,23 +133,88 @@ assert.equal(
   mic.isRealChatMicrophoneDenial({
     error: { name: "NotAllowedError" },
     nativePlatform: true,
+    osGranted: true,
+  }),
+  false,
+);
+assert.equal(
+  mic.isRealChatMicrophoneDenial({
+    error: { name: "NotAllowedError" },
+    nativePlatform: true,
+    permissionState: "granted",
+  }),
+  false,
+);
+assert.equal(
+  mic.isRealChatMicrophoneDenial({
+    error: { name: "NotAllowedError" },
+    nativePlatform: true,
+    permissionState: "denied",
+  }),
+  true,
+);
+assert.equal(
+  mic.isRealChatMicrophoneDenial({
+    error: { name: "NotAllowedError" },
+    nativePlatform: false,
   }),
   true,
 );
 assert.equal(
   audio.classifyChatAudioCaptureFailure(
     { name: "NotAllowedError", message: "Permission denied" },
-    { nativePlatform: true, denied: false },
+    { nativePlatform: true, denied: false, granted: true, permissionState: "granted" },
+  ),
+  "failed",
+);
+assert.equal(
+  audio.classifyChatAudioCaptureFailure(
+    { name: "NotAllowedError" },
+    { nativePlatform: true, denied: true, permissionState: "denied" },
   ),
   "denied",
 );
 assert.equal(
-  mic.noticeFromCaptureFailure({ classified: "failed", permissionState: "prompt" }),
-  "denied",
+  mic.noticeFromCaptureFailure({ classified: "denied", permissionState: "granted" }),
+  "failed",
 );
 assert.equal(
   mic.noticeFromCaptureFailure({ classified: "failed", permissionState: "granted" }),
   "failed",
+);
+assert.equal(
+  mic.noticeFromCaptureFailure({ classified: "failed", permissionState: "prompt" }),
+  "failed",
+);
+assert.equal(
+  mic.noticeFromCaptureFailure({ classified: "denied", permissionState: "denied" }),
+  "denied",
+);
+assert.equal(
+  mic.noticeFromCaptureFailure({ classified: "failed", permissionState: "blocked" }),
+  "blocked",
+);
+
+assert.deepEqual(
+  mic.noticeAfterMicrophoneResume({
+    previous: "denied",
+    os: { allowed: true, denied: false, blocked: false, state: "granted" },
+  }),
+  null,
+);
+assert.deepEqual(
+  mic.noticeAfterMicrophoneResume({
+    previous: "denied",
+    os: { allowed: false, denied: true, blocked: true, state: "blocked" },
+  }),
+  "blocked",
+);
+assert.deepEqual(
+  mic.noticeAfterMicrophoneResume({
+    previous: "denied",
+    os: { allowed: false, denied: false, blocked: false, state: "prompt" },
+  }),
+  null,
 );
 
 assert.deepEqual(mic.planChatMicrophoneStart({ native: false, bridgeState: "prompt" }), {
@@ -177,6 +262,42 @@ assert.equal(
   }),
   "blocked",
 );
+
+let captureCalls = 0;
+const retried = await mic.captureTrustedChatAudioStream({
+  native: true,
+  permissionState: "granted",
+  retryDelayMs: 0,
+  getUserMedia: async () => {
+    captureCalls += 1;
+    if (captureCalls === 1) {
+      const error = new Error("Permission denied");
+      error.name = "NotAllowedError";
+      throw error;
+    }
+    return { id: "stream" };
+  },
+});
+assert.equal(captureCalls, 2);
+assert.equal(retried.id, "stream");
+
+let noRetryCalls = 0;
+await assert.rejects(
+  () =>
+    mic.captureTrustedChatAudioStream({
+      native: true,
+      permissionState: "granted",
+      retryDelayMs: 0,
+      getUserMedia: async () => {
+        noRetryCalls += 1;
+        const error = new Error("Missing device");
+        error.name = "NotFoundError";
+        throw error;
+      },
+    }),
+  (error) => error.name === "NotFoundError",
+);
+assert.equal(noRetryCalls, 1);
 
 const granted = await mic.ensureChatMicrophonePermission();
 if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {

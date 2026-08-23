@@ -36,11 +36,14 @@ import {
   type ChatAudioPhase,
 } from "@/lib/media/chatAudioCapture";
 import {
+  captureTrustedChatAudioStream,
   ensureChatMicrophonePermission,
+  noticeAfterMicrophoneResume,
   noticeFromCaptureFailure,
   noticeFromMicrophonePermission,
   openChatMicrophoneSettings,
   planChatMicrophoneStart,
+  subscribeChatMicrophonePermissionRefresh,
   type ChatMicrophonePermissionState,
   type ChatMicNotice,
 } from "@/lib/media/chatMicrophonePermission";
@@ -1490,6 +1493,14 @@ export default function ProfileAnonChat({
     scheduleScrollToBottom();
   }, [messages.length, showClassicIntro, showModernVisitorIntro]);
 
+  useEffect(
+    () =>
+      subscribeChatMicrophonePermissionRefresh((result) => {
+        setMicNotice((previous) => noticeAfterMicrophoneResume({ previous, os: result }));
+      }),
+    [],
+  );
+
   async function openRealCamera(mode: "photo" | "video") {
     if (isNativeChatShell()) {
       const opened = openChatFileInput(
@@ -1730,7 +1741,10 @@ export default function ProfileAnonChat({
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await captureTrustedChatAudioStream({
+        native: isNativeChatShell(),
+        permissionState,
+      });
       if (session !== audioRecordingSessionRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         setRecording(false);
@@ -1835,6 +1849,8 @@ export default function ProfileAnonChat({
       const classified = classifyChatAudioCaptureFailure(error, {
         nativeDenied: false,
         nativePlatform: isNativeChatShell(),
+        granted: permissionState === "granted",
+        permissionState,
       });
       audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
         type: classified === "denied" ? "permission-denied" : "error",

@@ -40,11 +40,14 @@ import {
   type ChatAudioPhase,
 } from "@/lib/media/chatAudioCapture";
 import {
+  captureTrustedChatAudioStream,
   ensureChatMicrophonePermission,
   isNativeChatMicrophoneShell,
+  noticeAfterMicrophoneResume,
   noticeFromCaptureFailure,
   noticeFromMicrophonePermission,
   openChatMicrophoneSettings,
+  subscribeChatMicrophonePermissionRefresh,
   type ChatMicNotice,
 } from "@/lib/media/chatMicrophonePermission";
 import { preparePlayableChatAudio } from "@/lib/media/chatAudioPlayback";
@@ -282,6 +285,14 @@ export default function LegacyChatPage() {
       senderIsAnonymous: overrides.senderIsAnonymous ?? chat?.senderIsAnonymous,
     });
   }
+
+  useEffect(
+    () =>
+      subscribeChatMicrophonePermissionRefresh((result) => {
+        setMicNotice((previous) => noticeAfterMicrophoneResume({ previous, os: result }));
+      }),
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -959,7 +970,10 @@ export default function LegacyChatPage() {
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await captureTrustedChatAudioStream({
+        native: isNativeChatMicrophoneShell(),
+        permissionState,
+      });
       if (session !== audioRecordingSessionRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         setRecording(false);
@@ -1049,6 +1063,8 @@ export default function LegacyChatPage() {
       const classified = classifyChatAudioCaptureFailure(e, {
         nativeDenied: false,
         nativePlatform: isNativeChatMicrophoneShell(),
+        granted: permissionState === "granted",
+        permissionState,
       });
       audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
         type: classified === "denied" ? "permission-denied" : "error",

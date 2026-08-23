@@ -32,6 +32,9 @@ type MicWindow = Window & {
 let askedThisSession = false;
 let resumeHooked = false;
 
+type ResumeListener = (result: ChatMicrophonePermissionResult) => void;
+const resumeListeners = new Set<ResumeListener>();
+
 function originOf(win: Window) {
   try {
     return String(win.location?.origin || "").replace(/\/$/, "");
@@ -103,7 +106,7 @@ export function noticeFromMicrophonePermission(
 /**
  * Native RECORD_AUDIO: request once from the tap, then capture.
  * Missing bridge must still start capture so WebChromeClient can show the OS prompt.
- * Never treat native NotAllowedError as a browser-permission failure.
+ * OS-granted never maps to the "need permission" notice.
  */
 export function planChatMicrophoneStart(input: {
   native: boolean;
@@ -135,11 +138,49 @@ export function planChatMicrophoneStart(input: {
   return { requestNative: true, startCapture: false, notice: null, openSettings: false };
 }
 
+export function peekChatMicrophonePermission(): ChatMicrophonePermissionResult {
+  const bridge = nativeBridge();
+  if (!bridge) return resultFromState("unavailable");
+  try {
+    return resultFromState(normalizeState(bridge.check()));
+  } catch {
+    return resultFromState("unavailable");
+  }
+}
+
+export function noticeAfterMicrophoneResume(input: {
+  previous: ChatMicNotice;
+  os: ChatMicrophonePermissionResult;
+}): ChatMicNotice {
+  if (input.os.allowed) return null;
+  if (input.os.blocked) return "blocked";
+  if (input.previous === "denied" && input.os.state === "prompt") return null;
+  return input.previous;
+}
+
+export function subscribeChatMicrophonePermissionRefresh(
+  listener: ResumeListener,
+): () => void {
+  hookResumeRecheck();
+  resumeListeners.add(listener);
+  return () => {
+    resumeListeners.delete(listener);
+  };
+}
+
+function notifyResumeListeners() {
+  const live = peekChatMicrophonePermission();
+  resumeListeners.forEach((listener) => {
+    listener(live);
+  });
+}
+
 function hookResumeRecheck() {
   if (resumeHooked || typeof window === "undefined") return;
   resumeHooked = true;
   const onResume = () => {
     askedThisSession = false;
+    notifyResumeListeners();
   };
   (window as MicWindow).__sayittomeMicResume = onResume;
   window.addEventListener("visibilitychange", () => {
@@ -257,20 +298,29 @@ export function isPermissionLikeCaptureError(error: unknown) {
   return name === "NotAllowedError" || name === "PermissionDeniedError";
 }
 
+export function isDeviceOrBusyCaptureError(error: unknown) {
+  const name =
+    error instanceof DOMException
+      ? error.name
+      : String((error as { name?: string } | null)?.name || "");
+  return (
+    name === "NotFoundError" ||
+    name === "DevicesNotFoundError" ||
+    name === "NotReadableError" ||
+    name === "TrackStartError" ||
+    name === "AbortError" ||
+    name === "OverconstrainedError"
+  );
+}
+
 export function noticeFromCaptureFailure(input: {
   classified: "denied" | "failed";
   permissionState?: ChatMicrophonePermissionState | "unavailable" | "missing";
 }): ChatMicNotice {
-  if (input.classified === "denied") return "denied";
+  if (input.permissionState === "granted") return "failed";
   if (input.permissionState === "blocked") return "blocked";
-  if (
-    input.permissionState === "prompt" ||
-    input.permissionState === "denied" ||
-    input.permissionState === "unavailable" ||
-    input.permissionState === "missing"
-  ) {
-    return "denied";
-  }
+  if (input.classified === "denied") return "denied";
+  if (input.permissionState === "denied") return "denied";
   return "failed";
 }
 
@@ -278,7 +328,54 @@ export function isRealChatMicrophoneDenial(input: {
   nativeDenied?: boolean;
   error?: unknown;
   nativePlatform?: boolean;
+  osGranted?: boolean;
+  permissionState?: ChatMicrophonePermissionState | "unavailable" | "missing";
 }) {
+  if (input.osGranted === true || input.permissionState === "granted") {
+    return false;
+  }
+  if (isDeviceOrBusyCaptureError(input.error)) {
+    return false;
+  }
   if (input.nativeDenied) return true;
+  if (input.nativePlatform) {
+    return input.permissionState === "denied" || input.permissionState === "blocked";
+  }
   return isPermissionLikeCaptureError(input.error);
+}
+
+type GetUserMediaFn = (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+
+/**
+ * One tap: after OS grant, continue into getUserMedia. Retry once if WebView
+ * origin grant races the Chromium PermissionRequest.
+ */
+export async function captureTrustedChatAudioStream(input: {
+  native: boolean;
+  permissionState?: ChatMicrophonePermissionState | "unavailable" | "missing";
+  getUserMedia?: GetUserMediaFn;
+  retryDelayMs?: number;
+}): Promise<MediaStream> {
+  const getUserMedia =
+    input.getUserMedia ||
+    (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia
+      ? navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+      : null);
+  if (!getUserMedia) {
+    const error = new Error("getUserMedia unavailable");
+    error.name = "NotSupportedError";
+    throw error;
+  }
+
+  try {
+    return await getUserMedia({ audio: true });
+  } catch (error) {
+    const osGranted = input.permissionState === "granted";
+    if (!(input.native && osGranted && isPermissionLikeCaptureError(error))) {
+      throw error;
+    }
+    const delay = Number.isFinite(input.retryDelayMs) ? Number(input.retryDelayMs) : 120;
+    if (delay > 0) await wait(delay);
+    return getUserMedia({ audio: true });
+  }
 }

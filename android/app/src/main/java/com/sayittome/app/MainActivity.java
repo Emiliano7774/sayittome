@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebSettings;
@@ -27,10 +28,10 @@ import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
 
-    private static final String HOSTED_WEB_URL = "https://sayittome-app.web.app";
-    private static final String TRUSTED_HOST = "sayittome-app.web.app";
+    private static final String HOSTED_WEB_URL = MicCapturePolicy.TRUSTED_ORIGIN;
     private static final String MIC_PREFS = "sayittome_mic";
     private static final String MIC_ASKED_KEY = "record_audio_asked";
+    private static final String MIC_TAG = "SayItToMeMic";
 
     private final ActivityResultLauncher<String> recordAudioLauncher =
         registerForActivityResult(
@@ -39,6 +40,8 @@ public class MainActivity extends BridgeActivity {
         );
     private String pendingMicRequestId = "";
     private PermissionRequest pendingWebPermissionRequest = null;
+    private boolean jsBridgesAttached = false;
+    private MicAwareChromeClient micChromeClient = null;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -54,7 +57,45 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
-        WebView webView = getBridge().getWebView();
+        attachWebViewInsets();
+        attachMicrophoneCapture();
+    }
+
+    @Override
+    protected void load() {
+        super.load();
+        attachMicrophoneCapture();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        WebView webView = webViewOrNull();
+        if (webView == null) return;
+        if (micChromeClient != null) {
+            webView.setWebChromeClient(micChromeClient);
+        }
+        webView.evaluateJavascript(
+            "window.__sayittomeMicResume&&window.__sayittomeMicResume()",
+            null
+        );
+    }
+
+    private WebView webViewOrNull() {
+        Bridge bridge = getBridge();
+        return bridge != null ? bridge.getWebView() : null;
+    }
+
+    private Uri topLevelWebViewUri() {
+        WebView webView = webViewOrNull();
+        if (webView == null) return null;
+        String url = webView.getUrl();
+        if (url == null || url.isEmpty()) return null;
+        return Uri.parse(url);
+    }
+
+    private void attachWebViewInsets() {
+        WebView webView = webViewOrNull();
         if (webView == null) return;
 
         ViewCompat.setOnApplyWindowInsetsListener(webView, (view, windowInsets) -> {
@@ -63,6 +104,12 @@ public class MainActivity extends BridgeActivity {
             return windowInsets;
         });
         ViewCompat.requestApplyInsets(webView);
+    }
+
+    private void attachMicrophoneCapture() {
+        Bridge bridge = getBridge();
+        WebView webView = webViewOrNull();
+        if (bridge == null || webView == null) return;
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -74,37 +121,23 @@ public class MainActivity extends BridgeActivity {
         settings.setDisplayZoomControls(false);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setAllowFileAccess(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
 
         webView.setVerticalScrollBarEnabled(true);
         webView.setHorizontalScrollBarEnabled(false);
-        webView.addJavascriptInterface(new HostedWebLauncher(), "SayItToMeHostedWeb");
-        webView.addJavascriptInterface(new MicrophoneBridge(), "SayItToMeMic");
-        webView.setWebChromeClient(new MicAwareChromeClient(getBridge()));
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        WebView webView = getBridge() != null ? getBridge().getWebView() : null;
-        if (webView == null) return;
-        webView.evaluateJavascript(
-            "window.__sayittomeMicResume&&window.__sayittomeMicResume()",
-            null
-        );
+        if (!jsBridgesAttached) {
+            webView.addJavascriptInterface(new HostedWebLauncher(), "SayItToMeHostedWeb");
+            webView.addJavascriptInterface(new MicrophoneBridge(), "SayItToMeMic");
+            jsBridgesAttached = true;
+        }
+        if (micChromeClient == null) {
+            micChromeClient = new MicAwareChromeClient(bridge);
+        }
+        webView.setWebChromeClient(micChromeClient);
     }
 
     private boolean isTrustedTopLevelOrigin() {
-        Bridge bridge = getBridge();
-        if (bridge == null) return false;
-        WebView webView = bridge.getWebView();
-        if (webView == null) return false;
-        String url = webView.getUrl();
-        if (url == null) return false;
-        Uri uri = Uri.parse(url);
-        return "https".equalsIgnoreCase(uri.getScheme())
-            && TRUSTED_HOST.equalsIgnoreCase(uri.getHost())
-            && (uri.getPort() == -1 || uri.getPort() == 443)
-            && (uri.getUserInfo() == null || uri.getUserInfo().isEmpty());
+        return MicCapturePolicy.isTrustedHttpsOrigin(topLevelWebViewUri());
     }
 
     private boolean hasRecordAudio() {
@@ -131,17 +164,27 @@ public class MainActivity extends BridgeActivity {
         return "prompt";
     }
 
-    private boolean isTrustedPermissionOrigin(PermissionRequest request) {
-        if (request == null || request.getOrigin() == null) return false;
-        Uri origin = request.getOrigin();
-        return "https".equalsIgnoreCase(origin.getScheme())
-            && TRUSTED_HOST.equalsIgnoreCase(origin.getHost())
-            && (origin.getPort() == -1 || origin.getPort() == 443);
-    }
-
     private void launchRecordAudioRequest() {
         markMicAsked();
         recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO);
+    }
+
+    private void grantAudioCaptureOnly(PermissionRequest request) {
+        if (request == null) return;
+        try {
+            request.grant(MicCapturePolicy.audioCaptureOnly());
+        } catch (Exception ignored) {
+            // Request already completed by WebView.
+        }
+    }
+
+    private void denyPermissionRequest(PermissionRequest request) {
+        if (request == null) return;
+        try {
+            request.deny();
+        } catch (Exception ignored) {
+            // Request already completed by WebView.
+        }
     }
 
     private void completeMicRequest(String state) {
@@ -151,15 +194,10 @@ public class MainActivity extends BridgeActivity {
         pendingWebPermissionRequest = null;
 
         if (webRequest != null) {
-            try {
-                if ("granted".equals(state) && hasRecordAudio()) {
-                    String[] resources = webRequest.getResources();
-                    webRequest.grant(resources != null ? resources : new String[] { PermissionRequest.RESOURCE_AUDIO_CAPTURE });
-                } else {
-                    webRequest.deny();
-                }
-            } catch (Exception ignored) {
-                // Request already completed by WebView.
+            if ("granted".equals(state) && hasRecordAudio()) {
+                grantAudioCaptureOnly(webRequest);
+            } else {
+                denyPermissionRequest(webRequest);
             }
         }
 
@@ -250,37 +288,38 @@ public class MainActivity extends BridgeActivity {
 
         @Override
         public void onPermissionRequest(final PermissionRequest request) {
-            if (request == null) return;
-            if (!isTrustedPermissionOrigin(request)) {
-                request.deny();
+            if (request == null) {
                 return;
             }
+
+            Uri requestOrigin = request.getOrigin();
+            Uri topLevel = topLevelWebViewUri();
             String[] resources = request.getResources();
-            boolean audio = false;
-            boolean other = false;
-            if (resources != null) {
-                for (String resource : resources) {
-                    if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                        audio = true;
-                    } else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
-                        other = true;
-                    } else {
-                        other = true;
-                    }
-                }
-            }
-            if (audio && !other) {
-                if (hasRecordAudio()) {
-                    request.grant(resources);
-                    return;
-                }
-                pendingWebPermissionRequest = request;
-                if (pendingMicRequestId == null || pendingMicRequestId.isEmpty()) {
-                    launchRecordAudioRequest();
-                }
+            boolean wantsAudio = MicCapturePolicy.requestsAudioCapture(resources);
+            boolean osGranted = hasRecordAudio();
+
+            Log.i(
+                MIC_TAG,
+                "permissionRequest origin=" + requestOrigin
+                    + " top=" + topLevel
+                    + " audio=" + wantsAudio
+                    + " osRecordAudio=" + osGranted
+            );
+
+            if (MicCapturePolicy.shouldDenyRequest(requestOrigin, topLevel) || !wantsAudio) {
+                denyPermissionRequest(request);
                 return;
             }
-            super.onPermissionRequest(request);
+
+            if (MicCapturePolicy.shouldGrantAudioCapture(requestOrigin, topLevel, osGranted)) {
+                grantAudioCaptureOnly(request);
+                return;
+            }
+
+            pendingWebPermissionRequest = request;
+            if (pendingMicRequestId == null || pendingMicRequestId.isEmpty()) {
+                launchRecordAudioRequest();
+            }
         }
     }
 }

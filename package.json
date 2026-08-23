@@ -79,6 +79,7 @@
     "test:chat-media-capture": "node --experimental-strip-types scripts/chat-media-capture.harness.mjs",
     "test:chat-audio-capture": "node --experimental-strip-types scripts/chat-audio-capture.harness.mjs",
     "test:chat-audio-android-permission": "node --experimental-strip-types scripts/chat-audio-android-permission.harness.mjs",
+    "test:android-mic-webview-wiring": "node --experimental-strip-types scripts/android-mic-webview-wiring.harness.mjs",
     "test:nav-zone-paint": "node --experimental-strip-types scripts/nav-zone-paint.harness.mjs",
     "test:story-reply-writer-render": "node --experimental-strip-types scripts/story-reply-writer-render.harness.mjs",
     "test:android-release-version": "node scripts/android-release-version.harness.mjs",
