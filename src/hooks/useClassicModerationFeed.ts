@@ -212,17 +212,36 @@ export function useUserModerationChats(username: string) {
     if (!username) return;
 
     let cancelled = false;
-    setLoading(true);
-    setErrorText("");
+
+    async function waitForAdminUser() {
+      if (auth.currentUser) return auth.currentUser;
+      return await new Promise<(typeof auth)["currentUser"]>((resolve) => {
+        const unsub = auth.onAuthStateChanged((user) => {
+          unsub();
+          resolve(user);
+        });
+      });
+    }
 
     async function loadHistory() {
+      setLoading(true);
+      setErrorText("");
       try {
-        const token = await auth.currentUser?.getIdToken?.();
+        const user = await waitForAdminUser();
+        if (!user) {
+          if (!cancelled) {
+            setErrorText("unauthorized");
+            setChats([]);
+            setUid("");
+          }
+          return;
+        }
+        const token = await user.getIdToken(true);
         const res = await fetch(
           `/api/admin/user-chats?username=${encodeURIComponent(username)}`,
           {
             cache: "no-store",
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            headers: { Authorization: `Bearer ${token}` },
           },
         );
         const json = await res.json();
@@ -252,7 +271,10 @@ export function useUserModerationChats(username: string) {
       }
     }
 
-    void loadHistory();
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      void loadHistory();
+    });
 
     return () => {
       cancelled = true;

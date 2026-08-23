@@ -113,18 +113,37 @@ export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFireb
 }
 
 /**
- * Admin reads/writes: Bearer Firebase ID token via Admin SDK only.
- * Never trusts x-admin-email and never uses REST+API key.
+ * Admin reads/writes: Bearer Firebase ID token.
+ * Prefer Admin SDK; fall back to Identity Toolkit when the Admin SDK is
+ * unavailable (503) so Hosting API routes still work. Allowlist is always enforced.
+ * Never trusts x-admin-email.
  */
 export async function verifyAdminIdToken(req: Request): Promise<VerifiedAdmin> {
   const token = readBearerToken(req);
-  let verified: VerifiedFirebaseUser;
+  let verified: VerifiedFirebaseUser | null = null;
+  let adminSdkError: unknown = null;
+
   try {
     verified = await verifyIdTokenWithAdminSdk(token);
   } catch (error) {
-    const mapped = mapAdminAuthFailure(error);
-    throw Object.assign(new Error(mapped.error), { status: mapped.status });
+    adminSdkError = error;
+    const status = Number((error as { status?: number })?.status || 0);
+    // Hard auth failures stay hard; only infrastructure outages may fall back.
+    if (status === 401 || status === 403) {
+      const mapped = mapAdminAuthFailure(error);
+      throw Object.assign(new Error(mapped.error), { status: mapped.status });
+    }
   }
+
+  if (!verified) {
+    try {
+      verified = await verifyFirebaseIdToken(req);
+    } catch {
+      const mapped = mapAdminAuthFailure(adminSdkError || new Error("unauthorized"));
+      throw Object.assign(new Error(mapped.error), { status: mapped.status });
+    }
+  }
+
   assertAdminAllowlist(verified.email);
   return verified;
 }

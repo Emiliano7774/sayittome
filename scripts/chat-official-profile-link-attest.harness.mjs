@@ -421,6 +421,69 @@ assert.match(
   fs.readFileSync(path.join(root, "functions/src/verifiedProfileLink.ts"), "utf8"),
   /decision\.alreadyClaimed/,
 );
+assert.match(
+  fs.readFileSync(path.join(root, "functions/src/verifiedProfileLink.ts"), "utf8"),
+  /resolveChatMessageLocationForVerifiedLink/,
+);
+assert.match(
+  fs.readFileSync(path.join(root, "functions/src/verifiedProfileLink.ts"), "utf8"),
+  /boundChatId/,
+);
+assert.match(
+  fs.readFileSync(path.join(root, "functions/src/verifiedProfileLinkCore.ts"), "utf8"),
+  /reason === "no-secret"/,
+);
+assert.match(modern, /verifiedLinkChatId/);
+assert.match(modern, /persisted\.canonicalChatId/);
+assert.doesNotMatch(
+  fs
+    .readFileSync(path.join(root, "src/lib/profile/verifiedProfileLinkTicket.ts"), "utf8")
+    .slice(
+      fs
+        .readFileSync(path.join(root, "src/lib/profile/verifiedProfileLinkTicket.ts"), "utf8")
+        .indexOf("const permanent"),
+      fs
+        .readFileSync(path.join(root, "src/lib/profile/verifiedProfileLinkTicket.ts"), "utf8")
+        .indexOf("const permanent") + 180,
+    ),
+  /not-found/,
+);
+
+// not-found must keep the bound ticket for retry (lost race / alias).
+ticket.clearVerifiedProfileLinkTicket();
+ticket.storeVerifiedProfileLinkTicket({
+  ticketId,
+  ownerUid,
+  username: "sex",
+  text: OFFICIAL,
+  expiresAtMs: Date.now() + 60_000,
+});
+const notFound = await ticket.maybeClaimVerifiedProfileLink({
+  chatId,
+  messageId,
+  text: OFFICIAL,
+  ownerUid,
+  callClaim: async () => {
+    throw Object.assign(new Error("not-found"), { code: "functions/not-found" });
+  },
+});
+assert.equal(notFound.ok, false);
+assert.equal(notFound.retryable, true);
+assert.equal(ticket.peekVerifiedProfileLinkTicket(ownerUid)?.boundMessageId, messageId);
+
+// no-secret scrub must keep attestation (fail closed on badge, not destroy).
+assert.equal(
+  core.decideKeepVerifiedProfileAttestation({
+    attestation: { ticketId },
+    secret: "",
+    ticket: null,
+    chatId,
+    messageId,
+    messageText: OFFICIAL,
+    messageAuthorUid: ownerUid,
+  }),
+  "keep",
+);
 
 const offline = await verifyMod.callVerifyVerifiedProfileLink(
   { chatId, messageId, ticketId },

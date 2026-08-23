@@ -15,6 +15,8 @@ import {
   type ResolvedChatMessageLocation,
 } from "./deleteChatMessageCore";
 
+export { CHAT_ROOT_COLLECTIONS, MESSAGE_SUBCOLLECTIONS };
+
 export type DeleteChatMessageDeps = {
   db: Firestore;
   deleteStoragePath?: (path: string) => Promise<void>;

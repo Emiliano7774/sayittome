@@ -1237,6 +1237,9 @@ export default function ProfileAnonChat({
     chatMetaRef.current ?? undefined,
   );
   const chatWidthClass = isClassic ? "w-full" : "mx-auto max-w-5xl";
+  // Re-read when chat meta snapshot updates so verify uses canonical id.
+  const verifiedLinkChatId =
+    (chatMetaVersion >= 0 && chatMetaRef.current?.canonicalChatId) || chatId;
   const displayPeerName = isOwnerViewing
     ? formatAnonSessionLabel(anonSenderId)
     : username;
@@ -2706,7 +2709,7 @@ export default function ProfileAnonChat({
               </ChatMessageLongPress>
 
               <ChatOfficialProfileVerifiedBadge
-                chatId={chatId}
+                chatId={verifiedLinkChatId}
                 messageId={message.id}
                 text={message.text}
                 deleted={message.deletedForEveryone}

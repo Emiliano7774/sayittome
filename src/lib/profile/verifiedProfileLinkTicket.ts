@@ -456,8 +456,10 @@ export async function maybeClaimVerifiedProfileLink(input: {
         (error as { message?: string })?.message ||
         "transient",
     );
+    // not-found stays retryable: claim can race the just-written message or an
+    // alias chatId; clearing the ticket would permanently lose the attestation.
     const permanent =
-      /permission-denied|invalid-argument|not-found|failed-precondition|unauthenticated/i.test(
+      /permission-denied|invalid-argument|failed-precondition|unauthenticated/i.test(
         code,
       );
     if (permanent) {

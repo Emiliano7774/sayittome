@@ -15,7 +15,10 @@ import { randomBytes } from "crypto";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
-import { resolveChatMessageLocation } from "./deleteChatMessage";
+import {
+  CHAT_ROOT_COLLECTIONS,
+  resolveChatMessageLocation,
+} from "./deleteChatMessage";
 import {
   VERIFIED_PROFILE_LINK_TICKET_COLLECTION,
   decideClaimVerifiedProfileLinkTicket,
@@ -29,6 +32,57 @@ import {
 
 function asId(value: unknown) {
   return String(value || "").trim();
+}
+
+/**
+ * Locate a message at chatId, or via chat.canonicalChatId when the caller
+ * still holds a legacy/alias thread id. Returns the chat doc id where the
+ * message actually lives (for ticket consume / verify binding).
+ */
+async function resolveChatMessageLocationForVerifiedLink(
+  tx: { get: (ref: FirebaseFirestore.DocumentReference) => Promise<{ exists: boolean; data: () => unknown }> },
+  db: Firestore,
+  chatId: string,
+  messageId: string,
+) {
+  const primary = await resolveChatMessageLocation(tx, db, chatId, messageId);
+  if (!("error" in primary)) {
+    return { ...primary, boundChatId: asId(primary.chatRef.id) || chatId };
+  }
+
+  const aliasCandidates = new Set<string>();
+  for (const root of CHAT_ROOT_COLLECTIONS) {
+    const chatSnap = await tx.get(db.collection(root).doc(chatId));
+    if (!chatSnap.exists) continue;
+    const data = (chatSnap.data() || {}) as Record<string, unknown>;
+    const canonical = asId(data.canonicalChatId);
+    if (canonical && canonical !== chatId) aliasCandidates.add(canonical);
+    const legacy = data.legacyChatIds;
+    if (Array.isArray(legacy)) {
+      for (const entry of legacy) {
+        const id = asId(entry);
+        if (id && id !== chatId) aliasCandidates.add(id);
+      }
+    }
+  }
+
+  for (const candidate of aliasCandidates) {
+    const located = await resolveChatMessageLocation(tx, db, candidate, messageId);
+    if (!("error" in located)) {
+      console.info("[verified-profile-link-locate]", {
+        stage: "alias-hit",
+        ticketPrefix: "",
+        fromAlias: true,
+      });
+      return { ...located, boundChatId: asId(located.chatRef.id) || candidate };
+    }
+  }
+
+  console.info("[verified-profile-link-locate]", {
+    stage: "miss",
+    target: primary.target,
+  });
+  return primary;
 }
 
 function profileUsernameFromUser(data: Record<string, unknown> | undefined) {
@@ -59,6 +113,8 @@ function messageAuthorUid(message: Record<string, unknown>) {
       message.createdByAuthUid ||
       message.profileUid ||
       message.senderProfileId ||
+      message.ownerId ||
+      message.senderUid ||
       message.fromUid,
   );
 }
@@ -132,11 +188,17 @@ export async function handleClaimVerifiedProfileLink(
   await db.runTransaction(async (tx) => {
     const ticketRef = db.collection(VERIFIED_PROFILE_LINK_TICKET_COLLECTION).doc(ticketId);
     const ticketSnap = await tx.get(ticketRef);
-    const located = await resolveChatMessageLocation(tx, db, chatId, messageId);
+    const located = await resolveChatMessageLocationForVerifiedLink(tx, db, chatId, messageId);
     if ("error" in located) {
+      console.info("[verified-profile-link-claim]", {
+        stage: "locate-miss",
+        target: located.target,
+        ticketPrefix: ticketId.slice(0, 8),
+      });
       throwHttps("not-found", located.target === "message" ? "Message not found" : "Chat not found");
     }
 
+    const boundChatId = asId(located.boundChatId) || chatId;
     const message = located.message as Record<string, unknown>;
     const ticket = ticketFromDoc(ticketId, ticketSnap.data());
     const decision = decideClaimVerifiedProfileLinkTicket({
@@ -145,7 +207,7 @@ export async function handleClaimVerifiedProfileLink(
       ticket,
       messageText: asId(message.texto || message.text),
       messageAuthorUid: messageAuthorUid(message),
-      chatId,
+      chatId: boundChatId,
       messageId,
       nowMs: Date.now(),
     });
@@ -160,7 +222,7 @@ export async function handleClaimVerifiedProfileLink(
 
     const attestation = {
       ticketId,
-      chatId,
+      chatId: boundChatId,
       messageId,
     };
     const messageRef = located.chatRef.collection(located.messageSubcollection).doc(messageId);
@@ -176,14 +238,14 @@ export async function handleClaimVerifiedProfileLink(
         text: asId(ticket?.text),
         expiresAtMs: Number(ticket?.expiresAtMs) || 0,
         consumed: true,
-        consumedChatId: chatId,
+        consumedChatId: boundChatId,
         consumedMessageId: messageId,
       });
       if (!resigned.ok) throwHttps(resigned.error);
 
       tx.update(ticketRef, {
         consumed: true,
-        consumedChatId: chatId,
+        consumedChatId: boundChatId,
         consumedMessageId: messageId,
         consumedAt: FieldValue.serverTimestamp(),
         mac: resigned.mac,
@@ -211,16 +273,22 @@ export async function handleVerifyVerifiedProfileLink(
     throwHttps("invalid-argument", "Invalid verify payload");
   }
 
-  const located = await resolveChatMessageLocation(
+  const located = await resolveChatMessageLocationForVerifiedLink(
     { get: (ref) => db.doc(ref.path).get() },
     db,
     chatId,
     messageId,
   );
   if ("error" in located) {
+    console.info("[verified-profile-link-verify]", {
+      stage: "locate-miss",
+      target: located.target,
+      ticketPrefix: ticketId.slice(0, 8),
+    });
     return { ok: false as const };
   }
 
+  const boundChatId = asId(located.boundChatId) || chatId;
   const message = located.message as Record<string, unknown>;
   const ticketSnap = await db.collection(VERIFIED_PROFILE_LINK_TICKET_COLLECTION).doc(ticketId).get();
   const decision = decideVerifyVerifiedProfileLink({
@@ -228,11 +296,18 @@ export async function handleVerifyVerifiedProfileLink(
     ticket: ticketFromDoc(ticketId, ticketSnap.data()),
     messageText: asId(message.texto || message.text),
     messageAuthorUid: messageAuthorUid(message),
-    chatId,
+    chatId: boundChatId,
     messageId,
     deletedForEveryone: message.deletedForEveryone === true,
   });
-  if (!decision.ok) return { ok: false as const };
+  if (!decision.ok) {
+    console.info("[verified-profile-link-verify]", {
+      stage: "reject",
+      reason: decision.reason || decision.error,
+      ticketPrefix: ticketId.slice(0, 8),
+    });
+    return { ok: false as const };
+  }
   return { ok: true as const, username: decision.username };
 }
 

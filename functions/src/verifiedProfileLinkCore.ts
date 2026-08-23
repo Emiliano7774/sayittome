@@ -296,5 +296,8 @@ export function decideKeepVerifiedProfileAttestation(input: {
     chatId: input.chatId,
     messageId: input.messageId,
   });
+  // Infrastructure / secret outage must not destroy a just-written attestation.
+  // Clients still fail closed without a successful verify callable.
+  if (!verified.ok && verified.reason === "no-secret") return "keep";
   return verified.ok ? "keep" : "strip";
 }
