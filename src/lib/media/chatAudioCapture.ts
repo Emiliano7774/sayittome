@@ -12,6 +12,7 @@ export type ChatAudioEvent =
   | { type: "blob-ready" }
   | { type: "blob-too-small" }
   | { type: "error" }
+  | { type: "cancel" }
   | { type: "reset" };
 
 export type ChatAudioDecision = {
@@ -52,7 +53,7 @@ export function reduceChatAudioEvent(
   phase: ChatAudioPhase,
   event: ChatAudioEvent,
 ): ChatAudioDecision {
-  if (event.type === "reset") return { ...IDLE };
+  if (event.type === "reset" || event.type === "cancel") return { ...IDLE };
 
   if (event.type === "permission-denied") {
     return decide("idle", { showDenied: true });

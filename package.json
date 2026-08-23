@@ -78,6 +78,7 @@
     "test:stories-snapshot-ttl": "node --experimental-strip-types scripts/stories-snapshot-ttl.harness.mjs",
     "test:chat-media-capture": "node --experimental-strip-types scripts/chat-media-capture.harness.mjs",
     "test:chat-audio-capture": "node --experimental-strip-types scripts/chat-audio-capture.harness.mjs",
+    "test:chat-audio-hold-lock": "node --experimental-strip-types scripts/chat-audio-hold-lock.harness.mjs",
     "test:chat-audio-android-permission": "node --experimental-strip-types scripts/chat-audio-android-permission.harness.mjs",
     "test:android-mic-webview-wiring": "node --experimental-strip-types scripts/android-mic-webview-wiring.harness.mjs",
     "test:nav-zone-paint": "node --experimental-strip-types scripts/nav-zone-paint.harness.mjs",

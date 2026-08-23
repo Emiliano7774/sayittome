@@ -5,7 +5,6 @@ import {
   Bomb,
   Camera,
   Image as ImageIcon,
-  Mic,
   Send,
   Video,
   X,
@@ -14,6 +13,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
+import ChatAudioHoldLockMic from "@/components/chat/ChatAudioHoldLockMic";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
 import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
 import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
@@ -1864,6 +1864,15 @@ export default function ProfileAnonChat({
     }
   }
 
+  function cancelAudioRecording() {
+    audioRecordingSessionRef.current += 1;
+    resetAudioRecorder();
+    setRecording(false);
+    audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+      type: "cancel",
+    }).phase;
+  }
+
   function stopAudioRecording() {
     const ignored = reduceChatAudioEvent(audioPhaseRef.current, { type: "pointer-up" });
     if (ignored.phase === "arming" && !ignored.stopCapture) {
@@ -2863,12 +2872,6 @@ export default function ProfileAnonChat({
             </div>
           ) : null}
 
-          {!hasMediaPreview && recording ? (
-            <div className={`${chatWidthClass} mb-3 rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-center text-sm font-bold text-red-300`}>
-              Grabando audio... tocá para terminar
-            </div>
-          ) : null}
-
           {!hasMediaPreview && micNotice ? (
             <div className={`${chatWidthClass} mb-3 rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-center text-sm text-white/80`}>
               <p>
@@ -2982,28 +2985,15 @@ export default function ProfileAnonChat({
               />
             </div>
 
-            <button
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.preventDefault();
-                if (recording && audioPhaseRef.current !== "arming") {
-                  stopAudioRecording();
-                  return;
-                }
+            <ChatAudioHoldLockMic
+              recording={recording}
+              disabled={!canSend}
+              onStart={() => {
                 void startAudioRecording();
               }}
-              className={[
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border transition",
-                recording
-                  ? "border-red-400/50 bg-red-500/20 text-red-300"
-                  : "border-white/10 bg-white/[0.06] text-white/70",
-              ].join(" ")}
-              title="Grabar audio"
-            >
-              <Mic size={19} />
-            </button>
+              onStop={stopAudioRecording}
+              onCancel={cancelAudioRecording}
+            />
 
             <button
               type="button"

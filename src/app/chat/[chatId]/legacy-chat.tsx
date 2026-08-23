@@ -23,6 +23,7 @@ import { onAuthStateChanged } from "firebase/auth";
 
 import { auth, db } from "@/lib/firebase";
 import { uploadChatMessageMedia } from "@/lib/media/upload";
+import ChatAudioHoldLockMic from "@/components/chat/ChatAudioHoldLockMic";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
 import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
 import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
@@ -39,6 +40,7 @@ import {
   reduceChatAudioEvent,
   type ChatAudioPhase,
 } from "@/lib/media/chatAudioCapture";
+import { discardChatAudioRecording } from "@/lib/media/chatAudioRecorderCleanup";
 import {
   captureTrustedChatAudioStream,
   ensureChatMicrophonePermission,
@@ -293,6 +295,17 @@ export default function LegacyChatPage() {
       }),
     [],
   );
+
+  useEffect(() => {
+    return () => {
+      discardChatAudioRecording({
+        session: audioRecordingSessionRef,
+        recorder: mediaRecorderRef,
+        stream: recordingStreamRef,
+        chunks: audioChunksRef,
+      });
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1073,6 +1086,19 @@ export default function LegacyChatPage() {
     }
   };
 
+  const cancelRecording = () => {
+    discardChatAudioRecording({
+      session: audioRecordingSessionRef,
+      recorder: mediaRecorderRef,
+      stream: recordingStreamRef,
+      chunks: audioChunksRef,
+    });
+    setRecording(false);
+    audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
+      type: "cancel",
+    }).phase;
+  };
+
   const stopRecording = () => {
     const ignored = reduceChatAudioEvent(audioPhaseRef.current, { type: "pointer-up" });
     if (ignored.phase === "arming" && !ignored.stopCapture) {
@@ -1480,26 +1506,15 @@ if (uxMode === "classic") {
               }}
             />
 
-            <button
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.preventDefault();
-                if (recording && audioPhaseRef.current !== "arming") {
-                  stopRecording();
-                  return;
-                }
+            <ChatAudioHoldLockMic
+              recording={recording}
+              isClassic
+              onStart={() => {
                 void startRecording();
               }}
-              className={
-                recording
-                  ? "rounded-full bg-red-500 px-5 py-4 text-sm font-black text-white transition hover:scale-[1.02]"
-                  : "rounded-full border border-white/10 bg-black px-5 py-4 text-sm font-black text-white transition hover:border-fuchsia-400"
-              }
-            >
-              {recording ? "Stop" : "Audio"}
-            </button>
+              onStop={stopRecording}
+              onCancel={cancelRecording}
+            />
 
             <button
               onClick={sendMessage}
