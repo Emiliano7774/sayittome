@@ -35,6 +35,8 @@ export type ProfileAnonViewerContext = {
   identityReady?: boolean;
   senderAuthUid?: string;
   senderRole?: string;
+  hideIdentity?: string;
+  hideIdentities?: string[];
 };
 
 export type ProfileAnonFirestoreMessage = {
@@ -64,6 +66,8 @@ export type ProfileAnonFirestoreMessage = {
   createdAt?: { toDate?: () => Date };
   autoModerationRequiresBlur?: boolean;
   moderationRequiresBlur?: boolean;
+  hiddenFor?: Record<string, boolean>;
+  deletedForEveryone?: boolean;
 };
 
 export type ProfileAnonUiMessage = {
@@ -85,6 +89,8 @@ export type ProfileAnonUiMessage = {
   moderationRequiresBlur?: boolean;
   readBy?: Record<string, boolean>;
   createdAt?: { toDate?: () => Date };
+  hiddenFor?: Record<string, boolean>;
+  deletedForEveryone?: boolean;
 };
 
 /** Profile Firebase uid only — never anonymous Auth uids (those invert owner/visitor). */
