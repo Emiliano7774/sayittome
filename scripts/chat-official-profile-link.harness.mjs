@@ -30,7 +30,7 @@ const legacySrc = fs.readFileSync(
   "utf8",
 );
 
-assert.match(profileChat, /parseExactOfficialProfileLinkMessage/);
+assert.match(profileChat, /decideOfficialProfileLinkRender/);
 assert.match(profileChat, /ChatVerifiedProfileLinkCard/);
 assert.match(profileChat, /ChatMessageReceipt/);
 assert.ok(
@@ -46,7 +46,7 @@ assert.doesNotMatch(messageText, /dangerouslySetInnerHTML/);
 assert.match(rowSrc, /data-official-profile-link-row/);
 assert.match(rowSrc, /min-h-11/);
 assert.match(rowSrc, /chat_verified_link_badge/);
-assert.match(legacySrc, /parseExactOfficialProfileLinkMessage/);
+assert.match(legacySrc, /decideOfficialProfileLinkRender/);
 assert.match(legacySrc, /ChatVerifiedProfileLinkCard/);
 
 const link = await import(
@@ -81,6 +81,7 @@ function reject(text) {
   assert.equal(link.parseExactOfficialProfileLinkMessage(text), null, `must reject ${text}`);
 }
 
+accept("https://sytm.me/@sex", "sex", "/u/sex");
 accept("https://sytm.me/@emiliano", "emiliano", "/u/emiliano");
 accept("https://sytm.me/@Emiliano", "emiliano", "/u/emiliano");
 accept("https://sytm.me/@EMILIANO/", "emiliano", "/u/emiliano");

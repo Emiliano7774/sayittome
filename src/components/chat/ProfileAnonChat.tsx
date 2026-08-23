@@ -133,7 +133,7 @@ import {
 import { messageRequiresBlur, profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
-import { parseExactOfficialProfileLinkMessage } from "@/lib/profile/verifiedLink";
+import { decideOfficialProfileLinkRender } from "@/lib/chat/officialProfileLinkMessage";
 import { getCachedProfile, setCachedProfile, getCachedFullProfile } from "@/lib/profile/profileCache";
 import {
   cachedMessageToUi,
@@ -2152,6 +2152,7 @@ export default function ProfileAnonChat({
       id: clientId,
       clientId,
       text: messageText,
+      type: "text" as const,
       mine: true,
       fromUid: outgoingSender.ok
         ? outgoingSender.sender.fromUid
@@ -2487,10 +2488,7 @@ export default function ProfileAnonChat({
                 hasError: message.status === "error",
                 chat: chatMetaRef.current ?? undefined,
               });
-              const verifiedProfileLink =
-                message.type === "text"
-                  ? parseExactOfficialProfileLinkMessage(message.text)
-                  : null;
+              const verifiedProfileLink = decideOfficialProfileLinkRender(message);
               const messageUnread = isProfileAnonMessageUnreadForViewer(
                 message,
                 viewerId,

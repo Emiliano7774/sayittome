@@ -234,7 +234,7 @@ export function firestoreMessageAuthorId(data: ProfileAnonFirestoreMessage) {
 
 export function resolveFirestoreMessageType(
   data: ProfileAnonFirestoreMessage & { mediaType?: string },
-): ProfileAnonFirestoreMessage["type"] | undefined {
+): NonNullable<ProfileAnonFirestoreMessage["type"]> {
   const explicit = data.type;
   if (
     explicit === "text" ||
@@ -263,7 +263,7 @@ export function resolveFirestoreMessageType(
     return "image";
   }
 
-  return undefined;
+  return "text";
 }
 
 export function mapFirestoreDocToProfileAnonMessage(

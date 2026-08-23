@@ -29,7 +29,7 @@ import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import ChatMessageText from "@/components/chat/ChatMessageText";
 import ChatVerifiedProfileLinkCard from "@/components/chat/ChatVerifiedProfileLinkCard";
-import { parseExactOfficialProfileLinkMessage } from "@/lib/profile/verifiedLink";
+import { decideOfficialProfileLinkRender } from "@/lib/chat/officialProfileLinkMessage";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { CHAT_FILE_INPUT_CLASS, openNativeGalleryFilePicker } from "@/lib/media/chatMediaCapture";
 import {
@@ -1153,10 +1153,12 @@ if (uxMode === "classic") {
                 readBy: message.readBy,
                 senderId: viewerUid,
               });
-              const officialLink =
-                !message.deletedForEveryone && !message.mediaUrl
-                  ? parseExactOfficialProfileLinkMessage(String(message.texto || ""))
-                  : null;
+              const officialLink = decideOfficialProfileLinkRender({
+                texto: message.texto,
+                mediaUrl: message.mediaUrl,
+                mediaType: message.mediaType,
+                deletedForEveryone: message.deletedForEveryone,
+              });
 
               return (
                 <div

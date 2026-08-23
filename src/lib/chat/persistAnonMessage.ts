@@ -62,6 +62,13 @@ type PersistAnonMessageInput = {
 
 const canonicalMigrationStarted = new Set<string>();
 
+export function resolvePersistAnonMessageType(
+  type?: PersistAnonMessageInput["type"],
+): NonNullable<PersistAnonMessageInput["type"]> {
+  if (type === "audio" || type === "image" || type === "video") return type;
+  return "text";
+}
+
 export class PersistIdentityError extends Error {
   constructor(message = "owner_identity_not_ready") {
     super(message);
@@ -197,11 +204,12 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     targetPhoto,
     messageText,
     reply,
-    type = "text",
+    type: persistType,
     mediaUrl,
     source,
     viewOnce,
   } = input;
+  const type = resolvePersistAnonMessageType(persistType);
 
   const storedText = type === "text" ? messageText : "";
   const lastMessagePreview = input.lastMessagePreview ?? messageText;

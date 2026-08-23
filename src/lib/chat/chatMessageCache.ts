@@ -1,3 +1,5 @@
+import { resolveFirestoreMessageType } from "@/lib/chat/profileAnonMessageAuthor";
+
 export type CachedChatMessage = {
   id: string;
   text: string;
@@ -114,6 +116,7 @@ export function clearCachedChatMessages() {
 export function cachedMessageToUi(message: CachedChatMessage) {
   return {
     ...message,
+    type: resolveFirestoreMessageType(message),
     createdAt: message.createdAtMs
       ? { toDate: () => new Date(message.createdAtMs!) }
       : undefined,
@@ -154,7 +157,7 @@ export function uiMessageToCached(message: {
     mine: message.mine,
     reply: message.reply,
     storyReply: message.storyReply,
-    type: message.type,
+    type: resolveFirestoreMessageType(message),
     mediaUrl: message.mediaUrl,
     source: message.source,
     viewOnce: message.viewOnce,
