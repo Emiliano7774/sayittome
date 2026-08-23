@@ -647,6 +647,8 @@ const es = {
   admin_undo_unmark_suspicious: "Quitar sospecha",
   admin_undo_revert: "Deshacer",
   admin_undo_fail: "No se pudo deshacer la acción.",
+  admin_tag_roleplay_fail: "No se pudo marcar el perfil de rol.",
+  admin_clear_roleplay_tag_fail: "No se pudo quitar la marca de rol.",
   abuse_block_30m: "Bloquear 30 min",
   abuse_block_anon: "Bloquear usuario anónimo",
 
@@ -1460,6 +1462,8 @@ const en: Record<keyof typeof es, string> = {
   admin_undo_unmark_suspicious: "Remove suspicious mark",
   admin_undo_revert: "Undo",
   admin_undo_fail: "Could not undo the action.",
+  admin_tag_roleplay_fail: "Could not mark the roleplay profile.",
+  admin_clear_roleplay_tag_fail: "Could not remove the roleplay tag.",
   abuse_block_30m: "Block 30 min",
   abuse_block_anon: "Block anonymous user",
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type SyntheticEvent } from "react";
+import { useState, type SyntheticEvent } from "react";
 import { RotateCcw, ShieldAlert } from "lucide-react";
 
 import { useAdminSession } from "@/hooks/useAdminSession";
@@ -42,16 +42,24 @@ export default function AdminProfileRoleplayButton({
   const { ready, isAdmin, email } = useAdminSession();
   const [tag, setTag] = useState(profile.moderationTag || "");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
+  const syncKey = `${profile.uid}:${profile.moderationTag || ""}`;
+  const [seenSyncKey, setSeenSyncKey] = useState(syncKey);
+  if (syncKey !== seenSyncKey) {
+    setSeenSyncKey(syncKey);
     setTag(profile.moderationTag || "");
-  }, [profile.moderationTag, profile.uid]);
+  }
 
   if (!ready || !isAdmin) return null;
 
   const isRoleplay = tag === "roleplay";
   const modern = variant === "modern";
   const isShuffle = appearance === "shuffle";
+
+  function failMessage(action: "tag_roleplay" | "clear_moderation_tag") {
+    return action === "tag_roleplay"
+      ? t("admin_tag_roleplay_fail")
+      : t("admin_clear_roleplay_tag_fail");
+  }
 
   async function runAction(action: "tag_roleplay" | "clear_moderation_tag") {
     if (!profile.uid || busy) return;
@@ -70,7 +78,7 @@ export default function AdminProfileRoleplayButton({
       });
 
       if (!json?.ok) {
-        alert(t("admin_undo_fail"));
+        alert(failMessage(action));
         return;
       }
 
@@ -78,6 +86,8 @@ export default function AdminProfileRoleplayButton({
       setTag(nextTag);
       dispatchProfileModerationTag(profile.uid, nextTag);
       onTagChange?.(nextTag);
+    } catch {
+      alert(failMessage(action));
     } finally {
       setBusy(false);
     }

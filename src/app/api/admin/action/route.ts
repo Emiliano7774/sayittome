@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { writeAdminLog } from "@/lib/admin/adminLogs";
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
+import {
+  applyUsuarioModerationTagAdmin,
+  usuarioModerationTagErrorResponse,
+} from "@/lib/admin/usuarioModerationTagAdmin";
 import { exactMessageCollectionName } from "@/lib/moderation/moderationMessageCollections";
 import {
   createFirestoreDoc,
@@ -53,9 +57,10 @@ export async function POST(req: Request) {
       adminEmail = await resolveAdminEmail(req, body);
     } catch (error) {
       const status = Number((error as { status?: number })?.status || 403);
+      const authStatus = status === 401 ? 401 : 403;
       return NextResponse.json(
-        { ok: false, error: String((error as Error)?.message || "forbidden") },
-        { status },
+        { ok: false, error: authStatus === 401 ? "unauthorized" : "forbidden" },
+        { status: authStatus },
       );
     }
 
@@ -126,20 +131,18 @@ export async function POST(req: Request) {
       });
     } else if (action === "reset_bio") {
       await patchFirestoreDoc("usuarios", uid, { bio: "", descripcion: "" });
-    } else if (action === "tag_roleplay") {
-      await patchFirestoreDoc("usuarios", uid, {
-        moderationTag: "roleplay",
-        moderationTagNote: String(body?.note || "Perfil de rol marcado por moderación."),
-        moderationTagAt: new Date().toISOString(),
-        moderationTagBy: adminEmail,
-      });
-    } else if (action === "clear_moderation_tag") {
-      await patchFirestoreDoc("usuarios", uid, {
-        moderationTag: "",
-        moderationTagNote: "",
-        moderationTagAt: "",
-        moderationTagBy: "",
-      });
+    } else if (action === "tag_roleplay" || action === "clear_moderation_tag") {
+      try {
+        await applyUsuarioModerationTagAdmin({
+          uid,
+          adminEmail,
+          action,
+          note: body?.note,
+        });
+      } catch (tagError) {
+        const mapped = usuarioModerationTagErrorResponse(tagError);
+        return NextResponse.json(mapped.body, { status: mapped.status });
+      }
     } else if (action === "toggle_media_blur" && uid) {
       const mediaUrl = String(body?.mediaUrl || "").trim();
       if (!mediaUrl) {

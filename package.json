@@ -121,7 +121,8 @@
     "test:chat-audio-delete-integration": "node --experimental-strip-types scripts/chat-audio-delete-integration.harness.mjs",
     "test:functions-admin-cold-start": "node scripts/functions-admin-app-cold-start.harness.mjs",
     "test:chat-official-profile-link-claim-pending-copy": "node --experimental-strip-types scripts/chat-official-profile-link-claim-pending-copy.harness.mjs",
-    "test:chat-official-profile-link-ticket-durable": "node --experimental-strip-types scripts/chat-official-profile-link-ticket-durable.harness.mjs"
+    "test:chat-official-profile-link-ticket-durable": "node --experimental-strip-types scripts/chat-official-profile-link-ticket-durable.harness.mjs",
+    "test:admin-usuario-moderation-tag": "node --experimental-strip-types scripts/admin-usuario-moderation-tag.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -143,6 +144,7 @@
     "react-dom": "19.2.4",
     "react-intersection-observer": "^10.0.3",
     "react-use": "^17.6.0",
+    "server-only": "^0.0.1",
     "storage": "^0.2.0",
     "wavesurfer.js": "^7.12.7",
     "zustand": "^5.0.13"
