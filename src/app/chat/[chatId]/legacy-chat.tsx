@@ -27,6 +27,9 @@ import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
 import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
 import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
+import ChatMessageText from "@/components/chat/ChatMessageText";
+import ChatVerifiedProfileLinkCard from "@/components/chat/ChatVerifiedProfileLinkCard";
+import { parseExactOfficialProfileLinkMessage } from "@/lib/profile/verifiedLink";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { CHAT_FILE_INPUT_CLASS, openNativeGalleryFilePicker } from "@/lib/media/chatMediaCapture";
 import {
@@ -1134,6 +1137,10 @@ if (uxMode === "classic") {
                 readBy: message.readBy,
                 senderId: viewerUid,
               });
+              const officialLink =
+                !message.deletedForEveryone && !message.mediaUrl
+                  ? parseExactOfficialProfileLinkMessage(String(message.texto || ""))
+                  : null;
 
               return (
                 <div
@@ -1164,10 +1171,17 @@ if (uxMode === "classic") {
                         failLabel="No se pudo reproducir el audio."
                       />
                     ) : (
-                      message.texto || "Mensaje"
+                      <ChatMessageText
+                        text={message.texto || "Mensaje"}
+                        verifiedLink={officialLink}
+                      />
                     )}
                   </div>
                   </ChatMessageLongPress>
+
+                  {officialLink ? (
+                    <ChatVerifiedProfileLinkCard link={officialLink} mine={isMine} isClassic />
+                  ) : null}
 
                   {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
                 </div>

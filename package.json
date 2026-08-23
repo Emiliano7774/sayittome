@@ -110,6 +110,7 @@
     "test:nav-warm-paint-gates": "node --experimental-strip-types scripts/nav-warm-paint-gates.harness.mjs",
     "test:chat-audio-playback": "node --experimental-strip-types scripts/chat-audio-playback.harness.mjs",
     "test:chat-message-delete": "node --experimental-strip-types scripts/chat-message-delete.harness.mjs",
+    "test:chat-official-profile-link": "node --experimental-strip-types scripts/chat-official-profile-link.harness.mjs",
     "test:chat-audio-delete-integration": "node --experimental-strip-types scripts/chat-audio-delete-integration.harness.mjs",
     "test:functions-admin-cold-start": "node scripts/functions-admin-app-cold-start.harness.mjs"
   },

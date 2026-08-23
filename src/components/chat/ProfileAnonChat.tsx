@@ -130,7 +130,7 @@ import {
 import { messageRequiresBlur, profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
-import { parseVerifiedProfileLinkInText } from "@/lib/profile/verifiedLink";
+import { parseExactOfficialProfileLinkMessage } from "@/lib/profile/verifiedLink";
 import { getCachedProfile, setCachedProfile, getCachedFullProfile } from "@/lib/profile/profileCache";
 import {
   cachedMessageToUi,
@@ -2473,7 +2473,7 @@ export default function ProfileAnonChat({
               });
               const verifiedProfileLink =
                 message.type === "text"
-                  ? parseVerifiedProfileLinkInText(message.text)
+                  ? parseExactOfficialProfileLinkMessage(message.text)
                   : null;
               const messageUnread = isProfileAnonMessageUnreadForViewer(
                 message,

@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 
-import type { ParsedVerifiedProfileLink } from "@/lib/profile/verifiedLink";
+import {
+  rememberChatBeforeOfficialProfileOpen,
+  type ParsedVerifiedProfileLink,
+} from "@/lib/profile/verifiedLink";
 
 type Props = {
   text: string;
@@ -15,32 +18,17 @@ export default function ChatMessageText({ text, verifiedLink, className }: Props
     return <p className={className}>{text}</p>;
   }
 
-  const needle = verifiedLink.displayLink;
-  const httpsNeedle = `https://${needle}`;
-  const index = text.indexOf(httpsNeedle) >= 0
-    ? text.indexOf(httpsNeedle)
-    : text.indexOf(needle);
-
-  if (index < 0) {
-    return <p className={className}>{text}</p>;
-  }
-
-  const matched =
-    index === text.indexOf(httpsNeedle) ? httpsNeedle : needle;
-  const before = text.slice(0, index);
-  const after = text.slice(index + matched.length);
-
   return (
     <p className={className}>
-      {before}
       <Link
         href={verifiedLink.profileHref}
         prefetch
-        className="font-bold underline decoration-violet-300/50 underline-offset-2"
+        data-official-profile-link-url="1"
+        onClick={rememberChatBeforeOfficialProfileOpen}
+        className="inline-flex min-h-11 max-w-full items-center break-all font-bold underline decoration-violet-300/50 underline-offset-2"
       >
-        {matched}
+        {verifiedLink.matchedText || text.trim()}
       </Link>
-      {after}
     </p>
   );
 }

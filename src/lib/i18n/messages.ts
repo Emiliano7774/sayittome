@@ -521,7 +521,7 @@ const es = {
   chat_anon_reply_alert:
     "Si te responden mientras estás en otra parte de la app, te avisamos con un sonido.",
   chat_bomb: "Bomba",
-  chat_verified_link_badge: "Link verificado",
+  chat_verified_link_badge: "Perfil verificado",
   chat_verified_link_open: "Abrir perfil verificado de @{username}",
   chat_status_sending: "Enviando...",
   chat_status_delivered: "Entregado",
@@ -1331,7 +1331,7 @@ const en: Record<keyof typeof es, string> = {
   chat_anon_reply_alert:
     "If they reply while you are elsewhere in the app, we alert you with a sound.",
   chat_bomb: "Bomb",
-  chat_verified_link_badge: "Verified link",
+  chat_verified_link_badge: "Verified profile",
   chat_verified_link_open: "Open verified profile for @{username}",
   chat_status_sending: "Sending...",
   chat_status_delivered: "Delivered",

@@ -1,5 +1,7 @@
+import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
+import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { assertProfileOwner } from "@/lib/profile/owner";
-import { normalizeUsername } from "@/lib/profile/username";
+import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
 
 export const VERIFIED_QUERY_PARAM = "verified";
 export const VERIFIED_QUERY_VALUE = "1";
@@ -42,77 +44,94 @@ export type ParsedVerifiedProfileLink = {
   username: string;
   profileHref: string;
   displayLink: string;
+  matchedText: string;
 };
 
-const VERIFIED_PUBLIC_LINK_RE =
-  /(?:https?:\/\/)?(?:www\.)?sytm\.me\/@([a-zA-Z0-9._-]{3,24})\/?(?:\?[^\s#]*)?(?:#[^\s]*)?$/i;
+export const OFFICIAL_PROFILE_LINK_MIN_HIT_PX = 44;
+export const OFFICIAL_PROFILE_LINK_URL_ATTR = "data-official-profile-link-url";
+export const OFFICIAL_PROFILE_LINK_ROW_ATTR = "data-official-profile-link-row";
 
-const VERIFIED_AT_HANDLE_RE =
-  /(?:https?:\/\/)?(?:[\w.-]+)\/@([a-zA-Z0-9._-]{3,24})\/?(?:\?[^\s#]*)?(?:#[^\s]*)?$/i;
+/** Bubble URL, then verified row, then delivery/read receipts. */
+export function chatOfficialProfileLinkSlots() {
+  return ["bubble-url", "verified-row", "receipts"] as const;
+}
 
-const VERIFIED_LEGACY_PROFILE_RE =
-  /(?:https?:\/\/)?(?:[\w.-]+)\/u\/([a-zA-Z0-9._-]{3,24})(?:\?[^\s#]*)?(?:#[^\s]*)?$/i;
+function rawHasExplicitPort(trimmed: string) {
+  const scheme = trimmed.indexOf("://");
+  if (scheme < 0) return false;
+  const hostPart = trimmed.slice(scheme + 3).split("/")[0] || "";
+  const host = hostPart.includes("@")
+    ? hostPart.slice(hostPart.lastIndexOf("@") + 1)
+    : hostPart;
+  return /:\d+$/.test(host);
+}
 
-function parseVerifiedProfileLinkCandidate(text: string): ParsedVerifiedProfileLink | null {
-  const trimmed = text.trim();
+export function getOfficialProfileInAppHref(username: string) {
+  const slug = normalizeVerifiedProfileUsername(username).toLowerCase();
+  return `/u/${encodeURIComponent(slug)}`;
+}
+
+/**
+ * Exact official profile copy only: HTTPS + host sytm.me + /@username.
+ * Uppercase username and a single trailing slash are canonical. Nothing else.
+ */
+export function parseExactOfficialProfileLinkMessage(
+  text: string,
+): ParsedVerifiedProfileLink | null {
+  const trimmed = String(text || "").trim();
   if (!trimmed) return null;
+  if (trimmed.includes("?") || trimmed.includes("#")) return null;
+  if (rawHasExplicitPort(trimmed)) return null;
 
-  let rawUsername = "";
-
-  const publicMatch = trimmed.match(VERIFIED_PUBLIC_LINK_RE);
-  if (publicMatch?.[1]) {
-    rawUsername = publicMatch[1];
-  } else {
-    const atMatch = trimmed.match(VERIFIED_AT_HANDLE_RE);
-    if (atMatch?.[1]) {
-      rawUsername = atMatch[1];
-    } else {
-      const legacyMatch = trimmed.match(VERIFIED_LEGACY_PROFILE_RE);
-      if (!legacyMatch?.[1]) return null;
-      const hasVerified =
-        /[?&]verified=1(?:&|$)/i.test(trimmed) || /#verified=1/i.test(trimmed);
-      if (!hasVerified) return null;
-      rawUsername = legacyMatch[1];
-    }
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
   }
 
-  const username = normalizeVerifiedProfileUsername(rawUsername);
-  if (!username) return null;
+  if (url.protocol !== "https:") return null;
+  if (url.username || url.password) return null;
+  if (url.port) return null;
+  if (url.hostname !== VERIFIED_PROFILE_PUBLIC_HOST) return null;
+  if (url.search || url.hash) return null;
 
+  const path = url.pathname.replace(/\/+$/, "");
+  const match = path.match(/^\/@([a-zA-Z0-9._-]{3,24})$/);
+  if (!match?.[1]) return null;
+
+  const username = normalizeVerifiedProfileUsername(match[1]);
+  if (!username || !isValidUsername(username)) return null;
+
+  const slug = username.toLowerCase();
   return {
-    username,
-    profileHref: `/u/${encodeURIComponent(username)}?verified=1`,
-    displayLink: displayVerifiedProfileLink(username),
+    username: slug,
+    profileHref: getOfficialProfileInAppHref(slug),
+    displayLink: displayVerifiedProfileLink(slug),
+    matchedText: trimmed,
   };
 }
 
-/** Detects a copied verified profile link inside a chat text message. */
+/** Exact official copied link — extra text or lookalike hosts stay plain text. */
 export function parseVerifiedProfileLinkInText(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-
-  const direct = parseVerifiedProfileLinkCandidate(trimmed);
-  if (direct) return direct;
-
-  const urlMatch = trimmed.match(
-    /(?:https?:\/\/)?(?:www\.)?sytm\.me\/@([a-zA-Z0-9._-]{3,24})/i,
-  );
-  if (urlMatch?.[1]) {
-    const username = normalizeVerifiedProfileUsername(urlMatch[1]);
-    if (!username) return null;
-    return {
-      username,
-      profileHref: `/u/${encodeURIComponent(username)}?verified=1`,
-      displayLink: displayVerifiedProfileLink(username),
-    };
-  }
-
-  return null;
+  return parseExactOfficialProfileLinkMessage(text);
 }
 
 export function getVerifiedProfileInAppHref(username: string) {
-  const slug = normalizeVerifiedProfileUsername(username);
-  return `/u/${encodeURIComponent(slug)}?verified=1`;
+  return getOfficialProfileInAppHref(username);
+}
+
+/** Keep chat/Shuffle on the native back stack before opening /u/{username}. */
+export function rememberChatBeforeOfficialProfileOpen() {
+  if (typeof window === "undefined") return;
+  const path = String(window.location.pathname || "/")
+    .split("?")[0]
+    .split("#")[0];
+  if (!path.startsWith("/chat/") && path !== "/shuffle" && !path.startsWith("/u/")) {
+    return;
+  }
+  recordNativeNavPath(path);
+  stashProfileReturnTo(path);
 }
 
 async function writeTextToClipboard(text: string): Promise<boolean> {
