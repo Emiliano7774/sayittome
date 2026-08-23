@@ -1,3 +1,4 @@
+import { readAttestationHint } from "@/lib/chat/officialProfileLinkMessage";
 import { resolveFirestoreMessageType } from "@/lib/chat/profileAnonMessageAuthor";
 
 export type CachedChatMessage = {
@@ -27,6 +28,8 @@ export type CachedChatMessage = {
   createdAtMs?: number;
   hiddenFor?: Record<string, boolean>;
   deletedForEveryone?: boolean;
+  /** Untrusted ticket id hint only. Never a verified badge grant. */
+  verifiedProfileAttestation?: { ticketId: string };
 };
 
 const memory = new Map<string, CachedChatMessage[]>();
@@ -144,6 +147,7 @@ export function uiMessageToCached(message: {
   createdAt?: { toDate?: () => Date };
   hiddenFor?: Record<string, boolean>;
   deletedForEveryone?: boolean;
+  verifiedProfileAttestation?: unknown;
 }): CachedChatMessage {
   const createdAtMs = message.createdAt?.toDate?.()?.getTime();
   return {
@@ -167,5 +171,8 @@ export function uiMessageToCached(message: {
     hiddenFor: message.hiddenFor,
     deletedForEveryone: message.deletedForEveryone,
     ...(createdAtMs ? { createdAtMs } : {}),
+    ...(readAttestationHint(message.verifiedProfileAttestation)
+      ? { verifiedProfileAttestation: readAttestationHint(message.verifiedProfileAttestation)! }
+      : {}),
   };
 }

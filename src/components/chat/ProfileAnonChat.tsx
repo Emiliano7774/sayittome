@@ -52,7 +52,7 @@ import { canOpenViewOnce, markOpened } from "@/lib/media/viewOnce";
 import AbuseProtectionMenu from "@/components/chat/AbuseProtectionMenu";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import ChatMessageText from "@/components/chat/ChatMessageText";
-import ChatVerifiedProfileLinkCard from "@/components/chat/ChatVerifiedProfileLinkCard";
+import ChatOfficialProfileVerifiedBadge from "@/components/chat/ChatOfficialProfileVerifiedBadge";
 import ClassicAnonPresenceBubble from "@/components/chat/ClassicAnonPresenceBubble";
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import { useUxMode } from "@/contexts/UxModeContext";
@@ -133,7 +133,7 @@ import {
 import { messageRequiresBlur, profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
-import { decideOfficialProfileLinkRender } from "@/lib/chat/officialProfileLinkMessage";
+import { maybeClaimVerifiedProfileLink } from "@/lib/profile/verifiedProfileLinkTicket";
 import { getCachedProfile, setCachedProfile, getCachedFullProfile } from "@/lib/profile/profileCache";
 import {
   cachedMessageToUi,
@@ -217,6 +217,7 @@ type Message = {
   createdAt?: { toDate?: () => Date };
   hiddenFor?: Record<string, boolean>;
   deletedForEveryone?: boolean;
+  verifiedProfileAttestation?: unknown;
 };
 
 function formatMessageTime(createdAt?: { toDate?: () => Date }) {
@@ -2076,7 +2077,13 @@ export default function ProfileAnonChat({
       viewerUsername,
       clientId,
     })
-      .then(() => {
+      .then(async (persisted) => {
+        await maybeClaimVerifiedProfileLink({
+          chatId: persisted.canonicalChatId,
+          messageId: persisted.messageId,
+          text: input.message.text,
+          ownerUid: currentUid,
+        });
         if (!input.isOwnerReply && identityReady) {
           rememberOwnThreadAnonId(chatId, input.senderId, {
             authUid: currentUid,
@@ -2497,7 +2504,6 @@ export default function ProfileAnonChat({
                 hasError: message.status === "error",
                 chat: chatMetaRef.current ?? undefined,
               });
-              const verifiedProfileLink = decideOfficialProfileLinkRender(message);
               const messageUnread = isProfileAnonMessageUnreadForViewer(
                 message,
                 viewerId,
@@ -2652,7 +2658,7 @@ export default function ProfileAnonChat({
                   ) : (
                     <ChatMessageText
                       text={message.text}
-                      verifiedLink={verifiedProfileLink}
+                      verifiedLink={null}
                       className={chatBubbleTextClass(isClassic, messageUnread)}
                     />
                   )}
@@ -2669,13 +2675,15 @@ export default function ProfileAnonChat({
               </ChatSwipeRevealTime>
               </ChatMessageLongPress>
 
-              {verifiedProfileLink ? (
-                <ChatVerifiedProfileLinkCard
-                  link={verifiedProfileLink}
-                  mine={message.mine}
-                  isClassic={isClassic}
-                />
-              ) : null}
+              <ChatOfficialProfileVerifiedBadge
+                chatId={chatId}
+                messageId={message.id}
+                text={message.text}
+                deleted={message.deletedForEveryone}
+                attestationHint={message.verifiedProfileAttestation}
+                mine={message.mine}
+                isClassic={isClassic}
+              />
 
               <div
                 className={[

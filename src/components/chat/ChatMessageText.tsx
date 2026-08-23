@@ -18,6 +18,8 @@ export default function ChatMessageText({ text, verifiedLink, className }: Props
     return <p className={className}>{text}</p>;
   }
 
+  // Attested messages only: the URL still opens the attested username.
+
   return (
     <p className={className}>
       <Link

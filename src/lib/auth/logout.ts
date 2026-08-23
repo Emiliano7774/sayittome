@@ -14,6 +14,7 @@ import { clearCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 import { clearThreadAnonContinuity } from "@/lib/chat/threadAnonContinuity";
 import { clearShuffleChromeCache } from "@/lib/shuffle/shuffleChromeCache";
 import { clearCachedFullProfile } from "@/lib/profile/profileCache";
+import { clearVerifiedProfileLinkTicket } from "@/lib/profile/verifiedProfileLinkTicket";
 
 export async function logoutAndResetAnon() {
   await deleteCurrentAnonymousStories();
@@ -25,6 +26,7 @@ export async function logoutAndResetAnon() {
   clearCachedViewerIdentity();
   clearShuffleChromeCache();
   clearCachedFullProfile();
+  clearVerifiedProfileLinkTicket();
   clearAuthorshipCorrections();
   clearThreadAnonContinuity();
   await deleteCurrentDeviceFcmToken(auth.currentUser?.uid || "");

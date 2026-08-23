@@ -1,9 +1,9 @@
 /**
  * CHAT_OFFICIAL_PROFILE_LINK_RENDER
- * Firestore-like doc without `type` → map → card for mine/peer + remount.
- * Usage: node --experimental-strip-types scripts/chat-official-profile-link-render.harness.mjs
+ * Hint/cache never grants a badge. Only an explicit verify result does.
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -19,6 +19,19 @@ const author = await import(
 const decide = await import(
   pathToFileURL(path.join(root, "src/lib/chat/officialProfileLinkMessage.ts")).href
 );
+const rowSrc = fs.readFileSync(
+  path.join(root, "src/components/chat/ChatVerifiedProfileLinkCard.tsx"),
+  "utf8",
+);
+assert.match(rowSrc, /ml-auto/);
+assert.match(rowSrc, /justify-end/);
+assert.doesNotMatch(rowSrc, /mr-auto|justify-start/);
+assert.doesNotMatch(
+  rowSrc,
+  /mine\s*\?\s*["']ml-auto|mine\s*\?\s*["'][^"']*mr-auto/,
+  "badge alignment must not depend on mine",
+);
+
 const persist = await import(
   pathToFileURL(path.join(root, "src/lib/chat/persistAnonMessage.ts")).href
 );
@@ -30,6 +43,14 @@ const OFFICIAL = "https://sytm.me/@sex";
 const chatId = "anon_visitor__anon_to__sex";
 const visitorAnon = "anon_visitor";
 const ownerUid = "uid_owner";
+const ticketId = "a".repeat(32);
+const forgedComplete = {
+  ticketId,
+  ownerUid,
+  username: "sex",
+  chatId,
+  messageId: "msg1",
+};
 
 const visitorCtx = author.buildProfileAnonViewerContext({
   chatId,
@@ -57,8 +78,7 @@ const ownerCtx = author.buildProfileAnonViewerContext({
   knownAnonIds: [visitorAnon],
 });
 
-/** Physical persist shape: text fields, no `type`. */
-const firestoreDoc = {
+const textOnlyDoc = {
   texto: OFFICIAL,
   text: OFFICIAL,
   fromUid: visitorAnon,
@@ -67,106 +87,72 @@ const firestoreDoc = {
   readBy: { [visitorAnon]: true },
 };
 
-assert.equal("type" in firestoreDoc, false, "repro doc must omit type");
-assert.equal(author.resolveFirestoreMessageType(firestoreDoc), "text");
+assert.equal(author.resolveFirestoreMessageType(textOnlyDoc), "text");
 assert.equal(persist.resolvePersistAnonMessageType(undefined), "text");
-assert.equal(persist.resolvePersistAnonMessageType("text"), "text");
-assert.equal(persist.resolvePersistAnonMessageType("image"), "image");
 
-function assertCard(link, label) {
-  assert.ok(link, `${label} must render the official card`);
-  assert.equal(link.username, "sex");
-  assert.equal(link.profileHref, "/u/sex");
-  assert.equal(link.displayLink, "sytm.me/@sex");
-}
+const mineMapped = author.mapFirestoreDocToProfileAnonMessage("msg1", textOnlyDoc, visitorCtx);
+assert.equal(decide.decideOfficialProfileLinkRender({ ...mineMapped, chatId }), null);
 
-const mineMapped = author.mapFirestoreDocToProfileAnonMessage("msg1", firestoreDoc, visitorCtx);
-assert.ok(mineMapped, "visitor map must keep the text doc");
-assert.equal(mineMapped.type, "text");
-assert.equal(mineMapped.mine, true);
-assert.equal(mineMapped.deletedForEveryone, false);
-const mineCard = decide.decideOfficialProfileLinkRender(mineMapped);
-assertCard(mineCard, "visitor/mapped");
+const attestedDoc = { ...textOnlyDoc, verifiedProfileAttestation: forgedComplete };
+const mineAttested = author.mapFirestoreDocToProfileAnonMessage("msg1", attestedDoc, visitorCtx);
+const peerAttested = author.mapFirestoreDocToProfileAnonMessage("msg1", attestedDoc, ownerCtx);
 
-const peerMapped = author.mapFirestoreDocToProfileAnonMessage("msg1", firestoreDoc, ownerCtx);
-assert.ok(peerMapped, "owner map must keep the peer text doc");
-assert.equal(peerMapped.type, "text");
-assert.equal(peerMapped.mine, false);
-const peerCard = decide.decideOfficialProfileLinkRender(peerMapped);
-assertCard(peerCard, "owner/mapped");
-assert.deepEqual(peerCard, mineCard, "sender and receiver share the same card");
-
-const remountMine = author.mapFirestoreDocToProfileAnonMessage("msg1", firestoreDoc, visitorCtx);
-const remountPeer = author.mapFirestoreDocToProfileAnonMessage("msg1", firestoreDoc, ownerCtx);
-assert.equal(remountMine.type, "text");
-assert.equal(remountPeer.type, "text");
-assert.deepEqual(decide.decideOfficialProfileLinkRender(remountMine), mineCard);
-assert.deepEqual(decide.decideOfficialProfileLinkRender(remountPeer), peerCard);
-
-const optimistic = {
-  text: OFFICIAL,
-  mine: true,
-  fromUid: visitorAnon,
-};
-assert.equal("type" in optimistic, false);
-assertCard(
-  decide.decideOfficialProfileLinkRender(optimistic),
-  "optimistic omitted type",
-);
-assert.deepEqual(
-  decide.decideOfficialProfileLinkRender(optimistic),
-  decide.decideOfficialProfileLinkRender(mineMapped),
-  "ACK/snapshot must keep the optimistic card",
-);
-
-const cached = cache.uiMessageToCached(mineMapped);
-assert.equal(cached.type, "text");
-const fromCache = cache.cachedMessageToUi({
-  id: "msg1",
-  text: OFFICIAL,
-  fromUid: visitorAnon,
-});
-assert.equal(fromCache.type, "text");
-assertCard(decide.decideOfficialProfileLinkRender(fromCache), "cache remount omitted type");
-
-const mediaDoc = {
-  texto: "",
-  mediaUrl: "https://cdn.example/pic.jpg",
-  fromUid: visitorAnon,
-};
-const mediaMapped = author.mapFirestoreDocToProfileAnonMessage("img1", mediaDoc, visitorCtx);
-assert.equal(mediaMapped?.type, "image");
-assert.equal(decide.decideOfficialProfileLinkRender(mediaMapped), null);
 assert.equal(
-  decide.decideOfficialProfileLinkRender({
-    text: OFFICIAL,
-    type: "image",
-    mediaUrl: "https://cdn.example/pic.jpg",
-  }),
+  decide.decideOfficialProfileLinkRender({ ...mineAttested, chatId }),
   null,
-  "must not classify media as an official text card",
+  "complete forged attestation must not badge before verify",
 );
+assert.equal(decide.decideOfficialProfileLinkRender({ ...peerAttested, chatId }), null);
 
-const deletedDoc = {
-  texto: OFFICIAL,
-  fromUid: visitorAnon,
-  deletedForEveryone: true,
-};
-const deletedMapped = author.mapFirestoreDocToProfileAnonMessage("del1", deletedDoc, visitorCtx);
-assert.equal(deletedMapped?.deletedForEveryone, true);
-assert.equal(decide.decideOfficialProfileLinkRender(deletedMapped), null);
+const verified = { ok: true, username: "sex" };
+const mineBadge = decide.decideOfficialProfileLinkRender({ ...mineAttested, chatId }, verified);
+const peerBadge = decide.decideOfficialProfileLinkRender({ ...peerAttested, chatId }, verified);
+assert.ok(mineBadge);
+assert.deepEqual(mineBadge, peerBadge);
+assert.equal(mineBadge.profileHref, "/u/sex");
+
+const remountMine = author.mapFirestoreDocToProfileAnonMessage("msg1", attestedDoc, visitorCtx);
 assert.equal(
-  decide.decideOfficialProfileLinkRender({
-    text: OFFICIAL,
-    type: "text",
-    deletedForEveryone: true,
-  }),
+  decide.decideOfficialProfileLinkRender({ ...remountMine, chatId }),
   null,
-  "must not classify deleted messages",
+  "remount must re-verify; cache/hint is not trust",
+);
+
+const cached = cache.uiMessageToCached({ ...mineAttested, chatId });
+assert.deepEqual(cached.verifiedProfileAttestation, { ticketId });
+assert.equal("username" in (cached.verifiedProfileAttestation || {}), false);
+assert.equal(
+  decide.decideOfficialProfileLinkRender({ ...cache.cachedMessageToUi(cached), chatId }),
+  null,
 );
 
 assert.equal(
-  decide.decideOfficialProfileLinkRender({ text: "hola https://sytm.me/@sex" }),
+  decide.decideOfficialProfileLinkRender(
+    {
+      text: OFFICIAL,
+      type: "image",
+      mediaUrl: "https://cdn.example/pic.jpg",
+      verifiedProfileAttestation: forgedComplete,
+      chatId,
+      id: "msg1",
+    },
+    verified,
+  ),
+  null,
+);
+
+assert.equal(
+  decide.decideOfficialProfileLinkRender(
+    {
+      text: OFFICIAL,
+      type: "text",
+      deletedForEveryone: true,
+      verifiedProfileAttestation: forgedComplete,
+      chatId,
+      id: "msg1",
+    },
+    verified,
+  ),
   null,
 );
 
@@ -175,9 +161,9 @@ console.log(
     {
       gate: "CHAT_OFFICIAL_PROFILE_LINK_RENDER",
       pass: true,
-      href: mineCard.profileHref,
-      mine: mineMapped.mine,
-      peer: peerMapped.mine,
+      href: mineBadge.profileHref,
+      mine: mineAttested.mine,
+      peer: peerAttested.mine,
     },
     null,
     2,

@@ -29,8 +29,9 @@ import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
 import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import ChatMessageText from "@/components/chat/ChatMessageText";
-import ChatVerifiedProfileLinkCard from "@/components/chat/ChatVerifiedProfileLinkCard";
-import { decideOfficialProfileLinkRender } from "@/lib/chat/officialProfileLinkMessage";
+import ChatOfficialProfileVerifiedBadge from "@/components/chat/ChatOfficialProfileVerifiedBadge";
+import { readAttestationHint } from "@/lib/chat/officialProfileLinkMessage";
+import { maybeClaimVerifiedProfileLink } from "@/lib/profile/verifiedProfileLinkTicket";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { CHAT_FILE_INPUT_CLASS, openNativeGalleryFilePicker } from "@/lib/media/chatMediaCapture";
 import {
@@ -114,6 +115,7 @@ type MessageData = {
   mediaSize?: number;
   hiddenFor?: Record<string, boolean>;
   deletedForEveryone?: boolean;
+  verifiedProfileAttestation?: unknown;
 };
 
 type ChatData = {
@@ -201,6 +203,9 @@ function legacyMessageToCached(message: MessageData): CachedChatMessage {
     readBy: message.readBy,
     hiddenFor: message.hiddenFor,
     deletedForEveryone: message.deletedForEveryone,
+    ...(readAttestationHint(message.verifiedProfileAttestation)
+      ? { verifiedProfileAttestation: readAttestationHint(message.verifiedProfileAttestation)! }
+      : {}),
     ...(createdAtMs ? { createdAtMs } : {}),
   };
 }
@@ -218,6 +223,7 @@ function cachedToLegacyMessage(message: CachedChatMessage): MessageData {
     readBy: message.readBy,
     hiddenFor: message.hiddenFor,
     deletedForEveryone: message.deletedForEveryone,
+    verifiedProfileAttestation: message.verifiedProfileAttestation,
     status: "sent",
     createdAt: message.createdAtMs
       ? { toMillis: () => message.createdAtMs!, toDate: () => new Date(message.createdAtMs!) }
@@ -865,7 +871,7 @@ export default function LegacyChatPage() {
     }, 20);
 
     try {
-      await addDoc(collection(db, "chats", chatId, "mensajes"), {
+      const messageRef = await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: clean,
         fromUid: author.fromUid,
         senderAuthUid: author.senderAuthUid,
@@ -878,6 +884,12 @@ export default function LegacyChatPage() {
         clientMessageId,
         readBy: { [author.senderAuthUid]: true },
         ...replyPayload,
+      });
+      await maybeClaimVerifiedProfileLink({
+        chatId,
+        messageId: messageRef.id,
+        text: clean,
+        ownerUid: author.senderAuthUid,
       });
 
       await updateDoc(
@@ -1179,13 +1191,6 @@ if (uxMode === "classic") {
                 readBy: message.readBy,
                 senderId: viewerUid,
               });
-              const officialLink = decideOfficialProfileLinkRender({
-                texto: message.texto,
-                mediaUrl: message.mediaUrl,
-                mediaType: message.mediaType,
-                deletedForEveryone: message.deletedForEveryone,
-              });
-
               return (
                 <div
                   key={message.id}
@@ -1217,15 +1222,21 @@ if (uxMode === "classic") {
                     ) : (
                       <ChatMessageText
                         text={message.texto || "Mensaje"}
-                        verifiedLink={officialLink}
+                        verifiedLink={null}
                       />
                     )}
                   </div>
                   </ChatMessageLongPress>
 
-                  {officialLink ? (
-                    <ChatVerifiedProfileLinkCard link={officialLink} mine={isMine} isClassic />
-                  ) : null}
+                  <ChatOfficialProfileVerifiedBadge
+                    chatId={chatId}
+                    messageId={message.id}
+                    text={String(message.texto || "")}
+                    deleted={message.deletedForEveryone}
+                    attestationHint={message.verifiedProfileAttestation}
+                    mine={isMine}
+                    isClassic
+                  />
 
                   {receiptStatus ? <ChatMessageReceipt status={receiptStatus} /> : null}
                 </div>

@@ -4,7 +4,8 @@ import { FieldValue, type Firestore, type Transaction } from "firebase-admin/fir
 import { type MulticastMessage } from "firebase-admin/messaging";
 import { logger } from "firebase-functions";
 import { setGlobalOptions } from "firebase-functions/v2/options";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
+import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { db, ensureAdminApp, messaging } from "./adminApp";
@@ -17,6 +18,23 @@ import {
 } from "./fcmTokenTx";
 import { resolvePushTitle } from "./pushNotificationCopy";
 import { deleteStorageObject, handleDeleteChatMessage } from "./deleteChatMessage";
+import {
+  handleClaimVerifiedProfileLink,
+  handleIssueVerifiedProfileLinkTicket,
+  handleScrubVerifiedProfileAttestation,
+  handleVerifyVerifiedProfileLink,
+} from "./verifiedProfileLink";
+import { VERIFIED_PROFILE_LINK_MAC_SECRET_NAME } from "./verifiedProfileLinkCore";
+
+const verifiedProfileLinkMacSecret = defineSecret(VERIFIED_PROFILE_LINK_MAC_SECRET_NAME);
+
+function readVerifiedProfileLinkMacSecret() {
+  try {
+    return String(verifiedProfileLinkMacSecret.value() || "");
+  } catch {
+    return "";
+  }
+}
 
 export {
   assertDurableRateLimit,
@@ -289,6 +307,51 @@ export const deleteChatMessage = onCall(async (request) => {
     deleteStoragePath: deleteStorageObject,
   });
 });
+
+export const issueVerifiedProfileLinkTicket = onCall(
+  { secrets: [verifiedProfileLinkMacSecret] },
+  async (request) => {
+    return handleIssueVerifiedProfileLinkTicket(request, db(), readVerifiedProfileLinkMacSecret());
+  },
+);
+
+export const claimVerifiedProfileLink = onCall(
+  { secrets: [verifiedProfileLinkMacSecret] },
+  async (request) => {
+    return handleClaimVerifiedProfileLink(request, db(), readVerifiedProfileLinkMacSecret());
+  },
+);
+
+export const verifyVerifiedProfileLink = onCall(
+  { secrets: [verifiedProfileLinkMacSecret] },
+  async (request) => {
+    return handleVerifyVerifiedProfileLink(request, db(), readVerifiedProfileLinkMacSecret());
+  },
+);
+
+export const scrubVerifiedProfileLinkMensajes = onDocumentWritten(
+  {
+    document: "chats/{chatId}/mensajes/{messageId}",
+    secrets: [verifiedProfileLinkMacSecret],
+  },
+  async (event) => {
+    const after = event.data?.after;
+    if (!after?.exists) return;
+    const data = after.data() || {};
+    await handleScrubVerifiedProfileAttestation({
+      db: db(),
+      secret: readVerifiedProfileLinkMacSecret(),
+      chatId: String(event.params.chatId || ""),
+      messageId: String(event.params.messageId || ""),
+      attestation: data.verifiedProfileAttestation,
+      messageText: String(data.texto || data.text || ""),
+      messageAuthorUid: String(
+        data.senderAuthUid || data.createdByAuthUid || data.profileUid || data.fromUid || "",
+      ),
+      messageRef: after.ref,
+    });
+  },
+);
 
 export const unregisterFcmToken = onCall(async (request) => {
   if (!request.auth?.uid) {

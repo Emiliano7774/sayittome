@@ -1,6 +1,8 @@
+import { auth } from "@/lib/firebase";
 import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { assertProfileOwner } from "@/lib/profile/owner";
+import { issueVerifiedProfileLinkTicket } from "@/lib/profile/verifiedProfileLinkTicket";
 import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
 
 export const VERIFIED_QUERY_PARAM = "verified";
@@ -172,7 +174,9 @@ export async function copyVerifiedProfileLink(username: string) {
     return { ok: false as const, link: "", denied: true as const };
   }
 
-  const link = getVerifiedProfileUrl(username);
+  const ownerUid = String(auth.currentUser?.uid || "").trim();
+  const issued = await issueVerifiedProfileLinkTicket({ username, ownerUid });
+  const link = issued?.text || getVerifiedProfileUrl(username);
   const ok = await writeTextToClipboard(link);
 
   if (ok) {

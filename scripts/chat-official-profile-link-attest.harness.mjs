@@ -1,0 +1,344 @@
+/**
+ * CHAT_OFFICIAL_PROFILE_LINK_ATTEST
+ * Badge only after server verify + MAC. Complete forgeries stay hidden.
+ */
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { installHarnessAlias, installHarnessWindow } from "./harness-alias.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+installHarnessWindow();
+installHarnessAlias(root);
+
+const decide = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/officialProfileLinkMessage.ts")).href
+);
+const ticket = await import(
+  pathToFileURL(path.join(root, "src/lib/profile/verifiedProfileLinkTicket.ts")).href
+);
+const verifyMod = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/verifiedProfileLinkVerify.ts")).href
+);
+const core = await import(
+  pathToFileURL(path.join(root, "functions/src/verifiedProfileLinkCore.ts")).href
+);
+
+const modern = fs.readFileSync(path.join(root, "src/components/chat/ProfileAnonChat.tsx"), "utf8");
+const classic = fs.readFileSync(path.join(root, "src/app/chat/[chatId]/legacy-chat.tsx"), "utf8");
+const functionsIndex = fs.readFileSync(path.join(root, "functions/src/index.ts"), "utf8");
+const logoutSrc = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "utf8");
+
+assert.match(modern, /ChatOfficialProfileVerifiedBadge/);
+assert.match(classic, /ChatOfficialProfileVerifiedBadge/);
+assert.match(functionsIndex, /verifyVerifiedProfileLink/);
+assert.match(functionsIndex, /defineSecret/);
+assert.match(functionsIndex, /VERIFIED_PROFILE_LINK_MAC/);
+assert.match(logoutSrc, /clearVerifiedProfileLinkTicket/);
+assert.doesNotMatch(
+  fs.readFileSync(path.join(root, "src/lib/chat/persistAnonMessage.ts"), "utf8"),
+  /verifiedProfileAttestation:/,
+);
+
+const SECRET = "unit-test-mac-secret";
+const OFFICIAL = "https://sytm.me/@sex";
+const chatId = "chat_owner_sex";
+const messageId = "msg_attested";
+const ticketId = "b".repeat(40);
+const ownerUid = "uid_owner";
+const forgedComplete = {
+  ticketId,
+  ownerUid,
+  username: "sex",
+  chatId,
+  messageId,
+};
+
+assert.equal(
+  decide.decideOfficialProfileLinkRender({
+    text: OFFICIAL,
+    chatId,
+    id: messageId,
+    verifiedProfileAttestation: forgedComplete,
+  }),
+  null,
+  "complete forged object must not render before verify",
+);
+assert.equal(
+  decide.decideOfficialProfileLinkRender(
+    {
+      text: OFFICIAL,
+      chatId,
+      id: messageId,
+      verifiedProfileAttestation: forgedComplete,
+    },
+    { ok: false },
+  ),
+  null,
+  "verify false/error/offline => no badge",
+);
+assert.equal(
+  decide.decideOfficialProfileLinkRender(
+    {
+      text: OFFICIAL,
+      chatId,
+      id: messageId,
+      verifiedProfileAttestation: forgedComplete,
+    },
+    null,
+  ),
+  null,
+);
+
+assert.equal(
+  core.decideIssueVerifiedProfileLinkTicket({
+    uid: ownerUid,
+    username: "sex",
+    profileUsername: "sex",
+    nowMs: 1_000,
+    secret: "",
+  }).error,
+  "failed-precondition",
+);
+
+const issued = core.decideIssueVerifiedProfileLinkTicket({
+  uid: ownerUid,
+  username: "Sex",
+  profileUsername: "sex",
+  nowMs: 1_000,
+  secret: SECRET,
+});
+assert.equal(issued.ok, true);
+
+function signedTicket(patch) {
+  const base = {
+    ticketId,
+    ownerUid,
+    username: "sex",
+    text: OFFICIAL,
+    expiresAtMs: 20_000,
+    consumed: false,
+    ...patch,
+  };
+  const mac = core.signVerifiedProfileLinkTicket(SECRET, base);
+  assert.equal(mac.ok, true);
+  return { ...base, mac: mac.mac };
+}
+
+const unsigned = {
+  ticketId,
+  ownerUid,
+  username: "sex",
+  text: OFFICIAL,
+  expiresAtMs: 20_000,
+  consumed: true,
+  consumedChatId: chatId,
+  consumedMessageId: messageId,
+};
+assert.equal(
+  core.decideVerifyVerifiedProfileLink({
+    secret: SECRET,
+    ticket: unsigned,
+    messageText: OFFICIAL,
+    messageAuthorUid: ownerUid,
+    chatId,
+    messageId,
+  }).reason,
+  "bad-mac",
+);
+
+const live = signedTicket({});
+assert.equal(
+  core.decideClaimVerifiedProfileLinkTicket({
+    uid: ownerUid,
+    secret: SECRET,
+    ticket: live,
+    messageText: OFFICIAL,
+    messageAuthorUid: `profile_${ownerUid}`,
+    chatId,
+    messageId,
+    nowMs: 1_000,
+  }).ok,
+  true,
+  "owner copy+claim PASS",
+);
+const altered = { ...live, mac: "c".repeat(64) };
+assert.equal(
+  core.decideClaimVerifiedProfileLinkTicket({
+    uid: ownerUid,
+    secret: SECRET,
+    ticket: altered,
+    messageText: OFFICIAL,
+    messageAuthorUid: ownerUid,
+    chatId,
+    messageId,
+    nowMs: 1_000,
+  }).reason,
+  "bad-mac",
+);
+
+const consumed = signedTicket({
+  consumed: true,
+  consumedChatId: chatId,
+  consumedMessageId: messageId,
+});
+
+assert.equal(
+  core.decideVerifyVerifiedProfileLink({
+    secret: SECRET,
+    ticket: consumed,
+    messageText: OFFICIAL,
+    messageAuthorUid: ownerUid,
+    chatId: "other_chat",
+    messageId,
+  }).reason,
+  "other-chat",
+);
+assert.equal(
+  core.decideVerifyVerifiedProfileLink({
+    secret: SECRET,
+    ticket: consumed,
+    messageText: OFFICIAL,
+    messageAuthorUid: ownerUid,
+    chatId,
+    messageId: "other_msg",
+  }).reason,
+  "other-message",
+);
+assert.equal(
+  core.decideClaimVerifiedProfileLinkTicket({
+    uid: ownerUid,
+    secret: SECRET,
+    ticket: consumed,
+    messageText: OFFICIAL,
+    messageAuthorUid: ownerUid,
+    chatId,
+    messageId,
+    nowMs: 1_000,
+  }).reason,
+  "replay",
+);
+assert.equal(
+  core.decideClaimVerifiedProfileLinkTicket({
+    uid: ownerUid,
+    secret: SECRET,
+    ticket: signedTicket({ expiresAtMs: 500 }),
+    messageText: OFFICIAL,
+    messageAuthorUid: ownerUid,
+    chatId,
+    messageId,
+    nowMs: 1_000,
+  }).reason,
+  "expired",
+);
+
+const verified = core.decideVerifyVerifiedProfileLink({
+  secret: SECRET,
+  ticket: consumed,
+  messageText: OFFICIAL,
+  messageAuthorUid: `profile_${ownerUid}`,
+  chatId,
+  messageId,
+});
+assert.equal(verified.ok, true);
+assert.equal(verified.username, "sex");
+
+const badge = decide.decideOfficialProfileLinkRender(
+  {
+    text: OFFICIAL,
+    chatId,
+    id: messageId,
+    verifiedProfileAttestation: { ticketId },
+  },
+  { ok: true, username: verified.username },
+);
+assert.ok(badge);
+assert.equal(badge.profileHref, "/u/sex");
+assert.equal(
+  decide.decideOfficialProfileLinkRender({
+    text: OFFICIAL,
+    chatId,
+    id: messageId,
+    verifiedProfileAttestation: { ticketId },
+  }),
+  null,
+  "remount without a new verify stays hidden",
+);
+
+const memory = verifyMod.createVerifiedProfileLinkVerifyMemory();
+memory.set("k", { ok: true, username: "sex" });
+assert.equal(memory.persistable(), false);
+memory.clear();
+assert.equal(memory.get("k"), null);
+
+ticket.storeVerifiedProfileLinkTicket({
+  ticketId,
+  ownerUid,
+  username: "sex",
+  text: OFFICIAL,
+  expiresAtMs: Date.now() + 60_000,
+});
+assert.equal(ticket.consumeVerifiedProfileLinkTicket({ ownerUid, text: "hola" }), null);
+assert.equal(ticket.peekVerifiedProfileLinkTicket(ownerUid), null, "mismatch clears ticket");
+
+ticket.storeVerifiedProfileLinkTicket({
+  ticketId,
+  ownerUid,
+  username: "sex",
+  text: OFFICIAL,
+  expiresAtMs: Date.now() + 60_000,
+});
+assert.equal(ticket.peekVerifiedProfileLinkTicket("other_uid"), null);
+
+const issuedClient = await ticket.issueVerifiedProfileLinkTicket({
+  username: "sex",
+  ownerUid,
+  callIssue: async () => ({ ticketId, text: OFFICIAL, expiresAtMs: Date.now() + 60_000 }),
+});
+assert.equal(issuedClient?.ticketId, ticketId);
+assert.equal(
+  await ticket.maybeClaimVerifiedProfileLink({
+    chatId,
+    messageId,
+    text: OFFICIAL,
+    ownerUid,
+    callClaim: async () => ({ ok: true }),
+  }),
+  true,
+);
+assert.equal(
+  await ticket.maybeClaimVerifiedProfileLink({
+    chatId,
+    messageId,
+    text: OFFICIAL,
+    ownerUid,
+    callClaim: async () => {
+      throw new Error("should not replay");
+    },
+  }),
+  false,
+);
+
+const offline = await verifyMod.callVerifyVerifiedProfileLink(
+  { chatId, messageId, ticketId },
+  async () => {
+    throw new Error("offline");
+  },
+);
+assert.deepEqual(offline, { ok: false });
+assert.equal(
+  decide.decideOfficialProfileLinkRender(
+    {
+      text: OFFICIAL,
+      chatId,
+      id: messageId,
+      verifiedProfileAttestation: forgedComplete,
+    },
+    offline,
+  ),
+  null,
+);
+
+console.log(JSON.stringify({ gate: "CHAT_OFFICIAL_PROFILE_LINK_ATTEST", pass: true }, null, 2));

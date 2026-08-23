@@ -194,7 +194,9 @@ function resolveProfileAnonUnreadRecipients(input: {
   return resolveThreadAnonRecipientIds(input);
 }
 
-export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
+export async function persistAnonChatMessage(
+  input: PersistAnonMessageInput,
+): Promise<{ messageId: string; canonicalChatId: string }> {
   const {
     chatId,
     username,
@@ -454,4 +456,6 @@ export async function persistAnonChatMessage(input: PersistAnonMessageInput) {
     anon: true,
     senderIsAnonymous: !isOwnerReply,
   });
+
+  return { messageId: messageRef.id, canonicalChatId };
 }

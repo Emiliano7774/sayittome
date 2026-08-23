@@ -30,11 +30,10 @@ const legacySrc = fs.readFileSync(
   "utf8",
 );
 
-assert.match(profileChat, /decideOfficialProfileLinkRender/);
-assert.match(profileChat, /ChatVerifiedProfileLinkCard/);
+assert.match(profileChat, /ChatOfficialProfileVerifiedBadge/);
 assert.match(profileChat, /ChatMessageReceipt/);
 assert.ok(
-  profileChat.indexOf("ChatVerifiedProfileLinkCard") <
+  profileChat.indexOf("ChatOfficialProfileVerifiedBadge") <
     profileChat.indexOf("<ChatMessageReceipt"),
   "verified row must sit between bubble and receipts",
 );
@@ -46,8 +45,11 @@ assert.doesNotMatch(messageText, /dangerouslySetInnerHTML/);
 assert.match(rowSrc, /data-official-profile-link-row/);
 assert.match(rowSrc, /min-h-11/);
 assert.match(rowSrc, /chat_verified_link_badge/);
-assert.match(legacySrc, /decideOfficialProfileLinkRender/);
-assert.match(legacySrc, /ChatVerifiedProfileLinkCard/);
+assert.match(rowSrc, /ml-auto/);
+assert.match(rowSrc, /justify-end/);
+assert.doesNotMatch(rowSrc, /mr-auto|justify-start/);
+assert.doesNotMatch(rowSrc, /border-violet-400|bg-violet-500\/1/);
+assert.match(legacySrc, /ChatOfficialProfileVerifiedBadge/);
 
 const link = await import(
   pathToFileURL(path.join(root, "src/lib/profile/verifiedLink.ts")).href
@@ -108,6 +110,24 @@ reject("https://sytm.me/@emiliano/extra");
 reject("sytm.me/@emiliano");
 reject("Perfil verificado");
 reject("<a href=\"https://sytm.me/@emiliano\">verificado</a>");
+
+const decide = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/officialProfileLinkMessage.ts")).href
+);
+assert.equal(
+  decide.decideOfficialProfileLinkRender({ text: "https://sytm.me/@emiliano" }),
+  null,
+  "exact official text must never grant a badge",
+);
+assert.equal(
+  decide.decideOfficialProfileLinkRender({
+    text: "https://sytm.me/@emiliano",
+    verified: true,
+    official: true,
+  }),
+  null,
+  "client boolean metadata must never grant a badge",
+);
 
 window.location.pathname = "/chat/thread-1";
 link.rememberChatBeforeOfficialProfileOpen();

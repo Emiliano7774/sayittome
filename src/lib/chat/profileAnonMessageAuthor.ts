@@ -68,6 +68,7 @@ export type ProfileAnonFirestoreMessage = {
   moderationRequiresBlur?: boolean;
   hiddenFor?: Record<string, boolean>;
   deletedForEveryone?: boolean;
+  verifiedProfileAttestation?: unknown;
 };
 
 export type ProfileAnonUiMessage = {
@@ -91,6 +92,7 @@ export type ProfileAnonUiMessage = {
   createdAt?: { toDate?: () => Date };
   hiddenFor?: Record<string, boolean>;
   deletedForEveryone?: boolean;
+  verifiedProfileAttestation?: unknown;
 };
 
 /** Profile Firebase uid only — never anonymous Auth uids (those invert owner/visitor). */
@@ -331,6 +333,7 @@ export function mapFirestoreDocToProfileAnonMessage(
     moderationRequiresBlur: data.moderationRequiresBlur === true,
     readBy: data.readBy || {},
     createdAt: data.createdAt,
+    verifiedProfileAttestation: data.verifiedProfileAttestation,
   };
 }
 
