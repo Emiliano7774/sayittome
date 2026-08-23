@@ -14,6 +14,7 @@ import { clearCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 import { clearThreadAnonContinuity } from "@/lib/chat/threadAnonContinuity";
 import { clearShuffleChromeCache } from "@/lib/shuffle/shuffleChromeCache";
 import { clearCachedFullProfile } from "@/lib/profile/profileCache";
+import { disarmVerifiedProfileLinkClaimRetry } from "@/lib/profile/verifiedProfileLinkClaimRetry";
 import { clearVerifiedProfileLinkTicket } from "@/lib/profile/verifiedProfileLinkTicket";
 
 export async function logoutAndResetAnon() {
@@ -26,6 +27,7 @@ export async function logoutAndResetAnon() {
   clearCachedViewerIdentity();
   clearShuffleChromeCache();
   clearCachedFullProfile();
+  disarmVerifiedProfileLinkClaimRetry();
   clearVerifiedProfileLinkTicket();
   clearAuthorshipCorrections();
   clearThreadAnonContinuity();

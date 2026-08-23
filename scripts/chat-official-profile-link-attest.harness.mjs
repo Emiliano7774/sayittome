@@ -37,6 +37,15 @@ assert.match(functionsIndex, /verifyVerifiedProfileLink/);
 assert.match(functionsIndex, /defineSecret/);
 assert.match(functionsIndex, /VERIFIED_PROFILE_LINK_MAC/);
 assert.match(logoutSrc, /clearVerifiedProfileLinkTicket/);
+assert.match(logoutSrc, /disarmVerifiedProfileLinkClaimRetry/);
+assert.match(modern, /scheduleVerifiedProfileLinkClaimRetry/);
+assert.match(classic, /scheduleVerifiedProfileLinkClaimRetry/);
+assert.match(modern, /armVerifiedProfileLinkClaimRetry/);
+assert.match(classic, /armVerifiedProfileLinkClaimRetry/);
+assert.match(
+  fs.readFileSync(path.join(root, "src/lib/profile/verifiedProfileLinkTicket.ts"), "utf8"),
+  /clearVerifiedProfileLinkTicketIfExact/,
+);
 assert.doesNotMatch(
   fs.readFileSync(path.join(root, "src/lib/chat/persistAnonMessage.ts"), "utf8"),
   /verifiedProfileAttestation:/,
@@ -217,8 +226,22 @@ assert.equal(
     chatId,
     messageId,
     nowMs: 1_000,
-  }).reason,
-  "replay",
+  }).ok,
+  true,
+  "same ticket+chat+message claim is idempotent",
+);
+assert.equal(
+  core.decideClaimVerifiedProfileLinkTicket({
+    uid: ownerUid,
+    secret: SECRET,
+    ticket: consumed,
+    messageText: OFFICIAL,
+    messageAuthorUid: ownerUid,
+    chatId,
+    messageId,
+    nowMs: 1_000,
+  }).alreadyClaimed,
+  true,
 );
 assert.equal(
   core.decideClaimVerifiedProfileLinkTicket({
@@ -297,28 +320,106 @@ const issuedClient = await ticket.issueVerifiedProfileLinkTicket({
   ownerUid,
   callIssue: async () => ({ ticketId, text: OFFICIAL, expiresAtMs: Date.now() + 60_000 }),
 });
-assert.equal(issuedClient?.ticketId, ticketId);
+assert.equal(issuedClient.ok, true);
+assert.equal(issuedClient.ticket?.ticketId, ticketId);
+
+let claimCalls = 0;
+const firstClaim = await ticket.maybeClaimVerifiedProfileLink({
+  chatId,
+  messageId,
+  text: OFFICIAL,
+  ownerUid,
+  callClaim: async () => {
+    claimCalls += 1;
+    throw Object.assign(new Error("unavailable"), { code: "unavailable" });
+  },
+});
+assert.equal(firstClaim.ok, false);
+assert.equal(firstClaim.retryable, true);
+assert.equal(ticket.peekVerifiedProfileLinkTicket(ownerUid)?.boundMessageId, messageId);
+
+const otherMsg = await ticket.maybeClaimVerifiedProfileLink({
+  chatId,
+  messageId: "other_msg",
+  text: OFFICIAL,
+  ownerUid,
+  callClaim: async () => ({ ok: true }),
+});
+assert.equal(otherMsg.ok, false);
+assert.equal(otherMsg.stage, "other-message");
+
+const retrySame = await ticket.maybeClaimVerifiedProfileLink({
+  chatId,
+  messageId,
+  text: OFFICIAL,
+  ownerUid,
+  callClaim: async () => {
+    claimCalls += 1;
+    return { ok: true };
+  },
+});
+assert.equal(retrySame.ok, true);
+assert.equal(retrySame.ticketId, ticketId);
+assert.equal(claimCalls, 2);
+assert.equal(ticket.peekVerifiedProfileLinkTicket(ownerUid), null);
+
 assert.equal(
-  await ticket.maybeClaimVerifiedProfileLink({
-    chatId,
-    messageId,
-    text: OFFICIAL,
-    ownerUid,
-    callClaim: async () => ({ ok: true }),
-  }),
-  true,
-);
-assert.equal(
-  await ticket.maybeClaimVerifiedProfileLink({
-    chatId,
-    messageId,
-    text: OFFICIAL,
-    ownerUid,
-    callClaim: async () => {
-      throw new Error("should not replay");
-    },
-  }),
+  (
+    await ticket.maybeClaimVerifiedProfileLink({
+      chatId,
+      messageId,
+      text: OFFICIAL,
+      ownerUid,
+      callClaim: async () => {
+        throw new Error("should not run without local ticket");
+      },
+    })
+  ).ok,
   false,
+);
+
+// Copy must not report verified success without an issued ticket.
+const bubbleSrc = fs.readFileSync(
+  path.join(root, "src/components/profile/VerifiedLinkBubble.tsx"),
+  "utf8",
+);
+const linkSrc = fs.readFileSync(path.join(root, "src/lib/profile/verifiedLink.ts"), "utf8");
+assert.match(linkSrc, /reason: "issue_failed"/);
+assert.match(linkSrc, /reason: "claim_pending"/);
+assert.match(linkSrc, /scheduleVerifiedProfileLinkClaimRetry/);
+assert.match(bubbleSrc, /VERIFIED_PROFILE_LINK_CLAIM_PENDING_COPY_MESSAGE/);
+assert.equal(
+  (
+    await import(
+      pathToFileURL(path.join(root, "src/lib/profile/verifiedLink.ts")).href
+    )
+  ).VERIFIED_PROFILE_LINK_CLAIM_PENDING_COPY_MESSAGE,
+  "El link anterior todavía se está verificando. Reintentá en unos segundos",
+);
+assert.doesNotMatch(
+  bubbleSrc.slice(bubbleSrc.indexOf('if (result.reason === "claim_pending")'), bubbleSrc.indexOf('if (result.reason === "claim_pending")') + 280),
+  /setModalLink|showToast\("Link verificado/,
+);
+assert.doesNotMatch(
+  linkSrc.slice(linkSrc.indexOf("export async function copyVerifiedProfileLink")),
+  /issued\?\.text \|\| getVerifiedProfileUrl/,
+);
+assert.match(bubbleSrc, /recopyVerifiedProfileLinkText/);
+assert.doesNotMatch(
+  bubbleSrc.slice(bubbleSrc.indexOf("async function copyFromModal")),
+  /copyVerifiedProfileLink\(username\)/,
+);
+assert.match(modern, /claim\.ok/);
+assert.match(classic, /claim\.ok/);
+assert.match(modern, /verifiedProfileAttestation: \{ ticketId: claim\.ticketId \}/);
+assert.match(classic, /verifiedProfileAttestation: \{ ticketId: claim\.ticketId \}/);
+assert.match(
+  fs.readFileSync(path.join(root, "functions/src/verifiedProfileLinkCore.ts"), "utf8"),
+  /alreadyClaimed: true/,
+);
+assert.match(
+  fs.readFileSync(path.join(root, "functions/src/verifiedProfileLink.ts"), "utf8"),
+  /decision\.alreadyClaimed/,
 );
 
 const offline = await verifyMod.callVerifyVerifiedProfileLink(

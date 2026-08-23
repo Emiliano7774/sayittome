@@ -1,12 +1,9 @@
-import { httpsCallable } from "firebase/functions";
-
 import {
   decideOfficialProfileLinkRender,
   readAttestationHint,
   type OfficialProfileLinkMessageInput,
   type OfficialProfileLinkVerifyResult,
 } from "@/lib/chat/officialProfileLinkMessage";
-import { functions } from "@/lib/firebase";
 
 export const VERIFY_VERIFIED_PROFILE_LINK = "verifyVerifiedProfileLink";
 
@@ -68,17 +65,22 @@ export async function callVerifyVerifiedProfileLink(
   }) => Promise<{ ok?: boolean; username?: string }>,
 ): Promise<OfficialProfileLinkVerifyResult> {
   try {
-    const data = callVerify
-      ? await callVerify(input)
-      : (
-          await httpsCallable<
-            { chatId: string; messageId: string; ticketId: string },
-            { ok?: boolean; username?: string }
-          >(
-            functions,
-            VERIFY_VERIFIED_PROFILE_LINK,
-          )(input)
-        ).data;
+    let data: { ok?: boolean; username?: string };
+    if (callVerify) {
+      data = await callVerify(input);
+    } else {
+      const { httpsCallable } = await import("firebase/functions");
+      const { functions } = await import("@/lib/firebase");
+      data = (
+        await httpsCallable<
+          { chatId: string; messageId: string; ticketId: string },
+          { ok?: boolean; username?: string }
+        >(
+          functions,
+          VERIFY_VERIFIED_PROFILE_LINK,
+        )(input)
+      ).data;
+    }
     const username = asId(data?.username);
     if (data?.ok === true && username) return { ok: true, username };
     return { ok: false };

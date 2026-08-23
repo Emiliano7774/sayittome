@@ -116,8 +116,12 @@
     "test:chat-official-profile-link": "node --experimental-strip-types scripts/chat-official-profile-link.harness.mjs",
     "test:chat-official-profile-link-render": "node --experimental-strip-types scripts/chat-official-profile-link-render.harness.mjs",
     "test:chat-official-profile-link-attest": "node --experimental-strip-types scripts/chat-official-profile-link-attest.harness.mjs",
+    "test:chat-official-profile-link-claim-retry": "node --experimental-strip-types scripts/chat-official-profile-link-claim-retry.harness.mjs",
+    "test:chat-official-profile-link-ticket-race": "node --experimental-strip-types scripts/chat-official-profile-link-ticket-race.harness.mjs",
     "test:chat-audio-delete-integration": "node --experimental-strip-types scripts/chat-audio-delete-integration.harness.mjs",
-    "test:functions-admin-cold-start": "node scripts/functions-admin-app-cold-start.harness.mjs"
+    "test:functions-admin-cold-start": "node scripts/functions-admin-app-cold-start.harness.mjs",
+    "test:chat-official-profile-link-claim-pending-copy": "node --experimental-strip-types scripts/chat-official-profile-link-claim-pending-copy.harness.mjs",
+    "test:chat-official-profile-link-ticket-durable": "node --experimental-strip-types scripts/chat-official-profile-link-ticket-durable.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

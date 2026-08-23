@@ -92,7 +92,16 @@ export function AuthProvider({
             loadedProfileUidRef.current = null;
             setProfile(null);
             setLoading(false);
+            void import("@/lib/profile/verifiedProfileLinkClaimRetry").then((mod) => {
+              mod.disarmVerifiedProfileLinkClaimRetry();
+            });
             return;
+          }
+
+          if (!user.isAnonymous) {
+            void import("@/lib/profile/verifiedProfileLinkClaimRetry").then((mod) => {
+              mod.armVerifiedProfileLinkClaimRetry(user.uid);
+            });
           }
 
           const sameUser = loadedProfileUidRef.current === user.uid;

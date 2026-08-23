@@ -149,33 +149,50 @@ export async function handleClaimVerifiedProfileLink(
       messageId,
       nowMs: Date.now(),
     });
-    if (!decision.ok) throwHttps(decision.error, decision.reason || decision.error);
+    if (!decision.ok) {
+      console.info("[verified-profile-link-claim]", {
+        stage: "reject",
+        reason: decision.reason || decision.error,
+        ticketPrefix: ticketId.slice(0, 8),
+      });
+      throwHttps(decision.error, decision.reason || decision.error);
+    }
 
-    const resigned = signVerifiedProfileLinkTicket(secret, {
+    const attestation = {
       ticketId,
-      ownerUid: asId(ticket?.ownerUid),
-      username: decision.username,
-      text: asId(ticket?.text),
-      expiresAtMs: Number(ticket?.expiresAtMs) || 0,
-      consumed: true,
-      consumedChatId: chatId,
-      consumedMessageId: messageId,
-    });
-    if (!resigned.ok) throwHttps(resigned.error);
+      chatId,
+      messageId,
+    };
+    const messageRef = located.chatRef.collection(located.messageSubcollection).doc(messageId);
 
-    tx.update(ticketRef, {
-      consumed: true,
-      consumedChatId: chatId,
-      consumedMessageId: messageId,
-      consumedAt: FieldValue.serverTimestamp(),
-      mac: resigned.mac,
-    });
-    tx.update(located.chatRef.collection(located.messageSubcollection).doc(messageId), {
-      verifiedProfileAttestation: {
+    // Always upsert attestation (covers lost-ACK retries where ticket is already consumed).
+    tx.update(messageRef, { verifiedProfileAttestation: attestation });
+
+    if (!decision.alreadyClaimed) {
+      const resigned = signVerifiedProfileLinkTicket(secret, {
         ticketId,
-        chatId,
-        messageId,
-      },
+        ownerUid: asId(ticket?.ownerUid),
+        username: decision.username,
+        text: asId(ticket?.text),
+        expiresAtMs: Number(ticket?.expiresAtMs) || 0,
+        consumed: true,
+        consumedChatId: chatId,
+        consumedMessageId: messageId,
+      });
+      if (!resigned.ok) throwHttps(resigned.error);
+
+      tx.update(ticketRef, {
+        consumed: true,
+        consumedChatId: chatId,
+        consumedMessageId: messageId,
+        consumedAt: FieldValue.serverTimestamp(),
+        mac: resigned.mac,
+      });
+    }
+
+    console.info("[verified-profile-link-claim]", {
+      stage: decision.alreadyClaimed ? "idempotent-ack" : "ack",
+      ticketPrefix: ticketId.slice(0, 8),
     });
   });
 

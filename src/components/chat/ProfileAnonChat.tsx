@@ -133,6 +133,10 @@ import {
 import { messageRequiresBlur, profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import { scanUploadFile } from "@/lib/moderation/scanMedia";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
+import {
+  armVerifiedProfileLinkClaimRetry,
+  scheduleVerifiedProfileLinkClaimRetry,
+} from "@/lib/profile/verifiedProfileLinkClaimRetry";
 import { maybeClaimVerifiedProfileLink } from "@/lib/profile/verifiedProfileLinkTicket";
 import { getCachedProfile, setCachedProfile, getCachedFullProfile } from "@/lib/profile/profileCache";
 import {
@@ -363,6 +367,11 @@ function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
       merged[matchIndex] = {
         ...merged[matchIndex],
         ...(optimistic.clientId ? { clientId: optimistic.clientId } : {}),
+        // Keep sender-side optimistic attestation until the listener carries it.
+        ...(!merged[matchIndex].verifiedProfileAttestation &&
+        optimistic.verifiedProfileAttestation
+          ? { verifiedProfileAttestation: optimistic.verifiedProfileAttestation }
+          : {}),
         status: undefined,
       };
       continue;
@@ -732,6 +741,11 @@ export default function ProfileAnonChat({
       document.body.classList.remove("sayittome-chat-fullscreen-open");
     };
   }, [fullscreenUrl]);
+
+  useEffect(() => {
+    if (!currentUid || currentUid.startsWith("anon_")) return;
+    armVerifiedProfileLinkClaimRetry(currentUid);
+  }, [currentUid]);
 
   useEffect(() => {
     return () => {
@@ -2078,12 +2092,28 @@ export default function ProfileAnonChat({
       clientId,
     })
       .then(async (persisted) => {
-        await maybeClaimVerifiedProfileLink({
+        const claim = await maybeClaimVerifiedProfileLink({
           chatId: persisted.canonicalChatId,
           messageId: persisted.messageId,
           text: input.message.text,
           ownerUid: currentUid,
         });
+        if (claim.ok) {
+          setMessages((old) =>
+            old.map((message) =>
+              message.clientId === clientId
+                ? {
+                    ...message,
+                    id: persisted.messageId,
+                    verifiedProfileAttestation: { ticketId: claim.ticketId },
+                    status: undefined,
+                  }
+                : message,
+            ),
+          );
+        } else if (claim.retryable) {
+          scheduleVerifiedProfileLinkClaimRetry(currentUid);
+        }
         if (!input.isOwnerReply && identityReady) {
           rememberOwnThreadAnonId(chatId, input.senderId, {
             authUid: currentUid,

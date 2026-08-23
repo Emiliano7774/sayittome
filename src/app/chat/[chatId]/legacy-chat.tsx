@@ -31,6 +31,10 @@ import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import ChatMessageText from "@/components/chat/ChatMessageText";
 import ChatOfficialProfileVerifiedBadge from "@/components/chat/ChatOfficialProfileVerifiedBadge";
 import { readAttestationHint } from "@/lib/chat/officialProfileLinkMessage";
+import {
+  armVerifiedProfileLinkClaimRetry,
+  scheduleVerifiedProfileLinkClaimRetry,
+} from "@/lib/profile/verifiedProfileLinkClaimRetry";
 import { maybeClaimVerifiedProfileLink } from "@/lib/profile/verifiedProfileLinkTicket";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
 import { CHAT_FILE_INPUT_CLASS, openNativeGalleryFilePicker } from "@/lib/media/chatMediaCapture";
@@ -312,6 +316,11 @@ export default function LegacyChatPage() {
       });
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentUid || currentUid.startsWith("anon_")) return;
+    armVerifiedProfileLinkClaimRetry(currentUid);
+  }, [currentUid]);
 
   useEffect(() => {
     let cancelled = false;
@@ -885,12 +894,28 @@ export default function LegacyChatPage() {
         readBy: { [author.senderAuthUid]: true },
         ...replyPayload,
       });
-      await maybeClaimVerifiedProfileLink({
+      const claim = await maybeClaimVerifiedProfileLink({
         chatId,
         messageId: messageRef.id,
         text: clean,
         ownerUid: author.senderAuthUid,
       });
+      if (claim.ok) {
+        setOptimisticMessages((prev) =>
+          prev.map((msg) =>
+            msg.clientMessageId === clientMessageId
+              ? {
+                  ...msg,
+                  id: messageRef.id,
+                  verifiedProfileAttestation: { ticketId: claim.ticketId },
+                  status: undefined,
+                }
+              : msg,
+          ),
+        );
+      } else if (claim.retryable) {
+        scheduleVerifiedProfileLinkClaimRetry(author.senderAuthUid);
+      }
 
       await updateDoc(
         doc(db, "chats", chatId),

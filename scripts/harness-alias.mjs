@@ -44,12 +44,9 @@ export function installHarnessAlias(root = path.resolve(path.dirname(fileURLToPa
   return root;
 }
 
-export function installHarnessWindow() {
-  if (typeof globalThis.window !== "undefined" && globalThis.sessionStorage) {
-    return;
-  }
+function createMemoryStorage() {
   const store = new Map();
-  const sessionStorage = {
+  return {
     getItem: (key) => store.get(key) ?? null,
     setItem: (key, value) => {
       store.set(key, String(value));
@@ -57,16 +54,33 @@ export function installHarnessWindow() {
     removeItem: (key) => {
       store.delete(key);
     },
+    clear: () => {
+      store.clear();
+    },
     get length() {
       return store.size;
     },
     key: (index) => [...store.keys()][index] ?? null,
   };
+}
+
+export function installHarnessWindow() {
+  // session and local must be distinct so durable-ticket tests can simulate WebView restart.
+  if (
+    typeof globalThis.window !== "undefined" &&
+    globalThis.sessionStorage &&
+    globalThis.localStorage &&
+    globalThis.sessionStorage !== globalThis.localStorage
+  ) {
+    return;
+  }
+  const sessionStorage = createMemoryStorage();
+  const localStorage = createMemoryStorage();
   globalThis.sessionStorage = sessionStorage;
-  globalThis.localStorage = sessionStorage;
+  globalThis.localStorage = localStorage;
   const windowShim = {
     sessionStorage,
-    localStorage: sessionStorage,
+    localStorage,
     scrollTo() {},
     scrollY: 0,
     location: {

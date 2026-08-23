@@ -1,9 +1,13 @@
-import { auth } from "@/lib/firebase";
 import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { assertProfileOwner } from "@/lib/profile/owner";
+import { scheduleVerifiedProfileLinkClaimRetry } from "@/lib/profile/verifiedProfileLinkClaimRetry";
 import { issueVerifiedProfileLinkTicket } from "@/lib/profile/verifiedProfileLinkTicket";
 import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
+
+/** Shown when Copy is pressed while a prior link claim is still in flight. */
+export const VERIFIED_PROFILE_LINK_CLAIM_PENDING_COPY_MESSAGE =
+  "El link anterior todavía se está verificando. Reintentá en unos segundos";
 
 export const VERIFIED_QUERY_PARAM = "verified";
 export const VERIFIED_QUERY_VALUE = "1";
@@ -168,20 +172,89 @@ async function writeTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
-export async function copyVerifiedProfileLink(username: string) {
-  const allowed = await assertProfileOwner(username);
+export async function copyVerifiedProfileLink(
+  username: string,
+  options?: {
+    overwriteTicket?: boolean;
+    /** Test hooks — production omits these. */
+    ownerUid?: string;
+    assertOwner?: (username: string) => Promise<boolean>;
+    writeText?: (text: string) => Promise<boolean>;
+    scheduleRetry?: (ownerUid: string) => void;
+    callIssue?: (username: string) => Promise<{
+      ticketId: string;
+      text: string;
+      expiresAtMs: number;
+    }>;
+  },
+) {
+  const allowed = options?.assertOwner
+    ? await options.assertOwner(username)
+    : await assertProfileOwner(username);
   if (!allowed) {
-    return { ok: false as const, link: "", denied: true as const };
+    return {
+      ok: false as const,
+      link: "",
+      denied: true as const,
+      reason: "denied" as const,
+    };
   }
 
-  const ownerUid = String(auth.currentUser?.uid || "").trim();
-  const issued = await issueVerifiedProfileLinkTicket({ username, ownerUid });
-  const link = issued?.text || getVerifiedProfileUrl(username);
-  const ok = await writeTextToClipboard(link);
+  let ownerUid = String(options?.ownerUid || "").trim();
+  if (!ownerUid) {
+    const { auth } = await import("@/lib/firebase");
+    ownerUid = String(auth.currentUser?.uid || "").trim();
+  }
+  if (!ownerUid) {
+    return {
+      ok: false as const,
+      link: "",
+      reason: "issue_failed" as const,
+    };
+  }
 
+  const issued = await issueVerifiedProfileLinkTicket({
+    username,
+    ownerUid,
+    overwrite: options?.overwriteTicket !== false,
+    callIssue: options?.callIssue,
+  });
+  if (!issued.ok) {
+    if (issued.reason === "claim_pending") {
+      (options?.scheduleRetry ?? scheduleVerifiedProfileLinkClaimRetry)(ownerUid);
+      return {
+        ok: false as const,
+        link: "",
+        reason: "claim_pending" as const,
+      };
+    }
+    return {
+      ok: false as const,
+      link: "",
+      reason: "issue_failed" as const,
+    };
+  }
+
+  const ticket = issued.ticket;
+  const writeText = options?.writeText ?? writeTextToClipboard;
+  const ok = await writeText(ticket.text);
   if (ok) {
-    return { ok: true as const, link };
+    return { ok: true as const, link: ticket.text, ticketId: ticket.ticketId };
   }
 
-  return { ok: false as const, link };
+  // Ticket is reserved even if clipboard fails — caller can show manual copy UI.
+  return {
+    ok: false as const,
+    link: ticket.text,
+    ticketId: ticket.ticketId,
+    reason: "clipboard_failed" as const,
+  };
+}
+
+/** Clipboard-only; never issues a second ticket (native modal re-copy). */
+export async function recopyVerifiedProfileLinkText(link: string) {
+  const text = String(link || "").trim();
+  if (!text) return { ok: false as const };
+  const ok = await writeTextToClipboard(text);
+  return ok ? { ok: true as const } : { ok: false as const };
 }

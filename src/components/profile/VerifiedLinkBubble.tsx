@@ -7,9 +7,10 @@ import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { assertProfileOwner } from "@/lib/profile/owner";
 import {
+  VERIFIED_PROFILE_LINK_CLAIM_PENDING_COPY_MESSAGE,
   copyVerifiedProfileLink,
   displayVerifiedProfileLink,
-  getVerifiedProfileUrl,
+  recopyVerifiedProfileLinkText,
 } from "@/lib/profile/verifiedLink";
 
 type Props = {
@@ -26,46 +27,70 @@ export default function VerifiedLinkBubble({
 }: Props) {
   const { ready, isOwner } = useProfileOwner(profileUid, username);
   const [toast, setToast] = useState("");
+  const [error, setError] = useState("");
   const [modalLink, setModalLink] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const resolvedVariant = variant === "classic" ? "inline" : variant;
 
   if (!ready || !isOwner) return null;
 
+  function showToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2200);
+  }
+
   async function handleCopy() {
+    setError("");
     const allowed = await assertProfileOwner(username);
     if (!allowed) {
       alert("Solo el dueño del perfil puede copiar su link verificado.");
       return;
     }
 
-    const result = await copyVerifiedProfileLink(username);
+    const result = await copyVerifiedProfileLink(username, { overwriteTicket: true });
 
     if ("denied" in result && result.denied) {
       alert("Solo el dueño del perfil puede copiar su link verificado.");
       return;
     }
 
-    if (result.ok && !isNativeAppShell()) {
-      setToast("Link verificado copiado");
-      window.setTimeout(() => setToast(""), 2200);
+    if (result.ok) {
+      if (!isNativeAppShell()) {
+        showToast("Link verificado copiado");
+        return;
+      }
+      // Native: one issued ticket — modal only re-copies that same text.
+      setModalLink(result.link);
       return;
     }
 
-    setModalLink(result.link || getVerifiedProfileUrl(username));
+    if (result.reason === "claim_pending") {
+      // Fail-closed: do not copy or open modal while a prior claim is in flight.
+      setError(VERIFIED_PROFILE_LINK_CLAIM_PENDING_COPY_MESSAGE);
+      return;
+    }
+
+    if (result.reason === "clipboard_failed" && result.link) {
+      setModalLink(result.link);
+      return;
+    }
+
+    setError("No se pudo emitir el link verificado. Reintentá.");
   }
 
   async function copyFromModal() {
-    const link = modalLink || getVerifiedProfileUrl(username);
-    const result = await copyVerifiedProfileLink(username);
-
+    setError("");
+    if (!modalLink) {
+      setError("No hay link verificado emitido. Cerrá y volvé a intentar.");
+      return;
+    }
+    // Never re-issue: preserve the single ticket from the first successful issue.
+    const result = await recopyVerifiedProfileLinkText(modalLink);
     if (result.ok) {
-      setToast("Link verificado copiado");
-      window.setTimeout(() => setToast(""), 2200);
+      showToast("Link verificado copiado");
       setModalLink("");
       return;
     }
-
     inputRef.current?.focus();
     inputRef.current?.select();
   }
@@ -85,7 +110,7 @@ export default function VerifiedLinkBubble({
       <div className="relative">
         <button
           type="button"
-          onClick={handleCopy}
+          onClick={() => void handleCopy()}
           className={buttonClass}
           aria-label="Copiar link verificado"
         >
@@ -101,6 +126,11 @@ export default function VerifiedLinkBubble({
         </button>
 
         {toast ? <div className={toastClass}>{toast}</div> : null}
+        {error ? (
+          <p className="absolute right-0 top-full mt-2 z-[40] max-w-[16rem] rounded-2xl bg-rose-600/95 px-3 py-2 text-xs font-semibold text-white shadow-2xl">
+            {error}
+          </p>
+        ) : null}
       </div>
 
       {modalLink ? (
@@ -123,7 +153,7 @@ export default function VerifiedLinkBubble({
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={copyFromModal}
+                onClick={() => void copyFromModal()}
                 className="rounded-full bg-violet-500 text-white px-6 py-3 font-black inline-flex items-center gap-2"
               >
                 <Copy size={18} />

@@ -170,7 +170,7 @@ export function decideClaimVerifiedProfileLinkTicket(input: {
   messageId: string;
   nowMs: number;
 }):
-  | { ok: true; username: string }
+  | { ok: true; username: string; alreadyClaimed?: true }
   | {
       ok: false;
       error:
@@ -179,7 +179,7 @@ export function decideClaimVerifiedProfileLinkTicket(input: {
         | "not-found"
         | "failed-precondition"
         | "invalid-argument";
-      reason?: "expired" | "replay" | "other-chat" | "other-message" | "text-mismatch" | "not-owner" | "bad-mac" | "no-secret";
+      reason?: "expired" | "other-chat" | "other-message" | "text-mismatch" | "not-owner" | "bad-mac" | "no-secret";
     } {
   if (!readVerifiedProfileLinkSecret(input.secret).ok) {
     return { ok: false, error: "failed-precondition", reason: "no-secret" };
@@ -198,17 +198,6 @@ export function decideClaimVerifiedProfileLinkTicket(input: {
   if (asId(input.ticket.ownerUid) !== uid) {
     return { ok: false, error: "permission-denied", reason: "not-owner" };
   }
-  if (input.ticket.consumed) {
-    const sameChat = asId(input.ticket.consumedChatId) === chatId;
-    const sameMessage = asId(input.ticket.consumedMessageId) === messageId;
-    if (!sameChat) return { ok: false, error: "failed-precondition", reason: "other-chat" };
-    if (!sameMessage) return { ok: false, error: "failed-precondition", reason: "other-message" };
-    return { ok: false, error: "failed-precondition", reason: "replay" };
-  }
-  if (input.ticket.expiresAtMs <= input.nowMs) {
-    return { ok: false, error: "failed-precondition", reason: "expired" };
-  }
-
   const username = normalizeVerifiedProfileUsername(input.ticket.username);
   const expected = canonicalVerifiedProfileLinkText(username);
   if (asId(input.messageText) !== expected || asId(input.ticket.text) !== expected) {
@@ -218,6 +207,18 @@ export function decideClaimVerifiedProfileLinkTicket(input: {
   const author = asId(input.messageAuthorUid);
   if (author !== uid && author !== `profile_${uid}`) {
     return { ok: false, error: "permission-denied", reason: "not-owner" };
+  }
+
+  if (input.ticket.consumed) {
+    const sameChat = asId(input.ticket.consumedChatId) === chatId;
+    const sameMessage = asId(input.ticket.consumedMessageId) === messageId;
+    if (!sameChat) return { ok: false, error: "failed-precondition", reason: "other-chat" };
+    if (!sameMessage) return { ok: false, error: "failed-precondition", reason: "other-message" };
+    // Lost ACK / client retry: same ticket+chat+message is idempotent success.
+    return { ok: true, username, alreadyClaimed: true as const };
+  }
+  if (input.ticket.expiresAtMs <= input.nowMs) {
+    return { ok: false, error: "failed-precondition", reason: "expired" };
   }
 
   return { ok: true, username };
