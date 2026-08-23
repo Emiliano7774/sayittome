@@ -50,6 +50,17 @@ function commitStack(next: string[]) {
   schedulePersistStack();
 }
 
+export function resetNativeNavStackForTests() {
+  memoryStack = [];
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.removeItem(STACK_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export function seedNativeNavStack(pathname: string) {
   const path = normalizePath(pathname);
   const stack = getStack();

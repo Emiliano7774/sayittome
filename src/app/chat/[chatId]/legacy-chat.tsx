@@ -39,6 +39,7 @@ import {
 import {
   ensureChatMicrophonePermission,
   isNativeChatMicrophoneShell,
+  noticeFromCaptureFailure,
   noticeFromMicrophonePermission,
   openChatMicrophoneSettings,
   type ChatMicNotice,
@@ -937,8 +938,10 @@ export default function LegacyChatPage() {
     setRecording(true);
     setMicNotice(null);
 
+    let permissionState: "prompt" | "granted" | "denied" | "blocked" | "unavailable" = "prompt";
     try {
       const permission = await ensureChatMicrophonePermission();
+      permissionState = permission.state;
       if (session !== audioRecordingSessionRef.current) {
         setRecording(false);
         audioPhaseRef.current = "idle";
@@ -1040,15 +1043,14 @@ export default function LegacyChatPage() {
       recordingStreamRef.current = null;
       mediaRecorderRef.current = null;
       setRecording(false);
-      const denied =
-        classifyChatAudioCaptureFailure(e, {
-          nativeDenied: false,
-          nativePlatform: isNativeChatMicrophoneShell(),
-        }) === "denied";
+      const classified = classifyChatAudioCaptureFailure(e, {
+        nativeDenied: false,
+        nativePlatform: isNativeChatMicrophoneShell(),
+      });
       audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
-        type: denied ? "permission-denied" : "error",
+        type: classified === "denied" ? "permission-denied" : "error",
       }).phase;
-      setMicNotice(denied ? "denied" : "failed");
+      setMicNotice(noticeFromCaptureFailure({ classified, permissionState }));
     }
   };
 

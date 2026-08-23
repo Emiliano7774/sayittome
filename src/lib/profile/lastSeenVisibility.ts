@@ -69,8 +69,8 @@ export function isPublicShuffleOnline(
   isOnline?: (p: { presenceAt?: string | null; lastActive?: string | null }) => boolean,
 ) {
   if (!profile || !isLastSeenPublic(profile)) return false;
+  if (isOnline) return isOnline(profile);
   if (profile.showOnline === true) return true;
   if (profile.showOnline === false) return false;
-  if (!isOnline) return false;
-  return isOnline(profile);
+  return false;
 }

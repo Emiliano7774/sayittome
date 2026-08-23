@@ -37,8 +37,11 @@ import {
 } from "@/lib/media/chatAudioCapture";
 import {
   ensureChatMicrophonePermission,
+  noticeFromCaptureFailure,
   noticeFromMicrophonePermission,
   openChatMicrophoneSettings,
+  planChatMicrophoneStart,
+  type ChatMicrophonePermissionState,
   type ChatMicNotice,
 } from "@/lib/media/chatMicrophonePermission";
 import { preparePlayableChatAudio } from "@/lib/media/chatAudioPlayback";
@@ -116,7 +119,11 @@ import {
   inboxChatFromFirestore,
   markThreadReadExact,
 } from "@/lib/chat/unread";
-import { isExactActiveDetailThread } from "@/lib/chat/shouldMarkThreadRead";
+import {
+  isExactActiveDetailThread,
+  resolveDetailReadMark,
+  resolveLeaveThreadRead,
+} from "@/lib/chat/shouldMarkThreadRead";
 import {
   formatAnonSessionLabel,
 } from "@/lib/chat/inboxPeerTitle";
@@ -161,7 +168,10 @@ import {
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
 import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
-import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
+import {
+  resetChatBackNavigationState,
+  resolveChatBackAction,
+} from "@/lib/navigation/chatBackNavigation";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 import {
   collection,
@@ -487,6 +497,8 @@ export default function ProfileAnonChat({
   const readMarkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
   const lastReadRenderedKeyRef = useRef("");
+  const inboundReadIdsRef = useRef<string[]>([]);
+  const chatSeenVisibleRef = useRef(false);
   const lastRenderedQaKeyRef = useRef("");
   const lastAuthorshipProbeKeyRef = useRef("");
   const chatMetaRef = useRef<InboxChat | null>(null);
@@ -568,7 +580,33 @@ export default function ProfileAnonChat({
     window.setTimeout(focus, 180);
   }
 
+  function flushSeenThreadReadOnLeave() {
+    const inboundId = inboundReadIdsRef.current[inboundReadIdsRef.current.length - 1] || "";
+    if (!inboundId) return;
+    const ctx = markReadContextRef.current;
+    const chat = chatMetaRef.current;
+    const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
+    const profileOwnerUid = ctx.targetUid || ctx.chatOwnerUid;
+    const ownerViewing = Boolean(
+      ctx.currentUid && profileOwnerUid && ctx.currentUid === profileOwnerUid,
+    );
+    const leave = resolveLeaveThreadRead({
+      seenVisible: chatSeenVisibleRef.current,
+      viewerIdentity: ownerViewing ? ctx.currentUid : senderId,
+      canonicalThreadId: chat?.canonicalChatId || ctx.chatId,
+      activeDetailThreadId: chat?.canonicalChatId || ctx.chatId,
+      renderedInboundMessageIds: inboundReadIdsRef.current,
+      latestInboundMessageId: inboundId,
+      alreadyMarkedKey: lastReadRenderedKeyRef.current,
+    });
+    if (leave.mark) markOpenChatAsRead(inboundId);
+  }
+
   function goBackFromChat() {
+    const backAction = resolveChatBackAction(pathname);
+    if (backAction?.kind === "dismiss-keyboard") return;
+    flushSeenThreadReadOnLeave();
+
     const dest = resolveChatBackDestination(pathname);
     if (isInstantShuffleReturnDestination(dest)) {
       prepareInstantShuffleReturn();
@@ -587,7 +625,10 @@ export default function ProfileAnonChat({
     const ctx = markReadContextRef.current;
     const chat = chatMetaRef.current;
     if (!ctx.chatId || !ctx.authReady || !chat || !renderedMessageId) return;
-    if (typeof document !== "undefined" && document.hidden) return;
+    const documentVisible =
+      typeof document === "undefined" ? true : document.visibilityState === "visible";
+    if (documentVisible) chatSeenVisibleRef.current = true;
+    if (!documentVisible && !chatSeenVisibleRef.current) return;
 
     // Always read the live URL — render-closure pathname goes stale on list
     // navigation and incorrectly cleared unread when only /chats opened.
@@ -617,6 +658,16 @@ export default function ProfileAnonChat({
     const messageViewerId = ownerViewing ? ctx.currentUid : senderId;
 
     if (!messageViewerId) return;
+    const readDecision = resolveDetailReadMark({
+      viewerIdentity: messageViewerId,
+      canonicalThreadId,
+      activeDetailThreadId: canonicalThreadId,
+      renderedInboundMessageIds: inboundReadIdsRef.current,
+      latestInboundMessageId: renderedMessageId,
+      documentVisible: documentVisible || chatSeenVisibleRef.current,
+      alreadyMarkedKey: lastReadRenderedKeyRef.current,
+    });
+    if (!readDecision.mark) return;
     const readKey = `${canonicalThreadId}:${messageViewerId}:${renderedMessageId}`;
     if (lastReadRenderedKeyRef.current === readKey) return;
     lastReadRenderedKeyRef.current = readKey;
@@ -1193,9 +1244,28 @@ export default function ProfileAnonChat({
   };
 
 
+  const inboundRenderedIds = displayMessages
+    .filter((row) => !row.mine && row.id)
+    .map((row) => String(row.id));
+  inboundReadIdsRef.current = inboundRenderedIds;
+  const latestInboundMessageId = inboundRenderedIds[inboundRenderedIds.length - 1] || "";
   const latestRenderedMessageId = messages[messages.length - 1]?.id || "";
   useEffect(() => {
-    markOpenChatAsRead(latestRenderedMessageId);
+    function flushRead() {
+      if (document.visibilityState === "visible") chatSeenVisibleRef.current = true;
+      markOpenChatAsRead(latestInboundMessageId);
+    }
+    flushRead();
+    document.addEventListener("visibilitychange", flushRead);
+    function onPageHide() {
+      if (chatSeenVisibleRef.current) markOpenChatAsRead(latestInboundMessageId);
+    }
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", flushRead);
+      window.removeEventListener("pagehide", onPageHide);
+      if (chatSeenVisibleRef.current) markOpenChatAsRead(latestInboundMessageId);
+    };
   }, [
     chatId,
     authReady,
@@ -1203,7 +1273,7 @@ export default function ProfileAnonChat({
     targetUid,
     chatOwnerUid,
     chatAnonSessionId,
-    latestRenderedMessageId,
+    latestInboundMessageId,
     chatMetaVersion,
   ]);
   useEffect(() => {
@@ -1636,8 +1706,16 @@ export default function ProfileAnonChat({
     setRecording(true);
     setMicNotice(null);
 
+    let permissionState: ChatMicrophonePermissionState | "unavailable" | "missing" =
+      "prompt";
     try {
       const permission = await ensureChatMicrophonePermission();
+      permissionState = permission.state;
+      const plan = planChatMicrophoneStart({
+        native: isNativeChatShell(),
+        bridgeState:
+          permission.state === "unavailable" ? "unavailable" : permission.state,
+      });
       if (session !== audioRecordingSessionRef.current) {
         setRecording(false);
         audioPhaseRef.current = "idle";
@@ -1648,7 +1726,7 @@ export default function ProfileAnonChat({
         audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
           type: permission.denied ? "permission-denied" : "error",
         }).phase;
-        setMicNotice(noticeFromMicrophonePermission(permission));
+        setMicNotice(plan.notice || noticeFromMicrophonePermission(permission));
         return;
       }
 
@@ -1754,15 +1832,19 @@ export default function ProfileAnonChat({
       if (session !== audioRecordingSessionRef.current) return;
       resetAudioRecorder();
       setRecording(false);
-      const denied =
-        classifyChatAudioCaptureFailure(error, {
-          nativeDenied: false,
-          nativePlatform: isNativeChatShell(),
-        }) === "denied";
+      const classified = classifyChatAudioCaptureFailure(error, {
+        nativeDenied: false,
+        nativePlatform: isNativeChatShell(),
+      });
       audioPhaseRef.current = reduceChatAudioEvent(audioPhaseRef.current, {
-        type: denied ? "permission-denied" : "error",
+        type: classified === "denied" ? "permission-denied" : "error",
       }).phase;
-      setMicNotice(denied ? "denied" : "failed");
+      setMicNotice(
+        noticeFromCaptureFailure({
+          classified,
+          permissionState,
+        }),
+      );
     }
   }
 

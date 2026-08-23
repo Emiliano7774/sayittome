@@ -255,6 +255,49 @@ const afterRename = collapsed.map((p, i) =>
 const afterKeys = afterRename.map((p) => dedupe.shuffleProfileIdentityKey(p));
 assert.deepEqual(afterKeys, beforeKeys);
 
+const liveIncomplete = row({
+  uid: "fb-bridge",
+  authUid: "fb-bridge",
+  username: "randomdup",
+  photo: "https://cdn.example.com/live-random.jpg",
+});
+const cacheIncomplete = row({
+  uid: "doc-bridge",
+  username: "randomdup",
+  photo: "https://cdn.example.com/cache-random.jpg",
+});
+const featuredBridge = row({
+  uid: "doc-bridge",
+  authUid: "fb-bridge",
+  username: "randomdup",
+  shuffleFeatured: true,
+});
+const followingBridge = row({
+  uid: "doc-bridge",
+  authUid: "fb-bridge",
+  aliasIds: ["doc-bridge", "fb-bridge"],
+  username: "randomdup",
+});
+assert.equal(
+  dedupe.dedupeShuffleProfiles([liveIncomplete, cacheIncomplete]).length,
+  2,
+  "incomplete aliases must not join by username/photo",
+);
+const bridged = dedupe.enrichShuffleIdentitiesFromBridges(
+  [liveIncomplete, cacheIncomplete],
+  [featuredBridge, followingBridge],
+);
+assert.equal(bridged.length, 1, "featured/following id bridge must collapse identity");
+assert.equal(
+  dedupe.assembleVisibleShuffleWindow({
+    cache: [cacheIncomplete],
+    live: [liveIncomplete],
+    featured: [featuredBridge],
+    pages: [[row({ uid: "fb-bridge", username: "randomdup", shuffleSource: "page" })]],
+  }).length,
+  1,
+);
+
 assert.equal(fetches, 0);
 globalThis.fetch = previousFetch;
 

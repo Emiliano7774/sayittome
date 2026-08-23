@@ -23,6 +23,33 @@ let backLockHoldUntilNavigation = false;
 let pendingExitUntil = 0;
 
 const BACK_LOCK_MS = 120;
+const HARDWARE_BACK_COALESCE_MS = 80;
+let lastHardwareBackAt = 0;
+
+/** Dual Capacitor + MainActivity events in the same press must not double-pop. */
+export function shouldCoalesceNativeHardwareBack(
+  now = Date.now(),
+  lastAt = lastHardwareBackAt,
+  windowMs = HARDWARE_BACK_COALESCE_MS,
+) {
+  return now - lastAt < windowMs;
+}
+
+export function noteNativeHardwareBack(now = Date.now()) {
+  lastHardwareBackAt = now;
+}
+
+export function resetNativeHardwareBackCoalesce() {
+  lastHardwareBackAt = 0;
+}
+
+export function resetNativeBackNavigationState() {
+  backLockUntil = 0;
+  backLockPath = "";
+  backLockHoldUntilNavigation = false;
+  pendingExitUntil = 0;
+  lastHardwareBackAt = 0;
+}
 const EXIT_CONFIRM_MS = 2000;
 
 let backLockMsOverride: number | null = null;
@@ -134,6 +161,7 @@ export function resolveNativeBackNavigation(
 
   if (result.handled) {
     if (result.dismissChatKeyboard) {
+      armBackLock(pathname, now);
       return {};
     }
 

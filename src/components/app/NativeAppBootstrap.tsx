@@ -11,10 +11,12 @@ import { initNativePushNotifications, onNativePushForegroundResume } from "@/lib
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { reprimeWhipSound } from "@/lib/chat/whipSound";
 import {
+  noteNativeHardwareBack,
   notifyNativePathnameChanged,
   readNativePathname,
   resetNativeBackExitTimer,
   resolveNativeBackNavigation,
+  shouldCoalesceNativeHardwareBack,
 } from "@/lib/navigation/handleNativeBack";
 import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
@@ -86,6 +88,9 @@ function installNativeBackHandler(
   backHandlerInstalled = true;
 
   const onHardwareBack = () => {
+    const now = Date.now();
+    if (shouldCoalesceNativeHardwareBack(now)) return;
+    noteNativeHardwareBack(now);
     runNativeBackNavigation(router, pathnameRef);
   };
 

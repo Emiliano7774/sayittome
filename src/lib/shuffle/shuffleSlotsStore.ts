@@ -1,4 +1,9 @@
-import { assembleShuffleSlotProfiles, shuffleProfileIdentityKey, uniqueShuffleWindow } from "@/lib/shuffle/dedupeProfiles";
+import {
+  assembleShuffleSlotProfiles,
+  shuffleProfileDedupeKeys,
+  shuffleProfileIdentityKey,
+  uniqueShuffleWindow,
+} from "@/lib/shuffle/dedupeProfiles";
 import {
   applyShuffleProfileBlurFlags,
 } from "@/lib/shuffle/resolveShuffleBlur";
@@ -280,6 +285,7 @@ export function patchShuffleSlotPresence(pool: ShuffleProfile[]) {
   const lookup = new Map<string, ShuffleProfile>();
   for (const profile of pool) {
     lookup.set(profile.uid, profile);
+    for (const key of shuffleProfileDedupeKeys(profile)) lookup.set(key, profile);
     const username = String(profile.username || "").trim().toLowerCase();
     if (username) lookup.set(`u:${username}`, profile);
   }
@@ -290,9 +296,15 @@ export function patchShuffleSlotPresence(pool: ShuffleProfile[]) {
     const current = slots[slot];
     if (!current) continue;
 
-    const refreshed =
+    let refreshed =
       lookup.get(current.uid) ||
       lookup.get(`u:${String(current.username || "").trim().toLowerCase()}`);
+    if (!refreshed) {
+      for (const key of shuffleProfileDedupeKeys(current)) {
+        refreshed = lookup.get(key);
+        if (refreshed) break;
+      }
+    }
     if (!refreshed) continue;
 
     if (
@@ -314,4 +326,36 @@ export function patchShuffleSlotPresence(pool: ShuffleProfile[]) {
   }
 
   if (changed) scheduleFlush();
+}
+
+/** Drop stale filter members in place; keep remaining order (no reshuffle). */
+export function pruneShuffleSlotsToPool(pool: ShuffleProfile[]) {
+  const poolKeys = new Set<string>();
+  for (const profile of pool) {
+    for (const key of shuffleProfileDedupeKeys(profile)) poolKeys.add(key);
+  }
+
+  const kept: ShuffleProfile[] = [];
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const current = slots[slot];
+    if (!current) continue;
+    const stillMember = shuffleProfileDedupeKeys(current).some((key) => poolKeys.has(key));
+    if (stillMember) kept.push(current);
+  }
+
+  let changed = false;
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const next = kept[slot] || null;
+    if (slots[slot] === next) continue;
+    slots[slot] = next;
+    dirtySlots.add(slot);
+    changed = true;
+  }
+
+  if (changed) {
+    patchShuffleSlotPresence(pool);
+    scheduleFlush();
+  } else {
+    patchShuffleSlotPresence(pool);
+  }
 }

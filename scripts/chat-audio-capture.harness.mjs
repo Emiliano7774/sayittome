@@ -85,7 +85,7 @@ assert.equal(
     { name: "NotAllowedError" },
     { nativePlatform: true, denied: false },
   ),
-  "failed",
+  "denied",
 );
 assert.equal(
   audio.classifyChatAudioCaptureFailure(

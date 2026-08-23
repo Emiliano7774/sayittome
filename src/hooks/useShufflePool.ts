@@ -6,17 +6,22 @@ import { useSyncExternalStore } from "react";
 
 import {
   assembleShuffleSlotProfiles,
+  overlayShuffleProfileSnapshots,
   dedupeShuffleProfiles,
   describeShuffleIdentityDebug,
+  enrichShuffleIdentitiesFromBridges,
   findUnprovenShuffleNameCollisions,
-  overlayShuffleProfileSnapshots,
   profileMatchesShuffleExcludeKeys,
   shuffleProfileBatchExcludeKeys,
   shuffleProfileDedupeKeys,
   shuffleProfileIdentityKey,
   shuffleProfilesShareIdentity,
 } from "@/lib/shuffle/dedupeProfiles";
-import { getShuffleExcludeKeys, subscribeShuffleExclude } from "@/lib/shuffle/shuffleExcludeStore";
+import {
+  getShuffleExcludeKeys,
+  getShuffleExcludeProfiles,
+  subscribeShuffleExclude,
+} from "@/lib/shuffle/shuffleExcludeStore";
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
 import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
 import { isShuffleProfileOnline } from "@/lib/presence";
@@ -49,6 +54,7 @@ import {
 } from "@/lib/shuffle/shuffleProfiler";
 import {
   patchShuffleSlotPresence,
+  pruneShuffleSlotsToPool,
   setShuffleSlotsWithFeatured,
   getVisibleShuffleProfiles,
 } from "@/lib/shuffle/shuffleSlotsStore";
@@ -369,7 +375,13 @@ export function useShufflePool() {
         (shouldSuppressShuffleWindowRefresh() || shuffleFeedFrozenRef.current)
       ) {
         if (visibleNow.length > 0) {
-          patchShuffleSlotPresence(pool.length > 0 ? pool : activePoolRef.current);
+          const nextPool = pool.length > 0 ? pool : activePoolRef.current;
+          const membership =
+            filtersRef.current.soloOnline ||
+            filtersRef.current.soloConHistorias ||
+            filtersRef.current.soloConFoto;
+          if (membership) pruneShuffleSlotsToPool(nextPool);
+          else patchShuffleSlotPresence(nextPool);
           setListReady(true);
           markShuffleHydrated(visibleNow.length);
           return;
@@ -408,6 +420,17 @@ export function useShufflePool() {
       const featuredCount = featured.length;
 
       if (len === 0 && featuredCount === 0) {
+        const membership =
+          filtersRef.current.soloOnline ||
+          filtersRef.current.soloConHistorias ||
+          filtersRef.current.soloConFoto;
+        if (membership) {
+          pruneShuffleSlotsToPool([]);
+          windowCountRef.current = 0;
+          setListReady(true);
+          markShuffleHydrated(0);
+          return;
+        }
         const hadVisible = getVisibleShuffleProfiles().length > 0;
         if (hadVisible && options?.resetBatchMemory !== true) {
           return;
@@ -499,7 +522,10 @@ export function useShufflePool() {
     (profiles: ShuffleProfile[], total: number) => {
       if (profiles.length === 0) return;
 
-      poolRef.current = overlayShuffleProfileSnapshots(poolRef.current, profiles);
+      poolRef.current = enrichShuffleIdentitiesFromBridges(
+        overlayShuffleProfileSnapshots(poolRef.current, profiles),
+        [...featuredRef.current, ...getShuffleExcludeProfiles()],
+      );
 
       if (total > 0) totalLiveRef.current = total;
 
@@ -548,8 +574,12 @@ export function useShufflePool() {
         ).length,
       );
 
+      const membership =
+        nextFilters.soloOnline || nextFilters.soloConHistorias || nextFilters.soloConFoto;
+
       if (shuffleFeedFrozenRef.current && !forceWindow) {
-        patchShuffleSlotPresence(activePoolRef.current);
+        if (membership) pruneShuffleSlotsToPool(activePoolRef.current);
+        else patchShuffleSlotPresence(activePoolRef.current);
         return;
       }
 
@@ -558,7 +588,8 @@ export function useShufflePool() {
         getVisibleShuffleProfiles().length > 0 &&
         !forceWindow
       ) {
-        patchShuffleSlotPresence(activePoolRef.current);
+        if (membership) pruneShuffleSlotsToPool(activePoolRef.current);
+        else patchShuffleSlotPresence(activePoolRef.current);
         return;
       }
 

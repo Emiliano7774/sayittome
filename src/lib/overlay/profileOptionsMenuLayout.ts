@@ -8,6 +8,13 @@ export const PROFILE_OPTIONS_MIN_TOUCH_PX = 48;
 export const PROFILE_OPTIONS_NAV_FALLBACK_PX = 74;
 export const PROFILE_OPTIONS_SHEET_MAX_MQ = "(max-width: 767px)";
 
+export const PROFILE_OPTIONS_OPEN_GUARD_MS = 400;
+export const PROFILE_OPTIONS_TRIGGER_MIN_PX = 48;
+
+export function shouldIgnoreProfileOptionsDismiss(openedAt: number, now = Date.now()) {
+  return openedAt > 0 && now - openedAt < PROFILE_OPTIONS_OPEN_GUARD_MS;
+}
+
 export const PROFILE_OPTIONS_SHEET_ATTR = "data-profile-options-sheet";
 export const PROFILE_OPTIONS_LAYER_ATTR = "data-profile-options-layer";
 export const PROFILE_OPTIONS_BACKDROP_ATTR = "data-profile-options-backdrop";

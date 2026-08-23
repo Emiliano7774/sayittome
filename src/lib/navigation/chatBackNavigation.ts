@@ -1,8 +1,9 @@
+import { isChatKeyboardOpen } from "@/lib/chat/chatComposerViewport";
 import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
 
 const CHAT_COMPOSER_SELECTOR = "[data-sayittome-chat-composer]";
 
-type ChatBackPhase = "idle" | "keyboard-dismissed";
+export type ChatBackPhase = "idle" | "keyboard-dismissed";
 
 let chatBackPhase: ChatBackPhase = "idle";
 
@@ -33,17 +34,60 @@ function isChatComposerFocused() {
   return active === input || input.contains(active);
 }
 
-function isVisualViewportKeyboardOpen() {
-  if (typeof window === "undefined") return false;
-
-  const viewport = window.visualViewport;
+export function isVisualViewportKeyboardOpen(
+  win: Pick<Window, "innerHeight" | "visualViewport"> | null | undefined =
+    typeof window === "undefined" ? undefined : window,
+) {
+  if (!win) return false;
+  const viewport = win.visualViewport;
   if (!viewport) return false;
-
-  return viewport.height < window.innerHeight * 0.86;
+  if (
+    isChatKeyboardOpen({
+      innerHeight: win.innerHeight,
+      visualViewportHeight: viewport.height,
+    })
+  ) {
+    return true;
+  }
+  return viewport.height < win.innerHeight * 0.86;
 }
 
-function isChatKeyboardUp() {
-  return isChatComposerFocused() || isVisualViewportKeyboardOpen();
+export function isChatKeyboardUp(
+  win: Pick<Window, "innerHeight" | "visualViewport"> | null | undefined =
+    typeof window === "undefined" ? undefined : window,
+) {
+  return isChatComposerFocused() || isVisualViewportKeyboardOpen(win);
+}
+
+export type ChatBackDecision = {
+  action: ChatBackAction | null;
+  nextPhase: ChatBackPhase;
+};
+
+/** Pure sequence: keyboard-up → dismiss; next back → leave. */
+export function resolveChatBackDecision(input: {
+  pathname: string;
+  phase: ChatBackPhase;
+  keyboardUp: boolean;
+}): ChatBackDecision {
+  if (!isChatRoutePath(input.pathname)) {
+    return { action: null, nextPhase: "idle" };
+  }
+  if (input.phase === "keyboard-dismissed") {
+    return { action: { kind: "leave-chat" }, nextPhase: "idle" };
+  }
+  if (input.keyboardUp) {
+    return { action: { kind: "dismiss-keyboard" }, nextPhase: "keyboard-dismissed" };
+  }
+  return { action: { kind: "leave-chat" }, nextPhase: "idle" };
+}
+
+export function peekChatBackPhase() {
+  return chatBackPhase;
+}
+
+export function setChatBackPhaseForTests(phase: ChatBackPhase) {
+  chatBackPhase = phase;
 }
 
 export function dismissChatComposerKeyboard() {
@@ -80,19 +124,14 @@ export type ChatBackAction =
  * 2) next back -> leave to the previous route
  */
 export function resolveChatBackAction(pathname: string): ChatBackAction | null {
-  if (!isChatRoutePath(pathname)) return null;
-
-  if (chatBackPhase === "keyboard-dismissed") {
-    chatBackPhase = "idle";
-    return { kind: "leave-chat" };
-  }
-
-  if (isChatKeyboardUp()) {
+  const decided = resolveChatBackDecision({
+    pathname,
+    phase: chatBackPhase,
+    keyboardUp: isChatKeyboardUp(),
+  });
+  chatBackPhase = decided.nextPhase;
+  if (decided.action?.kind === "dismiss-keyboard") {
     dismissChatComposerKeyboard();
-    chatBackPhase = "keyboard-dismissed";
-    return { kind: "dismiss-keyboard" };
   }
-
-  chatBackPhase = "idle";
-  return { kind: "leave-chat" };
+  return decided.action;
 }

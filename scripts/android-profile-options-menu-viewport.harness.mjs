@@ -42,6 +42,9 @@ assert.match(modernSrc, /ProfileClaimHistoryMenu/);
 assert.match(settingsSrc, /ProfileClaimHistoryMenu/);
 assert.match(menuSrc, /getProfileOptionsSheetStyle/);
 assert.match(menuSrc, /shouldUseProfileOptionsSheet/);
+assert.match(menuSrc, /shouldIgnoreProfileOptionsDismiss/);
+assert.match(menuSrc, /min-h-12/);
+assert.match(menuSrc, /pointer-events-auto/);
 assert.match(menuSrc, /data-profile-options-sheet/);
 assert.match(menuSrc, /data-profile-options-backdrop/);
 assert.match(menuSrc, /data-profile-options-layer/);
@@ -93,9 +96,14 @@ assert.equal(
   true,
 );
 
+assert.equal(layout.shouldIgnoreProfileOptionsDismiss(1_000, 1_200), true);
+assert.equal(layout.shouldIgnoreProfileOptionsDismiss(1_000, 1_500), false);
+assert.equal(layout.PROFILE_OPTIONS_TRIGGER_MIN_PX, 48);
+
 const VIEWPORTS = [
   { width: 360, height: 640 },
   { width: 390, height: 700 },
+  { width: 412, height: 732 },
 ];
 const NAV_HEIGHT = 108;
 const MIN_TOUCH = layout.PROFILE_OPTIONS_MIN_TOUCH_PX;
@@ -351,6 +359,54 @@ try {
     assert.ok(sheet.actions[0].height >= MIN_TOUCH);
     assert.ok(sheet.actions[1].height >= MIN_TOUCH);
     assert.ok(sheet.sheet.bottom <= sheet.nav.top + 0.5);
+
+    const triggerClicked = await page.evaluate((guardMs) => {
+      const existing = document.querySelector("[data-profile-options-layer='1']");
+      existing?.remove();
+      const trigger = document.createElement("button");
+      trigger.setAttribute("data-profile-options-menu", "1");
+      trigger.style.cssText =
+        "position:fixed;top:12px;right:12px;width:48px;height:48px;z-index:20;pointer-events:auto";
+      document.body.appendChild(trigger);
+      let openedAt = 0;
+      let open = false;
+      function mount() {
+        const layer = document.createElement("div");
+        layer.setAttribute("data-profile-options-layer", "1");
+        layer.style.cssText = "position:fixed;inset:0;z-index:1000001;pointer-events:auto";
+        const backdrop = document.createElement("button");
+        backdrop.setAttribute("data-profile-options-backdrop", "1");
+        backdrop.style.cssText = "position:absolute;inset:0;border:0;background:rgba(0,0,0,.55)";
+        backdrop.addEventListener("click", () => {
+          if (openedAt > 0 && Date.now() - openedAt < guardMs) return;
+          open = false;
+          layer.remove();
+        });
+        const sheetEl = document.createElement("div");
+        sheetEl.setAttribute("data-profile-options-sheet", "1");
+        sheetEl.setAttribute("data-profile-option", "notifications");
+        sheetEl.textContent = "Notificaciones del chat";
+        layer.append(backdrop, sheetEl);
+        document.body.appendChild(layer);
+        open = true;
+      }
+      trigger.addEventListener("click", () => {
+        openedAt = Date.now();
+        mount();
+      });
+      trigger.click();
+      document.querySelector("[data-profile-options-backdrop='1']")?.click();
+      const stayedOpen = open && Boolean(document.querySelector("[data-profile-options-sheet='1']"));
+      const triggerBox = trigger.getBoundingClientRect();
+      return {
+        stayedOpen,
+        triggerW: triggerBox.width,
+        triggerH: triggerBox.height,
+      };
+    }, layout.PROFILE_OPTIONS_OPEN_GUARD_MS);
+    assert.equal(triggerClicked.stayedOpen, true, "same-gesture backdrop must not close");
+    assert.ok(triggerClicked.triggerW >= layout.PROFILE_OPTIONS_TRIGGER_MIN_PX);
+    assert.ok(triggerClicked.triggerH >= layout.PROFILE_OPTIONS_TRIGGER_MIN_PX);
 
     const closed = await page.evaluate(() => {
       const backdrop = document.querySelector("[data-profile-options-backdrop='1']");

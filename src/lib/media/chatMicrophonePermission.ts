@@ -249,18 +249,36 @@ export async function ensureChatMicrophonePermission(): Promise<ChatMicrophonePe
   return resultFromState(next);
 }
 
+export function isPermissionLikeCaptureError(error: unknown) {
+  const name =
+    error instanceof DOMException
+      ? error.name
+      : String((error as { name?: string } | null)?.name || "");
+  return name === "NotAllowedError" || name === "PermissionDeniedError";
+}
+
+export function noticeFromCaptureFailure(input: {
+  classified: "denied" | "failed";
+  permissionState?: ChatMicrophonePermissionState | "unavailable" | "missing";
+}): ChatMicNotice {
+  if (input.classified === "denied") return "denied";
+  if (input.permissionState === "blocked") return "blocked";
+  if (
+    input.permissionState === "prompt" ||
+    input.permissionState === "denied" ||
+    input.permissionState === "unavailable" ||
+    input.permissionState === "missing"
+  ) {
+    return "denied";
+  }
+  return "failed";
+}
+
 export function isRealChatMicrophoneDenial(input: {
   nativeDenied?: boolean;
   error?: unknown;
   nativePlatform?: boolean;
 }) {
   if (input.nativeDenied) return true;
-  if (input.nativePlatform) return false;
-
-  const error = input.error;
-  const name =
-    error instanceof DOMException
-      ? error.name
-      : String((error as { name?: string } | null)?.name || "");
-  return name === "NotAllowedError" || name === "PermissionDeniedError";
+  return isPermissionLikeCaptureError(input.error);
 }

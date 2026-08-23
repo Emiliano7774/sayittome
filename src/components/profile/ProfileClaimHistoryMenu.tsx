@@ -22,6 +22,7 @@ import {
 import {
   getProfileOptionsActionStyle,
   getProfileOptionsSheetStyle,
+  shouldIgnoreProfileOptionsDismiss,
   shouldUseProfileOptionsSheet,
 } from "@/lib/overlay/profileOptionsMenuLayout";
 import { resolveProfileOptionsMenuPortalRoot } from "@/lib/overlay/profileOptionsMenuPortal";
@@ -70,6 +71,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const openedAtRef = useRef(0);
 
   useOverlayBackClose(
     menuOpen,
@@ -162,6 +164,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
   useEffect(() => {
     if (!menuOpen) return;
     function onPointerDown(event: MouseEvent) {
+      if (shouldIgnoreProfileOptionsDismiss(openedAtRef.current)) return;
       const target = event.target as Node | null;
       if (rootRef.current?.contains(target)) return;
       const dropdown = document.querySelector("[data-profile-options-dropdown='1']");
@@ -235,8 +238,15 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
           ref={buttonRef}
           type="button"
           data-profile-options-menu="1"
-          onClick={() => setMenuOpen((current) => !current)}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/75 transition hover:bg-white/10 hover:text-white"
+          onClick={(event) => {
+            event.stopPropagation();
+            setMenuOpen((current) => {
+              const next = !current;
+              if (next) openedAtRef.current = Date.now();
+              return next;
+            });
+          }}
+          className="pointer-events-auto relative z-10 flex h-12 min-h-12 min-w-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/75 transition hover:bg-white/10 hover:text-white"
           aria-label={t("profile_options")}
           title={t("profile_options")}
         >
@@ -248,7 +258,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
               <div
                 data-profile-options-layer="1"
                 data-profile-options-mode={sheetMode ? "sheet" : "dropdown"}
-                className="fixed inset-0 z-[1000001]"
+                className="pointer-events-auto fixed inset-0 z-[1000001]"
               >
                 <button
                   type="button"
@@ -259,7 +269,10 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
                       : "absolute inset-0 bg-transparent"
                   }
                   aria-label={t("common_cancel")}
-                  onClick={() => setMenuOpen(false)}
+                  onClick={() => {
+                    if (shouldIgnoreProfileOptionsDismiss(openedAtRef.current)) return;
+                    setMenuOpen(false);
+                  }}
                 />
                 <div
                   ref={dropdownRef}

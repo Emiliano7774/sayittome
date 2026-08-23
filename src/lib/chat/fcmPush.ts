@@ -193,6 +193,24 @@ export function peekPendingPushChatId() {
   return pendingChatId;
 }
 
+export function resolvePushChatOpen(input: {
+  chatId: string;
+  authed: boolean;
+}): { kind: "ignore" } | { kind: "queue"; chatId: string } | { kind: "open"; href: string } {
+  const chatId = asId(input.chatId);
+  if (!chatId) return { kind: "ignore" };
+  if (!input.authed) return { kind: "queue", chatId };
+  return { kind: "open", href: `/chat/${encodeURIComponent(chatId)}` };
+}
+
+export function queuePushChatIdForOpen(chatId: string) {
+  queuePushChatId(chatId);
+}
+
+export function drainQueuedPushChatIdForOpen() {
+  return drainQueuedPushChatId();
+}
+
 function queuePushChatId(chatId: string) {
   const id = asId(chatId);
   if (!id) return;
@@ -418,15 +436,18 @@ async function ensurePushChannel() {
 }
 
 function openChatDeepLink(chatId: string) {
-  const id = asId(chatId);
-  if (!id || typeof window === "undefined") return;
-
-  if (!auth.currentUser) {
-    queuePushChatId(id);
+  if (typeof window === "undefined") return;
+  const plan = resolvePushChatOpen({
+    chatId,
+    authed: Boolean(auth.currentUser),
+  });
+  if (plan.kind === "queue") {
+    queuePushChatId(plan.chatId);
     return;
   }
-
-  window.location.assign(`/chat/${encodeURIComponent(id)}`);
+  if (plan.kind === "open") {
+    window.location.assign(plan.href);
+  }
 }
 
 async function attachPushListeners() {

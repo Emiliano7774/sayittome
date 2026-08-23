@@ -557,6 +557,26 @@ export function overlayShuffleProfileSnapshots<T extends DedupeableProfile>(
   return next;
 }
 
+/**
+ * Complete incomplete alias graphs from featured/following/pages without
+ * joining by username or photo. Union-find copies authUid/aliasIds onto winners.
+ */
+export function enrichShuffleIdentitiesFromBridges<T extends DedupeableProfile>(
+  rows: T[] | undefined | null,
+  bridges?: Array<Partial<DedupeableProfile> & { uid?: string; username?: string }> | null,
+): T[] {
+  const source = Array.isArray(rows) ? rows : [];
+  if (!bridges?.length) return dedupeShuffleProfiles(source);
+  const merged = dedupeShuffleProfiles([...(bridges as T[]), ...source]);
+  const sourceKeys = new Set<string>();
+  for (const row of source) {
+    for (const key of shuffleProfileDedupeKeys(row)) sourceKeys.add(key);
+  }
+  return merged.filter((row) =>
+    shuffleProfileDedupeKeys(row).some((key) => sourceKeys.has(key)),
+  );
+}
+
 /** Keep one row per identity when building the visible shuffle window. */
 export function uniqueShuffleWindow<T extends DedupeableProfile>(profiles: T[]): T[] {
   return dedupeShuffleProfiles(profiles);
@@ -569,10 +589,13 @@ export function assembleVisibleShuffleWindow<T extends DedupeableProfile>(input:
   pages?: Array<T[] | null | undefined>;
 }): T[] {
   return uniqueShuffleWindow(
-    mergeShuffleProfileSnapshots(
-      input.cache,
-      input.live,
-      ...(input.pages || []),
+    enrichShuffleIdentitiesFromBridges(
+      mergeShuffleProfileSnapshots(
+        input.cache,
+        input.live,
+        ...(input.pages || []),
+        input.featured,
+      ),
       input.featured,
     ),
   );

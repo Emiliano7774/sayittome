@@ -1,6 +1,16 @@
 import { shuffleProfileBatchExcludeKeys } from "@/lib/shuffle/dedupeProfiles";
 
 let excludeKeys = new Set<string>();
+let excludeProfiles: Array<{
+  uid?: string;
+  authUid?: string;
+  username?: string;
+  usernameLower?: string;
+  email?: string;
+  photo?: string;
+  aliasIds?: string[];
+  firebaseUid?: string;
+}> = [];
 const listeners = new Set<() => void>();
 
 function notifyExcludeListeners() {
@@ -15,6 +25,8 @@ export function setShuffleExcludeProfiles(
     usernameLower?: string;
     email?: string;
     photo?: string;
+    aliasIds?: string[];
+    firebaseUid?: string;
   }>,
 ) {
   const next = new Set<string>();
@@ -25,19 +37,26 @@ export function setShuffleExcludeProfiles(
     }
   }
 
-  if (next.size === excludeKeys.size) {
-    let unchanged = true;
-    for (const key of next) {
-      if (!excludeKeys.has(key)) {
-        unchanged = false;
-        break;
-      }
-    }
-    if (unchanged) return;
-  }
-
+  const prevProfiles = excludeProfiles;
+  const keysUnchanged =
+    next.size === excludeKeys.size && [...next].every((key) => excludeKeys.has(key));
+  const identityChanged =
+    prevProfiles.length !== profiles.length ||
+    profiles.some((profile, index) => {
+      const prev = prevProfiles[index];
+      return (
+        String(profile.uid || "") !== String(prev?.uid || "") ||
+        String(profile.authUid || "") !== String(prev?.authUid || "")
+      );
+    });
+  excludeProfiles = profiles.slice();
   excludeKeys = next;
+  if (keysUnchanged && !identityChanged) return;
   notifyExcludeListeners();
+}
+
+export function getShuffleExcludeProfiles() {
+  return excludeProfiles;
 }
 
 export function getShuffleExcludeKeys() {

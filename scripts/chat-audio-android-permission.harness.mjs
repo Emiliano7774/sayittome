@@ -61,6 +61,7 @@ assert.equal(
 );
 
 assert.match(profileChat, /ensureChatMicrophonePermission/);
+assert.match(profileChat, /planChatMicrophoneStart/);
 assert.match(profileChat, /classifyChatAudioCaptureFailure/);
 assert.match(profileChat, /openChatMicrophoneSettings/);
 assert.match(legacyChat, /ensureChatMicrophonePermission/);
@@ -113,13 +114,21 @@ assert.equal(
     error: { name: "NotAllowedError" },
     nativePlatform: true,
   }),
-  false,
+  true,
 );
 assert.equal(
   audio.classifyChatAudioCaptureFailure(
     { name: "NotAllowedError", message: "Permission denied" },
     { nativePlatform: true, denied: false },
   ),
+  "denied",
+);
+assert.equal(
+  mic.noticeFromCaptureFailure({ classified: "failed", permissionState: "prompt" }),
+  "denied",
+);
+assert.equal(
+  mic.noticeFromCaptureFailure({ classified: "failed", permissionState: "granted" }),
   "failed",
 );
 
