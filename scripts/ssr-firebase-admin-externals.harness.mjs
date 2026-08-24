@@ -2,7 +2,7 @@
  * SSR_FIREBASE_ADMIN_EXTERNALS
  * Guards Turbopack hashed firebase-admin aliases that break Firebase SSR.
  * Firebase Hosting frameworks runs next build (not npm scripts); the
- * node_modules/.bin/next shim must force webpack + materialize aliases.
+ * node_modules/.bin/next shim must materialize aliases after every build.
  * Hosting predeploy must gate the packaged .firebase/<site>/functions artifact.
  */
 import assert from "node:assert/strict";
@@ -49,7 +49,7 @@ assert.match(nextConfig, /firebase-admin/);
 const shimSrc = readFileSync(join(root, "scripts/bin-next/next"), "utf8");
 assert.match(shimSrc, /materializeAndAssert|materializeNextHashedExternals/);
 assert.match(shimSrc, /args\[0\] === "build"/);
-assert.match(shimSrc, /--webpack/);
+assert.match(shimSrc, /materializeAndAssert/);
 
 const serverDir = join(root, ".next", "server");
 assert.ok(existsSync(serverDir), ".next/server missing — run npm run build first");
@@ -102,7 +102,8 @@ console.log(
       pass: true,
       hashedRefsInNextServer: refs,
       discovered: discovery.entries.map((e) => e.name),
-      webpackPreferred: /--webpack/.test(shimSrc),
+      webpackPreferred: false,
+      materializeAssertAfterBuild: /materializeAndAssert/.test(shimSrc),
       packagedHashedRefs: packagedRefs,
       packagedPresent: existsSync(join(packaged, "package.json")),
     },

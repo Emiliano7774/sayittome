@@ -15,8 +15,8 @@ const nextConfig: NextConfig = {
   // firebase-admin must resolve as a real package on Cloud Functions. Turbopack
   // rewrites it to hashed aliases (firebase-admin-<hash>) that Firebase SSR
   // packaging often drops (glob skips Windows symlinks) → Linux MODULE_NOT_FOUND.
-  // The next bin shim forces `next build --webpack` + materializes any leftovers;
-  // hosting.predeploy gates the packaged `.firebase/*/functions` artifact.
+  // The next bin shim materializes aliases after every build; hosting.predeploy
+  // re-materializes + gates the packaged .firebase/<site>/functions artifact.
   serverExternalPackages: [
     "firebase-admin",
     "firebase-admin/app",

@@ -1,5 +1,5 @@
 /**
- * Install node_modules/.bin/next (+ .cmd) shim that forces webpack + materializes
+ * Install node_modules/.bin/next (+ .cmd) shim that materializes
  * hashed Turbopack server externals after `next build` (Firebase ignores npm postbuild).
  *
  * On Windows Firebase uses cross-spawn on `.bin/next`, which resolves to `.cmd`.
@@ -56,4 +56,4 @@ try {
   /* windows */
 }
 
-console.log("[install-next-ssr-bin] installed node_modules/.bin/next SSR materialize+webpack shim");
+console.log("[install-next-ssr-bin] installed node_modules/.bin/next SSR materialize shim");

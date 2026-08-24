@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Firebase Hosting frameworks invokes `next build` directly (ignores npm
- * scripts/postbuild). This shim replaces node_modules/.bin/next so every build:
- * 1) prefers webpack (avoids Turbopack hashed firebase-admin-* externals)
- * 2) materializes any remaining hashed aliases as real dirs for GCF Linux
+ * scripts/postbuild). This shim replaces node_modules/.bin/next so every build
+ * materializes Turbopack hashed externals (and asserts they resolve) before
+ * Firebase packages the SSR Cloud Function for Linux GCF.
  */
 const { spawnSync } = require("node:child_process");
 const { existsSync } = require("node:fs");
@@ -17,18 +17,6 @@ if (!existsSync(realNext)) {
 }
 
 const args = process.argv.slice(2);
-if (
-  args[0] === "build" &&
-  !args.includes("--webpack") &&
-  !args.includes("--turbopack") &&
-  !args.includes("--turbo")
-) {
-  // Firebase spawns `next build` with no flags; force webpack so GCF never
-  // depends on Turbopack hashed externals that packaging drops on Linux.
-  args.push("--webpack");
-  console.log("[next-ssr-bin] injecting --webpack for Firebase/SSR-safe externals");
-}
-
 const result = spawnSync(process.execPath, [realNext, ...args], {
   stdio: "inherit",
   cwd: process.cwd(),
