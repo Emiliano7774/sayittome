@@ -18,6 +18,7 @@ import {
 } from "./fcmTokenTx";
 import { resolvePushTitle } from "./pushNotificationCopy";
 import { deleteStorageObject, handleDeleteChatMessage } from "./deleteChatMessage";
+import { handleClaimViewOnceMedia, sealViewOnceMediaIfNeeded } from "./viewOnceClaim";
 import {
   handleClaimVerifiedProfileLink,
   handleIssueVerifiedProfileLinkTicket,
@@ -86,6 +87,11 @@ type MessageDoc = {
   text?: string;
   type?: string;
   mediaUrl?: string;
+  viewOnce?: boolean;
+  viewOnceLimit?: number;
+  viewOnceOpenedCount?: number;
+  viewOnceExhausted?: boolean;
+  viewOnceSealed?: boolean;
 };
 
 function asId(value: unknown) {
@@ -321,6 +327,11 @@ export const deleteChatMessage = onCall(async (request) => {
   });
 });
 
+export const claimViewOnceMedia = onCall(async (request) => {
+  ensureAdminApp();
+  return handleClaimViewOnceMedia(request, { db: db() });
+});
+
 export const issueVerifiedProfileLinkTicket = onCall(
   { secrets: [verifiedProfileLinkMacSecret] },
   async (request) => {
@@ -406,6 +417,14 @@ export const onChatMessageCreated = onDocumentCreated(
     const messageId = asId(event.params.messageId);
     const message = (event.data?.data() || {}) as MessageDoc;
     if (!chatId || !messageId) return;
+
+    if ((message as { viewOnce?: boolean }).viewOnce) {
+      try {
+        await sealViewOnceMediaIfNeeded(db(), chatId, messageId, message as MessageDoc);
+      } catch (error) {
+        logger.error("viewOnce seal failed", { chatId, messageId, error });
+      }
+    }
 
     const claimed = await claimDelivery(chatId, messageId);
     if (!claimed) {

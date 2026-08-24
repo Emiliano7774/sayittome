@@ -10,6 +10,11 @@ import {
   resolveProfileAnonMessageMine as resolveProfileAnonMessageMineCore,
   shouldHoldVisualAuthorship,
 } from "@/lib/chat/authorshipGates";
+import { resolveStoryReplyCard } from "@/lib/stories/storyReplySnapshot";
+import {
+  DELETED_MESSAGE_PREVIEW,
+  isHiddenForViewer,
+} from "@/lib/chat/messageDelete";
 
 export {
   inferOwnerViewingFromAuthors,
@@ -62,6 +67,10 @@ export type ProfileAnonFirestoreMessage = {
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
   viewOnce?: boolean;
+  viewOnceLimit?: number;
+  viewOnceOpenedCount?: number;
+  viewOnceExhausted?: boolean;
+  viewOnceSealed?: boolean;
   clientId?: string;
   createdAt?: { toDate?: () => Date };
   autoModerationRequiresBlur?: boolean;
@@ -86,6 +95,10 @@ export type ProfileAnonUiMessage = {
   mediaUrl?: string;
   source?: ProfileAnonFirestoreMessage["source"];
   viewOnce?: boolean;
+  viewOnceLimit?: number;
+  viewOnceOpenedCount?: number;
+  viewOnceExhausted?: boolean;
+  viewOnceSealed?: boolean;
   autoModerationRequiresBlur?: boolean;
   moderationRequiresBlur?: boolean;
   readBy?: Record<string, boolean>;
@@ -279,9 +292,14 @@ export function mapFirestoreDocToProfileAnonMessage(
   data: ProfileAnonFirestoreMessage,
   ctx: ProfileAnonViewerContext,
 ): ProfileAnonUiMessage | null {
-  const text = String(data.texto || data.text || "").trim();
-  const mediaUrl = String(data.mediaUrl || "");
-  if (!text && !mediaUrl) return null;
+  if (isHiddenForViewer(data.hiddenFor, ctx.hideIdentities || ctx.hideIdentity || "")) return null;
+
+  const deletedForEveryone = data.deletedForEveryone === true;
+  const text = deletedForEveryone
+    ? DELETED_MESSAGE_PREVIEW
+    : String(data.texto || data.text || "").trim();
+  const mediaUrl = deletedForEveryone ? "" : String(data.mediaUrl || "");
+  if (!deletedForEveryone && !text && !mediaUrl) return null;
 
   const from = firestoreMessageAuthorId(data);
   const messageProfileUid =
@@ -310,9 +328,18 @@ export function mapFirestoreDocToProfileAnonMessage(
     identityReady: ctx.identityReady,
   });
 
-  const resolvedType = resolveFirestoreMessageType(data);
-  const displayText =
-    resolvedType && resolvedType !== "text" ? "" : String(data.texto || data.text || "");
+  const resolvedType = deletedForEveryone ? "text" : resolveFirestoreMessageType(data);
+  const displayText = deletedForEveryone
+    ? DELETED_MESSAGE_PREVIEW
+    : resolvedType && resolvedType !== "text"
+      ? ""
+      : String(data.texto || data.text || "");
+  const storyCard = deletedForEveryone
+    ? undefined
+    : resolveStoryReplyCard({
+        storyReply: data.storyReply,
+        reply: data.reply,
+      });
 
   return {
     id: docId,
@@ -323,17 +350,31 @@ export function mapFirestoreDocToProfileAnonMessage(
     senderAuthUid: String(data.senderAuthUid || "").trim() || undefined,
     senderRole: String(data.senderRole || "").trim() || undefined,
     senderKind: resolvedSenderKind,
-    reply: data.reply ? String(data.reply) : undefined,
-    storyReply: data.storyReply,
+    reply: storyCard?.quote || (storyCard ? undefined : data.reply ? String(data.reply) : undefined),
+    storyReply: storyCard?.snapshot || data.storyReply,
     type: resolvedType,
-    mediaUrl: mediaUrl || undefined,
+    mediaUrl: data.viewOnce === true ? undefined : mediaUrl || undefined,
     source: data.source,
     viewOnce: data.viewOnce === true,
+    viewOnceLimit:
+      data.viewOnce === true
+        ? Math.max(1, Math.min(5, Math.floor(Number(data.viewOnceLimit) || 1)))
+        : undefined,
+    viewOnceOpenedCount:
+      data.viewOnce === true
+        ? Math.max(0, Math.floor(Number(data.viewOnceOpenedCount) || 0))
+        : undefined,
+    viewOnceExhausted: data.viewOnce === true ? data.viewOnceExhausted === true : undefined,
+    viewOnceSealed: data.viewOnce === true ? data.viewOnceSealed === true : undefined,
     autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
     moderationRequiresBlur: data.moderationRequiresBlur === true,
     readBy: data.readBy || {},
     createdAt: data.createdAt,
-    verifiedProfileAttestation: data.verifiedProfileAttestation,
+    hiddenFor: data.hiddenFor,
+    deletedForEveryone,
+    verifiedProfileAttestation: deletedForEveryone
+      ? undefined
+      : data.verifiedProfileAttestation,
   };
 }
 

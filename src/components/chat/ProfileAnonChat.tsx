@@ -48,7 +48,18 @@ import {
   type ChatMicNotice,
 } from "@/lib/media/chatMicrophonePermission";
 import { preparePlayableChatAudio } from "@/lib/media/chatAudioPlayback";
-import { canOpenViewOnce, markOpened } from "@/lib/media/viewOnce";
+import {
+  beginViewOnceClaim,
+  endViewOnceClaim,
+} from "@/lib/media/viewOnce";
+import { claimViewOnceMedia } from "@/lib/media/viewOnceClaim";
+import {
+  VIEW_ONCE_DEFAULT_LIMIT,
+  VIEW_ONCE_MAX_LIMIT,
+  VIEW_ONCE_MIN_LIMIT,
+  normalizeViewOnceLimit,
+  viewOnceRemaining,
+} from "@/lib/media/viewOncePolicy";
 import AbuseProtectionMenu from "@/components/chat/AbuseProtectionMenu";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import ChatMessageText from "@/components/chat/ChatMessageText";
@@ -224,6 +235,10 @@ type Message = {
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
   viewOnce?: boolean;
+  viewOnceLimit?: number;
+  viewOnceOpenedCount?: number;
+  viewOnceExhausted?: boolean;
+  viewOnceSealed?: boolean;
   autoModerationRequiresBlur?: boolean;
   moderationRequiresBlur?: boolean;
   readBy?: Record<string, boolean>;
@@ -480,6 +495,8 @@ export default function ProfileAnonChat({
   const [pendingSource, setPendingSource] = useState<"camera" | "gallery" | "audio" | undefined>();
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewOnce, setViewOnce] = useState(false);
+  const [viewOnceLimit, setViewOnceLimit] = useState(VIEW_ONCE_DEFAULT_LIMIT);
+  const [claimingBombId, setClaimingBombId] = useState<string | null>(null);
   const [firebaseUid, setFirebaseUid] = useState(() => String(auth.currentUser?.uid || ""));
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const [deleteStage, setDeleteStage] = useState<"choose" | "confirm-me" | "confirm-everyone">("choose");
@@ -1792,6 +1809,7 @@ export default function ProfileAnonChat({
     setPendingSource(undefined);
     setUploadProgress(null);
     setViewOnce(false);
+    setViewOnceLimit(VIEW_ONCE_DEFAULT_LIMIT);
     setRecording(false);
     audioPhaseRef.current = "idle";
   }
@@ -2059,6 +2077,9 @@ export default function ProfileAnonChat({
     const previewType = pendingType;
     const previewSource = pendingSource;
     const previewViewOnce = previewSource === "camera" ? viewOnce : false;
+    const previewViewOnceLimit = previewViewOnce
+      ? normalizeViewOnceLimit(viewOnceLimit)
+      : VIEW_ONCE_DEFAULT_LIMIT;
     const replyText = replyQuoteText(replyingTo);
     const blob = pendingBlob;
     const localPreviewUrl = URL.createObjectURL(blob);
@@ -2087,9 +2108,12 @@ export default function ProfileAnonChat({
             ? "profile"
             : "anon",
         type: previewType,
-        mediaUrl: localPreviewUrl,
+        mediaUrl: previewViewOnce ? undefined : localPreviewUrl,
         source: previewSource,
         viewOnce: previewViewOnce,
+        viewOnceLimit: previewViewOnce ? previewViewOnceLimit : undefined,
+        viewOnceOpenedCount: previewViewOnce ? 0 : undefined,
+        viewOnceExhausted: previewViewOnce ? false : undefined,
         reply: replyText || undefined,
         status: "sending",
       },
@@ -2122,7 +2146,7 @@ export default function ProfileAnonChat({
           message.clientId === clientId
             ? {
                 ...message,
-                mediaUrl: url,
+                mediaUrl: previewViewOnce ? undefined : url,
                 autoModerationRequiresBlur: scanResult.requiresBlur,
                 moderationRequiresBlur: scanResult.requiresBlur,
                 status: undefined,
@@ -2144,6 +2168,7 @@ export default function ProfileAnonChat({
         mediaUrl: url,
         source: previewSource,
         viewOnce: previewViewOnce,
+        viewOnceLimit: previewViewOnce ? previewViewOnceLimit : undefined,
         reply: replyText || undefined,
         existingChatData: chatDocDataRef.current,
         clientId,
@@ -2398,6 +2423,41 @@ export default function ProfileAnonChat({
     return source === "camera"
       ? t("chat_media_camera_photo")
       : t("chat_media_gallery_photo");
+  }
+
+  async function openBombMessage(message: Message) {
+    if (!message.viewOnce || message.mine) return;
+    if (message.viewOnceExhausted || viewOnceRemaining(message) === 0) return;
+    if (!beginViewOnceClaim(message.id)) return;
+
+    setClaimingBombId(message.id);
+    try {
+      const claimed = await claimViewOnceMedia({ chatId, messageId: message.id });
+      setMessages((old) =>
+        old.map((row) =>
+          row.id === message.id
+            ? {
+                ...row,
+                viewOnceOpenedCount: claimed.openedCount,
+                viewOnceLimit: claimed.limit,
+                viewOnceExhausted: claimed.exhausted,
+                mediaUrl: undefined,
+              }
+            : row,
+        ),
+      );
+      if (!claimed.ok || !claimed.mediaUrl) {
+        alert(claimed.exhausted ? "Esta bomba ya se agotó" : t("chat_load_fail"));
+        return;
+      }
+      setFullscreenUrl(claimed.mediaUrl);
+    } catch (error) {
+      console.error(error);
+      alert(t("chat_load_fail"));
+    } finally {
+      endViewOnceClaim(message.id);
+      setClaimingBombId(null);
+    }
   }
 
   function sourceLabel(message: Message) {
@@ -2770,18 +2830,38 @@ export default function ProfileAnonChat({
                   ) : null}
 
                   {message.viewOnce && (message.type === "image" || message.type === "video") ? (
+                    (() => {
+                      const remaining = viewOnceRemaining(message);
+                      const locked =
+                        message.mine ||
+                        message.viewOnceExhausted === true ||
+                        remaining === 0;
+                      const limit = normalizeViewOnceLimit(message.viewOnceLimit);
+                      return (
                     <button
+                      type="button"
+                      disabled={locked || claimingBombId === message.id}
                       onClick={() => {
-                        if (!canOpenViewOnce(message.id)) return;
-                        markOpened(message.id);
-                        setFullscreenUrl(message.mediaUrl || "");
+                        void openBombMessage(message);
                       }}
-                      className="flex min-h-[160px] min-w-[240px] flex-col items-center justify-center rounded-[24px] border border-orange-400/30 bg-orange-500/10 px-6 py-8 text-orange-300"
+                      className="flex min-h-[160px] min-w-[240px] flex-col items-center justify-center rounded-[24px] border border-orange-400/30 bg-orange-500/10 px-6 py-8 text-orange-300 disabled:opacity-60"
                     >
                       <Bomb size={42} />
                       <p className="mt-3 text-xl font-black">{t("chat_bomb")}</p>
-                      <p className="mt-1 text-sm text-orange-200/70">Ver una sola vez</p>
+                      <p className="mt-1 text-sm text-orange-200/70">
+                        {message.mine
+                          ? `Enviada · hasta ${limit} vista${limit === 1 ? "" : "s"}`
+                          : locked
+                            ? "Agotada · ya no se puede ver"
+                            : claimingBombId === message.id
+                              ? "Abriendo…"
+                              : remaining === 1
+                                ? "1 vista restante · tocá para abrir"
+                                : `${remaining} vistas restantes · tocá para abrir`}
+                      </p>
                     </button>
+                      );
+                    })()
                   ) : message.type === "audio" ? (
                     <ChatAudioPlayer
                       src={message.mediaUrl || ""}
@@ -2797,11 +2877,6 @@ export default function ProfileAnonChat({
                     >
                       <button
                         onClick={() => {
-                          if (message.viewOnce) {
-                            if (!canOpenViewOnce(message.id)) return;
-                            markOpened(message.id);
-                          }
-
                           setFullscreenUrl(message.mediaUrl || "");
                         }}
                       >
@@ -2998,6 +3073,7 @@ export default function ProfileAnonChat({
 
               <div className="sayittome-chat-media-preview-actions">
                 {pendingSource === "camera" ? (
+                  <div className="space-y-2">
                   <button
                     type="button"
                     onClick={() => setViewOnce((v) => !v)}
@@ -3010,9 +3086,48 @@ export default function ProfileAnonChat({
                   >
                     <Bomb size={18} />
                     {viewOnce
-                      ? "Bomba activada: se vera una sola vez"
-                      : "Activar bomba: ver una sola vez"}
+                      ? "Bomba activada"
+                      : "Activar bomba"}
                   </button>
+                  {viewOnce ? (
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-orange-400/25 bg-orange-500/10 px-4 py-3 text-sm text-orange-100">
+                      <p className="min-w-0 flex-1 text-left font-medium leading-snug">
+                        Vistas del receptor (vos no gastás al previsualizar)
+                      </p>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label="Menos vistas"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/30 text-lg font-bold disabled:opacity-40"
+                          disabled={viewOnceLimit <= VIEW_ONCE_MIN_LIMIT}
+                          onClick={() =>
+                            setViewOnceLimit((n) =>
+                              Math.max(VIEW_ONCE_MIN_LIMIT, n - 1),
+                            )
+                          }
+                        >
+                          −
+                        </button>
+                        <span className="min-w-[2ch] text-center text-base font-black tabular-nums">
+                          {viewOnceLimit}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="Más vistas"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/30 text-lg font-bold disabled:opacity-40"
+                          disabled={viewOnceLimit >= VIEW_ONCE_MAX_LIMIT}
+                          onClick={() =>
+                            setViewOnceLimit((n) =>
+                              Math.min(VIEW_ONCE_MAX_LIMIT, n + 1),
+                            )
+                          }
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  </div>
                 ) : null}
 
                 {uploadProgress !== null ? (

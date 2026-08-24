@@ -23,6 +23,11 @@ import { registerSessionChat } from "@/lib/chat/sessionChats";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import { db } from "@/lib/firebase";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
+import {
+  buildStoryReplyPersistPatch,
+  commitWithStoryReplyRulesFallback,
+  isFirestorePermissionDenied,
+} from "@/lib/stories/storyReplySnapshot";
 
 type PersistAnonMessageInput = {
   chatId: string;
@@ -51,6 +56,7 @@ type PersistAnonMessageInput = {
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
   viewOnce?: boolean;
+  viewOnceLimit?: number;
   autoModerationRequiresBlur?: boolean;
   moderationRequiresBlur?: boolean;
   moderationScore?: number;
@@ -214,16 +220,29 @@ export async function persistAnonChatMessage(
   const type = resolvePersistAnonMessageType(persistType);
 
   const storedText = type === "text" ? messageText : "";
-  const lastMessagePreview = input.lastMessagePreview ?? messageText;
+  const storyReplyPersist = buildStoryReplyPersistPatch({
+    messageText: storedText || messageText,
+    storyReply: input.storyReply,
+    reply,
+  });
+  const lastMessagePreview =
+    input.lastMessagePreview ?? storyReplyPersist.lastMessagePreview;
 
   const requestedChatRef = doc(db, "chats", chatId);
   let existingData = input.existingChatData || {};
 
   if (!hasUsableChatData(input.existingChatData)) {
-    const existingSnap = await getDoc(requestedChatRef);
-    existingData = existingSnap.exists()
-      ? (existingSnap.data() as Record<string, unknown>)
-      : {};
+    try {
+      const existingSnap = await getDoc(requestedChatRef);
+      existingData = existingSnap.exists()
+        ? (existingSnap.data() as Record<string, unknown>)
+        : {};
+    } catch (error) {
+      // Missing-doc reads can fail closed under participant rules. Treat as
+      // a new thread and continue with the create/merge write.
+      if (!isFirestorePermissionDenied(error)) throw error;
+      existingData = {};
+    }
   }
 
   const storedCanonicalChatId = String(existingData.canonicalChatId || "").trim();
@@ -239,12 +258,16 @@ export async function persistAnonChatMessage(
   // actual message and summary must always be written to the same canonical
   // thread that the receiver listens to.
   if (canonicalChatId !== chatId) {
-    const canonicalSnap = await getDoc(chatRef);
-    if (canonicalSnap.exists()) {
-      existingData = {
-        ...existingData,
-        ...(canonicalSnap.data() as Record<string, unknown>),
-      };
+    try {
+      const canonicalSnap = await getDoc(chatRef);
+      if (canonicalSnap.exists()) {
+        existingData = {
+          ...existingData,
+          ...(canonicalSnap.data() as Record<string, unknown>),
+        };
+      }
+    } catch (error) {
+      if (!isFirestorePermissionDenied(error)) throw error;
     }
   }
 
@@ -367,6 +390,9 @@ export async function persistAnonChatMessage(
 
   registerSessionChat(canonicalChatId);
 
+  const storyReply = storyReplyPersist.storyReply;
+  const storedReply = storyReplyPersist.storedReply;
+
   const messagePayload = {
     texto: storedText,
     text: storedText,
@@ -383,12 +409,23 @@ export async function persistAnonChatMessage(
       ? { profileUid: persistAuthor.senderProfileId }
       : {}),
     readBy: { [messageAuthorId]: true },
-    ...(reply ? { reply } : {}),
-    ...(input.storyReply ? { storyReply: input.storyReply } : {}),
-    ...(type !== "text" ? { type } : {}),
+    ...(storedReply ? { reply: storedReply } : {}),
+    ...(storyReply ? { storyReply } : {}),
+    type,
     ...(mediaUrl ? { mediaUrl } : {}),
     ...(source ? { source } : {}),
-    ...(viewOnce ? { viewOnce: true } : {}),
+    ...(viewOnce
+      ? {
+          viewOnce: true,
+          viewOnceLimit: Math.max(
+            1,
+            Math.min(5, Math.floor(Number(input.viewOnceLimit) || 1)),
+          ),
+          viewOnceOpenedCount: 0,
+          viewOnceExhausted: false,
+          viewOnceSealed: false,
+        }
+      : {}),
     ...(input.autoModerationRequiresBlur != null
       ? { autoModerationRequiresBlur: input.autoModerationRequiresBlur }
       : {}),
@@ -404,9 +441,6 @@ export async function persistAnonChatMessage(
     ...(input.clientId ? { clientId: input.clientId } : {}),
   };
 
-  const batch = writeBatch(db);
-  batch.set(chatRef, chatMeta, { merge: true });
-  batch.set(messageRef, messagePayload);
   const writeStartedAt = Date.now();
   recordQaCriticalEvent("chat", "CHAT_MESSAGE_WRITE_START", {
     threadId: canonicalChatId,
@@ -415,7 +449,15 @@ export async function persistAnonChatMessage(
     senderKind,
     writeStartedAt,
   });
-  await batch.commit();
+
+  async function commitPayload(payload: typeof messagePayload) {
+    const batch = writeBatch(db);
+    batch.set(chatRef, chatMeta, { merge: true });
+    batch.set(messageRef, payload);
+    await batch.commit();
+  }
+
+  await commitWithStoryReplyRulesFallback(messagePayload, commitPayload);
   const writeAckAt = Date.now();
   recordQaCriticalEvent("chat", "CHAT_MESSAGE_PERSISTED", {
     threadId: chatId,

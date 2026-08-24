@@ -1,14 +1,17 @@
-﻿const opened =
-  new Set<string>();
+﻿/** In-memory lock to coalesce double-taps while a claim is in flight. */
+const claiming = new Set<string>();
 
-export function canOpenViewOnce(
-  id: string,
-) {
-  return !opened.has(id);
+export function beginViewOnceClaim(messageId: string) {
+  const id = String(messageId || "").trim();
+  if (!id || claiming.has(id)) return false;
+  claiming.add(id);
+  return true;
 }
 
-export function markOpened(
-  id: string,
-) {
-  opened.add(id);
+export function endViewOnceClaim(messageId: string) {
+  claiming.delete(String(messageId || "").trim());
+}
+
+export function isViewOnceClaimInFlight(messageId: string) {
+  return claiming.has(String(messageId || "").trim());
 }
