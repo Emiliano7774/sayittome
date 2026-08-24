@@ -12,6 +12,7 @@ import { resolveChatMessageLocation } from "./deleteChatMessage";
 import {
   VIEW_ONCE_SECRETS_COLLECTION,
   decideViewOnceClaim,
+  isViewOnceAuthor,
   normalizeViewOnceLimit,
   viewOnceSecretDocId,
   type ViewOnceMessageFields,
@@ -122,7 +123,10 @@ export async function handleClaimViewOnceMedia(
       uid,
       isMember: member,
       message,
-      secretMediaUrl: secretMediaUrl || asId(message.mediaUrl),
+      // Never fall back to public message.mediaUrl once sealed (zero pre-seal window).
+      secretMediaUrl:
+        secretMediaUrl ||
+        (message.viewOnceSealed ? "" : asId(message.mediaUrl)),
     });
 
     if (!decision.ok) {
@@ -188,5 +192,85 @@ export async function handleClaimViewOnceMedia(
       limit: decision.limit,
       exhausted: decision.exhausted,
     };
+  });
+}
+
+/**
+ * Author commits bomb media into Admin-only secrets after the public message
+ * was written without mediaUrl (zero client-readable window).
+ */
+export async function handleCommitViewOnceSecret(
+  request: Pick<CallableRequest, "auth" | "data">,
+  deps: ViewOnceClaimDeps,
+): Promise<{ ok: true; sealed: true; limit: number }> {
+  const uid = asId(request.auth?.uid);
+  const chatId = asId(request.data?.chatId);
+  const messageId = asId(request.data?.messageId);
+  const mediaUrl = asId(request.data?.mediaUrl);
+
+  if (!uid) throw new HttpsError("unauthenticated", "Auth required");
+  if (!chatId || !messageId || !mediaUrl) {
+    throw new HttpsError("invalid-argument", "Invalid commit payload");
+  }
+  if (!/^https:\/\//i.test(mediaUrl)) {
+    throw new HttpsError("invalid-argument", "Invalid media url");
+  }
+
+  const secretRef = deps.db
+    .collection(VIEW_ONCE_SECRETS_COLLECTION)
+    .doc(viewOnceSecretDocId(chatId, messageId));
+
+  return deps.db.runTransaction(async (tx) => {
+    const located = await resolveChatMessageLocation(tx, deps.db, chatId, messageId);
+    if ("error" in located) {
+      throw new HttpsError("not-found", "Message not found");
+    }
+
+    const message = located.message as ChatMessageDeleteMessage & ViewOnceMessageFields;
+    const chat = located.chat as ChatMessageDeleteChat;
+
+    if (!message.viewOnce) {
+      throw new HttpsError("failed-precondition", "not_view_once");
+    }
+    if (!isViewOnceAuthor(uid, message)) {
+      throw new HttpsError("permission-denied", "author_required");
+    }
+    if (!isChatMember({ uid, chat, message })) {
+      throw new HttpsError("permission-denied", "Not allowed");
+    }
+
+    const limit = normalizeViewOnceLimit(message.viewOnceLimit);
+    const messageRef = located.chatRef.collection(located.messageSubcollection).doc(messageId);
+    const existingSecret = await tx.get(secretRef);
+    const existingUrl = asId(existingSecret.data()?.mediaUrl);
+
+    if (existingUrl && existingUrl !== mediaUrl) {
+      throw new HttpsError("already-exists", "secret_already_set");
+    }
+
+    tx.set(
+      secretRef,
+      {
+        chatId,
+        messageId,
+        chatRoot: located.chatRoot,
+        messageSubcollection: located.messageSubcollection,
+        mediaUrl,
+        viewOnceLimit: limit,
+        sealedAt: FieldValue.serverTimestamp(),
+        committedByAuthUid: uid,
+      },
+      { merge: true },
+    );
+
+    tx.update(messageRef, {
+      mediaUrl: FieldValue.delete(),
+      viewOnceSealed: true,
+      viewOnceLimit: limit,
+      viewOnceOpenedCount: Math.max(0, Number(message.viewOnceOpenedCount) || 0),
+      viewOnceExhausted: message.viewOnceExhausted === true,
+    });
+
+    return { ok: true as const, sealed: true as const, limit };
   });
 }

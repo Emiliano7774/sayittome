@@ -18,7 +18,7 @@ import {
 } from "./fcmTokenTx";
 import { resolvePushTitle } from "./pushNotificationCopy";
 import { deleteStorageObject, handleDeleteChatMessage } from "./deleteChatMessage";
-import { handleClaimViewOnceMedia, sealViewOnceMediaIfNeeded } from "./viewOnceClaim";
+import { handleClaimViewOnceMedia, handleCommitViewOnceSecret, sealViewOnceMediaIfNeeded } from "./viewOnceClaim";
 import {
   handleClaimVerifiedProfileLink,
   handleIssueVerifiedProfileLinkTicket,
@@ -330,6 +330,11 @@ export const deleteChatMessage = onCall(async (request) => {
 export const claimViewOnceMedia = onCall(async (request) => {
   ensureAdminApp();
   return handleClaimViewOnceMedia(request, { db: db() });
+});
+
+export const commitViewOnceSecret = onCall(async (request) => {
+  ensureAdminApp();
+  return handleCommitViewOnceSecret(request, { db: db() });
 });
 
 export const issueVerifiedProfileLinkTicket = onCall(

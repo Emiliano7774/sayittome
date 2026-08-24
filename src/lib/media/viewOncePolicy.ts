@@ -30,8 +30,36 @@ export function redactViewOnceMediaUrl<T extends {
   mine?: boolean;
 }>(message: T): T {
   if (!message.viewOnce) return message;
-  if (message.mine) {
-    return { ...message, mediaUrl: undefined };
-  }
   return { ...message, mediaUrl: undefined };
+}
+
+/**
+ * Public Firestore fields for a newborn bomb: no mediaUrl/secret.
+ * Media is attached only via commitViewOnceSecret (Admin).
+ */
+export function buildViewOncePublicBirthFields(input: {
+  viewOnceLimit?: unknown;
+}): {
+  viewOnce: true;
+  viewOnceLimit: number;
+  viewOnceOpenedCount: 0;
+  viewOnceExhausted: false;
+  viewOnceSealed: false;
+} {
+  return {
+    viewOnce: true,
+    viewOnceLimit: normalizeViewOnceLimit(input.viewOnceLimit),
+    viewOnceOpenedCount: 0,
+    viewOnceExhausted: false,
+    viewOnceSealed: false,
+  };
+}
+
+/** Listener-safe: bomb docs must never expose mediaUrl to clients. */
+export function assertNoClientReadableViewOnceMedia(message: {
+  viewOnce?: boolean;
+  mediaUrl?: string | null;
+}): boolean {
+  if (!message.viewOnce) return true;
+  return !String(message.mediaUrl || "").trim();
 }

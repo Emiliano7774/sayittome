@@ -111,6 +111,20 @@ assert.equal(raceA.exhausted, true);
 assert.equal(raceB.ok, false);
 assert.equal(raceB.reason, "exhausted");
 
+const fnSrc = fs.readFileSync(path.join(root, "functions/src/index.ts"), "utf8");
+assert.match(fnSrc, /claimViewOnceMedia/);
+assert.match(fnSrc, /commitViewOnceSecret/);
+assert.match(fnSrc, /sealViewOnceMediaIfNeeded/);
+
+const chatSrc = fs.readFileSync(
+  path.join(root, "src/components/chat/ProfileAnonChat.tsx"),
+  "utf8",
+);
+assert.match(chatSrc, /openBombMessage/);
+assert.match(chatSrc, /viewOnceLimit/);
+assert.match(chatSrc, /claimViewOnceMedia/);
+assert.doesNotMatch(chatSrc, /canOpenViewOnce|markOpened/);
+
 const policy = await import(
   pathToFileURL(path.join(root, "src/lib/media/viewOncePolicy.ts")).href
 );
@@ -131,6 +145,13 @@ assert.equal(
   }).mediaUrl,
   undefined,
 );
+assert.equal(
+  policy.assertNoClientReadableViewOnceMedia({
+    viewOnce: true,
+    mediaUrl: "",
+  }),
+  true,
+);
 
 const lock = await import(pathToFileURL(path.join(root, "src/lib/media/viewOnce.ts")).href);
 assert.equal(lock.beginViewOnceClaim("m1"), true);
@@ -138,18 +159,5 @@ assert.equal(lock.beginViewOnceClaim("m1"), false); // double tap
 lock.endViewOnceClaim("m1");
 assert.equal(lock.beginViewOnceClaim("m1"), true);
 lock.endViewOnceClaim("m1");
-
-const fnSrc = fs.readFileSync(path.join(root, "functions/src/index.ts"), "utf8");
-assert.match(fnSrc, /claimViewOnceMedia/);
-assert.match(fnSrc, /sealViewOnceMediaIfNeeded/);
-
-const chatSrc = fs.readFileSync(
-  path.join(root, "src/components/chat/ProfileAnonChat.tsx"),
-  "utf8",
-);
-assert.match(chatSrc, /openBombMessage/);
-assert.match(chatSrc, /viewOnceLimit/);
-assert.match(chatSrc, /claimViewOnceMedia/);
-assert.doesNotMatch(chatSrc, /canOpenViewOnce|markOpened/);
 
 console.log(JSON.stringify({ gate: "VIEW_ONCE_CLAIM", pass: true }, null, 2));

@@ -28,6 +28,7 @@ import {
   commitWithStoryReplyRulesFallback,
   isFirestorePermissionDenied,
 } from "@/lib/stories/storyReplySnapshot";
+import { buildViewOncePublicBirthFields } from "@/lib/media/viewOncePolicy";
 
 type PersistAnonMessageInput = {
   chatId: string;
@@ -412,20 +413,10 @@ export async function persistAnonChatMessage(
     ...(storedReply ? { reply: storedReply } : {}),
     ...(storyReply ? { storyReply } : {}),
     type,
-    ...(mediaUrl ? { mediaUrl } : {}),
+    // Bomb (viewOnce): never birth with client-readable mediaUrl — secret via commit.
+    ...(mediaUrl && !viewOnce ? { mediaUrl } : {}),
     ...(source ? { source } : {}),
-    ...(viewOnce
-      ? {
-          viewOnce: true,
-          viewOnceLimit: Math.max(
-            1,
-            Math.min(5, Math.floor(Number(input.viewOnceLimit) || 1)),
-          ),
-          viewOnceOpenedCount: 0,
-          viewOnceExhausted: false,
-          viewOnceSealed: false,
-        }
-      : {}),
+    ...(viewOnce ? buildViewOncePublicBirthFields({ viewOnceLimit: input.viewOnceLimit }) : {}),
     ...(input.autoModerationRequiresBlur != null
       ? { autoModerationRequiresBlur: input.autoModerationRequiresBlur }
       : {}),
@@ -475,6 +466,15 @@ export async function persistAnonChatMessage(
     writeAckAt,
     writeLatencyMs: writeAckAt - writeStartedAt,
   });
+
+  if (viewOnce && mediaUrl) {
+    const { commitViewOnceSecret } = await import("@/lib/media/viewOnceClaim");
+    await commitViewOnceSecret({
+      chatId: canonicalChatId,
+      messageId: messageRef.id,
+      mediaUrl,
+    });
+  }
 
   if (!canonicalMigrationStarted.has(canonicalChatId)) {
     canonicalMigrationStarted.add(canonicalChatId);

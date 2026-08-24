@@ -1,0 +1,54 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isLoggedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null &&
+        request.auth.token.email == 'emilianomaturano@gmail.com';
+    }
+
+    // Bomb media secrets: client SDK deny-all.
+    // Admin SDK (Cloud Functions) bypasses security rules.
+    match /viewOnceSecrets/{secretId} {
+      allow read, write: if false;
+    }
+
+    match /usuarios/{uid} {
+      allow read: if true;
+      allow create: if isLoggedIn();
+      allow update, delete: if isLoggedIn() && request.auth.uid == uid;
+    }
+
+    match /usuarios_shuffle_lite/{uid} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /chat_inbox_lite/{chatId} {
+      allow read: if isLoggedIn();
+      allow write: if false;
+    }
+
+    match /historias/{storyId} {
+      allow read: if true;
+      allow write: if isLoggedIn();
+    }
+
+    match /photo_moderation_chats/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Preserved productive catch-all. MUST exclude viewOnceSecrets:
+    // overlapping match allow expressions are OR'd, so a deny-only
+    // match above is not enough if this block also matches.
+    match /{document=**} {
+      allow read, write: if request.time < timestamp.date(2026, 12, 31)
+        && !document.matches('viewOnceSecrets(/.*)?');
+    }
+  }
+}
