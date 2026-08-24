@@ -57,6 +57,7 @@ function ModernShuffleCard({
       cardIds: getVisibleShuffleProfiles()
         .map((row) => shuffleProfileIdentityKey(row) || row.username)
         .filter(Boolean),
+      // filters/search/batch come from pool-published live context (not viewport-only).
       pinVisibleWindow: true,
     });
     fastRouterPush(router, href);

@@ -82,10 +82,23 @@ export function AuthProvider({
 
   useEffect(() => {
     let cancelled = false;
+
+    void auth.authStateReady().then(() => {
+      if (cancelled) return;
+      void import("@/lib/navigation/shuffleSessionSnapshot").then((mod) => {
+        mod.bindShuffleSessionUid(auth.currentUser?.uid ?? null);
+      });
+    });
+
     const unsub =
       onAuthStateChanged(
         auth,
         async (user) => {
+          void import("@/lib/navigation/shuffleSessionSnapshot").then((mod) => {
+            // Only bind real uids — never wipe on transient null.
+            mod.bindShuffleSessionUid(user?.uid ?? null);
+          });
+
           setFirebaseUser(user);
 
           if (!user) {

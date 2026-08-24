@@ -44,18 +44,74 @@ export function readShuffleSessionUid(): string {
   return SHUFFLE_SESSION_UID_ANON;
 }
 
-export function bindShuffleSessionUid(uid: string | null | undefined) {
-  if (typeof window === "undefined") return;
-  const next = String(uid || "").trim() || SHUFFLE_SESSION_UID_ANON;
+/**
+ * Bind the active auth uid to the shuffle session envelope.
+ * Ignores null/empty (auth bootstrap flicker). Clears snapshot only when the
+ * previous bound uid is a real value and the next uid is a different real value.
+ */
+export function bindShuffleSessionUid(uid: string | null | undefined): {
+  bound: boolean;
+  cleared: boolean;
+  prev: string;
+  next: string;
+} {
+  if (typeof window === "undefined") {
+    return { bound: false, cleared: false, prev: "", next: "" };
+  }
+  const next = String(uid || "").trim();
+  // Transient null during authStateReady / sign-in handoff — keep prior bind.
+  if (!next) {
+    return {
+      bound: false,
+      cleared: false,
+      prev: readShuffleSessionUid(),
+      next: "",
+    };
+  }
+
   try {
-    const prev = window.sessionStorage.getItem("sayittome:auth-uid") || "";
+    const prev = String(window.sessionStorage.getItem("sayittome:auth-uid") || "").trim();
+    let cleared = false;
     if (prev && prev !== next) {
       clearShuffleSessionSnapshot();
+      cleared = true;
     }
     window.sessionStorage.setItem("sayittome:auth-uid", next);
+    return { bound: true, cleared, prev, next };
   } catch {
-    /* ignore */
+    return { bound: false, cleared: false, prev: "", next };
   }
+}
+
+type LiveCaptureContext = {
+  filters: ShuffleFilters;
+  search: string;
+  batchPages: string[][];
+};
+
+let liveCaptureContext: LiveCaptureContext | null = null;
+
+/** Pool publishes live filters/search/batch so modern cards capture full session extras. */
+export function publishShuffleSessionCaptureContext(input: {
+  filters: ShuffleFilters;
+  search?: string;
+  batchPages?: string[][];
+}) {
+  liveCaptureContext = {
+    filters: input.filters,
+    search: String(input.search || ""),
+    batchPages: (input.batchPages || []).map((page) => page.map(String)),
+  };
+}
+
+export function peekShuffleSessionCaptureContext(): LiveCaptureContext | null {
+  return liveCaptureContext
+    ? {
+        filters: liveCaptureContext.filters,
+        search: liveCaptureContext.search,
+        batchPages: liveCaptureContext.batchPages.map((page) => page.slice()),
+      }
+    : null;
 }
 
 export type ShuffleSessionCaptureInput = {
@@ -79,8 +135,16 @@ export function captureShuffleSessionSnapshot(input?: ShuffleSessionCaptureInput
       .map((row) => shuffleProfileIdentityKey(row) || row.username)
       .filter(Boolean);
 
-  const filters = input?.filters || loadStoredShuffleFilters() || defaultShuffleFilters();
-  const search = String(input?.search || "");
+  const live = peekShuffleSessionCaptureContext();
+  const filters =
+    input?.filters || live?.filters || loadStoredShuffleFilters() || defaultShuffleFilters();
+  const search =
+    input?.search !== undefined
+      ? String(input.search || "")
+      : String(live?.search || "");
+  const batchPages =
+    input?.batchPages || live?.batchPages || [];
+
   const snapshot = captureShuffleViewportSnapshot({
     cardId: input?.cardId,
     index: input?.index,
@@ -89,11 +153,10 @@ export function captureShuffleSessionSnapshot(input?: ShuffleSessionCaptureInput
   });
 
   if (isUsableShuffleViewportSnapshot(snapshot)) {
-    // Stash session extras onto the same sessionStorage envelope via a side key.
     persistSessionExtras({
       filterFingerprint: shuffleFiltersFingerprint(filters, search),
       search,
-      batchPages: input?.batchPages || [],
+      batchPages,
       sessionUid: input?.sessionUid || readShuffleSessionUid(),
       cardIds: snapshot.cardIds,
       cardId: snapshot.cardId,

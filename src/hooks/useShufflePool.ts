@@ -119,6 +119,7 @@ import {
   captureShuffleSessionSnapshot,
   clearShuffleSessionSnapshot,
   peekShuffleSessionExtras,
+  publishShuffleSessionCaptureContext,
   shuffleFiltersFingerprint,
 } from "@/lib/navigation/shuffleSessionSnapshot";
 import { findShuffleKeepAliveScrollRoot } from "@/lib/navigation/shuffleFeedScroll";
@@ -241,20 +242,40 @@ export function useShufflePool() {
     if (options.resetBatchMemory) {
       clearBatchMemory();
       pushBatchMemory(profiles);
+      publishShuffleSessionCaptureContext({
+        filters: filtersRef.current,
+        search: searchRef.current,
+        batchPages: recentBatchKeysQueueRef.current.map((set) => Array.from(set)),
+      });
       return;
     }
 
     if (options.shuffleRound) {
       pushBatchMemory(profiles);
+      publishShuffleSessionCaptureContext({
+        filters: filtersRef.current,
+        search: searchRef.current,
+        batchPages: recentBatchKeysQueueRef.current.map((set) => Array.from(set)),
+      });
       return;
     }
 
     if (recentBatchKeysQueueRef.current.length === 0) {
       pushBatchMemory(profiles);
+      publishShuffleSessionCaptureContext({
+        filters: filtersRef.current,
+        search: searchRef.current,
+        batchPages: recentBatchKeysQueueRef.current.map((set) => Array.from(set)),
+      });
       return;
     }
 
     replaceLatestBatchMemory(profiles);
+    publishShuffleSessionCaptureContext({
+      filters: filtersRef.current,
+      search: searchRef.current,
+      batchPages: recentBatchKeysQueueRef.current.map((set) => Array.from(set)),
+    });
   }
 
   function profileMatchesExcludeKeys(
@@ -363,6 +384,14 @@ export function useShufflePool() {
   useEffect(() => {
     searchRef.current = search;
   }, [search]);
+
+  useEffect(() => {
+    publishShuffleSessionCaptureContext({
+      filters: filtersRef.current,
+      search: searchRef.current,
+      batchPages: recentBatchKeysQueueRef.current.map((set) => Array.from(set)),
+    });
+  }, [filters, search]);
 
   const applyWindowFromPool = useCallback(
     (pool: ShuffleProfile[], options?: {
