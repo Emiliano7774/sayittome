@@ -112,10 +112,16 @@ import {
 } from "@/lib/navigation/shuffleKeepAlive";
 import { isShuffleRevealDeferred } from "@/lib/navigation/shuffleHandoffState";
 import {
-  captureShuffleViewportSnapshot,
   restoreShuffleViewportSnapshot,
   shouldPreserveShuffleWindowOnRestore,
 } from "@/lib/navigation/shuffleViewportSnapshot";
+import {
+  captureShuffleSessionSnapshot,
+  clearShuffleSessionSnapshot,
+  peekShuffleSessionExtras,
+  shuffleFiltersFingerprint,
+} from "@/lib/navigation/shuffleSessionSnapshot";
+import { findShuffleKeepAliveScrollRoot } from "@/lib/navigation/shuffleFeedScroll";
 
 function readInitialShuffleState() {
   // SSR and the first client render must be identical. Browser cache/store
@@ -783,6 +789,7 @@ export function useShufflePool() {
 
   const handleShuffleClick = useCallback((event?: React.MouseEvent | Event) => {
     releaseShuffleWindowRefreshSuppression();
+    clearShuffleSessionSnapshot();
     shuffleMark("shuffle-click-start");
     shuffleCount("shuffleClicks");
 
@@ -934,6 +941,7 @@ export function useShufflePool() {
       setFiltersState(nextFilters);
       saveStoredShuffleFilters(nextFilters);
       clearBatchMemory();
+      clearShuffleSessionSnapshot();
 
       const runFilter = () => {
         filterActivePool(searchRef.current.trim(), nextFilters, { forceWindow: true });
@@ -962,6 +970,7 @@ export function useShufflePool() {
     setFiltersState(cleared);
     saveStoredShuffleFilters(cleared);
     clearBatchMemory();
+    clearShuffleSessionSnapshot();
     filterActivePool(searchRef.current.trim(), cleared, { forceWindow: true });
   }, [applyPool, filterActivePool]);
 
@@ -976,21 +985,39 @@ export function useShufflePool() {
       const username = target.getAttribute("data-username");
       if (!username) return;
 
+      const captureLeave = () => {
+        const root = findShuffleKeepAliveScrollRoot();
+        const liveScroll =
+          root && Number.isFinite(root.scrollTop) ? Math.round(root.scrollTop) : undefined;
+        const cardIds = getVisibleShuffleProfiles()
+          .map((row) => shuffleProfileIdentityKey(row) || row.username)
+          .filter(Boolean);
+        captureShuffleSessionSnapshot({
+          cardId: username,
+          scrollTop: liveScroll,
+          cardIds,
+          filters: filtersRef.current,
+          search: searchRef.current,
+          batchPages: recentBatchKeysQueueRef.current.map((set) => Array.from(set)),
+          pinVisibleWindow: true,
+        });
+      };
+
       if (action === "story") {
         const ownerUid = target.getAttribute("data-owner-uid");
         stashStoryReturnTo("/shuffle");
         stashProfileReturnTo("/shuffle");
+        captureLeave();
         fastRouterPush(router, `/stories/${encodeURIComponent(ownerUid || username)}`);
       } else if (action === "profile") {
         stashProfileReturnTo("/shuffle");
-        captureShuffleViewportSnapshot({
-          cardId: username,
-        });
+        captureLeave();
         fastRouterPush(router, `/u/${encodeURIComponent(username)}`);
       } else if (action === "chat") {
         const senderId = getChatAnonSenderId();
         const chatId = buildProfileAnonChatId(senderId, username);
         prefetchChatThread(chatId);
+        captureLeave();
         fastRouterPush(
           router,
           `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}`,
@@ -1011,6 +1038,14 @@ export function useShufflePool() {
     const storedFilters = loadStoredShuffleFilters();
     filtersRef.current = storedFilters;
     setFiltersState(storedFilters);
+
+    const sessionExtras = peekShuffleSessionExtras();
+    if (sessionExtras?.batchPages?.length) {
+      recentBatchKeysQueueRef.current = sessionExtras.batchPages.map(
+        (page) => new Set(page),
+      );
+    }
+    void shuffleFiltersFingerprint(storedFilters, searchRef.current);
 
     const cachedProfiles = readCachedShufflePool();
     const cachedStats = readCachedShuffleStats();

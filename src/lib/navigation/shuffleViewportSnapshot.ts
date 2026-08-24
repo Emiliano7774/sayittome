@@ -128,8 +128,10 @@ export function isUsableShuffleViewportSnapshot(
   if (!snapshot) return false;
   if (!snapshot.cardId) return false;
   if (!Number.isFinite(snapshot.index) || snapshot.index < 0) return false;
-  if (!Number.isFinite(snapshot.scrollTop) || snapshot.scrollTop <= 0) return false;
-  return true;
+  if (!Number.isFinite(snapshot.scrollTop) || snapshot.scrollTop < 0) return false;
+  // Ordered window is enough to prevent reshuffle even if scroll read briefly fails.
+  if (Array.isArray(snapshot.cardIds) && snapshot.cardIds.length > 0) return true;
+  return snapshot.scrollTop > 0;
 }
 
 export function hasUsableShuffleViewportSnapshot() {

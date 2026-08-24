@@ -14,7 +14,7 @@ import { useProfilePrefetchIntent } from "@/hooks/useProfilePrefetchIntent";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { findShuffleKeepAliveScrollRoot } from "@/lib/navigation/shuffleFeedScroll";
-import { captureShuffleViewportSnapshot } from "@/lib/navigation/shuffleViewportSnapshot";
+import { captureShuffleSessionSnapshot } from "@/lib/navigation/shuffleSessionSnapshot";
 import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
@@ -48,14 +48,16 @@ function ModernShuffleCard({
     stashProfileReturnTo("/shuffle");
     const cardId = shuffleProfileIdentityKey(profile) || profile.username;
     const root = findShuffleKeepAliveScrollRoot();
-    const liveScroll = root && root.scrollTop > 0 ? root.scrollTop : undefined;
-    captureShuffleViewportSnapshot({
+    const liveScroll =
+      root && Number.isFinite(root.scrollTop) ? Math.round(root.scrollTop) : undefined;
+    captureShuffleSessionSnapshot({
       cardId,
       index: feedIndex,
       scrollTop: liveScroll,
       cardIds: getVisibleShuffleProfiles()
         .map((row) => shuffleProfileIdentityKey(row) || row.username)
         .filter(Boolean),
+      pinVisibleWindow: true,
     });
     fastRouterPush(router, href);
   }

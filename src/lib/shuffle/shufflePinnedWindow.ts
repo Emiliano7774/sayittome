@@ -151,8 +151,11 @@ export function applyPinnedShuffleWindowSync(options?: { force?: boolean }) {
 
 /** PREPARE — restore last valid shuffle window synchronously (no React commit). */
 export function restorePinnedShuffleWindowSync() {
-  if (hasUsableShuffleViewportSnapshot() && pinned) {
-    return applyPinnedShuffleWindowSync({ force: true });
+  // Usable mid-feed snapshot always wins over whatever is currently visible
+  // (wrong order / cold remount deal must not stick).
+  if (hasUsableShuffleViewportSnapshot()) {
+    if (pinned && applyPinnedShuffleWindowSync({ force: true })) return true;
+    if (restoreWindowFromSnapshotCache()) return true;
   }
 
   const visibleNow = getVisibleShuffleProfiles();
@@ -163,10 +166,6 @@ export function restorePinnedShuffleWindowSync() {
 
   if (pinned) {
     return applyPinnedShuffleWindowSync() || hasShuffleEverHydrated();
-  }
-
-  if (hasUsableShuffleViewportSnapshot()) {
-    if (restoreWindowFromSnapshotCache()) return true;
   }
 
   if (restoreFromCachedPoolSync()) return true;

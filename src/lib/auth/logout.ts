@@ -13,6 +13,7 @@ import { clearAuthorshipCorrections } from "@/lib/chat/authorshipCorrections";
 import { clearCachedViewerIdentity } from "@/lib/chat/viewerIdentityCache";
 import { clearThreadAnonContinuity } from "@/lib/chat/threadAnonContinuity";
 import { clearShuffleChromeCache } from "@/lib/shuffle/shuffleChromeCache";
+import { clearShuffleSessionSnapshot } from "@/lib/navigation/shuffleSessionSnapshot";
 import { clearCachedFullProfile } from "@/lib/profile/profileCache";
 import { disarmVerifiedProfileLinkClaimRetry } from "@/lib/profile/verifiedProfileLinkClaimRetry";
 import { clearVerifiedProfileLinkTicket } from "@/lib/profile/verifiedProfileLinkTicket";
@@ -26,6 +27,7 @@ export async function logoutAndResetAnon() {
   clearStoriesIndexCache();
   clearCachedViewerIdentity();
   clearShuffleChromeCache();
+  clearShuffleSessionSnapshot();
   clearCachedFullProfile();
   disarmVerifiedProfileLinkClaimRetry();
   clearVerifiedProfileLinkTicket();

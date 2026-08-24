@@ -145,9 +145,11 @@ export function presentExistingShuffleSnapshot(options: {
     return empty;
   }
 
-  // Reconstruct window before sampling. An empty restart host must not
-  // return before restore, or retry/failsafe never sees the rebuilt pool.
+  // Reconstruct window + scroll BEFORE unfreeze so the first visible paint
+  // is already at the captured profile/pixel (no top flash / reshuffle).
   restorePinnedShuffleWindowSync();
+  restoreShuffleViewportSnapshot();
+  restoreShuffleFeedScroll();
 
   const snapshotPainted = hasShuffleSnapshotPaint(host);
   if (!snapshotPainted && isEmptyBlackHost(host)) {
@@ -161,6 +163,7 @@ export function presentExistingShuffleSnapshot(options: {
   clearStaleShuffleLatches(path);
   unfreezeExistingHost(host);
   forcePresentShuffleSurfaceForNonMainReveal();
+  // Re-assert scroll after unfreeze (layout may clamp once).
   restoreShuffleViewportSnapshot();
   restoreShuffleFeedScroll();
 

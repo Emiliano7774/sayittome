@@ -4,11 +4,9 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import {
-  captureShuffleFeedScroll,
   restoreShuffleFeedScroll,
   shouldSkipHardNavigateForWarmShuffle,
 } from "@/lib/navigation/shuffleFeedScroll";
-import { captureShuffleViewportSnapshot } from "@/lib/navigation/shuffleViewportSnapshot";
 import {
   beginShuffleWarmHandoff,
   clearInstantShuffleReturn,
@@ -56,8 +54,6 @@ export type FastRouterPushOptions = {
 
 function pinShuffleWindowIfNeeded(currentPath: string) {
   if (currentPath === "/shuffle" || isShuffleKeepAliveActive()) {
-    captureShuffleFeedScroll();
-    captureShuffleViewportSnapshot();
     pinShuffleWindowWhileAway();
   }
 }

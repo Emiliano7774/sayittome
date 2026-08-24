@@ -33,6 +33,7 @@ import {
   captureShuffleViewportSnapshot,
   restoreShuffleViewportSnapshot,
 } from "@/lib/navigation/shuffleViewportSnapshot";
+import { captureShuffleSessionSnapshot } from "@/lib/navigation/shuffleSessionSnapshot";
 import {
   isInternalMainTabToShuffleTransitionActive,
   getMainTabToShufflePhase,
@@ -233,7 +234,7 @@ export function releaseShuffleWindowRefreshSuppression() {
 export function pinShuffleWindowWhileAway() {
   suppressShuffleWindowRefresh = true;
   captureShuffleFeedScroll();
-  captureShuffleViewportSnapshot();
+  captureShuffleSessionSnapshot({ pinVisibleWindow: true });
 }
 
 let staleHandoffSweepId = 0;
