@@ -16,11 +16,13 @@ const backupDir = path.join(root, "scripts/backups");
 const rules = fs.readFileSync(rulesPath, "utf8");
 assert.match(rules, /match \/viewOnceSecrets\/\{secretId\}/);
 assert.match(rules, /allow read, write: if false;/);
+assert.match(rules, /function isViewOnceSecretsPath\(\)/);
 assert.match(
   rules,
-  /!document\.matches\('viewOnceSecrets\(\/\.\*\)\?'\)/,
+  /string\(request\.path\)\.split\('\/'\)\.hasAny\(\['viewOnceSecrets'\]\)/,
   "catch-all must exclude viewOnceSecrets (OR semantics)",
 );
+assert.match(rules, /!isViewOnceSecretsPath\(\)/);
 assert.match(rules, /request\.time < timestamp\.date\(2026, 12, 31\)/);
 assert.match(rules, /usuarios_shuffle_lite/);
 assert.match(rules, /chat_inbox_lite/);

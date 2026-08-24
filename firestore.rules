@@ -14,6 +14,10 @@ service cloud.firestore {
 
     // Bomb media secrets: client SDK deny-all.
     // Admin SDK (Cloud Functions) bypasses security rules.
+    function isViewOnceSecretsPath() {
+      return string(request.path).split('/').hasAny(['viewOnceSecrets']);
+    }
+
     match /viewOnceSecrets/{secretId} {
       allow read, write: if false;
     }
@@ -48,7 +52,7 @@ service cloud.firestore {
     // match above is not enough if this block also matches.
     match /{document=**} {
       allow read, write: if request.time < timestamp.date(2026, 12, 31)
-        && !document.matches('viewOnceSecrets(/.*)?');
+        && !isViewOnceSecretsPath();
     }
   }
 }
