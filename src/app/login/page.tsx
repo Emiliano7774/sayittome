@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   signInWithEmailAndPassword,
 } from "firebase/auth";
@@ -18,10 +18,17 @@ import {
   setQaAuthDiagnosticState,
 } from "@/lib/qa/realDeviceQaDebug";
 
+function readPreferredNextFromLocation() {
+  if (typeof window === "undefined") return null;
+  try {
+    return new URLSearchParams(window.location.search).get("next");
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const preferredNext = searchParams.get("next");
   const t = useT();
 
   const [email, setEmail] = useState("");
@@ -54,6 +61,7 @@ export default function LoginPage() {
           return;
         }
 
+        const preferredNext = readPreferredNextFromLocation();
         const next = await resolvePostAuthPath(user.uid, user.emailVerified, {
           preferredNext,
           email: user.email,
@@ -69,7 +77,7 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, preferredNext]);
+  }, [router]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -97,6 +105,7 @@ export default function LoginPage() {
         password,
       );
 
+      const preferredNext = readPreferredNextFromLocation();
       const next = await resolvePostAuthPath(
         cred.user.uid,
         cred.user.emailVerified,

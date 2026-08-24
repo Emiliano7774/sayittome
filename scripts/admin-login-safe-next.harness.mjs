@@ -94,11 +94,12 @@ assert.equal(safe.sanitizeSafeReturnPath("//sayittome-app.web.app/admin"), null)
 
 // --- wiring: LoginPage honors next + authStateReady ---
 const loginSrc = fs.readFileSync(path.join(root, "src/app/login/page.tsx"), "utf8");
-assert.match(loginSrc, /useSearchParams/);
+assert.match(loginSrc, /readPreferredNextFromLocation|location\.search/);
 assert.match(loginSrc, /preferredNext/);
 assert.match(loginSrc, /auth\.authStateReady\(\)/);
 assert.match(loginSrc, /resolvePostAuthPath\([\s\S]*preferredNext/);
 assert.doesNotMatch(loginSrc, /onAuthStateChanged/);
+assert.doesNotMatch(loginSrc, /useSearchParams/);
 
 // --- AdminShell: authStateReady before login redirect; next preserved ---
 const shellSrc = fs.readFileSync(
