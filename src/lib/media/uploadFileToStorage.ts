@@ -39,7 +39,12 @@ export function formatStorageUploadError(error: unknown): string {
   if (code === "storage/unauthorized" || message.includes("unauthorized")) {
     return "storage_unauthorized";
   }
-  if (code === "auth/operation-not-allowed") {
+  if (
+    code === "auth/operation-not-allowed" ||
+    code === "auth/admin-restricted-operation" ||
+    message.includes("ADMIN_ONLY_OPERATION") ||
+    message.includes("admin-restricted-operation")
+  ) {
     return "anon_auth_disabled";
   }
   if (code === "storage/canceled") {

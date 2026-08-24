@@ -100,8 +100,22 @@ export function classifyChatMediaSendFailure(error: unknown): ChatMediaFailDiag 
   if (name === "PersistIdentityError" || message.includes("identity")) {
     return { stage: "persist", op: "resolvePersistMessageAuthor", path: "chats/{chatId}", code };
   }
-  if (code.includes("storage") || message.includes("storage")) {
-    return { stage: "upload", op: "uploadBytesResumable", path: "chats/{chatId}/{object}", code };
+  if (
+    code.includes("storage") ||
+    message.includes("storage") ||
+    code.startsWith("auth/") ||
+    code === "anon_auth_disabled" ||
+    message.includes("admin-restricted-operation") ||
+    message.includes("admin_only_operation")
+  ) {
+    return {
+      stage: "upload",
+      op: code.startsWith("auth/") || code === "anon_auth_disabled"
+        ? "ensureStorageAuth"
+        : "uploadBytesResumable",
+      path: "chats/{chatId}/{object}",
+      code,
+    };
   }
   if (code.includes("functions/") || message.includes("commitviewoncesecret")) {
     return {

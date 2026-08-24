@@ -76,6 +76,10 @@ export function isChatMediaStorageUnauthorized(error: unknown) {
   return formatStorageUploadError(error) === "storage_unauthorized";
 }
 
+export function isChatMediaAnonAuthDisabled(error: unknown) {
+  return formatStorageUploadError(error) === "anon_auth_disabled";
+}
+
 export async function uploadChatMessageMedia(
   chatId: string,
   clientId: string,

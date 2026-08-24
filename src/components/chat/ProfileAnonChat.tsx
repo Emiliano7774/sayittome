@@ -19,7 +19,12 @@ import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
 import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
-import { uploadChatMessageMedia, isChatMediaStorageUnauthorized, deleteChatMessageMediaAtPath } from "@/lib/media/upload";
+import {
+  uploadChatMessageMedia,
+  isChatMediaStorageUnauthorized,
+  isChatMediaAnonAuthDisabled,
+  deleteChatMessageMediaAtPath,
+} from "@/lib/media/upload";
 import {
   ChatMediaSendError,
   formatChatMediaFailAlert,
@@ -2313,12 +2318,14 @@ export default function ProfileAnonChat({
       URL.revokeObjectURL(localPreviewUrl);
       setUploadProgress(null);
       alert(
-        isChatMediaStorageUnauthorized(e)
-          ? t("chat_upload_unauthorized")
-          : formatChatMediaFailAlert(
-              diag.stage === "upload" ? t("chat_upload_fail") : t("chat_save_fail"),
-              e,
-            ),
+        isChatMediaAnonAuthDisabled(e)
+          ? t("chat_upload_anon_auth_disabled")
+          : isChatMediaStorageUnauthorized(e)
+            ? t("chat_upload_unauthorized")
+            : formatChatMediaFailAlert(
+                diag.stage === "upload" ? t("chat_upload_fail") : t("chat_save_fail"),
+                e,
+              ),
       );
     }
   }

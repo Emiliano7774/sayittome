@@ -121,9 +121,20 @@ await upload.uploadChatMessageMedia(
 assert.equal(author.profileAuthUid(profileEnsureUser), "profile_uid");
 
 assert.equal(errors.formatStorageUploadError({ code: "storage/unauthorized" }), "storage_unauthorized");
+assert.equal(errors.formatStorageUploadError({ code: "auth/operation-not-allowed" }), "anon_auth_disabled");
+assert.equal(
+  errors.formatStorageUploadError({ code: "auth/admin-restricted-operation" }),
+  "anon_auth_disabled",
+);
+assert.equal(
+  errors.formatStorageUploadError({ message: "ADMIN_ONLY_OPERATION" }),
+  "anon_auth_disabled",
+);
 assert.equal(upload.isChatMediaStorageUnauthorized({ code: "storage/unauthorized" }), true);
+assert.equal(upload.isChatMediaAnonAuthDisabled({ code: "auth/admin-restricted-operation" }), true);
 assert.equal(upload.isChatMediaStorageUnauthorized({ code: "storage/canceled" }), false);
 assert.match(i18n.MESSAGES.es.chat_upload_unauthorized, /storage\/unauthorized/);
+assert.match(i18n.MESSAGES.es.chat_upload_anon_auth_disabled, /autenticar|authenticate/i);
 assert.equal(i18n.MESSAGES.es.chat_upload_unauthorized.includes("Firestore"), false);
 assert.equal(i18n.MESSAGES.es.story_reply_fail.includes("Firestore"), false);
 

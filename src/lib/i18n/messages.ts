@@ -493,6 +493,8 @@ const es = {
   chat_retry: "Reintentar",
   chat_upload_fail: "No se pudo subir la foto o el video. Probá de nuevo.",
   chat_upload_unauthorized: "No se pudo subir el archivo (storage/unauthorized). Probá de nuevo.",
+  chat_upload_anon_auth_disabled:
+    "No se pudo autenticar para subir el archivo. Probá de nuevo en unos segundos.",
   chat_audio_play_fail: "No se pudo reproducir el audio.",
   chat_audio_preview_fail: "El audio se grabó, pero no se pudo preparar la vista previa.",
   chat_delete_for_me: "Eliminar para mí",
@@ -1308,6 +1310,8 @@ const en: Record<keyof typeof es, string> = {
   chat_retry: "Retry",
   chat_upload_fail: "Could not upload the photo or video. Try again.",
   chat_upload_unauthorized: "Could not upload the file (storage/unauthorized). Try again.",
+  chat_upload_anon_auth_disabled:
+    "Could not authenticate to upload the file. Try again in a few seconds.",
   chat_audio_play_fail: "Could not play the audio.",
   chat_audio_preview_fail: "The audio was recorded, but the preview could not be prepared.",
   chat_delete_for_me: "Delete for me",
