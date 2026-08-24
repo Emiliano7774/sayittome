@@ -139,7 +139,8 @@
     "test:chat-official-profile-link-claim-pending-copy": "node --experimental-strip-types scripts/chat-official-profile-link-claim-pending-copy.harness.mjs",
     "test:chat-official-profile-link-ticket-durable": "node --experimental-strip-types scripts/chat-official-profile-link-ticket-durable.harness.mjs",
     "test:admin-usuario-moderation-tag": "node --experimental-strip-types scripts/admin-usuario-moderation-tag.harness.mjs",
-    "test:admin-login-safe-next": "node --experimental-strip-types scripts/admin-login-safe-next.harness.mjs"
+    "test:admin-login-safe-next": "node --experimental-strip-types scripts/admin-login-safe-next.harness.mjs",
+    "test:login-errors-password-reset": "node --experimental-strip-types scripts/login-errors-password-reset.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

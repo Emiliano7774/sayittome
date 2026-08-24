@@ -4,12 +4,18 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
 } from "firebase/auth";
 
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { shouldAutoRedirectFromLogin } from "@/lib/auth/loginSessionGate";
-import { mapLoginErrorCode } from "@/lib/auth/registerErrors";
+import {
+  isPasswordResetEnumeratingMiss,
+  mapLoginErrorCode,
+  mapPasswordResetErrorCode,
+  normalizeLoginEmail,
+} from "@/lib/auth/registerErrors";
 import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { auth } from "@/lib/firebase";
 import { useT } from "@/contexts/LocaleContext";
@@ -36,7 +42,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetInfo, setResetInfo] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +96,7 @@ export default function LoginPage() {
     e.preventDefault();
 
     setError("");
+    setResetInfo("");
     setLoading(true);
     const previous = readQaAuthDiagnosticState();
     const authClickCount = Number(previous.authClickCount || 0) + 1;
@@ -106,7 +115,7 @@ export default function LoginPage() {
     try {
       const cred = await signInWithEmailAndPassword(
         auth,
-        email.trim().toLowerCase(),
+        normalizeLoginEmail(email),
         password,
       );
 
@@ -130,20 +139,53 @@ export default function LoginPage() {
       router.replace(next);
     } catch (err: unknown) {
       const code = String((err as { code?: string })?.code || "");
-      const message = String((err as { message?: string })?.message || "Unknown auth error");
       setError(t(mapLoginErrorCode(code)));
       setQaAuthDiagnosticState({
         authLastAction: "email-password-error",
         authLastErrorCode: code || "unknown",
-        authLastErrorMessage: message,
+        authLastErrorMessage: null,
         authReady: true,
       });
       recordQaCriticalEvent("auth", "AUTH_LOGIN_ERROR", {
         code: code || "unknown",
-        message,
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    setError("");
+    setResetInfo("");
+
+    const normalized = normalizeLoginEmail(email);
+    if (!normalized) {
+      setError(t("error_reset_need_email"));
+      return;
+    }
+
+    setResetLoading(true);
+    recordQaCriticalEvent("auth", "AUTH_PASSWORD_RESET_SUBMIT", {});
+
+    try {
+      await sendPasswordResetEmail(auth, normalized);
+      setResetInfo(t("auth_reset_sent"));
+      recordQaCriticalEvent("auth", "AUTH_PASSWORD_RESET_SUCCESS", {});
+    } catch (err: unknown) {
+      const code = String((err as { code?: string })?.code || "");
+      if (isPasswordResetEnumeratingMiss(code)) {
+        setResetInfo(t("auth_reset_sent"));
+        recordQaCriticalEvent("auth", "AUTH_PASSWORD_RESET_SUCCESS", {
+          masked: true,
+        });
+      } else {
+        setError(t(mapPasswordResetErrorCode(code)));
+        recordQaCriticalEvent("auth", "AUTH_PASSWORD_RESET_ERROR", {
+          code: code || "unknown",
+        });
+      }
+    } finally {
+      setResetLoading(false);
     }
   }
 
@@ -154,6 +196,8 @@ export default function LoginPage() {
       </main>
     );
   }
+
+  const busy = loading || resetLoading;
 
   return (
     <main className="min-h-screen bg-black text-white flex items-center justify-center px-6">
@@ -183,10 +227,24 @@ export default function LoginPage() {
           className="w-full h-14 rounded-2xl bg-black border border-white/10 text-white px-4 mb-4 outline-none"
         />
 
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleForgotPassword()}
+            className="text-sm font-semibold text-violet-300 disabled:opacity-50"
+          >
+            {resetLoading ? t("auth_reset_sending") : t("auth_forgot_password")}
+          </button>
+        </div>
+
         {error && <p className="text-red-400 font-semibold mb-4">{error}</p>}
+        {resetInfo && (
+          <p className="text-emerald-300/90 font-semibold mb-4">{resetInfo}</p>
+        )}
 
         <button
-          disabled={loading}
+          disabled={busy}
           className="w-full h-14 rounded-full bg-violet-500 font-black text-white disabled:opacity-50"
         >
           {loading ? t("auth_entering") : t("auth_enter")}

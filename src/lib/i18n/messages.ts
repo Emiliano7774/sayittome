@@ -93,6 +93,10 @@ const es = {
   auth_password: "Contraseña",
   auth_enter: "Entrar",
   auth_entering: "Entrando...",
+  auth_forgot_password: "¿Olvidaste tu contraseña?",
+  auth_reset_sending: "Enviando enlace...",
+  auth_reset_sent:
+    "Si hay una cuenta con ese email, te enviamos un enlace para restablecer la contraseña. Revisá bandeja de entrada y spam.",
   auth_no_account: "¿No tenés cuenta?",
   auth_has_account: "¿Ya tenés cuenta?",
   auth_register_link: "Crear perfil",
@@ -813,9 +817,14 @@ const es = {
   error_register_weak_password: "La contraseña debe tener al menos 6 caracteres.",
   error_register_too_many: "Demasiados intentos. Esperá unos minutos.",
   error_register_generic: "No se pudo crear la cuenta. Probá de nuevo.",
-  error_login_invalid: "Email o contraseña incorrectos.",
-  error_login_not_found: "No existe una cuenta con ese email.",
-  error_login_generic: "No se pudo iniciar sesión.",
+  error_login_invalid:
+    "Email o contraseña incorrectos. Revisá los datos o restablecé la contraseña.",
+  error_login_too_many: "Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
+  error_login_network: "Sin conexión. Revisá tu red e intentá de nuevo.",
+  error_login_disabled: "Esta cuenta está deshabilitada. Si sos admin, contactá soporte.",
+  error_login_generic: "No se pudo iniciar sesión. Probá de nuevo.",
+  error_reset_need_email: "Ingresá tu email para restablecer la contraseña.",
+  error_reset_generic: "No se pudo enviar el enlace. Probá de nuevo en unos minutos.",
 } as const;
 
 const en: Record<keyof typeof es, string> = {
@@ -911,6 +920,10 @@ const en: Record<keyof typeof es, string> = {
   auth_password: "Password",
   auth_enter: "Enter",
   auth_entering: "Signing in...",
+  auth_forgot_password: "Forgot your password?",
+  auth_reset_sending: "Sending link...",
+  auth_reset_sent:
+    "If an account exists for that email, we sent a password reset link. Check inbox and spam.",
   auth_no_account: "Don't have an account?",
   auth_has_account: "Already have an account?",
   auth_register_link: "Create profile",
@@ -1629,9 +1642,14 @@ const en: Record<keyof typeof es, string> = {
   error_register_weak_password: "Password must be at least 6 characters.",
   error_register_too_many: "Too many attempts. Wait a few minutes.",
   error_register_generic: "Could not create the account. Try again.",
-  error_login_invalid: "Incorrect email or password.",
-  error_login_not_found: "No account exists with this email.",
-  error_login_generic: "Could not sign in.",
+  error_login_invalid:
+    "Incorrect email or password. Check your details or reset your password.",
+  error_login_too_many: "Too many attempts. Wait a few minutes and try again.",
+  error_login_network: "No connection. Check your network and try again.",
+  error_login_disabled: "This account is disabled. If you are admin, contact support.",
+  error_login_generic: "Could not sign in. Try again.",
+  error_reset_need_email: "Enter your email to reset your password.",
+  error_reset_generic: "Could not send the reset link. Try again in a few minutes.",
 };
 
 const it: Record<keyof typeof es, string> = {
@@ -1719,6 +1737,10 @@ const it: Record<keyof typeof es, string> = {
   auth_password: "Password",
   auth_enter: "Entra",
   auth_entering: "Accesso...",
+  auth_forgot_password: "Hai dimenticato la password?",
+  auth_reset_sending: "Invio link...",
+  auth_reset_sent:
+    "Se esiste un account con questa email, abbiamo inviato un link per reimpostare la password. Controlla inbox e spam.",
   auth_no_account: "Non hai un account?",
   auth_has_account: "Hai già un account?",
   auth_register_link: "Crea profilo",
@@ -1820,9 +1842,14 @@ const it: Record<keyof typeof es, string> = {
   error_register_weak_password: "La password deve avere almeno 6 caratteri.",
   error_register_too_many: "Troppi tentativi. Attendi qualche minuto.",
   error_register_generic: "Impossibile creare l'account. Riprova.",
-  error_login_invalid: "Email o password errati.",
-  error_login_not_found: "Non esiste un account con questa email.",
-  error_login_generic: "Impossibile accedere.",
+  error_login_invalid:
+    "Email o password errati. Controlla i dati o reimposta la password.",
+  error_login_too_many: "Troppi tentativi. Attendi qualche minuto e riprova.",
+  error_login_network: "Nessuna connessione. Controlla la rete e riprova.",
+  error_login_disabled: "Questo account è disabilitato. Se sei admin, contatta il supporto.",
+  error_login_generic: "Impossibile accedere. Riprova.",
+  error_reset_need_email: "Inserisci la tua email per reimpostare la password.",
+  error_reset_generic: "Impossibile inviare il link. Riprova tra qualche minuto.",
 
   roleplay_appeal_flag_aria: "Contatta l'amministrazione",
   roleplay_appeal_title: "Messaggio all'amministrazione",
@@ -1935,6 +1962,10 @@ const de: Record<keyof typeof es, string> = {
   auth_password: "Passwort",
   auth_enter: "Eintreten",
   auth_entering: "Anmeldung...",
+  auth_forgot_password: "Passwort vergessen?",
+  auth_reset_sending: "Link wird gesendet...",
+  auth_reset_sent:
+    "Wenn ein Konto mit dieser E-Mail existiert, haben wir einen Link zum Zurücksetzen gesendet. Prüfe Posteingang und Spam.",
   auth_no_account: "Noch kein Konto?",
   auth_has_account: "Bereits ein Konto?",
   auth_register_link: "Profil erstellen",
@@ -2034,9 +2065,14 @@ const de: Record<keyof typeof es, string> = {
   error_register_weak_password: "Das Passwort muss mindestens 6 Zeichen haben.",
   error_register_too_many: "Zu viele Versuche. Warte einige Minuten.",
   error_register_generic: "Konto konnte nicht erstellt werden. Versuche es erneut.",
-  error_login_invalid: "E-Mail oder Passwort falsch.",
-  error_login_not_found: "Es existiert kein Konto mit dieser E-Mail.",
-  error_login_generic: "Anmeldung fehlgeschlagen.",
+  error_login_invalid:
+    "E-Mail oder Passwort falsch. Prüfe die Daten oder setze das Passwort zurück.",
+  error_login_too_many: "Zu viele Versuche. Warte einige Minuten und versuche es erneut.",
+  error_login_network: "Keine Verbindung. Prüfe dein Netz und versuche es erneut.",
+  error_login_disabled: "Dieses Konto ist deaktiviert. Als Admin Support kontaktieren.",
+  error_login_generic: "Anmeldung fehlgeschlagen. Versuche es erneut.",
+  error_reset_need_email: "Gib deine E-Mail ein, um das Passwort zurückzusetzen.",
+  error_reset_generic: "Link konnte nicht gesendet werden. Versuche es später erneut.",
 
   roleplay_appeal_flag_aria: "Administration kontaktieren",
   roleplay_appeal_title: "Nachricht an die Administration",
