@@ -21,6 +21,11 @@ import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import { uploadChatMessageMedia, isChatMediaStorageUnauthorized, deleteChatMessageMediaAtPath } from "@/lib/media/upload";
 import {
+  ChatMediaSendError,
+  formatChatMediaFailAlert,
+  classifyChatMediaSendFailure,
+} from "@/lib/chat/chatMediaSendFailure";
+import {
   classifyChatMediaFailure,
   CHAT_FILE_INPUT_CLASS,
   ensureChatCameraStreamPermission,
@@ -1155,11 +1160,13 @@ export default function ProfileAnonChat({
   });
   const viewerUid = canonicalViewer.viewerUid;
   const viewerUsername = canonicalViewer.viewerUsername;
+  // Owner proof must use LIVE auth only — peeking cached profile identity while
+  // authUid is empty mis-labels anon visitors as owners (stale localStorage).
   const provenOwner = isProfileThreadOwner({
     chatId,
-    authUid: viewerUid,
+    authUid: currentUid,
     profileUid: profileOwnerUid,
-    viewerUsername,
+    viewerUsername: String(authProfile?.username || "").trim(),
   });
   const isOwnerViewing =
     provenOwner || inferOwnerViewingFromAuthors(viewerUid, profileOwnerUid, messages);
@@ -2188,21 +2195,47 @@ export default function ProfileAnonChat({
     setReplyingTo(null);
 
     try {
-      const scanFile = new File(
-        [blob],
-        previewType,
-        { type: blob.type || (previewType === "video" ? "video/webm" : "image/jpeg") },
-      );
-      const scanResult = await scanUploadFile(scanFile);
+      let scanResult;
+      try {
+        const scanFile = new File(
+          [blob],
+          previewType,
+          { type: blob.type || (previewType === "video" ? "video/webm" : "image/jpeg") },
+        );
+        scanResult = await scanUploadFile(scanFile);
+      } catch (error) {
+        throw new ChatMediaSendError(
+          {
+            stage: "scan",
+            op: "scanUploadFile",
+            path: "client:nsfw",
+            code: String((error as { code?: string }).code || (error as Error).message || "scan"),
+          },
+          error,
+        );
+      }
 
-      const uploaded = await uploadChatMessageMedia(
-        chatId,
-        clientId,
-        blob,
-        previewType,
-        (pct) => setUploadProgress(pct),
-        { viewOnce: previewViewOnce },
-      );
+      let uploaded;
+      try {
+        uploaded = await uploadChatMessageMedia(
+          chatId,
+          clientId,
+          blob,
+          previewType,
+          (pct) => setUploadProgress(pct),
+          { viewOnce: previewViewOnce },
+        );
+      } catch (error) {
+        throw new ChatMediaSendError(
+          {
+            stage: "upload",
+            op: "uploadChatMessageMedia",
+            path: `chats/${chatId}/{object}`,
+            code: String((error as { code?: string }).code || (error as Error).message || "upload"),
+          },
+          error,
+        );
+      }
       const url = uploaded.url;
       const storagePath = uploaded.path;
 
@@ -2246,11 +2279,23 @@ export default function ProfileAnonChat({
           moderationRequiresBlur: scanResult.requiresBlur,
         });
       } catch (persistError) {
-        // Storage ok + Firestore/callable fail → delete orphan object.
         try {
           await deleteChatMessageMediaAtPath(storagePath);
         } catch (cleanupError) {
           console.error("chat media orphan cleanup", cleanupError);
+          throw new ChatMediaSendError(
+            {
+              stage: "rollback_storage",
+              op: "deleteChatMessageMediaAtPath",
+              path: `chats/${chatId}/{object}`,
+              code: String(
+                (cleanupError as { code?: string }).code ||
+                  (cleanupError as Error).message ||
+                  "rollback",
+              ),
+            },
+            persistError,
+          );
         }
         throw persistError;
       }
@@ -2266,18 +2311,26 @@ export default function ProfileAnonChat({
       setUploadProgress(null);
     } catch (e) {
       console.error(e);
-      // No ghost bubble: drop optimistic row entirely on failed save.
+      const diag = classifyChatMediaSendFailure(e);
+      recordQaCriticalEvent("chat", "CHAT_MEDIA_SEND_FAIL", {
+        stage: diag.stage,
+        op: diag.op,
+        path: diag.path,
+        code: diag.code,
+        viewOnce: previewViewOnce,
+        source: previewSource || "",
+        type: previewType,
+      });
       setMessages((old) => old.filter((message) => message.clientId !== clientId));
       URL.revokeObjectURL(localPreviewUrl);
-      const code = String((e as { code?: string }).code || "");
-      const message = String((e as Error).message || "");
-      const uploadFailed = code.includes("storage") || message.includes("storage");
+      setUploadProgress(null);
       alert(
         isChatMediaStorageUnauthorized(e)
           ? t("chat_upload_unauthorized")
-          : uploadFailed
-            ? t("chat_upload_fail")
-            : t("chat_save_fail"),
+          : formatChatMediaFailAlert(
+              diag.stage === "upload" ? t("chat_upload_fail") : t("chat_save_fail"),
+              e,
+            ),
       );
     }
   }

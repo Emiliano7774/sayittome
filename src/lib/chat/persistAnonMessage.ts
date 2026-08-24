@@ -30,9 +30,14 @@ import {
   isFirestorePermissionDenied,
 } from "@/lib/stories/storyReplySnapshot";
 import { buildViewOncePublicBirthFields } from "@/lib/media/viewOncePolicy";
+import { ChatMediaSendError } from "@/lib/chat/chatMediaSendFailure";
 
 function livePersistAuthUid(fallbackUid: string) {
   return String(auth.currentUser?.uid || fallbackUid || "").trim();
+}
+
+function firebaseErrorCode(error: unknown) {
+  return String((error as { code?: string })?.code || (error as Error)?.message || "error");
 }
 
 async function commitViewOnceSecretWithRetry(input: {
@@ -48,7 +53,6 @@ async function commitViewOnceSecretWithRetry(input: {
     } catch (error) {
       lastError = error;
       const code = String((error as { code?: string })?.code || "");
-      // Idempotent success paths / non-retryable auth failures.
       if (
         code.includes("already-exists") ||
         code.includes("permission-denied") ||
@@ -482,10 +486,35 @@ export async function persistAnonChatMessage(
     const batch = writeBatch(db);
     batch.set(chatRef, chatMeta, { merge: true });
     batch.set(messageRef, payload);
-    await batch.commit();
+    try {
+      await batch.commit();
+    } catch (error) {
+      throw new ChatMediaSendError(
+        {
+          stage: "batch_write",
+          op: "writeBatch.commit",
+          path: `chats/${canonicalChatId}+mensajes/{id}`,
+          code: firebaseErrorCode(error),
+        },
+        error,
+      );
+    }
   }
 
-  await commitWithStoryReplyRulesFallback(messagePayload, commitPayload);
+  try {
+    await commitWithStoryReplyRulesFallback(messagePayload, commitPayload);
+  } catch (error) {
+    if (error instanceof ChatMediaSendError) throw error;
+    throw new ChatMediaSendError(
+      {
+        stage: "batch_write",
+        op: "commitWithStoryReplyRulesFallback",
+        path: `chats/${canonicalChatId}+mensajes/{id}`,
+        code: firebaseErrorCode(error),
+      },
+      error,
+    );
+  }
   const writeAckAt = Date.now();
   recordQaCriticalEvent("chat", "CHAT_MESSAGE_PERSISTED", {
     threadId: chatId,
@@ -515,10 +544,26 @@ export async function persistAnonChatMessage(
       // Drop unsealed bomb doc so UI/listener never keep a ghost bubble.
       try {
         await deleteDoc(messageRef);
-      } catch {
-        /* best-effort */
+      } catch (rollbackError) {
+        throw new ChatMediaSendError(
+          {
+            stage: "rollback_message",
+            op: "deleteDoc",
+            path: `chats/${canonicalChatId}/mensajes/{id}`,
+            code: firebaseErrorCode(rollbackError),
+          },
+          error,
+        );
       }
-      throw error;
+      throw new ChatMediaSendError(
+        {
+          stage: "view_once_commit",
+          op: "commitViewOnceSecret",
+          path: "callable:commitViewOnceSecret",
+          code: firebaseErrorCode(error),
+        },
+        error,
+      );
     }
   }
 
