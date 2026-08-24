@@ -1440,8 +1440,11 @@ export default function ProfileAnonChat({
           writeCachedChatMessages(
             chatId,
             merged
-              .filter((row) => row.status !== "sending" && row.status !== "error")
-              .map(uiMessageToCached),
+              .filter((row) => {
+                const status = (row as Message).status;
+                return status !== "sending" && status !== "error";
+              })
+              .map((row) => uiMessageToCached(row as Message)),
           );
           if (chatMessagesSignature(prev) === chatMessagesSignature(merged)) {
             return prev;
