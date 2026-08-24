@@ -2195,25 +2195,13 @@ export default function ProfileAnonChat({
     setReplyingTo(null);
 
     try {
-      let scanResult;
-      try {
-        const scanFile = new File(
-          [blob],
-          previewType,
-          { type: blob.type || (previewType === "video" ? "video/webm" : "image/jpeg") },
-        );
-        scanResult = await scanUploadFile(scanFile);
-      } catch (error) {
-        throw new ChatMediaSendError(
-          {
-            stage: "scan",
-            op: "scanUploadFile",
-            path: "client:nsfw",
-            code: String((error as { code?: string }).code || (error as Error).message || "scan"),
-          },
-          error,
-        );
-      }
+      const scanFile = new File(
+        [blob],
+        previewType,
+        { type: blob.type || (previewType === "video" ? "video/webm" : "image/jpeg") },
+      );
+      // Local NSFW must never abort send; uncertain/safe fallback + backend moderation.
+      const scanResult = await scanUploadFile(scanFile);
 
       let uploaded;
       try {
@@ -2285,16 +2273,16 @@ export default function ProfileAnonChat({
           console.error("chat media orphan cleanup", cleanupError);
           throw new ChatMediaSendError(
             {
-              stage: "rollback_storage",
+              stage: "cleanup",
               op: "deleteChatMessageMediaAtPath",
               path: `chats/${chatId}/{object}`,
               code: String(
                 (cleanupError as { code?: string }).code ||
                   (cleanupError as Error).message ||
-                  "rollback",
+                  "cleanup",
               ),
             },
-            persistError,
+            cleanupError,
           );
         }
         throw persistError;

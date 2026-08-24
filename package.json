@@ -107,6 +107,7 @@
     "test:chat-media-send-no-silent-discard": "node --experimental-strip-types scripts/chat-media-send-no-silent-discard.harness.mjs",
     "test:chat-media-send-persist": "node --experimental-strip-types scripts/chat-media-send-persist.harness.mjs",
     "test:chat-media-fail-telemetry": "node --experimental-strip-types scripts/chat-media-fail-telemetry.harness.mjs",
+    "test:chat-media-scan-fail-does-not-block": "node --experimental-strip-types scripts/chat-media-scan-fail-does-not-block.harness.mjs",
     "test:chat-media-prod-canary": "node --experimental-strip-types scripts/chat-media-prod-canary.mjs",
     "test:ssr-firebase-admin-externals": "node --experimental-strip-types scripts/ssr-firebase-admin-externals.harness.mjs",
     "test:view-once-claim": "node --experimental-strip-types scripts/view-once-claim.harness.mjs",

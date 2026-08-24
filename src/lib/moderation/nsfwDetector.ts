@@ -172,18 +172,16 @@ async function captureVideoFrame(videoSrc: string) {
 async function classifyElement(
   element: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement,
 ): Promise<NsfwScanResult> {
-  const model = await loadModel();
-  if (!model) {
-    return {
-      sensitive: false,
-      score: 0,
-      uncertain: false,
-      scannedAt: Date.now(),
-    };
-  }
+  try {
+    const model = await loadModel();
+    if (!model) return scanFailureFallback();
 
-  const predictions = await model.classify(element);
-  return evaluatePredictions(predictions);
+    const predictions = await model.classify(element);
+    return evaluatePredictions(predictions);
+  } catch (error) {
+    console.warn("nsfw classify failed", error);
+    return scanFailureFallback();
+  }
 }
 
 async function classifyFromElement(
@@ -210,6 +208,16 @@ function fallbackResult(): NsfwScanResult {
   };
 }
 
+/** Scanner crashed/unavailable — do not block send; mark uncertain for backend. */
+function scanFailureFallback(): NsfwScanResult {
+  return {
+    sensitive: false,
+    score: 0,
+    uncertain: true,
+    scannedAt: Date.now(),
+  };
+}
+
 export function getCachedNsfwScan(mediaKey: string): NsfwScanResult | null {
   return scanCache.get(mediaKey) ?? null;
 }
@@ -232,7 +240,10 @@ export async function scanImageBlob(blob: Blob): Promise<NsfwScanResult> {
   const objectUrl = URL.createObjectURL(blob);
   try {
     const img = await loadImageElement(objectUrl);
-    return classifyElement(img);
+    return await classifyElement(img);
+  } catch (error) {
+    console.warn("nsfw blob scan failed", error);
+    return scanFailureFallback();
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
@@ -255,7 +266,7 @@ export async function scanMediaElement(
       return rememberResult(mediaKey, await classifyFromElement(element));
     } catch (error) {
       console.warn("nsfw element scan failed", mediaKey, error);
-      return rememberResult(mediaKey, fallbackResult());
+      return rememberResult(mediaKey, scanFailureFallback());
     } finally {
       inflight.delete(mediaKey);
     }
@@ -291,7 +302,7 @@ export async function scanMediaUrl(
       return rememberResult(mediaKey, await classifyElement(element));
     } catch (error) {
       console.warn("nsfw scan failed", mediaKey, error);
-      return rememberResult(mediaKey, fallbackResult());
+      return rememberResult(mediaKey, scanFailureFallback());
     } finally {
       inflight.delete(mediaKey);
     }

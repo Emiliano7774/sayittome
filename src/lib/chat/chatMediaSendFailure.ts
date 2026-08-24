@@ -1,15 +1,13 @@
 /**
  * Sanitized media-send failure diagnostics (no tokens, mediaUrl, or PII bodies).
+ * Stages: scan | upload | persist | secret | cleanup
  */
 export type ChatMediaFailStage =
   | "scan"
   | "upload"
-  | "identity"
-  | "chat_read"
-  | "batch_write"
-  | "view_once_commit"
-  | "rollback_storage"
-  | "rollback_message"
+  | "persist"
+  | "secret"
+  | "cleanup"
   | "unknown";
 
 export type ChatMediaFailDiag = {
@@ -54,7 +52,6 @@ export function sanitizeFailCode(raw: unknown) {
     .slice(0, 80);
   if (!text) return "error";
   if (SAFE_CODE.test(text)) return text;
-  // Keep firebase-style codes; strip free text otherwise.
   const m = text.match(/([a-z]+\/[a-z0-9_-]+)/i);
   return m?.[1] || text.replace(/[^a-z0-9_./-]+/gi, "_").slice(0, 80);
 }
@@ -76,21 +73,21 @@ export function classifyChatMediaSendFailure(error: unknown): ChatMediaFailDiag 
   const message = String((error as Error)?.message || "").toLowerCase();
 
   if (name === "PersistIdentityError" || message.includes("identity")) {
-    return { stage: "identity", op: "resolvePersistMessageAuthor", path: "chats/{chatId}", code };
+    return { stage: "persist", op: "resolvePersistMessageAuthor", path: "chats/{chatId}", code };
   }
   if (code.includes("storage") || message.includes("storage")) {
     return { stage: "upload", op: "uploadBytesResumable", path: "chats/{chatId}/{object}", code };
   }
   if (code.includes("functions/") || message.includes("commitviewoncesecret")) {
     return {
-      stage: "view_once_commit",
+      stage: "secret",
       op: "commitViewOnceSecret",
       path: "callable:commitViewOnceSecret",
       code,
     };
   }
   if (code.includes("permission-denied") || message.includes("permission")) {
-    return { stage: "batch_write", op: "writeBatch.commit", path: "chats/{chatId}+mensajes", code };
+    return { stage: "persist", op: "writeBatch.commit", path: "chats/{chatId}+mensajes", code };
   }
   return { stage: "unknown", op: "sendMedia", path: "chat", code };
 }

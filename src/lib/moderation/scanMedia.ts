@@ -19,21 +19,19 @@ export function toMediaScanPayload(result: NsfwScanResult): MediaScanPayload {
   };
 }
 
+const SCAN_FAIL_PAYLOAD: MediaScanPayload = {
+  requiresBlur: false,
+  score: 0,
+  uncertain: true,
+  scannedAt: Date.now(),
+};
+
+/** Local NSFW is best-effort — never throw; send continues with uncertain fallback. */
 export async function scanUploadFile(file: File): Promise<MediaScanPayload> {
-  const kind = guessMediaFileKind(file);
+  try {
+    const kind = guessMediaFileKind(file);
 
-  if (kind !== "image" && kind !== "video") {
-    return {
-      requiresBlur: false,
-      score: 0,
-      uncertain: false,
-      scannedAt: Date.now(),
-    };
-  }
-
-  if (kind === "video") {
-    const frameBlob = await extractVideoFrameBlob(file);
-    if (!frameBlob) {
+    if (kind !== "image" && kind !== "video") {
       return {
         requiresBlur: false,
         score: 0,
@@ -41,10 +39,20 @@ export async function scanUploadFile(file: File): Promise<MediaScanPayload> {
         scannedAt: Date.now(),
       };
     }
-    return toMediaScanPayload(await scanImageBlob(frameBlob));
-  }
 
-  return toMediaScanPayload(await scanImageBlob(file));
+    if (kind === "video") {
+      const frameBlob = await extractVideoFrameBlob(file);
+      if (!frameBlob) {
+        return { ...SCAN_FAIL_PAYLOAD, scannedAt: Date.now() };
+      }
+      return toMediaScanPayload(await scanImageBlob(frameBlob));
+    }
+
+    return toMediaScanPayload(await scanImageBlob(file));
+  } catch (error) {
+    console.warn("scanUploadFile failed; continuing send", error);
+    return { ...SCAN_FAIL_PAYLOAD, scannedAt: Date.now() };
+  }
 }
 
 async function extractVideoFrameBlob(file: File): Promise<Blob | null> {

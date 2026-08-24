@@ -491,7 +491,7 @@ export async function persistAnonChatMessage(
     } catch (error) {
       throw new ChatMediaSendError(
         {
-          stage: "batch_write",
+          stage: "persist",
           op: "writeBatch.commit",
           path: `chats/${canonicalChatId}+mensajes/{id}`,
           code: firebaseErrorCode(error),
@@ -507,7 +507,7 @@ export async function persistAnonChatMessage(
     if (error instanceof ChatMediaSendError) throw error;
     throw new ChatMediaSendError(
       {
-        stage: "batch_write",
+        stage: "persist",
         op: "commitWithStoryReplyRulesFallback",
         path: `chats/${canonicalChatId}+mensajes/{id}`,
         code: firebaseErrorCode(error),
@@ -547,7 +547,7 @@ export async function persistAnonChatMessage(
       } catch (rollbackError) {
         throw new ChatMediaSendError(
           {
-            stage: "rollback_message",
+            stage: "cleanup",
             op: "deleteDoc",
             path: `chats/${canonicalChatId}/mensajes/{id}`,
             code: firebaseErrorCode(rollbackError),
@@ -557,7 +557,7 @@ export async function persistAnonChatMessage(
       }
       throw new ChatMediaSendError(
         {
-          stage: "view_once_commit",
+          stage: "secret",
           op: "commitViewOnceSecret",
           path: "callable:commitViewOnceSecret",
           code: firebaseErrorCode(error),
