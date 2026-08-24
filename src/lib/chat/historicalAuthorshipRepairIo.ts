@@ -1,9 +1,4 @@
-import {
-  FieldPath,
-  type DocumentSnapshot,
-  type QueryDocumentSnapshot,
-} from "firebase-admin/firestore";
-
+import { loadFirebaseAdminFirestore } from "@/lib/admin/firebaseAdminNative";
 import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 import {
   getRepairAdminDb,
@@ -23,7 +18,16 @@ import {
   paginateFullSubcollection,
   shouldIncludeDocMissingCreatedAt,
 } from "@/lib/chat/historicalRepairSafety";
+
 const MESSAGE_COLLECTIONS = ["mensajes", "messages"] as const;
+
+type AdminDocSnap = {
+  id: string;
+  exists: boolean;
+  data: () => Record<string, unknown> | undefined;
+  updateTime?: { toDate?: () => Date } | string;
+  createTime?: { toDate?: () => Date } | string;
+};
 
 export type ListedMensajeDoc = Record<string, unknown> & {
   id: string;
@@ -48,7 +52,7 @@ function createdAtIso(value: unknown) {
 }
 
 function snapToListed(
-  snap: QueryDocumentSnapshot | DocumentSnapshot,
+  snap: AdminDocSnap,
   legacy = "",
   chatId = "",
 ) {
@@ -78,6 +82,7 @@ export async function listMensajesPage(
   collectionName: (typeof MESSAGE_COLLECTIONS)[number] = "mensajes",
 ): Promise<{ docs: ListedMensajeDoc[]; nextPageToken: string }> {
   const db = getRepairAdminDb();
+  const { FieldPath } = loadFirebaseAdminFirestore();
   let query = db
     .collection("chats")
     .doc(chatId)
@@ -86,7 +91,7 @@ export async function listMensajesPage(
     .limit(pageSize);
   if (pageToken) query = query.startAfter(pageToken);
   const snap = await query.get();
-  const docs = snap.docs.map((doc) =>
+  const docs = (snap.docs as AdminDocSnap[]).map((doc) =>
     snapToListed(doc, collectionName === "messages" ? "legacy" : "", chatId),
   );
   const nextPageToken =
@@ -108,7 +113,7 @@ export async function rereadMensajesByIds(
       db.collection("chats").doc(chatId).collection(collectionName).doc(id),
     );
     if (refs.length === 0) continue;
-    const snaps = await db.getAll(...refs);
+    const snaps = (await db.getAll(...refs)) as AdminDocSnap[];
     for (const snap of snaps) {
       if (!snap.exists) continue;
       out.push(snapToListed(snap, collectionName === "messages" ? "legacy" : "", chatId));

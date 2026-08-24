@@ -12,11 +12,11 @@ function resolveBuildSha() {
 }
 
 const nextConfig: NextConfig = {
-  // firebase-admin must resolve as a real package on Cloud Functions. Turbopack
-  // rewrites it to hashed aliases (firebase-admin-<hash>) that Firebase SSR
-  // packaging often drops (glob skips Windows symlinks) → Linux MODULE_NOT_FOUND.
-  // The next bin shim materializes aliases after every build; hosting.predeploy
-  // re-materializes + gates the packaged .firebase/<site>/functions artifact.
+  // firebase-admin must not be statically imported into the SSR graph.
+  // Turbopack rewrites import("firebase-admin/…") → firebase-admin-<hash>
+  // externals that Firebase packaging drops on Linux GCF → MODULE_NOT_FOUND.
+  // Load Admin only via src/lib/admin/firebaseAdminNative (opaque require).
+  // Deploy gates FAIL if any firebase-admin-<hash> remains in .next/server.
   serverExternalPackages: [
     "firebase-admin",
     "firebase-admin/app",

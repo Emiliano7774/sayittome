@@ -4,7 +4,7 @@
  * Unfrozen orchestration lives in historicalAuthorshipRepairApplyCore (injected backend only).
  * Does not use the REST API-key commit path. Does not touch 107cae5 persist.
  */
-import type { Firestore } from "firebase-admin/firestore";
+import type { Firestore } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 import {
   authorPatchFields,
   evaluateLiveIdentityOcc,
@@ -68,7 +68,8 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
     "@/lib/chat/historicalAuthorshipRepairIo"
   );
   const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
-  const { FieldValue } = await import("firebase-admin/firestore");
+  const { loadFirebaseAdminFirestore } = await import("@/lib/admin/firebaseAdminNative");
+  const { FieldValue } = loadFirebaseAdminFirestore();
 
   const materialize = (patch: Record<string, unknown>) => {
     const out: Record<string, unknown> = {};
@@ -114,7 +115,7 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
     },
     async commitApply(plan) {
       const db = getRepairAdminDb();
-      await db.runTransaction(async (tx) => {
+      await db.runTransaction(async (tx: any) => {
         const chatRef = db.collection("chats").doc(plan.chatId);
         const repairRef = db.collection("authorshipRepairs").doc(plan.repairId);
         const locked = [...plan.applied, ...plan.noop];
@@ -131,22 +132,23 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
         const previewRef = plan.consumePreviewId
           ? db.collection("authorshipRepairPreviews").doc(plan.consumePreviewId)
           : null;
-        const [chatSnap, repairSnap, ownerSnap, usernameSnap, previewSnap, ...messageSnaps] = await Promise.all([
-          tx.get(chatRef),
-          tx.get(repairRef),
-          ownerRef ? tx.get(ownerRef) : Promise.resolve(null),
-          usernameQuery ? tx.get(usernameQuery) : Promise.resolve(null),
-          previewRef ? tx.get(previewRef) : Promise.resolve(null),
-          ...messageRefs.map((ref) => tx.get(ref)),
-        ]);
+        const [chatSnap, repairSnap, ownerSnap, usernameSnap, previewSnap, ...messageSnaps] =
+          (await Promise.all([
+            tx.get(chatRef),
+            tx.get(repairRef),
+            ownerRef ? tx.get(ownerRef) : Promise.resolve(null),
+            usernameQuery ? tx.get(usernameQuery) : Promise.resolve(null),
+            previewRef ? tx.get(previewRef) : Promise.resolve(null),
+            ...messageRefs.map((ref) => tx.get(ref)),
+          ])) as any[];
         if (previewRef) {
-          if (!previewSnap || !("exists" in previewSnap) || !previewSnap.exists) {
+          if (!previewSnap?.exists) {
             throw new Error("preview_missing");
           }
           if (previewSnap.data()?.consumed === true) throw new Error("preview_consumed");
         }
         const ownerLookupUid =
-          usernameSnap && "docs" in usernameSnap && usernameSnap.size === 1
+          usernameSnap?.docs && usernameSnap.size === 1
             ? usernameSnap.docs[0].id
             : "";
 
@@ -257,7 +259,7 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
     },
     async commitRollback(plan) {
       const db = getRepairAdminDb();
-      await db.runTransaction(async (tx) => {
+      await db.runTransaction(async (tx: any) => {
         const chatRef = db.collection("chats").doc(plan.chatId);
         const repairRef = db.collection("authorshipRepairs").doc(plan.repairId);
         const locked = [...plan.restore, ...plan.noop];
@@ -271,18 +273,19 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
               .where("usernameLower", "==", plan.identities.ownerUsernameSlug)
               .limit(3)
           : null;
-        const [chatSnap, repairSnap, ownerSnap, usernameSnap, ...messageSnaps] = await Promise.all([
-          tx.get(chatRef),
-          tx.get(repairRef),
-          ownerRef ? tx.get(ownerRef) : Promise.resolve(null),
-          usernameQuery ? tx.get(usernameQuery) : Promise.resolve(null),
-          ...messageRefs.map((ref) => tx.get(ref)),
-        ]);
+        const [chatSnap, repairSnap, ownerSnap, usernameSnap, ...messageSnaps] =
+          (await Promise.all([
+            tx.get(chatRef),
+            tx.get(repairRef),
+            ownerRef ? tx.get(ownerRef) : Promise.resolve(null),
+            usernameQuery ? tx.get(usernameQuery) : Promise.resolve(null),
+            ...messageRefs.map((ref) => tx.get(ref)),
+          ])) as any[];
         if (String(repairSnap.data()?.status || "") !== "applied") {
           throw new Error("repair_not_applied");
         }
         const ownerLookupUid =
-          usernameSnap && "docs" in usernameSnap && usernameSnap.size === 1
+          usernameSnap?.docs && usernameSnap.size === 1
             ? usernameSnap.docs[0].id
             : "";
         const liveIdentity = evaluateLiveIdentityOcc({

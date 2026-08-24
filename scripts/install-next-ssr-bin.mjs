@@ -56,4 +56,4 @@ try {
   /* windows */
 }
 
-console.log("[install-next-ssr-bin] installed node_modules/.bin/next SSR materialize shim");
+console.log("[install-next-ssr-bin] installed node_modules/.bin/next SSR zero-hash shim");

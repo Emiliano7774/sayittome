@@ -1,111 +1,172 @@
 /**
- * SSR_FIREBASE_ADMIN_EXTERNALS
- * Guards Turbopack hashed firebase-admin aliases that break Firebase SSR.
- * Firebase Hosting frameworks runs next build (not npm scripts); the
- * node_modules/.bin/next shim must materialize aliases after every build.
- * Hosting predeploy must gate the packaged .firebase/<site>/functions artifact.
+ * SSR_FIREBASE_ADMIN_ZERO_HASH
+ * FAIL CLOSED:
+ *  1) local .next/server must have ZERO firebase-admin-<hash>
+ *  2) .firebase/<site>/functions must exist and match local BUILD_ID
+ *     (stale/missing package → sync from current .next, then re-assert;
+ *     never PASS by skipping .firebase)
+ * Materializing hashed aliases is NOT a PASS.
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
-const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-const {
-  discoverHashedExternals,
-  assertHashedExternalsResolved,
-  isRealPackageDir,
-  collectHashedRefsFromDir,
-} = require("./materialize-next-hashed-externals.cjs");
+const { collectHashedRefsFromDir } = require("./materialize-next-hashed-externals.cjs");
 
-assert.match(
-  String(pkg.scripts?.postinstall || ""),
-  /install-next-ssr-bin/,
-  "postinstall must install next bin shim (Firebase ignores npm postbuild)",
+const SITE = "sayittome-app";
+const FIREBASE_ADMIN_HASHED = /firebase-admin-[a-f0-9]+/gi;
+const FIREBASE_ADMIN_LITERAL =
+  /from\s+["']firebase-admin(?:\/[^"']*)?["']|import\s*\(\s*["']firebase-admin(?:\/[^"']*)?["']\s*\)|require\s*\(\s*["']firebase-admin(?:\/[^"']*)?["']\s*\)/;
+
+function collectRefs(dir) {
+  return [...collectHashedRefsFromDir(dir)];
+}
+
+function rawScan(dir, out = []) {
+  if (!existsSync(dir)) return out;
+  for (const name of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, name.name);
+    if (name.isDirectory()) {
+      rawScan(p, out);
+      continue;
+    }
+    if (!name.name.endsWith(".js") && !name.name.endsWith(".json")) continue;
+    let text;
+    try {
+      text = readFileSync(p, "utf8");
+    } catch {
+      continue;
+    }
+    const matches = text.match(FIREBASE_ADMIN_HASHED);
+    if (matches) out.push(...matches);
+  }
+  return out;
+}
+
+function assertZeroHashedRefs(label, dir) {
+  if (!existsSync(dir)) {
+    throw new Error(`${label}: missing ${dir}`);
+  }
+  const refs = collectRefs(dir);
+  const raw = [...new Set(rawScan(dir))];
+  const all = [...new Set([...refs, ...raw])];
+  assert.equal(
+    all.length,
+    0,
+    `${label}: expected ZERO firebase-admin-<hash> refs, found: ${all.join(", ")}`,
+  );
+  return all;
+}
+
+function scanSrcForStaticAdminImports() {
+  const hits = [];
+  function walk(dir) {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, name.name);
+      if (name.isDirectory()) {
+        if (name.name === "node_modules" || name.name === ".next") continue;
+        walk(p);
+        continue;
+      }
+      if (!/\.(ts|tsx|js|mjs|cjs)$/.test(name.name)) continue;
+      if (p.includes(`${join("lib", "admin", "firebaseAdminNative")}`)) continue;
+      const text = readFileSync(p, "utf8");
+      if (FIREBASE_ADMIN_LITERAL.test(text)) {
+        hits.push(p.replace(root + "\\", "").replace(root + "/", ""));
+      }
+      FIREBASE_ADMIN_LITERAL.lastIndex = 0;
+    }
+  }
+  walk(join(root, "src"));
+  return hits;
+}
+
+const nativeSrc = readFileSync(join(root, "src/lib/admin/firebaseAdminNative.ts"), "utf8");
+assert.match(nativeSrc, /createRequire|Function\("return require"\)/);
+assert.doesNotMatch(
+  nativeSrc,
+  /from\s+["']firebase-admin|import\s*\(\s*["']firebase-admin|require\s*\(\s*["']firebase-admin/,
+  "firebaseAdminNative must not contain static firebase-admin literals",
 );
-assert.ok(existsSync(join(root, "scripts/bin-next/next")));
-assert.ok(existsSync(join(root, "scripts/materialize-next-hashed-externals.cjs")));
-assert.ok(existsSync(join(root, "scripts/install-next-ssr-bin.mjs")));
-assert.ok(existsSync(join(root, "scripts/materialize-ssr-functions-package.mjs")));
+
+const staticHits = scanSrcForStaticAdminImports();
+assert.equal(
+  staticHits.length,
+  0,
+  `src must not statically import firebase-admin; use firebaseAdminNative. hits: ${staticHits.join(", ")}`,
+);
+
+const serverDir = join(root, ".next", "server");
+assert.ok(existsSync(serverDir), ".next/server missing — run npm run build first");
+const localRefs = assertZeroHashedRefs("local .next/server", serverDir);
+const localBuildId = readFileSync(join(root, ".next", "BUILD_ID"), "utf8").trim();
+
+const packagedServer = join(root, ".firebase", SITE, "functions", ".next", "server");
+const packagedBuildIdPath = join(root, ".firebase", SITE, "functions", ".next", "BUILD_ID");
+
+function packagedIsFresh() {
+  if (!existsSync(packagedServer) || !existsSync(packagedBuildIdPath)) return false;
+  const packagedBuildId = readFileSync(packagedBuildIdPath, "utf8").trim();
+  return packagedBuildId === localBuildId;
+}
+
+let syncRan = false;
+if (!packagedIsFresh()) {
+  // Missing OR stale (old BUILD_ID / old hashed chunks) → force rebuild from current .next
+  const sync = spawnSync(
+    process.execPath,
+    [join(root, "scripts/sync-ssr-firebase-package-from-next.mjs")],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (sync.status !== 0) {
+    throw new Error(
+      `failed to sync .firebase package from .next:\n${sync.stdout || ""}\n${sync.stderr || ""}`,
+    );
+  }
+  syncRan = true;
+}
+
+assert.ok(
+  existsSync(packagedServer),
+  `.firebase/${SITE}/functions/.next/server missing after sync — refuse false PASS`,
+);
+const packagedBuildId = readFileSync(packagedBuildIdPath, "utf8").trim();
+assert.equal(
+  packagedBuildId,
+  localBuildId,
+  `stale .firebase package BUILD_ID=${packagedBuildId} !== local ${localBuildId}`,
+);
+const packagedRefs = assertZeroHashedRefs(`packaged ${SITE} .next/server`, packagedServer);
+
+const nextConfig = readFileSync(join(root, "next.config.ts"), "utf8");
+assert.match(nextConfig, /serverExternalPackages/);
 
 const firebaseJson = JSON.parse(readFileSync(join(root, "firebase.json"), "utf8"));
 const predeploy = firebaseJson.hosting?.predeploy || [];
 assert.ok(
-  predeploy.some((s) => String(s).includes("materialize-ssr-functions-package")),
-  "firebase.json hosting.predeploy must gate packaged SSR hashed externals",
+  predeploy.some((s) => String(s).includes("ssr-firebase-admin-zero-hash")),
+  "firebase.json hosting.predeploy must run zero-hash gate",
 );
-
-const nextConfig = readFileSync(join(root, "next.config.ts"), "utf8");
-assert.match(nextConfig, /serverExternalPackages/);
-assert.match(nextConfig, /firebase-admin/);
-
-const shimSrc = readFileSync(join(root, "scripts/bin-next/next"), "utf8");
-assert.match(shimSrc, /materializeAndAssert|materializeNextHashedExternals/);
-assert.match(shimSrc, /args\[0\] === "build"/);
-assert.match(shimSrc, /materializeAndAssert/);
-
-const serverDir = join(root, ".next", "server");
-assert.ok(existsSync(serverDir), ".next/server missing — run npm run build first");
-
-const refs = [...collectHashedRefsFromDir(serverDir)];
-const discovery = discoverHashedExternals({ cwd: root });
-
-// Webpack builds should ideally emit zero hashed refs. If any remain (Turbopack
-// or residual), they MUST already be real dirs — do NOT silently materialize.
-if (refs.length || discovery.entries.length) {
-  const asserted = assertHashedExternalsResolved({ cwd: root });
-  for (const alias of new Set([...refs, ...discovery.entries.map((e) => e.name)])) {
-    assert.ok(
-      isRealPackageDir(join(root, ".next", "node_modules", alias)),
-      "hashed alias " + alias + " must be a real directory (not symlink) for GCF",
-    );
-  }
-  assert.equal(asserted.resolved.length, discovery.entries.length);
-}
-
-const packaged = join(root, ".firebase", "sayittome-app", "functions");
-let packagedRefs = [];
-if (existsSync(join(packaged, "package.json"))) {
-  const packagedPkg = JSON.parse(readFileSync(join(packaged, "package.json"), "utf8"));
-  assert.ok(
-    packagedPkg.dependencies?.["firebase-admin"] || packagedPkg.dependencies?.next,
-    "packaged SSR function must declare runtime deps",
-  );
-  packagedRefs = [...collectHashedRefsFromDir(join(packaged, ".next", "server"))];
-  if (packagedRefs.length) {
-    // FAIL closed — do not auto-fix here; predeploy gate must have materialized.
-    assertHashedExternalsResolved({
-      cwd: root,
-      nextRoot: join(packaged, ".next"),
-      nextNodeModules: join(packaged, ".next", "node_modules"),
-    });
-    for (const alias of packagedRefs) {
-      const aliasPath = join(packaged, ".next", "node_modules", alias);
-      assert.ok(isRealPackageDir(aliasPath), "packaged alias " + alias + " must be real dir");
-      const st = lstatSync(aliasPath);
-      assert.equal(st.isSymbolicLink(), false, "packaged " + alias + " must not be symlink");
-    }
-  }
-}
 
 console.log(
   JSON.stringify(
     {
-      gate: "SSR_FIREBASE_ADMIN_EXTERNALS",
+      gate: "SSR_FIREBASE_ADMIN_ZERO_HASH",
       pass: true,
-      hashedRefsInNextServer: refs,
-      discovered: discovery.entries.map((e) => e.name),
-      webpackPreferred: false,
-      materializeAssertAfterBuild: /materializeAndAssert/.test(shimSrc),
+      hashedRefsInNextServer: localRefs,
       packagedHashedRefs: packagedRefs,
-      packagedPresent: existsSync(join(packaged, "package.json")),
+      buildId: localBuildId,
+      packagedBuildId,
+      syncRan,
+      staticSrcHits: staticHits,
+      materializeIsNotPass: true,
+      firebasePackageRequired: true,
     },
     null,
     2,

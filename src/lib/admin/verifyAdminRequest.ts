@@ -48,8 +48,10 @@ export function assertAdminAllowlist(email: string) {
 
 async function verifyIdTokenWithAdminSdk(token: string): Promise<VerifiedFirebaseUser> {
   const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
-  const { getAuth } = await import("firebase-admin/auth");
+  const { loadFirebaseAdminAuth } = await import("@/lib/admin/firebaseAdminNative");
   getRepairAdminDb();
+  const { getAuth } = loadFirebaseAdminAuth();
+  // checkRevoked=true — non-negotiable
   const decoded = await getAuth().verifyIdToken(token, true);
   if (decoded.email_verified !== true) {
     throw Object.assign(new Error("unauthorized"), { status: 401 });
@@ -60,10 +62,42 @@ async function verifyIdTokenWithAdminSdk(token: string): Promise<VerifiedFirebas
   };
 }
 
+async function verifyIdTokenViaIdentityToolkit(token: string): Promise<VerifiedFirebaseUser> {
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIRESTORE_API_KEY)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken: token }),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
+  }
+  const payload = (await response.json()) as {
+    users?: Array<{
+      email?: string;
+      localId?: string;
+      disabled?: boolean;
+      emailVerified?: boolean;
+      validSince?: string;
+    }>;
+  };
+  const user = payload.users?.[0];
+  if (!user || user.disabled === true || user.emailVerified !== true) {
+    throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
+  }
+  return {
+    email: String(user.email || "").trim().toLowerCase(),
+    uid: String(user.localId || ""),
+  };
+}
+
 /**
  * Requires Authorization: Bearer <Firebase ID token> and resolves the Firebase
  * user without trusting a UID or email supplied by the client.
- * Non-admin callers may fall back to Identity Toolkit when Admin SDK is down.
+ * Admin SDK first (revoke check); Identity Toolkit only on infra/503.
  */
 export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFirebaseUser> {
   const token = readBearerToken(req);
@@ -76,35 +110,7 @@ export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFireb
   }
 
   try {
-    const response = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIRESTORE_API_KEY)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: token }),
-        cache: "no-store",
-      },
-    );
-    if (!response.ok) {
-      throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
-    }
-    const payload = (await response.json()) as {
-      users?: Array<{
-        email?: string;
-        localId?: string;
-        disabled?: boolean;
-        emailVerified?: boolean;
-        validSince?: string;
-      }>;
-    };
-    const user = payload.users?.[0];
-    if (!user || user.disabled === true || user.emailVerified !== true) {
-      throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
-    }
-    return {
-      email: String(user.email || "").trim().toLowerCase(),
-      uid: String(user.localId || ""),
-    };
+    return await verifyIdTokenViaIdentityToolkit(token);
   } catch (error) {
     const status = Number((error as { status?: number })?.status || 0);
     if (status === 403) throw error;
@@ -114,9 +120,9 @@ export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFireb
 
 /**
  * Admin reads/writes: Bearer Firebase ID token.
- * Prefer Admin SDK; fall back to Identity Toolkit when the Admin SDK is
- * unavailable (503) so Hosting API routes still work. Allowlist is always enforced.
- * Never trusts x-admin-email.
+ * Prefer Admin SDK with verifyIdToken(token, true) revoke check.
+ * Fall back to Identity Toolkit only when Admin SDK is unavailable (503/infra).
+ * Allowlist is always enforced. Never trusts x-admin-email.
  */
 export async function verifyAdminIdToken(req: Request): Promise<VerifiedAdmin> {
   const token = readBearerToken(req);
@@ -137,7 +143,7 @@ export async function verifyAdminIdToken(req: Request): Promise<VerifiedAdmin> {
 
   if (!verified) {
     try {
-      verified = await verifyFirebaseIdToken(req);
+      verified = await verifyIdTokenViaIdentityToolkit(token);
     } catch {
       const mapped = mapAdminAuthFailure(adminSdkError || new Error("unauthorized"));
       throw Object.assign(new Error(mapped.error), { status: mapped.status });

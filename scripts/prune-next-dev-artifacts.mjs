@@ -17,12 +17,19 @@ for (const dir of targets) {
   console.log(`[prune-next-dev-artifacts] removed ${dir}`);
 }
 
+// Zero-hash assert only — do NOT materialize aliases as a success path.
 const require = createRequire(import.meta.url);
-const { materializeAndAssert } = require("./materialize-next-hashed-externals.cjs");
-const materialized = materializeAndAssert();
-console.log(
-  `[prune-next-dev-artifacts] hashed externals scanned=${materialized.scanned} materialized=${materialized.fixed.length} asserted=${materialized.asserted.resolved.length}`,
-);
+const { collectHashedRefsFromDir } = require("./materialize-next-hashed-externals.cjs");
+const serverDir = join(".next", "server");
+if (existsSync(serverDir)) {
+  const refs = [...collectHashedRefsFromDir(serverDir)];
+  if (refs.length) {
+    console.error(
+      `[prune-next-dev-artifacts] FAIL zero-hash: ${refs.join(", ")} — use firebaseAdminNative`,
+    );
+    process.exit(1);
+  }
+  console.log("[prune-next-dev-artifacts] zero-hash OK");
+}
 
-// Keep ESM materialize module in sync for harnesses that import it.
 void pathToFileURL;

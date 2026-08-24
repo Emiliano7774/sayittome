@@ -318,11 +318,13 @@ check(
     !/user-chats[\s\S]{0,400}x-admin-email/.test(feedSrc),
 );
 check(
-  "ADMIN_VERIFY_NO_REST_FALLBACK",
+  "ADMIN_VERIFY_ADMIN_SDK_FIRST_REVOKE",
   /export async function verifyAdminIdToken[\s\S]*verifyIdTokenWithAdminSdk[\s\S]*assertAdminAllowlist/.test(
     verifySrc,
   ) &&
-    !/export async function verifyAdminIdToken[\s\S]*accounts:lookup/.test(verifySrc),
+    verifySrc.includes("verifyIdToken(token, true)") &&
+    verifySrc.includes("verifyIdTokenViaIdentityToolkit") &&
+    /Hard auth failures stay hard/.test(verifySrc),
 );
 check(
   "LISTENER_GENERATION_BOTH_COLLECTIONS",

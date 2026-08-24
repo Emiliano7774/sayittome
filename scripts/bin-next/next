@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * Firebase Hosting frameworks invokes `next build` directly (ignores npm
- * scripts/postbuild). This shim replaces node_modules/.bin/next so every build
- * materializes Turbopack hashed externals (and asserts they resolve) before
- * Firebase packages the SSR Cloud Function for Linux GCF.
+ * Firebase Hosting frameworks invokes `next build` directly. After build,
+ * FAIL CLOSED if any firebase-admin-<hash> remains in .next/server.
+ * Materializing aliases is NOT success — source must use opaque native require.
  */
 const { spawnSync } = require("node:child_process");
-const { existsSync } = require("node:fs");
+const { existsSync, readdirSync, readFileSync } = require("node:fs");
 const { join, resolve } = require("node:path");
 
 const root = resolve(__dirname, "..", "..");
@@ -25,14 +24,42 @@ const result = spawnSync(process.execPath, [realNext, ...args], {
 
 const code = result.status == null ? 1 : result.status;
 if (code === 0 && args[0] === "build") {
-  const { materializeAndAssert } = require("../materialize-next-hashed-externals.cjs");
-  const out = materializeAndAssert({
-    cwd: process.cwd(),
-    nextNodeModules: join(process.cwd(), ".next", "node_modules"),
-  });
-  console.log(
-    `[next-ssr-bin] hashed externals scanned=${out.scanned} materialized=${out.fixed.length} ok=${out.asserted.resolved.length}`,
-  );
+  const { collectHashedRefsFromDir } = require("../materialize-next-hashed-externals.cjs");
+  const serverDir = join(process.cwd(), ".next", "server");
+  const refs = [...collectHashedRefsFromDir(serverDir)];
+  const FIREBASE_ADMIN_HASHED = /firebase-admin-[a-f0-9]+/gi;
+  const raw = new Set();
+  function walk(dir) {
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, name.name);
+      if (name.isDirectory()) {
+        walk(p);
+        continue;
+      }
+      if (!name.name.endsWith(".js") && !name.name.endsWith(".json")) continue;
+      let text;
+      try {
+        text = readFileSync(p, "utf8");
+      } catch {
+        continue;
+      }
+      for (const m of text.matchAll(FIREBASE_ADMIN_HASHED)) raw.add(m[0]);
+    }
+  }
+  walk(serverDir);
+  const all = [...new Set([...refs, ...raw])];
+  if (all.length) {
+    console.error(
+      "[next-ssr-bin] FAIL: firebase-admin-<hash> still in .next/server:",
+      all.join(", "),
+    );
+    console.error(
+      "[next-ssr-bin] Use src/lib/admin/firebaseAdminNative.ts (opaque require). Materialize is NOT a fix.",
+    );
+    process.exit(1);
+  }
+  console.log("[next-ssr-bin] zero-hash gate PASS (no firebase-admin-<hash> in .next/server)");
 }
 
 process.exit(code);

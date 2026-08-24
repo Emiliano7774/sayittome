@@ -2,7 +2,7 @@
   "hosting": {
     "source": ".",
     "predeploy": [
-      "node scripts/materialize-ssr-functions-package.mjs"
+      "node scripts/ssr-firebase-admin-zero-hash-predeploy.mjs"
     ],
     "ignore": [
       "firebase.json",

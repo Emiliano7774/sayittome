@@ -2,18 +2,22 @@
  * Server-only Admin SDK accessor for historical authorship repair writes.
  * Callers MUST check HISTORICAL_REPAIR_APPLY_FROZEN before invoking this.
  *
+ * Loads firebase-admin only via firebaseAdminNative (opaque require) so Turbopack
+ * cannot emit firebase-admin-<hash> externals that break GCF Linux SSR.
+ *
  * TODO: wire Next API Admin credentials (FIREBASE_SERVICE_ACCOUNT_JSON or
- * GOOGLE_APPLICATION_CREDENTIALS). Until then getRepairAdminDb() fails closed.
- * APPLY_FROZEN denies apply/rollback before this module is reached.
+ * GOOGLE_APPLICATION_CREDENTIALS). Until then getRepairAdminDb() fails closed
+ * when ADC/SA are missing. APPLY_FROZEN denies apply/rollback before this
+ * module is reached for writes.
  */
 import {
-  applicationDefault,
-  cert,
-  getApps,
-  initializeApp,
-  type ServiceAccount,
-} from "firebase-admin/app";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+  loadFirebaseAdminApp,
+  loadFirebaseAdminFirestore,
+} from "@/lib/admin/firebaseAdminNative";
+
+/** Opaque Admin Firestore handle — methods resolved at runtime via native SDK. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Firestore = any;
 
 export { evaluateLiveIdentityOcc } from "@/lib/chat/historicalAuthorshipRepair";
 
@@ -52,6 +56,9 @@ function resolveAdminProjectId(explicit?: string) {
 export function getRepairAdminDb(): Firestore {
   if (cachedDb) return cachedDb;
 
+  const { applicationDefault, cert, getApps, initializeApp } = loadFirebaseAdminApp();
+  const { getFirestore } = loadFirebaseAdminFirestore();
+
   if (getApps().length === 0) {
     const serviceAccount = parseServiceAccount();
     const hasAdc = Boolean(
@@ -63,7 +70,7 @@ export function getRepairAdminDb(): Firestore {
       if (serviceAccount?.client_email && serviceAccount.private_key) {
         const projectId = resolveAdminProjectId(serviceAccount.project_id);
         initializeApp({
-          credential: cert(serviceAccount as ServiceAccount),
+          credential: cert(serviceAccount),
           projectId,
         });
       } else if (hasAdc) {
@@ -87,7 +94,7 @@ export function getRepairAdminDb(): Firestore {
   }
 
   try {
-    cachedDb = getFirestore();
+    cachedDb = getFirestore() as Firestore;
     return cachedDb;
   } catch {
     throw Object.assign(new Error("admin_sdk_unavailable"), { status: 503 });

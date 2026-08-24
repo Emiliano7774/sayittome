@@ -4,7 +4,7 @@
  */
 import "server-only";
 
-import type { Firestore } from "firebase-admin/firestore";
+import type { Firestore } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 
 export type UsuarioModerationTagAction = "tag_roleplay" | "clear_moderation_tag";
 
@@ -63,7 +63,8 @@ async function resolveDeps(
 ): Promise<UsuarioModerationTagAdminDeps> {
   if (deps) return deps;
   const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
-  const { FieldValue } = await import("firebase-admin/firestore");
+  const { loadFirebaseAdminFirestore } = await import("@/lib/admin/firebaseAdminNative");
+  const { FieldValue } = loadFirebaseAdminFirestore();
   const db = getRepairAdminDb() as Firestore;
   return {
     getUsuarioRef: (uid: string) => db.collection("usuarios").doc(uid),

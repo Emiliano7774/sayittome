@@ -1,4 +1,3 @@
-import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 import {
   getFirestoreDoc,
   runFilteredCollectionQueryAll,
@@ -49,6 +48,7 @@ function mergeOwnedRows(
 async function resolveProfileUidExactAdmin(username: string) {
   const clean = String(username || "").trim();
   if (!clean) return "";
+  const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
   const db = getRepairAdminDb();
   const lower = clean.toLowerCase();
   const lookups: Array<[string, string]> = [["username", clean]];
@@ -107,6 +107,7 @@ async function resolveProfileUidExactRest(username: string) {
 async function collectFilteredChatsAdmin(field: string, value: string) {
   if (!value) return [] as Record<string, unknown>[];
 
+  const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
   const db = getRepairAdminDb();
   try {
     const snap = await db
@@ -115,14 +116,14 @@ async function collectFilteredChatsAdmin(field: string, value: string) {
       .orderBy("updatedAt", "desc")
       .limit(200)
       .get();
-    return snap.docs.map((docSnap) =>
-      rowFromAdminDoc(docSnap.id, docSnap.data() as Record<string, unknown>),
+    return snap.docs.map((docSnap: { id: string; data: () => Record<string, unknown> }) =>
+      rowFromAdminDoc(docSnap.id, docSnap.data()),
     );
   } catch {
     try {
       const snap = await db.collection("chats").where(field, "==", value).limit(200).get();
-      return snap.docs.map((docSnap) =>
-        rowFromAdminDoc(docSnap.id, docSnap.data() as Record<string, unknown>),
+      return snap.docs.map((docSnap: { id: string; data: () => Record<string, unknown> }) =>
+        rowFromAdminDoc(docSnap.id, docSnap.data()),
       );
     } catch {
       return [];
