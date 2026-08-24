@@ -5,7 +5,9 @@
  */
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const targets = [join(".next", "dev"), join(".next", "cache", "turbopack")];
 
@@ -14,3 +16,15 @@ for (const dir of targets) {
   await rm(dir, { recursive: true, force: true });
   console.log(`[prune-next-dev-artifacts] removed ${dir}`);
 }
+
+const require = createRequire(import.meta.url);
+const { materializeNextHashedExternals } = require("./materialize-next-hashed-externals.cjs");
+const materialized = materializeNextHashedExternals();
+if (materialized.fixed.length || materialized.scanned) {
+  console.log(
+    `[prune-next-dev-artifacts] hashed externals scanned=${materialized.scanned} materialized=${materialized.fixed.length}`,
+  );
+}
+
+// Keep ESM materialize module in sync for harnesses that import it.
+void pathToFileURL;

@@ -57,6 +57,7 @@ const builtAt = new Date().toISOString();
 console.log(`[deploy:hosting] start ${builtAt} sha=${sha}`);
 
 await ensureCleanDist();
+await run("node", ["scripts/install-next-ssr-bin.mjs"]);
 writeFileSync(
   "public/build-release.json",
   `${JSON.stringify({ sha, builtAt, source: "deploy:hosting" }, null, 2)}\n`,

@@ -1,0 +1,10 @@
+/**
+ * Re-export CJS materializer for ESM harnesses/tools.
+ */
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+export const {
+  materializeNextHashedExternals,
+  listHashedExternals,
+} = require("./materialize-next-hashed-externals.cjs");

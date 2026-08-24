@@ -12,6 +12,15 @@ function resolveBuildSha() {
 }
 
 const nextConfig: NextConfig = {
+  // firebase-admin must resolve as a real package on Cloud Functions. Turbopack
+  // rewrites it to hashed aliases (firebase-admin-<hash>) that Firebase SSR
+  // packaging does not install — production builds use `next build --webpack`.
+  serverExternalPackages: [
+    "firebase-admin",
+    "firebase-admin/app",
+    "firebase-admin/auth",
+    "firebase-admin/firestore",
+  ],
   env: {
     NEXT_PUBLIC_BUILD_SHA: resolveBuildSha(),
     NEXT_PUBLIC_BUILD_AT: process.env.NEXT_PUBLIC_BUILD_AT || "",
