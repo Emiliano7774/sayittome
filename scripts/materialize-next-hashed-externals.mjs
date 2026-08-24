@@ -7,4 +7,7 @@ const require = createRequire(import.meta.url);
 export const {
   materializeNextHashedExternals,
   listHashedExternals,
+  discoverHashedExternals,
+  assertHashedExternalsResolved,
+  materializeAndAssert,
 } = require("./materialize-next-hashed-externals.cjs");

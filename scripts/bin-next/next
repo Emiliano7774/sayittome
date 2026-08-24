@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Firebase Hosting frameworks invokes `next build` directly (ignores npm
- * scripts/postbuild). This shim replaces node_modules/.bin/next so every build
- * materializes Turbopack hashed externals before packaging to GCF.
+ * scripts/postbuild). This shim replaces node_modules/.bin/next so every build:
+ * 1) prefers webpack (avoids Turbopack hashed firebase-admin-* externals)
+ * 2) materializes any remaining hashed aliases as real dirs for GCF Linux
  */
 const { spawnSync } = require("node:child_process");
 const { existsSync } = require("node:fs");
@@ -16,6 +17,18 @@ if (!existsSync(realNext)) {
 }
 
 const args = process.argv.slice(2);
+if (
+  args[0] === "build" &&
+  !args.includes("--webpack") &&
+  !args.includes("--turbopack") &&
+  !args.includes("--turbo")
+) {
+  // Firebase spawns `next build` with no flags; force webpack so GCF never
+  // depends on Turbopack hashed externals that packaging drops on Linux.
+  args.push("--webpack");
+  console.log("[next-ssr-bin] injecting --webpack for Firebase/SSR-safe externals");
+}
+
 const result = spawnSync(process.execPath, [realNext, ...args], {
   stdio: "inherit",
   cwd: process.cwd(),
@@ -24,15 +37,14 @@ const result = spawnSync(process.execPath, [realNext, ...args], {
 
 const code = result.status == null ? 1 : result.status;
 if (code === 0 && args[0] === "build") {
-  const { materializeNextHashedExternals } = require("../materialize-next-hashed-externals.cjs");
-  const out = materializeNextHashedExternals({
+  const { materializeAndAssert } = require("../materialize-next-hashed-externals.cjs");
+  const out = materializeAndAssert({
+    cwd: process.cwd(),
     nextNodeModules: join(process.cwd(), ".next", "node_modules"),
   });
-  if (out.scanned || out.fixed.length) {
-    console.log(
-      `[next-ssr-bin] hashed externals scanned=${out.scanned} materialized=${out.fixed.length}`,
-    );
-  }
+  console.log(
+    `[next-ssr-bin] hashed externals scanned=${out.scanned} materialized=${out.fixed.length} ok=${out.asserted.resolved.length}`,
+  );
 }
 
 process.exit(code);

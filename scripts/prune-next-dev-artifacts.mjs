@@ -18,13 +18,11 @@ for (const dir of targets) {
 }
 
 const require = createRequire(import.meta.url);
-const { materializeNextHashedExternals } = require("./materialize-next-hashed-externals.cjs");
-const materialized = materializeNextHashedExternals();
-if (materialized.fixed.length || materialized.scanned) {
-  console.log(
-    `[prune-next-dev-artifacts] hashed externals scanned=${materialized.scanned} materialized=${materialized.fixed.length}`,
-  );
-}
+const { materializeAndAssert } = require("./materialize-next-hashed-externals.cjs");
+const materialized = materializeAndAssert();
+console.log(
+  `[prune-next-dev-artifacts] hashed externals scanned=${materialized.scanned} materialized=${materialized.fixed.length} asserted=${materialized.asserted.resolved.length}`,
+);
 
 // Keep ESM materialize module in sync for harnesses that import it.
 void pathToFileURL;

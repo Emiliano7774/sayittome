@@ -111,6 +111,7 @@
     "test:chat-media-fail-path-no-real-ids": "node --experimental-strip-types scripts/chat-media-fail-path-no-real-ids.harness.mjs",
     "test:chat-media-prod-canary": "node --experimental-strip-types scripts/chat-media-prod-canary.mjs",
     "test:ssr-firebase-admin-externals": "node --experimental-strip-types scripts/ssr-firebase-admin-externals.harness.mjs",
+    "gate:ssr-functions-package": "node scripts/materialize-ssr-functions-package.mjs",
     "test:view-once-claim": "node --experimental-strip-types scripts/view-once-claim.harness.mjs",
     "test:android-incognito-slot-reserve": "node --experimental-strip-types scripts/android-incognito-slot-reserve.harness.mjs",
     "test:android-shuffle-back-repeat": "node --experimental-strip-types scripts/android-shuffle-back-repeat.harness.mjs",

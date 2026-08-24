@@ -1,6 +1,9 @@
 {
   "hosting": {
     "source": ".",
+    "predeploy": [
+      "node scripts/materialize-ssr-functions-package.mjs"
+    ],
     "ignore": [
       "firebase.json",
       "**/.*",

@@ -70,6 +70,10 @@ await run("npm", ["run", "build"], {
   NEXT_PUBLIC_BUILD_AT: builtAt,
 });
 
+// Fail closed before Firebase packaging if local .next still has unresolved
+// Turbopack hashed firebase-admin aliases (Linux GCF MODULE_NOT_FOUND).
+await run("npm", ["run", "test:ssr-firebase-admin-externals"]);
+
 const distMb = await (async () => {
   const { readdir, stat } = await import("node:fs/promises");
   const { join } = await import("node:path");

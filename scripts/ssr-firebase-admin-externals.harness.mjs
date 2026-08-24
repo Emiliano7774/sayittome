@@ -1,8 +1,9 @@
 /**
  * SSR_FIREBASE_ADMIN_EXTERNALS
  * Guards Turbopack hashed firebase-admin aliases that break Firebase SSR.
- * Firebase Hosting frameworks runs `next build` (not npm scripts); the
- * node_modules/.bin/next shim must materialize aliases after every build.
+ * Firebase Hosting frameworks runs next build (not npm scripts); the
+ * node_modules/.bin/next shim must force webpack + materialize aliases.
+ * Hosting predeploy must gate the packaged .firebase/<site>/functions artifact.
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -10,14 +11,19 @@ import {
   existsSync,
   lstatSync,
   readFileSync,
-  readdirSync,
-  readlinkSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const {
+  discoverHashedExternals,
+  assertHashedExternalsResolved,
+  isRealPackageDir,
+  collectHashedRefsFromDir,
+} = require("./materialize-next-hashed-externals.cjs");
 
 assert.match(
   String(pkg.scripts?.postinstall || ""),
@@ -27,71 +33,64 @@ assert.match(
 assert.ok(existsSync(join(root, "scripts/bin-next/next")));
 assert.ok(existsSync(join(root, "scripts/materialize-next-hashed-externals.cjs")));
 assert.ok(existsSync(join(root, "scripts/install-next-ssr-bin.mjs")));
+assert.ok(existsSync(join(root, "scripts/materialize-ssr-functions-package.mjs")));
+
+const firebaseJson = JSON.parse(readFileSync(join(root, "firebase.json"), "utf8"));
+const predeploy = firebaseJson.hosting?.predeploy || [];
+assert.ok(
+  predeploy.some((s) => String(s).includes("materialize-ssr-functions-package")),
+  "firebase.json hosting.predeploy must gate packaged SSR hashed externals",
+);
 
 const nextConfig = readFileSync(join(root, "next.config.ts"), "utf8");
 assert.match(nextConfig, /serverExternalPackages/);
 assert.match(nextConfig, /firebase-admin/);
 
 const shimSrc = readFileSync(join(root, "scripts/bin-next/next"), "utf8");
-assert.match(shimSrc, /materializeNextHashedExternals/);
+assert.match(shimSrc, /materializeAndAssert|materializeNextHashedExternals/);
 assert.match(shimSrc, /args\[0\] === "build"/);
-
-const HASHED = /firebase-admin-[a-f0-9]{12,}/gi;
-
-function collectHashedRefs(dir, out = new Set()) {
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, name.name);
-    if (name.isDirectory()) {
-      collectHashedRefs(p, out);
-      continue;
-    }
-    if (!name.name.endsWith(".js")) continue;
-    const text = readFileSync(p, "utf8");
-    for (const match of text.matchAll(HASHED)) out.add(match[0]);
-  }
-  return out;
-}
-
-function assertAliasMaterialized(baseDir, alias) {
-  const aliasPath = join(baseDir, ".next", "node_modules", alias);
-  assert.ok(existsSync(aliasPath), `missing alias ${alias} under ${baseDir}`);
-  const st = lstatSync(aliasPath);
-  assert.equal(
-    st.isSymbolicLink(),
-    false,
-    `hashed alias ${alias} must be a real directory (not symlink) for GCF`,
-  );
-  // Resolve like Turbopack runtime: from a server chunk, walk up to .next/node_modules.
-  const req = createRequire(join(baseDir, ".next", "server", "chunks", "probe.cjs"));
-  const resolved = req.resolve(`${alias}/app`);
-  assert.ok(resolved.includes(alias), `resolved ${alias}/app → ${resolved}`);
-  req(`${alias}/app`);
-}
+assert.match(shimSrc, /--webpack/);
 
 const serverDir = join(root, ".next", "server");
 assert.ok(existsSync(serverDir), ".next/server missing — run npm run build first");
 
-const refs = [...collectHashedRefs(serverDir)];
-assert.ok(refs.length >= 1, "expected turbopack hashed firebase-admin refs in server chunks");
-for (const alias of refs) {
-  assertAliasMaterialized(root, alias);
+const refs = [...collectHashedRefsFromDir(serverDir)];
+const discovery = discoverHashedExternals({ cwd: root });
+
+// Webpack builds should ideally emit zero hashed refs. If any remain (Turbopack
+// or residual), they MUST already be real dirs — do NOT silently materialize.
+if (refs.length || discovery.entries.length) {
+  const asserted = assertHashedExternalsResolved({ cwd: root });
+  for (const alias of new Set([...refs, ...discovery.entries.map((e) => e.name)])) {
+    assert.ok(
+      isRealPackageDir(join(root, ".next", "node_modules", alias)),
+      "hashed alias " + alias + " must be a real directory (not symlink) for GCF",
+    );
+  }
+  assert.equal(asserted.resolved.length, discovery.entries.length);
 }
 
 const packaged = join(root, ".firebase", "sayittome-app", "functions");
 let packagedRefs = [];
 if (existsSync(join(packaged, "package.json"))) {
   const packagedPkg = JSON.parse(readFileSync(join(packaged, "package.json"), "utf8"));
-  assert.ok(packagedPkg.dependencies?.["firebase-admin"]);
-  packagedRefs = [...collectHashedRefs(join(packaged, ".next", "server"))];
+  assert.ok(
+    packagedPkg.dependencies?.["firebase-admin"] || packagedPkg.dependencies?.next,
+    "packaged SSR function must declare runtime deps",
+  );
+  packagedRefs = [...collectHashedRefsFromDir(join(packaged, ".next", "server"))];
   if (packagedRefs.length) {
-    const require = createRequire(import.meta.url);
-    const { materializeNextHashedExternals } = require("./materialize-next-hashed-externals.cjs");
-    materializeNextHashedExternals({
+    // FAIL closed — do not auto-fix here; predeploy gate must have materialized.
+    assertHashedExternalsResolved({
+      cwd: root,
+      nextRoot: join(packaged, ".next"),
       nextNodeModules: join(packaged, ".next", "node_modules"),
     });
     for (const alias of packagedRefs) {
-      assertAliasMaterialized(packaged, alias);
+      const aliasPath = join(packaged, ".next", "node_modules", alias);
+      assert.ok(isRealPackageDir(aliasPath), "packaged alias " + alias + " must be real dir");
+      const st = lstatSync(aliasPath);
+      assert.equal(st.isSymbolicLink(), false, "packaged " + alias + " must not be symlink");
     }
   }
 }
@@ -102,8 +101,10 @@ console.log(
       gate: "SSR_FIREBASE_ADMIN_EXTERNALS",
       pass: true,
       hashedRefsInNextServer: refs,
-      materialized: true,
+      discovered: discovery.entries.map((e) => e.name),
+      webpackPreferred: /--webpack/.test(shimSrc),
       packagedHashedRefs: packagedRefs,
+      packagedPresent: existsSync(join(packaged, "package.json")),
     },
     null,
     2,

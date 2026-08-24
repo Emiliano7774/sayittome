@@ -1,6 +1,9 @@
 /**
- * Install node_modules/.bin/next (+ .cmd) shim that materializes hashed
- * Turbopack server externals after `next build` (Firebase ignores npm postbuild).
+ * Install node_modules/.bin/next (+ .cmd) shim that forces webpack + materializes
+ * hashed Turbopack server externals after `next build` (Firebase ignores npm postbuild).
+ *
+ * On Windows Firebase uses cross-spawn on `.bin/next`, which resolves to `.cmd`.
+ * Also write a Node entry as `.bin/next` so non-cross-spawn callers work.
  */
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -17,12 +20,17 @@ if (!existsSync(binDir)) {
   mkdirSync(binDir, { recursive: true });
 }
 
+// Portable Node launcher (works when spawned without PATHEXT/.cmd).
+// From node_modules/.bin → ../../scripts/bin-next/next
+const nodeWrapper = `#!/usr/bin/env node
+require("../../scripts/bin-next/next");
+`;
+
 const unixWrapper = `#!/bin/sh
 basedir=$(dirname "$(echo "$0" | sed -e 's,\\\\,/,g')")
 exec node "$basedir/../../scripts/bin-next/next" "$@"
 `;
 
-// npm on Windows uses .cmd that calls node; point at our shim.
 const cmdWrapper = `@ECHO off\r
 SETLOCAL\r
 SET "NODE_EXE=node"\r
@@ -36,13 +44,16 @@ $basedir = Split-Path $MyInvocation.MyCommand.Definition -Parent
 exit $LASTEXITCODE
 `;
 
-writeFileSync(join(binDir, "next"), unixWrapper.replace(/\r\n/g, "\n"), "utf8");
+writeFileSync(join(binDir, "next"), nodeWrapper.replace(/\r\n/g, "\n"), "utf8");
 writeFileSync(join(binDir, "next.cmd"), cmdWrapper, "utf8");
 writeFileSync(join(binDir, "next.ps1"), psWrapper.replace(/\r\n/g, "\n"), "utf8");
+// Keep a unix-style copy name for environments that expect the shell shim path.
+writeFileSync(join(binDir, "next-unix"), unixWrapper.replace(/\r\n/g, "\n"), "utf8");
 try {
   chmodSync(join(binDir, "next"), 0o755);
+  chmodSync(join(binDir, "next-unix"), 0o755);
 } catch {
   /* windows */
 }
 
-console.log("[install-next-ssr-bin] installed node_modules/.bin/next SSR materialize shim");
+console.log("[install-next-ssr-bin] installed node_modules/.bin/next SSR materialize+webpack shim");
