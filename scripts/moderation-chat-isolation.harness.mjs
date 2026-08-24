@@ -301,7 +301,9 @@ check(
     !fetchSrc.includes("anonOwnerUid") &&
     fetchSrc.includes("getRepairAdminDb") &&
     fetchSrc.includes("MODERATION_OWNER_UID_FIELDS") &&
-    !fetchSrc.includes("runFilteredCollectionQueryAll") &&
+    fetchSrc.includes("fetchViaAdmin") &&
+    fetchSrc.includes("fetchViaRest") &&
+    fetchSrc.includes("runFilteredCollectionQueryAll") &&
     !fetchSrc.includes(".includes(marker)"),
 );
 check(

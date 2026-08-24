@@ -59,19 +59,26 @@ export function getRepairAdminDb(): Firestore {
         process.env.GOOGLE_CLOUD_PROJECT ||
         process.env.GCLOUD_PROJECT,
     );
-    if (serviceAccount?.client_email && serviceAccount.private_key) {
-      const projectId = resolveAdminProjectId(serviceAccount.project_id);
-      initializeApp({
-        credential: cert(serviceAccount as ServiceAccount),
-        projectId,
-      });
-    } else if (hasAdc) {
-      const projectId = resolveAdminProjectId();
-      initializeApp({
-        credential: applicationDefault(),
-        projectId,
-      });
-    } else {
+    try {
+      if (serviceAccount?.client_email && serviceAccount.private_key) {
+        const projectId = resolveAdminProjectId(serviceAccount.project_id);
+        initializeApp({
+          credential: cert(serviceAccount as ServiceAccount),
+          projectId,
+        });
+      } else if (hasAdc) {
+        const projectId = resolveAdminProjectId();
+        initializeApp({
+          credential: applicationDefault(),
+          projectId,
+        });
+      } else {
+        throw Object.assign(new Error("admin_sdk_unavailable"), { status: 503 });
+      }
+    } catch (error) {
+      const status = Number((error as { status?: number })?.status || 0);
+      if (status === 503) throw error;
+      // ADC can look present (GCLOUD_PROJECT) while credentials are unusable on Hosting.
       throw Object.assign(new Error("admin_sdk_unavailable"), { status: 503 });
     }
   } else {
@@ -79,8 +86,12 @@ export function getRepairAdminDb(): Firestore {
     if (existing) assertRepairAdminProjectId(String(existing));
   }
 
-  cachedDb = getFirestore();
-  return cachedDb;
+  try {
+    cachedDb = getFirestore();
+    return cachedDb;
+  } catch {
+    throw Object.assign(new Error("admin_sdk_unavailable"), { status: 503 });
+  }
 }
 
 export async function lookupUniqueProfileUidByUsernameAdmin(username: string) {

@@ -35,6 +35,8 @@ export async function handleAdminUserChatsGet(req: Request): Promise<{
     };
   } catch (error) {
     const status = Number((error as { status?: number })?.status || 500);
+    const code = String((error as Error)?.message || "error");
+    console.error("admin_user_chats_failed", { status, code });
     if (status === 409) return { status: 409, body: { ok: false, error: "username_not_unique" } };
     if (status === 503) return { status: 503, body: { ok: false, error: "unavailable" } };
     return { status: 500, body: { ok: false, error: "error" } };
