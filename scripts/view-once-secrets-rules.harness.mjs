@@ -1,6 +1,7 @@
 /**
  * VIEW_ONCE_SECRETS_RULES
- * Deny-all for viewOnceSecrets with catch-all OR-exclusion; emulator access checks.
+ * Deny-all for viewOnceSecrets; catch-all excludes via collection != (not
+ * string(request.path), which fail-closed and denied chats/** writes).
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -16,13 +17,17 @@ const backupDir = path.join(root, "scripts/backups");
 const rules = fs.readFileSync(rulesPath, "utf8");
 assert.match(rules, /match \/viewOnceSecrets\/\{secretId\}/);
 assert.match(rules, /allow read, write: if false;/);
-assert.match(rules, /function isViewOnceSecretsPath\(\)/);
+assert.match(rules, /match \/\{collection\}\/\{document=\*\*\}/);
 assert.match(
   rules,
-  /string\(request\.path\)\.split\('\/'\)\.hasAny\(\['viewOnceSecrets'\]\)/,
-  "catch-all must exclude viewOnceSecrets (OR semantics)",
+  /collection != 'viewOnceSecrets'/,
+  "catch-all must exclude viewOnceSecrets by collection segment",
 );
-assert.match(rules, /!isViewOnceSecretsPath\(\)/);
+assert.doesNotMatch(
+  rules,
+  /string\(request\.path\)/,
+  "must not use string(request.path) evaluator (fail-closed on chats/**)",
+);
 assert.match(rules, /request\.time < timestamp\.date\(2026, 12, 31\)/);
 assert.match(rules, /usuarios_shuffle_lite/);
 assert.match(rules, /chat_inbox_lite/);
@@ -68,7 +73,6 @@ if (!javaOk) {
 }
 
 if (!emulatorPass && emulatorSkipReason) {
-  // Static deny+exclusion is mandatory; emulator is preferred when Java is available.
   console.warn(
     JSON.stringify({
       gate: "VIEW_ONCE_SECRETS_RULES",

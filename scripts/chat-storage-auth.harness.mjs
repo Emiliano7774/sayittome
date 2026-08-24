@@ -72,7 +72,7 @@ assert.equal(
 const order = [];
 let ensureCalls = 0;
 const blob = new Blob(["img"], { type: "image/jpeg" });
-const url = await upload.uploadChatMessageMedia(
+const uploaded = await upload.uploadChatMessageMedia(
   chatId,
   clientId,
   blob,
@@ -95,7 +95,8 @@ const url = await upload.uploadChatMessageMedia(
     },
   },
 );
-assert.equal(url, "https://example.test/chat-media.jpg");
+assert.equal(uploaded.url, "https://example.test/chat-media.jpg");
+assert.equal(uploaded.path, `chats/${chatId}/${clientId}_jpg`);
 assert.equal(ensureCalls, 1);
 assert.deepEqual(order, ["ensure", "upload"]);
 

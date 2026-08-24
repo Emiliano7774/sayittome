@@ -1,4 +1,5 @@
 ﻿import {
+  deleteObject,
   getDownloadURL,
   getStorage,
   ref,
@@ -16,6 +17,11 @@ import {
 export type ChatMediaUploadDeps = {
   ensureStorageAuth?: typeof ensureStorageAuth;
   uploadMedia?: typeof uploadMedia;
+};
+
+export type ChatMediaUploadResult = {
+  url: string;
+  path: string;
 };
 
 export async function uploadMedia(
@@ -78,7 +84,7 @@ export async function uploadChatMessageMedia(
   onProgress?: (pct: number) => void,
   options?: { viewOnce?: boolean },
   deps?: ChatMediaUploadDeps,
-) {
+): Promise<ChatMediaUploadResult> {
   await (deps?.ensureStorageAuth ?? ensureStorageAuth)({ allowAnonymous: true });
 
   const contentType =
@@ -91,8 +97,22 @@ export async function uploadChatMessageMedia(
 
   const path = chatMessageMediaPath(chatId, clientId, kind, contentType);
   const upload = deps?.uploadMedia ?? uploadMedia;
-  return upload(path, file, onProgress, contentType, {
+  const url = await upload(path, file, onProgress, contentType, {
     viewOnce: options?.viewOnce === true,
     category: options?.viewOnce ? "view_once" : "chat",
   });
+  return { url, path };
+}
+
+/** Idempotent Storage cleanup after Firestore/callable failure (no orphan file). */
+export async function deleteChatMessageMediaAtPath(path: string) {
+  const clean = String(path || "").trim();
+  if (!clean) return;
+  try {
+    await deleteObject(ref(getStorage(), clean));
+  } catch (error) {
+    const code = String((error as { code?: string })?.code || "");
+    if (code === "storage/object-not-found") return;
+    throw error;
+  }
 }

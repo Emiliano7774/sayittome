@@ -731,7 +731,7 @@ export default function LegacyChatPage() {
     try {
       const kind =
         mediaType === "video" ? "video" : mediaType === "audio" ? "audio" : "image";
-      const downloadUrl = await uploadChatMessageMedia(
+      const uploaded = await uploadChatMessageMedia(
         chatId,
         clientMessageId,
         blob,
@@ -746,6 +746,7 @@ export default function LegacyChatPage() {
           );
         },
       );
+      const downloadUrl = uploaded.url;
 
       await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: "",

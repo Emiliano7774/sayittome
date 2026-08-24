@@ -1,6 +1,7 @@
 /**
  * Runs inside `firebase emulators:exec --only firestore`.
- * Verifies client deny-all on viewOnceSecrets and Admin SDK write/read.
+ * Matrix: viewOnceSecrets DENY; chats meta+mensajes ALLOW (catch-all);
+ * no client forge of secrets / mediaUrl via secrets collection.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -59,6 +60,96 @@ try {
     authed.firestore().doc("usuarios/user_abc").set({ displayName: "ok" }, { merge: true }),
   );
 
+  // Product writer path: new + existing chat meta + media/text/audio/bomb birth.
+  const visitor = testEnv.authenticatedContext("anon_fb_visitor");
+  const chatId = "anon_visitor__profileuser";
+  const chatRef = visitor.firestore().doc(`chats/${chatId}`);
+  await assertSucceeds(
+    chatRef.set(
+      {
+        participantes: ["anon_visitor", "anon_fb_visitor", "owner_uid"],
+        anon: true,
+        schemaVersion: 2,
+      },
+      { merge: true },
+    ),
+  );
+
+  const cases = [
+    { id: "text_new", type: "text", texto: "hola", viewOnce: false },
+    {
+      id: "gallery_photo",
+      type: "image",
+      texto: "",
+      mediaUrl: "https://cdn.example/g.jpg",
+      source: "gallery",
+      viewOnce: false,
+    },
+    {
+      id: "camera_video",
+      type: "video",
+      texto: "",
+      mediaUrl: "https://cdn.example/c.mp4",
+      source: "camera",
+      viewOnce: false,
+    },
+    {
+      id: "audio",
+      type: "audio",
+      texto: "",
+      mediaUrl: "https://cdn.example/a.webm",
+      source: "audio",
+      viewOnce: false,
+    },
+    {
+      id: "bomb_1",
+      type: "image",
+      texto: "",
+      source: "camera",
+      viewOnce: true,
+      viewOnceLimit: 1,
+      viewOnceOpenedCount: 0,
+      viewOnceExhausted: false,
+      viewOnceSealed: false,
+      // no mediaUrl on public birth
+    },
+    {
+      id: "bomb_5",
+      type: "image",
+      texto: "",
+      source: "camera",
+      viewOnce: true,
+      viewOnceLimit: 5,
+      viewOnceOpenedCount: 0,
+      viewOnceExhausted: false,
+      viewOnceSealed: false,
+    },
+  ];
+
+  for (const row of cases) {
+    const { id, ...payload } = row;
+    await assertSucceeds(
+      visitor.firestore().doc(`chats/${chatId}/mensajes/${id}`).set({
+        fromUid: "anon_visitor",
+        createdByAuthUid: "anon_fb_visitor",
+        senderAuthUid: "anon_fb_visitor",
+        ...payload,
+      }),
+    );
+  }
+
+  // Existing chat update (merge) still allowed.
+  await assertSucceeds(
+    chatRef.set({ lastMessage: "📷" }, { merge: true }),
+  );
+
+  // Client must not write secrets collection (forgery path).
+  await assertFails(
+    visitor.firestore().doc(`viewOnceSecrets/${chatId}__bomb_1`).set({
+      mediaUrl: "https://cdn.example/forged.jpg",
+    }),
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -66,6 +157,8 @@ try {
         pass: true,
         clientDenied: true,
         adminAllowed: true,
+        chatMediaWritesAllowed: true,
+        cases: cases.map((c) => c.id),
       },
       null,
       2,

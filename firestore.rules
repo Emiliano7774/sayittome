@@ -14,10 +14,6 @@ service cloud.firestore {
 
     // Bomb media secrets: client SDK deny-all.
     // Admin SDK (Cloud Functions) bypasses security rules.
-    function isViewOnceSecretsPath() {
-      return string(request.path).split('/').hasAny(['viewOnceSecrets']);
-    }
-
     match /viewOnceSecrets/{secretId} {
       allow read, write: if false;
     }
@@ -47,12 +43,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Preserved productive catch-all. MUST exclude viewOnceSecrets:
-    // overlapping match allow expressions are OR'd, so a deny-only
-    // match above is not enough if this block also matches.
-    match /{document=**} {
+    // Preserved productive catch-all. Exclude viewOnceSecrets via collection
+    // segment (never Path→string conversion — that can fail-closed and
+    // deny all chats/** writes that only match this block).
+    match /{collection}/{document=**} {
       allow read, write: if request.time < timestamp.date(2026, 12, 31)
-        && !isViewOnceSecretsPath();
+        && collection != 'viewOnceSecrets';
     }
   }
 }

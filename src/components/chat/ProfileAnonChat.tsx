@@ -19,7 +19,7 @@ import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
 import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
-import { uploadChatMessageMedia, isChatMediaStorageUnauthorized } from "@/lib/media/upload";
+import { uploadChatMessageMedia, isChatMediaStorageUnauthorized, deleteChatMessageMediaAtPath } from "@/lib/media/upload";
 import {
   classifyChatMediaFailure,
   CHAT_FILE_INPUT_CLASS,
@@ -2195,7 +2195,7 @@ export default function ProfileAnonChat({
       );
       const scanResult = await scanUploadFile(scanFile);
 
-      const url = await uploadChatMessageMedia(
+      const uploaded = await uploadChatMessageMedia(
         chatId,
         clientId,
         blob,
@@ -2203,6 +2203,8 @@ export default function ProfileAnonChat({
         (pct) => setUploadProgress(pct),
         { viewOnce: previewViewOnce },
       );
+      const url = uploaded.url;
+      const storagePath = uploaded.path;
 
       URL.revokeObjectURL(localPreviewUrl);
 
@@ -2220,28 +2222,38 @@ export default function ProfileAnonChat({
         ),
       );
 
-      await persistAnonChatMessage({
-        chatId,
-        username,
-        senderId,
-        currentUid,
-        targetUid: profileUid || chatOwnerUid,
-        targetPhoto,
-        messageText: "",
-        lastMessagePreview: mediaLastMessageLabel(previewType, previewSource),
-        type: previewType,
-        mediaUrl: url,
-        source: previewSource,
-        viewOnce: previewViewOnce,
-        viewOnceLimit: previewViewOnce ? previewViewOnceLimit : undefined,
-        reply: replyText || undefined,
-        existingChatData: chatDocDataRef.current,
-        clientId,
-        isOwnerReply: provenOwner,
-        viewerUsername,
-        autoModerationRequiresBlur: scanResult.requiresBlur,
-        moderationRequiresBlur: scanResult.requiresBlur,
-      });
+      try {
+        await persistAnonChatMessage({
+          chatId,
+          username,
+          senderId,
+          currentUid,
+          targetUid: profileUid || chatOwnerUid,
+          targetPhoto,
+          messageText: "",
+          lastMessagePreview: mediaLastMessageLabel(previewType, previewSource),
+          type: previewType,
+          mediaUrl: url,
+          source: previewSource,
+          viewOnce: previewViewOnce,
+          viewOnceLimit: previewViewOnce ? previewViewOnceLimit : undefined,
+          reply: replyText || undefined,
+          existingChatData: chatDocDataRef.current,
+          clientId,
+          isOwnerReply: provenOwner,
+          viewerUsername,
+          autoModerationRequiresBlur: scanResult.requiresBlur,
+          moderationRequiresBlur: scanResult.requiresBlur,
+        });
+      } catch (persistError) {
+        // Storage ok + Firestore/callable fail → delete orphan object.
+        try {
+          await deleteChatMessageMediaAtPath(storagePath);
+        } catch (cleanupError) {
+          console.error("chat media orphan cleanup", cleanupError);
+        }
+        throw persistError;
+      }
 
       if (!provenOwner && identityReady) {
         rememberOwnThreadAnonId(chatId, senderId, {
@@ -2254,11 +2266,9 @@ export default function ProfileAnonChat({
       setUploadProgress(null);
     } catch (e) {
       console.error(e);
-      setMessages((old) =>
-        old.map((message) =>
-          message.clientId === clientId ? { ...message, status: "error" } : message,
-        ),
-      );
+      // No ghost bubble: drop optimistic row entirely on failed save.
+      setMessages((old) => old.filter((message) => message.clientId !== clientId));
+      URL.revokeObjectURL(localPreviewUrl);
       const code = String((e as { code?: string }).code || "");
       const message = String((e as Error).message || "");
       const uploadFailed = code.includes("storage") || message.includes("storage");

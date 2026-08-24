@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   serverTimestamp,
@@ -21,7 +22,7 @@ import { buildCanonicalSender } from "@/lib/chat/canonicalSender";
 import { type ProfileAnonSenderKind } from "@/lib/chat/profileAnonMessageAuthor";
 import { registerSessionChat } from "@/lib/chat/sessionChats";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 import {
   buildStoryReplyPersistPatch,
@@ -29,6 +30,39 @@ import {
   isFirestorePermissionDenied,
 } from "@/lib/stories/storyReplySnapshot";
 import { buildViewOncePublicBirthFields } from "@/lib/media/viewOncePolicy";
+
+function livePersistAuthUid(fallbackUid: string) {
+  return String(auth.currentUser?.uid || fallbackUid || "").trim();
+}
+
+async function commitViewOnceSecretWithRetry(input: {
+  chatId: string;
+  messageId: string;
+  mediaUrl: string;
+}) {
+  const { commitViewOnceSecret } = await import("@/lib/media/viewOnceClaim");
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await commitViewOnceSecret(input);
+    } catch (error) {
+      lastError = error;
+      const code = String((error as { code?: string })?.code || "");
+      // Idempotent success paths / non-retryable auth failures.
+      if (
+        code.includes("already-exists") ||
+        code.includes("permission-denied") ||
+        code.includes("unauthenticated") ||
+        code.includes("invalid-argument") ||
+        code.includes("failed-precondition")
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
 
 type PersistAnonMessageInput = {
   chatId: string;
@@ -219,6 +253,9 @@ export async function persistAnonChatMessage(
     viewOnce,
   } = input;
   const type = resolvePersistAnonMessageType(persistType);
+  // Prefer live Firebase Auth uid so Storage upload + Firestore + commitViewOnce
+  // share the same principal (avoids empty React uid → commit author/member deny).
+  const persistAuthUid = livePersistAuthUid(currentUid);
 
   const storedText = type === "text" ? messageText : "";
   const storyReplyPersist = buildStoryReplyPersistPatch({
@@ -281,7 +318,7 @@ export async function persistAnonChatMessage(
   const resolvedTargetUid = String(targetUid || ownerUidFromDoc || "").trim();
   const persistAuthor = resolvePersistMessageAuthor({
     chatId: canonicalChatId,
-    currentUid,
+    currentUid: persistAuthUid,
     targetUid: resolvedTargetUid,
     senderId,
     viewerUsername: input.viewerUsername,
@@ -313,7 +350,7 @@ export async function persistAnonChatMessage(
       ...existingParticipantes,
       // Owner replies: keep visitor anon from senderId/chatId, never live owner session.
       ...(senderAnon ? [senderAnon] : isOwnerReply ? [] : [senderId]),
-      ...(currentUid ? [currentUid] : []),
+      ...(persistAuthUid ? [persistAuthUid] : []),
       ...(resolvedTargetUid ? [resolvedTargetUid] : []),
       ...(!isOwnerReply && liveBrowserAnon.startsWith("anon_")
         ? [liveBrowserAnon]
@@ -347,12 +384,12 @@ export async function persistAnonChatMessage(
   const existingInitiatorUid = String(existingData.initiatorUid || "").trim();
   const initiatorUid = isOwnerReply
     ? existingInitiatorUid || null
-    : currentUid || null;
+    : persistAuthUid || null;
 
   const legacyIds = [
     ...buildLegacyProfileChatIds(senderId, username, resolvedTargetUid),
-    ...(currentUid
-      ? buildLegacyProfileChatIds(currentUid, username, resolvedTargetUid)
+    ...(persistAuthUid
+      ? buildLegacyProfileChatIds(persistAuthUid, username, resolvedTargetUid)
       : []),
     ...(chatId !== canonicalChatId ? [chatId] : []),
   ];
@@ -401,10 +438,10 @@ export async function persistAnonChatMessage(
     fromUid: messageAuthorId,
     ownerId: messageAuthorId,
     senderKind,
-    senderAuthUid: persistAuthor.senderAuthUid || null,
+    senderAuthUid: persistAuthor.senderAuthUid || persistAuthUid || null,
     senderProfileId: persistAuthor.senderProfileId || null,
     senderRole: persistAuthor.senderRole,
-    createdByAuthUid: currentUid || null,
+    createdByAuthUid: persistAuthUid || null,
     identityReadyAtWrite: true,
     ...(isOwnerReply && persistAuthor.senderProfileId
       ? { profileUid: persistAuthor.senderProfileId }
@@ -458,7 +495,7 @@ export async function persistAnonChatMessage(
     clientId: input.clientId || "",
     senderKind,
     senderUid: messageAuthorId,
-    senderAuthUid: persistAuthor.senderAuthUid,
+    senderAuthUid: persistAuthor.senderAuthUid || persistAuthUid,
     senderRole: persistAuthor.senderRole,
     anonRecipientIds: unreadRecipients.filter((id) => id.startsWith("anon_")),
     unreadRecipientCount: unreadRecipients.length,
@@ -468,12 +505,21 @@ export async function persistAnonChatMessage(
   });
 
   if (viewOnce && mediaUrl) {
-    const { commitViewOnceSecret } = await import("@/lib/media/viewOnceClaim");
-    await commitViewOnceSecret({
-      chatId: canonicalChatId,
-      messageId: messageRef.id,
-      mediaUrl,
-    });
+    try {
+      await commitViewOnceSecretWithRetry({
+        chatId: canonicalChatId,
+        messageId: messageRef.id,
+        mediaUrl,
+      });
+    } catch (error) {
+      // Drop unsealed bomb doc so UI/listener never keep a ghost bubble.
+      try {
+        await deleteDoc(messageRef);
+      } catch {
+        /* best-effort */
+      }
+      throw error;
+    }
   }
 
   if (!canonicalMigrationStarted.has(canonicalChatId)) {
@@ -490,7 +536,7 @@ export async function persistAnonChatMessage(
     receptorUsername: username,
     receptorUid: resolvedTargetUid || undefined,
     targetUid: resolvedTargetUid || undefined,
-    initiatorUid: currentUid || undefined,
+    initiatorUid: persistAuthUid || undefined,
     anonOwnerUid: resolvedTargetUid || undefined,
     anonSessionId,
     lastMessage: lastMessagePreview,
