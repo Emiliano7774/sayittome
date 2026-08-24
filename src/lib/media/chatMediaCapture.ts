@@ -16,13 +16,25 @@ export function isNativeChatShell() {
   return Capacitor.isNativePlatform();
 }
 
-export function isChatMediaUserCancelled(error: unknown) {
-  const message = String(
+function errorName(error: unknown) {
+  if (error instanceof DOMException) return error.name;
+  return String((error as { name?: string } | null)?.name || "");
+}
+
+function errorMessage(error: unknown) {
+  return String(
     error instanceof Error
       ? error.message
       : (error as { message?: string } | null)?.message || error || "",
   ).toLowerCase();
+}
+
+export function isChatMediaUserCancelled(error: unknown) {
+  const name = errorName(error);
+  const message = errorMessage(error);
   return (
+    name === "AbortError" ||
+    message.includes("abort") ||
     message.includes("cancel") ||
     message.includes("no image picked") ||
     message.includes("no photos picked")
@@ -30,15 +42,8 @@ export function isChatMediaUserCancelled(error: unknown) {
 }
 
 export function isChatMediaPermissionDenied(error: unknown) {
-  const name =
-    error instanceof DOMException
-      ? error.name
-      : String((error as { name?: string } | null)?.name || "");
-  const message = String(
-    error instanceof Error
-      ? error.message
-      : (error as { message?: string } | null)?.message || error || "",
-  ).toLowerCase();
+  const name = errorName(error);
+  const message = errorMessage(error);
   return (
     name === "NotAllowedError" ||
     name === "PermissionDeniedError" ||
@@ -52,6 +57,41 @@ export function classifyChatMediaFailure(error: unknown): ChatMediaCaptureFailur
   if (isChatMediaUserCancelled(error)) return "cancelled";
   if (isChatMediaPermissionDenied(error)) return "denied";
   return "failed";
+}
+
+/**
+ * Android/iOS browsers (and Capacitor) should open capture/`input[type=file]`
+ * in the same user-gesture turn. Awaiting getUserMedia first drops the gesture
+ * and yields false "permission denied" alerts when the picker never opens.
+ */
+export function prefersChatCaptureFileInput() {
+  if (isNativeChatShell()) return true;
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return true;
+  if (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Sticky OS/browser deny — not a one-shot dismiss of the prompt. */
+export async function isChatCameraPermissionStickyDenied() {
+  if (typeof navigator === "undefined" || !navigator.permissions?.query) {
+    return false;
+  }
+  try {
+    const status = await navigator.permissions.query({
+      name: "camera" as PermissionName,
+    });
+    return status.state === "denied";
+  } catch {
+    return false;
+  }
 }
 
 function isNativeShell() {
@@ -198,9 +238,13 @@ export function openChatFileInput(input: HTMLInputElement | null) {
   return openNativeGalleryFilePicker(input);
 }
 
-/** Android WebView ignores programmatic click on `display:none` file inputs. */
+/**
+ * Keep file inputs out of the composer flex hit targets. Absolute siblings
+ * in the button row can overlap camera/gallery taps on mobile browsers.
+ * Android WebView also ignores programmatic click on `display:none` inputs.
+ */
 export const CHAT_FILE_INPUT_CLASS =
-  "pointer-events-none absolute h-px w-px overflow-hidden opacity-0";
+  "pointer-events-none fixed left-0 top-0 -z-10 h-px w-px overflow-hidden opacity-0";
 
 export function fileFromChatInput(
   file: File | null | undefined,

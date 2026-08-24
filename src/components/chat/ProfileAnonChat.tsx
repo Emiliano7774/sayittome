@@ -33,10 +33,11 @@ import {
 import {
   classifyChatMediaFailure,
   CHAT_FILE_INPUT_CLASS,
-  ensureChatCameraStreamPermission,
   fileFromChatInput,
+  isChatCameraPermissionStickyDenied,
   isNativeChatShell,
   openChatFileInput,
+  prefersChatCaptureFileInput,
 } from "@/lib/media/chatMediaCapture";
 import {
   CHAT_AUDIO_MIN_BYTES,
@@ -1716,17 +1717,14 @@ export default function ProfileAnonChat({
   }
 
   async function openRealCamera(mode: "photo" | "video") {
-    if (isNativeChatShell()) {
-      const opened = openChatFileInput(
-        mode === "photo" ? cameraPhotoRef.current : cameraVideoRef.current,
-      );
-      if (!opened) alert(t("chat_camera_fail"));
-      return;
-    }
+    const captureInput =
+      mode === "photo" ? cameraPhotoRef.current : cameraVideoRef.current;
 
-    const allowed = await ensureChatCameraStreamPermission(mode === "video");
-    if (!allowed) {
-      alert(t("chat_media_permission_denied"));
+    // Capacitor + Android/iOS browsers: capture input in the same gesture turn.
+    // Gallery never enters this path — it uses openGalleryPicker/file input only.
+    if (prefersChatCaptureFileInput()) {
+      const opened = openChatFileInput(captureInput);
+      if (!opened) alert(t("chat_camera_fail"));
       return;
     }
 
@@ -1750,9 +1748,17 @@ export default function ProfileAnonChat({
     } catch (error) {
       const failure = classifyChatMediaFailure(error);
       if (failure === "cancelled") return;
-      alert(
-        failure === "denied" ? t("chat_media_permission_denied") : t("chat_camera_fail"),
-      );
+
+      if (failure === "denied") {
+        // Reliable fallback when live stream is blocked; do not loop getUserMedia.
+        if (openChatFileInput(captureInput)) return;
+        if (await isChatCameraPermissionStickyDenied()) {
+          alert(t("chat_media_permission_denied"));
+        }
+        return;
+      }
+
+      alert(t("chat_camera_fail"));
     }
   }
 
