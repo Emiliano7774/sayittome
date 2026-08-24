@@ -1,6 +1,7 @@
 /**
  * ADMIN_LOGIN_SAFE_NEXT
  * Honor ?next=/admin for admin; reject open redirects; preserve auth gates;
+ * anonymous session stays on /login; registered honors safe next;
  * authStateReady before admin/login redirects; explicit logout unchanged.
  *
  * Usage: node --experimental-strip-types scripts/admin-login-safe-next.harness.mjs
@@ -19,9 +20,25 @@ installHarnessAlias(root);
 const safe = await import(
   pathToFileURL(path.join(root, "src/lib/auth/safeReturnPath.ts")).href
 );
+const gate = await import(
+  pathToFileURL(path.join(root, "src/lib/auth/loginSessionGate.ts")).href
+);
 const { ADMIN_EMAIL } = await import(
   pathToFileURL(path.join(root, "src/lib/admin/isAdmin.ts")).href
 );
+
+// --- anonymous session stays on login ---
+assert.equal(gate.shouldAutoRedirectFromLogin(null), false);
+assert.equal(gate.shouldAutoRedirectFromLogin(undefined), false);
+assert.equal(gate.shouldAutoRedirectFromLogin({ isAnonymous: true }), false);
+assert.equal(
+  gate.shouldAutoRedirectFromLogin({ isAnonymous: true, uid: "anon1" }),
+  false,
+);
+
+// --- registered session honors safe next (auto-redirect allowed) ---
+assert.equal(gate.shouldAutoRedirectFromLogin({ isAnonymous: false }), true);
+assert.equal(gate.shouldAutoRedirectFromLogin({}), true);
 
 // --- login admin next ---
 assert.equal(
@@ -48,8 +65,11 @@ assert.equal(
   safe.COMPLETE_POST_AUTH_PATH,
 );
 
-// allowlisted app path
-assert.equal(safe.applyPreferredPostAuthPath("/chats", "a@b.c"), "/chats");
+assert.equal(
+  safe.applyPreferredPostAuthPath("/chats", "a@b.c"),
+  "/chats",
+  "registered safe next honored",
+);
 assert.equal(
   safe.applyPreferredPostAuthPath("/chat/abc123", "a@b.c"),
   "/chat/abc123",
@@ -81,23 +101,22 @@ for (const raw of unsafeRaw) {
   );
 }
 
-// sanitized but not allowlisted → fallback (no open redirect to arbitrary paths)
 assert.equal(safe.sanitizeSafeReturnPath("/not-a-real-route"), "/not-a-real-route");
 assert.equal(
   safe.applyPreferredPostAuthPath("/not-a-real-route", ADMIN_EMAIL),
   safe.COMPLETE_POST_AUTH_PATH,
 );
-
-// path traversal / open redirect encodings
 assert.equal(safe.sanitizeSafeReturnPath("/admin/../../login"), null);
 assert.equal(safe.sanitizeSafeReturnPath("//sayittome-app.web.app/admin"), null);
 
-// --- wiring: LoginPage honors next + authStateReady ---
+// --- wiring: LoginPage honors next + authStateReady + anon gate ---
 const loginSrc = fs.readFileSync(path.join(root, "src/app/login/page.tsx"), "utf8");
 assert.match(loginSrc, /readPreferredNextFromLocation|location\.search/);
 assert.match(loginSrc, /preferredNext/);
 assert.match(loginSrc, /auth\.authStateReady\(\)/);
+assert.match(loginSrc, /shouldAutoRedirectFromLogin/);
 assert.match(loginSrc, /resolvePostAuthPath\([\s\S]*preferredNext/);
+assert.match(loginSrc, /signInWithEmailAndPassword/);
 assert.doesNotMatch(loginSrc, /onAuthStateChanged/);
 assert.doesNotMatch(loginSrc, /useSearchParams/);
 
@@ -111,7 +130,7 @@ assert.match(shellSrc, /login\?next=/);
 assert.match(shellSrc, /encodeURIComponent\(nextPath\)/);
 assert.doesNotMatch(shellSrc, /signOut/);
 
-// --- sesión persistida: no signOut en init firebase; logout explícito intacto ---
+// --- sesión persistida: no signOut en init firebase; logout / anon mode intactos ---
 const firebaseSrc = fs.readFileSync(path.join(root, "src/lib/firebase.ts"), "utf8");
 assert.doesNotMatch(firebaseSrc, /signOut/);
 assert.doesNotMatch(firebaseSrc, /setPersistence/);
@@ -121,11 +140,19 @@ const logoutSrc = fs.readFileSync(path.join(root, "src/lib/auth/logout.ts"), "ut
 assert.match(logoutSrc, /signOut\(auth\)/);
 assert.match(logoutSrc, /export async function logoutAndResetAnon/);
 
+const enterAnonSrc = fs.readFileSync(
+  path.join(root, "src/lib/auth/enterAnonymousMode.ts"),
+  "utf8",
+);
+assert.match(enterAnonSrc, /export async function enterAnonymousMode/);
+assert.match(enterAnonSrc, /beginFreshAnonSession/);
+
 const homeRestore = fs.readFileSync(
   path.join(root, "src/components/home/HomeSessionRestore.tsx"),
   "utf8",
 );
 assert.match(homeRestore, /auth\.authStateReady\(\)/);
+assert.match(homeRestore, /user\.isAnonymous/);
 
 const postAuthSrc = fs.readFileSync(
   path.join(root, "src/lib/auth/postAuthRedirect.ts"),
@@ -141,10 +168,13 @@ console.log(
     {
       gate: "ADMIN_LOGIN_SAFE_NEXT",
       pass: true,
+      anonymousStaysOnLogin: true,
+      registeredHonorsSafeNext: true,
       adminNext: true,
       maliciousRejected: true,
       authStateReady: true,
       explicitLogoutPreserved: true,
+      enterAnonymousPreserved: true,
     },
     null,
     2,

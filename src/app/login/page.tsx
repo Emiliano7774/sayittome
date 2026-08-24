@@ -8,6 +8,7 @@ import {
 } from "firebase/auth";
 
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
+import { shouldAutoRedirectFromLogin } from "@/lib/auth/loginSessionGate";
 import { mapLoginErrorCode } from "@/lib/auth/registerErrors";
 import PublicLegalFooter from "@/components/legal/PublicLegalFooter";
 import { auth } from "@/lib/firebase";
@@ -46,17 +47,21 @@ export default function LoginPage() {
         if (cancelled) return;
 
         const user = auth.currentUser;
+        // Anonymous Firebase sessions are not registered logins — keep the form
+        // so email/password can replace the anon uid (no auto-redirect loop).
+        const registered = shouldAutoRedirectFromLogin(user);
         setQaAuthDiagnosticState({
-          authCurrentUserUid: user?.uid || null,
+          authCurrentUserUid: registered ? user?.uid || null : null,
           authReady: true,
           authDomain: auth.app.options.authDomain || null,
           currentHost: window.location.host,
         });
         recordQaCriticalEvent("auth", "AUTH_STATE_READY", {
-          authenticated: Boolean(user),
+          authenticated: registered,
+          anonymous: Boolean(user?.isAnonymous),
         });
 
-        if (!user) {
+        if (!registered || !user) {
           setChecking(false);
           return;
         }
