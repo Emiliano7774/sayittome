@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  onAuthStateChanged,
   signInWithEmailAndPassword,
 } from "firebase/auth";
 
@@ -21,6 +20,8 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preferredNext = searchParams.get("next");
   const t = useT();
 
   const [email, setEmail] = useState("");
@@ -30,27 +31,45 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setQaAuthDiagnosticState({
-        authCurrentUserUid: user?.uid || null,
-        authReady: true,
-        authDomain: auth.app.options.authDomain || null,
-        currentHost: window.location.host,
-      });
-      recordQaCriticalEvent("auth", "AUTH_STATE_CHANGED", {
-        authenticated: Boolean(user),
-      });
-      if (!user) {
-        setChecking(false);
-        return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await auth.authStateReady();
+        if (cancelled) return;
+
+        const user = auth.currentUser;
+        setQaAuthDiagnosticState({
+          authCurrentUserUid: user?.uid || null,
+          authReady: true,
+          authDomain: auth.app.options.authDomain || null,
+          currentHost: window.location.host,
+        });
+        recordQaCriticalEvent("auth", "AUTH_STATE_READY", {
+          authenticated: Boolean(user),
+        });
+
+        if (!user) {
+          setChecking(false);
+          return;
+        }
+
+        const next = await resolvePostAuthPath(user.uid, user.emailVerified, {
+          preferredNext,
+          email: user.email,
+        });
+        if (cancelled) return;
+        router.replace(next);
+      } catch (err) {
+        console.error("LoginPage authStateReady", err);
+        if (!cancelled) setChecking(false);
       }
+    })();
 
-      const next = await resolvePostAuthPath(user.uid, user.emailVerified);
-      router.replace(next);
-    });
-
-    return () => unsub();
-  }, [router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [router, preferredNext]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -81,6 +100,10 @@ export default function LoginPage() {
       const next = await resolvePostAuthPath(
         cred.user.uid,
         cred.user.emailVerified,
+        {
+          preferredNext,
+          email: cred.user.email,
+        },
       );
       setQaAuthDiagnosticState({
         authLastAction: "email-password-success",

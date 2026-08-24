@@ -138,7 +138,8 @@
     "test:functions-admin-cold-start": "node scripts/functions-admin-app-cold-start.harness.mjs",
     "test:chat-official-profile-link-claim-pending-copy": "node --experimental-strip-types scripts/chat-official-profile-link-claim-pending-copy.harness.mjs",
     "test:chat-official-profile-link-ticket-durable": "node --experimental-strip-types scripts/chat-official-profile-link-ticket-durable.harness.mjs",
-    "test:admin-usuario-moderation-tag": "node --experimental-strip-types scripts/admin-usuario-moderation-tag.harness.mjs"
+    "test:admin-usuario-moderation-tag": "node --experimental-strip-types scripts/admin-usuario-moderation-tag.harness.mjs",
+    "test:admin-login-safe-next": "node --experimental-strip-types scripts/admin-login-safe-next.harness.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

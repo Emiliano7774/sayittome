@@ -113,19 +113,36 @@ export default function AdminShell({
   }, []);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      const userEmail = user?.email || "";
-      setEmail(userEmail);
-      setAllowed(isAdminEmail(userEmail));
-      setReady(true);
+    let cancelled = false;
+    let unsub = () => {};
 
-      if (!user) {
-        router.replace("/login?next=/admin");
-      }
-    });
+    void (async () => {
+      // Wait for persistence restore before treating null as logged-out.
+      await auth.authStateReady();
+      if (cancelled) return;
 
-    return () => unsub();
-  }, [router]);
+      const applyUser = (user: typeof auth.currentUser) => {
+        const userEmail = user?.email || "";
+        setEmail(userEmail);
+        setAllowed(isAdminEmail(userEmail));
+        setReady(true);
+
+        if (!user) {
+          const nextPath =
+            pathname && pathname.startsWith("/admin") ? pathname : "/admin";
+          router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+        }
+      };
+
+      applyUser(auth.currentUser);
+      unsub = onAuthStateChanged(auth, applyUser);
+    })();
+
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [pathname, router]);
 
   if (!ready) {
     return (

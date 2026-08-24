@@ -2,6 +2,16 @@ import { doc, getDoc, getDocFromServer } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
 import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
+import {
+  applyPreferredPostAuthPath,
+  COMPLETE_POST_AUTH_PATH,
+} from "@/lib/auth/safeReturnPath";
+
+export { COMPLETE_POST_AUTH_PATH } from "@/lib/auth/safeReturnPath";
+export {
+  applyPreferredPostAuthPath,
+  sanitizeSafeReturnPath,
+} from "@/lib/auth/safeReturnPath";
 
 type UserDoc = {
   username?: string;
@@ -15,6 +25,11 @@ type UserDoc = {
   fotos?: unknown;
   perfilCompleto?: boolean;
   profileSetupComplete?: boolean;
+};
+
+export type ResolvePostAuthPathOptions = {
+  preferredNext?: string | null;
+  email?: string | null;
 };
 
 async function loadUserDoc(uid: string) {
@@ -59,20 +74,18 @@ export function isRegisteredProfileComplete(data: UserDoc) {
   return false;
 }
 
-/** Destination for a fully registered session (cold start + post-login). */
-export const COMPLETE_POST_AUTH_PATH = "/shuffle";
-
 export function isIncompleteAuthDestination(path: string) {
   return path.startsWith("/register");
 }
 
 export function isCompletePostAuthDestination(path: string) {
-  return path === COMPLETE_POST_AUTH_PATH;
+  return path === COMPLETE_POST_AUTH_PATH || path.startsWith("/admin");
 }
 
 export async function resolvePostAuthPath(
   uid: string,
   emailVerified: boolean,
+  options?: ResolvePostAuthPathOptions,
 ): Promise<string> {
   if (!emailVerified) return "/register/verify-email";
 
@@ -85,5 +98,9 @@ export async function resolvePostAuthPath(
     return "/register/setup";
   }
 
-  return COMPLETE_POST_AUTH_PATH;
+  return applyPreferredPostAuthPath(
+    options?.preferredNext,
+    options?.email,
+    COMPLETE_POST_AUTH_PATH,
+  );
 }
