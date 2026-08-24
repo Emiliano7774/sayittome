@@ -68,13 +68,20 @@ function ProfileAnonChatRoute() {
                 resolvedChatId !== rawChatId ||
                 (docUsername && docUsername !== usernameFromQuery)
               ) {
-                const query = new URLSearchParams({
-                  u: docUsername || usernameFromQuery,
-                });
+                const query = new URLSearchParams();
+                if (docUsername || usernameFromQuery) {
+                  query.set("u", docUsername || usernameFromQuery);
+                }
+                if (String(searchParams.get("from") || "") === "push") {
+                  query.set("from", "push");
+                  const mid = String(searchParams.get("mid") || "").trim();
+                  if (mid) query.set("mid", mid);
+                }
+                const qs = query.toString();
                 window.history.replaceState(
                   null,
                   "",
-                  `/chat/${encodeURIComponent(resolvedChatId)}?${query.toString()}`,
+                  `/chat/${encodeURIComponent(resolvedChatId)}${qs ? `?${qs}` : ""}`,
                 );
               }
             })

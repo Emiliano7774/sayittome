@@ -29,6 +29,12 @@ import {
   type FcmUpsertResult,
 } from "@/lib/chat/fcmEnablePipeline";
 import { auth, functions } from "@/lib/firebase";
+import {
+  markChatOpenedFromNotification,
+  resolvePushChatOpenPlan,
+  buildChatNotificationOpenHref,
+} from "@/lib/chat/chatNotificationOpen";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
 const INSTALLATION_KEY = "sayittome:fcm-installation-id";
@@ -196,11 +202,10 @@ export function peekPendingPushChatId() {
 export function resolvePushChatOpen(input: {
   chatId: string;
   authed: boolean;
+  messageId?: string;
+  username?: string;
 }): { kind: "ignore" } | { kind: "queue"; chatId: string } | { kind: "open"; href: string } {
-  const chatId = asId(input.chatId);
-  if (!chatId) return { kind: "ignore" };
-  if (!input.authed) return { kind: "queue", chatId };
-  return { kind: "open", href: `/chat/${encodeURIComponent(chatId)}` };
+  return resolvePushChatOpenPlan(input);
 }
 
 export function queuePushChatIdForOpen(chatId: string) {
@@ -435,10 +440,25 @@ async function ensurePushChannel() {
   }
 }
 
-function openChatDeepLink(chatId: string) {
+function openChatDeepLink(input: {
+  chatId: string;
+  messageId?: string;
+  body?: string;
+  title?: string;
+}) {
   if (typeof window === "undefined") return;
+  const chatId = asId(input.chatId);
+  if (!chatId) return;
+  markChatOpenedFromNotification({
+    chatId,
+    messageId: input.messageId,
+    body: input.body,
+    title: input.title,
+  });
+  prefetchChatThread(chatId);
   const plan = resolvePushChatOpen({
     chatId,
+    messageId: input.messageId,
     authed: Boolean(auth.currentUser),
   });
   if (plan.kind === "queue") {
@@ -473,7 +493,13 @@ async function attachPushListeners() {
   await PushNotifications.addListener("pushNotificationActionPerformed", (event) => {
     const data = (event.notification?.data || {}) as Record<string, unknown>;
     const chatId = asId(data.chatId);
-    if (chatId) openChatDeepLink(chatId);
+    if (!chatId) return;
+    openChatDeepLink({
+      chatId,
+      messageId: asId(data.messageId),
+      body: asId(data.body) || asId(event.notification?.body),
+      title: asId(data.title) || asId(event.notification?.title),
+    });
   });
 }
 
@@ -649,7 +675,11 @@ export async function initNativePushNotifications(options?: { skipAutoEnable?: b
             }
             const pendingChat = drainQueuedPushChatId();
             if (pendingChat && user.uid) {
-              window.location.assign(`/chat/${encodeURIComponent(pendingChat)}`);
+              markChatOpenedFromNotification({ chatId: pendingChat });
+              prefetchChatThread(pendingChat);
+              window.location.assign(
+                buildChatNotificationOpenHref({ chatId: pendingChat }),
+              );
             }
           });
       });

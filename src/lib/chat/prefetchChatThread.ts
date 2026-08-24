@@ -18,7 +18,7 @@ import {
 } from "@/lib/chat/profileAnonMessageAuthor";
 import { db } from "@/lib/firebase";
 
-const inflight = new Map<string, Promise<void>>();
+const inflight = new Map<string, Promise<CachedChatMessage[]>>();
 
 function mapDocToCached(
   docSnap: { id: string; data: () => Record<string, unknown> },
@@ -60,12 +60,22 @@ function mapDocToCached(
 }
 
 /** Warm the thread cache before navigation so the chat opens with history visible. */
-export function prefetchChatThread(chatId: string) {
-  if (!chatId || typeof window === "undefined") return;
-  if (readCachedChatMessages(chatId)?.length) return;
+export function prefetchChatThread(chatId: string, options?: { force?: boolean }) {
+  void prefetchChatThreadAsync(chatId, options);
+}
+
+/** Awaitable prefetch — returns cached rows (existing or freshly fetched). */
+export function prefetchChatThreadAsync(
+  chatId: string,
+  options?: { force?: boolean },
+): Promise<CachedChatMessage[]> {
+  if (!chatId || typeof window === "undefined") return Promise.resolve([]);
+
+  const existing = readCachedChatMessages(chatId);
+  if (existing?.length && !options?.force) return Promise.resolve(existing);
 
   const pending = inflight.get(chatId);
-  if (pending) return;
+  if (pending) return pending;
 
   const run = (async () => {
     try {
@@ -80,13 +90,16 @@ export function prefetchChatThread(chatId: string) {
         .filter((row): row is CachedChatMessage => row !== null);
       if (messages.length > 0) {
         writeCachedChatMessages(chatId, messages);
+        return messages;
       }
+      return readCachedChatMessages(chatId) || [];
     } catch {
-      // best-effort prefetch
+      return readCachedChatMessages(chatId) || [];
     } finally {
       inflight.delete(chatId);
     }
   })();
 
   inflight.set(chatId, run);
+  return run;
 }

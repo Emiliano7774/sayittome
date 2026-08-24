@@ -9,8 +9,8 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import ChatAudioHoldLockMic from "@/components/chat/ChatAudioHoldLockMic";
@@ -123,8 +123,17 @@ import {
   CLASSIC_INTRO_INNER_CLASS,
   MODERN_INTRO_INNER_CLASS,
   resolveAnonChatThreadIntro,
-  shouldAutoscrollChatThread,
 } from "@/lib/chat/chatThreadLayout";
+import {
+  applyChatScrollBottomExact,
+  consumeChatNotificationOpen,
+  isChatOpenedFromNotification,
+  isChatScrollAtBottom,
+  mergeNotificationHydrateWithoutEmpty,
+  shouldAutoscrollChatNotificationOpen,
+  shouldHoldChatRevealUntilScrollBottom,
+} from "@/lib/chat/chatNotificationOpen";
+import { prefetchChatThreadAsync } from "@/lib/chat/prefetchChatThread";
 import { useAuth } from "@/contexts/AuthContext";
 import { isChatThreadRoute } from "@/lib/navigation/routeKind";
 import type { InboxChat } from "@/hooks/useChatsInbox";
@@ -173,7 +182,6 @@ import {
   readQueuedMessageDeletes,
   rememberLocalHiddenMessage,
 } from "@/lib/chat/messageDeleteLocal";
-import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
@@ -446,6 +454,14 @@ export default function ProfileAnonChat({
   username: string;
 }) {
 
+  const searchParams = useSearchParams();
+  const openedFromNotificationRef = useRef(false);
+  const [openedFromNotification] = useState(() => {
+    const hit = isChatOpenedFromNotification(chatId, searchParams);
+    if (hit) consumeChatNotificationOpen(chatId);
+    openedFromNotificationRef.current = hit;
+    return hit;
+  });
   const t = useT();
   const { uxMode } = useUxMode();
   const router = useRouter();
@@ -457,7 +473,8 @@ export default function ProfileAnonChat({
   const formatLastSeen = useFormatLastSeen();
   const initialProfile = readInitialTargetProfile(username);
   useNavUsefulPaint(Boolean(chatId) && Boolean(username));
-  const initialThreadActive = threadHasPriorActivity(chatId);
+  const initialThreadActive =
+    threadHasPriorActivity(chatId) || openedFromNotificationRef.current;
   const [messages, setMessages] = useState<Message[]>(() => {
     if (!chatId) return [];
     const cached = readCachedChatMessages(chatId);
@@ -482,6 +499,9 @@ export default function ProfileAnonChat({
     });
   });
   const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(initialThreadActive);
+  const [threadRevealReady, setThreadRevealReady] = useState(
+    () => !openedFromNotificationRef.current,
+  );
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -563,7 +583,7 @@ export default function ProfileAnonChat({
   function scrollChatToBottom() {
     const node = messagesScrollRef.current;
     if (node) {
-      node.scrollTop = node.scrollHeight;
+      applyChatScrollBottomExact(node);
       return;
     }
 
@@ -577,9 +597,17 @@ export default function ProfileAnonChat({
 
     stickToBottomRef.current = true;
     const run = () => {
+      // Sync first apply for notification opens (pre-reveal), then rAF polish.
+      scrollChatToBottom();
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           scrollChatToBottom();
+          if (
+            openedFromNotificationRef.current &&
+            isChatScrollAtBottom(messagesScrollRef.current)
+          ) {
+            setThreadRevealReady(true);
+          }
           if (keepComposerFocusRef.current) {
             refocusComposer();
           }
@@ -849,7 +877,53 @@ export default function ProfileAnonChat({
 
   useEffect(() => {
     if (!chatId) return;
-    prefetchChatThread(chatId);
+    let cancelled = false;
+    void prefetchChatThreadAsync(chatId).then((rows) => {
+      if (cancelled || !rows.length) return;
+      setMessages((prev) => {
+        const hydrated = hydrateCachedMessages(chatId, rows, {
+          chatAnonSessionId,
+          currentUid,
+          targetUid,
+          chatOwnerUid,
+          viewerUsername:
+            readCachedViewerIdentity(profileAuthUid(auth.currentUser))?.username || "",
+          authReady,
+          identityReady: false,
+        });
+        return mergeNotificationHydrateWithoutEmpty(prev, hydrated);
+      });
+      if (openedFromNotificationRef.current) {
+        stickToBottomRef.current = true;
+        scheduleScrollToBottom();
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed apply is chatId-scoped
+  }, [chatId]);
+
+  useLayoutEffect(() => {
+    if (
+      !shouldHoldChatRevealUntilScrollBottom({
+        fromNotification: openedFromNotificationRef.current,
+        messageCount: messages.length,
+      })
+    ) {
+      if (!threadRevealReady) setThreadRevealReady(true);
+      return;
+    }
+    const node = messagesScrollRef.current;
+    if (!node) return;
+    applyChatScrollBottomExact(node);
+    if (isChatScrollAtBottom(node) || node.scrollHeight <= node.clientHeight + 1) {
+      setThreadRevealReady(true);
+    }
+  }, [messages.length, threadRevealReady]);
+
+  useEffect(() => {
+    if (!chatId) return;
 
     let cancelled = false;
     void (async () => {
@@ -895,17 +969,7 @@ export default function ProfileAnonChat({
           identityReady: roleReady,
         });
         if (prev.length === 0) return hydrated;
-        const ctx = buildProfileAnonViewerContext({
-          chatId,
-          chatAnonSessionId,
-          currentUid: canonical.viewerUid,
-          targetUid,
-          chatOwnerUid,
-          viewerUsername: canonical.viewerUsername,
-          authReady: true,
-          identityReady: roleReady,
-        });
-        return remapProfileAnonMessagesMine(hydrated.length ? hydrated : prev, ctx);
+        return mergeNotificationHydrateWithoutEmpty(prev, hydrated);
       });
       setChatSurfaceEngaged((engaged) => engaged || cached.length > 0);
     })();
@@ -1554,7 +1618,8 @@ export default function ProfileAnonChat({
 
   useEffect(() => {
     if (
-      !shouldAutoscrollChatThread({
+      !shouldAutoscrollChatNotificationOpen({
+        fromNotification: openedFromNotificationRef.current,
         stickToBottom: stickToBottomRef.current,
         showIntro: showClassicIntro || showModernVisitorIntro,
       })
@@ -2629,7 +2694,18 @@ export default function ProfileAnonChat({
             CHAT_THREAD_SCROLLER_CLASS,
             isClassic ? "px-3 sm:px-4" : "px-5",
             classicChatEngaged ? "pt-3" : "",
+            openedFromNotification && !threadRevealReady
+              ? "invisible pointer-events-none"
+              : "",
           ].join(" ")}
+          style={
+            openedFromNotification && !threadRevealReady
+              ? { visibility: "hidden" as const }
+              : undefined
+          }
+          data-chat-notif-reveal={
+            openedFromNotification ? (threadRevealReady ? "1" : "0") : undefined
+          }
         >
           {hasMoreOlder && messages.length > 0 ? (
             <div className="mb-3 flex justify-center">

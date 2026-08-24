@@ -473,6 +473,9 @@ export const onChatMessageCreated = onDocumentCreated(
           recipientUid,
           // Client inbox/group key — do not collapse per-chat.
           group: `chat-${chatId}`,
+          // Seed fields for cold notification open (string-only FCM data).
+          body: String(body || "").slice(0, 180),
+          title: String(title || "").slice(0, 80),
         },
         android: {
           priority: "high",

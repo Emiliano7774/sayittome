@@ -3,6 +3,11 @@
 import { isCapacitorNative, isNativeAppActive } from "@/lib/app/nativeShell";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
 import { recordNotificationStage } from "@/lib/chat/notificationIncident";
+import {
+  buildChatNotificationOpenHref,
+  markChatOpenedFromNotification,
+} from "@/lib/chat/chatNotificationOpen";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 
 const CHAT_CHANNEL_ID = "chat-messages";
 const ICON_PATH = "/icons/Icon-192.png";
@@ -36,10 +41,27 @@ function notificationBody(input: { body?: string; mediaHint?: string }) {
   return String(input.mediaHint || "Nuevo mensaje").trim() || "Nuevo mensaje";
 }
 
-function openChatFromNotification(chatId: string) {
-  const id = String(chatId || "").trim();
+function openChatFromNotification(input: {
+  chatId: string;
+  messageId?: string;
+  body?: string;
+  title?: string;
+}) {
+  const id = String(input.chatId || "").trim();
   if (!id || typeof window === "undefined") return;
-  window.location.assign(`/chat/${encodeURIComponent(id)}`);
+  markChatOpenedFromNotification({
+    chatId: id,
+    messageId: input.messageId,
+    body: input.body,
+    title: input.title,
+  });
+  prefetchChatThread(id);
+  window.location.assign(
+    buildChatNotificationOpenHref({
+      chatId: id,
+      messageId: input.messageId,
+    }),
+  );
 }
 
 async function ensureNativeChannel() {
@@ -68,8 +90,15 @@ async function attachNativeActionListener() {
   try {
     const { LocalNotifications } = await import("@capacitor/local-notifications");
     await LocalNotifications.addListener("localNotificationActionPerformed", (event) => {
-      const chatId = String(event.notification?.extra?.chatId || "").trim();
-      if (chatId) openChatFromNotification(chatId);
+      const extra = (event.notification?.extra || {}) as Record<string, unknown>;
+      const chatId = String(extra.chatId || "").trim();
+      if (!chatId) return;
+      openChatFromNotification({
+        chatId,
+        messageId: String(extra.messageId || "").trim(),
+        body: String(event.notification?.body || "").trim(),
+        title: String(event.notification?.title || "").trim(),
+      });
     });
   } catch {
     actionListenerAttached = false;
@@ -250,7 +279,14 @@ export async function showChatNotification(input: {
       data: { chatId, messageId, group },
     });
     notification.onclick = () => {
-      if (chatId) openChatFromNotification(chatId);
+      if (chatId) {
+        openChatFromNotification({
+          chatId,
+          messageId,
+          body,
+          title,
+        });
+      }
       try {
         window.focus();
       } catch {

@@ -74,7 +74,8 @@ assert.equal(push.peekPendingPushChatId(), null);
 
 const warm = push.resolvePushChatOpen({ chatId: "chat-1", authed: true });
 assert.equal(warm.kind, "open");
-assert.equal(warm.href, "/chat/chat-1");
+assert.equal(warm.href, "/chat/chat-1?from=push");
+assert.match(warm.href, /from=push/);
 
 const backLeave = read.resolveLeaveThreadRead({
   ...thread,
