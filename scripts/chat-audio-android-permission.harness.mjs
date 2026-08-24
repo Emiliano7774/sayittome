@@ -61,16 +61,23 @@ assert.match(policy, /shouldGrantAudioCapture/);
 assert.match(policy, /shouldDenyRequest/);
 assert.doesNotMatch(policy, /RESOURCE_VIDEO_CAPTURE/);
 
+assert.match(mainActivity, /ensureMicAwareChromeClientInstalled/);
+assert.match(mainActivity, /Do not hold PermissionRequest/);
+assert.match(mainActivity, /getMainLooper/);
+assert.match(mainActivity, /CountDownLatch/);
+assert.doesNotMatch(mainActivity, /pendingWebPermissionRequest/);
+
 const permissionRequestFn = mainActivity.slice(
   mainActivity.indexOf("public void onPermissionRequest"),
-  mainActivity.lastIndexOf("pendingWebPermissionRequest = request"),
 );
 assert.match(permissionRequestFn, /shouldGrantAudioCapture/);
 assert.match(permissionRequestFn, /grantAudioCaptureOnly/);
+assert.match(permissionRequestFn, /runOnUiThread/);
+assert.match(permissionRequestFn, /Do not hold PermissionRequest/);
 assert.equal(
   permissionRequestFn.includes("super.onPermissionRequest"),
   false,
-  "audio capture must not fall through to Capacitor super (CAMERA+MODIFY_AUDIO_SETTINGS batch deny)",
+  "audio capture must not fall through to Capacitor super (CAMERA batch deny)",
 );
 
 assert.match(profileChat, /ensureChatMicrophonePermission/);

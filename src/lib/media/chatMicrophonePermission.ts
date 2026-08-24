@@ -374,7 +374,8 @@ export async function captureTrustedChatAudioStream(input: {
     if (!(input.native && osGranted && isPermissionLikeCaptureError(error))) {
       throw error;
     }
-    const delay = Number.isFinite(input.retryDelayMs) ? Number(input.retryDelayMs) : 120;
+    const delay = Number.isFinite(input.retryDelayMs) ? Number(input.retryDelayMs) : 160;
+    // Exactly one continuation after OS grant races WebView origin grant.
     if (delay > 0) await wait(delay);
     return getUserMedia({ audio: true });
   }

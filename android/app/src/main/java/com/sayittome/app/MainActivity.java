@@ -39,7 +39,6 @@ public class MainActivity extends BridgeActivity {
             granted -> completeMicRequest(Boolean.TRUE.equals(granted) ? "granted" : "denied")
         );
     private String pendingMicRequestId = "";
-    private PermissionRequest pendingWebPermissionRequest = null;
     private boolean jsBridgesAttached = false;
     private MicAwareChromeClient micChromeClient = null;
 
@@ -70,11 +69,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        ensureMicAwareChromeClientInstalled();
         WebView webView = webViewOrNull();
         if (webView == null) return;
-        if (micChromeClient != null) {
-            webView.setWebChromeClient(micChromeClient);
-        }
         webView.evaluateJavascript(
             "window.__sayittomeMicResume&&window.__sayittomeMicResume()",
             null
@@ -92,6 +89,23 @@ public class MainActivity extends BridgeActivity {
         String url = webView.getUrl();
         if (url == null || url.isEmpty()) return null;
         return Uri.parse(url);
+    }
+
+    /**
+     * Capacitor's BridgeWebChromeClient batches CAMERA+RECORD_AUDIO and denies audio
+     * when camera is missing. Reinstall MicAware just before getUserMedia (check),
+     * on request, and onResume — never construct a new BridgeWebChromeClient after STARTED.
+     */
+    private void ensureMicAwareChromeClientInstalled() {
+        WebView webView = webViewOrNull();
+        Bridge bridge = getBridge();
+        if (webView == null || bridge == null) return;
+        if (micChromeClient == null) {
+            micChromeClient = new MicAwareChromeClient(bridge);
+        }
+        // Keep MicAware chrome client installed — Capacitor's BridgeWebChromeClient
+        // batches CAMERA+RECORD_AUDIO and denies audio when camera is missing.
+        webView.setWebChromeClient(micChromeClient);
     }
 
     private void attachWebViewInsets() {
@@ -130,10 +144,7 @@ public class MainActivity extends BridgeActivity {
             webView.addJavascriptInterface(new MicrophoneBridge(), "SayItToMeMic");
             jsBridgesAttached = true;
         }
-        if (micChromeClient == null) {
-            micChromeClient = new MicAwareChromeClient(bridge);
-        }
-        webView.setWebChromeClient(micChromeClient);
+        ensureMicAwareChromeClientInstalled();
     }
 
     private boolean isTrustedTopLevelOrigin() {
@@ -169,37 +180,42 @@ public class MainActivity extends BridgeActivity {
         recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO);
     }
 
-    private void grantAudioCaptureOnly(PermissionRequest request) {
+    private void grantAudioCaptureOnly(final PermissionRequest request) {
         if (request == null) return;
-        try {
-            request.grant(MicCapturePolicy.audioCaptureOnly());
-        } catch (Exception ignored) {
-            // Request already completed by WebView.
+        Runnable grant = () -> {
+            try {
+                request.grant(MicCapturePolicy.audioCaptureOnly());
+                Log.i(MIC_TAG, "granted RESOURCE_AUDIO_CAPTURE only");
+            } catch (Exception e) {
+                Log.w(MIC_TAG, "grantAudioCaptureOnly failed: " + e);
+            }
+        };
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            grant.run();
+        } else {
+            runOnUiThread(grant);
         }
     }
 
-    private void denyPermissionRequest(PermissionRequest request) {
+    private void denyPermissionRequest(final PermissionRequest request) {
         if (request == null) return;
-        try {
-            request.deny();
-        } catch (Exception ignored) {
-            // Request already completed by WebView.
+        Runnable deny = () -> {
+            try {
+                request.deny();
+            } catch (Exception ignored) {
+                // Request already completed by WebView.
+            }
+        };
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            deny.run();
+        } else {
+            runOnUiThread(deny);
         }
     }
 
     private void completeMicRequest(String state) {
         final String requestId = pendingMicRequestId == null ? "" : pendingMicRequestId;
         pendingMicRequestId = "";
-        final PermissionRequest webRequest = pendingWebPermissionRequest;
-        pendingWebPermissionRequest = null;
-
-        if (webRequest != null) {
-            if ("granted".equals(state) && hasRecordAudio()) {
-                grantAudioCaptureOnly(webRequest);
-            } else {
-                denyPermissionRequest(webRequest);
-            }
-        }
 
         Bridge bridge = getBridge();
         if (bridge == null) return;
@@ -239,13 +255,35 @@ public class MainActivity extends BridgeActivity {
     private class MicrophoneBridge {
         @JavascriptInterface
         public String check() {
-            if (!isTrustedTopLevelOrigin()) return "unavailable";
-            return currentRecordAudioState();
+            final String[] out = new String[] { "unavailable" };
+            final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            runOnUiThread(() -> {
+                try {
+                    // Reinstall MicAware on UI thread just before JS getUserMedia.
+                    ensureMicAwareChromeClientInstalled();
+                    if (!isTrustedTopLevelOrigin()) {
+                        out[0] = "unavailable";
+                    } else {
+                        out[0] = currentRecordAudioState();
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            });
+            try {
+                if (!latch.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    Log.w(MIC_TAG, "check timed out waiting for UI thread");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return out[0];
         }
 
         @JavascriptInterface
         public void request(String requestId) {
             runOnUiThread(() -> {
+                ensureMicAwareChromeClientInstalled();
                 if (!isTrustedTopLevelOrigin()) {
                     pendingMicRequestId = requestId == null ? "" : requestId;
                     completeMicRequest("unavailable");
@@ -271,8 +309,8 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void openSettings() {
-            if (!isTrustedTopLevelOrigin()) return;
             runOnUiThread(() -> {
+                if (!isTrustedTopLevelOrigin()) return;
                 Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
                 intent.setData(Uri.fromParts("package", getPackageName(), null));
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -292,34 +330,39 @@ public class MainActivity extends BridgeActivity {
                 return;
             }
 
-            Uri requestOrigin = request.getOrigin();
-            Uri topLevel = topLevelWebViewUri();
-            String[] resources = request.getResources();
-            boolean wantsAudio = MicCapturePolicy.requestsAudioCapture(resources);
-            boolean osGranted = hasRecordAudio();
+            runOnUiThread(() -> {
+                Uri requestOrigin = request.getOrigin();
+                Uri topLevel = topLevelWebViewUri();
+                String[] resources = request.getResources();
+                boolean wantsAudio = MicCapturePolicy.requestsAudioCapture(resources);
+                boolean osGranted = hasRecordAudio();
 
-            Log.i(
-                MIC_TAG,
-                "permissionRequest origin=" + requestOrigin
-                    + " top=" + topLevel
-                    + " audio=" + wantsAudio
-                    + " osRecordAudio=" + osGranted
-            );
+                Log.i(
+                    MIC_TAG,
+                    "permissionRequest origin=" + requestOrigin
+                        + " top=" + topLevel
+                        + " audio=" + wantsAudio
+                        + " osRecordAudio=" + osGranted
+                );
 
-            if (MicCapturePolicy.shouldDenyRequest(requestOrigin, topLevel) || !wantsAudio) {
+                if (MicCapturePolicy.shouldDenyRequest(requestOrigin, topLevel) || !wantsAudio) {
+                    denyPermissionRequest(request);
+                    return;
+                }
+
+                if (MicCapturePolicy.shouldGrantAudioCapture(requestOrigin, topLevel, osGranted)) {
+                    grantAudioCaptureOnly(request);
+                    return;
+                }
+
+                // Do not hold PermissionRequest across the OS dialog (WebView times it out).
+                // Deny this capture attempt; JS ensureChatMicrophonePermission + one retry
+                // after RECORD_AUDIO grant continues the tap-to-record flow.
                 denyPermissionRequest(request);
-                return;
-            }
-
-            if (MicCapturePolicy.shouldGrantAudioCapture(requestOrigin, topLevel, osGranted)) {
-                grantAudioCaptureOnly(request);
-                return;
-            }
-
-            pendingWebPermissionRequest = request;
-            if (pendingMicRequestId == null || pendingMicRequestId.isEmpty()) {
-                launchRecordAudioRequest();
-            }
+                if (pendingMicRequestId == null || pendingMicRequestId.isEmpty()) {
+                    launchRecordAudioRequest();
+                }
+            });
         }
     }
 }
