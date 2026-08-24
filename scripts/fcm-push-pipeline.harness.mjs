@@ -103,6 +103,9 @@ assert.match(srcIndex, /onChatMessageCreated/);
 assert.match(srcIndex, /pushDeliveries/);
 assert.match(srcIndex, /registerFcmToken/);
 assert.match(srcIndex, /chat-messages-v2/);
+assert.match(srcIndex, /collapseKey:\s*`msg-\$\{messageId\}`/);
+assert.match(srcIndex, /tag:\s*`msg-\$\{messageId\}`/);
+assert.doesNotMatch(srcIndex, /tag:\s*`chat-\$\{chatId\}`/);
 
 const client = fs.readFileSync(path.join(root, "src/lib/chat/fcmPush.ts"), "utf8");
 assert.match(client, /initNativePushNotifications/);

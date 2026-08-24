@@ -350,7 +350,7 @@ export function useShufflePool() {
     storyOwnerUidsRef.current = new Set(getCachedStoryGroups().map((group) => group.ownerUid));
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
 
@@ -1020,9 +1020,25 @@ export function useShufflePool() {
       pinnedCount: peekPinnedShuffleWindowCount(),
       visibleCount: visible.length,
     });
+    const membership =
+      storedFilters.soloOnline ||
+      storedFilters.soloConHistorias ||
+      storedFilters.soloConFoto;
+
     if (cachedProfiles?.length) {
       applyPool(cachedProfiles, cachedStats?.totalLive || cachedProfiles.length);
-      if (visible.length === 0 && !preserve) {
+      if (membership) {
+        // Atomic rehydrate: chip + membership from the same stored filters.
+        // Preserve keeps order via prune; cold empty deals a filtered window.
+        if (visible.length === 0 && preserve) restorePinnedShuffleWindowSync();
+        filterActivePool("", storedFilters, {
+          forceWindow: visible.length === 0 && !preserve,
+        });
+        if (preserve || visible.length > 0) {
+          restoreShuffleViewportSnapshot();
+          markShuffleHydrated(Math.max(visible.length, peekPinnedShuffleWindowCount()));
+        }
+      } else if (visible.length === 0 && !preserve) {
         filterActivePool("", storedFilters, { forceWindow: true });
       } else {
         if (visible.length === 0) restorePinnedShuffleWindowSync();
@@ -1034,6 +1050,9 @@ export function useShufflePool() {
       setLoading(false);
       setListReady(true);
       markShuffleHydrated(Math.max(visible.length, peekPinnedShuffleWindowCount()));
+      if (membership) {
+        filterActivePool("", storedFilters, { forceWindow: false });
+      }
     }
 
     if (
@@ -1043,7 +1062,7 @@ export function useShufflePool() {
       !shuffleFeedFrozenRef.current &&
       !hasShuffleEverHydrated()
     ) {
-      filterActivePool("", filtersRef.current);
+      filterActivePool("", storedFilters);
     }
   }, [filterActivePool]);
 
@@ -1071,10 +1090,21 @@ export function useShufflePool() {
         pinnedCount: peekPinnedShuffleWindowCount(),
         visibleCount: visible.length,
       });
-      if (visible.length === 0 && !preserve) {
+      const storedFilters = filtersRef.current;
+      const membership =
+        storedFilters.soloOnline ||
+        storedFilters.soloConHistorias ||
+        storedFilters.soloConFoto;
+      if (membership) {
+        if (visible.length === 0 && preserve) restorePinnedShuffleWindowSync();
+        filterActivePool("", storedFilters, {
+          forceWindow: visible.length === 0 && !preserve,
+        });
+        if (preserve) restoreShuffleViewportSnapshot();
+      } else if (visible.length === 0 && !preserve) {
         // Cold entry: deal a fresh random 35 and reset batch memory.
         clearBatchMemory();
-        filterActivePool("", filtersRef.current, { forceWindow: true });
+        filterActivePool("", storedFilters, { forceWindow: true });
       } else if (visible.length === 0 && preserve) {
         restorePinnedShuffleWindowSync();
         restoreShuffleViewportSnapshot();
@@ -1158,8 +1188,19 @@ export function useShufflePool() {
         pinnedCount: peekPinnedShuffleWindowCount(),
         visibleCount: getVisibleShuffleProfiles().length,
       });
-      if (!shuffleFeedFrozenRef.current && !preserve) {
-        filterActivePool(searchRef.current.trim(), filtersRef.current, { forceWindow: true });
+      const storedFilters = filtersRef.current;
+      const membership =
+        storedFilters.soloOnline ||
+        storedFilters.soloConHistorias ||
+        storedFilters.soloConFoto;
+      if (!shuffleFeedFrozenRef.current && (!preserve || membership)) {
+        filterActivePool(searchRef.current.trim(), storedFilters, {
+          forceWindow: !preserve,
+        });
+        if (preserve) {
+          restorePinnedShuffleWindowSync();
+          restoreShuffleViewportSnapshot();
+        }
       } else if (preserve) {
         restorePinnedShuffleWindowSync();
         restoreShuffleViewportSnapshot();

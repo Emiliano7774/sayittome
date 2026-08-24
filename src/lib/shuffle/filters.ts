@@ -265,6 +265,9 @@ export function loadStoredShuffleFilters(): ShuffleFilters {
       intereses: normalizeInterests(Array.isArray(parsed.intereses) ? parsed.intereses : []),
       edadMin: Number(parsed.edadMin || 0) || 0,
       edadMax: Number(parsed.edadMax || 0) || 0,
+      soloOnline: parsed.soloOnline === true,
+      soloConFoto: parsed.soloConFoto === true,
+      soloConHistorias: parsed.soloConHistorias === true,
     };
   } catch {
     return defaultShuffleFilters();

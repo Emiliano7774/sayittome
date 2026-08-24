@@ -66,6 +66,14 @@ const second = chatBack.resolveChatBackDecision({
 assert.equal(second.action.kind, "leave-chat");
 assert.equal(second.nextPhase, "idle");
 
+const reopen = chatBack.resolveChatBackDecision({
+  pathname: "/chat/thread-1",
+  phase: "keyboard-dismissed",
+  keyboardUp: true,
+  composerFocused: true,
+});
+assert.equal(reopen.action.kind, "dismiss-keyboard");
+
 const noIme = chatBack.resolveChatBackDecision({
   pathname: "/chat/thread-1",
   phase: "idle",

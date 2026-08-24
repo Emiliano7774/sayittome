@@ -69,15 +69,27 @@ export function resolveChatBackDecision(input: {
   pathname: string;
   phase: ChatBackPhase;
   keyboardUp: boolean;
+  /** True when the composer still owns focus (user reopened IME after a dismiss). */
+  composerFocused?: boolean;
 }): ChatBackDecision {
   if (!isChatRoutePath(input.pathname)) {
     return { action: null, nextPhase: "idle" };
   }
+
+  if (input.keyboardUp) {
+    // After dismiss, Android may still report a raised viewport for one press.
+    // If the composer is focused again, treat it as a fresh IME session.
+    if (input.phase === "keyboard-dismissed" && input.composerFocused) {
+      return { action: { kind: "dismiss-keyboard" }, nextPhase: "keyboard-dismissed" };
+    }
+    if (input.phase === "keyboard-dismissed") {
+      return { action: { kind: "leave-chat" }, nextPhase: "idle" };
+    }
+    return { action: { kind: "dismiss-keyboard" }, nextPhase: "keyboard-dismissed" };
+  }
+
   if (input.phase === "keyboard-dismissed") {
     return { action: { kind: "leave-chat" }, nextPhase: "idle" };
-  }
-  if (input.keyboardUp) {
-    return { action: { kind: "dismiss-keyboard" }, nextPhase: "keyboard-dismissed" };
   }
   return { action: { kind: "leave-chat" }, nextPhase: "idle" };
 }
@@ -128,10 +140,18 @@ export function resolveChatBackAction(pathname: string): ChatBackAction | null {
     pathname,
     phase: chatBackPhase,
     keyboardUp: isChatKeyboardUp(),
+    composerFocused: isChatComposerFocused(),
   });
   chatBackPhase = decided.nextPhase;
   if (decided.action?.kind === "dismiss-keyboard") {
     dismissChatComposerKeyboard();
   }
   return decided.action;
+}
+
+/** Call when the composer regains focus so a later back dismisses IME again. */
+export function noteChatComposerFocused() {
+  if (chatBackPhase === "keyboard-dismissed") {
+    chatBackPhase = "idle";
+  }
 }

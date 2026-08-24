@@ -12,14 +12,22 @@ let permissionRequested = false;
 let nativePermissionGranted = false;
 let actionListenerAttached = false;
 
-function stableNotificationId(chatId: string) {
-  const raw = String(chatId || "").trim();
+/** Stable numeric id from an opaque key (prefer messageId so banners do not replace). */
+export function stableNotificationId(key: string) {
+  const raw = String(key || "").trim();
   if (!raw) return Math.floor(Math.random() * 2_000_000_000);
   let hash = 0;
   for (let i = 0; i < raw.length; i += 1) {
     hash = (hash * 31 + raw.charCodeAt(i)) | 0;
   }
   return (Math.abs(hash) % 1_900_000_000) + 1;
+}
+
+export function chatNotificationTag(input: { chatId?: string; messageId?: string }) {
+  const messageId = String(input.messageId || "").trim();
+  if (messageId) return `sayittome-msg-${messageId}`;
+  const chatId = String(input.chatId || "").trim();
+  return chatId ? `sayittome-chat-${chatId}` : "sayittome-chat";
 }
 
 function notificationBody(input: { body?: string; mediaHint?: string }) {
@@ -178,6 +186,7 @@ export async function showChatNotification(input: {
   title: string;
   body: string;
   chatId?: string;
+  messageId?: string;
   viewingActiveChat?: boolean;
 }) {
   if (typeof window === "undefined") return;
@@ -186,6 +195,10 @@ export async function showChatNotification(input: {
   const body = notificationBody({ body: input.body });
   const title = String(input.title || "Nuevo mensaje").trim() || "Nuevo mensaje";
   const chatId = String(input.chatId || "").trim();
+  const messageId = String(input.messageId || "").trim();
+  const idKey = messageId || `${chatId}:${body}:${title}`;
+  const tag = chatNotificationTag({ chatId, messageId });
+  const group = chatId ? `chat-${chatId}` : "chat";
 
   // Native FCM owns OS notifications once a token is registered (avoids double banners).
   if (isCapacitorNative()) {
@@ -203,16 +216,18 @@ export async function showChatNotification(input: {
       await LocalNotifications.schedule({
         notifications: [
           {
-            id: stableNotificationId(chatId),
+            id: stableNotificationId(idKey),
             title,
             body,
             channelId: CHAT_CHANNEL_ID,
             // Foreground: in-app whip owns audio — avoid double sound with channel.
             ...(background ? { sound: "default" as const } : {}),
             smallIcon: "ic_launcher_foreground",
-            group: chatId ? `chat-${chatId}` : "chat",
+            group,
             extra: {
               chatId,
+              messageId,
+              group,
             },
           },
         ],
@@ -229,10 +244,10 @@ export async function showChatNotification(input: {
   try {
     const notification = new Notification(title, {
       body,
-      tag: chatId ? `sayittome-chat-${chatId}` : "sayittome-chat",
+      tag,
       icon: ICON_PATH,
       silent: false,
-      data: { chatId },
+      data: { chatId, messageId, group },
     });
     notification.onclick = () => {
       if (chatId) openChatFromNotification(chatId);

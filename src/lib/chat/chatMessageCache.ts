@@ -36,7 +36,8 @@ const memory = new Map<string, CachedChatMessage[]>();
 /** chatId-only keys. `mine` is always recomputed from auth; uid-scoping caused warm misses. */
 const STORAGE_PREFIX = "sayittome:chat-msgs:v3:";
 const LEGACY_PREFIXES = ["sayittome:chat-msgs:v2:", "sayittome:chat-msgs:v3:"] as const;
-const MAX_CACHED = 50;
+/** Keep more than one live page so warm reopen retains paginated history. */
+const MAX_CACHED = 200;
 
 function storageKey(chatId: string) {
   return `${STORAGE_PREFIX}${chatId}`;

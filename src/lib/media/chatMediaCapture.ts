@@ -126,7 +126,11 @@ export async function captureChatPhotoFromCamera(): Promise<ChatMediaCaptureResu
     });
 
     const uri = photo.webPath || photo.path || "";
-    if (!uri) return null;
+    if (!uri) {
+      throw Object.assign(new Error("chat_media_empty_uri"), {
+        code: "chat_media_failed",
+      });
+    }
 
     const mimeType = mimeFromFormat(photo.format);
     const file = await uriToFile(
@@ -146,7 +150,10 @@ export async function captureChatPhotoFromCamera(): Promise<ChatMediaCaptureResu
         code: "chat_media_cancelled",
       });
     }
-    return null;
+    throw Object.assign(
+      error instanceof Error ? error : new Error("chat_media_failed"),
+      { code: "chat_media_failed" },
+    );
   }
 }
 

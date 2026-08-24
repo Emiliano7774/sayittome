@@ -151,10 +151,14 @@ export function resolvePushRecipientUids(message: MessageDoc, chat: ChatDoc): st
 export function notificationTitleForRecipient(
   message: MessageDoc,
   chat: ChatDoc,
-  _recipientUid: string,
+  recipientUid: string,
 ): string {
   const from = messageAuthorId(message);
   const role = asId(message.senderRole);
+  const profileName = asId(chat.targetUsername || chat.receptorUsername);
+  const profileUid = asId(
+    message.profileUid || chat.targetUid || chat.receptorUid || chat.anonOwnerUid,
+  );
 
   // Immutable senderRole wins over historical fromUid shape.
   // Legacy role=anon must never surface a raw Firebase fromUid.
@@ -167,11 +171,20 @@ export function notificationTitleForRecipient(
   }
 
   if (role === "profile" || isOwnerReply(message, chat, from) || from.startsWith("profile_")) {
-    return asId(chat.targetUsername || chat.receptorUsername) || "Nuevo mensaje";
+    return profileName || "Nuevo mensaje";
   }
 
-  // Legacy peer threads: prefer profile usernames on the chat doc.
-  return asId(chat.targetUsername || chat.receptorUsername) || "Nuevo mensaje";
+  // Same-profile author (legacy bare Firebase fromUid).
+  if (profileUid && from === profileUid) {
+    return profileName || "Nuevo mensaje";
+  }
+
+  // Never attribute another peer's message to this chat's profile username.
+  if (profileName && from && from !== profileUid && from !== asId(recipientUid)) {
+    return "Nuevo mensaje";
+  }
+
+  return profileName || "Nuevo mensaje";
 }
 
 export function notificationBodyFromMessage(message: MessageDoc): string {
@@ -434,13 +447,16 @@ export const onChatMessageCreated = onDocumentCreated(
           chatId,
           messageId,
           recipientUid,
+          // Client inbox/group key — do not collapse per-chat.
+          group: `chat-${chatId}`,
         },
         android: {
           priority: "high",
-          collapseKey: `chat-${chatId}`,
+          // Unique per message so unread banners stack instead of replacing.
+          collapseKey: `msg-${messageId}`,
           notification: {
             channelId: FCM_CHANNEL_ID,
-            tag: `chat-${chatId}`,
+            tag: `msg-${messageId}`,
             sound: "whip",
             priority: "high",
             defaultVibrateTimings: true,

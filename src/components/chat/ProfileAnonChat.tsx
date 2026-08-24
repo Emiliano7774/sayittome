@@ -179,16 +179,27 @@ import {
   resetChatBackNavigationState,
   resolveChatBackAction,
 } from "@/lib/navigation/chatBackNavigation";
+import {
+  CHAT_MESSAGE_PAGE_SIZE,
+  captureScrollAnchor,
+  mergeLiveWindowIntoHistory,
+  prependOlderMessages,
+  restoreScrollAnchor,
+} from "@/lib/chat/chatHistoryPages";
+import { replyQuoteText } from "@/lib/chat/replyQuote";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 import {
   collection,
   doc,
+  endBefore,
+  getDocs,
   limitToLast,
   onSnapshot,
   orderBy,
   query,
   updateDoc,
   writeBatch,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
@@ -458,6 +469,8 @@ export default function ProfileAnonChat({
   const [chatSurfaceEngaged, setChatSurfaceEngaged] = useState(initialThreadActive);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
   const [fullscreenUrl, setFullscreenUrl] = useState("");
   const [audioPreview, setAudioPreview] = useState("");
   const [imagePreview, setImagePreview] = useState("");
@@ -504,6 +517,7 @@ export default function ProfileAnonChat({
   const videoPreviewUrlRef = useRef("");
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const historyOldestSnapRef = useRef<QueryDocumentSnapshot | null>(null);
   const stickToBottomRef = useRef(true);
   const keepComposerFocusRef = useRef(false);
   const keyboardAnimatingRef = useRef(false);
@@ -1337,10 +1351,13 @@ export default function ProfileAnonChat({
   useEffect(() => {
     if (!chatId || !authReady) return;
 
+    historyOldestSnapRef.current = null;
+    setHasMoreOlder(true);
+
     const q = query(
       collection(db, "chats", chatId, "mensajes"),
       orderBy("createdAt", "asc"),
-      limitToLast(50),
+      limitToLast(CHAT_MESSAGE_PAGE_SIZE),
     );
 
     const unsub = onSnapshot(
@@ -1403,18 +1420,34 @@ export default function ProfileAnonChat({
           hasPendingWrites: snapshot.metadata.hasPendingWrites,
         });
 
+        if (snapshot.docs[0] && !historyOldestSnapRef.current) {
+          historyOldestSnapRef.current = snapshot.docs[0];
+        }
+        if (snapshot.size < CHAT_MESSAGE_PAGE_SIZE) {
+          setHasMoreOlder(false);
+        }
+
         setMessages((prev) => {
           const pending = prev.filter(
             (message) => message.status === "sending" || message.status === "error",
           );
-          const merged = mergeLoadedChatMessages(loaded, pending);
+          const merged = mergeLiveWindowIntoHistory(
+            prev,
+            loaded,
+            pending,
+            mergeLoadedChatMessages,
+          );
+          writeCachedChatMessages(
+            chatId,
+            merged
+              .filter((row) => row.status !== "sending" && row.status !== "error")
+              .map(uiMessageToCached),
+          );
           if (chatMessagesSignature(prev) === chatMessagesSignature(merged)) {
             return prev;
           }
           return merged;
         });
-
-        writeCachedChatMessages(chatId, loaded.map(uiMessageToCached));
 
         if (!messageViewerId) return;
 
@@ -1518,6 +1551,72 @@ export default function ProfileAnonChat({
       }),
     [],
   );
+
+  async function loadOlderMessages() {
+    if (!chatId || !authReady || loadingOlder || !hasMoreOlder) return;
+    const oldest = historyOldestSnapRef.current;
+    if (!oldest) {
+      setHasMoreOlder(false);
+      return;
+    }
+
+    setLoadingOlder(true);
+    const anchor = captureScrollAnchor(messagesScrollRef.current);
+    stickToBottomRef.current = false;
+
+    try {
+      const olderQuery = query(
+        collection(db, "chats", chatId, "mensajes"),
+        orderBy("createdAt", "asc"),
+        endBefore(oldest),
+        limitToLast(CHAT_MESSAGE_PAGE_SIZE),
+      );
+      const snapshot = await getDocs(olderQuery);
+      if (snapshot.empty) {
+        setHasMoreOlder(false);
+        return;
+      }
+
+      const baseCtx = buildProfileAnonViewerContext({
+        chatId: threadContextRef.current.chatId,
+        chatAnonSessionId: threadContextRef.current.chatAnonSessionId,
+        currentUid: threadContextRef.current.currentUid,
+        targetUid: threadContextRef.current.targetUid,
+        chatOwnerUid: threadContextRef.current.chatOwnerUid,
+        viewerUsername: threadContextRef.current.viewerUsername,
+        authReady: true,
+        identityReady: threadContextRef.current.identityReady,
+      });
+      const hideIdentities = viewerHideKeys({
+        authUid: firebaseUid || auth.currentUser?.uid || "",
+        profileUid: baseCtx.currentUid,
+        anonId: baseCtx.threadAnonId,
+      });
+      const localHidden = new Set(readLocalHiddenMessageIds(chatId));
+      const older = mapFirestoreDocsToProfileAnonMessages(
+        snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          data: docSnap.data() as ProfileAnonFirestoreMessage,
+        })),
+        { ...baseCtx, hideIdentities },
+      ).filter((row) => !localHidden.has(row.id));
+
+      historyOldestSnapRef.current = snapshot.docs[0] || historyOldestSnapRef.current;
+      if (snapshot.size < CHAT_MESSAGE_PAGE_SIZE) {
+        setHasMoreOlder(false);
+      }
+
+      setMessages((prev) => prependOlderMessages(prev, older));
+      requestAnimationFrame(() => {
+        restoreScrollAnchor(messagesScrollRef.current, anchor);
+      });
+    } catch (error) {
+      console.error(error);
+      alert(t("chat_load_fail"));
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   async function openRealCamera(mode: "photo" | "video") {
     if (isNativeChatShell()) {
@@ -1695,8 +1794,12 @@ export default function ProfileAnonChat({
   }
 
   function handleFile(file: File | null, source: "camera" | "gallery") {
+    if (!file) return;
     const picked = fileFromChatInput(file, source);
-    if (!picked) return;
+    if (!picked) {
+      alert(source === "camera" ? t("chat_camera_fail") : t("chat_gallery_fail"));
+      return;
+    }
 
     const url = URL.createObjectURL(picked.file);
     revokePreviewUrls();
@@ -1929,7 +2032,14 @@ export default function ProfileAnonChat({
   }
 
   async function sendMedia() {
-    if (!pendingBlob || !pendingType || !authReady || !chatId || !canSend) return;
+    if (!pendingBlob || !pendingType) {
+      alert(t("chat_upload_fail"));
+      return;
+    }
+    if (!authReady || !chatId || !canSend) {
+      alert(t("chat_load_fail"));
+      return;
+    }
     if (blockedByAbuse) {
       alert(t("chat_abuse_write_block"));
       return;
@@ -1946,6 +2056,7 @@ export default function ProfileAnonChat({
     const previewType = pendingType;
     const previewSource = pendingSource;
     const previewViewOnce = previewSource === "camera" ? viewOnce : false;
+    const replyText = replyQuoteText(replyingTo);
     const blob = pendingBlob;
     const localPreviewUrl = URL.createObjectURL(blob);
 
@@ -1976,11 +2087,13 @@ export default function ProfileAnonChat({
         mediaUrl: localPreviewUrl,
         source: previewSource,
         viewOnce: previewViewOnce,
+        reply: replyText || undefined,
         status: "sending",
       },
     ]);
 
     clearPreview();
+    setReplyingTo(null);
 
     try {
       const scanFile = new File(
@@ -2028,6 +2141,7 @@ export default function ProfileAnonChat({
         mediaUrl: url,
         source: previewSource,
         viewOnce: previewViewOnce,
+        reply: replyText || undefined,
         existingChatData: chatDocDataRef.current,
         clientId,
         isOwnerReply: provenOwner,
@@ -2196,7 +2310,7 @@ export default function ProfileAnonChat({
     const messageText = text.trim();
     const clientId = crypto.randomUUID();
     const sendTapAt = Date.now();
-    const replyText = replyingTo?.text;
+    const replyText = replyQuoteText(replyingTo);
     const localMessage = {
       id: clientId,
       clientId,
@@ -2454,6 +2568,20 @@ export default function ProfileAnonChat({
             classicChatEngaged ? "pt-3" : "",
           ].join(" ")}
         >
+          {hasMoreOlder && messages.length > 0 ? (
+            <div className="mb-3 flex justify-center">
+              <button
+                type="button"
+                disabled={loadingOlder}
+                onClick={() => {
+                  void loadOlderMessages();
+                }}
+                className="rounded-full border border-white/15 bg-white/[0.06] px-4 py-2 text-xs font-semibold text-white/70 disabled:opacity-50"
+              >
+                {loadingOlder ? "Cargando…" : "Cargar mensajes anteriores"}
+              </button>
+            </div>
+          ) : null}
           {showClassicIntro ? (
             <div data-chat-thread-intro="classic" className={CHAT_THREAD_INTRO_CLASS}>
               <div className={CLASSIC_INTRO_INNER_CLASS}>
@@ -2578,6 +2706,13 @@ export default function ProfileAnonChat({
               <ChatSwipeRevealTime
                 timeLabel={formatMessageTime(message.createdAt)}
                 align={message.mine ? "right" : "left"}
+                onSwipeLeftReply={
+                  message.deletedForEveryone
+                    ? undefined
+                    : () => {
+                        setReplyingTo(message);
+                      }
+                }
               >
                 <div
                   onDoubleClick={() => {
@@ -2805,7 +2940,7 @@ export default function ProfileAnonChat({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-lg font-bold text-violet-400">Respondiendo</p>
-                  <p className="mt-1 text-lg text-zinc-400">{replyingTo.text}</p>
+                  <p className="mt-1 text-lg text-zinc-400">{replyQuoteText(replyingTo)}</p>
                 </div>
 
                 <button onClick={() => setReplyingTo(null)} className="text-zinc-500">
