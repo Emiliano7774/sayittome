@@ -28,7 +28,8 @@ export default function AdminChatReviewView({
   showBack = false,
 }: Props) {
   const phoneShell = usePhoneShell();
-  const { chats, uid, loading, errorText, total } = useUserModerationChats(username);
+  const { chats, uid, loading, errorText, errorCode, total, retry } =
+    useUserModerationChats(username);
   const [selectedChatId, setSelectedChatId] = useState("");
   const [mobilePane, setMobilePane] = useState<"list" | "chat">("list");
   const markedSeenRef = useRef(false);
@@ -78,7 +79,26 @@ export default function AdminChatReviewView({
   }
 
   if (errorText) {
-    return <p className="text-lg font-bold text-red-300/80">{errorText}</p>;
+    return (
+      <div
+        className="space-y-3 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-5"
+        data-admin-user-chats-error={errorCode || "unknown"}
+      >
+        <p className="text-lg font-bold text-red-200">{errorText}</p>
+        {errorCode ? (
+          <p className="text-xs font-semibold uppercase tracking-wide text-red-200/60">
+            código · {errorCode}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => retry()}
+          className="rounded-full border border-white/20 bg-[#111] px-4 py-2 text-sm font-bold text-white"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
   }
 
   if (phoneShell && mobilePane === "chat" && selectedChat) {

@@ -207,6 +207,8 @@ export function useUserModerationChats(username: string) {
   const [uid, setUid] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState("");
+  const [errorCode, setErrorCode] = useState("");
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     if (!username) return;
@@ -214,6 +216,7 @@ export function useUserModerationChats(username: string) {
     let cancelled = false;
 
     async function waitForAdminUser() {
+      await auth.authStateReady();
       if (auth.currentUser) return auth.currentUser;
       return await new Promise<(typeof auth)["currentUser"]>((resolve) => {
         const unsub = auth.onAuthStateChanged((user) => {
@@ -223,47 +226,81 @@ export function useUserModerationChats(username: string) {
       });
     }
 
+    async function fetchUserChats(forceRefresh: boolean) {
+      const { adminUserChatsErrorMessage } = await import("@/lib/admin/adminUsernameParam");
+      const user = await waitForAdminUser();
+      if (!user) {
+        return {
+          ok: false as const,
+          status: 401,
+          error: "unauthorized",
+          message: adminUserChatsErrorMessage("unauthorized"),
+        };
+      }
+      const token = await user.getIdToken(forceRefresh);
+      const res = await fetch(
+        `/api/admin/user-chats?username=${encodeURIComponent(username)}`,
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      let json: Record<string, unknown> = {};
+      try {
+        json = (await res.json()) as Record<string, unknown>;
+      } catch {
+        json = {};
+      }
+      if (!res.ok || !json?.ok) {
+        const code = String(json?.error || `http_${res.status}` || "unknown");
+        return {
+          ok: false as const,
+          status: res.status,
+          error: code,
+          message: adminUserChatsErrorMessage(code),
+        };
+      }
+      return {
+        ok: true as const,
+        uid: String(json.uid || ""),
+        chats: Array.isArray(json.chats)
+          ? json.chats.map((row: Record<string, unknown>) => normalizeModerationChatRow(row))
+          : [],
+      };
+    }
+
     async function loadHistory() {
       setLoading(true);
       setErrorText("");
+      setErrorCode("");
       try {
-        const user = await waitForAdminUser();
-        if (!user) {
-          if (!cancelled) {
-            setErrorText("unauthorized");
-            setChats([]);
-            setUid("");
-          }
-          return;
+        let result = await fetchUserChats(true);
+        // One safe retry: token refresh / transient unavailable.
+        if (
+          !result.ok &&
+          (result.status === 401 ||
+            result.status === 503 ||
+            result.error === "unavailable" ||
+            result.error === "admin_sdk_unavailable")
+        ) {
+          result = await fetchUserChats(true);
         }
-        const token = await user.getIdToken(true);
-        const res = await fetch(
-          `/api/admin/user-chats?username=${encodeURIComponent(username)}`,
-          {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
-        const json = await res.json();
-
         if (cancelled) return;
-
-        if (!json?.ok) {
-          setErrorText(String(json?.error || "No se pudo cargar el historial"));
+        if (!result.ok) {
+          setErrorCode(result.error);
+          setErrorText(result.message);
           setChats([]);
           setUid("");
           return;
         }
-
-        setUid(String(json.uid || ""));
-        setChats(
-          Array.isArray(json.chats)
-            ? json.chats.map((row: Record<string, unknown>) => normalizeModerationChatRow(row))
-            : [],
-        );
+        setUid(result.uid);
+        setChats(result.chats);
       } catch (error) {
         if (!cancelled) {
-          setErrorText((error as Error)?.message || "Error cargando historial");
+          const code = String((error as Error)?.message || "client_fetch_failed");
+          const { adminUserChatsErrorMessage } = await import("@/lib/admin/adminUsernameParam");
+          setErrorCode(code);
+          setErrorText(adminUserChatsErrorMessage(code));
           setChats([]);
         }
       } finally {
@@ -271,15 +308,20 @@ export function useUserModerationChats(username: string) {
       }
     }
 
-    void Promise.resolve().then(() => {
-      if (cancelled) return;
-      void loadHistory();
-    });
+    void loadHistory();
 
     return () => {
       cancelled = true;
     };
-  }, [username]);
+  }, [username, retryToken]);
 
-  return { chats, uid, loading, errorText, total: chats.length };
+  return {
+    chats,
+    uid,
+    loading,
+    errorText,
+    errorCode,
+    total: chats.length,
+    retry: () => setRetryToken((value) => value + 1),
+  };
 }
