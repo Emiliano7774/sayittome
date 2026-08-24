@@ -2218,7 +2218,7 @@ export default function ProfileAnonChat({
           {
             stage: "upload",
             op: "uploadChatMessageMedia",
-            path: `chats/${chatId}/{object}`,
+            path: "chats/{chatId}/{object}",
             code: String((error as { code?: string }).code || (error as Error).message || "upload"),
           },
           error,
@@ -2275,7 +2275,7 @@ export default function ProfileAnonChat({
             {
               stage: "cleanup",
               op: "deleteChatMessageMediaAtPath",
-              path: `chats/${chatId}/{object}`,
+              path: "chats/{chatId}/{object}",
               code: String(
                 (cleanupError as { code?: string }).code ||
                   (cleanupError as Error).message ||

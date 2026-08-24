@@ -493,7 +493,7 @@ export async function persistAnonChatMessage(
         {
           stage: "persist",
           op: "writeBatch.commit",
-          path: `chats/${canonicalChatId}+mensajes/{id}`,
+          path: "chats/{chatId}+mensajes/{id}",
           code: firebaseErrorCode(error),
         },
         error,
@@ -509,7 +509,7 @@ export async function persistAnonChatMessage(
       {
         stage: "persist",
         op: "commitWithStoryReplyRulesFallback",
-        path: `chats/${canonicalChatId}+mensajes/{id}`,
+        path: "chats/{chatId}+mensajes/{id}",
         code: firebaseErrorCode(error),
       },
       error,
@@ -549,7 +549,7 @@ export async function persistAnonChatMessage(
           {
             stage: "cleanup",
             op: "deleteDoc",
-            path: `chats/${canonicalChatId}/mensajes/{id}`,
+            path: "chats/{chatId}/mensajes/{id}",
             code: firebaseErrorCode(rollbackError),
           },
           error,

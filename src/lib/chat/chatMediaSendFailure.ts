@@ -1,6 +1,7 @@
 /**
  * Sanitized media-send failure diagnostics (no tokens, mediaUrl, or PII bodies).
  * Stages: scan | upload | persist | secret | cleanup
+ * Paths must be logical placeholders only — never real chatId/object ids.
  */
 export type ChatMediaFailStage =
   | "scan"
@@ -18,6 +19,29 @@ export type ChatMediaFailDiag = {
 };
 
 const SAFE_CODE = /^[a-z0-9_./-]{0,80}$/i;
+const SAFE_PATH_TOKEN = /^[a-z0-9_{}:./+-]+$/i;
+
+/** Rejects real IDs; keeps chats/{chatId}/… style logical paths. */
+export function sanitizeFailPath(raw: unknown): string {
+  const text = String(raw || "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .trim()
+    .slice(0, 120);
+  if (!text) return "chat";
+  // Real-looking segments: Firebase-ish ids, canary_*, anon_*__*
+  if (
+    /canary_/i.test(text) ||
+    /anon_[a-z0-9]+__/i.test(text) ||
+    /chats\/(?!\{)[A-Za-z0-9_-]{8,}\b/.test(text) ||
+    /\$\{(?:chatId|canonicalChatId|messageId|clientId)\}/.test(text)
+  ) {
+    return "chats/{chatId}";
+  }
+  if (!SAFE_PATH_TOKEN.test(text)) {
+    return text.replace(/[^a-z0-9_{}:./+-]+/gi, "_").slice(0, 120) || "chat";
+  }
+  return text;
+}
 
 export class ChatMediaSendError extends Error {
   stage: ChatMediaFailStage;
@@ -31,11 +55,12 @@ export class ChatMediaSendError extends Error {
         String((cause as { code?: string })?.code || "") ||
         String((cause as Error)?.message || "error"),
     );
+    const path = sanitizeFailPath(input.path);
     super(`${input.stage}:${input.op}:${code}`);
     this.name = "ChatMediaSendError";
     this.stage = input.stage;
     this.op = String(input.op || "").slice(0, 64);
-    this.path = String(input.path || "").slice(0, 120);
+    this.path = path;
     this.code = code;
     if (cause !== undefined) {
       (this as Error & { cause?: unknown }).cause = cause;
@@ -61,7 +86,7 @@ export function classifyChatMediaSendFailure(error: unknown): ChatMediaFailDiag 
     return {
       stage: error.stage,
       op: error.op,
-      path: error.path,
+      path: sanitizeFailPath(error.path),
       code: error.code,
     };
   }
@@ -92,7 +117,7 @@ export function classifyChatMediaSendFailure(error: unknown): ChatMediaFailDiag 
   return { stage: "unknown", op: "sendMedia", path: "chat", code };
 }
 
-/** User-visible one-liner; never includes URLs/tokens/PII. */
+/** User-visible one-liner; never includes URLs/tokens/PII or path ids. */
 export function formatChatMediaFailAlert(base: string, error: unknown) {
   const diag = classifyChatMediaSendFailure(error);
   return `${base}\n[${diag.stage}/${diag.op}/${diag.code}]`;
