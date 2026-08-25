@@ -55,9 +55,13 @@ try {
   await assertFails(authed.firestore().doc(secretPath).update({ x: 1 }));
   await assertFails(authed.firestore().doc(secretPath).delete());
 
-  // Catch-all still allows unrelated docs (prod behavior preserved).
+  // Owner profile writes use usuarios/{uid} rules (not catch-all).
   await assertSucceeds(
     authed.firestore().doc("usuarios/user_abc").set({ displayName: "ok" }, { merge: true }),
+  );
+  // Unauthenticated cannot write usuarios (catch-all excluded).
+  await assertFails(
+    anon.firestore().doc("usuarios/user_abc").set({ displayName: "evil" }, { merge: true }),
   );
 
   // Product writer path: new + existing chat meta + media/text/audio/bomb birth.

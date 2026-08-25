@@ -298,25 +298,41 @@ export async function getFirestoreDoc(collection: string, id: string) {
   return parseFirestoreDoc(await res.json());
 }
 
+function buildPatchUrl(collection: string, id: string, fieldKeys: string[]) {
+  const url = new URL(
+    `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collection}/${encodeURIComponent(id)}`,
+  );
+  url.searchParams.set("key", FIRESTORE_API_KEY);
+  for (const key of fieldKeys) {
+    url.searchParams.append("updateMask.fieldPaths", key);
+  }
+  return url;
+}
+
+function splitPatchFields(fields: Record<string, unknown>) {
+  const setFields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) setFields[key] = value;
+  }
+  return setFields;
+}
+
+/**
+ * PATCH with API key only. Subject to security rules as unauthenticated.
+ * Do NOT use for privileged usuarios admin writes — use patchFirestoreDocAuthed.
+ * Pass `undefined` to delete a field (updateMask only; omitted from body).
+ */
 export async function patchFirestoreDoc(
   collection: string,
   id: string,
   fields: Record<string, unknown>,
 ) {
-  const url = new URL(
-    `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collection}/${encodeURIComponent(id)}`,
-  );
-  url.searchParams.set("key", FIRESTORE_API_KEY);
-
-  Object.keys(fields).forEach((key) => {
-    url.searchParams.append("updateMask.fieldPaths", key);
-  });
-
+  const url = buildPatchUrl(collection, id, Object.keys(fields));
   const res = await fetch(url.toString(), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     cache: "no-store",
-    body: JSON.stringify({ fields: toFirestoreFields(fields) }),
+    body: JSON.stringify({ fields: toFirestoreFields(splitPatchFields(fields)) }),
   });
 
   if (!res.ok) {
@@ -326,10 +342,44 @@ export async function patchFirestoreDoc(
   return res.json();
 }
 
+/**
+ * PATCH as a verified Firebase user (Bearer ID token). Required for admin
+ * writes to usuarios after catch-all exclusion — rules evaluate request.auth.
+ */
+export async function patchFirestoreDocAuthed(
+  idToken: string,
+  collection: string,
+  id: string,
+  fields: Record<string, unknown>,
+) {
+  const token = String(idToken || "").trim();
+  if (!token) {
+    throw Object.assign(new Error("missing_id_token"), { status: 401 });
+  }
+
+  const url = buildPatchUrl(collection, id, Object.keys(fields));
+  const res = await fetch(url.toString(), {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    cache: "no-store",
+    body: JSON.stringify({ fields: toFirestoreFields(splitPatchFields(fields)) }),
+  });
+
+  if (!res.ok) {
+    const err = new Error(`patch_authed ${collection}/${id} ${res.status}`);
+    throw Object.assign(err, { status: res.status === 403 ? 403 : 500 });
+  }
+
+  return res.json();
+}
+
 export async function patchFirestoreMediaBlurFlags(
   uid: string,
   flags: Record<string, boolean>,
-  meta?: { adminBlurBy?: string; adminBlurAt?: string },
+  meta?: { adminBlurBy?: string; adminBlurAt?: string; idToken?: string },
 ) {
   const url = new URL(
     `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/usuarios/${encodeURIComponent(uid)}`,
@@ -345,9 +395,13 @@ export async function patchFirestoreMediaBlurFlags(
   if (meta?.adminBlurBy) bodyFields.adminBlurBy = { stringValue: meta.adminBlurBy };
   if (meta?.adminBlurAt) bodyFields.adminBlurAt = { stringValue: meta.adminBlurAt };
 
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = String(meta?.idToken || "").trim();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const res = await fetch(url.toString(), {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers,
     cache: "no-store",
     body: JSON.stringify({ fields: bodyFields }),
   });
@@ -390,5 +444,25 @@ export async function deleteFirestoreDoc(collection: string, id: string) {
 
   if (!res.ok) {
     throw new Error(`delete ${collection}/${id} ${res.status}`);
+  }
+}
+
+export async function deleteFirestoreDocAuthed(idToken: string, collection: string, id: string) {
+  const token = String(idToken || "").trim();
+  if (!token) {
+    throw Object.assign(new Error("missing_id_token"), { status: 401 });
+  }
+  const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collection}/${encodeURIComponent(id)}?key=${FIRESTORE_API_KEY}`;
+
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw Object.assign(new Error(`delete_authed ${collection}/${id} ${res.status}`), {
+      status: res.status === 403 ? 403 : 500,
+    });
   }
 }

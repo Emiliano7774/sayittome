@@ -19,6 +19,7 @@ import {
   patchFirestoreDoc,
   runCollectionQuery,
 } from "@/lib/firestore/rest";
+import { patchUsuarioPrivileged } from "@/lib/firestore/patchUsuarioPrivileged";
 
 export type BoostStatus = {
   boostCreditsMinutes: number;
@@ -72,7 +73,7 @@ export async function ensureUserReferralCode(uid: string) {
     code = generateReferralCode(`${uid}:${attempt}`);
   }
 
-  await patchFirestoreDoc("usuarios", uid, { referralCode: code });
+  await patchUsuarioPrivileged(uid, { referralCode: code });
   await patchFirestoreDoc("referral_codes", code, { uid, referralCode: code });
   return code;
 }
@@ -145,7 +146,7 @@ export async function trackReferralSignup(input: {
   );
 
   if (inviteeVisitorId) {
-    await patchFirestoreDoc("usuarios", inviteeUid, {
+    await patchUsuarioPrivileged(inviteeUid, {
       deviceVisitorId: inviteeVisitorId,
     });
   }
@@ -209,7 +210,7 @@ export async function processPendingReferrals(referrerUid: string) {
     if (qualifiedToday >= MAX_REFERRALS_PER_DAY) break;
 
     const currentCredits = Number(referrer?.boostCreditsMinutes || 0);
-    await patchFirestoreDoc("usuarios", referrerUid, {
+    await patchUsuarioPrivileged(referrerUid, {
       boostCreditsMinutes: currentCredits + BOOST_MINUTES_PER_REFERRAL,
       referralsQualifiedCount: Number(referrer?.referralsQualifiedCount || 0) + 1,
     });
@@ -279,7 +280,7 @@ export async function activateBoost(uid: string, minutesRequested?: number) {
   const expiresAt = new Date(now + minutes * 60_000).toISOString();
   const username = String(user.username || user.nombre || "");
 
-  await patchFirestoreDoc("usuarios", uid, {
+  await patchUsuarioPrivileged(uid, {
     boostCreditsMinutes: credits - minutes,
   });
 

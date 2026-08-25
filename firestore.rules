@@ -12,16 +12,44 @@ service cloud.firestore {
         request.auth.token.email == 'emilianomaturano@gmail.com';
     }
 
+    function isOwner(uid) {
+      return isLoggedIn() && request.auth.uid == uid;
+    }
+
+    function touchesModerationTags() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'moderationTag',
+          'moderationTagNote',
+          'moderationTagAt',
+          'moderationTagBy'
+        ]);
+    }
+
+    function createHasModerationTags() {
+      return request.resource.data.keys().hasAny([
+        'moderationTag',
+        'moderationTagNote',
+        'moderationTagAt',
+        'moderationTagBy'
+      ]);
+    }
+
     // Bomb media secrets: client SDK deny-all.
     // Admin SDK (Cloud Functions) bypasses security rules.
     match /viewOnceSecrets/{secretId} {
       allow read, write: if false;
     }
 
+    // Owner: own profile fields (compat). Cannot forge moderationTag*.
+    // Admin: full update (moderationTag*, bans, blur, etc.) with verified email claim.
+    // No catch-all fallback — unauthenticated / other-user writes denied.
     match /usuarios/{uid} {
       allow read: if true;
-      allow create: if isLoggedIn();
-      allow update, delete: if isLoggedIn() && request.auth.uid == uid;
+      allow create: if isOwner(uid) && !createHasModerationTags();
+      allow update: if (isOwner(uid) && !touchesModerationTags()) || isAdmin();
+      allow delete: if isOwner(uid) || isAdmin();
     }
 
     match /usuarios_shuffle_lite/{uid} {
@@ -43,12 +71,15 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Preserved productive catch-all. Exclude viewOnceSecrets via collection
-    // segment (never Path→string conversion — that can fail-closed and
-    // deny all chats/** writes that only match this block).
+    // Preserved productive catch-all. Exclude secrets + usuarios (and lite
+    // mirrors that intentionally deny client writes) via collection segment
+    // (never Path→string conversion — that can fail-closed and deny chats/**).
     match /{collection}/{document=**} {
       allow read, write: if request.time < timestamp.date(2026, 12, 31)
-        && collection != 'viewOnceSecrets';
+        && collection != 'viewOnceSecrets'
+        && collection != 'usuarios'
+        && collection != 'usuarios_shuffle_lite'
+        && collection != 'chat_inbox_lite';
     }
   }
 }

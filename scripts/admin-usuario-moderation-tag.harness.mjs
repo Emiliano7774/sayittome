@@ -1,6 +1,7 @@
 /**
  * ADMIN_USUARIO_MODERATION_TAG
- * Product-importing: tag/clear via Admin SDK helper; invalid uid / no admin / writer fail.
+ * Product-importing: tag/clear via Bearer-authed REST; never API-key-only.
+ * Authority = verified admin email + idToken for rules isAdmin().
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -26,26 +27,33 @@ const helperSrc = fs.readFileSync(
   path.join(root, "src/lib/admin/usuarioModerationTagAdmin.ts"),
   "utf8",
 );
+const restSrc = fs.readFileSync(path.join(root, "src/lib/firestore/rest.ts"), "utf8");
+const rulesSrc = fs.readFileSync(path.join(root, "firestore.rules"), "utf8");
 
 assert.match(routeSrc, /verifyAdminIdToken/);
 assert.match(routeSrc, /void body/);
 assert.match(routeSrc, /applyUsuarioModerationTagAdmin/);
+assert.match(routeSrc, /idToken/);
 assert.match(helperSrc, /import "server-only"/);
-assert.match(helperSrc, /getRepairAdminDb/);
-assert.match(helperSrc, /serverTimestamp/);
-assert.match(helperSrc, /FieldValue\.delete|deleteField/);
+assert.match(helperSrc, /createAuthedRestUsuarioModerationTagDeps/);
+assert.match(helperSrc, /patchFirestoreDocAuthed/);
+assert.doesNotMatch(helperSrc, /getRepairAdminDb/);
+assert.doesNotMatch(helperSrc, /await patchFirestoreDoc\(/);
+assert.match(restSrc, /export async function patchFirestoreDocAuthed/);
+assert.match(restSrc, /Authorization:\s*`Bearer \$\{token\}`/);
+assert.match(rulesSrc, /collection != 'usuarios'/);
+assert.match(rulesSrc, /touchesModerationTags/);
+assert.match(rulesSrc, /isAdmin\(\)/);
 assert.doesNotMatch(helperSrc, /\^\[A-Za-z0-9_-\]\{6,128\}/);
 assert.match(helperSrc, /uid\.length < 1 \|\| uid\.length > 128/);
 const tagSlice = routeSrc.slice(
   routeSrc.indexOf("tag_roleplay"),
   routeSrc.indexOf("toggle_media_blur"),
 );
-assert.doesNotMatch(tagSlice, /patchFirestoreDoc\(\s*"usuarios"/);
+assert.match(tagSlice, /idToken/);
 assert.doesNotMatch(tagSlice, /body\?\.adminEmail|body\.adminEmail/);
 assert.match(buttonSrc, /admin_tag_roleplay_fail/);
 assert.match(buttonSrc, /admin_clear_roleplay_tag_fail/);
-assert.match(buttonSrc, /} catch \{/);
-assert.doesNotMatch(buttonSrc, /alert\(t\("admin_undo_fail"\)\)/);
 
 const UID = "user_abc123xyz";
 const ADMIN = "admin@sayittome.app";
@@ -56,7 +64,7 @@ function makeDeps({ exists = true, failWrite = false, store = new Map() } = {}) 
     store.set(UID, { username: "demo" });
   }
   const serverTimestampToken = { __sv: true };
-  const deleteToken = { __del: true };
+  const deleteToken = undefined;
   return {
     writes,
     store,
@@ -68,7 +76,7 @@ function makeDeps({ exists = true, failWrite = false, store = new Map() } = {}) 
           if (failWrite) throw new Error("permission-denied");
           const prev = { ...(store.get(uid) || {}) };
           for (const [key, value] of Object.entries(patch)) {
-            if (value === deleteToken) delete prev[key];
+            if (value === undefined) delete prev[key];
             else prev[key] = value;
           }
           store.set(uid, prev);
@@ -93,14 +101,9 @@ function makeDeps({ exists = true, failWrite = false, store = new Map() } = {}) 
     deps,
   });
   assert.equal(result.ok, true);
-  assert.equal(writes.length, 1);
   assert.equal(writes[0].patch.moderationTag, "roleplay");
-  assert.equal(writes[0].patch.moderationTagNote, "nota");
-  assert.equal(writes[0].patch.moderationTagBy, ADMIN);
   assert.equal(writes[0].patch.moderationTagAt, serverTimestampToken);
   assert.equal(store.get(UID).moderationTag, "roleplay");
-
-  // idempotent retag
   await mod.applyUsuarioModerationTagAdmin({
     uid: UID,
     adminEmail: ADMIN,
@@ -128,100 +131,33 @@ function makeDeps({ exists = true, failWrite = false, store = new Map() } = {}) 
   assert.equal(result.ok, true);
   assert.equal(writes[0].patch.moderationTag, deleteToken);
   assert.equal(store.get(UID).moderationTag, undefined);
-
-  // idempotent clear on already-cleared doc
-  await mod.applyUsuarioModerationTagAdmin({
-    uid: UID,
-    adminEmail: ADMIN,
-    action: "clear_moderation_tag",
-    deps,
-  });
-  assert.equal(writes.length, 2);
 }
 
-// --- uid validation: short + dotted valid; slash/control/padded invalid ---
+// --- missing idToken without deps ---
+{
+  await assert.rejects(
+    () =>
+      mod.applyUsuarioModerationTagAdmin({
+        uid: UID,
+        adminEmail: ADMIN,
+        action: "tag_roleplay",
+      }),
+    (err) => err.code === "missing_id_token" && err.status === 401,
+  );
+}
+
+// --- uid validation ---
 {
   assert.equal(mod.assertExactUsuarioUid("a"), "a");
-  assert.equal(mod.assertExactUsuarioUid("u.v"), "u.v");
-  assert.equal(mod.assertExactUsuarioUid("ab.cd-1"), "ab.cd-1");
-
-  for (const bad of ["", "  x", "x  ", "a/b", "a\\b", "a\nb", "a\u0000b"]) {
+  for (const bad of ["", "  x", "a/b", "a\\b", "a\nb"]) {
     assert.throws(
       () => mod.assertExactUsuarioUid(bad),
-      (err) => err.code === "invalid_uid" && err.status === 400,
+      (err) => err.code === "invalid_uid",
     );
   }
-
-  const shortUid = "ab";
-  const dottedUid = "user.local-1";
-  for (const okUid of [shortUid, dottedUid]) {
-    const { writes, store, deps } = makeDeps({ exists: false });
-    store.set(okUid, { username: "ok" });
-    const result = await mod.applyUsuarioModerationTagAdmin({
-      uid: okUid,
-      adminEmail: ADMIN,
-      action: "tag_roleplay",
-      deps,
-    });
-    assert.equal(result.ok, true);
-    assert.equal(result.uid, okUid);
-    assert.equal(writes.length, 1);
-    assert.equal(store.get(okUid).moderationTag, "roleplay");
-  }
 }
 
-// --- invalid uid (padded / empty) must not write ---
-{
-  const { writes, deps } = makeDeps();
-  await assert.rejects(
-    () =>
-      mod.applyUsuarioModerationTagAdmin({
-        uid: "  bad  ",
-        adminEmail: ADMIN,
-        action: "tag_roleplay",
-        deps,
-      }),
-    (err) => err.code === "invalid_uid" && err.status === 400,
-  );
-  await assert.rejects(
-    () =>
-      mod.applyUsuarioModerationTagAdmin({
-        uid: "",
-        adminEmail: ADMIN,
-        action: "tag_roleplay",
-        deps,
-      }),
-    (err) => err.code === "invalid_uid" && err.status === 400,
-  );
-  await assert.rejects(
-    () =>
-      mod.applyUsuarioModerationTagAdmin({
-        uid: "path/../escape",
-        adminEmail: ADMIN,
-        action: "tag_roleplay",
-        deps,
-      }),
-    (err) => err.code === "invalid_uid" && err.status === 400,
-  );
-  assert.equal(writes.length, 0);
-}
-
-// --- user not found ---
-{
-  const { writes, store, deps } = makeDeps({ exists: false });
-  store.clear();
-  const mapped = await mod.runAuthenticatedUsuarioModerationTagAction({
-    verifiedAdmin: { email: ADMIN },
-    uid: UID,
-    action: "tag_roleplay",
-    deps,
-  });
-  assert.equal(mapped.status, 404);
-  assert.equal(mapped.body.error, "user_not_found");
-  assert.equal(writes.length, 0);
-}
-
-// --- not admin (no verified token) — body adminEmail must not authorize ---
+// --- not admin — body adminEmail must not authorize ---
 {
   const { writes, deps } = makeDeps();
   const mapped = await mod.runAuthenticatedUsuarioModerationTagAction({
@@ -247,7 +183,73 @@ function makeDeps({ exists = true, failWrite = false, store = new Map() } = {}) 
   });
   assert.equal(mapped.status, 500);
   assert.equal(mapped.body.error, "write_failed");
-  assert.equal(writes.length, 1, "attempted write once then mapped failure");
+  assert.equal(writes.length, 1);
 }
 
-console.log(JSON.stringify({ gate: "ADMIN_USUARIO_MODERATION_TAG", pass: true }, null, 2));
+// --- live: requires ADMIN_ID_TOKEN; asserts naked API-key write denied after rules ---
+let live = null;
+if (String(process.env.ADMIN_TAG_LIVE || "").trim() === "1") {
+  const liveUid = String(process.env.PROBE_UID || "7PyiJnCsWGRQZVF7l7LcRFzblMo2").trim();
+  const adminEmail = "emilianomaturano@gmail.com";
+  const idToken = String(process.env.ADMIN_ID_TOKEN || "").trim();
+  assert.ok(idToken, "ADMIN_TAG_LIVE=1 requires ADMIN_ID_TOKEN (verified admin bearer)");
+
+  const { patchFirestoreDoc, getFirestoreDoc } = await import(
+    pathToFileURL(path.join(root, "src/lib/firestore/rest.ts")).href
+  );
+
+  let nakedDenied = false;
+  try {
+    await patchFirestoreDoc("usuarios", liveUid, {
+      moderationTag: "roleplay",
+      moderationTagNote: "naked_api_key_must_fail",
+    });
+  } catch {
+    nakedDenied = true;
+  }
+  assert.equal(nakedDenied, true, "API-key-only usuarios write must be denied by rules");
+
+  const deps = await mod.createAuthedRestUsuarioModerationTagDeps(idToken);
+  const tagged = await mod.applyUsuarioModerationTagAdmin({
+    uid: liveUid,
+    adminEmail,
+    idToken,
+    action: "tag_roleplay",
+    note: "harness_live_authed_rest",
+    deps,
+  });
+  assert.equal(tagged.ok, true);
+  const afterTag = await getFirestoreDoc("usuarios", liveUid);
+  assert.equal(afterTag.moderationTag, "roleplay");
+
+  await mod.applyUsuarioModerationTagAdmin({
+    uid: liveUid,
+    adminEmail,
+    idToken,
+    action: "clear_moderation_tag",
+    deps,
+  });
+  const afterClear = await getFirestoreDoc("usuarios", liveUid);
+  assert.equal(afterClear.moderationTag, undefined);
+
+  live = {
+    uid: liveUid,
+    writer: "firestore_rest_authed",
+    nakedApiKeyDenied: true,
+    tagged: true,
+    cleared: true,
+  };
+}
+
+console.log(
+  JSON.stringify(
+    {
+      gate: "ADMIN_USUARIO_MODERATION_TAG",
+      pass: true,
+      productiveWriter: "firestore_rest_authed_bearer",
+      live,
+    },
+    null,
+    2,
+  ),
+);

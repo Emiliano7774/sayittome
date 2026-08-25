@@ -4,6 +4,7 @@ import {
   patchFirestoreDoc,
   runCollectionQuery,
 } from "@/lib/firestore/rest";
+import { deleteUsuarioPrivileged } from "@/lib/firestore/patchUsuarioPrivileged";
 import {
   describeProfileValidationIssues,
   getProfileValidationIssues,
@@ -66,11 +67,15 @@ async function deleteFollowEdgesForUid(uid: string) {
   return count;
 }
 
-export async function deleteOrphanProfile(uid: string, adminEmail: string) {
+export async function deleteOrphanProfile(
+  uid: string,
+  adminEmail: string,
+  opts?: { idToken?: string },
+) {
   const stories = await disableStoriesForUid(uid);
   const follows = await deleteFollowEdgesForUid(uid);
 
-  await deleteFirestoreDoc("usuarios", uid);
+  await deleteUsuarioPrivileged(uid, { idToken: opts?.idToken });
 
   await writeAdminLog({
     adminEmail,
@@ -84,7 +89,7 @@ export async function deleteOrphanProfile(uid: string, adminEmail: string) {
 
 export async function cleanupOrphanProfiles(
   adminEmail: string,
-  options: { dryRun?: boolean; limit?: number } = {},
+  options: { dryRun?: boolean; limit?: number; idToken?: string } = {},
 ) {
   const orphans = await listOrphanProfiles(options.limit ?? 500);
 
@@ -100,7 +105,7 @@ export async function cleanupOrphanProfiles(
   const deleted: OrphanProfileRow[] = [];
 
   for (const orphan of orphans) {
-    await deleteOrphanProfile(orphan.uid, adminEmail);
+    await deleteOrphanProfile(orphan.uid, adminEmail, { idToken: options.idToken });
     deleted.push(orphan);
   }
 

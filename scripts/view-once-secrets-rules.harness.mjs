@@ -23,6 +23,11 @@ assert.match(
   /collection != 'viewOnceSecrets'/,
   "catch-all must exclude viewOnceSecrets by collection segment",
 );
+assert.match(
+  rules,
+  /collection != 'usuarios'/,
+  "catch-all must exclude usuarios so API-key writes cannot attack profiles",
+);
 assert.doesNotMatch(
   rules,
   /string\(request\.path\)/,

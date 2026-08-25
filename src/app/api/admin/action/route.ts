@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { writeAdminLog } from "@/lib/admin/adminLogs";
-import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
+import { readBearerToken, verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
 import {
   applyUsuarioModerationTagAdmin,
   usuarioModerationTagErrorResponse,
@@ -12,6 +12,7 @@ import {
   deleteFirestoreDoc,
   getFirestoreDoc,
   patchFirestoreDoc,
+  patchFirestoreDocAuthed,
   patchFirestoreMediaBlurFlags,
   runCollectionQuery,
 } from "@/lib/firestore/rest";
@@ -19,10 +20,19 @@ import { deleteOrphanProfile } from "@/lib/profile/cleanupOrphans";
 
 export const dynamic = "force-dynamic";
 
-async function resolveAdminEmail(req: Request, body: Record<string, unknown>) {
+async function resolveAdmin(req: Request, body: Record<string, unknown>) {
   void body;
   const verified = await verifyAdminIdToken(req);
-  return verified.email;
+  const idToken = readBearerToken(req);
+  return { email: verified.email, idToken };
+}
+
+async function patchUsuarioAuthed(
+  idToken: string,
+  uid: string,
+  fields: Record<string, unknown>,
+) {
+  return patchFirestoreDocAuthed(idToken, "usuarios", uid, fields);
 }
 
 async function disableUserStories(uid: string, adminEmail: string) {
@@ -53,15 +63,20 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     let adminEmail = "";
+    let idToken = "";
     try {
-      adminEmail = await resolveAdminEmail(req, body);
+      const admin = await resolveAdmin(req, body);
+      adminEmail = admin.email;
+      idToken = admin.idToken;
     } catch (error) {
-      const status = Number((error as { status?: number })?.status || 403);
-      const authStatus = status === 401 ? 401 : 403;
-      return NextResponse.json(
-        { ok: false, error: authStatus === 401 ? "unauthorized" : "forbidden" },
-        { status: authStatus },
-      );
+      const mapped = (() => {
+        const status = Number((error as { status?: number })?.status || 0);
+        if (status === 401) return { status: 401, error: "unauthorized" };
+        if (status === 503) return { status: 503, error: "unavailable" };
+        if (status === 403) return { status: 403, error: "forbidden" };
+        return { status: 403, error: "forbidden" };
+      })();
+      return NextResponse.json({ ok: false, error: mapped.error }, { status: mapped.status });
     }
 
     const action = String(body?.action || "");
@@ -74,7 +89,7 @@ export async function POST(req: Request) {
 
     if (action === "ban_temp") {
       const until = new Date(Date.now() + (Number(body?.days || 7) * 86400000)).toISOString();
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         banned: true,
         suspendido: true,
         banUntil: until,
@@ -82,7 +97,7 @@ export async function POST(req: Request) {
         bannedBy: adminEmail,
       });
     } else if (action === "ban_perm") {
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         banned: true,
         suspendido: true,
         banPermanent: true,
@@ -90,7 +105,7 @@ export async function POST(req: Request) {
         bannedBy: adminEmail,
       });
     } else if (action === "unban") {
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         banned: false,
         suspendido: false,
         banPermanent: false,
@@ -99,7 +114,7 @@ export async function POST(req: Request) {
         bannedBy: "",
       });
     } else if (action === "blur_profile") {
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         adminBlurProfilePhoto: true,
         adminBlurFotosPerfil: true,
         adminBlurGallery: true,
@@ -108,7 +123,7 @@ export async function POST(req: Request) {
         adminBlurBy: adminEmail,
       });
     } else if (action === "unblur_profile") {
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         adminBlurProfilePhoto: false,
         adminBlurFotosPerfil: false,
         adminBlurGallery: false,
@@ -116,7 +131,7 @@ export async function POST(req: Request) {
         adminBlurReason: "",
       });
     } else if (action === "blur_stories_flag") {
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         adminBlurStories: true,
         adminBlurReason: String(body?.reason || "moderacion"),
         adminBlurAt: new Date().toISOString(),
@@ -125,17 +140,18 @@ export async function POST(req: Request) {
     } else if (action === "delete_user_stories") {
       await disableUserStories(uid, adminEmail);
     } else if (action === "reset_username") {
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         username: String(body?.username || "usuario"),
         usernameLower: String(body?.username || "usuario").toLowerCase(),
       });
     } else if (action === "reset_bio") {
-      await patchFirestoreDoc("usuarios", uid, { bio: "", descripcion: "" });
+      await patchUsuarioAuthed(idToken, uid, { bio: "", descripcion: "" });
     } else if (action === "tag_roleplay" || action === "clear_moderation_tag") {
       try {
         await applyUsuarioModerationTagAdmin({
           uid,
           adminEmail,
+          idToken,
           action,
           note: body?.note,
         });
@@ -163,13 +179,14 @@ export async function POST(req: Request) {
       await patchFirestoreMediaBlurFlags(uid, next, {
         adminBlurBy: adminEmail,
         adminBlurAt: new Date().toISOString(),
+        idToken,
       });
     } else if (action === "shadowban") {
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         shadowban: body?.enabled !== false,
       });
     } else if (action === "toggle_abuse_protection") {
-      await patchFirestoreDoc("usuarios", uid, {
+      await patchUsuarioAuthed(idToken, uid, {
         abuseProtectionEnabled: body?.enabled !== false,
       });
     } else if (action === "blur_story" && storyId) {
@@ -234,7 +251,7 @@ export async function POST(req: Request) {
         blockedBy: adminEmail,
       });
     } else if (action === "delete_orphan_user" && uid) {
-      await deleteOrphanProfile(uid, adminEmail);
+      await deleteOrphanProfile(uid, adminEmail, { idToken });
     } else if (action === "reply_general_claim") {
       const claimId = String(body?.claimId || "").trim();
       const replyText = String(body?.replyText || "").trim().slice(0, 2000);
@@ -268,7 +285,7 @@ export async function POST(req: Request) {
       });
 
       if (recipientUid) {
-        await patchFirestoreDoc("usuarios", recipientUid, {
+        await patchUsuarioAuthed(idToken, recipientUid, {
           lastAdminClaimReply: replyText,
           lastAdminClaimReplyAt: repliedAt,
           lastAdminClaimId: claimId,
@@ -286,6 +303,7 @@ export async function POST(req: Request) {
       const { cleanupOrphanProfiles } = await import("@/lib/profile/cleanupOrphans");
       const result = await cleanupOrphanProfiles(adminEmail, {
         dryRun: body?.dryRun === true,
+        idToken,
       });
       return NextResponse.json({ ok: true, ...result });
     } else if (action === "cleanup_duplicate_profiles") {
@@ -298,6 +316,7 @@ export async function POST(req: Request) {
       const { runProfileCreatedAtAudit } = await import("@/lib/profile/auditProfileCreatedAt");
       const result = await runProfileCreatedAtAudit(adminEmail, {
         dryRun: body?.dryRun === true,
+        idToken,
       });
       return NextResponse.json({ ok: true, ...result });
     } else if (action === "repair_profile_data") {
@@ -305,9 +324,9 @@ export async function POST(req: Request) {
       const { cleanupDuplicateProfiles } = await import("@/lib/profile/cleanupDuplicates");
       const { cleanupOrphanProfiles } = await import("@/lib/profile/cleanupOrphans");
 
-      const audit = await runProfileCreatedAtAudit(adminEmail, { dryRun: false });
+      const audit = await runProfileCreatedAtAudit(adminEmail, { dryRun: false, idToken });
       const duplicates = await cleanupDuplicateProfiles(adminEmail, { dryRun: false });
-      const orphans = await cleanupOrphanProfiles(adminEmail, { dryRun: false });
+      const orphans = await cleanupOrphanProfiles(adminEmail, { dryRun: false, idToken });
 
       return NextResponse.json({
         ok: true,

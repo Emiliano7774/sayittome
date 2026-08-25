@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { verifyFirebaseIdToken } from "@/lib/admin/verifyAdminRequest";
+import { readBearerToken, verifyFirebaseIdToken } from "@/lib/admin/verifyAdminRequest";
 import {
   getFirestoreDoc,
-  patchFirestoreDoc,
+  patchFirestoreDocAuthed,
   runFilteredCollectionQueryAll,
 } from "@/lib/firestore/rest";
 
@@ -56,6 +56,7 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const verified = await verifyFirebaseIdToken(req);
+    const idToken = readBearerToken(req);
     const profile = await getFirestoreDoc("usuarios", verified.uid);
     if (!profile) {
       return NextResponse.json({ ok: false, error: "profile_not_found" }, { status: 404 });
@@ -63,7 +64,7 @@ export async function PATCH(req: Request) {
 
     const repliedAt = String(profile.lastAdminClaimReplyAt || "");
     if (repliedAt) {
-      await patchFirestoreDoc("usuarios", verified.uid, {
+      await patchFirestoreDocAuthed(idToken, "usuarios", verified.uid, {
         lastAdminClaimReplyDismissedAt: repliedAt,
         lastAdminClaimReplyRead: true,
       });

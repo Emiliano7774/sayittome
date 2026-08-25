@@ -1,8 +1,8 @@
 import { writeAdminLog } from "@/lib/admin/adminLogs";
-import { patchFirestoreDoc, runCollectionQueryAll } from "@/lib/firestore/rest";
+import { runCollectionQueryAll } from "@/lib/firestore/rest";
+import { patchUsuarioPrivileged } from "@/lib/firestore/patchUsuarioPrivileged";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import {
-  resolveProfileCreatedAt,
   resolveProfileCreatedAtIso,
 } from "@/lib/profile/resolveProfileCreatedAt";
 
@@ -21,7 +21,9 @@ function parseFieldCreatedAt(user: Record<string, unknown>) {
   return String(raw);
 }
 
-export async function auditProfileCreatedAt(options: { dryRun?: boolean } = {}) {
+export async function auditProfileCreatedAt(
+  options: { dryRun?: boolean; idToken?: string } = {},
+) {
   const users = await runCollectionQueryAll("usuarios", "createdAt", "DESCENDING", 500, 40);
   const rows: ProfileCreatedAtAuditRow[] = [];
   const patched: string[] = [];
@@ -52,10 +54,14 @@ export async function auditProfileCreatedAt(options: { dryRun?: boolean } = {}) 
 
     if (!needsPatch || options.dryRun) continue;
 
-    await patchFirestoreDoc("usuarios", uid, {
-      createdAt: trueCreatedAt,
-      originalCreatedAt: String(user.originalCreatedAt || trueCreatedAt),
-    });
+    await patchUsuarioPrivileged(
+      uid,
+      {
+        createdAt: trueCreatedAt,
+        originalCreatedAt: String(user.originalCreatedAt || trueCreatedAt),
+      },
+      { idToken: options.idToken },
+    );
     patched.push(uid);
   }
 
@@ -73,7 +79,7 @@ export async function auditProfileCreatedAt(options: { dryRun?: boolean } = {}) 
 
 export async function runProfileCreatedAtAudit(
   adminEmail: string,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; idToken?: string } = {},
 ) {
   const result = await auditProfileCreatedAt(options);
 
