@@ -1054,6 +1054,7 @@ export default function ProfileAnonChat({
     void isProfileBlockedByAnon({
       anonSessionId: senderId,
       profileUid: profileOwnerUid,
+      chatId,
     })
       .then((blocked) => setAnonBlocksProfileState(blocked))
       .catch(() => setAnonBlocksProfileState(false));
@@ -1073,6 +1074,7 @@ export default function ProfileAnonChat({
     void isProfileBlockedByAnon({
       anonSessionId: threadAnon,
       profileUid: profileOwnerUid,
+      chatId,
     })
       .then((blocked) => setProfileBlockedByAnon(blocked))
       .catch(() => setProfileBlockedByAnon(false));
@@ -2447,7 +2449,12 @@ export default function ProfileAnonChat({
         console.error(error);
         if (error instanceof PersistIdentityError) {
           alert(t("chat_load_fail"));
-        } else if (String((error as { code?: string; message?: string })?.code || (error as Error)?.message || "") === "blocked_by_anon") {
+        } else if (
+          String((error as { code?: string; message?: string })?.code || (error as Error)?.message || "") ===
+            "blocked_by_anon" ||
+          String((error as { code?: string })?.code || "").includes("permission-denied") ||
+          /permission-denied|PERMISSION_DENIED/i.test(String((error as Error)?.message || ""))
+        ) {
           setProfileBlockedByAnon(true);
           alert(t("chat_blocked_by_anon"));
         }

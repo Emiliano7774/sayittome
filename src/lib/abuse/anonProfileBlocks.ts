@@ -1,18 +1,15 @@
 /**
- * Durable anon → profile block. Authority key = canonical anon session from chatId
- * (anon_*), not an arbitrary client-supplied peer id for the blocked party.
- * Lasts until the anon unblocks or changes identity (new anon session / chatId).
+ * Durable anon → profile block. Writes are Admin SDK only via callable
+ * `setAnonProfileBlock` (Firestore rules deny client writes).
+ * Authority key = canonical anon session from chatId (anon_*), verified
+ * against Firebase Auth linkage on the chat (initiator/visitor/participantes).
  */
-import {
-  deleteDoc,
-  doc,
-  getDoc,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 
+import { ensureStorageAuth } from "@/lib/auth/ensureStorageAuth";
 import { isProfileAnonChatId, parseProfileAnonChatId } from "@/lib/chat/anonChatId";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 
 export type AnonProfileBlockRecord = {
   id: string;
@@ -35,6 +32,23 @@ export function anonProfileBlockDocId(anonSessionId: string, profileUid: string)
   return `${anon}__${uid}`;
 }
 
+async function callSetAnonProfileBlock(input: {
+  chatId: string;
+  anonSessionId: string;
+  blocked: boolean;
+}) {
+  await ensureStorageAuth({ allowAnonymous: true });
+  const callable = httpsCallable<
+    { chatId: string; anonSessionId: string; blocked: boolean },
+    { ok: boolean; blocked: boolean }
+  >(functions, "setAnonProfileBlock");
+  await callable({
+    chatId: input.chatId,
+    anonSessionId: input.anonSessionId,
+    blocked: input.blocked,
+  });
+}
+
 export async function setAnonBlocksProfile(input: {
   anonSessionId: string;
   blockedProfileUid: string;
@@ -47,23 +61,12 @@ export async function setAnonBlocksProfile(input: {
   if (!anonSessionId.startsWith("anon_") || !blockedProfileUid || !fromChat) {
     throw new Error("invalid_block_identity");
   }
-  // Authority: client session must match the canonical anon baked into chatId.
   if (anonSessionId !== fromChat) {
     throw new Error("anon_identity_mismatch");
   }
 
-  const id = anonProfileBlockDocId(anonSessionId, blockedProfileUid);
-  await setDoc(
-    doc(db, "anon_profile_blocks", id),
-    {
-      anonSessionId,
-      blockedProfileUid,
-      chatId,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
-  return { id };
+  await callSetAnonProfileBlock({ chatId, anonSessionId, blocked: true });
+  return { id: chatId };
 }
 
 export async function clearAnonBlocksProfile(input: {
@@ -72,21 +75,27 @@ export async function clearAnonBlocksProfile(input: {
   chatId: string;
 }) {
   const anonSessionId = String(input.anonSessionId || "").trim();
-  const blockedProfileUid = String(input.blockedProfileUid || "").trim();
   const fromChat = canonicalAnonSessionFromChatId(input.chatId);
   if (!anonSessionId || anonSessionId !== fromChat) {
     throw new Error("anon_identity_mismatch");
   }
-  const id = anonProfileBlockDocId(anonSessionId, blockedProfileUid);
-  if (!id) throw new Error("invalid_block_identity");
-  await deleteDoc(doc(db, "anon_profile_blocks", id));
-  return { id };
+  const chatId = String(input.chatId || "").trim();
+  if (!chatId) throw new Error("invalid_block_identity");
+
+  await callSetAnonProfileBlock({ chatId, anonSessionId, blocked: false });
+  return { id: chatId };
 }
 
 export async function isProfileBlockedByAnon(input: {
   anonSessionId: string;
   profileUid: string;
+  chatId?: string;
 }): Promise<boolean> {
+  const chatId = String(input.chatId || "").trim();
+  if (chatId) {
+    const chatScoped = await getDoc(doc(db, "anon_profile_blocks", chatId));
+    if (chatScoped.exists()) return true;
+  }
   const id = anonProfileBlockDocId(input.anonSessionId, input.profileUid);
   if (!id) return false;
   const snap = await getDoc(doc(db, "anon_profile_blocks", id));

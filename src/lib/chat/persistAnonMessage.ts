@@ -347,6 +347,7 @@ export async function persistAnonChatMessage(
       const blocked = await isProfileBlockedByAnon({
         anonSessionId: threadAnon,
         profileUid: resolvedTargetUid,
+        chatId: canonicalChatId,
       });
       if (blocked) {
         throw Object.assign(new Error("blocked_by_anon"), { code: "blocked_by_anon" });

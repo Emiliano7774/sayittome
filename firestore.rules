@@ -36,10 +36,84 @@ service cloud.firestore {
       ]);
     }
 
+    function openWindow() {
+      return request.time < timestamp.date(2026, 12, 31);
+    }
+
+    function isProfileSideMensaje() {
+      let kind = request.resource.data.get('senderKind', '');
+      let role = request.resource.data.get('senderRole', '');
+      let from = request.resource.data.get('fromUid', '');
+      return kind == 'profile'
+        || role == 'profile'
+        || from.matches('profile_.*');
+    }
+
+    function blockedProfileUidForChat(chatId) {
+      return exists(/databases/$(database)/documents/anon_profile_blocks/$(chatId))
+        ? get(/databases/$(database)/documents/anon_profile_blocks/$(chatId))
+            .data.get('blockedProfileUid', '')
+        : (
+          exists(/databases/$(database)/documents/chats/$(chatId))
+            ? get(/databases/$(database)/documents/chats/$(chatId))
+                .data.get('receptorUid',
+                  get(/databases/$(database)/documents/chats/$(chatId))
+                    .data.get('targetUid', ''))
+            : ''
+        );
+    }
+
+    function isBlockedProfileAuthor(chatId) {
+      let from = request.resource.data.get('fromUid', '');
+      let profileUid = request.resource.data.get('profileUid', '');
+      let blockedUid = blockedProfileUidForChat(chatId);
+      return blockedUid != ''
+        && (
+          isProfileSideMensaje()
+          || from == blockedUid
+          || from == ('profile_' + blockedUid)
+          || profileUid == blockedUid
+          || (request.auth != null && request.auth.uid == blockedUid)
+        );
+    }
+
+    function chatBlocksProfile(chatId) {
+      return exists(/databases/$(database)/documents/anon_profile_blocks/$(chatId))
+        || (
+          exists(/databases/$(database)/documents/chats/$(chatId))
+          && get(/databases/$(database)/documents/chats/$(chatId))
+            .data.get('anonBlocksProfile', false) == true
+        );
+    }
+
+    function touchesAnonBlockFlags() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'anonBlocksProfile',
+          'anonBlocksProfileAt',
+          'anonBlocksProfileBy'
+        ]);
+    }
+
+    function createHasAnonBlockFlags() {
+      return request.resource.data.keys().hasAny([
+        'anonBlocksProfile',
+        'anonBlocksProfileAt',
+        'anonBlocksProfileBy'
+      ]);
+    }
+
     // Bomb media secrets: client SDK deny-all.
     // Admin SDK (Cloud Functions) bypasses security rules.
     match /viewOnceSecrets/{secretId} {
       allow read, write: if false;
+    }
+
+    // Anon→profile block docs: Admin SDK / callable only (not client-falsifiable).
+    match /anon_profile_blocks/{blockId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     // Owner: own profile fields (compat). Cannot forge moderationTag*.
@@ -71,15 +145,39 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Preserved productive catch-all. Exclude secrets + usuarios (and lite
-    // mirrors that intentionally deny client writes) via collection segment
+    // Chat meta: keep productive window, but anonBlocksProfile* is Admin-only.
+    match /chats/{chatId} {
+      allow read: if openWindow();
+      allow create: if openWindow() && !createHasAnonBlockFlags();
+      allow update: if openWindow() && !touchesAnonBlockFlags();
+      allow delete: if openWindow();
+    }
+
+    // Profile→anon messages rejected before persist when anon blocked the profile.
+    // Single-segment subcollection match only — do NOT add a permissive
+    // chats/{chatId}/{document=**} write rule (OR semantics would bypass the deny).
+    match /chats/{chatId}/{subcollection}/{messageId} {
+      allow read: if openWindow();
+      allow create: if openWindow()
+        && !(
+          (subcollection == 'mensajes' || subcollection == 'messages')
+          && chatBlocksProfile(chatId)
+          && isBlockedProfileAuthor(chatId)
+        );
+      allow update, delete: if openWindow();
+    }
+
+    // Preserved productive catch-all. Exclude secrets + usuarios (+ lite mirrors)
+    // and server-owned block/chat paths via collection segment
     // (never Path→string conversion — that can fail-closed and deny chats/**).
     match /{collection}/{document=**} {
-      allow read, write: if request.time < timestamp.date(2026, 12, 31)
+      allow read, write: if openWindow()
         && collection != 'viewOnceSecrets'
         && collection != 'usuarios'
         && collection != 'usuarios_shuffle_lite'
-        && collection != 'chat_inbox_lite';
+        && collection != 'chat_inbox_lite'
+        && collection != 'anon_profile_blocks'
+        && collection != 'chats';
     }
   }
 }

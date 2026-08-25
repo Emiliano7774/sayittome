@@ -20,6 +20,17 @@ assert.ok(
   "push plugin synced",
 );
 assert.ok(fs.existsSync(path.join(root, "android/app/src/main/res/raw/whip.mp3")));
+assert.ok(
+  fs.existsSync(
+    path.join(root, "android/app/src/main/java/com/sayittome/app/ChatExpandableMessagingService.java"),
+  ),
+);
+const manifest = fs.readFileSync(
+  path.join(root, "android/app/src/main/AndroidManifest.xml"),
+  "utf8",
+);
+assert.match(manifest, /ChatExpandableMessagingService/);
+assert.match(manifest, /tools:node="remove"/);
 
 const capConfig = JSON.parse(
   fs.readFileSync(path.join(root, "android/app/src/main/assets/capacitor.config.json"), "utf8"),

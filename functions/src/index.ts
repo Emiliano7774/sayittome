@@ -26,6 +26,12 @@ import {
   handleVerifyVerifiedProfileLink,
 } from "./verifiedProfileLink";
 import { VERIFIED_PROFILE_LINK_MAC_SECRET_NAME } from "./verifiedProfileLinkCore";
+import { handleSetAnonProfileBlock } from "./anonProfileBlock";
+import {
+  encodeUnreadLinesForFcm,
+  formatCollapsedUnreadBody,
+  selectUnreadNotificationLines,
+} from "./unreadNotificationLines";
 
 const verifiedProfileLinkMacSecret = defineSecret(VERIFIED_PROFILE_LINK_MAC_SECRET_NAME);
 
@@ -72,6 +78,7 @@ type ChatDoc = {
   targetUsername?: string | null;
   receptorUsername?: string | null;
   anon?: boolean;
+  anonBlocksProfile?: boolean;
 };
 
 type MessageDoc = {
@@ -252,6 +259,82 @@ async function deleteInvalidToken(uid: string, docId: string) {
   await db().collection("usuarios").doc(uid).collection("fcmTokens").doc(docId).delete();
 }
 
+function createdAtMsFromFirestore(value: unknown): number {
+  if (!value) return 0;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "object" && value && "toMillis" in value) {
+    try {
+      return Number((value as { toMillis: () => number }).toMillis()) || 0;
+    } catch {
+      return 0;
+    }
+  }
+  return 0;
+}
+
+async function loadUnreadLinesForPush(input: {
+  chatId: string;
+  recipientUid: string;
+  message: MessageDoc;
+  messageId: string;
+  chat: ChatDoc;
+}): Promise<ReturnType<typeof selectUnreadNotificationLines>> {
+  const snap = await db()
+    .collection("chats")
+    .doc(input.chatId)
+    .collection("mensajes")
+    .orderBy("createdAt", "desc")
+    .limit(40)
+    .get();
+
+  const rows = snap.docs.map((docSnap) => {
+    const data = docSnap.data() as MessageDoc & {
+      createdAt?: unknown;
+      readBy?: Record<string, unknown>;
+    };
+    return {
+      id: docSnap.id,
+      texto: data.texto,
+      text: data.text,
+      type: data.type,
+      fromUid: data.fromUid,
+      ownerId: data.ownerId,
+      senderUid: data.senderUid,
+      senderKind: data.senderKind,
+      createdAtMs: createdAtMsFromFirestore(data.createdAt),
+      readBy: data.readBy,
+      createdByAuthUid: data.createdByAuthUid,
+      senderAuthUid: data.senderAuthUid,
+    };
+  });
+
+  if (!rows.some((row) => row.id === input.messageId)) {
+    rows.push({
+      id: input.messageId,
+      texto: input.message.texto,
+      text: input.message.text,
+      type: input.message.type,
+      fromUid: input.message.fromUid,
+      ownerId: input.message.ownerId,
+      senderUid: input.message.senderUid,
+      senderKind: input.message.senderKind,
+      createdAtMs: Date.now(),
+      readBy: {},
+      createdByAuthUid: input.message.createdByAuthUid,
+      senderAuthUid: input.message.senderAuthUid,
+    });
+  }
+
+  return selectUnreadNotificationLines({
+    messages: rows,
+    recipientUid: input.recipientUid,
+    titleForMessage: (row) =>
+      notificationTitleForRecipient(row as MessageDoc, input.chat, input.recipientUid),
+    limit: 20,
+  });
+}
+
 function firestoreFcmTx(tx: Transaction, firestore: Firestore) {
   const guard = createReadBeforeWriteGuard();
   return {
@@ -382,6 +465,10 @@ export const scrubVerifiedProfileLinkMensajes = onDocumentWritten(
   },
 );
 
+export const setAnonProfileBlock = onCall(async (request) => {
+  return handleSetAnonProfileBlock(request);
+});
+
 export const unregisterFcmToken = onCall(async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Auth required");
@@ -440,7 +527,7 @@ export const onChatMessageCreated = onDocumentCreated(
     const chatSnap = await db().collection("chats").doc(chatId).get();
     const chat = (chatSnap.data() || {}) as ChatDoc;
 
-    // Anon→profile block: profile must not notify (and ideally not write) that anon.
+    // Defense-in-depth: rules should already reject profile→anon writes when blocked.
     try {
       const anonFromChat = (() => {
         const marker = "__anon_to__";
@@ -457,11 +544,17 @@ export const onChatMessageCreated = onDocumentCreated(
       const fromUid = asId(message.fromUid || message.senderAuthUid || "");
       const isProfileSender =
         Boolean(profileUid) &&
-        (fromUid === profileUid || fromUid === `profile_${profileUid}`);
+        (fromUid === profileUid ||
+          fromUid === `profile_${profileUid}` ||
+          message.senderKind === "profile" ||
+          asId(message.senderRole) === "profile");
+      const chatFlag = (chat as { anonBlocksProfile?: boolean }).anonBlocksProfile === true;
       if (isProfileSender && anonFromChat && profileUid) {
-        const blockId = `${anonFromChat}__${profileUid}`;
-        const blockSnap = await db().collection("anon_profile_blocks").doc(blockId).get();
-        if (blockSnap.exists) {
+        const [chatBlock, pairBlock] = await Promise.all([
+          db().collection("anon_profile_blocks").doc(chatId).get(),
+          db().collection("anon_profile_blocks").doc(`${anonFromChat}__${profileUid}`).get(),
+        ]);
+        if (chatFlag || chatBlock.exists || pairBlock.exists) {
           await markDelivery(chatId, messageId, {
             status: "skipped_blocked_by_anon",
             recipientCount: 0,
@@ -483,7 +576,6 @@ export const onChatMessageCreated = onDocumentCreated(
       return;
     }
 
-    const body = notificationBodyFromMessage(message);
     let sent = 0;
     let failed = 0;
     const invalidDeleted: string[] = [];
@@ -493,35 +585,48 @@ export const onChatMessageCreated = onDocumentCreated(
       if (tokens.length === 0) continue;
 
       const title = notificationTitleForRecipient(message, chat, recipientUid);
+      let unreadLines: ReturnType<typeof selectUnreadNotificationLines> = [];
+      try {
+        unreadLines = await loadUnreadLinesForPush({
+          chatId,
+          recipientUid,
+          message,
+          messageId,
+          chat,
+        });
+      } catch (error) {
+        logger.warn("unread lines load failed", { chatId, messageId, error });
+        unreadLines = [
+          {
+            t: notificationBodyFromMessage(message),
+            s: title.slice(0, 40),
+            ms: Date.now(),
+          },
+        ];
+      }
+      const body = formatCollapsedUnreadBody(unreadLines);
+      const unreadEncoded = encodeUnreadLinesForFcm(unreadLines);
       ensureAdminApp();
+      // Data-only so native MessagingStyle can render ALL unread lines (notification
+      // payloads are displayed by the OS and replace the last line only).
       const multicast: MulticastMessage = {
         tokens: tokens.map((row) => row.token),
-        notification: {
-          title,
-          body,
-        },
         data: {
           type: "chat_message",
           chatId,
           messageId,
           recipientUid,
-          // Client inbox/group key — do not collapse per-chat.
           group: `chat-${chatId}`,
-          // Seed fields for cold notification open (string-only FCM data).
+          tag: `chat-${chatId}`,
+          channelId: FCM_CHANNEL_ID,
           body: String(body || "").slice(0, 180),
           title: String(title || "").slice(0, 80),
+          unreadCount: String(unreadLines.length),
+          unreadLines: unreadEncoded,
         },
         android: {
           priority: "high",
-          // One expandable group per conversation — replace/update, do not stack bubbles.
           collapseKey: `chat-${chatId}`,
-          notification: {
-            channelId: FCM_CHANNEL_ID,
-            tag: `chat-${chatId}`,
-            sound: "whip",
-            priority: "high",
-            defaultVibrateTimings: true,
-          },
         },
       };
 
