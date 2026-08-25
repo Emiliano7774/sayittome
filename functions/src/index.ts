@@ -439,6 +439,40 @@ export const onChatMessageCreated = onDocumentCreated(
 
     const chatSnap = await db().collection("chats").doc(chatId).get();
     const chat = (chatSnap.data() || {}) as ChatDoc;
+
+    // Anon→profile block: profile must not notify (and ideally not write) that anon.
+    try {
+      const anonFromChat = (() => {
+        const marker = "__anon_to__";
+        if (!chatId.includes(marker)) return "";
+        const senderId = chatId.split(marker)[0] || "";
+        return senderId.startsWith("anon_") ? senderId : "";
+      })();
+      const profileUid = asId(
+        (chat as { receptorUid?: string }).receptorUid ||
+          (chat as { targetUid?: string }).targetUid ||
+          (chat as { anonOwnerUid?: string }).anonOwnerUid ||
+          "",
+      );
+      const fromUid = asId(message.fromUid || message.senderAuthUid || "");
+      const isProfileSender =
+        Boolean(profileUid) &&
+        (fromUid === profileUid || fromUid === `profile_${profileUid}`);
+      if (isProfileSender && anonFromChat && profileUid) {
+        const blockId = `${anonFromChat}__${profileUid}`;
+        const blockSnap = await db().collection("anon_profile_blocks").doc(blockId).get();
+        if (blockSnap.exists) {
+          await markDelivery(chatId, messageId, {
+            status: "skipped_blocked_by_anon",
+            recipientCount: 0,
+          });
+          return;
+        }
+      }
+    } catch (error) {
+      logger.warn("anon_profile_block check failed", { chatId, messageId, error });
+    }
+
     const recipients = resolvePushRecipientUids(message, chat);
 
     if (recipients.length === 0) {
@@ -479,11 +513,11 @@ export const onChatMessageCreated = onDocumentCreated(
         },
         android: {
           priority: "high",
-          // Unique per message so unread banners stack instead of replacing.
-          collapseKey: `msg-${messageId}`,
+          // One expandable group per conversation — replace/update, do not stack bubbles.
+          collapseKey: `chat-${chatId}`,
           notification: {
             channelId: FCM_CHANNEL_ID,
-            tag: `msg-${messageId}`,
+            tag: `chat-${chatId}`,
             sound: "whip",
             priority: "high",
             defaultVibrateTimings: true,

@@ -81,6 +81,11 @@ import { useUxMode } from "@/contexts/UxModeContext";
 import { useMainTabShell } from "@/contexts/MainTabShellContext";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
+import {
+  clearAnonBlocksProfile,
+  isProfileBlockedByAnon,
+  setAnonBlocksProfile,
+} from "@/lib/abuse/anonProfileBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
@@ -206,7 +211,8 @@ import {
 } from "@/lib/navigation/shuffleKeepAlive";
 import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
 import {
-  resetChatBackNavigationState,
+  isChatImeDismissLatched,
+  noteChatComposerFocused,
   resolveChatBackAction,
 } from "@/lib/navigation/chatBackNavigation";
 import {
@@ -540,6 +546,9 @@ export default function ProfileAnonChat({
   const [targetOnline, setTargetOnline] = useState(initialProfile?.online || false);
   const [targetShowsLastSeen, setTargetShowsLastSeen] = useState(true);
   const [blockedByAbuse, setBlockedByAbuse] = useState(false);
+  const [profileBlockedByAnon, setProfileBlockedByAnon] = useState(false);
+  const [anonBlocksProfile, setAnonBlocksProfileState] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
   const [chatAnonSessionId, setChatAnonSessionId] = useState("");
   const [chatOwnerUid, setChatOwnerUid] = useState("");
   const [recording, setRecording] = useState(false);
@@ -645,10 +654,12 @@ export default function ProfileAnonChat({
   });
 
   function refocusComposer() {
+    if (isChatImeDismissLatched()) return;
     const input = inputRef.current;
     if (!input) return;
 
     const focus = () => {
+      if (isChatImeDismissLatched()) return;
       try {
         input.focus({ preventScroll: true });
       } catch {
@@ -687,7 +698,10 @@ export default function ProfileAnonChat({
 
   function goBackFromChat() {
     const backAction = resolveChatBackAction(pathname);
-    if (backAction?.kind === "dismiss-keyboard") return;
+    if (backAction?.kind === "dismiss-keyboard") {
+      keepComposerFocusRef.current = false;
+      return;
+    }
     flushSeenThreadReadOnLeave();
 
     const dest = resolveChatBackDestination(pathname);
@@ -1036,7 +1050,33 @@ export default function ProfileAnonChat({
     })
       .then((block) => setBlockedByAbuse(Boolean(block)))
       .catch(() => setBlockedByAbuse(false));
+
+    void isProfileBlockedByAnon({
+      anonSessionId: senderId,
+      profileUid: profileOwnerUid,
+    })
+      .then((blocked) => setAnonBlocksProfileState(blocked))
+      .catch(() => setAnonBlocksProfileState(false));
   }, [targetUid, chatOwnerUid, authReady, chatId, chatAnonSessionId, currentUid]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    const profileOwnerUid = targetUid || chatOwnerUid;
+    if (!profileOwnerUid || !currentUid) return;
+    const ownerViewing = currentUid === profileOwnerUid;
+    if (!ownerViewing) {
+      setProfileBlockedByAnon(false);
+      return;
+    }
+    const threadAnon = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+    if (!threadAnon.startsWith("anon_")) return;
+    void isProfileBlockedByAnon({
+      anonSessionId: threadAnon,
+      profileUid: profileOwnerUid,
+    })
+      .then((blocked) => setProfileBlockedByAnon(blocked))
+      .catch(() => setProfileBlockedByAnon(false));
+  }, [authReady, targetUid, chatOwnerUid, currentUid, chatId, chatAnonSessionId]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -2148,6 +2188,10 @@ export default function ProfileAnonChat({
       alert(t("chat_abuse_write_block"));
       return;
     }
+    if (profileBlockedByAnon) {
+      alert(t("chat_blocked_by_anon"));
+      return;
+    }
     if (!profileUid) {
       alert(t("chat_load_fail"));
       return;
@@ -2403,6 +2447,9 @@ export default function ProfileAnonChat({
         console.error(error);
         if (error instanceof PersistIdentityError) {
           alert(t("chat_load_fail"));
+        } else if (String((error as { code?: string; message?: string })?.code || (error as Error)?.message || "") === "blocked_by_anon") {
+          setProfileBlockedByAnon(true);
+          alert(t("chat_blocked_by_anon"));
         }
         setMessages((old) =>
           old.map((message) =>
@@ -2441,6 +2488,10 @@ export default function ProfileAnonChat({
     if (!authReady || !chatId || !canSend) return;
     if (blockedByAbuse) {
       alert(t("chat_abuse_write_block"));
+      return;
+    }
+    if (profileBlockedByAnon) {
+      alert(t("chat_blocked_by_anon"));
       return;
     }
 
@@ -2731,6 +2782,9 @@ export default function ProfileAnonChat({
             {blockedByAbuse ? (
               <p className="text-sm font-black text-red-300">{t("chat_abuse_block_active")}</p>
             ) : null}
+            {profileBlockedByAnon ? (
+              <p className="text-sm font-black text-red-300">{t("chat_blocked_by_anon")}</p>
+            ) : null}
           </div>
 
           {isOwnerViewing ? (
@@ -2741,7 +2795,43 @@ export default function ProfileAnonChat({
               blockedAnonId={anonSenderId}
               blockedBy={currentUid}
             />
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              disabled={blockBusy || !profileOwnerUid || !anonSenderId.startsWith("anon_")}
+              onClick={() => {
+                if (!profileOwnerUid || blockBusy) return;
+                setBlockBusy(true);
+                const run = anonBlocksProfile
+                  ? clearAnonBlocksProfile({
+                      anonSessionId: anonSenderId,
+                      blockedProfileUid: profileOwnerUid,
+                      chatId,
+                    })
+                  : setAnonBlocksProfile({
+                      anonSessionId: anonSenderId,
+                      blockedProfileUid: profileOwnerUid,
+                      chatId,
+                    });
+                void run
+                  .then(() => {
+                    setAnonBlocksProfileState(!anonBlocksProfile);
+                    window.alert(
+                      anonBlocksProfile
+                        ? t("chat_unblock_profile_success")
+                        : t("chat_block_profile_success"),
+                    );
+                  })
+                  .catch(() => {
+                    window.alert(t("chat_block_profile_fail"));
+                  })
+                  .finally(() => setBlockBusy(false));
+              }}
+              className="shrink-0 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[11px] font-black text-white/80 disabled:opacity-40"
+            >
+              {anonBlocksProfile ? t("chat_unblock_profile") : t("chat_block_profile")}
+            </button>
+          )}
         </header>
 
         <div
@@ -3397,7 +3487,7 @@ export default function ProfileAnonChat({
                 data-sayittome-chat-composer
                 value={text}
                 onFocus={() => {
-                  resetChatBackNavigationState();
+                  noteChatComposerFocused();
                 }}
                 onBlur={() => {
                   window.setTimeout(() => {

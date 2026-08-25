@@ -190,6 +190,7 @@ export function useShufflePool() {
   const windowCountRef = useRef(0);
   const featuredRef = useRef<ShuffleProfile[]>([]);
   const shuffleClickCountRef = useRef(0);
+  const shuffleClickInFlightRef = useRef(false);
   const recentBatchKeysQueueRef = useRef<Set<string>[]>([]);
   const mountedRef = useRef(false);
 
@@ -817,63 +818,69 @@ export function useShufflePool() {
   );
 
   const handleShuffleClick = useCallback((event?: React.MouseEvent | Event) => {
-    releaseShuffleWindowRefreshSuppression();
-    clearShuffleSessionSnapshot();
-    shuffleMark("shuffle-click-start");
-    shuffleCount("shuffleClicks");
+    if (shuffleClickInFlightRef.current) return;
+    shuffleClickInFlightRef.current = true;
+    try {
+      releaseShuffleWindowRefreshSuppression();
+      clearShuffleSessionSnapshot();
+      shuffleMark("shuffle-click-start");
+      shuffleCount("shuffleClicks");
 
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
 
-    const pool = activePoolRef.current;
-    if (pool.length === 0 && featuredRef.current.length === 0) {
-      shuffleMark("shuffle-click-end");
-      return;
-    }
-
-    const before = windowSignature(getVisibleShuffleProfiles());
-    const attempts: Array<{
-      forceReplace: true;
-      excludeRecentBatches?: boolean;
-      resetBatchMemory?: boolean;
-    }> = [
-      { forceReplace: true, excludeRecentBatches: true },
-      { forceReplace: true, excludeRecentBatches: false },
-      { forceReplace: true, resetBatchMemory: true },
-    ];
-
-    for (let i = 0; i < attempts.length; i++) {
-      const opts = attempts[i];
-      const isLast = i === attempts.length - 1;
-
-      applyWindowFromPool(refreshPoolPresence(pool), {
-        ...opts,
-        recordBatchMemory: false,
-      });
-
-      const visible = getVisibleShuffleProfiles();
-      const after = windowSignature(visible);
-      const changed = after !== before && visible.length > 0;
-
-      if (changed || isLast) {
-        rememberBatchMemory(visible, {
-          shuffleRound: opts.excludeRecentBatches === true,
-          resetBatchMemory: opts.resetBatchMemory === true,
-        });
+      const pool = activePoolRef.current;
+      if (pool.length === 0 && featuredRef.current.length === 0) {
+        shuffleMark("shuffle-click-end");
+        return;
       }
 
-      if (changed || isLast) break;
+      const before = windowSignature(getVisibleShuffleProfiles());
+      const attempts: Array<{
+        forceReplace: true;
+        excludeRecentBatches?: boolean;
+        resetBatchMemory?: boolean;
+      }> = [
+        { forceReplace: true, excludeRecentBatches: true },
+        { forceReplace: true, excludeRecentBatches: false },
+        { forceReplace: true, resetBatchMemory: true },
+      ];
+
+      for (let i = 0; i < attempts.length; i++) {
+        const opts = attempts[i];
+        const isLast = i === attempts.length - 1;
+
+        applyWindowFromPool(refreshPoolPresence(pool), {
+          ...opts,
+          recordBatchMemory: false,
+        });
+
+        const visible = getVisibleShuffleProfiles();
+        const after = windowSignature(visible);
+        const changed = after !== before && visible.length > 0;
+
+        if (changed || isLast) {
+          rememberBatchMemory(visible, {
+            shuffleRound: opts.excludeRecentBatches === true,
+            resetBatchMemory: opts.resetBatchMemory === true,
+          });
+        }
+
+        if (changed || isLast) break;
+      }
+
+      scrollShuffleFeedToTop();
+
+      shuffleClickCountRef.current += 1;
+      if (shuffleClickCountRef.current % 40 === 0) {
+        shuffleDump("shuffle-spam");
+      }
+
+      shuffleMark("shuffle-click-end");
+      shuffleMeasure("shuffle-click", "shuffle-click-start", "shuffle-click-end");
+    } finally {
+      shuffleClickInFlightRef.current = false;
     }
-
-    scrollShuffleFeedToTop();
-
-    shuffleClickCountRef.current += 1;
-    if (shuffleClickCountRef.current % 40 === 0) {
-      shuffleDump("shuffle-spam");
-    }
-
-    shuffleMark("shuffle-click-end");
-    shuffleMeasure("shuffle-click", "shuffle-click-start", "shuffle-click-end");
   }, [applyWindowFromPool]);
 
   const handleShuffleClickRef = useRef(handleShuffleClick);

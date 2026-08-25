@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
+import { captureChatsListScroll } from "@/lib/navigation/chatsListScrollStore";
 
 type Props = {
   href: string;
@@ -24,6 +25,7 @@ export default function ChatInboxLink({ href, className, children, ...rest }: Pr
   const openChat = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     warmThread();
+    if (chatId) captureChatsListScroll(chatId);
     clearMainTabShellOverlay();
     fastRouterPush(router, href);
   };
@@ -32,6 +34,7 @@ export default function ChatInboxLink({ href, className, children, ...rest }: Pr
     <a
       href={href}
       className={className}
+      data-chat-id={chatId || undefined}
       {...rest}
       onPointerEnter={warmThread}
       onPointerDown={warmThread}

@@ -19,7 +19,8 @@ import { getLocalChatReadVersion, subscribeLocalChatRead } from "@/lib/chat/loca
 import { inboxChatBlur, inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
 import type { useChatsSelection } from "@/hooks/useChatsSelection";
 import { useT } from "@/contexts/LocaleContext";
-import { useSyncExternalStore } from "react";
+import { restoreChatsListScroll } from "@/lib/navigation/chatsListScrollStore";
+import { useEffect, useSyncExternalStore } from "react";
 
 type Props = {
   sortedChats: InboxChat[];
@@ -148,6 +149,11 @@ export default function ClassicChatsInbox({
   const t = useT();
   const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
+
+  useEffect(() => {
+    if (sortedChats.length === 0) return;
+    restoreChatsListScroll();
+  }, [sortedChats.length]);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
 import { useModerationProfilePhotos } from "@/hooks/useModerationProfilePhotos";
@@ -20,6 +20,10 @@ import {
   listAvailableChatDayKeys,
 } from "@/lib/moderation/chatHistory";
 import type { ModerationChatRow } from "@/lib/moderation/types";
+import {
+  captureAdminHistoryListScroll,
+  restoreAdminHistoryListScroll,
+} from "@/lib/navigation/adminHistoryListScrollStore";
 
 type Props = {
   chats: ModerationChatRow[];
@@ -41,6 +45,7 @@ export default function AdminChatHistoryList({
   fullHeight = false,
 }: Props) {
   const [filterDay, setFilterDay] = useState("");
+  const scrollerRef = useRef<HTMLDivElement>(null);
 
   const photoTargets = useMemo(() => {
     const targets: ModerationPhotoTarget[] = [
@@ -76,6 +81,25 @@ export default function AdminChatHistoryList({
     () => groupChatsByCalendarDay(visibleChats),
     [visibleChats],
   );
+
+  useEffect(() => {
+    if (loading || chats.length === 0) return;
+    restoreAdminHistoryListScroll(scrollerRef.current, profileUsername);
+  }, [loading, chats.length, profileUsername]);
+
+  useEffect(() => {
+    const node = scrollerRef.current;
+    if (!node) return;
+    const onScroll = () => {
+      captureAdminHistoryListScroll({
+        username: profileUsername,
+        scrollTop: node.scrollTop,
+        selectedChatId,
+      });
+    };
+    node.addEventListener("scroll", onScroll, { passive: true });
+    return () => node.removeEventListener("scroll", onScroll);
+  }, [profileUsername, selectedChatId, loading, chats.length]);
 
   if (loading) {
     return (
@@ -147,6 +171,7 @@ export default function AdminChatHistoryList({
       </div>
 
       <div
+        ref={scrollerRef}
         className={[
           "min-h-0 flex-1 overflow-y-auto overscroll-contain",
           fullHeight ? "" : "max-h-[min(42vh,380px)]",

@@ -29,10 +29,10 @@ export function stableNotificationId(key: string) {
 }
 
 export function chatNotificationTag(input: { chatId?: string; messageId?: string }) {
-  const messageId = String(input.messageId || "").trim();
-  if (messageId) return `sayittome-msg-${messageId}`;
   const chatId = String(input.chatId || "").trim();
-  return chatId ? `sayittome-chat-${chatId}` : "sayittome-chat";
+  if (chatId) return `sayittome-chat-${chatId}`;
+  const messageId = String(input.messageId || "").trim();
+  return messageId ? `sayittome-msg-${messageId}` : "sayittome-chat";
 }
 
 function notificationBody(input: { body?: string; mediaHint?: string }) {

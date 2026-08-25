@@ -3,6 +3,7 @@ import { getMessage } from "@/lib/i18n/getMessage";
 import {
   isLiveByConnection,
   isRecentlyActive,
+  ONLINE_LABEL_MS,
   ONLINE_WINDOW_MS,
   parsePresenceDate,
 } from "@/lib/presence";
@@ -12,15 +13,24 @@ export function formatLastSeenLocalized(
   lastActive?: string | null,
   online?: boolean,
   windowMs = ONLINE_WINDOW_MS,
+  labelMs = ONLINE_LABEL_MS,
 ): string {
-  if (isRecentlyActive(lastActive, online, windowMs)) {
-    return getMessage(locale, "presence_online");
-  }
-
+  void online;
   const date = parsePresenceDate(lastActive);
   if (!date) return getMessage(locale, "presence_no_recent");
 
   const diffMs = Date.now() - date.getTime();
+  if (diffMs <= labelMs) {
+    return getMessage(locale, "presence_online");
+  }
+
+  if (diffMs <= windowMs) {
+    const minutes = Math.max(1, Math.floor(diffMs / 60_000));
+    return minutes === 1
+      ? getMessage(locale, "presence_last_min_one")
+      : getMessage(locale, "presence_last_min", { minutes: String(minutes) });
+  }
+
   const seconds = Math.floor(diffMs / 1000);
 
   if (seconds < 60) return getMessage(locale, "presence_just_now");
@@ -51,4 +61,4 @@ export function isPresenceOnline(
   return isRecentlyActive(lastActive, online, windowMs);
 }
 
-export { isLiveByConnection, ONLINE_WINDOW_MS };
+export { isLiveByConnection, ONLINE_LABEL_MS, ONLINE_WINDOW_MS };

@@ -33,12 +33,23 @@ const chatSrc = fs.readFileSync(
 
 assert.match(chatBackSrc, /resolveChatBackDecision/);
 assert.match(chatBackSrc, /isVisualViewportKeyboardOpen/);
+assert.match(chatBackSrc, /armChatImeDismissLatch/);
+assert.match(chatBackSrc, /isChatImeDismissLatched/);
 assert.match(handleSrc, /shouldCoalesceNativeHardwareBack/);
 assert.match(handleSrc, /dismissChatKeyboard/);
 assert.match(bootSrc, /shouldCoalesceNativeHardwareBack/);
 assert.match(bootSrc, /App.addListener\("backButton"/);
 assert.match(chatSrc, /resolveChatBackAction/);
+assert.match(chatSrc, /noteChatComposerFocused/);
+assert.match(chatSrc, /isChatImeDismissLatched/);
 assert.doesNotMatch(chatSrc, /forceWindow:\s*true/);
+
+const inboxLinkSrc = fs.readFileSync(
+  path.join(root, "src/components/chats/ChatInboxLink.tsx"),
+  "utf8",
+);
+assert.match(inboxLinkSrc, /captureChatsListScroll/);
+assert.match(inboxLinkSrc, /data-chat-id/);
 
 const chatBack = await import(
   pathToFileURL(path.join(root, "src/lib/navigation/chatBackNavigation.ts")).href

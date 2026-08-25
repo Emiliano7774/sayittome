@@ -335,6 +335,25 @@ export async function persistAnonChatMessage(
   const senderKind: ProfileAnonSenderKind = persistAuthor.senderKind;
   const messageAuthorId = persistAuthor.messageAuthorId;
 
+  if (isOwnerReply && resolvedTargetUid) {
+    const threadAnon =
+      (isProfileAnonChatId(canonicalChatId) &&
+      parseProfileAnonChatId(canonicalChatId).senderId.startsWith("anon_")
+        ? parseProfileAnonChatId(canonicalChatId).senderId
+        : "") ||
+      String(existingData.anonSessionId || "").trim();
+    if (threadAnon.startsWith("anon_")) {
+      const { isProfileBlockedByAnon } = await import("@/lib/abuse/anonProfileBlocks");
+      const blocked = await isProfileBlockedByAnon({
+        anonSessionId: threadAnon,
+        profileUid: resolvedTargetUid,
+      });
+      if (blocked) {
+        throw Object.assign(new Error("blocked_by_anon"), { code: "blocked_by_anon" });
+      }
+    }
+  }
+
   const existingParticipantes = Array.isArray(existingData.participantes)
     ? existingData.participantes.map((entry) => String(entry)).filter(Boolean)
     : [];

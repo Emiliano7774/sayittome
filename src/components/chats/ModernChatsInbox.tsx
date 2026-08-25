@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Check, CheckCheck, MessageSquare } from "lucide-react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import ChatInboxLink from "@/components/chats/ChatInboxLink";
 import ChatsMarkAllSeenButton from "@/components/chats/ChatsMarkAllSeenButton";
@@ -20,8 +21,8 @@ import { isMessageSeenByOther } from "@/lib/chat/messageReceipt";
 import { getLocalChatReadVersion, subscribeLocalChatRead } from "@/lib/chat/localChatRead";
 import { inboxChatBlur, inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
 import type { useChatsSelection } from "@/hooks/useChatsSelection";
+import { restoreChatsListScroll } from "@/lib/navigation/chatsListScrollStore";
 import { useT } from "@/contexts/LocaleContext";
-import { useSyncExternalStore } from "react";
 
 type Props = {
   sortedChats: InboxChat[];
@@ -39,6 +40,11 @@ export default function ModernChatsInbox({
   const t = useT();
   const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
+
+  useEffect(() => {
+    if (sortedChats.length === 0) return;
+    restoreChatsListScroll();
+  }, [sortedChats.length]);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content>

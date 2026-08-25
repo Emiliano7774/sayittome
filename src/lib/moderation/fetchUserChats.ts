@@ -109,22 +109,36 @@ async function collectFilteredChatsAdmin(field: string, value: string) {
 
   const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
   const db = getRepairAdminDb();
+  const pageSize = 200;
+  const all: Record<string, unknown>[] = [];
+
+  async function pageQuery(ordered: boolean) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cursor: any = null;
+    for (;;) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = db.collection("chats").where(field, "==", value);
+      if (ordered) q = q.orderBy("updatedAt", "desc");
+      q = q.limit(pageSize);
+      if (cursor) q = q.startAfter(cursor);
+      const snap = await q.get();
+      if (!snap || snap.empty) break;
+      for (const docSnap of snap.docs) {
+        all.push(rowFromAdminDoc(docSnap.id, docSnap.data()));
+      }
+      cursor = snap.docs[snap.docs.length - 1];
+      if (snap.size < pageSize) break;
+    }
+  }
+
   try {
-    const snap = await db
-      .collection("chats")
-      .where(field, "==", value)
-      .orderBy("updatedAt", "desc")
-      .limit(200)
-      .get();
-    return snap.docs.map((docSnap: { id: string; data: () => Record<string, unknown> }) =>
-      rowFromAdminDoc(docSnap.id, docSnap.data()),
-    );
+    await pageQuery(true);
+    return all;
   } catch {
     try {
-      const snap = await db.collection("chats").where(field, "==", value).limit(200).get();
-      return snap.docs.map((docSnap: { id: string; data: () => Record<string, unknown> }) =>
-        rowFromAdminDoc(docSnap.id, docSnap.data()),
-      );
+      all.length = 0;
+      await pageQuery(false);
+      return all;
     } catch {
       return [];
     }

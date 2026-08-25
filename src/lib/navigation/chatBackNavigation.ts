@@ -6,6 +6,8 @@ const CHAT_COMPOSER_SELECTOR = "[data-sayittome-chat-composer]";
 export type ChatBackPhase = "idle" | "keyboard-dismissed";
 
 let chatBackPhase: ChatBackPhase = "idle";
+/** After hardware/UI dismiss, suppress autofocus until the user taps the composer. */
+let imeDismissLatch = false;
 
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
@@ -15,6 +17,19 @@ function normalizePath(pathname: string) {
 
 export function resetChatBackNavigationState() {
   chatBackPhase = "idle";
+  imeDismissLatch = false;
+}
+
+export function armChatImeDismissLatch() {
+  imeDismissLatch = true;
+}
+
+export function clearChatImeDismissLatch() {
+  imeDismissLatch = false;
+}
+
+export function isChatImeDismissLatched() {
+  return imeDismissLatch;
 }
 
 export function isChatRoutePath(pathname: string) {
@@ -144,6 +159,7 @@ export function resolveChatBackAction(pathname: string): ChatBackAction | null {
   });
   chatBackPhase = decided.nextPhase;
   if (decided.action?.kind === "dismiss-keyboard") {
+    armChatImeDismissLatch();
     dismissChatComposerKeyboard();
   }
   return decided.action;
@@ -151,6 +167,7 @@ export function resolveChatBackAction(pathname: string): ChatBackAction | null {
 
 /** Call when the composer regains focus so a later back dismisses IME again. */
 export function noteChatComposerFocused() {
+  clearChatImeDismissLatch();
   if (chatBackPhase === "keyboard-dismissed") {
     chatBackPhase = "idle";
   }

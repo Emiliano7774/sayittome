@@ -1,3 +1,5 @@
+export const ONLINE_LABEL_MS = 3 * 60 * 1000;
+/** Green dot + "activos/en línea" filter membership. */
 export const ONLINE_WINDOW_MS = 15 * 60 * 1000;
 
 export function parsePresenceDate(value?: string | null) {
@@ -9,7 +11,7 @@ export function parsePresenceDate(value?: string | null) {
   return date;
 }
 
-/** Badge verde / "en linea": solo con heartbeat reciente, no con `online` pegado en DB. */
+/** Badge verde / filtro activos: heartbeat dentro de 15 min. */
 export function isLiveByConnection(
   heartbeatAt?: string | null,
   windowMs = ONLINE_WINDOW_MS,
@@ -47,17 +49,27 @@ export function isShuffleProfileOnline(
   return isLiveByConnection(profile.presenceAt || profile.lastActive, windowMs, now);
 }
 
+/**
+ * Label copy: 0–3 min → "en línea"; 3–15 min → minutes (caller keeps green via 15m window);
+ * after 15 min → last-seen phrasing.
+ */
 export function formatLastSeen(
   lastActive?: string | null,
   online?: boolean,
   windowMs = ONLINE_WINDOW_MS,
+  labelMs = ONLINE_LABEL_MS,
 ) {
-  if (isRecentlyActive(lastActive, online, windowMs)) return "en linea";
-
+  void online;
   const date = parsePresenceDate(lastActive);
   if (!date) return "sin actividad reciente";
 
   const diffMs = Date.now() - date.getTime();
+  if (diffMs <= labelMs) return "en linea";
+
+  if (diffMs <= windowMs) {
+    const minutes = Math.max(1, Math.floor(diffMs / 60_000));
+    return minutes === 1 ? "Ultima conexion hace 1 min" : `Ultima conexion hace ${minutes} min`;
+  }
 
   const seconds = Math.floor(diffMs / 1000);
   if (seconds < 60) return "hace un momento";
