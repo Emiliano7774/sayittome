@@ -5,7 +5,9 @@ import { RotateCcw, ShieldAlert } from "lucide-react";
 
 import { useAdminSession } from "@/hooks/useAdminSession";
 import { postAdminAction } from "@/lib/admin/postAdminAction";
+import { patchCachedFullProfileAdminTags } from "@/lib/profile/profileCache";
 import { useT } from "@/contexts/LocaleContext";
+import { setShuffleAdminTagOverlay } from "@/lib/shuffle/shuffleAdminTagOverlay";
 import { patchShuffleProfileModerationTag } from "@/lib/shuffle/shuffleSlotsStore";
 
 type ProfileRef = {
@@ -22,11 +24,17 @@ type Props = {
   onTagChange?: (moderationTag: string) => void;
 };
 
-export function dispatchProfileModerationTag(uid: string, moderationTag: string) {
+export function dispatchProfileModerationTag(
+  uid: string,
+  moderationTag: string,
+  username?: string,
+) {
+  setShuffleAdminTagOverlay(uid, { moderationTag });
   patchShuffleProfileModerationTag(uid, moderationTag);
+  if (username) patchCachedFullProfileAdminTags(username, { moderationTag });
   window.dispatchEvent(
     new CustomEvent("sayittome:shuffle-profile-moderation", {
-      detail: { uid, moderationTag },
+      detail: { uid, moderationTag, username },
     }),
   );
 }
@@ -84,7 +92,7 @@ export default function AdminProfileRoleplayButton({
 
       const nextTag = action === "tag_roleplay" ? "roleplay" : "";
       setTag(nextTag);
-      dispatchProfileModerationTag(profile.uid, nextTag);
+      dispatchProfileModerationTag(profile.uid, nextTag, profile.username);
       onTagChange?.(nextTag);
     } catch {
       alert(failMessage(action));

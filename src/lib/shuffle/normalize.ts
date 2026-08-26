@@ -1,6 +1,10 @@
 import { isActiveWithinWindow } from "@/lib/presence";
 import { normalizeUsername } from "@/lib/profile/username";
 import { dedupeShuffleProfiles, resolveUsernameLower } from "@/lib/shuffle/dedupeProfiles";
+import {
+  applyShuffleAdminTagOverlays,
+  reconcileShuffleAdminTagOverlayFromServer,
+} from "@/lib/shuffle/shuffleAdminTagOverlay";
 import { resolveShuffleProfileBlurPhoto } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -107,5 +111,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
     })
     .filter((p) => p.username && p.username !== "undefined");
 
-  return dedupeShuffleProfiles(mapped);
+  const deduped = dedupeShuffleProfiles(mapped);
+  for (const profile of deduped) reconcileShuffleAdminTagOverlayFromServer(profile);
+  return applyShuffleAdminTagOverlays(deduped);
 }

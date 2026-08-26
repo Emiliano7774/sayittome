@@ -1,4 +1,5 @@
 import { readClientCache, writeClientCache } from "@/lib/cache/clientCache";
+import { applyShuffleAdminTagOverlay, setShuffleAdminTagOverlay } from "@/lib/shuffle/shuffleAdminTagOverlay";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export const PROFILE_CACHE_VERSION = 2;
@@ -227,6 +228,18 @@ export function getCachedFullProfile(username: string, options?: { allowStale?: 
   const allowStale = options?.allowStale !== false;
   const maxAge = allowStale ? PROFILE_CACHE_STALE_MS : PROFILE_CACHE_TTL_MS;
   if (ageMs(envelope.fetchedAt) > maxAge) return null;
+  const profile = envelope.profile as {
+    uid?: string;
+    moderationTag?: string;
+    fakeProfileTag?: string;
+  };
+  const uid = String(profile?.uid || "").trim();
+  if (uid) {
+    return applyShuffleAdminTagOverlay({
+      ...profile,
+      uid,
+    });
+  }
   return envelope.profile;
 }
 
@@ -238,16 +251,42 @@ export function setCachedFullProfile(
   if (!profile) return;
   const key = normalizeUsername(username);
   if (!key) return;
+  const row = profile as { uid?: string };
+  const stored =
+    row?.uid && typeof profile === "object"
+      ? applyShuffleAdminTagOverlay(profile as { uid: string; moderationTag?: string; fakeProfileTag?: string })
+      : profile;
   persistFull(
     {
       version: PROFILE_CACHE_VERSION,
       username: key,
-      profile,
+      profile: stored,
       fetchedAt: options?.fetchedAt || nowMs(),
       source: options?.source || "api",
     },
     key,
   );
+}
+
+export function patchCachedFullProfileAdminTags(
+  username: string,
+  patch: { moderationTag?: string; fakeProfileTag?: string },
+) {
+  const key = normalizeUsername(username);
+  if (!key) return;
+  const envelope = peekFullProfileEnvelope(key);
+  if (!envelope?.profile || typeof envelope.profile !== "object") return;
+  const current = envelope.profile as Record<string, unknown> & { uid?: string };
+  persistFull(
+    {
+      ...envelope,
+      profile: { ...current, ...patch },
+    },
+    key,
+  );
+  if (current.uid) {
+    setShuffleAdminTagOverlay(current.uid, patch);
+  }
 }
 
 export function seedFullProfileFromShuffleCard(profile: ShuffleProfile) {

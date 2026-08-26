@@ -5,6 +5,10 @@ import {
   uniqueShuffleWindow,
 } from "@/lib/shuffle/dedupeProfiles";
 import {
+  applyShuffleAdminTagOverlay,
+  mergeStickyShuffleAdminTags,
+} from "@/lib/shuffle/shuffleAdminTagOverlay";
+import {
   applyShuffleProfileBlurFlags,
 } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
@@ -90,16 +94,21 @@ export function setShuffleSlots(
     const prev = slots[slot];
 
     if (prev && next && shuffleProfileIdentityKey(prev) === shuffleProfileIdentityKey(next) && shuffleProfileIdentityKey(prev)) {
-      const updated: ShuffleProfile = {
-        ...prev,
-        blurPhoto: next.blurPhoto,
-        moderationTag: next.moderationTag,
-        fakeProfileTag: next.fakeProfileTag,
-        mediaBlurFlags: next.mediaBlurFlags,
-        adminBlurProfilePhoto: next.adminBlurProfilePhoto,
-        adminBlurFotosPerfil: next.adminBlurFotosPerfil,
-        adminBlurGallery: next.adminBlurGallery,
-      };
+      const updated: ShuffleProfile = applyShuffleAdminTagOverlay(
+        mergeStickyShuffleAdminTags(
+          {
+            ...prev,
+            blurPhoto: next.blurPhoto,
+            moderationTag: next.moderationTag,
+            fakeProfileTag: next.fakeProfileTag,
+            mediaBlurFlags: next.mediaBlurFlags,
+            adminBlurProfilePhoto: next.adminBlurProfilePhoto,
+            adminBlurFotosPerfil: next.adminBlurFotosPerfil,
+            adminBlurGallery: next.adminBlurGallery,
+          },
+          prev,
+        ),
+      );
 
       if (
         prev.blurPhoto !== updated.blurPhoto ||

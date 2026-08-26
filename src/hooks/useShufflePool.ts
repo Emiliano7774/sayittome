@@ -23,6 +23,7 @@ import {
   subscribeShuffleExclude,
 } from "@/lib/shuffle/shuffleExcludeStore";
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
+import { applyShuffleAdminTagOverlays } from "@/lib/shuffle/shuffleAdminTagOverlay";
 import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
 import { isShuffleProfileOnline } from "@/lib/presence";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
@@ -559,7 +560,9 @@ export function useShufflePool() {
       if (profiles.length === 0) return;
 
       poolRef.current = enrichShuffleIdentitiesFromBridges(
-        overlayShuffleProfileSnapshots(poolRef.current, profiles),
+        applyShuffleAdminTagOverlays(
+          overlayShuffleProfileSnapshots(poolRef.current, profiles),
+        ),
         [...featuredRef.current, ...getShuffleExcludeProfiles()],
       );
 
@@ -1228,6 +1231,10 @@ export function useShufflePool() {
       poolRef.current = poolRef.current.map(patchModeration);
       activePoolRef.current = activePoolRef.current.map(patchModeration);
       featuredRef.current = featuredRef.current.map(patchModeration);
+      writeCachedShufflePool(poolRef.current);
+      if (!shuffleFeedFrozenRef.current) {
+        filterActivePool(searchRef.current.trim(), filtersRef.current);
+      }
     }
 
     function onProfileFake(event: Event) {
@@ -1242,6 +1249,10 @@ export function useShufflePool() {
       poolRef.current = poolRef.current.map(patchFake);
       activePoolRef.current = activePoolRef.current.map(patchFake);
       featuredRef.current = featuredRef.current.map(patchFake);
+      writeCachedShufflePool(poolRef.current);
+      if (!shuffleFeedFrozenRef.current) {
+        filterActivePool(searchRef.current.trim(), filtersRef.current);
+      }
     }
 
     function onProfileBlur(event: Event) {

@@ -24,6 +24,8 @@ type DedupeableProfile = {
   lastActive?: string;
   shuffleFeatured?: boolean;
   shuffleSource?: ShuffleIdentitySource;
+  moderationTag?: string;
+  fakeProfileTag?: string;
 };
 
 const ID_FIELDS = [
@@ -320,6 +322,14 @@ function mergeIdentityFields<T extends DedupeableProfile>(winner: T, loser: T): 
       winner.shuffleFeatured || !loser.shuffleFeatured
         ? winner.shuffleSource || loser.shuffleSource
         : loser.shuffleSource || winner.shuffleSource,
+    moderationTag:
+      String(winner.moderationTag || "").trim() ||
+      String(loser.moderationTag || "").trim() ||
+      "",
+    fakeProfileTag:
+      String(winner.fakeProfileTag || "").trim() ||
+      String(loser.fakeProfileTag || "").trim() ||
+      "",
   };
 }
 

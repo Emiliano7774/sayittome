@@ -1,4 +1,8 @@
 import { urlRequiresBlurFromProfile } from "@/lib/moderation/blur";
+import {
+  applyShuffleAdminTagOverlay,
+  mergeStickyShuffleAdminTags,
+} from "@/lib/shuffle/shuffleAdminTagOverlay";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 type BlurSource = Pick<
@@ -40,20 +44,24 @@ export function mergeShuffleProfileModeration(
   profile: ShuffleProfile,
   existing?: ShuffleProfile | null,
 ): ShuffleProfile {
-  if (!existing || existing.uid !== profile.uid) return profile;
-
   const mediaBlurFlags = {
     ...(profile.mediaBlurFlags || {}),
-    ...(existing.mediaBlurFlags || {}),
+    ...(existing?.mediaBlurFlags || {}),
   };
 
-  return applyShuffleProfileBlurFlags(
+  const blurred = applyShuffleProfileBlurFlags(
     {
       ...profile,
       mediaBlurFlags,
       adminBlurProfilePhoto:
-        profile.adminBlurProfilePhoto === true || existing.adminBlurProfilePhoto === true,
+        profile.adminBlurProfilePhoto === true || existing?.adminBlurProfilePhoto === true,
     },
     mediaBlurFlags,
   );
+
+  if (!existing || existing.uid !== profile.uid) {
+    return applyShuffleAdminTagOverlay(blurred);
+  }
+
+  return applyShuffleAdminTagOverlay(mergeStickyShuffleAdminTags(blurred, existing));
 }

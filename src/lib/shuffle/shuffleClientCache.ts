@@ -1,4 +1,5 @@
 import { readClientCache, writeClientCache } from "@/lib/cache/clientCache";
+import { applyShuffleAdminTagOverlays } from "@/lib/shuffle/shuffleAdminTagOverlay";
 import { SHUFFLE_DEDUPE_VERSION, dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
@@ -15,11 +16,14 @@ export type ShuffleStatsCache = {
 
 export function readCachedShufflePool() {
   const cached = readClientCache<ShuffleProfile[]>(SHUFFLE_POOL_KEY, POOL_TTL_MS);
-  return cached ? dedupeShuffleProfiles(cached) : cached;
+  return cached ? applyShuffleAdminTagOverlays(dedupeShuffleProfiles(cached)) : cached;
 }
 
 export function writeCachedShufflePool(profiles: ShuffleProfile[]) {
-  writeClientCache(SHUFFLE_POOL_KEY, dedupeShuffleProfiles(profiles));
+  writeClientCache(
+    SHUFFLE_POOL_KEY,
+    applyShuffleAdminTagOverlays(dedupeShuffleProfiles(profiles)),
+  );
 }
 
 export function readCachedShuffleStats() {

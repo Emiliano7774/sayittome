@@ -5,7 +5,9 @@ import { RotateCcw, UserRoundX } from "lucide-react";
 
 import { useAdminSession } from "@/hooks/useAdminSession";
 import { postAdminAction } from "@/lib/admin/postAdminAction";
+import { patchCachedFullProfileAdminTags } from "@/lib/profile/profileCache";
 import { useT } from "@/contexts/LocaleContext";
+import { setShuffleAdminTagOverlay } from "@/lib/shuffle/shuffleAdminTagOverlay";
 import { patchShuffleProfileFakeTag } from "@/lib/shuffle/shuffleSlotsStore";
 
 type ProfileRef = {
@@ -22,11 +24,17 @@ type Props = {
   onTagChange?: (fakeProfileTag: string) => void;
 };
 
-export function dispatchProfileFakeTag(uid: string, fakeProfileTag: string) {
+export function dispatchProfileFakeTag(
+  uid: string,
+  fakeProfileTag: string,
+  username?: string,
+) {
+  setShuffleAdminTagOverlay(uid, { fakeProfileTag });
   patchShuffleProfileFakeTag(uid, fakeProfileTag);
+  if (username) patchCachedFullProfileAdminTags(username, { fakeProfileTag });
   window.dispatchEvent(
     new CustomEvent("sayittome:shuffle-profile-fake", {
-      detail: { uid, fakeProfileTag },
+      detail: { uid, fakeProfileTag, username },
     }),
   );
 }
@@ -84,7 +92,7 @@ export default function AdminProfileFakeButton({
 
       const nextTag = action === "tag_fake_profile" ? "fake" : "";
       setTag(nextTag);
-      dispatchProfileFakeTag(profile.uid, nextTag);
+      dispatchProfileFakeTag(profile.uid, nextTag, profile.username);
       onTagChange?.(nextTag);
     } catch {
       alert(failMessage(action));
