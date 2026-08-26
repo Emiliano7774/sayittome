@@ -217,15 +217,15 @@ export default function ModernPublicProfile({
     openViewer(heroIndex);
   }
 
-  const prevPhoto = useCallback(() => {
+  function prevPhoto() {
     if (gallery.length <= 1) return;
     setViewerIndex((v) => (v - 1 + gallery.length) % gallery.length);
-  }, [gallery.length]);
+  }
 
-  const nextPhoto = useCallback(() => {
+  function nextPhoto() {
     if (gallery.length <= 1) return;
     setViewerIndex((v) => (v + 1) % gallery.length);
-  }, [gallery.length]);
+  }
 
   const prevHero = useCallback(() => {
     if (gallery.length <= 1) return;
@@ -276,14 +276,22 @@ export default function ModernPublicProfile({
     if (!viewerOpen) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeViewer();
-      if (event.key === "ArrowLeft") prevPhoto();
-      if (event.key === "ArrowRight") nextPhoto();
+      if (event.key === "Escape") {
+        closeViewer();
+        return;
+      }
+      if (gallery.length <= 1) return;
+      if (event.key === "ArrowLeft") {
+        setViewerIndex((v) => (v - 1 + gallery.length) % gallery.length);
+      }
+      if (event.key === "ArrowRight") {
+        setViewerIndex((v) => (v + 1) % gallery.length);
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeViewer, nextPhoto, prevPhoto, viewerOpen]);
+  }, [closeViewer, viewerOpen, gallery.length]);
 
   return (
     <main className="min-h-screen bg-black pb-32 text-white">
