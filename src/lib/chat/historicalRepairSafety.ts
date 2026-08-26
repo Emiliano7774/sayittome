@@ -238,6 +238,8 @@ export function operationIdForApply(input: {
 
 export const PREVIEW_TTL_MS = 30 * 60 * 1000;
 
+export const OPERATOR_MARKS_ONLY_COMPOSITION = "operator_marks_only" as const;
+
 export type SealedPreviewSelection = {
   collectionPath: string;
   messageId: string;
@@ -245,6 +247,8 @@ export type SealedPreviewSelection = {
   expectedBeforeHash: string;
   updateTime: string;
   selectedAnonId?: string;
+  /** Explicit operator mark only — never proposed/inferred/fallback. */
+  markSource?: "operator";
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
 };
@@ -256,6 +260,8 @@ export type SealedRepairPreview = {
   schemaVersion: number;
   actorUid?: string;
   consumed?: boolean;
+  /** HMAC-bound; apply/rollback unfreeze requires this exact value. */
+  composition?: typeof OPERATOR_MARKS_ONLY_COMPOSITION | "";
   identities?: {
     ownerProfileId: string;
     ownerUsernameSlug: string;
@@ -279,12 +285,53 @@ function canonicalSealedSelections(rows: SealedPreviewSelection[]) {
       expectedBeforeHash: String(row.expectedBeforeHash || ""),
       updateTime: String(row.updateTime || ""),
       selectedAnonId: String(row.selectedAnonId || ""),
+      markSource: row.markSource === "operator" ? ("operator" as const) : undefined,
       before: row.before || undefined,
       after: row.after || undefined,
     }))
     .sort((a, b) =>
       `${a.collectionPath}:${a.messageId}`.localeCompare(`${b.collectionPath}:${b.messageId}`),
     );
+}
+
+/** Stamp operator-only composition when every selection carries markSource=operator. */
+export function resolveOperatorMarksOnlyComposition(
+  selections: SealedPreviewSelection[],
+): typeof OPERATOR_MARKS_ONLY_COMPOSITION | "" {
+  if (!selections.length) return "";
+  if (selections.some((row) => row.markSource !== "operator")) return "";
+  return OPERATOR_MARKS_ONLY_COMPOSITION;
+}
+
+/**
+ * Safe unfreeze gate: sealed preview must be operator_marks_only with every
+ * selection explicitly marked by the operator (never inferred/proposed).
+ */
+export function assertOperatorMarksOnlyUnfreeze(
+  sealed: SealedRepairPreview | null | undefined,
+): { ok: true; error: "" } | { ok: false; error: string } {
+  if (!sealed || typeof sealed !== "object") {
+    return { ok: false, error: "preview_missing" };
+  }
+  const rows = Array.isArray(sealed.selections) ? sealed.selections : [];
+  if (rows.length === 0) {
+    return { ok: false, error: "selection_unmarked" };
+  }
+  if (String(sealed.composition || "") !== OPERATOR_MARKS_ONLY_COMPOSITION) {
+    return { ok: false, error: "preview_composition_invalid" };
+  }
+  for (const row of rows) {
+    if (row.markSource !== "operator") {
+      return { ok: false, error: "inferred_role_forbidden" };
+    }
+    if (!String(row.messageId || "").trim()) {
+      return { ok: false, error: "selection_unmarked" };
+    }
+    if (row.desiredRole !== "profile" && row.desiredRole !== "anon") {
+      return { ok: false, error: "inferred_role_forbidden" };
+    }
+  }
+  return { ok: true, error: "" };
 }
 
 export function sealReviewedPreview(
@@ -297,6 +344,7 @@ export function sealReviewedPreview(
     nowMs?: number;
     ttlMs?: number;
     actorUid?: string;
+    composition?: typeof OPERATOR_MARKS_ONLY_COMPOSITION | "";
     identities?: SealedRepairPreview["identities"];
     chatUpdateTime?: string;
     latestMessageId?: string;
@@ -305,12 +353,18 @@ export function sealReviewedPreview(
   secret?: string,
 ): SealedRepairPreview {
   const expiresAtMs = Number(input.nowMs || Date.now()) + Number(input.ttlMs || PREVIEW_TTL_MS);
+  const selections = canonicalSealedSelections(input.selections);
+  const composition =
+    input.composition === OPERATOR_MARKS_ONLY_COMPOSITION
+      ? OPERATOR_MARKS_ONLY_COMPOSITION
+      : resolveOperatorMarksOnlyComposition(selections);
   const body = {
     previewId: String(input.previewId || ""),
     previewHash: String(input.previewHash || ""),
     chatId: String(input.chatId || ""),
     schemaVersion: Number(input.schemaVersion || HISTORICAL_REPAIR_SCHEMA_VERSION),
     actorUid: String(input.actorUid || ""),
+    composition,
     identities: {
       ownerProfileId: String(input.identities?.ownerProfileId || ""),
       ownerUsernameSlug: String(input.identities?.ownerUsernameSlug || ""),
@@ -320,7 +374,7 @@ export function sealReviewedPreview(
     chatUpdateTime: String(input.chatUpdateTime || ""),
     latestMessageId: String(input.latestMessageId || ""),
     latestCollectionPath: String(input.latestCollectionPath || ""),
-    selections: canonicalSealedSelections(input.selections),
+    selections,
     expiresAtMs,
   };
   const signature = createHmac("sha256", requiredHmacSecret(secret))
@@ -364,6 +418,10 @@ export function consumeSealedPreview(
     chatId: String(sealed.chatId || ""),
     schemaVersion: Number(sealed.schemaVersion || 0),
     actorUid: String(sealed.actorUid || ""),
+    composition:
+      String(sealed.composition || "") === OPERATOR_MARKS_ONLY_COMPOSITION
+        ? OPERATOR_MARKS_ONLY_COMPOSITION
+        : "",
     identities: {
       ownerProfileId: String(sealed.identities?.ownerProfileId || ""),
       ownerUsernameSlug: String(sealed.identities?.ownerUsernameSlug || ""),

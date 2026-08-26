@@ -142,20 +142,33 @@ export async function POST(req: Request) {
 
     const selections = plan.rows
       .filter((row) => row.selected && row.proposed)
-      .map((row) => ({
-        messageId: row.messageId,
-        desiredRole: row.proposed!.senderRole,
-        expectedBeforeHash: row.expectedBeforeHash,
-        updateTime: row.updateTime,
-        collectionName: row.collectionName,
-        collectionPath: row.collectionPath || "",
-        selectedAnonId: marks.find((mark) =>
-          (mark.collectionPath && mark.collectionPath === row.collectionPath) ||
-          mark.messageId === row.messageId,
-        )?.selectedAnonId || loaded.identities.threadAnonId,
-        before: row.persisted,
-        after: row.proposed || undefined,
-      }));
+      .map((row) => {
+        const mark = marks.find(
+          (entry) =>
+            (entry.collectionPath && entry.collectionPath === row.collectionPath) ||
+            entry.messageId === row.messageId,
+        );
+        return {
+          messageId: row.messageId,
+          desiredRole: row.proposed!.senderRole,
+          expectedBeforeHash: row.expectedBeforeHash,
+          updateTime: row.updateTime,
+          collectionName: row.collectionName,
+          collectionPath: row.collectionPath || "",
+          selectedAnonId:
+            mark?.selectedAnonId || loaded.identities.threadAnonId,
+          markSource: "operator" as const,
+          before: row.persisted,
+          after: row.proposed || undefined,
+        };
+      });
+    // Refuse to seal inferred/proposed-only plans — apply unfreeze requires operator marks.
+    if (selections.length > 0 && marks.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "selection_unmarked", writes: 0, plan },
+        { status: 409 },
+      );
+    }
     const previewHash = hashReviewedPreviewPlan({
       chatId,
       writeCount: plan.writeCount,
@@ -195,8 +208,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      applyAllowed: plan.applyAllowed,
+      applyAllowed: plan.applyAllowed && sealedPreview.composition === "operator_marks_only",
       applyFrozen: HISTORICAL_REPAIR_APPLY_FROZEN,
+      operatorMarksOnlyUnfreeze:
+        HISTORICAL_REPAIR_APPLY_FROZEN &&
+        sealedPreview.composition === "operator_marks_only",
       chatBlocked: plan.chatBlocked,
       blockReason: plan.blockReason,
       perspective,

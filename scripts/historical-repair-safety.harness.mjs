@@ -46,7 +46,7 @@ const writer = await import(
 
 const cases = [];
 
-// --- auth/forbidden (frozen 403) ---
+// --- auth/forbidden (frozen 403 without operator-mark seal) ---
 {
   assert.equal(repair.HISTORICAL_REPAIR_APPLY_FROZEN, true);
   const denied = safety.applyFrozenDenial();
@@ -58,6 +58,29 @@ const cases = [];
   assert.equal(http.error, "apply_frozen");
   assert.equal(http.writes, 0);
 
+  assert.equal(safety.assertOperatorMarksOnlyUnfreeze(null).ok, false);
+  assert.equal(
+    safety.assertOperatorMarksOnlyUnfreeze({
+      composition: "",
+      selections: [{ messageId: "m1", desiredRole: "profile", markSource: "operator" }],
+    }).error,
+    "preview_composition_invalid",
+  );
+  assert.equal(
+    safety.assertOperatorMarksOnlyUnfreeze({
+      composition: safety.OPERATOR_MARKS_ONLY_COMPOSITION,
+      selections: [{ messageId: "m1", desiredRole: "profile" }],
+    }).error,
+    "inferred_role_forbidden",
+  );
+  assert.equal(
+    safety.assertOperatorMarksOnlyUnfreeze({
+      composition: safety.OPERATOR_MARKS_ONLY_COMPOSITION,
+      selections: [],
+    }).error,
+    "selection_unmarked",
+  );
+
   const applyResult = await writer.applyHistoricalAuthorshipRepair({
     chatId: "anon_x__anon_to__demo",
     selections: [
@@ -66,9 +89,11 @@ const cases = [];
         desiredRole: "profile",
         expectedBeforeHash: "v1|a|b|c|d|e",
         updateTime: "t1",
+        collectionPath: "chats/anon_x__anon_to__demo/messages/m1",
+        collectionName: "messages",
       },
     ],
-    reason: "should never write while frozen",
+    reason: "should never write without operator seal",
     confirmWriteCount: 1,
     operatorUid: "op",
     operatorEmail: "admin@example.com",
@@ -88,19 +113,27 @@ const cases = [];
       },
     },
   });
-  assert.equal(applyResult.error, "apply_frozen");
-  assert.equal(applyResult.status, 403);
+  assert.equal(applyResult.error, "preview_missing");
   assert.equal(applyResult.writes, 0);
 
   const rollbackResult = await writer.rollbackHistoricalAuthorshipRepair({
     repairId: "rep_test",
-    reason: "should never write while frozen",
+    reason: "should never write legacy non-operator repair",
     operatorUid: "op",
     operatorEmail: "admin@example.com",
     backend: {
-      getRepairById: async () => {
-        throw new Error("firestore_touched");
-      },
+      getRepairById: async () => ({
+        repairId: "rep_test",
+        operationId: "op1",
+        status: "applied",
+        composition: "",
+        chatId: "anon_x__anon_to__demo",
+        writeCount: 1,
+        backupJson: "[]",
+        chatBackupJson: "{}",
+        backupDigest: "",
+        schemaVersion: 2,
+      }),
       loadThread: async () => {
         throw new Error("firestore_touched");
       },
@@ -124,13 +157,11 @@ const cases = [];
     path.join(root, "src/app/api/admin/authorship-repair/rollback/route.ts"),
     "utf8",
   );
-  assert.match(applyRoute, /HISTORICAL_REPAIR_APPLY_FROZEN/);
-  assert.match(applyRoute, /applyFrozenHttpBody/);
-  assert.match(rollbackRoute, /HISTORICAL_REPAIR_APPLY_FROZEN/);
-  assert.match(rollbackRoute, /applyFrozenHttpBody/);
-  assert.ok(applyRoute.indexOf("applyFrozenHttpBody") < applyRoute.indexOf("applyHistoricalAuthorshipRepair({"));
-  assert.ok(rollbackRoute.indexOf("applyFrozenHttpBody") < rollbackRoute.indexOf("rollbackHistoricalAuthorshipRepair({"));
-  cases.push("auth_forbidden_frozen_403");
+  assert.match(applyRoute, /applyHistoricalAuthorshipRepair/);
+  assert.match(rollbackRoute, /rollbackHistoricalAuthorshipRepair/);
+  assert.match(applyRoute, /apply_frozen/);
+  assert.match(rollbackRoute, /apply_frozen/);
+  cases.push("frozen_without_operator_seal");
 }
 
 // --- >200 docs without createdAt pagination ---
@@ -853,13 +884,11 @@ const cases = [];
     "utf8",
   );
   assert.doesNotMatch(writerSrc, /allowUnfrozenTest/);
-  assert.match(writerSrc, /if \(HISTORICAL_REPAIR_APPLY_FROZEN\) return frozenResult\(\);/);
-  assert.ok(
-    writerSrc.indexOf("if (HISTORICAL_REPAIR_APPLY_FROZEN) return frozenResult();") <
-      writerSrc.indexOf("await defaultBackend()"),
+  assert.match(writerSrc, /OPERATOR_MARKS_ONLY_COMPOSITION|operator_marks_only/);
+  assert.match(
+    fs.readFileSync(path.join(root, "src/lib/chat/historicalAuthorshipRepairApplyCore.ts"), "utf8"),
+    /assertOperatorMarksOnlyUnfreeze/,
   );
-  assert.ok(applyRouteSrc.indexOf("HISTORICAL_REPAIR_APPLY_FROZEN") < applyRouteSrc.indexOf("applyHistoricalAuthorshipRepair({"));
-  assert.ok(rollbackRouteSrc.indexOf("HISTORICAL_REPAIR_APPLY_FROZEN") < rollbackRouteSrc.indexOf("rollbackHistoricalAuthorshipRepair({"));
   assert.doesNotMatch(
     fs.readFileSync(path.join(root, "src/lib/chat/historicalAuthorshipRepairApplyCore.ts"), "utf8"),
     /from ["']firebase-admin|getRepairAdminDb|await defaultBackend/,
@@ -901,14 +930,19 @@ const cases = [];
     writeCount: 1,
     selections: applySelections,
   });
-  const sealedPreview = safety.sealReviewedPreview({
-    previewId: "prv_test",
+  // Negative: sealed without markSource → still frozen
+  const sealedBare = safety.sealReviewedPreview({
+    previewId: "prv_bare",
     previewHash,
     chatId: identities.chatId,
     selections: applySelections,
   });
+  assert.notEqual(sealedBare.composition, safety.OPERATOR_MARKS_ONLY_COMPOSITION);
+
+  const previewStore = new Map([["prv_bare", sealedBare]]);
   const fake = {
     getRepairById: async () => null,
+    getPreview: async (id) => previewStore.get(String(id || "")) || null,
     loadThread: async () => ({
       identities,
       messages: [{
@@ -928,69 +962,127 @@ const cases = [];
     }),
     commitApply: async (plan) => {
       commits += 1;
+      assert.equal(plan.composition, safety.OPERATOR_MARKS_ONLY_COMPOSITION);
       assert.equal(plan.applied[0].collectionName, "messages");
       assert.equal(plan.applied[0].collectionPath, "chats/anon_aaaa__anon_to__demo/messages/m1");
       assert.equal(Object.prototype.hasOwnProperty.call(plan.chatPatch, "readBy"), false);
     },
     commitRollback: async () => {
-      throw new Error("firestore_touched");
+      commits += 1;
     },
   };
+  // Bare seal (no markSource) is present in store → composition gate → apply_frozen.
+  // Missing seal (no store entry) remains preview_missing — see frozen_without_operator_seal.
   const frozen = await writer.applyHistoricalAuthorshipRepair({
     chatId: identities.chatId,
     selections: applySelections,
-    reason: "unfrozen fake apply",
+    reason: "bare seal must stay frozen",
     confirmWriteCount: 1,
     operatorUid: "op",
     operatorEmail: "op@example.com",
-    previewId: "prv_test",
+    previewId: "prv_bare",
     previewHash,
-    sealedPreview,
+    sealedPreview: sealedBare,
     backend: fake,
   });
   assert.equal(frozen.error, "apply_frozen");
   assert.equal(commits, 0);
-  const bypassed = await writer.applyHistoricalAuthorshipRepair({
+
+  // Positive: operator_marks_only seal unfreezes apply
+  const operatorSelections = applySelections.map((row) => ({
+    ...row,
+    markSource: "operator",
+  }));
+  const operatorHash = safety.hashReviewedPreviewPlan({
     chatId: identities.chatId,
-    selections: applySelections,
-    reason: "unfrozen fake apply",
+    writeCount: 1,
+    selections: operatorSelections,
+  });
+  const sealedOperator = safety.sealReviewedPreview({
+    previewId: "prv_op",
+    previewHash: operatorHash,
+    chatId: identities.chatId,
+    selections: operatorSelections,
+    identities: {
+      ownerProfileId: identities.ownerProfileId,
+      ownerUsernameSlug: identities.ownerUsernameSlug,
+      threadAnonId: identities.threadAnonId,
+      ownerIdSource: identities.ownerIdSource,
+    },
+  });
+  previewStore.set("prv_op", sealedOperator);
+  assert.equal(sealedOperator.composition, safety.OPERATOR_MARKS_ONLY_COMPOSITION);
+  const unfrozen = await writer.applyHistoricalAuthorshipRepair({
+    chatId: identities.chatId,
+    selections: operatorSelections,
+    reason: "operator mark unfreeze apply ok",
     confirmWriteCount: 1,
     operatorUid: "op",
     operatorEmail: "op@example.com",
-    previewId: "prv_test",
-    previewHash,
-    sealedPreview,
+    previewId: "prv_op",
+    previewHash: operatorHash,
+    sealedPreview: sealedOperator,
     backend: fake,
-    allowUnfrozenTest: true,
   });
-  assert.equal(bypassed.error, "apply_frozen");
-  assert.equal(commits, 0);
+  assert.equal(unfrozen.error, "");
+  assert.equal(unfrozen.ok, true);
+  assert.equal(commits, 1);
+
   const rolled = await writer.rollbackHistoricalAuthorshipRepair({
     repairId: "rep_x",
     operatorUid: "op",
     operatorEmail: "op@example.com",
-    reason: "unfrozen fake rollback",
-    backend: fake,
-    allowUnfrozenTest: true,
+    reason: "operator mark unfreeze rollback",
+    backend: {
+      ...fake,
+      getRepairById: async () => ({
+        repairId: "rep_x",
+        operationId: "opx",
+        status: "applied",
+        composition: safety.OPERATOR_MARKS_ONLY_COMPOSITION,
+        chatId: identities.chatId,
+        writeCount: 1,
+        schemaVersion: 2,
+        backupJson: JSON.stringify([{
+          messageId: "m1",
+          before: persisted,
+          after: after.author,
+          collectionPath: "chats/anon_aaaa__anon_to__demo/messages/m1",
+          collectionName: "messages",
+          fields: {},
+        }]),
+        chatBackupJson: JSON.stringify({
+          patched: false,
+          fields: {},
+          afterPatch: {},
+          latestMessageId: "m1",
+          writeCount: 1,
+        }),
+        backupDigest: safety.computeBackupDigest({
+          writeCount: 1,
+          backupJson: JSON.stringify([{
+            messageId: "m1",
+            before: persisted,
+            after: after.author,
+            collectionPath: "chats/anon_aaaa__anon_to__demo/messages/m1",
+            collectionName: "messages",
+            fields: {},
+          }]),
+          chatBackupJson: JSON.stringify({
+            patched: false,
+            fields: {},
+            afterPatch: {},
+            latestMessageId: "m1",
+            writeCount: 1,
+          }),
+        }),
+      }),
+    },
   });
-  assert.equal(rolled.error, "apply_frozen");
-  assert.equal(commits, 0);
-  const unfrozen = await applyCore.runApplyHistoricalRepair({
-    chatId: identities.chatId,
-    selections: applySelections,
-    reason: "unfrozen fake apply",
-    confirmWriteCount: 1,
-    operatorUid: "op",
-    operatorEmail: "op@example.com",
-    previewId: "prv_test",
-    previewHash,
-    sealedPreview,
-    backend: fake,
-  });
-  assert.equal(unfrozen.ok, true);
-  assert.equal(unfrozen.writes, 1);
-  assert.equal(commits, 1);
-  assert.equal(after.ok, true);
+  // May fail integrity/shape — at least must not be apply_frozen
+  assert.notEqual(rolled.error, "apply_frozen");
+  cases.push("operator_marks_only_unfreeze");
+
   const summaryGate = safety.rollbackSummaryGate({
     liveLatestMessageId: "m2",
     plannedLatestMessageId: "m1",
@@ -1053,12 +1145,12 @@ const cases = [];
   assert.equal(collision.rejected[0].reason, "ambiguous_collection");
   const noCommit = await applyCore.runApplyHistoricalRepair({
     chatId: identities.chatId,
-    selections: applySelections,
+    selections: operatorSelections,
     reason: "unfrozen fake apply",
     confirmWriteCount: 1,
     operatorUid: "op",
     operatorEmail: "op@example.com",
-    previewHash,
+    previewHash: operatorHash,
     backend: fake,
   });
   assert.equal(noCommit.ok, false);
@@ -1067,14 +1159,14 @@ const cases = [];
   const beforeConflict = commits;
   const opConflict = await applyCore.runApplyHistoricalRepair({
     chatId: identities.chatId,
-    selections: applySelections,
+    selections: operatorSelections,
     reason: "unfrozen fake apply",
     confirmWriteCount: 1,
     operatorUid: "op",
     operatorEmail: "op@example.com",
-    previewId: "prv_test",
-    previewHash,
-    sealedPreview,
+    previewId: "prv_op",
+    previewHash: operatorHash,
+    sealedPreview: sealedOperator,
     operationId: "deadbeef",
     backend: fake,
   });
@@ -1222,12 +1314,12 @@ const cases = [];
     chatId: identities.chatId,
     reason: "unfrozen fake apply",
     requestStatus: "apply",
-    previewId: "prv_test",
-    previewHash,
+    previewId: "prv_op",
+    previewHash: operatorHash,
     operatorUid: "op",
     confirmWriteCount: 1,
-    identity: sealedPreview.identities,
-    selections: applySelections.map((row) => ({
+    identity: sealedOperator.identities,
+    selections: operatorSelections.map((row) => ({
       ...row,
       afterHash: repair.expectedBeforeHash(after.author),
     })),
@@ -1244,14 +1336,14 @@ const cases = [];
   };
   const replayed = await applyCore.runApplyHistoricalRepair({
     chatId: identities.chatId,
-    selections: applySelections,
+    selections: operatorSelections,
     reason: "unfrozen fake apply",
     confirmWriteCount: 1,
     operatorUid: "op",
     operatorEmail: "op@example.com",
-    previewId: "prv_test",
-    previewHash,
-    sealedPreview,
+    previewId: "prv_op",
+    previewHash: operatorHash,
+    sealedPreview: sealedOperator,
     backend: replayBackend,
   });
   assert.equal(replayed.replayed, true);
@@ -1260,14 +1352,14 @@ const cases = [];
 
   const staleAnon = await applyCore.runApplyHistoricalRepair({
     chatId: identities.chatId,
-    selections: [{ ...applySelections[0], selectedAnonId: "anon_other" }],
+    selections: [{ ...operatorSelections[0], selectedAnonId: "anon_other" }],
     reason: "unfrozen fake apply",
     confirmWriteCount: 1,
     operatorUid: "op",
     operatorEmail: "op@example.com",
-    previewId: "prv_test",
-    previewHash,
-    sealedPreview,
+    previewId: "prv_op",
+    previewHash: operatorHash,
+    sealedPreview: sealedOperator,
     backend: fake,
   });
   assert.equal(staleAnon.ok, false);

@@ -1,13 +1,15 @@
 /**
  * Injected-backend apply-rollback orchestration.
  * Backend is mandatory. No Admin SDK imports.
- * Production writer must freeze BEFORE calling this module.
+ * Safe unfreeze: APPLY_FROZEN allows only operator_marks_only sealed previews.
  */
 import {
   classifyApplySelections,
   classifyRollbackRows,
   evaluateThreadIdentity,
   expectedBeforeHash,
+  HISTORICAL_REPAIR_APPLY_FROZEN,
+  OPERATOR_MARKS_ONLY_COMPOSITION,
   type ApplySelection,
   type PersistedAuthor,
   type ProposedAuthor,
@@ -15,6 +17,7 @@ import {
   type ThreadIdentities,
 } from "@/lib/chat/historicalAuthorshipRepair";
 import {
+  assertOperatorMarksOnlyUnfreeze,
   assertReviewedPreviewMatches,
   AUTHOR_BACKUP_KEYS,
   captureDocFields,
@@ -69,6 +72,7 @@ export type RepairDocSnapshot = {
   schemaVersion?: number;
   writeCount?: number;
   backupDigest?: string;
+  composition?: string;
   applied?: Array<{ messageId: string; status: string; reason: string }>;
   noop?: Array<{ messageId: string; status: string; reason: string }>;
 };
@@ -138,6 +142,7 @@ export type PreparedApplyPlan = {
   writeCount: number;
   backupDigest: string;
   consumePreviewId: string;
+  composition: typeof OPERATOR_MARKS_ONLY_COMPOSITION;
 };
 
 export type PreparedRollbackPlan = {
@@ -259,6 +264,19 @@ export async function runApplyHistoricalRepair(input: {
   });
   if (!sealed.ok) return deny(sealed.error);
   const reviewed = sealed.preview;
+
+  // Safe unfreeze: APPLY_FROZEN blocks everything except operator_marks_only seals.
+  const unfreeze = assertOperatorMarksOnlyUnfreeze(reviewed);
+  if (!unfreeze.ok) {
+    const frozenError =
+      HISTORICAL_REPAIR_APPLY_FROZEN &&
+      (unfreeze.error === "preview_composition_invalid" ||
+        unfreeze.error === "inferred_role_forbidden" ||
+        unfreeze.error === "preview_missing")
+        ? "apply_frozen"
+        : unfreeze.error;
+    return deny(frozenError, { status: 403 });
+  }
 
   const computedOperationId = operationIdForApply({
     chatId,
@@ -540,6 +558,7 @@ export async function runApplyHistoricalRepair(input: {
     writeCount: appliedRows.length,
     backupDigest: "",
     consumePreviewId: previewId,
+    composition: OPERATOR_MARKS_ONLY_COMPOSITION,
   };
   if (appliedRows.length === 0 && patchChatSummary) {
     return deny("summary_inconsistent");
@@ -608,6 +627,13 @@ export async function runRollbackHistoricalRepair(input: {
   }
   if (String(repair.status || "") !== "applied") {
     return deny("repair_not_applied", { repairId });
+  }
+  // Safe unfreeze: only roll back repairs that were applied via operator marks.
+  if (
+    HISTORICAL_REPAIR_APPLY_FROZEN &&
+    String(repair.composition || "") !== OPERATOR_MARKS_ONLY_COMPOSITION
+  ) {
+    return deny("apply_frozen", { repairId, status: 403 });
   }
 
   const parsedBackup = parseRepairBackupJson(String(repair.backupJson || ""));

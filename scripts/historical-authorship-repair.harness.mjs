@@ -245,12 +245,23 @@ assert.match(src, /mixed_invalid_request/);
 assert.doesNotMatch(src, /ownerIdSource = "target_uid"/);
 
 const writeSrc = fs.readFileSync(path.join(root, "src/lib/chat/historicalAuthorshipRepairWrite.ts"), "utf8");
-assert.match(writeSrc, /HISTORICAL_REPAIR_APPLY_FROZEN/);
+assert.match(writeSrc, /OPERATOR_MARKS_ONLY_COMPOSITION|operator_marks_only/);
+assert.match(writeSrc, /APPLY_FROZEN/);
 assert.match(writeSrc, /getRepairAdminDb/);
 assert.match(writeSrc, /backupJson/);
+assert.doesNotMatch(writeSrc, /allowUnfrozenTest/);
 assert.doesNotMatch(writeSrc, /documents:commit/);
 assert.doesNotMatch(writeSrc, /FIRESTORE_API_KEY/);
 assert.doesNotMatch(writeSrc, /"texto"|"mediaUrl"|"createdAt"/);
+
+const coreSrc = fs.readFileSync(
+  path.join(root, "src/lib/chat/historicalAuthorshipRepairApplyCore.ts"),
+  "utf8",
+);
+assert.match(coreSrc, /HISTORICAL_REPAIR_APPLY_FROZEN/);
+assert.match(coreSrc, /assertOperatorMarksOnlyUnfreeze/);
+assert.match(coreSrc, /OPERATOR_MARKS_ONLY_COMPOSITION/);
+assert.doesNotMatch(coreSrc, /allowUnfrozenTest/);
 
 const persistSrc = fs.readFileSync(path.join(root, "src/lib/chat/persistAnonMessage.ts"), "utf8");
 assert.match(persistSrc, /buildCanonicalSender/);
@@ -261,8 +272,8 @@ assert.match(applySrc, /apply_frozen|applyFrozenHttpBody/);
 assert.doesNotMatch(applySrc, /APPLY_FROZEN_PENDING_CHATGPT_AUDIT/);
 
 const rollbackSrc = fs.readFileSync(path.join(root, "src/app/api/admin/authorship-repair/rollback/route.ts"), "utf8");
-assert.match(rollbackSrc, /HISTORICAL_REPAIR_APPLY_FROZEN/);
-assert.match(rollbackSrc, /applyFrozenHttpBody/);
+assert.match(rollbackSrc, /rollbackHistoricalAuthorshipRepair/);
+assert.match(rollbackSrc, /apply_frozen/);
 
 console.log(JSON.stringify({
   gate: "HISTORICAL_AUTHORSHIP_REPAIR",

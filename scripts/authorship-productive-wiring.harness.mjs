@@ -1,6 +1,6 @@
 /**
  * AUTHORSHIP_PRODUCTIVE_WIRING — mark→seal→apply path without ambiguous role invent.
- * Apply remains APPLY_FROZEN (0 message writes). Gate proves safe gaps.
+ * APPLY_FROZEN stays true; safe unfreeze only for operator_marks_only seals.
  *   node --experimental-strip-types scripts/authorship-productive-wiring.harness.mjs
  */
 import assert from "node:assert/strict";
@@ -35,6 +35,10 @@ const writer = fs.readFileSync(
   path.join(root, "src/lib/chat/historicalAuthorshipRepairWrite.ts"),
   "utf8",
 );
+const safetySrc = fs.readFileSync(
+  path.join(root, "src/lib/chat/historicalRepairSafety.ts"),
+  "utf8",
+);
 const inventory = fs.readFileSync(
   path.join(root, "scripts/inventory-historical-authorship-queue.mjs"),
   "utf8",
@@ -50,6 +54,7 @@ assert.match(panel, /authorship-repair\/rollback/);
 assert.doesNotMatch(panel, /row\.proposed\?\.senderRole/);
 assert.match(panel, /if \(!mark\) return \[\]/);
 assert.match(panel, /APPLY_FROZEN/);
+assert.match(panel, /marcas humanas|operator_marks_only|unfreeze seguro/);
 
 // Sealed preview always persisted (even while frozen).
 assert.match(previewRoute, /authorshipRepairPreviews/);
@@ -58,11 +63,17 @@ assert.doesNotMatch(
   /if \(!HISTORICAL_REPAIR_APPLY_FROZEN\) \{\s*[\s\S]*authorshipRepairPreviews/,
 );
 assert.match(previewRoute, /applyFrozenAtSeal/);
+assert.match(previewRoute, /markSource:\s*"operator"/);
+assert.match(previewRoute, /operatorMarksOnlyUnfreeze|operator_marks_only/);
+assert.match(previewRoute, /selection_unmarked/);
 
-assert.match(applyRoute, /HISTORICAL_REPAIR_APPLY_FROZEN/);
-assert.match(rollbackRoute, /HISTORICAL_REPAIR_APPLY_FROZEN/);
+assert.match(applyRoute, /apply_frozen/);
+assert.match(rollbackRoute, /apply_frozen/);
 assert.match(writer, /backupJson|AUTHOR_BACKUP_KEYS/);
 assert.match(writer, /evaluateOccAllOrNone|OCC/);
+assert.match(writer, /OPERATOR_MARKS_ONLY_COMPOSITION|operator_marks_only/);
+assert.match(safetySrc, /assertOperatorMarksOnlyUnfreeze/);
+assert.match(safetySrc, /resolveOperatorMarksOnlyComposition/);
 
 assert.match(inventory, /eligibleIdentity/);
 assert.match(inventory, /needsHumanMarks/);
@@ -73,7 +84,7 @@ assert.doesNotMatch(inventory, /desiredRole|senderRole:\s*[\"']profile/);
 const repair = await import(
   pathToFileURL(path.join(root, "src/lib/chat/historicalAuthorshipRepair.ts")).href
 );
-assert.equal(repair.HISTORICAL_REPAIR_APPLY_FROZEN, true, "apply stays frozen — 0 role writes");
+assert.equal(repair.HISTORICAL_REPAIR_APPLY_FROZEN, true, "flag stays frozen; unfreeze is operator-mark only");
 
 const lastPath = path.join(root, "scripts/inventory-historical-authorship-last.json");
 if (fs.existsSync(lastPath)) {

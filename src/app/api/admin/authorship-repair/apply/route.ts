@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
-import {
-  HISTORICAL_REPAIR_APPLY_FROZEN,
-  type ApplySelection,
-} from "@/lib/chat/historicalAuthorshipRepair";
-import { applyFrozenHttpBody } from "@/lib/chat/historicalRepairSafety";
+import { type ApplySelection } from "@/lib/chat/historicalAuthorshipRepair";
 import { applyHistoricalAuthorshipRepair } from "@/lib/chat/historicalAuthorshipRepairWrite";
 
 export const dynamic = "force-dynamic";
@@ -41,10 +37,6 @@ export async function POST(req: Request) {
     if (!String(row.messageId || "").trim()) return true;
     return false;
   });
-
-  if (HISTORICAL_REPAIR_APPLY_FROZEN) {
-    return NextResponse.json(applyFrozenHttpBody(), { status: 403 });
-  }
 
   if (mixed) {
     return NextResponse.json(
@@ -94,6 +86,14 @@ export async function POST(req: Request) {
     sealedPreview: body.sealedPreview,
   });
 
+  const status = result.ok
+    ? 200
+    : result.error === "reason_required" || result.error === "confirm_write_count_mismatch"
+      ? 400
+      : result.error === "apply_frozen" || result.status === 403
+        ? 403
+        : 409;
+
   return NextResponse.json({
     ok: result.ok,
     repairId: result.repairId,
@@ -102,5 +102,5 @@ export async function POST(req: Request) {
     applied: result.applied.map((row) => ({ messageId: row.messageId, status: row.status, reason: row.reason })),
     noop: result.noop.map((row) => ({ messageId: row.messageId, status: row.status, reason: row.reason })),
     rejected: result.rejected.map((row) => ({ messageId: row.messageId, status: row.status, reason: row.reason })),
-  }, { status: result.ok ? 200 : result.error === "reason_required" || result.error === "confirm_write_count_mismatch" ? 400 : 409 });
+  }, { status });
 }

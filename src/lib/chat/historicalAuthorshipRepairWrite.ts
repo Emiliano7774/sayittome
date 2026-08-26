@@ -1,20 +1,18 @@
 /**
  * Admin-SDK historical authorship repair writer.
- * APPLY_FROZEN is checked first on apply AND rollback. No runtime bypass.
- * Unfrozen orchestration lives in historicalAuthorshipRepairApplyCore (injected backend only).
- * Does not use the REST API-key commit path. Does not touch 107cae5 persist.
+ * APPLY_FROZEN stays true: apply/rollback only unfreeze for operator_marks_only sealed
+ * previews (validated in apply core). No inferred-role bypass. Does not touch 107cae5.
  */
 import type { Firestore } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 import {
   authorPatchFields,
   evaluateLiveIdentityOcc,
   expectedBeforeHash,
-  HISTORICAL_REPAIR_APPLY_FROZEN,
+  OPERATOR_MARKS_ONLY_COMPOSITION,
   type ApplySelection,
   type RepairMessageInput,
 } from "@/lib/chat/historicalAuthorshipRepair";
 import {
-  applyFrozenDenial,
   AUTHOR_BACKUP_KEYS,
   CHAT_SUMMARY_FIELD_KEYS,
   rollbackSummaryGate,
@@ -59,10 +57,6 @@ function messageRefForRow(
   return db.doc(path);
 }
 
-function frozenResult(): HistoricalRepairWriteResult {
-  return applyFrozenDenial();
-}
-
 async function defaultBackend(): Promise<HistoricalRepairBackend> {
   const { loadRepairThread, loadRepairChatSnapshot, loadRepairMessageDocs } = await import(
     "@/lib/chat/historicalAuthorshipRepairIo"
@@ -97,6 +91,7 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
         schemaVersion: Number(data.schemaVersion || 0),
         writeCount: Number(data.writeCount || 0),
         backupDigest: String(data.backupDigest || ""),
+        composition: String(data.composition || ""),
         applied: Array.isArray(data.applied) ? data.applied : [],
         noop: Array.isArray(data.noop) ? data.noop : [],
       };
@@ -115,6 +110,8 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
     },
     async commitApply(plan) {
       const db = getRepairAdminDb();
+      // Opaque Admin SDK transaction — Firestore handle is intentionally untyped.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Admin tx
       await db.runTransaction(async (tx: any) => {
         const chatRef = db.collection("chats").doc(plan.chatId);
         const repairRef = db.collection("authorshipRepairs").doc(plan.repairId);
@@ -140,6 +137,7 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
             usernameQuery ? tx.get(usernameQuery) : Promise.resolve(null),
             previewRef ? tx.get(previewRef) : Promise.resolve(null),
             ...messageRefs.map((ref) => tx.get(ref)),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Admin snaps
           ])) as any[];
         if (previewRef) {
           if (!previewSnap?.exists) {
@@ -208,6 +206,7 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
           reason: plan.reason,
           status: "applied",
           schemaVersion: plan.schemaVersion,
+          composition: plan.composition || OPERATOR_MARKS_ONLY_COMPOSITION,
           ownerIdSource: plan.identities.ownerIdSource,
           threadAnonPresent: plan.identities.threadAnonId ? "1" : "0",
           writeCount: plan.writeCount,
@@ -259,6 +258,8 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
     },
     async commitRollback(plan) {
       const db = getRepairAdminDb();
+      // Opaque Admin SDK transaction — Firestore handle is intentionally untyped.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Admin tx
       await db.runTransaction(async (tx: any) => {
         const chatRef = db.collection("chats").doc(plan.chatId);
         const repairRef = db.collection("authorshipRepairs").doc(plan.repairId);
@@ -280,6 +281,7 @@ async function defaultBackend(): Promise<HistoricalRepairBackend> {
             ownerRef ? tx.get(ownerRef) : Promise.resolve(null),
             usernameQuery ? tx.get(usernameQuery) : Promise.resolve(null),
             ...messageRefs.map((ref) => tx.get(ref)),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Admin snaps
           ])) as any[];
         if (String(repairSnap.data()?.status || "") !== "applied") {
           throw new Error("repair_not_applied");
@@ -381,7 +383,6 @@ export async function applyHistoricalAuthorshipRepair(input: {
   sealedPreview?: SealedRepairPreview;
   backend?: HistoricalRepairBackend;
 }): Promise<HistoricalRepairWriteResult> {
-  if (HISTORICAL_REPAIR_APPLY_FROZEN) return frozenResult();
   const backend = input.backend || (await defaultBackend());
   return runApplyHistoricalRepair({ ...input, backend });
 }
@@ -393,7 +394,6 @@ export async function rollbackHistoricalAuthorshipRepair(input: {
   reason: string;
   backend?: HistoricalRepairBackend;
 }): Promise<HistoricalRepairWriteResult> {
-  if (HISTORICAL_REPAIR_APPLY_FROZEN) return frozenResult();
   const backend = input.backend || (await defaultBackend());
   return runRollbackHistoricalRepair({ ...input, backend });
 }

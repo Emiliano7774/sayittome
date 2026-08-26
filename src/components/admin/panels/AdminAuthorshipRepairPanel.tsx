@@ -285,9 +285,11 @@ export default function AdminAuthorshipRepairPanel() {
       <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5">
         <p className="text-lg font-black">Reparación histórica asistida</p>
         <p className="mt-2 text-sm font-bold text-white/70">
-          Apply/rollback congelados (APPLY_FROZEN=true): cero escrituras de roles
-          hasta descongelar. Preview sella marcas humanas (mío/otra); apply usa
-          backup+OCC cuando se habilite. No adivina roles. No toca 107cae5.
+          APPLY_FROZEN=true con unfreeze seguro: apply/rollback sólo aceptan
+          previews sellados compuestos exclusivamente por marcas humanas
+          explícitas (mío/otra). Nunca roles propuestos, inferidos ni fallback.
+          Requiere auth admin, conteo, motivo, identidad determinística, hash/id
+          de preview, OCC all-or-none, backup y audit. No toca 107cae5.
         </p>
       </section>
 

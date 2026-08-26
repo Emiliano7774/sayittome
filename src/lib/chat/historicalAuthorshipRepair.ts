@@ -13,8 +13,13 @@ import {
   resolveMineFromCanonicalSender,
 } from "@/lib/chat/authorshipGates";
 
+/**
+ * When true, apply/rollback stay denied unless the sealed preview is composed
+ * exclusively of explicit operator marks (safe unfreeze). Never inferred/proposed.
+ */
 export const HISTORICAL_REPAIR_APPLY_FROZEN = true;
 export const HISTORICAL_REPAIR_BATCH_LIMIT = 25;
+export const OPERATOR_MARKS_ONLY_COMPOSITION = "operator_marks_only" as const;
 
 export type RepairPerspective = "owner" | "visitor";
 export type RepairAuthorRole = "profile" | "anon";
