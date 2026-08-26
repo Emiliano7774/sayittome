@@ -80,17 +80,25 @@ assert.equal(decision.startCapture, true);
 
 assert.equal(audio.isChatAudioPermissionDenied({ name: "NotAllowedError" }), true);
 assert.equal(audio.isChatAudioPermissionDenied({ message: "permission denied by webview" }), false);
+// Native OS granted but WebView NotAllowedError → failed (no false permission banner).
 assert.equal(
   audio.classifyChatAudioCaptureFailure(
     { name: "NotAllowedError" },
     { nativePlatform: true, denied: false },
   ),
-  "denied",
+  "failed",
 );
 assert.equal(
   audio.classifyChatAudioCaptureFailure(
     { name: "NotAllowedError" },
-    { nativePlatform: true, denied: true },
+    { nativePlatform: true, denied: false, granted: true, permissionState: "granted" },
+  ),
+  "failed",
+);
+assert.equal(
+  audio.classifyChatAudioCaptureFailure(
+    { name: "NotAllowedError" },
+    { nativePlatform: true, denied: true, permissionState: "denied" },
   ),
   "denied",
 );

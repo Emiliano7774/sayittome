@@ -1,11 +1,17 @@
 /**
  * CHAT_ANON_RECIPIENT_UNREAD_GATE
- *   node scripts/chat-anon-recipient-unread.harness.mjs
+ *   node --experimental-strip-types scripts/chat-anon-recipient-unread.harness.mjs
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const root = process.cwd();
+import { installHarnessAlias, installHarnessWindow } from "./harness-alias.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+installHarnessWindow();
+installHarnessAlias(root);
+
 const checks = [];
 function check(name, pass, detail = {}) {
   checks.push({ name, pass: Boolean(pass), ...detail });
@@ -25,10 +31,75 @@ const whipSrc = fs.readFileSync(
   "utf8",
 );
 
+const activity = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/incomingChatActivity.ts")).href
+);
+
+const profileAnonChat = {
+  id: "anon_sess1__anon_to__maria",
+  canonicalChatId: "anon_sess1__anon_to__maria",
+  targetUid: "owner_uid",
+  receptorUid: "owner_uid",
+  anonSessionId: "anon_sess1",
+  lastMessage: "hola",
+  lastMessageSender: "profile_owner_uid",
+  readBy: {},
+  unreadCounts: {},
+};
+
+const anonVisitorId = "anon_sess1";
+const staleFirebaseUid = "firebase_uid_still_in_browser";
+
+const anonViewerIds = activity.collectViewerSenderIds(
+  profileAnonChat,
+  anonVisitorId,
+  staleFirebaseUid,
+  { viewerKind: "anon" },
+);
 check(
   "ANON_VISITOR_EXCLUDES_FIREBASE_UID_ALIASES",
   activitySrc.includes("must NOT inherit the browser Firebase uid") &&
-    activitySrc.includes("if (!viewerIsThreadAnonVisitor)"),
+    activitySrc.includes("viewerIsAnon") &&
+    activitySrc.includes("if (!viewerIsAnon)") &&
+    !anonViewerIds.has(staleFirebaseUid) &&
+    !anonViewerIds.has(`profile_${staleFirebaseUid}`) &&
+    anonViewerIds.has(anonVisitorId),
+  {
+    anonViewerIds: [...anonViewerIds],
+  },
+);
+
+const ownerViewerIds = activity.collectViewerSenderIds(
+  profileAnonChat,
+  staleFirebaseUid,
+  staleFirebaseUid,
+  { viewerKind: "owner", provenOwner: true },
+);
+check(
+  "PROFILE_OWNER_KEEPS_FIREBASE_UID_ALIASES",
+  ownerViewerIds.has(staleFirebaseUid) &&
+    ownerViewerIds.has(`profile_${staleFirebaseUid}`),
+  {
+    ownerViewerIds: [...ownerViewerIds],
+  },
+);
+
+check(
+  "ANON_VISITOR_PROFILE_REPLY_IS_INCOMING_NOT_OWN",
+  activity.isIncomingProfileReplyForAnonVisitor(
+    "profile_owner_uid",
+    anonVisitorId,
+    staleFirebaseUid,
+    profileAnonChat,
+    { viewerKind: "anon" },
+  ) &&
+    !activity.isOwnChatSender(
+      "profile_owner_uid",
+      anonVisitorId,
+      staleFirebaseUid,
+      profileAnonChat,
+      { viewerKind: "anon" },
+    ),
 );
 
 check(

@@ -145,10 +145,23 @@ assert.match(fcmSrc, /readInstallationProof/);
 assert.match(fcmSrc, /withInstallationLock/);
 assert.match(fcmSrc, /liveAuthUid\(\) !== cleanUid/);
 assert.match(fcmSrc, /clearPendingIfSameInstallation/);
+// Prefs-off: flush durable pending unregister, then fail closed (no register).
 assert.match(
   fcmSrc,
-  /await flushPendingFcmUnregister\(\);\s*\n\s*if \(areChatNotificationsEnabled\(\)\)/,
+  /if \(!areChatNotificationsEnabled\(\)\) \{\s*\n\s*await flushPendingFcmUnregister\(\);/,
 );
+assert.match(fcmSrc, /recordNotificationStage\("enable_prefs", false, "prefs_off"\)/);
+// Resume: flush when prefs off; register only when prefs on + authed.
+assert.match(
+  fcmSrc,
+  /if \(!user \|\| !areChatNotificationsEnabled\(\)\) \{\s*\n\s*await flushPendingFcmUnregister\(\);/,
+);
+assert.doesNotMatch(
+  fcmSrc,
+  /await flushPendingFcmUnregister\(\);\s*\n\s*if \(areChatNotificationsEnabled\(\)\) \{\s*\n\s*await reconcilePendingForEnable/,
+  "flush and reconcile must not be one unconditional block — reconcile runs on register upsert",
+);
+assert.match(fcmSrc, /reconcileThenRegisterUnlocked/);
 assert.doesNotMatch(fcmSrc, /void upsertFcmTokenForUser\(uid, token\)/);
 
 const perms = read("src/lib/chat/chatNotifications.ts");
@@ -160,7 +173,10 @@ assert.match(fcm, /upsertFcmTokenForUser/);
 assert.match(fcm, /installationId/);
 assert.match(fcm, /unregisterFcmToken/);
 assert.match(fcm, /pushNotificationActionPerformed/);
-assert.match(fcm, /\/chat\/\$\{encodeURIComponent/);
+assert.match(fcm, /buildChatNotificationOpenHref/);
+
+const openHref = read("src/lib/chat/chatNotificationOpen.ts");
+assert.match(openHref, /\/chat\/\$\{encodeURIComponent\(chatId\)\}/);
 
 const logout = read("src/lib/auth/logout.ts");
 assert.match(logout, /deleteCurrentDeviceFcmToken/);
