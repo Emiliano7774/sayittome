@@ -179,25 +179,28 @@ export default function AdminAuthorshipRepairPanel() {
 
   function buildSelections() {
     if (!plan) return [];
+    // Zero ambiguity: only operator marks — never fall back to proposed/inferred roles.
     return plan.rows
       .filter((row) => row.selected)
-      .map((row) => {
+      .flatMap((row) => {
         const mark = markByKey.get(markKey(row));
-        const desiredRole = mark
-          ? markFromPerspective(perspective, row.messageId, mark.mine, {
-              collectionPath: row.collectionPath,
-              selectedAnonId: mark.selectedAnonId || plan.identities.threadAnonId,
-            }).authorRole
-          : row.proposed?.senderRole;
-        return {
-          messageId: row.messageId,
-          desiredRole,
-          expectedBeforeHash: row.expectedBeforeHash,
-          updateTime: row.updateTime,
-          collectionName: row.collectionName,
+        if (!mark) return [];
+        const desiredRole = markFromPerspective(perspective, row.messageId, mark.mine, {
           collectionPath: row.collectionPath,
-          selectedAnonId: mark?.selectedAnonId || plan.identities.threadAnonId,
-        };
+          selectedAnonId: mark.selectedAnonId || plan.identities.threadAnonId,
+        }).authorRole;
+        if (desiredRole !== "profile" && desiredRole !== "anon") return [];
+        return [
+          {
+            messageId: row.messageId,
+            desiredRole,
+            expectedBeforeHash: row.expectedBeforeHash,
+            updateTime: row.updateTime,
+            collectionName: row.collectionName,
+            collectionPath: row.collectionPath,
+            selectedAnonId: mark.selectedAnonId || plan.identities.threadAnonId,
+          },
+        ];
       });
   }
 
@@ -274,15 +277,17 @@ export default function AdminAuthorshipRepairPanel() {
     reviewed &&
     Number(confirmCount) === (plan?.writeCount || -1) &&
     reason.trim().length >= 8 &&
-    !busy;
+    !busy &&
+    marks.length > 0;
 
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-emerald-400/30 bg-emerald-500/10 p-5">
         <p className="text-lg font-black">Reparación histórica asistida</p>
         <p className="mt-2 text-sm font-bold text-white/70">
-          Apply/rollback congelados (APPLY_FROZEN). Preview y export sin PII
-          siguen disponibles. No toca 107cae5.
+          Apply/rollback congelados (APPLY_FROZEN=true): cero escrituras de roles
+          hasta descongelar. Preview sella marcas humanas (mío/otra); apply usa
+          backup+OCC cuando se habilite. No adivina roles. No toca 107cae5.
         </p>
       </section>
 

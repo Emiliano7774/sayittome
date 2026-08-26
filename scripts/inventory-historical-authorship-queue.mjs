@@ -143,6 +143,11 @@ const usernameCache = new Map();
 const buckets = { high: 0, medium: 0, low: 0, ambiguous: 0 };
 let messagesMissingRole = 0;
 let messagesCanonical = 0;
+let eligibleIdentity = 0;
+let blockedIdentity = 0;
+let needsHumanMarks = 0;
+const eligibleNeedsMarks = [];
+const blockedSamples = [];
 
 for (const chat of chats) {
   const slug = usernameHint(chat.id);
@@ -172,6 +177,42 @@ for (const chat of chats) {
     messageCount: messages.length,
   });
   buckets[bucket] += 1;
+
+  const suffixIdx = String(chat.id || "").indexOf(ANON_TO);
+  const chatSuffix =
+    suffixIdx >= 0 ? String(chat.id).slice(suffixIdx + ANON_TO.length) : String(chat.id || "").slice(-24);
+
+  if (!identity.ok) {
+    blockedIdentity += 1;
+    if (blockedSamples.length < 10) {
+      blockedSamples.push({
+        chatSuffix,
+        identityOk: false,
+        blockReason: identity.error || "identity_blocked",
+        ownerSource: identity.source,
+        messageCount: messages.length,
+        missingSenderRole: missingRole,
+      });
+    }
+  } else {
+    eligibleIdentity += 1;
+    if (missingRole > 0) {
+      needsHumanMarks += 1;
+      if (eligibleNeedsMarks.length < 40) {
+        eligibleNeedsMarks.push({
+          chatSuffix,
+          slugPresent: Boolean(slug),
+          identityOk: true,
+          blockReason: "",
+          ownerSource: identity.source,
+          messageCount: messages.length,
+          missingSenderRole: missingRole,
+          alreadyCanonical: canonical,
+          needsHumanMarks: true,
+        });
+      }
+    }
+  }
 }
 
 const report = {
@@ -179,10 +220,15 @@ const report = {
   apply: false,
   writes: 0,
   scannedChats: chats.length,
-  inventory: inventoryBucketOnly(buckets),
+  eligibleIdentity,
+  blockedIdentity,
+  needsHumanMarks,
   messagesMissingRole,
   messagesCanonical,
-  note: "Buckets only. No auto-assign. Ambiguous stays blocked. No UID/username suffixes.",
+  inventory: inventoryBucketOnly(buckets),
+  note: "No message roles inferred. Eligible chats can be marked in /admin/authorship. Ambiguous chats stay blocked.",
+  eligibleNeedsMarks,
+  blockedSamples,
 };
 
 const outPath = path.join(root, "scripts", "inventory-historical-authorship-last.json");

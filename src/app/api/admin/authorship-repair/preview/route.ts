@@ -184,17 +184,19 @@ export async function POST(req: Request) {
       selections,
     });
 
-    if (!HISTORICAL_REPAIR_APPLY_FROZEN) {
-      const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
-      await getRepairAdminDb().collection("authorshipRepairPreviews").doc(previewId).set({
-        ...sealedPreview,
-        consumed: false,
-      });
-    }
+    // Persist sealed preview even while APPLY_FROZEN so unfreeze→apply can OCC-consume it.
+    // This writes authorshipRepairPreviews only — never message roles.
+    const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+    await getRepairAdminDb().collection("authorshipRepairPreviews").doc(previewId).set({
+      ...sealedPreview,
+      consumed: false,
+      applyFrozenAtSeal: HISTORICAL_REPAIR_APPLY_FROZEN,
+    });
 
     return NextResponse.json({
       ok: true,
       applyAllowed: plan.applyAllowed,
+      applyFrozen: HISTORICAL_REPAIR_APPLY_FROZEN,
       chatBlocked: plan.chatBlocked,
       blockReason: plan.blockReason,
       perspective,
