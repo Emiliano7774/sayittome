@@ -569,6 +569,9 @@ const es = {
   profile_moderation_roleplay_title: "Perfil de rol",
   profile_moderation_roleplay_hint:
     "Perfil de rol es una etiqueta de la administración. Marca perfiles que no son la cuenta que dicen ser: usan imágenes robadas de internet o fingen ser otra persona.",
+  profile_moderation_fake_title: "Perfil falso",
+  profile_moderation_fake_hint:
+    "Administración verificó que este perfil de Instagram es falso y usa fotos o videos robados. Extremá el cuidado al vincularte.",
   admin_report_tag_roleplay: "Marcar perfil de rol",
   admin_report_tag_fake_profile: "Marcar perfil falso",
   admin_blur_photos_open: "Blur de fotos de perfil",
@@ -1406,6 +1409,9 @@ const en: Record<keyof typeof es, string> = {
   profile_moderation_roleplay_title: "Roleplay profile",
   profile_moderation_roleplay_hint:
     "A roleplay profile is an admin label. It marks profiles that are not the account they claim to be: they use stolen images from the internet or pretend to be someone else.",
+  profile_moderation_fake_title: "Fake profile",
+  profile_moderation_fake_hint:
+    "Administration verified that this Instagram profile is fake and uses stolen photos or videos. Be extremely careful before engaging.",
   admin_report_tag_roleplay: "Mark as roleplay profile",
   admin_report_tag_fake_profile: "Mark as fake profile",
   admin_blur_photos_open: "Blur profile photos",

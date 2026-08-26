@@ -373,7 +373,7 @@ export default function ModernPublicProfile({
                 </span>
               ) : null}
 
-              <div className="pointer-events-auto absolute left-4 top-4 z-20 flex items-center gap-2">
+              <div className="pointer-events-auto absolute left-4 top-4 z-20 flex items-start gap-2">
                 {isOwner && profile.uid ? (
                   <RoleplayAppealFlagButton
                     uid={profile.uid}
@@ -381,9 +381,14 @@ export default function ModernPublicProfile({
                     minimal
                   />
                 ) : null}
-                {profile.moderationTag ? (
-                  <ProfileModerationTag tag={profile.moderationTag} compact />
-                ) : null}
+                <div className="flex flex-col items-start gap-1.5">
+                  {profile.moderationTag ? (
+                    <ProfileModerationTag tag={profile.moderationTag} compact />
+                  ) : null}
+                  {profile.fakeProfileTag === "fake" ? (
+                    <ProfileModerationTag tag="fake" compact />
+                  ) : null}
+                </div>
                 <AdminProfileRoleplayButton
                   profile={profile}
                   variant="modern"

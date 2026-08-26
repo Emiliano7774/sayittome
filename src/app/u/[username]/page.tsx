@@ -578,10 +578,15 @@ export default function PublicProfilePage() {
               minimal
             />
           ) : null}
-          {profile.moderationTag &&
-          (isOwner ? profile.moderationTag === "roleplay" : true) ? (
-            <ProfileModerationTag tag={profile.moderationTag} compact />
-          ) : null}
+          <div className="flex flex-col items-start gap-1.5">
+            {profile.moderationTag &&
+            (isOwner ? profile.moderationTag === "roleplay" : true) ? (
+              <ProfileModerationTag tag={profile.moderationTag} compact />
+            ) : null}
+            {profile.fakeProfileTag === "fake" ? (
+              <ProfileModerationTag tag="fake" compact />
+            ) : null}
+          </div>
           <AdminProfileRoleplayButton
             profile={profile}
             variant="classic"

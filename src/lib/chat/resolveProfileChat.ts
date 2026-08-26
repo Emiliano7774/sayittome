@@ -19,6 +19,7 @@ import { ProfileUsernameChangedError } from "@/lib/profile/usernameHistory";
 import { withTimeout } from "@/lib/async/withTimeout";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import { profilePipelineMark } from "@/lib/perf/profilePipelineTrace";
+import { findSessionProfileChatIdForUsername } from "@/lib/chat/sessionChats";
 
 export class OwnerProfileInboxRedirect extends Error {
   readonly code = "owner_profile_inbox_redirect";
@@ -192,6 +193,12 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
   const isLoggedIn = Boolean(firebaseUid);
 
   let chatId = buildProfileAnonChatId(senderId, lookup.currentUsername);
+  // After preserving anon rotation, reuse the existing session thread so
+  // history/authorship stay on the original chatId (oldAnon__anon_to__user).
+  const sessionExisting = findSessionProfileChatIdForUsername(lookup.currentUsername);
+  if (sessionExisting) {
+    chatId = sessionExisting;
+  }
 
   if (firebaseUid && targetUid && firebaseUid === targetUid) {
     const incoming = await findOwnerIncomingChat(firebaseUid, lookup.currentUsername);

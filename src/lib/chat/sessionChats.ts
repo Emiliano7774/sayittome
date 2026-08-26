@@ -57,6 +57,24 @@ export function registerSessionChat(chatId: string) {
   notifySessionChatsChanged();
 }
 
+/** Existing profile-anon thread for a username (preserves chatId across anon rotation). */
+export function findSessionProfileChatIdForUsername(username: string) {
+  const needle = String(username || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gi, "_")
+    .slice(0, 80);
+  if (!needle) return "";
+  const marker = "__anon_to__";
+  for (const chatId of getSessionChatIds()) {
+    const id = String(chatId || "");
+    if (!id.includes(marker)) continue;
+    const target = id.split(marker)[1] || "";
+    if (target === needle) return id;
+  }
+  return "";
+}
+
 export function clearSessionChats() {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem(SESSION_CHATS_KEY);

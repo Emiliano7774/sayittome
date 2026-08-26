@@ -31,8 +31,11 @@ assert.doesNotMatch(
   /!\(showAnonIdentityNotice && hasChatActivity\)/,
 );
 
-assert.match(logoutSrc, /beginFreshAnonSession/);
-assert.match(logoutSrc, /clearThreadAnonContinuity/);
+assert.match(logoutSrc, /rotateAnonSessionPreserving\s*\(/);
+assert.doesNotMatch(logoutSrc, /beginFreshAnonSession\s*\(/);
+assert.doesNotMatch(logoutSrc, /clearThreadAnonContinuity\s*\(/);
+assert.doesNotMatch(logoutSrc, /clearSessionChats\s*\(/);
+assert.doesNotMatch(logoutSrc, /deleteAnonymousChatsForSession\s*\(/);
 
 assert.equal(
   identity.shouldShowAnonIdentityGuide({
