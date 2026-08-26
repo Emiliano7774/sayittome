@@ -26,9 +26,11 @@ export default function AdminUndoButton({
         ? "admin_undo_unblur"
         : undoAction === "clear_moderation_tag"
           ? "admin_undo_clear_roleplay_tag"
-          : undoAction === "unmark_chat_suspicious"
-            ? "admin_undo_unmark_suspicious"
-            : "admin_undo_revert";
+          : undoAction === "clear_fake_profile_tag"
+            ? "admin_undo_clear_fake_profile_tag"
+            : undoAction === "unmark_chat_suspicious"
+              ? "admin_undo_unmark_suspicious"
+              : "admin_undo_revert";
 
   async function runUndo() {
     if (!uid) return;

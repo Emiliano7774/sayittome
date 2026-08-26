@@ -51,6 +51,7 @@ import {
   peekProfileReturnTo,
 } from "@/lib/navigation/profileReturnNav";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
@@ -93,6 +94,7 @@ export type ModernProfileData = {
   adminBlurFotosPerfil?: boolean;
   moderationTag?: string;
   moderationTagNote?: string;
+  fakeProfileTag?: string;
 };
 
 type Props = {
@@ -104,6 +106,7 @@ type Props = {
   /** When false, hides the shuffle back link (e.g. own /settings view). */
   showShuffleBack?: boolean;
   onModerationTagChange?: (moderationTag: string) => void;
+  onFakeProfileTagChange?: (fakeProfileTag: string) => void;
 };
 
 export default function ModernPublicProfile({
@@ -114,6 +117,7 @@ export default function ModernPublicProfile({
   onLogout,
   showShuffleBack = true,
   onModerationTagChange,
+  onFakeProfileTagChange,
 }: Props) {
   const router = useRouter();
   const { locale } = useLocale();
@@ -384,6 +388,11 @@ export default function ModernPublicProfile({
                   profile={profile}
                   variant="modern"
                   onTagChange={onModerationTagChange}
+                />
+                <AdminProfileFakeButton
+                  profile={profile}
+                  variant="modern"
+                  onTagChange={onFakeProfileTagChange}
                 />
               </div>
             </div>

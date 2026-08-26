@@ -142,6 +142,7 @@ function buildProfilePayload(found: any, fallbackUsername: string) {
         : {},
     moderationTag: str(fields, "moderationTag"),
     moderationTagNote: str(fields, "moderationTagNote"),
+    fakeProfileTag: str(fields, "fakeProfileTag"),
   };
 
   return { ok: true as const, profile };

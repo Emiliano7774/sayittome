@@ -6,10 +6,7 @@ import { Heart, Send, Trash2, UserRound, X, Flag } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   doc,
-  increment,
-  serverTimestamp,
   setDoc,
-  updateDoc,
 } from "firebase/firestore";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
@@ -17,6 +14,7 @@ import AdminStoryBlurButton from "@/components/stories/AdminStoryBlurButton";
 import { auth, db } from "@/lib/firebase";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
 import { getLikerId } from "@/lib/likes/profileLike";
+import { toggleStoryLike } from "@/lib/likes/storyLike";
 import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/anonStories";
 import { getStoryOwnerKey, isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
@@ -565,29 +563,21 @@ export default function StoryViewer({
 
     setLikeBusy(true);
 
-    const nextLiked = !storyLiked;
-
     try {
-      if (nextLiked) {
-        await updateDoc(doc(db, "historias", current.id), {
-          likeCount: increment(1),
-          [`likedBy.${likerId}`]: true,
-          storyLikeAt: serverTimestamp(),
-        });
-      } else {
-        await updateDoc(doc(db, "historias", current.id), {
-          likeCount: increment(-1),
-          [`likedBy.${likerId}`]: false,
-        });
-      }
+      const result = await toggleStoryLike(current.id);
+      const resolvedLiker = auth.currentUser?.uid || likerId;
 
       setLocalStories((prev) =>
         prev.map((story) =>
           story.id === current.id
             ? {
                 ...story,
-                likeCount: Math.max(0, Number(story.likeCount || 0) + (nextLiked ? 1 : -1)),
-                likedBy: { ...(story.likedBy || {}), [likerId]: nextLiked },
+                likeCount: Math.max(0, Number(result.likeCount || 0)),
+                likedBy: {
+                  ...(story.likedBy || {}),
+                  [resolvedLiker]: result.liked,
+                  ...(likerId && likerId !== resolvedLiker ? { [likerId]: result.liked } : {}),
+                },
               }
             : story,
         ),

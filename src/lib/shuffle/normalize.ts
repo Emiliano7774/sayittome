@@ -101,6 +101,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
           mediaBlurFlags,
         }),
         moderationTag: String(item?.moderationTag || ""),
+        fakeProfileTag: String(item?.fakeProfileTag || ""),
         shuffleFeatured: item?.shuffleFeatured === true,
       };
     })

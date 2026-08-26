@@ -8,7 +8,11 @@
  */
 import "server-only";
 
-export type UsuarioModerationTagAction = "tag_roleplay" | "clear_moderation_tag";
+export type UsuarioModerationTagAction =
+  | "tag_roleplay"
+  | "clear_moderation_tag"
+  | "tag_fake_profile"
+  | "clear_fake_profile_tag";
 
 export type UsuarioModerationTagAdminErrorCode =
   | "invalid_uid"
@@ -41,6 +45,7 @@ export type UsuarioModerationTagAdminDeps = {
 };
 
 const DEFAULT_ROLEPLAY_NOTE = "Perfil de rol marcado por moderación.";
+const DEFAULT_FAKE_PROFILE_NOTE = "Perfil falso marcado por moderación.";
 
 /** Sentinel: patch omits undefined from body while keeping updateMask. */
 export const REST_DELETE_FIELD = undefined;
@@ -110,7 +115,8 @@ async function resolveDeps(input: {
 }
 
 /**
- * Idempotent set/clear of moderationTag* on usuarios/{uid}.
+ * Idempotent set/clear of moderationTag* and/or independent fakeProfileTag*
+ * on usuarios/{uid}. Roleplay and fake marks never replace each other.
  * Authority = verified admin email + Bearer token for rules isAdmin().
  */
 export async function applyUsuarioModerationTagAdmin(input: {
@@ -147,21 +153,45 @@ export async function applyUsuarioModerationTagAdmin(input: {
   }
 
   const del = deps.deleteField();
-  const patch =
-    input.action === "tag_roleplay"
-      ? {
-          moderationTag: "roleplay",
-          moderationTagNote:
-            String(input.note || DEFAULT_ROLEPLAY_NOTE).trim() || DEFAULT_ROLEPLAY_NOTE,
-          moderationTagAt: deps.serverTimestamp(),
-          moderationTagBy: adminEmail,
-        }
-      : {
-          moderationTag: del,
-          moderationTagNote: del,
-          moderationTagAt: del,
-          moderationTagBy: del,
-        };
+  let patch: Record<string, unknown>;
+  switch (input.action) {
+    case "tag_roleplay":
+      patch = {
+        moderationTag: "roleplay",
+        moderationTagNote:
+          String(input.note || DEFAULT_ROLEPLAY_NOTE).trim() || DEFAULT_ROLEPLAY_NOTE,
+        moderationTagAt: deps.serverTimestamp(),
+        moderationTagBy: adminEmail,
+      };
+      break;
+    case "clear_moderation_tag":
+      patch = {
+        moderationTag: del,
+        moderationTagNote: del,
+        moderationTagAt: del,
+        moderationTagBy: del,
+      };
+      break;
+    case "tag_fake_profile":
+      patch = {
+        fakeProfileTag: "fake",
+        fakeProfileTagNote:
+          String(input.note || DEFAULT_FAKE_PROFILE_NOTE).trim() || DEFAULT_FAKE_PROFILE_NOTE,
+        fakeProfileTagAt: deps.serverTimestamp(),
+        fakeProfileTagBy: adminEmail,
+      };
+      break;
+    case "clear_fake_profile_tag":
+      patch = {
+        fakeProfileTag: del,
+        fakeProfileTagNote: del,
+        fakeProfileTagAt: del,
+        fakeProfileTagBy: del,
+      };
+      break;
+    default:
+      throw new UsuarioModerationTagAdminError("write_failed", 400);
+  }
 
   try {
     await ref.update(patch);

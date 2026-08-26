@@ -141,7 +141,8 @@ export function isOwnChatSender(
   roleInput?: ChatViewerRoleInput,
 ) {
   const from = String(sender || "").trim();
-  if (!from) return true;
+  // Empty sender is unknown — never treat as "own" (late inbox metadata races).
+  if (!from) return false;
   if (from === viewerId) return true;
 
   const role = resolveChatViewerRole({
@@ -315,7 +316,10 @@ export function isIncomingChatActivity(
 ) {
   const preview = String(chat.lastMessage || "").trim();
   const sender = String(chat.lastMessageSender || "").trim();
-  if (!preview || !sender || !viewerId) return false;
+  if (!preview || !viewerId) return false;
+  // Late/missing lastMessageSender: fail open as incoming so unread/bold stays
+  // deterministic across cache→live and delayed outbound meta.
+  if (!sender) return true;
   if (isIncomingProfileReplyForAnonVisitor(sender, viewerId, firebaseUid, chat, roleInput)) {
     return true;
   }

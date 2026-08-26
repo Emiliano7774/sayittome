@@ -23,7 +23,11 @@ service cloud.firestore {
           'moderationTag',
           'moderationTagNote',
           'moderationTagAt',
-          'moderationTagBy'
+          'moderationTagBy',
+          'fakeProfileTag',
+          'fakeProfileTagNote',
+          'fakeProfileTagAt',
+          'fakeProfileTagBy'
         ]);
     }
 
@@ -32,7 +36,11 @@ service cloud.firestore {
         'moderationTag',
         'moderationTagNote',
         'moderationTagAt',
-        'moderationTagBy'
+        'moderationTagBy',
+        'fakeProfileTag',
+        'fakeProfileTagNote',
+        'fakeProfileTagAt',
+        'fakeProfileTagBy'
       ]);
     }
 

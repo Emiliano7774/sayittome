@@ -90,6 +90,7 @@ type ApiProfile = {
   mediaBlurFlags?: Record<string, boolean>;
   banned?: boolean;
   moderationTag?: string;
+  fakeProfileTag?: string;
   shuffleFeatured?: boolean;
 };
 
@@ -350,6 +351,7 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
       String(raw.estado || "") === "bloqueado",
     mostrarUltimaVez: raw.mostrarUltimaVez !== false,
     moderationTag: String(raw.moderationTag || ""),
+    fakeProfileTag: String(raw.fakeProfileTag || ""),
   };
 
   return withPresenceBadge(profile);

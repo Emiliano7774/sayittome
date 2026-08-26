@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { UserRound } from "lucide-react";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
+import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
@@ -76,6 +77,11 @@ function ModernShuffleCard({
         ].join(" ")}
       >
         <AdminProfileRoleplayButton
+          profile={profile}
+          variant="modern"
+          appearance="shuffle"
+        />
+        <AdminProfileFakeButton
           profile={profile}
           variant="modern"
           appearance="shuffle"
@@ -182,5 +188,6 @@ export default memo(
     a.profile.showOnline === b.profile.showOnline &&
     a.profile.shuffleFeatured === b.profile.shuffleFeatured &&
     a.profile.moderationTag === b.profile.moderationTag &&
+    a.profile.fakeProfileTag === b.profile.fakeProfileTag &&
     a.profile.blurPhoto === b.profile.blurPhoto,
 );

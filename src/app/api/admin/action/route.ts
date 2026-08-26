@@ -146,7 +146,12 @@ export async function POST(req: Request) {
       });
     } else if (action === "reset_bio") {
       await patchUsuarioAuthed(idToken, uid, { bio: "", descripcion: "" });
-    } else if (action === "tag_roleplay" || action === "clear_moderation_tag") {
+    } else if (
+      action === "tag_roleplay" ||
+      action === "clear_moderation_tag" ||
+      action === "tag_fake_profile" ||
+      action === "clear_fake_profile_tag"
+    ) {
       try {
         await applyUsuarioModerationTagAdmin({
           uid,

@@ -1230,6 +1230,20 @@ export function useShufflePool() {
       featuredRef.current = featuredRef.current.map(patchModeration);
     }
 
+    function onProfileFake(event: Event) {
+      const detail = (event as CustomEvent<{ uid?: string; fakeProfileTag?: string }>).detail;
+      const uid = String(detail?.uid || "");
+      const fakeProfileTag = String(detail?.fakeProfileTag || "");
+      if (!uid) return;
+
+      const patchFake = (profile: ShuffleProfile) =>
+        profile.uid === uid ? { ...profile, fakeProfileTag } : profile;
+
+      poolRef.current = poolRef.current.map(patchFake);
+      activePoolRef.current = activePoolRef.current.map(patchFake);
+      featuredRef.current = featuredRef.current.map(patchFake);
+    }
+
     function onProfileBlur(event: Event) {
       const detail = (event as CustomEvent<{ uid?: string; mediaBlurFlags?: Record<string, boolean> }>)
         .detail;
@@ -1246,6 +1260,7 @@ export function useShufflePool() {
     }
 
     window.addEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
+    window.addEventListener("sayittome:shuffle-profile-fake", onProfileFake);
     window.addEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
 
     function onPoolWarmed() {
@@ -1322,6 +1337,7 @@ export function useShufflePool() {
       window.clearInterval(presenceTimer);
       window.clearInterval(poolSyncTimer);
       window.removeEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
+      window.removeEventListener("sayittome:shuffle-profile-fake", onProfileFake);
       window.removeEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
       window.removeEventListener("sayittome:shuffle-pool-warmed", onPoolWarmed);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);

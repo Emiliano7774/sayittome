@@ -3,6 +3,7 @@
 import { memo } from "react";
 
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
+import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
@@ -79,6 +80,11 @@ function ClassicShuffleProfileRow({
             variant="classic"
             appearance="shuffle"
           />
+          <AdminProfileFakeButton
+            profile={profile}
+            variant="classic"
+            appearance="shuffle"
+          />
           <AdminProfileBlurPhotosButton
             profile={profile}
             variant="classic"
@@ -95,5 +101,6 @@ export default memo(
   (a, b) =>
     a.profile.uid === b.profile.uid &&
     a.profile.moderationTag === b.profile.moderationTag &&
+    a.profile.fakeProfileTag === b.profile.fakeProfileTag &&
     a.profile.blurPhoto === b.profile.blurPhoto,
 );

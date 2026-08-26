@@ -94,6 +94,7 @@ export function setShuffleSlots(
         ...prev,
         blurPhoto: next.blurPhoto,
         moderationTag: next.moderationTag,
+        fakeProfileTag: next.fakeProfileTag,
         mediaBlurFlags: next.mediaBlurFlags,
         adminBlurProfilePhoto: next.adminBlurProfilePhoto,
         adminBlurFotosPerfil: next.adminBlurFotosPerfil,
@@ -103,6 +104,7 @@ export function setShuffleSlots(
       if (
         prev.blurPhoto !== updated.blurPhoto ||
         prev.moderationTag !== updated.moderationTag ||
+        prev.fakeProfileTag !== updated.fakeProfileTag ||
         prev.mediaBlurFlags !== updated.mediaBlurFlags
       ) {
         slots[slot] = updated;
@@ -133,6 +135,18 @@ export function patchShuffleProfileModerationTag(uid: string, moderationTag: str
     if (!profile || profile.uid !== uid) continue;
 
     slots[slot] = { ...profile, moderationTag };
+    dirtySlots.add(slot);
+  }
+
+  scheduleFlush();
+}
+
+export function patchShuffleProfileFakeTag(uid: string, fakeProfileTag: string) {
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = slots[slot];
+    if (!profile || profile.uid !== uid) continue;
+
+    slots[slot] = { ...profile, fakeProfileTag };
     dirtySlots.add(slot);
   }
 

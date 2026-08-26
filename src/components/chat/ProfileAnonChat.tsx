@@ -1239,6 +1239,7 @@ export default function ProfileAnonChat({
     explicitOwner: provenOwner,
   });
   const canSend = outgoingSender.ok;
+  const composerLocked = !canSend || profileBlockedByAnon || blockedByAbuse;
   const profileUid = profileOwnerUid || targetUid;
   threadContextRef.current = {
     chatId,
@@ -1372,11 +1373,16 @@ export default function ProfileAnonChat({
         anonIdentity.liveAnonId,
       )
     : -1;
-  const showClassicIdentityBar =
-    isClassic &&
+  // Always show the visitor's live anon line after conversation starts (classic + modern).
+  // Identity-change divider stays mid-thread; it must not hide the top "Sos:" line.
+  const showVisitorIdentityLine =
     !isOwnerViewing &&
     !showClassicIntro &&
-    !(showAnonIdentityNotice && hasChatActivity);
+    !showModernVisitorIntro &&
+    Boolean(anonIdentity.liveLabel) &&
+    (hasChatActivity || surfaceEngaged);
+  const showClassicIdentityBar = isClassic && showVisitorIdentityLine;
+  const showModernIdentityBar = !isClassic && showVisitorIdentityLine;
   const whipViewerId = isOwnerViewing ? currentUid : anonSenderId;
   useIncomingMessageWhip(
     messages,
@@ -2182,16 +2188,15 @@ export default function ProfileAnonChat({
       alert(t("chat_upload_fail"));
       return;
     }
+    if (profileBlockedByAnon) {
+      return;
+    }
     if (!authReady || !chatId || !canSend) {
       alert(t("chat_load_fail"));
       return;
     }
     if (blockedByAbuse) {
       alert(t("chat_abuse_write_block"));
-      return;
-    }
-    if (profileBlockedByAnon) {
-      alert(t("chat_blocked_by_anon"));
       return;
     }
     if (!profileUid) {
@@ -2456,7 +2461,6 @@ export default function ProfileAnonChat({
           /permission-denied|PERMISSION_DENIED/i.test(String((error as Error)?.message || ""))
         ) {
           setProfileBlockedByAnon(true);
-          alert(t("chat_blocked_by_anon"));
         }
         setMessages((old) =>
           old.map((message) =>
@@ -2492,13 +2496,10 @@ export default function ProfileAnonChat({
 
   async function sendMessage() {
     if (!text.trim()) return;
+    if (profileBlockedByAnon) return;
     if (!authReady || !chatId || !canSend) return;
     if (blockedByAbuse) {
       alert(t("chat_abuse_write_block"));
-      return;
-    }
-    if (profileBlockedByAnon) {
-      alert(t("chat_blocked_by_anon"));
       return;
     }
 
@@ -2789,9 +2790,6 @@ export default function ProfileAnonChat({
             {blockedByAbuse ? (
               <p className="text-sm font-black text-red-300">{t("chat_abuse_block_active")}</p>
             ) : null}
-            {profileBlockedByAnon ? (
-              <p className="text-sm font-black text-red-300">{t("chat_blocked_by_anon")}</p>
-            ) : null}
           </div>
 
           {isOwnerViewing ? (
@@ -2894,7 +2892,7 @@ export default function ProfileAnonChat({
                 <ClassicAnonPresenceBubble session={anonIdentity.liveLabel} />
               </div>
             </div>
-          ) : showClassicIdentityBar ? (
+          ) : showClassicIdentityBar || showModernIdentityBar ? (
             <p className="border-b border-white/[0.06] px-5 py-2.5 text-center text-xs font-medium text-white/35">
               {t("chat_anon_you_are", { session: anonIdentity.liveLabel })}
             </p>
@@ -3424,6 +3422,14 @@ export default function ProfileAnonChat({
             </div>
           ) : null}
 
+          {!hasMediaPreview && profileBlockedByAnon ? (
+            <div className={`${chatWidthClass} mb-3 text-center`}>
+              <p className="text-[11px] font-medium text-white/30">
+                {t("chat_blocked_by_anon")}
+              </p>
+            </div>
+          ) : null}
+
           {!hasMediaPreview ? (
           <div className={`${chatWidthClass} flex items-center gap-2`}>
             <input
@@ -3432,7 +3438,9 @@ export default function ProfileAnonChat({
               accept="image/*"
               capture="environment"
               className={CHAT_FILE_INPUT_CLASS}
+              disabled={composerLocked}
               onChange={(e) => {
+                if (composerLocked) return;
                 handleFile(e.target.files?.[0] || null, "camera");
                 e.target.value = "";
               }}
@@ -3444,7 +3452,9 @@ export default function ProfileAnonChat({
               accept="video/*"
               capture="environment"
               className={CHAT_FILE_INPUT_CLASS}
+              disabled={composerLocked}
               onChange={(e) => {
+                if (composerLocked) return;
                 handleFile(e.target.files?.[0] || null, "camera");
                 e.target.value = "";
               }}
@@ -3455,7 +3465,9 @@ export default function ProfileAnonChat({
               type="file"
               accept="image/*,video/*"
               className={CHAT_FILE_INPUT_CLASS}
+              disabled={composerLocked}
               onChange={(e) => {
+                if (composerLocked) return;
                 handleFile(e.target.files?.[0] || null, "gallery");
                 e.target.value = "";
               }}
@@ -3463,8 +3475,12 @@ export default function ProfileAnonChat({
 
             <button
               type="button"
-              onClick={() => openRealCamera("photo")}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80"
+              disabled={composerLocked}
+              onClick={() => {
+                if (composerLocked) return;
+                openRealCamera("photo");
+              }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80 disabled:opacity-40"
               title="Foto camara"
             >
               <Camera size={19} />
@@ -3472,8 +3488,12 @@ export default function ProfileAnonChat({
 
             <button
               type="button"
-              onClick={() => openRealCamera("video")}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80"
+              disabled={composerLocked}
+              onClick={() => {
+                if (composerLocked) return;
+                openRealCamera("video");
+              }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80 disabled:opacity-40"
               title="Video camara"
             >
               <Video size={19} />
@@ -3481,8 +3501,12 @@ export default function ProfileAnonChat({
 
             <button
               type="button"
-              onClick={() => openGalleryPicker()}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80"
+              disabled={composerLocked}
+              onClick={() => {
+                if (composerLocked) return;
+                openGalleryPicker();
+              }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/80 disabled:opacity-40"
               title="Galeria"
             >
               <ImageIcon size={19} />
@@ -3507,19 +3531,26 @@ export default function ProfileAnonChat({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    if (canSend) sendMessage();
+                    if (!composerLocked) sendMessage();
                   }
                 }}
-                placeholder={canSend ? "Escribi un mensaje..." : "Esperando sesión..."}
-                disabled={!canSend}
+                placeholder={
+                  profileBlockedByAnon
+                    ? t("chat_blocked_by_anon")
+                    : canSend
+                      ? "Escribi un mensaje..."
+                      : "Esperando sesión..."
+                }
+                disabled={composerLocked}
                 className="w-full bg-transparent text-base outline-none placeholder:text-white/30 disabled:opacity-50"
               />
             </div>
 
             <ChatAudioHoldLockMic
               recording={recording}
-              disabled={!canSend}
+              disabled={composerLocked}
               onStart={() => {
+                if (composerLocked) return;
                 void startAudioRecording();
               }}
               onStop={stopAudioRecording}
@@ -3528,17 +3559,18 @@ export default function ProfileAnonChat({
 
             <button
               type="button"
+              disabled={composerLocked}
               onMouseDown={(event) => event.preventDefault()}
               onPointerDown={(event) => {
                 event.preventDefault();
-                if (canSend && text.trim()) {
+                if (!composerLocked && text.trim()) {
                   sendMessage();
                 }
               }}
               onClick={(event) => {
                 event.preventDefault();
               }}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-500/80 text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-500/80 text-white disabled:opacity-40"
               title="Enviar"
             >
               {text.trim() ? <Send size={18} /> : <ArrowUp size={18} />}

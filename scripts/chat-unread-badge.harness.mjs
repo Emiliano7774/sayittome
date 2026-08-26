@@ -59,7 +59,7 @@ check(
   "COLLECT_VIEWER_IDS_DOES_NOT_SWEEP_PEER_ANON",
   activitySrc.includes("Never include peer anon") &&
     !activitySrc.includes("for (const participant of chat.participantes)") &&
-    activitySrc.includes("viewerIsThreadAnonVisitor"),
+    (activitySrc.includes("viewerIsAnon") || activitySrc.includes("viewerIsThreadAnonVisitor")),
 );
 
 const outgoingMeta = fs.readFileSync(
@@ -81,14 +81,15 @@ check(
 
 {
   const start = activitySrc.indexOf("export function wasChatReadOnServer");
-  const slice = activitySrc.slice(start, start + 2400);
+  const slice = activitySrc.slice(start, start + 4500);
+  const ownCall = slice.indexOf("isOwnInboxLastSender(chat, viewerId, firebaseUid, roleInput)");
   check(
     "INBOUND_EVALUATED_BEFORE_OWN_LAST_SENDER",
     start >= 0 &&
       slice.indexOf("incomingForViewer") >= 0 &&
       slice.indexOf("primaryIds") >= 0 &&
-      slice.indexOf("incomingForViewer") <
-        slice.indexOf("isOwnInboxLastSender(chat, viewerId, firebaseUid)"),
+      ownCall >= 0 &&
+      slice.indexOf("incomingForViewer") < ownCall,
   );
 }
 

@@ -27,6 +27,7 @@ import {
 } from "./verifiedProfileLink";
 import { VERIFIED_PROFILE_LINK_MAC_SECRET_NAME } from "./verifiedProfileLinkCore";
 import { handleSetAnonProfileBlock } from "./anonProfileBlock";
+import { handleToggleStoryLike } from "./storyLike";
 import {
   encodeUnreadLinesForFcm,
   formatCollapsedUnreadBody,
@@ -467,6 +468,10 @@ export const scrubVerifiedProfileLinkMensajes = onDocumentWritten(
 
 export const setAnonProfileBlock = onCall(async (request) => {
   return handleSetAnonProfileBlock(request);
+});
+
+export const toggleStoryLike = onCall(async (request) => {
+  return handleToggleStoryLike(request);
 });
 
 export const unregisterFcmToken = onCall(async (request) => {

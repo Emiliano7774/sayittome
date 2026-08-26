@@ -165,10 +165,10 @@ export function computeThreadPendingForViewer(
   } else if (chat.readBy?.[viewerId] === true) {
     reason = "server-read-current";
   } else {
-    // Profile reply with no usable legacy unread/read metadata must fail open
-    // to pending, never silently hide a real inbound message.
-    computedPending = latestSenderKind === "profile";
-    reason = computedPending ? "profile-inbound-fallback" : "no-pending-signal";
+    // Any unresolved incoming last message must stay pending — never hide
+    // inbound activity because of late/missing unreadCounts (cache→live).
+    computedPending = true;
+    reason = "incoming-unresolved-pending";
   }
 
   return {

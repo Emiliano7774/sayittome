@@ -287,6 +287,14 @@ function ReportCard({
         <button
           type="button"
           disabled={busyId === report.id || !canModerateProfile}
+          onClick={() => void onRunAction(report, "tag_fake_profile")}
+          className="rounded-xl bg-rose-500/20 px-4 py-2 text-sm font-black text-rose-100 disabled:opacity-40"
+        >
+          {t("admin_report_tag_fake_profile")}
+        </button>
+        <button
+          type="button"
+          disabled={busyId === report.id || !canModerateProfile}
           onClick={() => void onRunAction(report, "ban_perm")}
           className="rounded-xl bg-red-500/20 px-4 py-2 text-sm font-black text-red-200 disabled:opacity-40"
         >
@@ -295,6 +303,7 @@ function ReportCard({
         {canModerateProfile ? (
           <>
             <AdminUndoButton uid={report.targetUid!} undoAction="clear_moderation_tag" />
+            <AdminUndoButton uid={report.targetUid!} undoAction="clear_fake_profile_tag" />
             <AdminUndoButton uid={report.targetUid!} undoAction="unban" />
             <AdminUndoButton uid={report.targetUid!} undoAction="unblur_profile" />
           </>

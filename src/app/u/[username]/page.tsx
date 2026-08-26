@@ -28,6 +28,7 @@ import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
@@ -111,6 +112,7 @@ type Profile = {
   adminBlurFotosPerfil?: boolean;
   moderationTag?: string;
   moderationTagNote?: string;
+  fakeProfileTag?: string;
 };
 
 export default function PublicProfilePage() {
@@ -478,12 +480,16 @@ export default function PublicProfilePage() {
           adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
           moderationTag: profile.moderationTag,
           moderationTagNote: profile.moderationTagNote,
+          fakeProfileTag: profile.fakeProfileTag,
         }}
         isOwner={isOwner}
         verifiedVisit={verifiedVisit}
         onEdit={isOwner ? () => router.push("/settings/edit") : undefined}
         onModerationTagChange={(moderationTag) =>
           setProfile((current) => (current ? { ...current, moderationTag } : current))
+        }
+        onFakeProfileTagChange={(fakeProfileTag) =>
+          setProfile((current) => (current ? { ...current, fakeProfileTag } : current))
         }
       />
       </div>
@@ -581,6 +587,13 @@ export default function PublicProfilePage() {
             variant="classic"
             onTagChange={(moderationTag) =>
               setProfile((current) => (current ? { ...current, moderationTag } : current))
+            }
+          />
+          <AdminProfileFakeButton
+            profile={profile}
+            variant="classic"
+            onTagChange={(fakeProfileTag) =>
+              setProfile((current) => (current ? { ...current, fakeProfileTag } : current))
             }
           />
         </div>

@@ -5,6 +5,8 @@ export type ShuffleProfile = {
   usernameLower?: string;
   email?: string;
   moderationTag?: string;
+  /** Independent admin mark — does not replace moderationTag/roleplay. */
+  fakeProfileTag?: string;
   bio: string;
   photo: string;
   coverPhoto?: string;
