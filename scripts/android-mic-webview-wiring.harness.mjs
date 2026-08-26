@@ -10,10 +10,24 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 import { installHarnessAlias, installHarnessWindow } from "./harness-alias.mjs";
+import { readReleaseSources } from "./androidReleaseVersion.mjs";
+
+/** Floor: mic WebView wiring first shipped at versionCode 122. */
+const MIN_MIC_WIRING_VERSION_CODE = 122;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 installHarnessWindow();
 installHarnessAlias(root);
+
+const { gradle: gradleVersion, apkRelease, appVersion } = readReleaseSources(root);
+assert.equal(gradleVersion.versionCode, apkRelease.versionCode, "gradle vs apk.release.json");
+assert.equal(gradleVersion.versionCode, appVersion.versionCode, "gradle vs app-version.json");
+assert.equal(gradleVersion.versionName, apkRelease.versionName, "gradle vs apk.release.json name");
+assert.equal(gradleVersion.versionName, appVersion.versionName, "gradle vs app-version.json name");
+assert.ok(
+  gradleVersion.versionCode >= MIN_MIC_WIRING_VERSION_CODE,
+  `versionCode ${gradleVersion.versionCode} below mic wiring floor ${MIN_MIC_WIRING_VERSION_CODE}`,
+);
 
 const manifest = fs.readFileSync(
   path.join(root, "android/app/src/main/AndroidManifest.xml"),
@@ -46,8 +60,8 @@ assert.equal(capConfig.server?.url, "https://sayittome-app.web.app");
 assert.equal(capConfig.server?.androidScheme, "https");
 assert.equal(capConfig.server?.cleartext, false);
 
-assert.match(gradle, /versionCode\s+122/);
-assert.match(gradle, /versionName\s+"1\.0\.10"/);
+assert.match(gradle, /^\s*versionCode\s+\d+\s*$/m);
+assert.match(gradle, /^\s*versionName\s+"\d+\.\d+\.\d+"\s*$/m);
 assert.match(gradle, /org\.robolectric:robolectric/);
 
 assert.match(policy, /TRUSTED_HOST = "sayittome-app\.web\.app"/);
@@ -247,7 +261,9 @@ console.log(
     {
       gate: "ANDROID_MIC_WEBVIEW_WIRING",
       pass: true,
-      versionCode: 122,
+      versionCode: gradleVersion.versionCode,
+      versionName: gradleVersion.versionName,
+      minVersionCode: MIN_MIC_WIRING_VERSION_CODE,
       adb,
       mergedManifest: { path: mergedPath, recordAudio: true },
     },
