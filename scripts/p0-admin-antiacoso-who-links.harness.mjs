@@ -28,7 +28,8 @@ assert.doesNotMatch(panelSrc, /ipHash|blockedIpHash|infer.*ip/i);
 assert.match(panelSrc, /Quién bloqueó:/);
 
 assert.match(resolveRouteSrc, /verifyAdminIdToken/);
-assert.match(resolveRouteSrc, /Cache-Control.*no-store|no-store/i);
+assert.match(panelSrc, /cache: "no-store"/);
+assert.match(resolveRouteSrc, /Cache-Control.*no-store/);
 
 const negativeControls = [
   !/hashAbuseClientIp/.test(panelSrc),

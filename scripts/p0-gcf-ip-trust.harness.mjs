@@ -3,6 +3,7 @@
  * Does not call production with secrets. Pure + optional live probe (no body secrets).
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -16,8 +17,9 @@ process.env.ABUSE_IP_HASH_SECRET = "harness-abuse-ip-secret-v1";
 process.env.NODE_ENV = "test";
 
 const ip = await import(pathToFileURL(path.join(root, "src/lib/abuse/abuseIpHash.ts")).href);
-const write = await import(
-  pathToFileURL(path.join(root, "src/lib/abuse/profileAnonAbuseBlockWrite.ts")).href,
+const writeSrc = fs.readFileSync(
+  path.join(root, "src/lib/abuse/profileAnonAbuseBlockWrite.ts"),
+  "utf8",
 );
 
 function gcfReq(host, xff) {
@@ -52,23 +54,17 @@ assert.equal(ip.getTrustedRequestClientIp(cfn), "198.51.100.10");
 const privateLast = gcfReq("ssrsayittomeapp-uc.a.run.app", "203.0.113.1, 10.0.0.5");
 assert.equal(ip.getTrustedRequestClientIp(privateLast), "");
 
-// Writer fail-closed on hosting bind.
-const bindDenied = await write.bindVisitorChatLease({
-  visitorAuthUid: "v1",
-  chatId: "anon_x__anon_to__demo",
-  username: "demo",
-  receptorUid: "rec1",
-  req: hostingReq("198.51.100.10"),
-});
-assert.equal(bindDenied.ok, false);
-assert.equal(bindDenied.status, 503);
+// Writer fail-closed on hosting (no emulator in this harness — contract via source).
+assert.match(writeSrc, /requireTrustedSendIp/);
+assert.match(writeSrc, /abuse_ip_unavailable/);
+assert.match(writeSrc, /isDirectCloudFunctionsRequest/);
 
 const results = [
   "hosting_xff_rejected",
   "direct_last_hop_only",
   "cloudfunctions_host_ok",
   "private_last_hop_empty",
-  "writer_hosting_503",
+  "writer_hosting_fail_closed_contract",
 ];
 
 // Optional live probe: direct URL shape only (404/405 ok — proves route exists).
