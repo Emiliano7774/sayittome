@@ -21,6 +21,7 @@ import {
   parseAnonSessionFromChatId,
   readCoveringBlockIdsFromIndex,
   mergeCoveringBlockIds,
+  pruneCoveringBlockIdsForHash,
   resolveIpIndexSuccessorOnRemove,
   selectPermitsToRevokeOnBlock,
   shouldClearIpIndexOnBlockRemove,
@@ -732,13 +733,53 @@ export async function applyProfileAnonAbuseBlock(input: {
         hash: string;
         snap: { exists: boolean; data: () => Record<string, unknown> | undefined };
       }> = [];
+      const coveringIdsForApply = new Set<string>();
       if (ipCoverage === "active") {
         for (const hash of ipHashes) {
           const indexRef = db
             .collection(ABUSE_IP_INDEX_COLLECTION)
             .doc(profileAnonAbuseIpIndexId(receptorUid, hash));
-          indexReadsForApply.push({ hash, snap: await tx.get(indexRef) });
+          const snap = await tx.get(indexRef);
+          indexReadsForApply.push({ hash, snap });
+          for (const id of readCoveringBlockIdsFromIndex(snap.exists ? snap.data() : null)) {
+            if (id && id !== blockId) coveringIdsForApply.add(id);
+          }
         }
+      }
+
+      const coveringSnapsForApply = new Map<
+        string,
+        { exists: boolean; data: () => Record<string, unknown> | undefined }
+      >();
+      for (const coveringId of coveringIdsForApply) {
+        coveringSnapsForApply.set(
+          coveringId,
+          await tx.get(db.collection(ABUSE_BLOCKS_COLLECTION).doc(coveringId)),
+        );
+      }
+
+      const coveringBlocksById = new Map<
+        string,
+        {
+          id: string;
+          status?: string;
+          expiresAtMs?: number;
+          blockedIpHash?: string;
+          ipHashes?: string[];
+        }
+      >();
+      for (const [id, snap] of coveringSnapsForApply) {
+        if (!snap.exists) continue;
+        const data = (snap.data() || {}) as Record<string, unknown>;
+        coveringBlocksById.set(id, {
+          id,
+          status: String(data.status || "active"),
+          expiresAtMs: asMs(data.expiresAtMs),
+          blockedIpHash: String(data.blockedIpHash || ""),
+          ipHashes: Array.isArray(data.ipHashes)
+            ? data.ipHashes.map((h) => String(h || "").trim()).filter(Boolean)
+            : [],
+        });
       }
 
       tx.set(
@@ -781,10 +822,13 @@ export async function applyProfileAnonAbuseBlock(input: {
         for (const row of indexReadsForApply) {
           const hash = row.hash;
           const prevData = row.snap.exists ? (row.snap.data() || {}) : {};
-          const coveringBlockIds = mergeCoveringBlockIds(
-            readCoveringBlockIdsFromIndex(prevData),
-            blockId,
-          );
+          const coveringBlockIds = pruneCoveringBlockIdsForHash({
+            hash,
+            blockIds: readCoveringBlockIdsFromIndex(prevData),
+            blocksById: coveringBlocksById,
+            nowMs,
+            ensureBlockId: blockId,
+          });
           const prevExpires = asMs(prevData.expiresAtMs) || 0;
           tx.set(
             db

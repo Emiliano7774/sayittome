@@ -293,6 +293,46 @@ export function mergeCoveringBlockIds(existing: string[], blockId: string): stri
   return Array.from(new Set([...existing, id]));
 }
 
+/** Drop removed/expired ids; keep every block still active for this hash. */
+export function pruneCoveringBlockIdsForHash(input: {
+  hash: string;
+  blockIds: string[];
+  blocksById: Map<
+    string,
+    {
+      id?: string;
+      status?: string;
+      expiresAtMs?: number;
+      blockedIpHash?: string;
+      ipHashes?: string[];
+    }
+  >;
+  nowMs?: number;
+  /** Block being applied in the same tx — not yet in blocksById but must be kept. */
+  ensureBlockId?: string;
+}): string[] {
+  const nowMs = Number(input.nowMs || Date.now());
+  const hash = String(input.hash || "").trim();
+  const ensure = String(input.ensureBlockId || "").trim();
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const rawId of [...input.blockIds, ...(ensure ? [ensure] : [])]) {
+    const id = String(rawId || "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    if (ensure && id === ensure) {
+      out.push(id);
+      continue;
+    }
+    const block = input.blocksById.get(id);
+    if (block && blockCoversIpHash(block, hash, nowMs)) {
+      out.push(id);
+    }
+  }
+  return out;
+}
+
 export function blockCoversIpHash(
   block:
     | {
@@ -354,11 +394,12 @@ export function resolveIpIndexSuccessorOnRemove(input: {
     if (!block || !blockCoversIpHash(block, hash, nowMs)) continue;
     const expiresAtMs = Number(block.expiresAtMs || 0);
     if (!best || expiresAtMs > best.expiresAtMs) {
-      const coveringBlockIds = input.coveringBlockIds.filter((rowId) => {
-        if (rowId === removing) return false;
-        const row = input.blocksById.get(rowId);
-        return Boolean(row && blockCoversIpHash(row, hash, nowMs));
-      });
+      const coveringBlockIds = pruneCoveringBlockIdsForHash({
+        hash,
+        blockIds: input.coveringBlockIds,
+        blocksById: input.blocksById,
+        nowMs,
+      }).filter((id) => id !== removing);
       best = {
         blockId: id,
         chatId: String(block.chatId || ""),

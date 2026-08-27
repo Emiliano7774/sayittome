@@ -1,0 +1,38 @@
+{
+  "updatedAt": "2026-08-27T22:25:00Z",
+  "methodology": "technical PASS vs physical PENDING; no main WIP deploy",
+  "releaseUi": {
+    "branch": "release/ui-three-case-88e463e",
+    "base": "88e463e",
+    "commit": "d04087d",
+    "worktree": ".worktrees/ui-release-88e463e",
+    "deploy": "hosting-only from clean worktree (not main 16caad6)",
+    "cases": [
+      "admin inline media (explicit type, scoped fetch, no-store API)",
+      "Historias auto-exit never → Shuffle (helper/regex harness; DOM wait PENDING)",
+      "Shuffle profile/popstate restore (pure harness PASS)"
+    ],
+    "physicalPending": [
+      "stories-hub-no-shuffle-wait: no real DOM idle timer test",
+      "admin media: no prod admin session smoke",
+      "shuffle restore: no device back/popstate manual"
+    ]
+  },
+  "p0Abuse": {
+    "status": "PENDING",
+    "emulator": "EXIT 0 (overlap both orders + concurrent remove)",
+    "secret": "ABUSE_IP_HASH_SECRET 404 via firebase functions:secrets:describe",
+    "gcfIpTrust": "p0-gcf-ip-trust.harness.mjs — last XFF on direct GCF only",
+    "secretPrep": "p0-abuse-ip-secret-status.mjs — metadata only, no set/deploy",
+    "activateGatesOrRules": false,
+    "adminWhoWho": "p0-admin-antiacoso-who-links.harness.mjs static; physical PENDING",
+    "coveringBlockIds": "pruneCoveringBlockIdsForHash — drop expired/removed, keep all active",
+    "chatEpochUrl": "replaceChatHistoryUrl preserves window.history.state"
+  },
+  "excludedFromRelease": [
+    "profileAnonAbuseBlockWrite abuse WIP on master 16caad6",
+    "firestore.rules",
+    "chat persistence / auth WIP",
+    "ABUSE_IP_HASH_SECRET value in git/logs"
+  ]
+}

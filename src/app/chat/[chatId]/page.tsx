@@ -14,6 +14,11 @@ import { doc, getDoc } from "firebase/firestore";
 
 import LegacyChatPage from "./legacy-chat";
 
+function replaceChatHistoryUrl(url: string) {
+  if (typeof window === "undefined") return;
+  window.history.replaceState(window.history.state, "", url);
+}
+
 function ProfileAnonChatRoute() {
   const t = useT();
   const params = useParams();
@@ -78,9 +83,7 @@ function ProfileAnonChatRoute() {
                   if (mid) query.set("mid", mid);
                 }
                 const qs = query.toString();
-                window.history.replaceState(
-                  null,
-                  "",
+                replaceChatHistoryUrl(
                   `/chat/${encodeURIComponent(resolvedChatId)}${qs ? `?${qs}` : ""}`,
                 );
               }
@@ -135,9 +138,7 @@ function ProfileAnonChatRoute() {
             usernameFromQuery !== resolvedUsername
           ) {
             const query = new URLSearchParams({ u: resolvedUsername });
-            window.history.replaceState(
-              null,
-              "",
+            replaceChatHistoryUrl(
               `/chat/${encodeURIComponent(resolvedChatId)}?${query.toString()}`,
             );
           }
@@ -156,9 +157,7 @@ function ProfileAnonChatRoute() {
           usernameFromQuery !== resolved.username
         ) {
           const query = new URLSearchParams({ u: resolved.username });
-          window.history.replaceState(
-            null,
-            "",
+          replaceChatHistoryUrl(
             `/chat/${encodeURIComponent(resolved.chatId)}?${query.toString()}`,
           );
         }
@@ -185,7 +184,21 @@ function ProfileAnonChatRoute() {
   if (!ready) return <ChatLoadingScreen />;
   if (errorText || !chatId || !username) return <ChatErrorScreen message={errorText} />;
 
-  return <ProfileAnonChat chatId={chatId} username={username} />;
+  return (
+    <ProfileAnonChat
+      chatId={chatId}
+      username={username}
+      onThreadIdChange={(nextId) => {
+        const clean = String(nextId || "").trim();
+        if (!clean || clean === chatId) return;
+        setChatId(clean);
+        const query = new URLSearchParams({ u: username });
+        replaceChatHistoryUrl(
+          `/chat/${encodeURIComponent(clean)}?${query.toString()}`,
+        );
+      }}
+    />
+  );
 }
 
 function ChatEntryPage() {

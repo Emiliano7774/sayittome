@@ -87,6 +87,34 @@ assert.equal(successor?.blockId, "block_a");
 
 assert.match(writeSrc, /coveringBlockIds/);
 assert.match(writeSrc, /resolveIpIndexSuccessorOnRemove/);
+assert.match(writeSrc, /pruneCoveringBlockIdsForHash/);
+
+const pruned = block.pruneCoveringBlockIdsForHash({
+  hash: "hash1",
+  blockIds: ["block_a", "block_b", "block_removed"],
+  blocksById: new Map([
+    [
+      "block_a",
+      {
+        status: "active",
+        expiresAtMs: Date.now() + 60_000,
+        blockedIpHash: "hash1",
+      },
+    ],
+    [
+      "block_b",
+      {
+        status: "removed",
+        expiresAtMs: Date.now() + 60_000,
+        blockedIpHash: "hash1",
+      },
+    ],
+  ]),
+  nowMs: Date.now(),
+  ensureBlockId: "block_new",
+});
+assert.deepEqual(pruned, ["block_a", "block_new"]);
+
 assert.doesNotMatch(writeSrc, /contentDigest/);
 
 const menuSrc = fs.readFileSync(
