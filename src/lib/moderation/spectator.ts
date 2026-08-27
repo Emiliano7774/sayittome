@@ -21,6 +21,12 @@ export type SpectatorMessage = {
   texto?: string;
   reply?: string;
   type?: string;
+  mediaUrl?: string;
+  viewOnce?: boolean;
+  viewOnceLimit?: number;
+  viewOnceOpenedCount?: number;
+  viewOnceExhausted?: boolean;
+  viewOnceSealed?: boolean;
   fromUid?: string;
   ownerId?: string;
   senderUid?: string;

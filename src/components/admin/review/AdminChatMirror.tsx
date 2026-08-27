@@ -4,16 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef } from "react";
 
 import { useAdminApi } from "@/components/admin/AdminShell";
+import AdminSpectatorMessageContent from "@/components/admin/review/AdminSpectatorMessageContent";
 import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
 import { useSpectatorChatMessages } from "@/hooks/useSpectatorTheater";
 import { useModerationProfilePhotos } from "@/hooks/useModerationProfilePhotos";
-import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
+import { chatBubbleShellClass } from "@/lib/chat/chatBubbleStyles";
 import { chatActivityMs } from "@/lib/moderation/classicFeed";
 import { resolveModerationParticipants } from "@/lib/moderation/chatReview";
 import {
   formatMessageTime,
   formatRelativeActivity,
-  messageDisplayText,
   resolveSpectatorMessageSide,
   spectatorMessageSenderLabel,
 } from "@/lib/moderation/spectator";
@@ -179,7 +179,7 @@ export default function AdminChatMirror({
                   {isProfile ? " · perfil" : participants.peerIsAnon ? " · visitante" : ""}
                 </span>
                 <div className={chatBubbleShellClass(true, isProfile)}>
-                  <p className={chatBubbleTextClass(true)}>{messageDisplayText(msg)}</p>
+                  <AdminSpectatorMessageContent chatId={chat.id} msg={msg} compact />
                   <div className="mt-1 flex items-center justify-between gap-3">
                     <span className="text-[10px] font-bold text-white/35">
                       {formatMessageTime(msg)}

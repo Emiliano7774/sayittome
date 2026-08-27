@@ -14,6 +14,7 @@ import {
   getShuffleWindowGeneration,
   getVisibleShuffleProfiles,
 } from "@/lib/shuffle/shuffleSlotsStore";
+import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export const SHUFFLE_VIEWPORT_SNAPSHOT_KEY = "sayittome:shuffle-viewport-snapshot:v1";
 
@@ -24,6 +25,8 @@ export type ShuffleViewportSnapshot = {
   scrollTop: number;
   windowGeneration: number;
   capturedAt: number;
+  /** Full window rows at capture — restores exact order even if pool cache refreshed. */
+  profiles?: ShuffleProfile[];
 };
 
 let ram: ShuffleViewportSnapshot | null = null;
@@ -184,6 +187,9 @@ function readStored(): ShuffleViewportSnapshot | null {
       scrollTop: Number(parsed.scrollTop),
       windowGeneration: Number(parsed.windowGeneration) || 0,
       capturedAt: Number(parsed.capturedAt) || 0,
+      profiles: Array.isArray(parsed.profiles)
+        ? (parsed.profiles as ShuffleProfile[])
+        : undefined,
     };
   } catch {
     return null;
@@ -247,10 +253,14 @@ export function captureShuffleViewportSnapshot(input?: {
   index?: number;
   scrollTop?: number;
   cardIds?: string[];
+  profiles?: ShuffleProfile[];
   allowZero?: boolean;
 }) {
   const previous = peekShuffleViewportSnapshot();
-  const profiles = getVisibleShuffleProfiles();
+  const profiles =
+    input?.profiles && input.profiles.length > 0
+      ? input.profiles
+      : getVisibleShuffleProfiles();
   const cardIds =
     input?.cardIds ??
     profiles.map((profile) => identityOf(profile)).filter(Boolean);
@@ -291,6 +301,7 @@ export function captureShuffleViewportSnapshot(input?: {
     scrollTop,
     windowGeneration: getShuffleWindowGeneration(),
     capturedAt: Date.now(),
+    profiles: profiles.map((row) => ({ ...row })),
   };
 
   if (!isUsableShuffleViewportSnapshot(next)) {

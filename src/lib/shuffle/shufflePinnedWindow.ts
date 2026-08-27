@@ -28,6 +28,54 @@ let pinned: PinnedWindow | null = null;
 const cacheRestoreScratch: number[] = [];
 const cacheRestoreIndices = new Int32Array(SHUFFLE_WINDOW_SIZE);
 
+function shuffleProfileKey(profile: ShuffleProfile) {
+  return `${profile.uid || ""}:${profile.username || ""}`;
+}
+
+function findProfileForCardId(
+  cardId: string,
+  pools: ShuffleProfile[][],
+): ShuffleProfile | null {
+  for (const pool of pools) {
+    const found = pool.find((profile) => matchShuffleProfileByCardId(profile, cardId));
+    if (found) return found;
+  }
+  return null;
+}
+
+function restoreOrderedWindowFromCardIds(
+  cardIds: string[],
+  pools: ShuffleProfile[][],
+): ShuffleProfile[] | null {
+  const ordered: ShuffleProfile[] = [];
+  const used = new Set<string>();
+  for (const cardId of cardIds) {
+    const found = findProfileForCardId(cardId, pools);
+    if (!found) return null;
+    const key = shuffleProfileKey(found);
+    if (used.has(key)) continue;
+    used.add(key);
+    ordered.push(found);
+  }
+  if (ordered.length === 0) return null;
+  return ordered;
+}
+
+function applyOrderedWindow(ordered: ShuffleProfile[]) {
+  const indices = new Int32Array(SHUFFLE_WINDOW_SIZE);
+  const count = Math.min(ordered.length, SHUFFLE_WINDOW_SIZE);
+  for (let slot = 0; slot < count; slot += 1) indices[slot] = slot;
+  setShuffleSlotsWithFeatured([], ordered, indices, count, false);
+  flushShuffleSlotsSync();
+  capturePinnedShuffleWindow([], ordered, indices, count);
+  const restored = getVisibleShuffleProfiles();
+  if (restored.length > 0) {
+    markShuffleHydrated(restored.length);
+    return true;
+  }
+  return false;
+}
+
 function restoreFromCachedPoolSync() {
   const cached = readCachedShufflePool();
   if (!cached || cached.length < 3) return false;
@@ -80,46 +128,25 @@ function restoreWindowFromSnapshotCache() {
   if (!snapshot || !hasUsableShuffleViewportSnapshot() || snapshot.cardIds.length === 0) {
     return false;
   }
-  const cached = readCachedShufflePool();
-  if (!cached || cached.length === 0) {
+
+  const cached = readCachedShufflePool() || [];
+  const lookupPools: ShuffleProfile[][] = [
+    snapshot.profiles || [],
+    pinned?.pool || [],
+    pinned?.featured || [],
+    cached,
+  ];
+
+  const ordered = restoreOrderedWindowFromCardIds(snapshot.cardIds, lookupPools);
+  if (!ordered) {
     clearShuffleViewportSnapshot();
     return restoreFromCachedPoolSync();
   }
 
-  const ordered: ShuffleProfile[] = [];
-  const used = new Set<string>();
-  for (const cardId of snapshot.cardIds) {
-    const found = cached.find((profile) => matchShuffleProfileByCardId(profile, cardId));
-    if (!found) continue;
-    const key = shuffleProfileKey(found);
-    if (used.has(key)) continue;
-    used.add(key);
-    ordered.push(found);
-  }
+  if (applyOrderedWindow(ordered)) return true;
 
-  if (ordered.length === 0) {
-    clearShuffleViewportSnapshot();
-    return restoreFromCachedPoolSync();
-  }
-
-  const indices = new Int32Array(SHUFFLE_WINDOW_SIZE);
-  const count = Math.min(ordered.length, SHUFFLE_WINDOW_SIZE);
-  for (let slot = 0; slot < count; slot += 1) indices[slot] = slot;
-  setShuffleSlotsWithFeatured([], ordered, indices, count, false);
-  flushShuffleSlotsSync();
-  capturePinnedShuffleWindow([], ordered, indices, count);
-
-  const restored = getVisibleShuffleProfiles();
-  if (restored.length > 0) {
-    markShuffleHydrated(restored.length);
-    return true;
-  }
   clearShuffleViewportSnapshot();
   return restoreFromCachedPoolSync();
-}
-
-function shuffleProfileKey(profile: ShuffleProfile) {
-  return `${profile.uid || ""}:${profile.username || ""}`;
 }
 
 export function applyPinnedShuffleWindowSync(options?: { force?: boolean }) {
@@ -151,11 +178,10 @@ export function applyPinnedShuffleWindowSync(options?: { force?: boolean }) {
 
 /** PREPARE — restore last valid shuffle window synchronously (no React commit). */
 export function restorePinnedShuffleWindowSync() {
-  // Usable mid-feed snapshot always wins over whatever is currently visible
-  // (wrong order / cold remount deal must not stick).
+  // Snapshot order is authoritative — never force stale pinned over captured cardIds.
   if (hasUsableShuffleViewportSnapshot()) {
-    if (pinned && applyPinnedShuffleWindowSync({ force: true })) return true;
     if (restoreWindowFromSnapshotCache()) return true;
+    if (pinned && applyPinnedShuffleWindowSync()) return true;
   }
 
   const visibleNow = getVisibleShuffleProfiles();

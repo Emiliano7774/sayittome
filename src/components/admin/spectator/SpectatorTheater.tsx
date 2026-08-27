@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 
+import AdminSpectatorMessageContent from "@/components/admin/review/AdminSpectatorMessageContent";
 import { useAdminApi } from "@/components/admin/AdminShell";
 import { useSpectatorChatMessages } from "@/hooks/useSpectatorTheater";
 import { resolveModerationParticipants } from "@/lib/moderation/chatReview";
@@ -11,7 +12,6 @@ import { chatActivityMs } from "@/lib/moderation/classicFeed";
 import {
   formatMessageTime,
   formatRelativeActivity,
-  messageDisplayText,
   resolveSpectatorMessageSide,
   spectatorMessageSenderLabel,
 } from "@/lib/moderation/spectator";
@@ -168,9 +168,7 @@ export default function SpectatorTheater({
                       {senderLabel}
                       {isProfile ? " · perfil" : participants.peerIsAnon ? " · visitante" : ""}
                     </p>
-                    <p className="whitespace-pre-wrap text-sm font-bold leading-relaxed md:text-[15px]">
-                      {messageDisplayText(msg)}
-                    </p>
+                    <AdminSpectatorMessageContent chatId={chat.id} msg={msg} />
                     <div className="mt-1.5 flex items-center justify-between gap-3">
                       <span className="text-[10px] font-bold text-white/35">
                         {formatMessageTime(msg)}

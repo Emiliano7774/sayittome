@@ -57,7 +57,9 @@ function StoryUserPageInner() {
     const previous = peekNativeNavPath(`/stories/${encodeURIComponent(param)}`);
     if (previous) {
       stashStoryReturnTo(previous);
+      return;
     }
+    stashStoryReturnTo("/stories");
   }, [param]);
 
   useEffect(() => {

@@ -2,6 +2,8 @@ import { peekNativeNavPath } from "@/lib/navigation/nativeNavStack";
 
 const RETURN_KEY = "sayittome-story-return";
 
+export type StoryViewerExitReason = "manual" | "auto";
+
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
@@ -35,19 +37,44 @@ export function resolveStoryReturnPath(effectivePath: string) {
   return "/stories";
 }
 
-export function resolveStoryViewerExitDestination(currentPath?: string) {
-  const path =
-    typeof window === "undefined"
-      ? normalizePath(currentPath || "/stories")
-      : normalizePath(currentPath || window.location.pathname);
+function viewerPath(currentPath?: string) {
+  return typeof window === "undefined"
+    ? normalizePath(currentPath || "/stories")
+    : normalizePath(currentPath || window.location.pathname);
+}
+
+/** Timer / auto-advance: stay in Historias — never switch main section to Shuffle. */
+export function resolveStoryAutoExitDestination(currentPath?: string) {
+  const explicit = peekStoryReturnTo();
+  if (explicit && explicit !== "/shuffle") {
+    return resolveStoryReturnPath(explicit);
+  }
+  if (typeof window === "undefined") {
+    return resolveStoryReturnPath(viewerPath(currentPath));
+  }
+  return "/stories";
+}
+
+/** Manual close/back: honor stashed origin including exact Shuffle return. */
+export function resolveStoryManualExitDestination(currentPath?: string) {
+  const path = viewerPath(currentPath);
 
   const explicit = consumeStoryReturnTo();
-  if (explicit) return explicit;
+  if (explicit) return resolveStoryReturnPath(explicit);
 
   const previous = peekNativeNavPath(path);
   if (previous && previous !== path) {
-    return previous;
+    return resolveStoryReturnPath(previous);
   }
 
   return "/stories";
+}
+
+export function resolveStoryViewerExitDestination(
+  currentPath?: string,
+  reason: StoryViewerExitReason = "manual",
+) {
+  return reason === "auto"
+    ? resolveStoryAutoExitDestination(currentPath)
+    : resolveStoryManualExitDestination(currentPath);
 }
