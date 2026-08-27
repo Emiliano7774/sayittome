@@ -57,7 +57,7 @@ assert.equal(ip.getTrustedRequestClientIp(privateLast), "");
 // Writer fail-closed on hosting (no emulator in this harness — contract via source).
 assert.match(writeSrc, /requireTrustedSendIp/);
 assert.match(writeSrc, /abuse_ip_unavailable/);
-assert.match(writeSrc, /isDirectCloudFunctionsRequest/);
+assert.match(writeSrc, /getTrustedRequestClientIp/);
 
 const results = [
   "hosting_xff_rejected",
