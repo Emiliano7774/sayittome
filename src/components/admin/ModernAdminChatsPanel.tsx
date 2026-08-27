@@ -4,10 +4,10 @@ import Link from "next/link";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
+import AdminSpectatorMessageContent from "@/components/admin/review/AdminSpectatorMessageContent";
 import { useAdminApi } from "@/components/admin/AdminShell";
 import { useSpectatorChatMessages } from "@/hooks/useSpectatorTheater";
 import { db } from "@/lib/firebase";
-import { messageDisplayText } from "@/lib/moderation/spectator";
 
 type ChatRow = {
   id: string;
@@ -97,7 +97,7 @@ export default function ModernAdminChatsPanel() {
             <div className="space-y-2 max-h-[70vh] overflow-y-auto">
               {messages.map((msg) => (
                 <div key={msg.collectionPath || msg.id} className="rounded-xl bg-white/5 p-3">
-                  <p className="font-bold text-white/80">{messageDisplayText(msg)}</p>
+                  <AdminSpectatorMessageContent chatId={selected} msg={msg} compact />
                   <button
                     type="button"
                     onClick={() =>

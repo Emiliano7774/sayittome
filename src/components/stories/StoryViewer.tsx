@@ -50,7 +50,7 @@ import {
 } from "@/lib/stories/storiesQueryGuard";
 import { preloadNextPlayTarget, preloadStoryMedia } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
-import { resolveStoryViewerExitDestination } from "@/lib/navigation/storyReturnNav";
+import { resolveStoryViewerExitDestination, type StoryViewerExitReason } from "@/lib/navigation/storyReturnNav";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
 import StoryMediaBuffers from "@/components/stories/StoryMediaBuffers";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
@@ -169,20 +169,23 @@ export default function StoryViewer({
     };
   }, []);
 
-  const exitStoryViewer = useCallback(() => {
-    const dest = resolveStoryViewerExitDestination();
-    const currentPath = window.location.pathname.split("?")[0].split("#")[0];
+  const exitStoryViewer = useCallback(
+    (reason: StoryViewerExitReason = "manual") => {
+      const dest = resolveStoryViewerExitDestination(undefined, reason);
+      const currentPath = window.location.pathname.split("?")[0].split("#")[0];
 
-    if (dest === currentPath || dest === currentPath.replace(/\/$/, "")) {
-      router.back();
-      return;
-    }
+      if (dest === currentPath || dest === currentPath.replace(/\/$/, "")) {
+        router.back();
+        return;
+      }
 
-    router.replace(dest);
-  }, [router]);
+      router.replace(dest);
+    },
+    [router],
+  );
 
   useEffect(() => {
-    const onBack = () => exitStoryViewer();
+    const onBack = () => exitStoryViewer("manual");
     window.addEventListener("sayittome:close-story", onBack);
     return () => window.removeEventListener("sayittome:close-story", onBack);
   }, [exitStoryViewer]);
@@ -447,7 +450,9 @@ export default function StoryViewer({
       return;
     }
 
-    exitStoryViewer();
+    if (nextTarget.kind === "exit") {
+      exitStoryViewer("auto");
+    }
   }, [current, exitStoryViewer, localStories, nextTarget, viewerUid]);
 
   const tryAdvance = useCallback(() => {
@@ -602,7 +607,7 @@ export default function StoryViewer({
 
       const nextStories = localStories.filter((story) => story.id !== current.id);
       if (nextStories.length === 0) {
-        exitStoryViewer();
+        exitStoryViewer("auto");
         return;
       }
 
@@ -719,7 +724,7 @@ export default function StoryViewer({
 
       <button
         type="button"
-        onClick={() => exitStoryViewer()}
+        onClick={() => exitStoryViewer("manual")}
         className={[
           "absolute right-4 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 transition-opacity duration-150",
           topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",

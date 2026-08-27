@@ -1,0 +1,78 @@
+{
+  "updatedAt": "2026-08-27",
+  "methodology": "technical PASS vs physical PENDING; selective git + hosting-only deploy for validated UI",
+  "cases": [
+    {
+      "id": 1,
+      "name": "30min IP block scoped by receptor",
+      "technical": "PASS",
+      "physical": "PENDING",
+      "cause": "ABUSE_IP_HASH_SECRET + direct GCF binding not verified in prod",
+      "tests": ["profile-anon-abuse-scope.harness.mjs", "profile-anon-abuse-emulator.harness.mjs"]
+    },
+    {
+      "id": 2,
+      "name": "Logout new anon new chat",
+      "technical": "PASS",
+      "physical": "PENDING",
+      "cause": "Same prod IP secret / SSR binding dependency",
+      "tests": ["profile-anon-abuse-scope.harness.mjs", "profile-anon-abuse-emulator.harness.mjs"]
+    },
+    {
+      "id": 3,
+      "name": "Admin antiacoso embedded chat",
+      "technical": "PASS",
+      "physical": "PENDING",
+      "cause": "Needs prod admin session smoke",
+      "tests": ["admin-spectator-media.harness.mjs"]
+    },
+    {
+      "id": 4,
+      "name": "Admin inline media explicit type",
+      "technical": "PASS",
+      "physical": "PENDING",
+      "tests": ["admin-spectator-media.harness.mjs"]
+    },
+    {
+      "id": 5,
+      "name": "StoriesHub no auto Shuffle on wait",
+      "technical": "PASS",
+      "physical": "PENDING",
+      "tests": ["stories-hub-no-shuffle-wait.harness.mjs", "story-exit-no-shuffle.harness.mjs"]
+    },
+    {
+      "id": 6,
+      "name": "Shuffle profile/popstate restore",
+      "technical": "PASS",
+      "physical": "PENDING",
+      "tests": [
+        "shuffle-popstate-restore.harness.mjs",
+        "shuffle-profile-back-viewport.harness.mjs",
+        "shuffle-snapshot-profiles-restore.harness.mjs"
+      ]
+    }
+  ],
+  "overlapFix": {
+    "issue": "remove B cleared index while A still active",
+    "fix": "coveringBlockIds + reassign successor on remove",
+    "tests": [
+      "remove_B_keeps_IP_when_A_overlap",
+      "remove_A_keeps_IP_when_B_overlap",
+      "remove_first_block_keeps_IP_when_second_overlap",
+      "remove_concurrent_idempotent"
+    ]
+  },
+  "prodP0": {
+    "status": "PENDING",
+    "items": [
+      "Configure ABUSE_IP_HASH_SECRET on ssrsayittomeapp without printing value",
+      "Verify direct GCF route before enabling Hosting /api abuse path",
+      "Do not deploy unvalidated firestore.rules or env"
+    ]
+  },
+  "deploy": {
+    "package": "UI-only (cases 3-6 + overlap fix in writer, no rules/env)",
+    "command": "npm run deploy:hosting",
+    "excluded": ["deploy:all", "APK/AAB unless native change"]
+  }
+}
