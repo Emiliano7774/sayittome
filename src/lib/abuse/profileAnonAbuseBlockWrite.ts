@@ -421,7 +421,8 @@ export async function bindVisitorChatLease(input: {
         targetUid: receptorUid,
         anonOwnerUid: receptorUid,
         anonSessionId: blockedAnonId,
-        participantes: [blockedAnonId, receptorUid, visitorAuthUid],
+        // Visitor Firebase uid lives only on private lease — never public participantes.
+        participantes: [blockedAnonId, receptorUid],
         anon: true,
         senderIsAnonymous: true,
         schemaVersion: 2,

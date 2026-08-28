@@ -1,0 +1,1062 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isLoggedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email == 'emilianomaturano@gmail.com'
+        && request.auth.token.email_verified is bool
+        && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isLoggedIn() && request.auth.uid == uid;
+    }
+
+    function touchesModerationTags() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'moderationTag',
+          'moderationTagNote',
+          'moderationTagAt',
+          'moderationTagBy',
+          'fakeProfileTag',
+          'fakeProfileTagNote',
+          'fakeProfileTagAt',
+          'fakeProfileTagBy'
+        ]);
+    }
+
+    function createHasModerationTags() {
+      return request.resource.data.keys().hasAny([
+        'moderationTag',
+        'moderationTagNote',
+        'moderationTagAt',
+        'moderationTagBy',
+        'fakeProfileTag',
+        'fakeProfileTagNote',
+        'fakeProfileTagAt',
+        'fakeProfileTagBy'
+      ]);
+    }
+
+    function openWindow() {
+      return request.time < timestamp.date(2026, 12, 31);
+    }
+
+    function chatReceptorUid(chatId) {
+      return exists(/databases/$(database)/documents/chats/$(chatId))
+        ? get(/databases/$(database)/documents/chats/$(chatId))
+            .data.get('receptorUid',
+              get(/databases/$(database)/documents/chats/$(chatId))
+                .data.get('targetUid',
+                  get(/databases/$(database)/documents/chats/$(chatId))
+                    .data.get('anonOwnerUid', '')))
+        : '';
+    }
+
+    /** Immutable chat binding — profile owner only. */
+    function isAuthenticatedChatReceptor(chatId) {
+      return request.auth != null
+        && chatReceptorUid(chatId) != ''
+        && request.auth.uid == chatReceptorUid(chatId);
+    }
+
+    function chatLeaseVisitorUid(chatId) {
+      return exists(/databases/$(database)/documents/anon_abuse_chat_leases/$(chatId))
+        ? safeStr(
+            get(/databases/$(database)/documents/anon_abuse_chat_leases/$(chatId))
+              .data.get('visitorAuthUid', '')
+          )
+        : '';
+    }
+
+    /** Server-bound anon id from lease — never trust mutable chat metadata. */
+    function leaseBoundAnonId(chatId) {
+      return exists(/databases/$(database)/documents/anon_abuse_chat_leases/$(chatId))
+        ? safeStr(
+            get(/databases/$(database)/documents/anon_abuse_chat_leases/$(chatId))
+              .data.get('blockedAnonId', '')
+          )
+        : '';
+    }
+
+    /** Visitor bound by server lease — not client alias / arbitrary UID. */
+    function isVerifiedChatVisitor(chatId) {
+      return isProfileAnonChatId(chatId)
+        && request.auth != null
+        && chatLeaseVisitorUid(chatId) is string
+        && chatLeaseVisitorUid(chatId).size() > 0
+        && request.auth.uid == chatLeaseVisitorUid(chatId);
+    }
+
+    /** Legacy non-profile-anon chats: participantes array on chat doc only. */
+    function isLegacyChatParticipant(chatId) {
+      return request.auth != null
+        && !isProfileAnonChatId(chatId)
+        && exists(/databases/$(database)/documents/chats/$(chatId))
+        && authUidInParticipantes(get(/databases/$(database)/documents/chats/$(chatId)).data);
+    }
+
+    function safeStr(value) {
+      return value is string ? value : '';
+    }
+
+    function chatField(data, key) {
+      return data != null ? safeStr(data.get(key, '')) : '';
+    }
+
+    function chatReceptorFromData(data) {
+      return data != null
+        ? (
+            chatField(data, 'receptorUid') != ''
+              ? chatField(data, 'receptorUid')
+              : (
+                  chatField(data, 'targetUid') != ''
+                    ? chatField(data, 'targetUid')
+                    : chatField(data, 'anonOwnerUid')
+                )
+          )
+        : '';
+    }
+
+    function participantesList(data) {
+      let parts = data != null ? data.get('participantes', []) : [];
+      return parts is list ? parts : [];
+    }
+
+    function authUidInParticipantes(data) {
+      return data != null && request.auth.uid in participantesList(data);
+    }
+
+    function mayReadChatResource(chatId, data) {
+      return data != null && (
+        isAdmin()
+        || (request.auth != null && request.auth.uid == chatReceptorFromData(data))
+        || (isProfileAnonChatId(chatId) && isVerifiedChatVisitor(chatId))
+        || (
+          request.auth != null
+          && !isProfileAnonChatId(chatId)
+          && authUidInParticipantes(data)
+        )
+      );
+    }
+
+    function parentChatData(chatId) {
+      return exists(/databases/$(database)/documents/chats/$(chatId))
+        ? get(/databases/$(database)/documents/chats/$(chatId)).data
+        : null;
+    }
+
+    function mayReadChatData(chatId) {
+      let data = parentChatData(chatId);
+      return data != null && mayReadChatResource(chatId, data);
+    }
+
+    function isAuthenticatedChatReceptorFromData(data) {
+      return request.auth != null
+        && chatReceptorFromData(data) != ''
+        && request.auth.uid == chatReceptorFromData(data);
+    }
+
+    function isLegacyChatParticipantFromData(chatId, data) {
+      return request.auth != null
+        && !isProfileAnonChatId(chatId)
+        && data != null
+        && authUidInParticipantes(data);
+    }
+
+    function listParticipantesAuthorized(data) {
+      return data != null && request.auth.uid in data.get('participantes', []);
+    }
+
+    function mayListChat(chatId, data) {
+      return data != null && request.auth != null && (
+        chatField(data, 'receptorUid') == request.auth.uid
+        || chatField(data, 'targetUid') == request.auth.uid
+        || (
+          data.get('participantes', []) is list
+          && request.auth.uid in data.get('participantes', [])
+        )
+        || isAdmin()
+      );
+    }
+
+    function blockedProfileUidForChat(chatId) {
+      return exists(/databases/$(database)/documents/anon_profile_blocks/$(chatId))
+        ? get(/databases/$(database)/documents/anon_profile_blocks/$(chatId))
+            .data.get('blockedProfileUid', '')
+        : chatReceptorUid(chatId);
+    }
+
+    function isBlockedProfileAuthor(chatId) {
+      let blockedUid = blockedProfileUidForChat(chatId);
+      return blockedUid != ''
+        && request.auth != null
+        && request.auth.uid == blockedUid;
+    }
+
+    function chatBlocksProfile(chatId) {
+      return exists(/databases/$(database)/documents/anon_profile_blocks/$(chatId))
+        || (
+          exists(/databases/$(database)/documents/chats/$(chatId))
+          && get(/databases/$(database)/documents/chats/$(chatId))
+            .data.get('anonBlocksProfile', false) == true
+        );
+    }
+
+    function touchesAnonBlockFlags() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'anonBlocksProfile',
+          'anonBlocksProfileAt',
+          'anonBlocksProfileBy'
+        ]);
+    }
+
+    function createHasAnonBlockFlags() {
+      return request.resource.data.keys().hasAny([
+        'anonBlocksProfile',
+        'anonBlocksProfileAt',
+        'anonBlocksProfileBy'
+      ]);
+    }
+
+    function touchesProfileAbuseFlags() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'profileBlocksVisitor',
+          'profileBlocksVisitorUntilMs',
+          'profileBlocksVisitorBlockId',
+          'profileBlocksVisitorAtMs',
+          'profileBlocksVisitorClearedAtMs'
+        ]);
+    }
+
+    function createHasProfileAbuseFlags() {
+      return request.resource.data.keys().hasAny([
+        'profileBlocksVisitor',
+        'profileBlocksVisitorUntilMs',
+        'profileBlocksVisitorBlockId',
+        'profileBlocksVisitorAtMs'
+      ]);
+    }
+
+    function touchesChatIdentityKeys() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'receptorUid',
+          'targetUid',
+          'anonOwnerUid',
+          'participantes',
+          'anonSessionId',
+          'initiatorUid',
+          'canonicalChatId',
+          'ownerId',
+          'participanteIds',
+          'targetUsername',
+          'receptorUsername',
+          'profileUid',
+          'latestSenderAnonSessionId',
+          'latestSenderKind',
+        ]);
+    }
+
+    function createHasChatBindingKeys() {
+      return request.resource.data.keys().hasAny([
+        'receptorUid',
+        'targetUid',
+        'anonOwnerUid',
+        'participantes',
+        'anonSessionId',
+        'initiatorUid',
+        'canonicalChatId',
+        'ownerId',
+        'participanteIds',
+        'targetUsername',
+        'receptorUsername',
+        'profileUid',
+        'latestSenderAnonSessionId',
+        'latestSenderKind',
+      ]);
+    }
+
+    function anonMatchChatData(chatId) {
+      return exists(/databases/$(database)/documents/chats_anonimos/$(chatId))
+        ? get(/databases/$(database)/documents/chats_anonimos/$(chatId)).data
+        : null;
+    }
+
+    function mayReadAnonMatchChat(chatId) {
+      let data = anonMatchChatData(chatId);
+      return data != null && (
+        isAdmin()
+        || (
+          isLoggedIn()
+          && (
+            chatField(data, 'solicitanteUid') == request.auth.uid
+            || chatField(data, 'destinatarioUid') == request.auth.uid
+          )
+        )
+      );
+    }
+
+    function mayListAnonMatchChat(data) {
+      return data != null && (
+        isAdmin()
+        || (
+          isLoggedIn()
+          && (
+            chatField(data, 'solicitanteUid') == request.auth.uid
+            || chatField(data, 'destinatarioUid') == request.auth.uid
+          )
+        )
+      );
+    }
+
+    function chatProfileBlocksVisitor(chatId) {
+      return exists(/databases/$(database)/documents/chats/$(chatId))
+        && get(/databases/$(database)/documents/chats/$(chatId))
+          .data.get('profileBlocksVisitor', false) == true
+        && get(/databases/$(database)/documents/chats/$(chatId))
+          .data.get('profileBlocksVisitorUntilMs', 0) > request.time.toMillis();
+    }
+
+    function isProfileAnonChatId(chatId) {
+      return chatId.matches('.*__anon_to__.*');
+    }
+
+    function isAnonSideMensaje() {
+      let from = request.resource.data.get('fromUid', '');
+      let senderKind = request.resource.data.get('senderKind', '');
+      return senderKind == 'anon' && from.matches('anon_.*');
+    }
+
+    function profileAnonSenderFromChatId(chatId) {
+      return chatId.split('__anon_to__')[0];
+    }
+
+    function abusePermitRef(permitId) {
+      return get(/databases/$(database)/documents/anon_abuse_send_permits/$(permitId));
+    }
+
+    function permitIpIndexActiveFromData(permit) {
+      let ipHash = permit.get('ipHash', '');
+      let receptor = permit.get('receptorUid', '');
+      return ipHash is string
+        && ipHash.size() == 64
+        && receptor is string
+        && receptor.size() > 0
+        && exists(/databases/$(database)/documents/anon_abuse_ip_index/$(receptor + '__ip__' + ipHash))
+        && get(/databases/$(database)/documents/anon_abuse_ip_index/$(receptor + '__ip__' + ipHash))
+          .data.get('status', 'active') == 'active'
+        && get(/databases/$(database)/documents/anon_abuse_ip_index/$(receptor + '__ip__' + ipHash))
+          .data.get('expiresAtMs', 0) > request.time.toMillis();
+    }
+
+    function hasValidAbuseSendPermit(chatId, messageId) {
+      let permitId = request.resource.data.get('abuseSendPermitId', '');
+      return request.auth != null
+        && permitId is string
+        && permitId.size() > 8
+        && exists(/databases/$(database)/documents/anon_abuse_send_permits/$(permitId))
+        && validAbuseSendPermitData(abusePermitRef(permitId).data, chatId, messageId);
+    }
+
+    function validAbuseSendPermitData(permit, chatId, messageId) {
+      return permit.get('chatId', '') == chatId
+        && permit.get('messageId', '') == messageId
+        && permit.get('visitorAuthUid', '') == request.auth.uid
+        && permit.get('expiresAtMs', 0) > request.time.toMillis()
+        && permit.get('status', '') != 'revoked'
+        && permit.get('revokedAtMs', 0) == 0
+        && !permitIpIndexActiveFromData(permit);
+    }
+
+    function anonMessageMatchesChatIdentity(chatId) {
+      let from = request.resource.data.get('fromUid', '');
+      let expected = profileAnonSenderFromChatId(chatId);
+      return expected.matches('anon_.*') && from == expected;
+    }
+
+    function touchesMessageAuthorship() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'fromUid',
+          'senderKind',
+          'senderAuthUid',
+          'senderProfileId',
+          'senderRole',
+          'profileUid',
+          'abuseSendPermitId',
+          'ownerId',
+          'senderUid'
+        ]);
+    }
+
+    /** Message-level receipt patch — readBy / seenBy only. */
+    function onlyClientReceiptUpdate() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasOnly(['readBy', 'seenBy']);
+    }
+
+    /** Chat-doc receipt patch — markChatAsRead / unread.ts dotted fields. */
+    function onlyChatReceiptUpdate() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          'readBy',
+          'readAt',
+          'unreadCounts',
+          'latestReadMessageIds',
+          'latestReadMessageId'
+        ]);
+    }
+
+    /** Diff keys for receipt map fields — no {} / [] fallback that authorizes foreign-key wipes. */
+    function receiptMapDiffKeys(field) {
+      let nextRaw = request.resource.data.get(field, null);
+      let prevRaw = resource.data.get(field, null);
+      let prevMap = prevRaw is map ? prevRaw : {};
+      return nextRaw is map
+        ? nextRaw.diff(prevMap).affectedKeys()
+        : (prevRaw is map ? prevRaw.keys() : ['__invalid_receipt_field__']);
+    }
+
+    function profileReplyAlias(uid) {
+      return 'profile_' + uid;
+    }
+
+    function ownerReceiptKeysAllowed(changed) {
+      let uid = request.auth.uid;
+      let profileAlias = profileReplyAlias(uid);
+      return changed.size() == 0
+        || changed.hasOnly([uid])
+        || changed.hasOnly([profileAlias])
+        || changed.hasOnly([uid, profileAlias]);
+    }
+
+    function ownerReceiptKeysAllowedFromData(chatId, data, changed) {
+      return (isAuthenticatedChatReceptorFromData(data) || isLegacyChatParticipantFromData(chatId, data))
+        && ownerReceiptKeysAllowed(changed);
+    }
+
+    function visitorReceiptKeysAllowedFromData(chatId, data, changed) {
+      let threadAnon = profileAnonSenderFromChatId(chatId);
+      let leaseAnon = leaseBoundAnonId(chatId);
+      return isProfileAnonChatId(chatId)
+        && !changed.hasAny([
+          request.auth.uid,
+          profileReplyAlias(request.auth.uid),
+          chatReceptorFromData(data)
+        ])
+        && (
+          changed.hasOnly([threadAnon])
+          || (leaseAnon != '' && leaseAnon != threadAnon && changed.hasOnly([leaseAnon]))
+          || (leaseAnon != '' && leaseAnon != threadAnon && changed.hasOnly([threadAnon, leaseAnon]))
+        );
+    }
+
+    function receiptFieldChangedKeys(field) {
+      return receiptMapDiffKeys(field);
+    }
+
+    function receiptFieldKeysAllowed(chatId, data, field) {
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      let changed = receiptFieldChangedKeys(field);
+      return !touched.hasAny([field])
+        || ownerReceiptKeysAllowedFromData(chatId, data, changed)
+        || visitorReceiptKeysAllowedFromData(chatId, data, changed);
+    }
+
+    function messageReceiptUpdateAllowed(chatId) {
+      let data = parentChatData(chatId);
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      return data != null && (
+        (
+          (isAuthenticatedChatReceptorFromData(data) || isLegacyChatParticipantFromData(chatId, data))
+          && (!touched.hasAny(['readBy'])
+            || ownerReceiptKeysAllowed(receiptFieldChangedKeys('readBy')))
+          && (!touched.hasAny(['seenBy'])
+            || ownerReceiptKeysAllowed(receiptFieldChangedKeys('seenBy')))
+        )
+        || (
+          isProfileAnonChatId(chatId)
+          && isVerifiedChatVisitor(chatId)
+          && (!touched.hasAny(['readBy'])
+            || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('readBy')))
+          && (!touched.hasAny(['seenBy'])
+            || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('seenBy')))
+        )
+      );
+    }
+
+    function onlyOutgoingSendChatMetaUpdate() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          'lastMessage',
+          'lastMessageSender',
+          'updatedAt',
+          'lastMessageAt',
+          'latestMessageId',
+          'latestSenderKind',
+          'latestSenderAnonSessionId',
+          'typing',
+          'readBy',
+          'unreadCounts',
+          'targetPhoto',
+          'senderIsAnonymous',
+        ]);
+    }
+
+    function outgoingMessagePath(chatId, messageId) {
+      return /databases/$(database)/documents/chats/$(chatId)/mensajes/$(messageId);
+    }
+
+    function outgoingMessageIdTouched() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['latestMessageId']);
+    }
+
+    function afterMessageData(chatId, messageId) {
+      return existsAfter(outgoingMessagePath(chatId, messageId))
+        ? getAfter(outgoingMessagePath(chatId, messageId)).data
+        : null;
+    }
+
+    function messageDataHasNoPublicAuthUid(msgData) {
+      return msgData != null && !msgData.keys().hasAny(['senderAuthUid', 'createdByAuthUid']);
+    }
+
+    function validAbuseSendPermitForMessageData(chatId, messageId, msgData) {
+      let permitId = msgData.get('abuseSendPermitId', '');
+      return permitId is string
+        && permitId.size() > 8
+        && exists(/databases/$(database)/documents/anon_abuse_send_permits/$(permitId))
+        && validAbuseSendPermitData(abusePermitRef(permitId).data, chatId, messageId);
+    }
+
+    function visitorAtomicOutgoingMessage(chatId) {
+      let msgId = safeStr(request.resource.data.get('latestMessageId', ''));
+      let threadAnon = profileAnonSenderFromChatId(chatId);
+      let msgData = afterMessageData(chatId, msgId);
+      return outgoingMessageIdTouched()
+        && msgId != ''
+        && !exists(outgoingMessagePath(chatId, msgId))
+        && msgData != null
+        && msgData.get('fromUid', '') == threadAnon
+        && msgData.get('senderKind', '') == 'anon'
+        && messageDataHasNoPublicAuthUid(msgData)
+        && validAbuseSendPermitForMessageData(chatId, msgId, msgData);
+    }
+
+    function ownerAtomicOutgoingMessage(chatId, data) {
+      let msgId = safeStr(request.resource.data.get('latestMessageId', ''));
+      let receptor = chatReceptorFromData(data);
+      let rAlias = profileReplyAlias(receptor);
+      let msgData = afterMessageData(chatId, msgId);
+      return outgoingMessageIdTouched()
+        && msgId != ''
+        && !exists(outgoingMessagePath(chatId, msgId))
+        && msgData != null
+        && msgData.get('senderKind', '') == 'profile'
+        && (
+          msgData.get('fromUid', '') == receptor
+          || msgData.get('fromUid', '') == rAlias
+        );
+    }
+
+    function outgoingSenderKindMatches(kind) {
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      return !touched.hasAny(['latestSenderKind'])
+        || request.resource.data.get('latestSenderKind', '') == kind;
+    }
+
+    function ownerOutgoingSendReadByAllowed(chatId, data) {
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      let receptor = chatReceptorFromData(data);
+      let rAlias = profileReplyAlias(receptor);
+      let threadAnon = profileAnonSenderFromChatId(chatId);
+      let nextRb = request.resource.data.get('readBy', null);
+      return !touched.hasAny(['readBy'])
+        || (
+          nextRb is map
+          && nextRb.get(receptor, false) == true
+          && nextRb.get(threadAnon, true) == false
+        );
+    }
+
+    function ownerOutgoingSendUnreadAllowed(chatId, data) {
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      let threadAnon = profileAnonSenderFromChatId(chatId);
+      let nextUc = request.resource.data.get('unreadCounts', null);
+      let prevUc = resource.data.get('unreadCounts', null);
+      let prevMap = prevUc is map ? prevUc : {};
+      return !touched.hasAny(['unreadCounts'])
+        || (
+          nextUc is map
+          && nextUc.get(threadAnon, 0) == prevMap.get(threadAnon, 0) + 1
+        );
+    }
+
+    function profileAnonOwnerOutgoingSendUpdate(chatId) {
+      let data = resource.data;
+      return onlyOutgoingSendChatMetaUpdate()
+        && outgoingMessageIdTouched()
+        && ownerAtomicOutgoingMessage(chatId, data)
+        && ownerOutgoingSendReadByAllowed(chatId, data)
+        && ownerOutgoingSendUnreadAllowed(chatId, data)
+        && outgoingLatestSenderAnonValid(chatId)
+        && outgoingSenderKindMatches('profile');
+    }
+
+    function visitorOutgoingSendReadByAllowed(chatId, data) {
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      let threadAnon = profileAnonSenderFromChatId(chatId);
+      let receptor = chatReceptorFromData(data);
+      let rAlias = profileReplyAlias(receptor);
+      let nextRb = request.resource.data.get('readBy', null);
+      return !touched.hasAny(['readBy'])
+        || (
+          nextRb is map
+          && nextRb.get(threadAnon, false) == true
+          && nextRb.get(receptor, true) == false
+          && nextRb.get(rAlias, true) == false
+        );
+    }
+
+    function visitorOutgoingSendUnreadAllowed(chatId, data) {
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      let receptor = chatReceptorFromData(data);
+      let rAlias = profileReplyAlias(receptor);
+      let nextUc = request.resource.data.get('unreadCounts', null);
+      let prevUc = resource.data.get('unreadCounts', null);
+      let prevMap = prevUc is map ? prevUc : {};
+      return !touched.hasAny(['unreadCounts'])
+        || (
+          nextUc is map
+          && nextUc.get(receptor, 0) == prevMap.get(receptor, 0) + 1
+          && nextUc.get(rAlias, 0) == prevMap.get(rAlias, 0) + 1
+        );
+    }
+
+    function outgoingLatestSenderAnonValid(chatId) {
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      let nextVal = safeStr(request.resource.data.get('latestSenderAnonSessionId', ''));
+      let threadAnon = profileAnonSenderFromChatId(chatId);
+      return !touched.hasAny(['latestSenderAnonSessionId'])
+        || nextVal == ''
+        || nextVal == threadAnon;
+    }
+
+    function profileAnonVisitorOutgoingSendUpdate(chatId) {
+      let data = resource.data;
+      return onlyOutgoingSendChatMetaUpdate()
+        && outgoingMessageIdTouched()
+        && visitorAtomicOutgoingMessage(chatId)
+        && visitorOutgoingSendReadByAllowed(chatId, data)
+        && visitorOutgoingSendUnreadAllowed(chatId, data)
+        && outgoingLatestSenderAnonValid(chatId)
+        && outgoingSenderKindMatches('anon');
+    }
+
+    function profileAnonVisitorMessageCreate(chatId, messageId) {
+      return request.auth != null
+        && hasValidAbuseSendPermit(chatId, messageId)
+        && anonMessageMatchesChatIdentity(chatId)
+        && anonSideMessageHasNoPublicAuthUid()
+        && !chatProfileBlocksVisitor(chatId)
+        && !(chatBlocksProfile(chatId) && isBlockedProfileAuthor(chatId));
+    }
+
+    function profileAnonOwnerMessageCreate(chatId) {
+      return isAuthenticatedChatReceptor(chatId)
+        && openWindow()
+        && request.resource.data.get('senderKind', '') == 'profile'
+        && (
+          request.resource.data.get('fromUid', '') == request.auth.uid
+          || request.resource.data.get('fromUid', '') == ('profile_' + request.auth.uid)
+        )
+        && !(chatBlocksProfile(chatId) && isBlockedProfileAuthor(chatId));
+    }
+
+    function legacyParticipantMessageCreate(chatId) {
+      return openWindow()
+        && isLegacyChatParticipant(chatId)
+        && request.resource.data.get('fromUid', '') == request.auth.uid
+        && !(chatBlocksProfile(chatId) && isBlockedProfileAuthor(chatId));
+    }
+
+    function messageCreateAllowed(chatId, messageId) {
+      return isProfileAnonChatId(chatId)
+        ? (
+          request.resource.data.get('senderKind', '') == 'anon'
+            ? profileAnonVisitorMessageCreate(chatId, messageId)
+            : profileAnonOwnerMessageCreate(chatId)
+        )
+        : legacyParticipantMessageCreate(chatId);
+    }
+
+    function generalParticipantChatUpdate(chatId) {
+      return mayReadChatResource(chatId, resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'readBy',
+          'readAt',
+          'unreadCounts',
+          'latestReadMessageIds',
+          'latestReadMessageId'
+        ])
+        && !touchesAnonBlockFlags()
+        && !touchesProfileAbuseFlags()
+        && !touchesChatIdentityKeys();
+    }
+
+    function chatDocUpdateAllowed(chatId) {
+      let data = resource.data;
+      return isProfileAnonChatId(chatId) && isVerifiedChatVisitor(chatId)
+        ? (
+          profileAnonVisitorOutgoingSendUpdate(chatId)
+          || (onlyChatReceiptUpdate() && chatReceiptUpdateAllowed(chatId))
+        )
+        : isProfileAnonChatId(chatId) && isAuthenticatedChatReceptorFromData(data)
+        ? (
+          profileAnonOwnerOutgoingSendUpdate(chatId)
+          || (onlyChatReceiptUpdate() && chatReceiptUpdateAllowed(chatId))
+        )
+        : (
+          (onlyChatReceiptUpdate() && chatReceiptUpdateAllowed(chatId))
+          || generalParticipantChatUpdate(chatId)
+        );
+    }
+
+    function anonSideMessageHasNoPublicAuthUid() {
+      return !request.resource.data.keys().hasAny(['senderAuthUid', 'createdByAuthUid']);
+    }
+
+    function chatReceiptUpdateAllowed(chatId) {
+      let data = resource.data;
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      return (
+        (isAuthenticatedChatReceptorFromData(data) || isLegacyChatParticipantFromData(chatId, data))
+        && (!touched.hasAny(['readBy'])
+          || ownerReceiptKeysAllowed(receiptFieldChangedKeys('readBy')))
+        && (!touched.hasAny(['readAt'])
+          || ownerReceiptKeysAllowed(receiptFieldChangedKeys('readAt')))
+        && (!touched.hasAny(['unreadCounts'])
+          || ownerReceiptKeysAllowed(receiptFieldChangedKeys('unreadCounts')))
+        && (!touched.hasAny(['latestReadMessageIds'])
+          || ownerReceiptKeysAllowed(receiptFieldChangedKeys('latestReadMessageIds')))
+      ) || (
+        isProfileAnonChatId(chatId)
+        && isVerifiedChatVisitor(chatId)
+        && (!touched.hasAny(['readBy'])
+          || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('readBy')))
+        && (!touched.hasAny(['readAt'])
+          || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('readAt')))
+        && (!touched.hasAny(['unreadCounts'])
+          || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('unreadCounts')))
+        && (!touched.hasAny(['latestReadMessageIds'])
+          || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('latestReadMessageIds')))
+      );
+    }
+
+    function receiptMapKeysCanonicalFromData(chatId, data, field) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([field])
+        || receiptFieldKeysAllowed(chatId, data, field);
+    }
+
+    function receiptMapsCanonicalFromData(chatId, data) {
+      return receiptFieldKeysAllowed(chatId, data, 'readBy')
+        && receiptFieldKeysAllowed(chatId, data, 'seenBy')
+        && receiptFieldKeysAllowed(chatId, data, 'readAt')
+        && receiptFieldKeysAllowed(chatId, data, 'unreadCounts')
+        && receiptFieldKeysAllowed(chatId, data, 'latestReadMessageIds');
+    }
+
+    function touchesAnonMatchChatIdentityKeys() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'solicitanteUid',
+          'destinatarioUid',
+          'solicitanteAnonId',
+          'anonId',
+          'destinatarioAnonId',
+          'destinatarioTipo',
+          'estado',
+          'tipo',
+          'participantes',
+          'canonicalChatId',
+        ]);
+    }
+
+    function onlyAnonMatchChatMetaUpdate() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasOnly(['ultimoMensaje', 'updatedAt']);
+    }
+
+    function onlyAnonMatchMessageCreateKeys() {
+      return request.resource.data.keys().hasOnly([
+        'senderId',
+        'senderTipo',
+        'texto',
+        'text',
+        'createdAt',
+      ]);
+    }
+
+    function touchesAnonMatchMessageImmutable() {
+      return request.resource.data.keys().hasAny([
+        'fromUid',
+        'participantes',
+        'destinatarioUid',
+        'ownerId',
+        'senderAuthUid',
+      ]);
+    }
+
+    function mayReadSolicitud(data) {
+      return data != null && (
+        isAdmin()
+        || (
+          isLoggedIn()
+          && (
+            chatField(data, 'solicitanteUid') == request.auth.uid
+            || chatField(data, 'destinatarioUid') == request.auth.uid
+          )
+        )
+      );
+    }
+
+    function touchesMessageContent() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'texto',
+          'text',
+          'mediaUrl',
+          'type',
+          'source',
+          'storyReply',
+          'reply',
+          'clientId',
+          'abuseSendPermitId'
+        ]);
+    }
+
+    // Bomb media secrets: client SDK deny-all.
+    match /viewOnceSecrets/{secretId} {
+      allow read, write: if false;
+    }
+
+    match /anon_profile_blocks/{blockId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /anon_abuse_blocks/{blockId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /anon_abuse_ip_index/{blockId} {
+      allow read, write: if false;
+    }
+    match /anon_abuse_visitor_context/{docId} {
+      allow read, write: if false;
+    }
+    match /anon_abuse_chat_leases/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /anon_abuse_send_permits/{permitId} {
+      allow read, write: if false;
+    }
+    match /anon_abuse_block_audit/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /anon_abuse_anon_aliases/{docId} {
+      allow read, write: if false;
+    }
+
+    match /usuarios/{uid} {
+      allow read: if true;
+      allow create: if isOwner(uid) && !createHasModerationTags();
+      allow update: if (isOwner(uid) && !touchesModerationTags()) || isAdmin();
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    match /usuarios_shuffle_lite/{uid} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /chat_inbox_lite/{chatId} {
+      allow read: if isLoggedIn() && (
+        chatField(resource.data, 'receptorUid') == request.auth.uid
+        || chatLeaseVisitorUid(chatId) == request.auth.uid
+        || isAdmin()
+      );
+      allow write: if false;
+    }
+
+    match /historias/{storyId} {
+      allow read: if true;
+      allow write: if isLoggedIn();
+    }
+
+    match /photo_moderation_chats/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /moderation_seen/{key} {
+      allow read, write: if isAdmin();
+    }
+
+    match /moderation_profiles/{key} {
+      allow read, write: if isAdmin();
+    }
+
+    match /admin_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /reportes/{reportId} {
+      allow read, update: if isAdmin();
+      allow create: if isLoggedIn() && openWindow();
+      allow delete: if false;
+    }
+
+    match /reclamos_perfil_rol/{claimId} {
+      allow read: if isLoggedIn() && (
+        resource.data.get('uid', '') == request.auth.uid || isAdmin()
+      );
+      allow create: if isLoggedIn() && openWindow();
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /perfil_likes/{likeId} {
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn()
+        && openWindow()
+        && request.resource.data.get('fromUid', request.auth.uid) == request.auth.uid;
+      allow delete: if isLoggedIn()
+        && openWindow()
+        && resource.data.get('fromUid', '') == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /seguidores/{followId} {
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn()
+        && openWindow()
+        && request.resource.data.get('seguidorUid', request.auth.uid) == request.auth.uid;
+      allow delete: if isLoggedIn()
+        && openWindow()
+        && resource.data.get('seguidorUid', '') == request.auth.uid;
+      allow update: if false;
+    }
+
+    /** Anon match — read participant-bound; writes narrowly scoped (server creates chats/solicitudes). */
+    match /chats_anonimos/{chatId} {
+      allow get: if openWindow() && mayReadAnonMatchChat(chatId);
+      allow list: if openWindow() && mayListAnonMatchChat(resource.data);
+      allow create: if false;
+      allow update: if openWindow()
+        && mayReadAnonMatchChat(chatId)
+        && onlyAnonMatchChatMetaUpdate()
+        && !touchesAnonMatchChatIdentityKeys();
+      allow delete: if false;
+    }
+
+    match /chats_anonimos/{chatId}/mensajes/{messageId} {
+      allow get: if openWindow() && mayReadAnonMatchChat(chatId);
+      allow list: if openWindow() && mayReadAnonMatchChat(chatId);
+      allow create: if openWindow()
+        && mayReadAnonMatchChat(chatId)
+        && isLoggedIn()
+        && request.resource.data.get('senderId', '') == request.auth.uid
+        && onlyAnonMatchMessageCreateKeys()
+        && !touchesAnonMatchMessageImmutable();
+      allow update, delete: if false;
+    }
+
+    match /solicitudes_chat_anonimo/{solicitudId} {
+      allow get: if openWindow() && mayReadSolicitud(resource.data);
+      allow list: if openWindow() && mayReadSolicitud(resource.data);
+      allow create, update, delete: if false;
+    }
+
+    match /chats/{chatId} {
+      allow get: if resource.data != null && mayReadChatResource(chatId, resource.data);
+      allow list: if request.auth != null
+        && resource.data != null
+        && (
+          listParticipantesAuthorized(resource.data)
+          || chatField(resource.data, 'receptorUid') == request.auth.uid
+          || chatField(resource.data, 'targetUid') == request.auth.uid
+        );
+      allow create: if false;
+      allow update: if openWindow()
+        && resource.data != null
+        && chatDocUpdateAllowed(chatId);
+      allow delete: if false;
+    }
+
+    match /chats/{chatId}/{subcollection}/{messageId} {
+      allow read: if mayReadChatData(chatId);
+      allow create: if (subcollection == 'mensajes' || subcollection == 'messages')
+        && messageCreateAllowed(chatId, messageId);
+      allow update: if resource.data != null
+        && !touchesMessageAuthorship()
+        && !touchesMessageContent()
+        && onlyClientReceiptUpdate()
+        && messageReceiptUpdateAllowed(chatId);
+      allow delete: if false;
+    }
+
+    match /{collection}/{document=**} {
+      allow read: if isAdmin()
+        && collection != 'viewOnceSecrets'
+        && collection != 'usuarios'
+        && collection != 'usuarios_shuffle_lite'
+        && collection != 'chat_inbox_lite'
+        && collection != 'anon_profile_blocks'
+        && collection != 'anon_abuse_blocks'
+        && collection != 'anon_abuse_ip_index'
+        && collection != 'anon_abuse_visitor_context'
+        && collection != 'anon_abuse_chat_leases'
+        && collection != 'anon_abuse_send_permits'
+        && collection != 'anon_abuse_block_audit'
+        && collection != 'anon_abuse_anon_aliases'
+        && collection != 'chats'
+        && collection != 'historias'
+        && collection != 'photo_moderation_chats'
+        && collection != 'moderation_seen'
+        && collection != 'moderation_profiles'
+        && collection != 'admin_logs'
+        && collection != 'reportes'
+        && collection != 'reclamos_perfil_rol'
+        && collection != 'perfil_likes'
+        && collection != 'seguidores'
+        && collection != 'chats_anonimos'
+        && collection != 'solicitudes_chat_anonimo';
+      allow write: if false;
+    }
+  }
+}

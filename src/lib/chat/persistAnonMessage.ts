@@ -14,10 +14,12 @@ import {
 } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
+import { filterSameEpochLegacyIds } from "@/lib/abuse/profileAnonAbuseBlock";
 import {
-  buildOutgoingChatMetaPatch,
-  expandOutgoingChatMetaPatchForSet,
-} from "@/lib/chat/outgoingChatMeta";
+  buildProfileAnonAtomicSendBatch,
+  buildProfileAnonChatWritePayload,
+  buildProfileAnonMessagePayload,
+} from "@/lib/chat/profileAnonSendPayload";
 import { buildCanonicalSender } from "@/lib/chat/canonicalSender";
 import { type ProfileAnonSenderKind } from "@/lib/chat/profileAnonMessageAuthor";
 import { registerSessionChat } from "@/lib/chat/sessionChats";
@@ -31,6 +33,7 @@ import {
 } from "@/lib/stories/storyReplySnapshot";
 import { buildViewOncePublicBirthFields } from "@/lib/media/viewOncePolicy";
 import { ChatMediaSendError } from "@/lib/chat/chatMediaSendFailure";
+import { issueProfileAnonAbuseSendPermit } from "@/lib/abuse/issueProfileAnonAbuseSendPermit";
 
 function livePersistAuthUid(fallbackUid: string) {
   return String(auth.currentUser?.uid || fallbackUid || "").trim();
@@ -369,19 +372,34 @@ export async function persistAnonChatMessage(
   const senderAnon = senderId.startsWith("anon_") ? senderId : "";
   // Only the visitor thread may inject the live browser anon id. Owner replies
   // must not rewrite participantes/anonSessionId with the profile browser session.
-  const participantes = Array.from(
-    new Set([
-      ...existingParticipantes,
-      // Owner replies: keep visitor anon from senderId/chatId, never live owner session.
-      ...(senderAnon ? [senderAnon] : isOwnerReply ? [] : [senderId]),
-      ...(persistAuthUid ? [persistAuthUid] : []),
-      ...(resolvedTargetUid ? [resolvedTargetUid] : []),
-      ...(!isOwnerReply && liveBrowserAnon.startsWith("anon_")
-        ? [liveBrowserAnon]
-        : []),
-      ...(chatIdAnon ? [chatIdAnon] : []),
-    ].filter(Boolean)),
-  );
+  const isProfileAnonThread = isProfileAnonChatId(canonicalChatId);
+  const participantes = isProfileAnonThread
+    ? Array.from(
+        new Set(
+          [
+            ...existingParticipantes.filter(
+              (entry) =>
+                entry.startsWith("anon_") ||
+                (resolvedTargetUid !== "" && entry === resolvedTargetUid),
+            ),
+            ...(senderAnon ? [senderAnon] : []),
+            ...(resolvedTargetUid ? [resolvedTargetUid] : []),
+            ...(chatIdAnon ? [chatIdAnon] : []),
+          ].filter(Boolean),
+        ),
+      )
+    : Array.from(
+        new Set([
+          ...existingParticipantes,
+          ...(senderAnon ? [senderAnon] : isOwnerReply ? [] : [senderId]),
+          ...(persistAuthUid ? [persistAuthUid] : []),
+          ...(resolvedTargetUid ? [resolvedTargetUid] : []),
+          ...(!isOwnerReply && liveBrowserAnon.startsWith("anon_")
+            ? [liveBrowserAnon]
+            : []),
+          ...(chatIdAnon ? [chatIdAnon] : []),
+        ].filter(Boolean)),
+      );
 
   const anonSessionId = isOwnerReply
     ? // Prefer chatId visitor; never keep a poisoned owner-live anonSessionId.
@@ -406,9 +424,8 @@ export async function persistAnonChatMessage(
   });
 
   const existingInitiatorUid = String(existingData.initiatorUid || "").trim();
-  const initiatorUid = isOwnerReply
-    ? existingInitiatorUid || null
-    : persistAuthUid || null;
+  // Never publish visitor Firebase uid on chat docs readable by the receptor.
+  const initiatorUid = existingInitiatorUid || null;
 
   const legacyIds = [
     ...buildLegacyProfileChatIds(senderId, username, resolvedTargetUid),
@@ -417,10 +434,80 @@ export async function persistAnonChatMessage(
       : []),
     ...(chatId !== canonicalChatId ? [chatId] : []),
   ];
-  const messageRef = doc(collection(db, "chats", canonicalChatId, "mensajes"));
+  let effectiveChatId = canonicalChatId;
+  let abuseSendPermitId = "";
+  let messageRef = doc(collection(db, "chats", effectiveChatId, "mensajes"));
+  let writeChatRef = chatRef;
+  let writeAnonSessionId = anonSessionId;
+  let writeParticipantes = participantes;
+  let writeMessageAuthorId = messageAuthorId;
+  let writeSenderAnon = senderAnon;
+
+  if (!isOwnerReply && isProfileAnonChatId(effectiveChatId) && resolvedTargetUid) {
+    const { bindProfileAnonVisitorSession } = await import(
+      "@/lib/abuse/bindProfileAnonVisitorSession"
+    );
+    try {
+      const bound = await bindProfileAnonVisitorSession({
+        receptorUid: resolvedTargetUid,
+        chatId: effectiveChatId,
+        username,
+      });
+      if (bound.chatId !== effectiveChatId) {
+        effectiveChatId = bound.chatId;
+        writeChatRef = doc(db, "chats", effectiveChatId);
+        messageRef = doc(collection(db, "chats", effectiveChatId, "mensajes"));
+        const nextAnon = parseProfileAnonChatId(effectiveChatId).senderId;
+        writeAnonSessionId = nextAnon.startsWith("anon_") ? nextAnon : writeAnonSessionId;
+        writeSenderAnon = writeAnonSessionId.startsWith("anon_") ? writeAnonSessionId : "";
+        writeMessageAuthorId = writeSenderAnon || writeMessageAuthorId;
+        writeParticipantes = Array.from(
+          new Set(
+            [writeAnonSessionId, resolvedTargetUid].filter(Boolean) as string[],
+          ),
+        );
+      }
+      const permit = await issueProfileAnonAbuseSendPermit({
+        receptorUid: resolvedTargetUid,
+        chatId: effectiveChatId,
+        messageId: messageRef.id,
+      });
+      abuseSendPermitId = permit.permitId;
+    } catch (error) {
+      const blocked = Boolean((error as { blocked?: boolean })?.blocked);
+      if (blocked) {
+        throw Object.assign(new Error("abuse_blocked"), { code: "abuse_blocked", blocked: true });
+      }
+      throw error;
+    }
+  }
+
+  const atomicBatch = buildProfileAnonAtomicSendBatch({
+    messageText: storedText,
+    lastMessage: lastMessagePreview,
+    messageId: messageRef.id,
+    senderAuthorId: writeMessageAuthorId,
+    senderKind,
+    senderRole: persistAuthor.senderRole,
+    unreadRecipients,
+    latestSenderAnonSessionId:
+      senderKind === "anon" ? writeSenderAnon || writeAnonSessionId : "",
+    senderIsAnonymous: !isOwnerReply,
+    abuseSendPermitId: abuseSendPermitId || undefined,
+    persistAuthUid: isOwnerReply ? persistAuthUid : undefined,
+    senderAuthUid: isOwnerReply ? persistAuthor.senderAuthUid || persistAuthUid : undefined,
+    senderProfileId: persistAuthor.senderProfileId || null,
+    profileUid:
+      isOwnerReply && persistAuthor.senderProfileId
+        ? persistAuthor.senderProfileId
+        : undefined,
+    mode: "production",
+  });
+
+  const outgoingPatch = atomicBatch.chatWritePayload;
 
   const chatMeta = {
-    id: canonicalChatId,
+    id: effectiveChatId,
     targetUsername: username,
     receptorUsername: username,
     ...(resolvedTargetUid
@@ -431,46 +518,54 @@ export async function persistAnonChatMessage(
         }
       : {}),
     initiatorUid,
-    anonSessionId,
-    participantes,
+    anonSessionId: writeAnonSessionId,
+    participantes: writeParticipantes,
     anon: true,
     senderIsAnonymous: !isOwnerReply,
-    canonicalChatId,
+    canonicalChatId: effectiveChatId,
     schemaVersion: 2,
     targetPhoto: targetPhoto || null,
-    ...expandOutgoingChatMetaPatchForSet(
-      buildOutgoingChatMetaPatch(messageAuthorId, unreadRecipients, {
-        lastMessage: lastMessagePreview,
-        lastMessageSender: messageAuthorId,
-        latestMessageId: messageRef.id,
-        latestSenderKind: senderKind,
-        latestSenderAnonSessionId:
-          senderKind === "anon" ? senderAnon || anonSessionId : "",
-      }),
-    ),
+    ...outgoingPatch,
   };
 
-  registerSessionChat(canonicalChatId);
+  const chatWritePayload =
+    isProfileAnonChatId(effectiveChatId) && hasUsableChatData(existingData)
+      ? buildProfileAnonChatWritePayload({
+          senderAuthorId: writeMessageAuthorId,
+          unreadRecipients,
+          lastMessage: lastMessagePreview,
+          latestMessageId: messageRef.id,
+          latestSenderKind: senderKind,
+          latestSenderAnonSessionId:
+            senderKind === "anon" ? writeSenderAnon || writeAnonSessionId : "",
+          senderIsAnonymous: !isOwnerReply,
+          targetPhoto: targetPhoto || null,
+          mode: "production",
+        })
+      : chatMeta;
+
+  registerSessionChat(effectiveChatId);
 
   const storyReply = storyReplyPersist.storyReply;
   const storedReply = storyReplyPersist.storedReply;
 
   const messagePayload = {
-    texto: storedText,
-    text: storedText,
-    createdAt: serverTimestamp(),
-    fromUid: messageAuthorId,
-    ownerId: messageAuthorId,
-    senderKind,
-    senderAuthUid: persistAuthor.senderAuthUid || persistAuthUid || null,
-    senderProfileId: persistAuthor.senderProfileId || null,
-    senderRole: persistAuthor.senderRole,
-    createdByAuthUid: persistAuthUid || null,
-    identityReadyAtWrite: true,
-    ...(isOwnerReply && persistAuthor.senderProfileId
-      ? { profileUid: persistAuthor.senderProfileId }
-      : {}),
-    readBy: { [messageAuthorId]: true },
+    ...buildProfileAnonMessagePayload({
+      messageText: storedText,
+      senderAuthorId: writeMessageAuthorId,
+      senderKind,
+      senderRole: persistAuthor.senderRole,
+      senderProfileId: persistAuthor.senderProfileId || null,
+      abuseSendPermitId: abuseSendPermitId || undefined,
+      persistAuthUid: isOwnerReply ? persistAuthUid : undefined,
+      senderAuthUid: isOwnerReply ? persistAuthor.senderAuthUid || persistAuthUid : undefined,
+      profileUid:
+        isOwnerReply && persistAuthor.senderProfileId
+          ? persistAuthor.senderProfileId
+          : undefined,
+      type,
+      mode: "production",
+    }),
     ...(storedReply ? { reply: storedReply } : {}),
     ...(storyReply ? { storyReply } : {}),
     type,
@@ -495,7 +590,7 @@ export async function persistAnonChatMessage(
 
   const writeStartedAt = Date.now();
   recordQaCriticalEvent("chat", "CHAT_MESSAGE_WRITE_START", {
-    threadId: canonicalChatId,
+    threadId: effectiveChatId,
     serverDocId: messageRef.id,
     clientId: input.clientId || "",
     senderKind,
@@ -504,7 +599,7 @@ export async function persistAnonChatMessage(
 
   async function commitPayload(payload: typeof messagePayload) {
     const batch = writeBatch(db);
-    batch.set(chatRef, chatMeta, { merge: true });
+    batch.set(writeChatRef, chatWritePayload, { merge: true });
     batch.set(messageRef, payload);
     try {
       await batch.commit();
@@ -538,12 +633,12 @@ export async function persistAnonChatMessage(
   const writeAckAt = Date.now();
   recordQaCriticalEvent("chat", "CHAT_MESSAGE_PERSISTED", {
     threadId: chatId,
-    canonicalThreadId: canonicalChatId,
+    canonicalThreadId: effectiveChatId,
     latestMessageId: messageRef.id,
     serverDocId: messageRef.id,
     clientId: input.clientId || "",
     senderKind,
-    senderUid: messageAuthorId,
+    senderUid: writeMessageAuthorId,
     senderAuthUid: persistAuthor.senderAuthUid || persistAuthUid,
     senderRole: persistAuthor.senderRole,
     anonRecipientIds: unreadRecipients.filter((id) => id.startsWith("anon_")),
@@ -556,7 +651,7 @@ export async function persistAnonChatMessage(
   if (viewOnce && mediaUrl) {
     try {
       await commitViewOnceSecretWithRetry({
-        chatId: canonicalChatId,
+        chatId: effectiveChatId,
         messageId: messageRef.id,
         mediaUrl,
       });
@@ -587,28 +682,40 @@ export async function persistAnonChatMessage(
     }
   }
 
-  if (!canonicalMigrationStarted.has(canonicalChatId)) {
-    canonicalMigrationStarted.add(canonicalChatId);
-    void migrateToCanonicalChat(canonicalChatId, legacyIds, chatMeta).catch((error) => {
-      canonicalMigrationStarted.delete(canonicalChatId);
-      console.error("chat migrate", canonicalChatId, error);
-    });
+  if (!isProfileAnonChatId(effectiveChatId)) {
+    if (!canonicalMigrationStarted.has(effectiveChatId)) {
+      canonicalMigrationStarted.add(effectiveChatId);
+      void migrateToCanonicalChat(effectiveChatId, legacyIds, chatMeta).catch((error) => {
+        canonicalMigrationStarted.delete(effectiveChatId);
+        console.error("chat migrate", effectiveChatId, error);
+      });
+    }
+  } else {
+    // Profile-anon: never migrate across epochs (no authUid/old-anon merge).
+    const sameEpochOnly = filterSameEpochLegacyIds(effectiveChatId, legacyIds);
+    if (sameEpochOnly.length > 0 && !canonicalMigrationStarted.has(effectiveChatId)) {
+      canonicalMigrationStarted.add(effectiveChatId);
+      void migrateToCanonicalChat(effectiveChatId, sameEpochOnly, chatMeta).catch((error) => {
+        canonicalMigrationStarted.delete(effectiveChatId);
+        console.error("chat migrate", effectiveChatId, error);
+      });
+    }
   }
 
   scheduleModerationActivityTouch({
-    id: canonicalChatId,
+    id: effectiveChatId,
     targetUsername: username,
     receptorUsername: username,
     receptorUid: resolvedTargetUid || undefined,
     targetUid: resolvedTargetUid || undefined,
     initiatorUid: persistAuthUid || undefined,
     anonOwnerUid: resolvedTargetUid || undefined,
-    anonSessionId,
+    anonSessionId: writeAnonSessionId,
     lastMessage: lastMessagePreview,
-    lastMessageSender: messageAuthorId,
+    lastMessageSender: writeMessageAuthorId,
     anon: true,
     senderIsAnonymous: !isOwnerReply,
   });
 
-  return { messageId: messageRef.id, canonicalChatId };
+  return { messageId: messageRef.id, canonicalChatId: effectiveChatId };
 }

@@ -1,0 +1,41 @@
+{
+  "updatedAt": "2026-08-28T16:38:00-03:00",
+  "methodology": "NO PASS aislamiento hasta rollout; gates OFF; admin/probes = PASS_revision_Codex; NO publish draft sin harness; commit selectivo sin deploy rules",
+  "prodDiag": {
+    "sha": "214b06b",
+    "hostingDeploy": "PASS_exit0_467s",
+    "chromeAdmin10x200": "PASS_revision_Codex",
+    "hostingDirectFalse": true,
+    "gates": "OFF"
+  },
+  "isolation": {
+    "status": "FAIL_OPEN",
+    "physicalPass": false,
+    "deployDraftRules": false,
+    "draftStatus": "REVIEW_v8_atomic_send_r2",
+    "rollout": "PENDING_coordinated_release"
+  },
+  "atomicSendR2": {
+    "rules": "getAfter latestMessageId + !exists before; permit+authorship; unread exact +1",
+    "sharedConstructor": "src/lib/chat/profileAnonSendPayload.ts (persist + 1635)",
+    "repro1635": "demo-p0-atomic-review-1635 — visitor+owner batch, preview/unread/replay DENIED",
+    "pass1631": "REVOKED — superseded by 1635; false permit on UID negative"
+  },
+  "anonymityP0": {
+    "serverFix": "persistAnonMessage: no senderAuthUid/createdByAuthUid on visitor messages; outgoing-only chat merge",
+    "rulesFix": "anonSideMessageHasNoPublicAuthUid + lease admin-only"
+  },
+  "anonMatchRollout": {
+    "blocker": "request/respond/close/report sin bearer; rules cerradas rompen server",
+    "migration": "PENDING token verificado + lease privado"
+  },
+  "harness": {
+    "compileGate": "p0-privacy-rules-compile.mjs",
+    "wrapper": "p0-privacy-rules.harness.mjs",
+    "independent1635": "p0-privacy-rules-independent-1635.emulator.mjs",
+    "independent1630": "p0-privacy-rules-independent-1630.emulator.mjs",
+    "independent1627": "p0-privacy-rules-independent-1627.emulator.mjs",
+    "independent1618": "p0-privacy-rules-independent.emulator.mjs"
+  },
+  "draftRules": "firestore.rules.p0-privacy-draft.rules"
+}
