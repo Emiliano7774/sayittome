@@ -1,6 +1,9 @@
 {
   "hosting": {
     "source": ".",
+    "frameworksBackend": {
+      "secrets": ["ABUSE_IP_HASH_SECRET"]
+    },
     "predeploy": [
       "node scripts/ssr-firebase-admin-zero-hash-predeploy.mjs"
     ],

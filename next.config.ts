@@ -49,9 +49,23 @@ const nextConfig: NextConfig = {
     minimumCacheTTL: 60 * 60 * 24,
   },
   async headers() {
+    const p0PrivateNoStore = "private, no-store, max-age=0";
     return [
       {
-        source: "/((?!_next/static|_next/image|downloads/|icons/|favicon).*)",
+        source: "/api/admin/p0-abuse-config",
+        headers: [{ key: "Cache-Control", value: p0PrivateNoStore }],
+      },
+      {
+        source: "/api/admin/p0-ip-trust-echo",
+        headers: [{ key: "Cache-Control", value: p0PrivateNoStore }],
+      },
+      {
+        source: "/api/admin/p0-ip-trust-probe",
+        headers: [{ key: "Cache-Control", value: p0PrivateNoStore }],
+      },
+      {
+        source:
+          "/((?!_next/static|_next/image|downloads/|icons/|favicon|api/admin/p0-abuse-config|api/admin/p0-ip-trust-echo|api/admin/p0-ip-trust-probe).*)",
         headers: [
           {
             key: "Cache-Control",
