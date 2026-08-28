@@ -3,6 +3,7 @@ import { IP_TRUST_TOPOLOGY_NOTE } from "@/lib/abuse/abuseIpTrustProbeShared";
 import { adminPrivateJson, adminPrivatePreflight } from "@/lib/admin/adminPrivateApi";
 import {
   p0DiagStrictAuthErrorBody,
+  mapP0DiagStrictRouteError,
   verifyAdminIdTokenStrictForP0Diag,
 } from "@/lib/admin/verifyAdminP0DiagStrict";
 
@@ -16,8 +17,8 @@ export async function GET(req: Request) {
   try {
     await verifyAdminIdTokenStrictForP0Diag(req);
   } catch (error) {
-    const status = Number((error as { status?: number })?.status || 401);
-    return adminPrivateJson(req, p0DiagStrictAuthErrorBody(status), status);
+    const mapped = mapP0DiagStrictRouteError(error);
+    return adminPrivateJson(req, mapped.body, mapped.status);
   }
 
   return adminPrivateJson(req, {

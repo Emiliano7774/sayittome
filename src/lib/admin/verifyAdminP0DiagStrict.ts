@@ -116,12 +116,12 @@ export async function verifyAdminTokenStrictWithDeps(
 }
 
 async function loadDefaultSdkDeps(): Promise<P0DiagVerifyDeps> {
-  const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+  const { ensureDefaultAdminApp } = await import("@/lib/admin/firebaseAdminDefaultApp");
   const { loadFirebaseAdminAuth } = await import("@/lib/admin/firebaseAdminNative");
-  getRepairAdminDb();
+  const app = ensureDefaultAdminApp();
   const { getAuth } = loadFirebaseAdminAuth();
   return {
-    verifyIdToken: (idToken, checkRevoked) => getAuth().verifyIdToken(idToken, checkRevoked),
+    verifyIdToken: (idToken, checkRevoked) => getAuth(app).verifyIdToken(idToken, checkRevoked),
   };
 }
 
@@ -135,12 +135,36 @@ export async function verifyAdminIdTokenStrictForP0Diag(req: Request): Promise<V
   return verifyAdminTokenStrictWithDeps(token, deps);
 }
 
-export function p0DiagStrictAuthErrorBody(status: number): { ok: false; error: string } {
+export function p0DiagStrictAuthErrorBody(
+  status: number,
+  extra?: { initStage?: string; causeCode?: string },
+): { ok: false; error: string; initStage?: string; causeCode?: string } {
   if (status === 403) return { ok: false, error: "forbidden" };
-  if (status === 503) return { ok: false, error: "unavailable" };
+  if (status === 503) {
+    return {
+      ok: false,
+      error: "unavailable",
+      ...(extra?.initStage ? { initStage: extra.initStage } : {}),
+      ...(extra?.causeCode ? { causeCode: extra.causeCode } : {}),
+    };
+  }
   return { ok: false, error: "unauthorized" };
 }
 
 export function isP0DiagStrictAdminEmail(email: string) {
   return String(email || "").trim().toLowerCase() === ADMIN_EMAIL;
+}
+
+export function mapP0DiagStrictRouteError(error: unknown): {
+  status: number;
+  body: ReturnType<typeof p0DiagStrictAuthErrorBody>;
+} {
+  const status = Number((error as { status?: number })?.status || 401);
+  return {
+    status,
+    body: p0DiagStrictAuthErrorBody(status, {
+      initStage: (error as { initStage?: string })?.initStage,
+      causeCode: (error as { causeCode?: string })?.causeCode,
+    }),
+  };
 }
