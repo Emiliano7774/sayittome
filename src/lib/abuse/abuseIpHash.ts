@@ -75,15 +75,17 @@ function isPublicCanonicalIp(ip: string): boolean {
   return false;
 }
 
+/** Canonical direct SSR endpoint suffix — NOT Cloud Run rewrite hop (fh-* run.app). */
+export const DIRECT_GCF_HOST_SUFFIX = ".cloudfunctions.net";
+
 export function isDirectCloudFunctionsRequest(req: Request): boolean {
+  // Host header only — never X-Forwarded-Host (spoofable; rewrite hop is not direct GCF).
   const host = String(req.headers.get("host") || "")
     .trim()
     .toLowerCase()
     .split(":")[0];
   if (!host) return false;
-  if (host.endsWith(".cloudfunctions.net")) return true;
-  if (host.endsWith(".a.run.app")) return true;
-  return false;
+  return host.endsWith(DIRECT_GCF_HOST_SUFFIX);
 }
 
 export function getTrustedRequestClientIp(req: Request): string {

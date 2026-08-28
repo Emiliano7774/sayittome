@@ -1,114 +1,92 @@
 /**
- * Force-regenerate `.firebase/<site>/functions` SSR tree from the current
- * local `.next` so zero-hash gates never skip / false-PASS on a missing or
- * stale packaged artifact.
+ * TEST-ONLY selective `.next` copy — import from fixture harness only.
  *
- * This is NOT "materialize hashed aliases". It copies the already-clean
- * `.next` (must already have zero firebase-admin-<hash>) into the packaged
- * functions directory Firebase uploads.
+ * NEVER run during deploy preflight/predeploy. Firebase CLI owns entry/package
+ * after prepareFrameworks. Copies ONLY `functions/.next` and preserves wrapper
+ * files byte-identical. No CLI entrypoint on repo `.firebase`.
  */
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { createRequire } from "node:module";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import { assertPathContainedInRoot, readFunctionsMainEntry, sha256File } from "./ssr-firebase-package-guard.mjs";
+
 const require = createRequire(import.meta.url);
 const { collectHashedRefsFromDir } = require("./materialize-next-hashed-externals.cjs");
-
-const SITE = "sayittome-app";
-const localNext = join(root, ".next");
-const localServer = join(localNext, "server");
-const localBuildIdPath = join(localNext, "BUILD_ID");
-const functionsDir = join(root, ".firebase", SITE, "functions");
-const packagedNext = join(functionsDir, ".next");
-const packagedServer = join(packagedNext, "server");
-const packagedBuildIdPath = join(packagedNext, "BUILD_ID");
 
 function fail(msg) {
   throw new Error(`[sync-ssr-firebase-package] ${msg}`);
 }
 
-if (!existsSync(localServer)) {
-  fail("missing .next/server — run npm run build first");
+/**
+ * Copy only functions/.next from local build. Preserves wrapper files byte-identical.
+ * @param {string} sandboxRoot - all rmSync targets must resolve inside this root
+ */
+export function selectiveCopyNextOnly(functionsDir, localNext, sandboxRoot) {
+  if (!sandboxRoot) {
+    fail("sandboxRoot required — refuse rmSync without validated containment root");
+  }
+  assertPathContainedInRoot(functionsDir, sandboxRoot);
+
+  if (!existsSync(join(localNext, "server"))) {
+    fail("missing .next/server in source");
+  }
+  if (!existsSync(join(localNext, "BUILD_ID"))) {
+    fail("missing .next/BUILD_ID in source");
+  }
+
+  const localRefs = [...collectHashedRefsFromDir(join(localNext, "server"))];
+  if (localRefs.length) {
+    fail(`local .next/server still has hashed refs: ${localRefs.join(", ")}`);
+  }
+
+  const preserved = {};
+  const pkgPath = join(functionsDir, "package.json");
+  if (existsSync(pkgPath)) {
+    preserved["package.json"] = sha256File(pkgPath);
+    try {
+      const { mainRel } = readFunctionsMainEntry({
+        functionsDir,
+        packageJson: pkgPath,
+      });
+      const mainPath = join(functionsDir, mainRel);
+      if (existsSync(mainPath)) preserved[mainRel] = sha256File(mainPath);
+    } catch {
+      /* package invalid — copy still allowed in fixture harness */
+    }
+  }
+  for (const rel of ["server.js", "index.js"]) {
+    if (preserved[rel]) continue;
+    const p = join(functionsDir, rel);
+    if (existsSync(p)) preserved[rel] = sha256File(p);
+  }
+
+  const packagedNext = join(functionsDir, ".next");
+  assertPathContainedInRoot(packagedNext, sandboxRoot);
+  if (existsSync(packagedNext)) {
+    rmSync(packagedNext, { recursive: true, force: true });
+  }
+  cpSync(localNext, packagedNext, { recursive: true });
+
+  for (const [rel, beforeHash] of Object.entries(preserved)) {
+    const p = join(functionsDir, rel);
+    if (!existsSync(p)) {
+      fail(`expected preserved ${rel} missing after selective .next copy`);
+    }
+    const afterHash = sha256File(p);
+    if (afterHash !== beforeHash) {
+      fail(`${rel} changed after selective .next copy (expected byte-identical wrapper)`);
+    }
+  }
+
+  const packagedBuildId = readFileSync(join(packagedNext, "BUILD_ID"), "utf8").trim();
+  const localBuildId = readFileSync(join(localNext, "BUILD_ID"), "utf8").trim();
+  if (!packagedBuildId) {
+    fail("empty BUILD_ID after selective .next copy");
+  }
+  if (packagedBuildId !== localBuildId) {
+    fail(`BUILD_ID mismatch after copy local=${localBuildId} packaged=${packagedBuildId}`);
+  }
+
+  return { preserved: Object.keys(preserved), packagedBuildId, localBuildId, localRefs };
 }
-if (!existsSync(localBuildIdPath)) {
-  fail("missing .next/BUILD_ID");
-}
-
-const localRefs = [...collectHashedRefsFromDir(localServer)];
-if (localRefs.length) {
-  fail(`local .next/server still has hashed refs: ${localRefs.join(", ")}`);
-}
-
-const localBuildId = readFileSync(localBuildIdPath, "utf8").trim();
-const rootPkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-
-mkdirSync(join(root, ".firebase", SITE), { recursive: true });
-
-// Wipe prior packaged functions (stale hashes must not linger).
-if (existsSync(functionsDir)) {
-  rmSync(functionsDir, { recursive: true, force: true });
-}
-mkdirSync(functionsDir, { recursive: true });
-
-// Fresh copy of the clean Next output Firebase SSR will serve.
-cpSync(localNext, packagedNext, { recursive: true });
-
-const packagedPkg = {
-  name: "sayittome-ssr",
-  private: true,
-  type: "commonjs",
-  engines: { node: "20" },
-  dependencies: {
-    next: rootPkg.dependencies?.next || rootPkg.devDependencies?.next || "16.2.6",
-    "firebase-admin": rootPkg.dependencies?.["firebase-admin"] || "^14.1.0",
-    "firebase-functions": rootPkg.dependencies?.["firebase-functions"] || "^6.3.2",
-    react: rootPkg.dependencies?.react,
-    "react-dom": rootPkg.dependencies?.["react-dom"],
-  },
-};
-writeFileSync(join(functionsDir, "package.json"), `${JSON.stringify(packagedPkg, null, 2)}\n`);
-
-// Minimal SSR entry placeholder — real deploy overwrites via prepareFrameworks;
-// we only need .next/server present for the zero-hash gate before upload.
-if (!existsSync(join(functionsDir, "server.js"))) {
-  writeFileSync(
-    join(functionsDir, "server.js"),
-    `/** regenerated from local .next BUILD_ID=${localBuildId} */\nexports.ssr = true;\n`,
-  );
-}
-
-const packagedBuildId = readFileSync(packagedBuildIdPath, "utf8").trim();
-if (packagedBuildId !== localBuildId) {
-  fail(`BUILD_ID mismatch after copy local=${localBuildId} packaged=${packagedBuildId}`);
-}
-
-const packagedRefs = [...collectHashedRefsFromDir(packagedServer)];
-if (packagedRefs.length) {
-  fail(`packaged .next/server has hashed refs after sync: ${packagedRefs.join(", ")}`);
-}
-
-console.log(
-  JSON.stringify(
-    {
-      gate: "SYNC_SSR_FIREBASE_PACKAGE_FROM_NEXT",
-      pass: true,
-      site: SITE,
-      buildId: localBuildId,
-      functionsDir,
-      localHashedRefs: localRefs,
-      packagedHashedRefs: packagedRefs,
-      materializeIsNotPass: true,
-    },
-    null,
-    2,
-  ),
-);

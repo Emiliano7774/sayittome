@@ -7,6 +7,7 @@
  * 404/5xx/network are FAIL (exit 1). Never pass:true on unexpected HTTP.
  */
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -53,6 +54,7 @@ const analyzeSrc = fs.readFileSync(
   path.join(root, "src/lib/abuse/abuseIpTrustProbeAnalyze.ts"),
   "utf8",
 );
+const hashSrc = fs.readFileSync(path.join(root, "src/lib/abuse/abuseIpHash.ts"), "utf8");
 const probeBarrel = fs.readFileSync(path.join(root, "src/lib/abuse/abuseIpTrustProbe.ts"), "utf8");
 const cors = fs.readFileSync(path.join(root, "src/lib/admin/adminPrivateApi.ts"), "utf8");
 const nextConfig = fs.readFileSync(path.join(root, "next.config.ts"), "utf8");
@@ -75,6 +77,10 @@ assert.match(nextConfig, /p0-abuse-config/);
 assert.match(nextConfig, /private, no-store, max-age=0/);
 assert.match(analyzeSrc, /node:crypto/);
 assert.match(analyzeSrc, /abuseIpHashSecret/);
+assert.match(hashSrc, /DIRECT_GCF_HOST_SUFFIX/);
+assert.doesNotMatch(hashSrc, /endsWith\(["']\.a\.run\.app["']\)/);
+assert.doesNotMatch(hashSrc, /headers\.get\(["']x-forwarded-host["']\)/i);
+assert.doesNotMatch(analyzeSrc, /headers\.get\(["']x-forwarded-host["']\)/i);
 assert.doesNotMatch(probeBarrel, /node:crypto/);
 assert.match(clientProbe, /abuseIpTrustProbeShared/);
 assert.doesNotMatch(clientProbe, /abuseIpTrustProbeAnalyze/);
@@ -136,6 +142,17 @@ const cross = shared.interpretCrossPathBaselines({
   serverBaseline: { selectedFingerprint: "same" },
 });
 assert.equal(cross.physicalPassHint, "SUSPICIOUS_same_selected_may_be_proxy_not_client_ip");
+
+const topologyHarness = spawnSync(
+  process.execPath,
+  [path.join(root, "scripts/p0-ip-trust-topology.harness.mjs")],
+  { cwd: root, encoding: "utf8" },
+);
+assert.equal(
+  topologyHarness.status,
+  0,
+  `topology harness failed:\n${topologyHarness.stdout}\n${topologyHarness.stderr}`,
+);
 
 const offline = {
   gate: "P0_ADMIN_IP_TRUST_AUTH_OFFLINE",

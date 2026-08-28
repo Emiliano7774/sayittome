@@ -49,7 +49,8 @@ export function analyzeIpTrustHeaders(req: Request): IpTrustHeaderAnalysis {
     })
     .filter((row): row is IpTrustHopAnalysis => Boolean(row));
 
-  const trusted = getTrustedRequestClientIp(req);
+  const requestIsDirectGcf = isDirectCloudFunctionsRequest(req);
+  const trusted = requestIsDirectGcf ? getTrustedRequestClientIp(req) : "";
   const selectedFingerprint = trusted ? fingerprintHop(trusted) : null;
   const xReal = String(req.headers.get("x-real-ip") || "").trim();
   const xRealIpFingerprint = xReal ? fingerprintHop(xReal) || null : null;
@@ -61,7 +62,7 @@ export function analyzeIpTrustHeaders(req: Request): IpTrustHeaderAnalysis {
   return {
     gate: "P0_IP_TRUST_ANALYSIS",
     requestHost: String(req.headers.get("host") || "").trim() || null,
-    requestIsDirectGcf: isDirectCloudFunctionsRequest(req),
+    requestIsDirectGcf,
     hostingRewriteTrusted: false,
     forwardedPresent: Boolean(forwarded),
     forwardedHopCount: hops.length,
@@ -69,7 +70,8 @@ export function analyzeIpTrustHeaders(req: Request): IpTrustHeaderAnalysis {
     xRealIpFingerprint,
     forwardedHeaderFingerprint,
     selectedFingerprint,
-    selectedPolicy: selectedFingerprint ? "last_public_hop_direct_gcf" : "none",
+    selectedPolicy:
+      requestIsDirectGcf && selectedFingerprint ? "last_public_hop_direct_gcf" : "none",
     topologyNote: IP_TRUST_TOPOLOGY_NOTE,
     activateGates: false,
   };

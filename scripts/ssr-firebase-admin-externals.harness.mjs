@@ -1,67 +1,25 @@
 /**
- * SSR_FIREBASE_ADMIN_ZERO_HASH
- * FAIL CLOSED:
- *  1) local .next/server must have ZERO firebase-admin-<hash>
- *  2) .firebase/<site>/functions must exist and match local BUILD_ID
- *     (stale/missing package → sync from current .next, then re-assert;
- *     never PASS by skipping .firebase)
- * Materializing hashed aliases is NOT a PASS.
+ * SSR_FIREBASE_ADMIN_ZERO_HASH — local read-only preflight BEFORE Firebase CLI.
+ *
+ * Validates local `.next/server` only. Does NOT mutate `.firebase` or create stubs.
+ * Real packaged validation runs in ssr-firebase-admin-zero-hash-predeploy.mjs
+ * after prepareFrameworks (prepareFrameworks → predeploy → upload).
  */
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
+import { assertLocalNextPreflight } from "./ssr-firebase-package-guard.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const { createRequire } = await import("node:module");
 const require = createRequire(import.meta.url);
 const { collectHashedRefsFromDir } = require("./materialize-next-hashed-externals.cjs");
 
-const SITE = "sayittome-app";
-const FIREBASE_ADMIN_HASHED = /firebase-admin-[a-f0-9]+/gi;
 const FIREBASE_ADMIN_LITERAL =
   /from\s+["']firebase-admin(?:\/[^"']*)?["']|import\s*\(\s*["']firebase-admin(?:\/[^"']*)?["']\s*\)|require\s*\(\s*["']firebase-admin(?:\/[^"']*)?["']\s*\)/;
-
-function collectRefs(dir) {
-  return [...collectHashedRefsFromDir(dir)];
-}
-
-function rawScan(dir, out = []) {
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, name.name);
-    if (name.isDirectory()) {
-      rawScan(p, out);
-      continue;
-    }
-    if (!name.name.endsWith(".js") && !name.name.endsWith(".json")) continue;
-    let text;
-    try {
-      text = readFileSync(p, "utf8");
-    } catch {
-      continue;
-    }
-    const matches = text.match(FIREBASE_ADMIN_HASHED);
-    if (matches) out.push(...matches);
-  }
-  return out;
-}
-
-function assertZeroHashedRefs(label, dir) {
-  if (!existsSync(dir)) {
-    throw new Error(`${label}: missing ${dir}`);
-  }
-  const refs = collectRefs(dir);
-  const raw = [...new Set(rawScan(dir))];
-  const all = [...new Set([...refs, ...raw])];
-  assert.equal(
-    all.length,
-    0,
-    `${label}: expected ZERO firebase-admin-<hash> refs, found: ${all.join(", ")}`,
-  );
-  return all;
-}
 
 function scanSrcForStaticAdminImports() {
   const hits = [];
@@ -102,47 +60,7 @@ assert.equal(
   `src must not statically import firebase-admin; use firebaseAdminNative. hits: ${staticHits.join(", ")}`,
 );
 
-const serverDir = join(root, ".next", "server");
-assert.ok(existsSync(serverDir), ".next/server missing — run npm run build first");
-const localRefs = assertZeroHashedRefs("local .next/server", serverDir);
-const localBuildId = readFileSync(join(root, ".next", "BUILD_ID"), "utf8").trim();
-
-const packagedServer = join(root, ".firebase", SITE, "functions", ".next", "server");
-const packagedBuildIdPath = join(root, ".firebase", SITE, "functions", ".next", "BUILD_ID");
-
-function packagedIsFresh() {
-  if (!existsSync(packagedServer) || !existsSync(packagedBuildIdPath)) return false;
-  const packagedBuildId = readFileSync(packagedBuildIdPath, "utf8").trim();
-  return packagedBuildId === localBuildId;
-}
-
-let syncRan = false;
-if (!packagedIsFresh()) {
-  // Missing OR stale (old BUILD_ID / old hashed chunks) → force rebuild from current .next
-  const sync = spawnSync(
-    process.execPath,
-    [join(root, "scripts/sync-ssr-firebase-package-from-next.mjs")],
-    { cwd: root, encoding: "utf8" },
-  );
-  if (sync.status !== 0) {
-    throw new Error(
-      `failed to sync .firebase package from .next:\n${sync.stdout || ""}\n${sync.stderr || ""}`,
-    );
-  }
-  syncRan = true;
-}
-
-assert.ok(
-  existsSync(packagedServer),
-  `.firebase/${SITE}/functions/.next/server missing after sync — refuse false PASS`,
-);
-const packagedBuildId = readFileSync(packagedBuildIdPath, "utf8").trim();
-assert.equal(
-  packagedBuildId,
-  localBuildId,
-  `stale .firebase package BUILD_ID=${packagedBuildId} !== local ${localBuildId}`,
-);
-const packagedRefs = assertZeroHashedRefs(`packaged ${SITE} .next/server`, packagedServer);
+const local = assertLocalNextPreflight(root, collectHashedRefsFromDir);
 
 const nextConfig = readFileSync(join(root, "next.config.ts"), "utf8");
 assert.match(nextConfig, /serverExternalPackages/);
@@ -154,19 +72,40 @@ assert.ok(
   "firebase.json hosting.predeploy must run zero-hash gate",
 );
 
+const predeploySrc = readFileSync(
+  join(root, "scripts/ssr-firebase-admin-zero-hash-predeploy.mjs"),
+  "utf8",
+);
+assert.doesNotMatch(
+  predeploySrc,
+  /sync-ssr-firebase-package-from-next/,
+  "predeploy must not invoke sync before upload",
+);
+
+const guardHarness = spawnSync(
+  process.execPath,
+  [join(root, "scripts/ssr-firebase-package-guard.harness.mjs")],
+  { cwd: root, encoding: "utf8" },
+);
+assert.equal(
+  guardHarness.status,
+  0,
+  `package guard harness failed:\n${guardHarness.stdout}\n${guardHarness.stderr}`,
+);
+
 console.log(
   JSON.stringify(
     {
       gate: "SSR_FIREBASE_ADMIN_ZERO_HASH",
       pass: true,
-      hashedRefsInNextServer: localRefs,
-      packagedHashedRefs: packagedRefs,
-      buildId: localBuildId,
-      packagedBuildId,
-      syncRan,
+      phase: "local_preflight_read_only",
+      hashedRefsInNextServer: local.localRefs,
+      buildId: local.localBuildId,
+      syncRan: false,
       staticSrcHits: staticHits,
       materializeIsNotPass: true,
       firebasePackageRequired: true,
+      packagedValidation: "deferred_to_predeploy_after_prepareFrameworks",
     },
     null,
     2,
