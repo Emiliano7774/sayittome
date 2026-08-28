@@ -231,3 +231,9 @@ export function ensureDefaultAdminApp(): AdminAppHandle {
 export function getDefaultAdminAppInitReport(): P0DiagSdkInitReport | null {
   return cachedInit;
 }
+
+/** Harness-only: module cache survives deleteApp() in SDK scenario tests. */
+export function resetDefaultAdminAppCacheForHarness() {
+  cachedApp = null;
+  cachedInit = null;
+}

@@ -27,7 +27,18 @@ assert.match(defaultAppSrc, /resolveDefaultAdminApp/);
 assert.doesNotMatch(defaultAppSrc, /getApps\(\)\.length === 0/);
 assert.doesNotMatch(defaultAppSrc, /if\s*\(\s*!getApps\(\)\.length/);
 assert.match(strictSrc, /getAuth\(app\)/);
-assert.match(strictSrc, /ensureDefaultAdminApp/);
+assert.match(defaultAppSrc, /ensureDefaultAdminApp/);
+
+const repairSrc = fs.readFileSync(
+  path.join(root, "src/lib/chat/historicalAuthorshipRepairAdmin.ts"),
+  "utf8",
+);
+assert.match(repairSrc, /ensureDefaultAdminApp/);
+assert.match(repairSrc, /getFirestore\(app\)/);
+assert.match(repairSrc, /export function assertRepairAdminProjectId/);
+assert.doesNotMatch(repairSrc, /getApps\(\)\.length === 0/);
+assert.doesNotMatch(repairSrc, /getApps\(\)\[0\]/);
+assert.doesNotMatch(repairSrc, /getFirestore\(\)\s*(as|;)/);
 
 const mod = await import(
   pathToFileURL(path.join(root, "src/lib/admin/firebaseAdminDefaultApp.ts")).href
@@ -85,6 +96,17 @@ try {
 assert.equal(wrongProject, true);
 
 await deleteAllApps();
+mod.resetDefaultAdminAppCacheForHarness();
+initializeApp({ projectId: mod.EXPECTED_ADMIN_PROJECT_ID }, "firebase-frameworks");
+const repairMod = await import(
+  pathToFileURL(path.join(root, "src/lib/chat/historicalAuthorshipRepairAdmin.ts")).href
+);
+repairMod.resetRepairAdminDbCacheForHarness();
+const repairDb = repairMod.getRepairAdminDb();
+assert.equal(typeof repairDb.collection, "function");
+assert.equal(typeof repairDb.collection("usuarios").where, "function");
+
+await deleteAllApps();
 
 const strictHarness = spawnSync("node", ["scripts/p0-admin-p0-diag-strict-auth.harness.mjs"], {
   cwd: root,
@@ -99,6 +121,7 @@ console.log(
     scenarios: {
       empty: "default_created",
       namedOnlyFramework: "default_created_getFirestore_ok",
+      namedOnlyRepairAccessor: "getRepairAdminDb_ok",
       existingDefault: "reused",
       wrongProjectDefault: "project_mismatch_503",
     },
