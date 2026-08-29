@@ -1,3 +1,8 @@
+import {
+  buildPaginatedCollectionStructuredQuery,
+  mergePaginatedQueryDocs,
+} from "@/lib/firestore/deterministicPagination";
+
 export const FIRESTORE_PROJECT_ID = "sayittome-app";
 
 export const FIRESTORE_API_KEY =
@@ -134,17 +139,6 @@ type FirestoreRunQueryRow = {
   };
 };
 
-function buildOrderCursorValue(doc: Record<string, unknown>, orderField: string) {
-  const raw = doc[orderField];
-  if (typeof raw === "boolean") return { booleanValue: raw };
-  if (typeof raw === "number") {
-    return Number.isInteger(raw)
-      ? { integerValue: String(raw) }
-      : { doubleValue: raw };
-  }
-  return { stringValue: String(raw ?? "") };
-}
-
 export async function runCollectionQueryAll(
   collectionId: string,
   orderField?: string,
@@ -157,26 +151,19 @@ export async function runCollectionQueryAll(
   let cursorDoc: Record<string, unknown> | null = null;
 
   for (let page = 0; page < maxPages; page += 1) {
-    const structuredQuery: Record<string, unknown> = {
-      from: [{ collectionId }],
-      limit: pageSize,
-    };
-
-    if (orderField) {
-      structuredQuery.orderBy = [{ field: { fieldPath: orderField }, direction }];
-    }
-
-    if (cursorDoc && orderField) {
-      structuredQuery.startAt = {
-        values: [
-          buildOrderCursorValue(cursorDoc, orderField),
-          {
-            referenceValue: `projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collectionId}/${encodeURIComponent(String(cursorDoc.id || ""))}`,
-          },
-        ],
-        before: false,
-      };
-    }
+    const structuredQuery: Record<string, unknown> = orderField
+      ? buildPaginatedCollectionStructuredQuery({
+          collectionId,
+          orderField,
+          direction,
+          pageSize,
+          cursorDoc,
+          projectId: FIRESTORE_PROJECT_ID,
+        })
+      : {
+          from: [{ collectionId }],
+          limit: pageSize,
+        };
 
     const res = await fetch(url, {
       method: "POST",
@@ -199,10 +186,7 @@ export async function runCollectionQueryAll(
 
     if (docs.length === 0) break;
 
-    const startIndex = cursorDoc ? 1 : 0;
-    for (let i = startIndex; i < docs.length; i += 1) {
-      all.push(docs[i]);
-    }
+    mergePaginatedQueryDocs(all, docs, Boolean(cursorDoc));
 
     if (docs.length < pageSize) break;
     cursorDoc = docs[docs.length - 1];
@@ -225,33 +209,33 @@ export async function runFilteredCollectionQueryAll(
   let cursorDoc: Record<string, unknown> | null = null;
 
   for (let page = 0; page < maxPages; page += 1) {
-    const structuredQuery: Record<string, unknown> = {
-      from: [{ collectionId }],
-      where: {
-        fieldFilter: {
-          field: { fieldPath },
-          op: "EQUAL",
-          value: { stringValue: value },
-        },
-      },
-      limit: pageSize,
-    };
-
-    if (orderField) {
-      structuredQuery.orderBy = [{ field: { fieldPath: orderField }, direction }];
-    }
-
-    if (cursorDoc && orderField) {
-      structuredQuery.startAt = {
-        values: [
-          buildOrderCursorValue(cursorDoc, orderField),
-          {
-            referenceValue: `projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${collectionId}/${encodeURIComponent(String(cursorDoc.id || ""))}`,
+    const structuredQuery: Record<string, unknown> = orderField
+      ? buildPaginatedCollectionStructuredQuery({
+          collectionId,
+          orderField,
+          direction,
+          pageSize,
+          cursorDoc,
+          projectId: FIRESTORE_PROJECT_ID,
+          where: {
+            fieldFilter: {
+              field: { fieldPath },
+              op: "EQUAL",
+              value: { stringValue: value },
+            },
           },
-        ],
-        before: false,
-      };
-    }
+        })
+      : {
+          from: [{ collectionId }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath },
+              op: "EQUAL",
+              value: { stringValue: value },
+            },
+          },
+          limit: pageSize,
+        };
 
     const res = await fetch(url, {
       method: "POST",
@@ -274,10 +258,7 @@ export async function runFilteredCollectionQueryAll(
 
     if (docs.length === 0) break;
 
-    const startIndex = cursorDoc ? 1 : 0;
-    for (let i = startIndex; i < docs.length; i += 1) {
-      all.push(docs[i]);
-    }
+    mergePaginatedQueryDocs(all, docs, Boolean(cursorDoc));
 
     if (docs.length < pageSize) break;
     cursorDoc = docs[docs.length - 1];
