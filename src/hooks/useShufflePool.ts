@@ -43,7 +43,7 @@ import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
 import { applyShuffleProfileBlurFlags, mergeShuffleProfileModeration } from "@/lib/shuffle/resolveShuffleBlur";
 import {
   pickRandomUniqueWindowIndices,
-  SHUFFLE_BATCH_MEMORY,
+  shuffleBatchMemoryForPool,
   SHUFFLE_WINDOW_SIZE,
 } from "@/lib/shuffle/pickWindow";
 import {
@@ -220,13 +220,20 @@ export function useShufflePool() {
     recentBatchKeysQueueRef.current = [];
   }
 
+  function batchMemoryCap() {
+    return shuffleBatchMemoryForPool(
+      Math.max(activePoolRef.current.length, poolRef.current.length),
+    );
+  }
+
   function pushBatchMemory(profiles: ShuffleProfile[]) {
     const batchKeys = keysFromProfiles(profiles);
     if (batchKeys.size === 0) return;
 
     const queue = recentBatchKeysQueueRef.current;
     queue.push(batchKeys);
-    while (queue.length > SHUFFLE_BATCH_MEMORY) {
+    const cap = batchMemoryCap();
+    while (queue.length > cap) {
       queue.shift();
     }
   }

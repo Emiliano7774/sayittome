@@ -4,13 +4,23 @@ import {
 } from "@/lib/shuffle/dedupeProfiles";
 
 export const SHUFFLE_WINDOW_SIZE = 35;
+
 /**
- * Shuffle rounds to remember before a profile can reappear.
- * Cap for full windows without reuse: floor((poolSize - WINDOW) / WINDOW).
- * With ~340 profiles and WINDOW=35 → floor((340 - 35) / 35) = 8
- * (excludes up to ~280 recent profiles, leaves ≥60 to fill the next window).
+ * Prior shuffle windows to exclude so the next tap prefers unseen people.
+ * Leaves at least one full window of unused profiles: floor((pool - window) / window).
+ * ~340 → 8, ~505 → 13, and it grows as more people register.
  */
-export const SHUFFLE_BATCH_MEMORY = 8;
+export function shuffleBatchMemoryForPool(
+  poolSize: number,
+  windowSize = SHUFFLE_WINDOW_SIZE,
+): number {
+  const n = Math.max(0, Math.floor(Number(poolSize) || 0));
+  const w = Math.max(1, Math.floor(Number(windowSize) || SHUFFLE_WINDOW_SIZE));
+  return Math.max(0, Math.floor((n - w) / w));
+}
+
+/** Legacy cap for ~340 profiles. Prefer shuffleBatchMemoryForPool(poolSize). */
+export const SHUFFLE_BATCH_MEMORY = shuffleBatchMemoryForPool(340);
 
 /** Partial shuffle: O(k) con k=35, sin barajar el pool completo. */
 export function pickRandomWindowIndices(
