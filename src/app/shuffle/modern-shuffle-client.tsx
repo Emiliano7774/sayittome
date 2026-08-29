@@ -74,7 +74,9 @@ export default function ModernShuffleClient() {
   const visible =
     hydrationReady && slotsVersion > 0 ? getVisibleShuffleProfiles() : [];
   const withStories = hydrationReady ? getCachedStoryGroups().length : 0;
-  const profileCount = pool.profilesCreated || pool.livePeopleCount;
+  const profileCount = hydrationReady
+    ? pool.profilesCreated || pool.livePeopleCount
+    : 0;
   const gateInput = {
     loading: pool.loading,
     listReady: pool.listReady,

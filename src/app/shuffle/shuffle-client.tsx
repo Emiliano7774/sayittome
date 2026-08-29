@@ -201,9 +201,11 @@ export default function ShuffleClient() {
               <span>{t("shuffle_change_result")}</span>
               <span className="flex items-center gap-1.5">
                 <User size={headerUi.metaIconPx} />
-                {t("shuffle_people_count", {
-                  count: String(pool.livePeopleCount),
-                })}
+                {hydrationReady
+                  ? t("shuffle_people_count", {
+                      count: String(pool.livePeopleCount),
+                    })
+                  : t("shuffle_people_count", { count: "0" })}
               </span>
             </button>
 
