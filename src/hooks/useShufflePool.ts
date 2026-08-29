@@ -107,6 +107,10 @@ import {
   restorePinnedShuffleWindowSync,
 } from "@/lib/shuffle/shufflePinnedWindow";
 import {
+  resolveShufflePoolLength,
+  shouldDealShuffleWindowDespiteSuppression,
+} from "@/lib/shuffle/shuffleWindowMaterialization";
+import {
   isShuffleFeedFrozen,
   releaseShuffleWindowRefreshSuppression,
   shouldSuppressShuffleWindowRefresh,
@@ -348,6 +352,14 @@ export function useShufflePool() {
           false,
         );
       } else if (
+        shouldDealShuffleWindowDespiteSuppression({
+          poolLength: activePoolRef.current.length,
+          featuredLength: featuredRef.current.length,
+          visibleLength: visible.length,
+        })
+      ) {
+        filterActivePool(searchRef.current.trim(), filtersRef.current, { forceWindow: true });
+      } else if (
         visible.length === 0 &&
         windowCountRef.current > 0 &&
         activePoolRef.current.length > 0
@@ -424,11 +436,21 @@ export function useShufflePool() {
           return;
         }
 
-        if (pool.length > 0 || activePoolRef.current.length > 0) {
-          setLoading(false);
-          setListReady(hasShuffleEverHydrated());
+        const poolLength = resolveShufflePoolLength(pool.length, activePoolRef.current.length);
+        if (
+          !shouldDealShuffleWindowDespiteSuppression({
+            poolLength,
+            featuredLength: featuredRef.current.length,
+            visibleLength: visibleNow.length,
+          })
+        ) {
+          if (poolLength > 0) {
+            setLoading(false);
+            setListReady(hasShuffleEverHydrated());
+          }
           return;
         }
+        // fall through — pool ready, visible empty: deal window
       }
 
       const excludeKeys = buildWindowExcludeKeys({ excludeRecentBatches });
@@ -633,11 +655,26 @@ export function useShufflePool() {
       }
 
       if (shouldSuppressShuffleWindowRefresh() && !forceWindow) {
-        setLoading(false);
-        if (hasShuffleEverHydrated()) {
-          setListReady(true);
+        const visible = getVisibleShuffleProfiles();
+        if (visible.length > 0) {
+          if (membership) pruneShuffleSlotsToPool(activePoolRef.current);
+          else patchShuffleSlotPresence(activePoolRef.current);
+          return;
         }
-        return;
+        if (
+          !shouldDealShuffleWindowDespiteSuppression({
+            poolLength: activePoolRef.current.length,
+            featuredLength: featuredRef.current.length,
+            visibleLength: visible.length,
+          })
+        ) {
+          setLoading(false);
+          if (hasShuffleEverHydrated()) {
+            setListReady(true);
+          }
+          return;
+        }
+        // fall through — pool ready, visible empty: deal window
       }
 
       applyWindowFromPool(activePoolRef.current, {
@@ -771,6 +808,19 @@ export function useShufflePool() {
             filterActivePool(q, filtersRef.current);
           } else if (getVisibleShuffleProfiles().length > 0) {
             patchShuffleSlotPresence(nextProfiles);
+          }
+          if (
+            getVisibleShuffleProfiles().length === 0 &&
+            shouldDealShuffleWindowDespiteSuppression({
+              poolLength: activePoolRef.current.length,
+              featuredLength: featuredRef.current.length,
+              visibleLength: 0,
+            })
+          ) {
+            applyWindowFromPool(refreshPoolPresence(activePoolRef.current), {
+              forceReplace: true,
+              resetBatchMemory: true,
+            });
           }
         } else if (poolRef.current.length > 0) {
           if (!shuffleFeedFrozenRef.current) {

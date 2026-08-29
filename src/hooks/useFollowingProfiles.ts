@@ -23,6 +23,15 @@ import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 
 export type { FollowingProfile } from "@/lib/shuffle/followingTypes";
 
+function isFollowingPermissionDenied(error: unknown) {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String((error as Error)?.message || "");
+  return (
+    code.includes("permission-denied") ||
+    /permission-denied|PERMISSION_DENIED/i.test(message)
+  );
+}
+
 async function loadFollowingProfile(targetUid: string): Promise<FollowingProfile | null> {
   const snap = await withTimeout(
     getDoc(doc(db, "usuarios", targetUid)),
@@ -117,10 +126,12 @@ export function useFollowingProfiles() {
         writeCachedFollowingSnapshot(uid, next, true);
       },
       (error) => {
-        console.error("useFollowingProfiles", error);
-        if (!readCachedFollowingSnapshot(uid)) {
-          setLive({ uid, profiles: [] });
+        const cachedProfiles = readCachedFollowingSnapshot(uid)?.profiles || [];
+        if (!isFollowingPermissionDenied(error)) {
+          console.error("useFollowingProfiles", error);
         }
+        setLive({ uid, profiles: cachedProfiles });
+        writeCachedFollowingSnapshot(uid, cachedProfiles, true);
       },
     );
 
