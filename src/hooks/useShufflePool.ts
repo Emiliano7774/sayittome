@@ -112,6 +112,13 @@ import {
 } from "@/lib/shuffle/shuffleWindowMaterialization";
 import { needsPoolFetchAfterClearFilters } from "@/lib/shuffle/shuffleClearFiltersRecovery";
 import {
+  canShuffleReshuffleDeal,
+  resolveShuffleReshufflePool,
+  runShuffleClickReshuffleAttempts,
+  SHUFFLE_CLICK_RESUFFLE_ATTEMPTS,
+  shouldRunTwoPhaseShuffleReshuffle,
+} from "@/lib/shuffle/shuffleClickReshuffle";
+import {
   isShuffleFeedFrozen,
   releaseShuffleWindowRefreshSuppression,
   shouldSuppressShuffleWindowRefresh,
@@ -199,13 +206,6 @@ export function useShufflePool() {
   const shuffleClickInFlightRef = useRef(false);
   const recentBatchKeysQueueRef = useRef<Set<string>[]>([]);
   const mountedRef = useRef(false);
-
-  function windowSignature(profiles: ShuffleProfile[]) {
-    return profiles
-      .map((profile) => shuffleProfileIdentityKey(profile) || profile.uid || profile.username)
-      .sort()
-      .join("|");
-  }
 
   function keysFromProfiles(profiles: ShuffleProfile[]) {
     const keys = new Set<string>();
@@ -492,7 +492,7 @@ export function useShufflePool() {
           return;
         }
         const hadVisible = getVisibleShuffleProfiles().length > 0;
-        if (hadVisible && options?.resetBatchMemory !== true) {
+        if (hadVisible && options?.resetBatchMemory !== true && !forceReplace) {
           return;
         }
 
@@ -871,7 +871,7 @@ export function useShufflePool() {
     [applyPool, filterActivePool],
   );
 
-  const handleShuffleClick = useCallback((event?: React.MouseEvent | Event) => {
+  const handleShuffleClick = useCallback(async (event?: React.MouseEvent | Event) => {
     if (shuffleClickInFlightRef.current) return;
     shuffleClickInFlightRef.current = true;
     try {
@@ -883,48 +883,91 @@ export function useShufflePool() {
       event?.preventDefault?.();
       event?.stopPropagation?.();
 
-      const pool = activePoolRef.current;
-      if (pool.length === 0 && featuredRef.current.length === 0) {
-        void loadProfiles({ q: searchRef.current.trim(), force: true });
-        shuffleMark("shuffle-click-end");
-        return;
-      }
-
-      const before = windowSignature(getVisibleShuffleProfiles());
-      const attempts: Array<{
-        forceReplace: true;
-        excludeRecentBatches?: boolean;
-        resetBatchMemory?: boolean;
-      }> = [
-        { forceReplace: true, excludeRecentBatches: true },
-        { forceReplace: true, excludeRecentBatches: false },
-        { forceReplace: true, resetBatchMemory: true },
-      ];
-
-      for (let i = 0; i < attempts.length; i++) {
-        const opts = attempts[i];
-        const isLast = i === attempts.length - 1;
-
-        applyWindowFromPool(refreshPoolPresence(pool), {
-          ...opts,
-          recordBatchMemory: false,
+      const resolveCurrentPool = () =>
+        resolveShuffleReshufflePool({
+          activePool: activePoolRef.current,
+          fullPool: poolRef.current,
+          cachedPool: readCachedShufflePool() ?? [],
+          visible: getVisibleShuffleProfiles(),
+          search: searchRef.current,
+          filters: filtersRef.current,
+          storyOwnerUids: storyOwnerUidsRef.current,
         });
 
-        const visible = getVisibleShuffleProfiles();
-        const after = windowSignature(visible);
-        const changed = after !== before && visible.length > 0;
-
-        if (changed || isLast) {
-          rememberBatchMemory(visible, {
-            shuffleRound: opts.excludeRecentBatches === true,
-            resetBatchMemory: opts.resetBatchMemory === true,
-          });
+      const applyResolvedPool = (resolved: ReturnType<typeof resolveShuffleReshufflePool>) => {
+        if (resolved.hydrateFullPool?.length) {
+          const cachedStats = readCachedShuffleStats();
+          applyPool(
+            resolved.hydrateFullPool,
+            cachedStats?.totalLive ?? resolved.hydrateFullPool.length,
+          );
         }
 
-        if (changed || isLast) break;
-      }
+        if (resolved.pool.length > 0) {
+          activePoolRef.current = resolved.pool;
+          const now = Date.now();
+          setFilteredCount(resolved.pool.length);
+          setFilteredOnlineCount(
+            resolved.pool.filter((profile) =>
+              isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
+            ).length,
+          );
+        }
 
-      scrollShuffleFeedToTop();
+        return resolved;
+      };
+
+      const executeReshuffleDeal = (pool: ShuffleProfile[]) => {
+        if (pool.length === 0 && featuredRef.current.length === 0) return false;
+
+        const dealPool = refreshPoolPresence(pool);
+        runShuffleClickReshuffleAttempts({
+          getVisible: getVisibleShuffleProfiles,
+          attempts: SHUFFLE_CLICK_RESUFFLE_ATTEMPTS,
+          applyAttempt: (opts) => {
+            applyWindowFromPool(dealPool, {
+              ...opts,
+              recordBatchMemory: false,
+            });
+          },
+          rememberBatch: (visible, opts) => {
+            rememberBatchMemory(visible, {
+              shuffleRound: opts.excludeRecentBatches === true,
+              resetBatchMemory: opts.resetBatchMemory === true,
+            });
+          },
+        });
+        scrollShuffleFeedToTop();
+        return true;
+      };
+
+      let resolved = applyResolvedPool(resolveCurrentPool());
+
+      const canDeal = () =>
+        canShuffleReshuffleDeal(resolved.pool.length, featuredRef.current.length);
+
+      const refreshPoolIfNeeded = async () => {
+        await loadProfiles({ q: searchRef.current.trim(), force: true });
+        resolved = applyResolvedPool(resolveCurrentPool());
+        return resolved;
+      };
+
+      if (canDeal()) {
+        if (shouldRunTwoPhaseShuffleReshuffle(resolved, featuredRef.current.length)) {
+          executeReshuffleDeal(resolved.pool);
+          await refreshPoolIfNeeded();
+          if (canDeal() && !resolved.visibleFallbackOnly) {
+            executeReshuffleDeal(resolved.pool);
+          }
+        } else {
+          executeReshuffleDeal(resolved.pool);
+        }
+      } else if (resolved.needsFetch) {
+        await refreshPoolIfNeeded();
+        if (canDeal()) {
+          executeReshuffleDeal(resolved.pool);
+        }
+      }
 
       shuffleClickCountRef.current += 1;
       if (shuffleClickCountRef.current % 40 === 0) {
@@ -936,7 +979,7 @@ export function useShufflePool() {
     } finally {
       shuffleClickInFlightRef.current = false;
     }
-  }, [applyWindowFromPool, loadProfiles]);
+  }, [applyPool, applyWindowFromPool, loadProfiles]);
 
   const handleShuffleClickRef = useRef(handleShuffleClick);
   handleShuffleClickRef.current = handleShuffleClick;
@@ -1063,6 +1106,15 @@ export function useShufflePool() {
     clearBatchMemory();
     clearShuffleSessionSnapshot();
     releaseShuffleWindowRefreshSuppression();
+
+    if (poolRef.current.length === 0) {
+      const cachedProfiles = readCachedShufflePool();
+      const cachedStats = readCachedShuffleStats();
+      if (cachedProfiles?.length) {
+        applyPool(cachedProfiles, cachedStats?.totalLive ?? cachedProfiles.length);
+      }
+    }
+
     filterActivePool(searchRef.current.trim(), cleared, { forceWindow: true });
 
     let visibleAfter = getVisibleShuffleProfiles().length;
