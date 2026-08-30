@@ -62,6 +62,11 @@ export function subscribeMainTabPathname(listener: PathnameListener) {
 export function getCurrentMainTabPathname(fallback?: string | null) {
   const loc = typeof window !== "undefined" ? locationPathname() : null;
   const fb = fallback ? normalizePath(fallback) : null;
+  // Live /shuffle wins over stale soft-commit overrides — bottom nav must offer
+  // "Cambiar perfiles" (reshuffle), not re-arm Chats→Shuffle navigation.
+  if (loc === "/shuffle") {
+    return "/shuffle";
+  }
   const locIsConcreteMainTab =
     !!loc &&
     (MAIN_TAB_HREFS as readonly string[]).includes(loc) &&

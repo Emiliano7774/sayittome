@@ -71,8 +71,16 @@ function isMainTabOrShufflePath(href: string) {
   return path === "/shuffle" || (MAIN_TAB_HREFS as readonly string[]).includes(path);
 }
 
-/** Soft nav away from main tabs must drop history pathname override or keepalive/nav stay stuck. */
+/** Soft nav must sync pathname store — especially Chats→Shuffle reshuffle button mode. */
 function clearStaleMainTabPathnameOverrideForHref(href: string) {
+  const path = normalizePath(href);
+  if (path === "/shuffle") {
+    installMainTabInternalPathnameStore();
+    commitMainTabPathnameForHistoryNavigation("/shuffle", {
+      reason: "soft-nav-shuffle",
+    });
+    return;
+  }
   if (isMainTabOrShufflePath(href)) return;
   resetMainTabHistoryPathnameStore("soft-nav-non-main-tab");
 }

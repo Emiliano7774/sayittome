@@ -26,6 +26,7 @@ import {
 } from "@/lib/navigation/warmShuffleTabNavigation";
 import { blockMainTabNavigationDuringSlide, getMainTabToShufflePhase } from "@/lib/navigation/mainTabToShuffleTransition";
 import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
+import { isShuffleBottomNavReshuffleTarget } from "@/lib/navigation/shuffleBottomNavHelpers";
 
 type NavItem =
   | { id: string; kind: "link"; href: string; icon: typeof Circle; badge?: number }
@@ -66,6 +67,10 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
     // When hydrated, preventDefault + instant same-document commit owns navigation.
     event?.preventDefault();
     if (blockMainTabNavigationDuringSlide()) return;
+    if (isShuffleBottomNavReshuffleTarget()) {
+      dispatchShuffle();
+      return;
+    }
     if (!navSelectable || isNonMainRoute(pathname)) {
       commitNonMainRouteToShuffleNavigation(router, fastRouterPush, pathname);
       return;

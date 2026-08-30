@@ -25,6 +25,7 @@ import {
 } from "@/lib/navigation/warmShuffleTabNavigation";
 import { blockMainTabNavigationDuringSlide, getMainTabToShufflePhase } from "@/lib/navigation/mainTabToShuffleTransition";
 import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
+import { isShuffleBottomNavReshuffleTarget } from "@/lib/navigation/shuffleBottomNavHelpers";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 
 type NavItem =
@@ -66,6 +67,10 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
     // only — instant same-document commit owns the soft path.
     event?.preventDefault();
     if (blockMainTabNavigationDuringSlide()) return;
+    if (isShuffleBottomNavReshuffleTarget()) {
+      dispatchShuffle();
+      return;
+    }
     if (!navSelectable || isNonMainRoute(pathname)) {
       commitNonMainRouteToShuffleNavigation(router, fastRouterPush, pathname);
       return;

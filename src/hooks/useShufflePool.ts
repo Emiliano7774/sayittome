@@ -110,6 +110,7 @@ import {
   resolveShufflePoolLength,
   shouldDealShuffleWindowDespiteSuppression,
 } from "@/lib/shuffle/shuffleWindowMaterialization";
+import { needsPoolFetchAfterClearFilters } from "@/lib/shuffle/shuffleClearFiltersRecovery";
 import {
   isShuffleFeedFrozen,
   releaseShuffleWindowRefreshSuppression,
@@ -884,6 +885,7 @@ export function useShufflePool() {
 
       const pool = activePoolRef.current;
       if (pool.length === 0 && featuredRef.current.length === 0) {
+        void loadProfiles({ q: searchRef.current.trim(), force: true });
         shuffleMark("shuffle-click-end");
         return;
       }
@@ -934,7 +936,7 @@ export function useShufflePool() {
     } finally {
       shuffleClickInFlightRef.current = false;
     }
-  }, [applyWindowFromPool]);
+  }, [applyWindowFromPool, loadProfiles]);
 
   const handleShuffleClickRef = useRef(handleShuffleClick);
   handleShuffleClickRef.current = handleShuffleClick;
@@ -1060,8 +1062,27 @@ export function useShufflePool() {
     saveStoredShuffleFilters(cleared);
     clearBatchMemory();
     clearShuffleSessionSnapshot();
+    releaseShuffleWindowRefreshSuppression();
     filterActivePool(searchRef.current.trim(), cleared, { forceWindow: true });
-  }, [applyPool, filterActivePool]);
+
+    let visibleAfter = getVisibleShuffleProfiles().length;
+    if (visibleAfter === 0 && activePoolRef.current.length > 0) {
+      applyWindowFromPool(refreshPoolPresence(activePoolRef.current), {
+        forceReplace: true,
+        resetBatchMemory: true,
+      });
+      visibleAfter = getVisibleShuffleProfiles().length;
+    }
+
+    if (
+      needsPoolFetchAfterClearFilters({
+        visibleSlotCount: visibleAfter,
+        activePoolLength: activePoolRef.current.length,
+      })
+    ) {
+      void loadProfiles({ q: searchRef.current.trim(), force: true });
+    }
+  }, [applyPool, applyWindowFromPool, filterActivePool, loadProfiles]);
 
   const handleListClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {

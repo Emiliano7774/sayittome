@@ -19,10 +19,15 @@ const presentationSrc = fs.readFileSync(
   path.join(root, "src/lib/shuffle/shufflePresentation.ts"),
   "utf8",
 );
-assert.match(
-  presentationSrc,
-  /export function deriveShuffleSurfaceMode/,
-  "shared deriveShuffleSurfaceMode must exist",
+const surfaceModeSrc = fs.readFileSync(
+  path.join(root, "src/lib/shuffle/shuffleSurfaceMode.ts"),
+  "utf8",
+);
+assert.ok(
+  /export function deriveShuffleSurfaceMode/.test(surfaceModeSrc) &&
+    (/export function deriveShuffleSurfaceMode/.test(presentationSrc) ||
+      /export \{ deriveShuffleSurfaceMode/.test(presentationSrc)),
+  "shared deriveShuffleSurfaceMode must exist (shuffleSurfaceMode + presentation re-export)",
 );
 assert.match(
   fs.readFileSync(path.join(root, "src/app/shuffle/modern-shuffle-client.tsx"), "utf8"),

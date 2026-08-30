@@ -12,6 +12,7 @@ import {
   clearShuffleEntryHandoffAfterAbort,
   clearShuffleExitToMainTab,
   clearShuffleHandoffState,
+  forcePresentShuffleSurfaceForNonMainReveal,
   getShuffleDeferSourcePath,
   isShuffleExitToMainTabPending,
   isShuffleRevealDeferred,
@@ -839,6 +840,9 @@ export function activateShuffleTabSurface(options?: { microSlideSettle?: boolean
   markNavCaptureDetail("imperative-reveal-shuffle-host");
 
   presentShuffleSurface();
+  if (options?.microSlideSettle && isShuffleRevealDeferred()) {
+    forcePresentShuffleSurfaceForNonMainReveal();
+  }
   finishShuffleHandoffPreparing();
   // Always settle warm intent on activate — final handoff must leave deferred clear.
   settleShuffleDestinationWarmIntent();
@@ -853,6 +857,16 @@ export function activateShuffleTabSurface(options?: { microSlideSettle?: boolean
   // Force-clear: presentation ownership can still latch at settle and otherwise
   // leave sayittome-shuffle-handoff-pending armed into the next Stories tap.
   clearShuffleHandoffPendingDom({ force: true });
+  if (options?.microSlideSettle && typeof window !== "undefined") {
+    const live = normalizePath(window.location.pathname);
+    if (live === "/shuffle") {
+      void import("@/lib/navigation/mainTabInternalPathnameStore").then((mod) => {
+        mod.commitMainTabPathnameForHistoryNavigation("/shuffle", {
+          reason: "chats-to-shuffle-activate",
+        });
+      });
+    }
+  }
   scheduleShuffleFeedViewportRestoreAfterLayout({
     onlyIfBroken: true,
     requireExact: true,
