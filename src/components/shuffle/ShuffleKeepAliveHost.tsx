@@ -61,6 +61,7 @@ import {
   getMainTabInternalPathnameVersion,
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
+import { shouldShowShuffleKeepAliveEmergencyShell } from "@/lib/shuffle/shufflePresentation";
 import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
 import { presentExistingShuffleSnapshot } from "@/lib/navigation/shuffleForegroundRecover";
 import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
@@ -372,6 +373,8 @@ export default function ShuffleKeepAliveHost() {
     canShowShuffleKeepAliveSurface(pathname) ||
     isInstantShuffleReturnPending() ||
     isShuffleSourceRetainedForMainTabExit();
+
+  const showEmergencyShell = shouldShowShuffleKeepAliveEmergencyShell();
 
   useLayoutEffect(() => {
     pinShuffleKeepAlive();
@@ -838,7 +841,7 @@ export default function ShuffleKeepAliveHost() {
       aria-hidden={!visible}
       style={{ position: "fixed", inset: 0, background: "#0b0b0b" }}
     >
-      <ShuffleEmergencyShell />
+      {showEmergencyShell ? <ShuffleEmergencyShell /> : null}
       <div
         className="sayittome-shuffle-surface-prep relative z-[1]"
         data-shuffle-surface="prep"

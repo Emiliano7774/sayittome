@@ -123,7 +123,15 @@ import {
   releaseShuffleWindowRefreshSuppression,
   shouldSuppressShuffleWindowRefresh,
 } from "@/lib/navigation/shuffleKeepAlive";
-import { isShuffleRevealDeferred } from "@/lib/navigation/shuffleHandoffState";
+import {
+  finalizeShuffleWarmHandoffForReshuffle,
+  needsShuffleHandoffFinalizeForReshuffle,
+} from "@/lib/shuffle/shuffleHandoffReshuffleReady";
+import {
+  getShuffleHandoffVersion,
+  isShuffleRevealDeferred,
+  subscribeShuffleHandoffState,
+} from "@/lib/navigation/shuffleHandoffState";
 import {
   restoreShuffleViewportSnapshot,
   shouldPreserveShuffleWindowOnRestore,
@@ -153,6 +161,11 @@ function readInitialShuffleState() {
 export function useShufflePool() {
   const router = useRouter();
   const pathname = usePathname();
+  const handoffVersion = useSyncExternalStore(
+    subscribeShuffleHandoffState,
+    getShuffleHandoffVersion,
+    getShuffleHandoffVersion,
+  );
   const shuffleFeedFrozen = isShuffleFeedFrozen(pathname);
   const shuffleFeedFrozenRef = useRef(shuffleFeedFrozen);
   shuffleFeedFrozenRef.current = shuffleFeedFrozen;
@@ -686,6 +699,40 @@ export function useShufflePool() {
     [applyWindowFromPool],
   );
 
+  const syncActivePoolIfEmpty = useCallback(() => {
+    if (activePoolRef.current.length > 0) return;
+
+    if (poolRef.current.length > 0) {
+      filterActivePool(searchRef.current.trim(), filtersRef.current);
+      return;
+    }
+
+    const cachedProfiles = readCachedShufflePool();
+    if (cachedProfiles?.length) {
+      const cachedStats = readCachedShuffleStats();
+      applyPool(cachedProfiles, cachedStats?.totalLive ?? cachedProfiles.length);
+      filterActivePool(searchRef.current.trim(), filtersRef.current);
+    }
+  }, [applyPool, filterActivePool]);
+
+  const settleWarmHandoffPresentation = useCallback(() => {
+    if (!needsShuffleHandoffFinalizeForReshuffle(pathname)) return false;
+
+    finalizeShuffleWarmHandoffForReshuffle();
+    const visible = getVisibleShuffleProfiles();
+    if (visible.length > 0) {
+      setLoading(false);
+      setListReady(true);
+      markShuffleHydrated(visible.length);
+    }
+    syncActivePoolIfEmpty();
+    return true;
+  }, [pathname, syncActivePoolIfEmpty]);
+
+  useLayoutEffect(() => {
+    settleWarmHandoffPresentation();
+  }, [pathname, handoffVersion, settleWarmHandoffPresentation]);
+
   const loadProfiles = useCallback(
     async ({
       q = "",
@@ -877,6 +924,8 @@ export function useShufflePool() {
     try {
       releaseShuffleWindowRefreshSuppression();
       clearShuffleSessionSnapshot();
+      settleWarmHandoffPresentation();
+      syncActivePoolIfEmpty();
       shuffleMark("shuffle-click-start");
       shuffleCount("shuffleClicks");
 
@@ -979,7 +1028,14 @@ export function useShufflePool() {
     } finally {
       shuffleClickInFlightRef.current = false;
     }
-  }, [applyPool, applyWindowFromPool, loadProfiles]);
+  }, [
+    applyPool,
+    applyWindowFromPool,
+    loadProfiles,
+    pathname,
+    settleWarmHandoffPresentation,
+    syncActivePoolIfEmpty,
+  ]);
 
   const handleShuffleClickRef = useRef(handleShuffleClick);
   handleShuffleClickRef.current = handleShuffleClick;

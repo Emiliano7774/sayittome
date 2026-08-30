@@ -129,6 +129,7 @@
     "test:shuffle-back-scroll-restore": "node --experimental-strip-types scripts/shuffle-back-scroll-restore.harness.mjs",
     "test:shuffle-p0-chats-filters": "node --experimental-strip-types scripts/shuffle-p0-chats-filters.harness.mjs",
     "test:shuffle-click-reshuffle-real": "node --experimental-strip-types scripts/shuffle-click-reshuffle-real.harness.mjs",
+    "test:shuffle-chats-handoff-reshuffle-ready": "node --experimental-strip-types scripts/shuffle-chats-handoff-reshuffle-ready.harness.mjs",
     "test:shuffle-feed-ad-index": "node --experimental-strip-types scripts/shuffle-feed-ad-index.harness.mjs",
     "test:chat-composer-viewport": "node --experimental-strip-types scripts/chat-composer-viewport.harness.mjs",
     "test:chat-thread-layout": "node --experimental-strip-types scripts/chat-thread-layout.harness.mjs",

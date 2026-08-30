@@ -82,6 +82,7 @@ import {
   settleShuffleDestinationWarmIntent,
 } from "@/lib/shuffle/shuffleWarmHopIntent";
 import { readCachedShufflePool } from "@/lib/shuffle/shuffleClientCache";
+import { countRestorableWarmFeedSlots } from "@/lib/shuffle/shufflePresentation";
 import { ensureShufflePoolWarmForMicroSlide } from "@/lib/shuffle/shufflePoolWarmup";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 import {
@@ -210,8 +211,15 @@ export function isShuffleKeepAliveVisible(pathname: string) {
 /** True while the pinned shuffle feed must not reshuffle or enter a loading pass. */
 export function isShuffleFeedFrozen(pathname: string) {
   if (!keepAliveActive) return false;
+  const onShuffle = isShuffleKeepAliveVisible(pathname);
+  if (onShuffle) {
+    if (isShuffleRevealDeferred() && countRestorableWarmFeedSlots() >= 3) {
+      return false;
+    }
+    return isShuffleRevealDeferred();
+  }
   if (isShuffleRevealDeferred()) return true;
-  return !isShuffleKeepAliveVisible(pathname);
+  return !onShuffle;
 }
 
 export function isInstantShuffleReturnPending() {
@@ -628,6 +636,56 @@ function presentShuffleAfterWarmRestore() {
   });
   notifyKeepAliveListeners();
   return true;
+}
+
+/**
+ * Complete warm handoff lifecycle when /shuffle landed with restorable slots but
+ * defer/preparing/pending-DOM latches stayed armed (Chats→Shuffle post-arrival stuck).
+ */
+export function finalizeStuckWarmShuffleHandoffForReshuffle(): boolean {
+  if (typeof window === "undefined") return false;
+  if (normalizePath(window.location.pathname) !== "/shuffle") return false;
+  if (countRestorableWarmFeedSlots() < 3 && !hasRestorableWarmShuffleState()) return false;
+
+  restorePinnedShuffleWindowSync();
+  releaseShuffleWindowRefreshSuppression();
+
+  const microSlideResidual =
+    isShuffleRevealDeferred() ||
+    isShuffleHandoffPreparing() ||
+    !isShuffleSurfacePresented();
+
+  if (canActivateShuffleWarmHandoff()) {
+    activateShuffleTabSurface({ microSlideSettle: microSlideResidual });
+    if (isShuffleSurfacePresented() && !isShuffleRevealDeferred()) {
+      return true;
+    }
+  }
+
+  if (presentShuffleAfterWarmRestore()) {
+    return true;
+  }
+
+  // Store-warm fallback when prep DOM is not yet sampleable (early paint / harness).
+  if (countRestorableWarmFeedSlots() >= 3 && microSlideResidual) {
+    markAtomicVisualHandoffReady();
+    revealShuffleKeepAliveHostSync("finalizeStuckWarmShuffleHandoffForReshuffle");
+    forcePresentShuffleSurfaceForNonMainReveal();
+    finishShuffleHandoffPreparing();
+    settleShuffleDestinationWarmIntent();
+    commitAtomicVisualHandoff();
+    clearShuffleHandoffPendingDom({ force: true });
+    document.body.classList.add("sayittome-shuffle-route");
+    document.body.classList.add("sayittome-shuffle-surface-active");
+    scheduleShuffleFeedViewportRestoreAfterLayout({
+      onlyIfBroken: true,
+      requireExact: true,
+    });
+    notifyKeepAliveListeners();
+    return isShuffleSurfacePresented() && !isShuffleRevealDeferred();
+  }
+
+  return isShuffleSurfacePresented() && !isShuffleRevealDeferred();
 }
 
 /** Cold / aborted exit — clear pending retention and present Shuffle normally. */

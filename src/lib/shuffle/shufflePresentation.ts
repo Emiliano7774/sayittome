@@ -198,6 +198,16 @@ export function deriveShufflePresentation(input: ShufflePresentationInput): Shuf
   };
 }
 
+/** Keepalive emergency backdrop — only for true cold/empty; never when warm slots exist. */
+export function shouldShowShuffleKeepAliveEmergencyShell(): boolean {
+  if (countRestorableWarmFeedSlots() >= 3) return false;
+  if (hasDurableRestorableWarmShuffle()) return false;
+  if (hasShuffleEverHydrated()) return false;
+  if (isShuffleDestinationWarmIntentActive()) return false;
+  if (isShuffleRevealDeferred() || isShuffleHandoffPreparing()) return false;
+  return true;
+}
+
 export function exportShuffleRenderSignatureRing() {
   return [...renderSignatureRing];
 }
