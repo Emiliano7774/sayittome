@@ -1,6 +1,11 @@
 export const SHUFFLE_KEEPALIVE_HOST_ID = "sayittome-shuffle-keepalive-host";
 const SHUFFLE_FEED_SCROLL_KEY = "sayittome:shuffle-feed-scroll:v1";
 const SHUFFLE_RESTORE_MAX_ATTEMPTS = 8;
+const SHUFFLE_SCROLL_RESTORE_TOLERANCE_PX = 4;
+
+function isShuffleFeedScrollExact(actual: number, target: number) {
+  return Math.abs(Number(actual) - Number(target)) <= SHUFFLE_SCROLL_RESTORE_TOLERANCE_PX;
+}
 
 export function findShuffleKeepAliveScrollRoot(
   doc: Pick<Document, "getElementById"> | null | undefined = typeof document === "undefined"
@@ -82,7 +87,7 @@ export function restoreShuffleFeedScroll(options?: RestoreShuffleFeedScrollOptio
     const root = shuffleScrollRoot();
     if (!root) return false;
     root.scrollTop = next;
-    return true;
+    return isShuffleFeedScrollExact(Number(root.scrollTop || 0), next);
   };
 
   if (apply()) return next;
@@ -106,7 +111,11 @@ export function installShuffleFeedScrollHistoryRestore() {
 
   const restoreIfShuffle = () => {
     const path = String(window.location.pathname || "/").split("?")[0].split("#")[0];
-    if (path === "/shuffle") restoreShuffleFeedScroll();
+    if (path !== "/shuffle") return;
+    restoreShuffleFeedScroll();
+    void import("@/lib/navigation/shuffleViewportSnapshot").then((mod) => {
+      mod.scheduleShuffleFeedViewportRestoreAfterLayout({ onlyIfBroken: true });
+    });
   };
 
   window.addEventListener("popstate", restoreIfShuffle);

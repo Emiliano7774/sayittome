@@ -4,7 +4,6 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import {
-  restoreShuffleFeedScroll,
   shouldSkipHardNavigateForWarmShuffle,
 } from "@/lib/navigation/shuffleFeedScroll";
 import {
@@ -339,7 +338,6 @@ export function fastRouterReplace(router: AppRouterInstance, href: string) {
 
   if (isInstantShuffleReturnDestination(href) || skipHardNavForWarmShuffle) {
     prepareInstantShuffleReturn();
-    restoreShuffleFeedScroll();
     router.replace(href);
     return;
   }

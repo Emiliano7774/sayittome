@@ -3,7 +3,6 @@
  * resume. Presents the existing keep-alive snapshot — never remounts the tree,
  * never reshuffles, and never treats an empty #0b0b0b host as success.
  */
-import { restoreShuffleFeedScroll } from "@/lib/navigation/shuffleFeedScroll";
 import {
   clearShuffleExitToMainTab,
   forcePresentShuffleSurfaceForNonMainReveal,
@@ -14,7 +13,10 @@ import {
   canHideCurrentShellForShuffle,
   hasRealShuffleFeedContent,
 } from "@/lib/navigation/shuffleSnapshotPresent";
-import { restoreShuffleViewportSnapshot } from "@/lib/navigation/shuffleViewportSnapshot";
+import {
+  applyShuffleFeedViewportScrollSync,
+  scheduleShuffleFeedViewportRestoreAfterLayout,
+} from "@/lib/navigation/shuffleViewportSnapshot";
 import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
 
 export const SHUFFLE_KEEPALIVE_HOST_ID = "sayittome-shuffle-keepalive-host";
@@ -145,11 +147,10 @@ export function presentExistingShuffleSnapshot(options: {
     return empty;
   }
 
-  // Reconstruct window + scroll BEFORE unfreeze so the first visible paint
-  // is already at the captured profile/pixel (no top flash / reshuffle).
+  // Window order first. Sync scroll before unfreeze (best effort) and again
+  // immediately after — first visible frame must already be at captured Y.
   restorePinnedShuffleWindowSync();
-  restoreShuffleViewportSnapshot();
-  restoreShuffleFeedScroll();
+  applyShuffleFeedViewportScrollSync();
 
   const snapshotPainted = hasShuffleSnapshotPaint(host);
   if (!snapshotPainted && isEmptyBlackHost(host)) {
@@ -162,10 +163,12 @@ export function presentExistingShuffleSnapshot(options: {
 
   clearStaleShuffleLatches(path);
   unfreezeExistingHost(host);
+  applyShuffleFeedViewportScrollSync();
   forcePresentShuffleSurfaceForNonMainReveal();
-  // Re-assert scroll after unfreeze (layout may clamp once).
-  restoreShuffleViewportSnapshot();
-  restoreShuffleFeedScroll();
+  scheduleShuffleFeedViewportRestoreAfterLayout({
+    onlyIfBroken: true,
+    requireExact: true,
+  });
 
   if (typeof document !== "undefined" && path === "/shuffle") {
     document.body.classList.add("sayittome-shuffle-route");

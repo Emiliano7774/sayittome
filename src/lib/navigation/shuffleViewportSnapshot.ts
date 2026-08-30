@@ -415,27 +415,134 @@ export function restoreShuffleViewportSnapshot(options?: {
     options?.applyScroll ??
     ((scrollTop: number) => defaultApplyShuffleRestoreScroll(scrollTop));
 
-  if (apply(snapshot.scrollTop)) return snapshot;
+  if (apply(snapshot.scrollTop)) {
+    captureShuffleFeedScroll(snapshot.scrollTop, { allowZero: false });
+    return snapshot;
+  }
 
   const maxAttempts = Math.max(1, Math.min(options?.attempts ?? 8, 12));
-  const schedule =
-    options?.schedule ??
-    ((cb: () => void) => {
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(cb);
-        return;
-      }
-      setTimeout(cb, 0);
-    });
+  const schedule = options?.schedule ?? defaultRestoreSchedule;
   let attempt = 1;
   const tick = () => {
     if (token !== restoreRetryGeneration) return;
-    if (apply(snapshot.scrollTop)) return;
+    if (apply(snapshot.scrollTop)) {
+      captureShuffleFeedScroll(snapshot.scrollTop, { allowZero: false });
+      return;
+    }
     if (attempt >= maxAttempts) return;
     attempt += 1;
     schedule(tick);
   };
   schedule(tick);
+  return snapshot;
+}
+
+function defaultRestoreSchedule(cb: () => void) {
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(cb);
+    return;
+  }
+  setTimeout(cb, 0);
+}
+
+/**
+ * After keep-alive unfreeze / React slot paint, MAIN scroll often resets to 0.
+ * Wait for layout (rAF chain) then retry until captured scrollTop is exact.
+ */
+export function applyShuffleFeedViewportScrollSync(): {
+  applied: boolean;
+  exact: boolean;
+  target: number;
+  actual: number;
+} {
+  const snapshot = peekShuffleViewportSnapshot();
+  if (!isUsableShuffleViewportSnapshot(snapshot)) {
+    return { applied: false, exact: false, target: 0, actual: 0 };
+  }
+  const root = findShuffleKeepAliveScrollRoot();
+  if (!root) {
+    return { applied: false, exact: false, target: snapshot.scrollTop, actual: 0 };
+  }
+  root.scrollTop = snapshot.scrollTop;
+  const actual = Number(root.scrollTop || 0);
+  const exact = isShuffleRestoreApplySuccess({
+    actual,
+    target: snapshot.scrollTop,
+    scrollHeight: Number(root.scrollHeight || 0),
+    clientHeight: Number(root.clientHeight || 0),
+  });
+  if (exact) {
+    captureShuffleFeedScroll(snapshot.scrollTop, { allowZero: false });
+  }
+  return { applied: true, exact, target: snapshot.scrollTop, actual };
+}
+
+/**
+ * Gentle post-layout revalidation — only when scroll is still broken (stuck at 0).
+ * Does not fight manual user scroll or repaint a correct viewport.
+ */
+export function scheduleShuffleFeedViewportRestoreAfterLayout(options?: {
+  attempts?: number;
+  schedule?: (cb: () => void) => void;
+  onlyIfBroken?: boolean;
+  /** Instant profile/chat return — retry until snapshot scrollTop is exact, even if layout clamped to a wrong non-zero Y. */
+  requireExact?: boolean;
+}) {
+  if (typeof window === "undefined") return null;
+  const snapshot = peekShuffleViewportSnapshot();
+  if (!isUsableShuffleViewportSnapshot(snapshot)) return null;
+
+  const sync = applyShuffleFeedViewportScrollSync();
+  if (sync.exact) return snapshot;
+
+  const onlyIfBroken = options?.onlyIfBroken !== false;
+  const requireExact = options?.requireExact === true;
+  if (
+    onlyIfBroken &&
+    !requireExact &&
+    sync.applied &&
+    sync.actual > SHUFFLE_SCROLL_RESTORE_TOLERANCE_PX
+  ) {
+    return snapshot;
+  }
+
+  const token = ++restoreRetryGeneration;
+  const maxAttempts = Math.max(1, Math.min(options?.attempts ?? 8, 12));
+  const schedule = options?.schedule ?? defaultRestoreSchedule;
+  let attempt = 0;
+
+  const tick = () => {
+    if (token !== restoreRetryGeneration) return;
+    const root = findShuffleKeepAliveScrollRoot();
+    if (!root) {
+      if (++attempt < maxAttempts) schedule(tick);
+      return;
+    }
+    const live = Number(root.scrollTop || 0);
+    if (
+      onlyIfBroken &&
+      !requireExact &&
+      live > SHUFFLE_SCROLL_RESTORE_TOLERANCE_PX &&
+      !isShuffleScrollRestoreExact(live, snapshot.scrollTop)
+    ) {
+      return;
+    }
+    root.scrollTop = snapshot.scrollTop;
+    const ok = isShuffleRestoreApplySuccess({
+      actual: Number(root.scrollTop || 0),
+      target: snapshot.scrollTop,
+      scrollHeight: Number(root.scrollHeight || 0),
+      clientHeight: Number(root.clientHeight || 0),
+    });
+    if (ok) {
+      captureShuffleFeedScroll(snapshot.scrollTop, { allowZero: false });
+      return;
+    }
+    if (++attempt >= maxAttempts) return;
+    schedule(tick);
+  };
+
+  schedule(() => schedule(tick));
   return snapshot;
 }
 

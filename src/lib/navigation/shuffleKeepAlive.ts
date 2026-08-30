@@ -27,11 +27,10 @@ import { presentExistingShuffleSnapshot } from "@/lib/navigation/shuffleForegrou
 import {
   captureShuffleFeedScroll,
   installShuffleFeedScrollHistoryRestore,
-  restoreShuffleFeedScroll,
 } from "@/lib/navigation/shuffleFeedScroll";
 import {
   captureShuffleViewportSnapshot,
-  restoreShuffleViewportSnapshot,
+  scheduleShuffleFeedViewportRestoreAfterLayout,
 } from "@/lib/navigation/shuffleViewportSnapshot";
 import { captureShuffleSessionSnapshot } from "@/lib/navigation/shuffleSessionSnapshot";
 import {
@@ -622,8 +621,10 @@ function presentShuffleAfterWarmRestore() {
   settleShuffleDestinationWarmIntent();
   document.body.classList.add("sayittome-shuffle-route");
   document.body.classList.add("sayittome-shuffle-surface-active");
-  restoreShuffleViewportSnapshot();
-  restoreShuffleFeedScroll();
+  scheduleShuffleFeedViewportRestoreAfterLayout({
+    onlyIfBroken: true,
+    requireExact: true,
+  });
   notifyKeepAliveListeners();
   return true;
 }
@@ -687,8 +688,12 @@ export function enterColdShufflePresentation(options?: { force?: boolean }) {
   presentShuffleSurface();
   document.body.classList.add("sayittome-shuffle-route");
   document.body.classList.add("sayittome-shuffle-surface-active");
-  restoreShuffleViewportSnapshot();
-  restoreShuffleFeedScroll();
+  if (isShuffleKeepAliveActive() || isInstantShuffleReturnPending()) {
+    scheduleShuffleFeedViewportRestoreAfterLayout({
+      onlyIfBroken: true,
+      requireExact: true,
+    });
+  }
   notifyKeepAliveListeners();
 }
 
@@ -848,8 +853,10 @@ export function activateShuffleTabSurface(options?: { microSlideSettle?: boolean
   // Force-clear: presentation ownership can still latch at settle and otherwise
   // leave sayittome-shuffle-handoff-pending armed into the next Stories tap.
   clearShuffleHandoffPendingDom({ force: true });
-  restoreShuffleViewportSnapshot();
-  restoreShuffleFeedScroll();
+  scheduleShuffleFeedViewportRestoreAfterLayout({
+    onlyIfBroken: true,
+    requireExact: true,
+  });
 
   if (isNavTraceEnabled()) {
     navTraceMarkDetail("shuffle-tab-activate");
@@ -958,8 +965,10 @@ export function prepareInstantShuffleReturn() {
   }
   // CSS only hides the route shell when the host is already visible+unfrozen.
   document.documentElement.classList.add("sayittome-shuffle-return-pending");
-  restoreShuffleViewportSnapshot();
-  restoreShuffleFeedScroll();
+  scheduleShuffleFeedViewportRestoreAfterLayout({
+    onlyIfBroken: true,
+    requireExact: true,
+  });
   stripNativeChatFullscreen();
   releaseChatViewportLock();
 }

@@ -28,7 +28,6 @@ import {
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
 import { recoverShuffleOnForeground } from "@/lib/navigation/shuffleForegroundRecover";
-import { restoreShuffleFeedScroll } from "@/lib/navigation/shuffleFeedScroll";
 import { consumeProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 
 const HARDWARE_BACK_EVENT = "sayittomeHardwareBack";
@@ -52,7 +51,6 @@ function runNativeBackNavigation(
     }
     if (isInstantShuffleReturnDestination(action.navigateTo)) {
       prepareInstantShuffleReturn();
-      restoreShuffleFeedScroll();
       router.replace(action.navigateTo);
       return;
     }

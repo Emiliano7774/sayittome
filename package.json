@@ -126,6 +126,7 @@
     "test:shuffle-viewport-snapshot": "node --experimental-strip-types scripts/shuffle-viewport-snapshot.harness.mjs",
     "test:shuffle-empty-host-restore": "node --experimental-strip-types scripts/shuffle-empty-host-restore.harness.mjs",
     "test:shuffle-profile-back-viewport": "node --experimental-strip-types scripts/shuffle-profile-back-viewport.harness.mjs",
+    "test:shuffle-back-scroll-restore": "node --experimental-strip-types scripts/shuffle-back-scroll-restore.harness.mjs",
     "test:shuffle-feed-ad-index": "node --experimental-strip-types scripts/shuffle-feed-ad-index.harness.mjs",
     "test:chat-composer-viewport": "node --experimental-strip-types scripts/chat-composer-viewport.harness.mjs",
     "test:chat-thread-layout": "node --experimental-strip-types scripts/chat-thread-layout.harness.mjs",
