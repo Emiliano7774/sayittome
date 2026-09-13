@@ -56,45 +56,60 @@ function resolveAdminProjectId(explicit?: string) {
 export function getRepairAdminDb(): Firestore {
   if (cachedDb) return cachedDb;
 
-  const { applicationDefault, cert, getApps, initializeApp } = loadFirebaseAdminApp();
+  const { applicationDefault, cert, getApp, initializeApp } = loadFirebaseAdminApp();
   const { getFirestore } = loadFirebaseAdminFirestore();
 
-  if (getApps().length === 0) {
+  let defaultApp: unknown;
+  try {
+    defaultApp = getApp();
+    const existing = (defaultApp as { options?: { projectId?: string } })?.options?.projectId;
+    if (existing) assertRepairAdminProjectId(String(existing));
+  } catch (existingError) {
+    const code = String((existingError as { code?: string })?.code || "");
+    const message = String((existingError as Error)?.message || "");
+    const missingDefault =
+      code.includes("app/no-app") ||
+      /default firebase app does not exist|no firebase app/i.test(message);
+    if (!missingDefault) {
+      const status = Number((existingError as { status?: number })?.status || 0);
+      if (status === 503) throw existingError;
+    }
+
     const serviceAccount = parseServiceAccount();
+    const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST || "").trim();
     const hasAdc = Boolean(
       process.env.GOOGLE_APPLICATION_CREDENTIALS ||
         process.env.GOOGLE_CLOUD_PROJECT ||
-        process.env.GCLOUD_PROJECT,
+        process.env.GCLOUD_PROJECT ||
+        process.env.FIREBASE_CONFIG ||
+        process.env.__FIREBASE_DEFAULTS__ ||
+        process.env.K_SERVICE ||
+        process.env.FUNCTION_TARGET,
     );
+
     try {
-      if (serviceAccount?.client_email && serviceAccount.private_key) {
-        const projectId = resolveAdminProjectId(serviceAccount.project_id);
-        initializeApp({
+      const projectId = resolveAdminProjectId();
+      if (emulatorHost) {
+        defaultApp = initializeApp({ projectId });
+      } else if (serviceAccount?.client_email && serviceAccount.private_key) {
+        defaultApp = initializeApp({
           credential: cert(serviceAccount),
-          projectId,
+          projectId: resolveAdminProjectId(serviceAccount.project_id),
         });
       } else if (hasAdc) {
-        const projectId = resolveAdminProjectId();
-        initializeApp({
-          credential: applicationDefault(),
-          projectId,
-        });
+        defaultApp = initializeApp({ credential: applicationDefault(), projectId });
       } else {
         throw Object.assign(new Error("admin_sdk_unavailable"), { status: 503 });
       }
     } catch (error) {
       const status = Number((error as { status?: number })?.status || 0);
       if (status === 503) throw error;
-      // ADC can look present (GCLOUD_PROJECT) while credentials are unusable on Hosting.
       throw Object.assign(new Error("admin_sdk_unavailable"), { status: 503 });
     }
-  } else {
-    const existing = getApps()[0]?.options?.projectId;
-    if (existing) assertRepairAdminProjectId(String(existing));
   }
 
   try {
-    cachedDb = getFirestore() as Firestore;
+    cachedDb = getFirestore(defaultApp) as Firestore;
     return cachedDb;
   } catch {
     throw Object.assign(new Error("admin_sdk_unavailable"), { status: 503 });

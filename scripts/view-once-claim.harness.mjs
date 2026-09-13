@@ -9,14 +9,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const core = await import(
-  pathToFileURL(path.join(root, "functions/src/viewOnceClaimCore.ts")).href
+  pathToFileURL(path.join(root, "functions/lib/viewOnceClaimCore.js")).href
 );
 
 assert.equal(core.normalizeViewOnceLimit(undefined), 1);
 assert.equal(core.normalizeViewOnceLimit(null), 1);
 assert.equal(core.normalizeViewOnceLimit(0), 1);
 assert.equal(core.normalizeViewOnceLimit(3), 3);
-assert.equal(core.normalizeViewOnceLimit(99), 5);
+assert.equal(core.normalizeViewOnceLimit(99), 99);
+assert.equal(core.normalizeViewOnceLimit(1000), 1000);
+assert.equal(core.normalizeViewOnceLimit(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
+assert.equal(
+  core.normalizeViewOnceLimit(Number.MAX_SAFE_INTEGER + 1),
+  Number.MAX_SAFE_INTEGER,
+);
 
 const baseMsg = {
   viewOnce: true,
@@ -74,6 +80,22 @@ assert.equal(multi.openedCount, 2);
 assert.equal(multi.remaining, 1);
 assert.equal(multi.exhausted, false);
 
+const manyViews = core.decideViewOnceClaim({
+  uid: "visitor",
+  isMember: true,
+  message: {
+    viewOnce: true,
+    viewOnceLimit: 1000,
+    viewOnceOpenedCount: 998,
+    fromUid: "profile_owner",
+  },
+  secretMediaUrl: "https://cdn.example/many.jpg",
+});
+assert.equal(manyViews.ok, true);
+assert.equal(manyViews.openedCount, 999);
+assert.equal(manyViews.remaining, 1);
+assert.equal(manyViews.exhausted, false);
+
 const authorBlocked = core.decideViewOnceClaim({
   uid: "owner",
   isMember: true,
@@ -122,6 +144,8 @@ const chatSrc = fs.readFileSync(
 );
 assert.match(chatSrc, /openBombMessage/);
 assert.match(chatSrc, /viewOnceLimit/);
+assert.match(chatSrc, /type="number"/);
+assert.match(chatSrc, /setFullscreenSecureBomb\(true\)/);
 assert.match(chatSrc, /claimViewOnceMedia/);
 assert.doesNotMatch(chatSrc, /canOpenViewOnce|markOpened/);
 
@@ -132,10 +156,10 @@ assert.equal(policy.viewOnceRemaining({ viewOnce: true }), 1);
 assert.equal(
   policy.viewOnceRemaining({
     viewOnce: true,
-    viewOnceLimit: 5,
-    viewOnceOpenedCount: 2,
+    viewOnceLimit: 1000,
+    viewOnceOpenedCount: 998,
   }),
-  3,
+  2,
 );
 assert.equal(
   policy.redactViewOnceMediaUrl({

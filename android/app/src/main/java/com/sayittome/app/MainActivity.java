@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebSettings;
@@ -142,6 +143,7 @@ public class MainActivity extends BridgeActivity {
         if (!jsBridgesAttached) {
             webView.addJavascriptInterface(new HostedWebLauncher(), "SayItToMeHostedWeb");
             webView.addJavascriptInterface(new MicrophoneBridge(), "SayItToMeMic");
+            webView.addJavascriptInterface(new SecureScreenBridge(), "SayItToMeSecureScreen");
             jsBridgesAttached = true;
         }
         ensureMicAwareChromeClientInstalled();
@@ -249,6 +251,24 @@ public class MainActivity extends BridgeActivity {
             intent.addCategory(Intent.CATEGORY_BROWSABLE);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
+        }
+    }
+
+    private class SecureScreenBridge {
+        @JavascriptInterface
+        public void enable() {
+            runOnUiThread(() -> {
+                if (!isTrustedTopLevelOrigin()) return;
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            });
+        }
+
+        @JavascriptInterface
+        public void disable() {
+            runOnUiThread(() -> {
+                if (!isTrustedTopLevelOrigin()) return;
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            });
         }
     }
 

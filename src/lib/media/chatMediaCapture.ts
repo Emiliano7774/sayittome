@@ -2,6 +2,8 @@
 
 import { Capacitor } from "@capacitor/core";
 
+import { guessMediaFileKind, resolveUploadContentType } from "@/lib/media/fileKind";
+
 export type ChatMediaCaptureResult = {
   file: File;
   type: "image" | "video";
@@ -144,9 +146,27 @@ function mimeFromFormat(format?: string) {
   return "image/jpeg";
 }
 
-function fileKind(file: File): "image" | "video" {
-  if (file.type.startsWith("video/")) return "video";
-  return "image";
+function fileKind(
+  file: File,
+  expectedType?: "image" | "video",
+): "image" | "video" {
+  if (expectedType) return expectedType;
+  return guessMediaFileKind(file) || "image";
+}
+
+function normalizeCapturedFile(
+  file: File,
+  expectedType?: "image" | "video",
+): File {
+  if (!expectedType) return file;
+  const contentType = resolveUploadContentType(file, expectedType);
+  if (file.type === contentType) return file;
+
+  const fallbackExt = expectedType === "video" ? "mp4" : "jpg";
+  return new File([file], file.name || `chat-camera.${fallbackExt}`, {
+    type: contentType,
+    lastModified: file.lastModified,
+  });
 }
 
 /** Capacitor Camera photos only. Video always uses the file input capture path. */
@@ -249,11 +269,13 @@ export const CHAT_FILE_INPUT_CLASS =
 export function fileFromChatInput(
   file: File | null | undefined,
   source: "camera" | "gallery",
+  expectedType?: "image" | "video",
 ): ChatMediaCaptureResult | null {
   if (!file) return null;
+  const normalizedFile = normalizeCapturedFile(file, expectedType);
   return {
-    file,
-    type: fileKind(file),
+    file: normalizedFile,
+    type: fileKind(normalizedFile, expectedType),
     source,
   };
 }

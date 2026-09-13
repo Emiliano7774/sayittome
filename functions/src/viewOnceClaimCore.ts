@@ -1,7 +1,35 @@
+import {
+  isPrivateAnonVisitorAuthor,
+  isProfileOwnerMessageAuthor,
+  type ProfileAnonPrivateAuthChat,
+} from "./deleteChatMessageCore";
+
 export const VIEW_ONCE_MIN_LIMIT = 1;
-export const VIEW_ONCE_MAX_LIMIT = 5;
+export const VIEW_ONCE_MAX_LIMIT = Number.MAX_SAFE_INTEGER;
 export const VIEW_ONCE_DEFAULT_LIMIT = 1;
 export const VIEW_ONCE_SECRETS_COLLECTION = "viewOnceSecrets";
+export const VIEW_ONCE_DELIVERY_TTL_MS = 120_000;
+
+/** Short-lived Admin-only grant so /api/view-once/media never needs a client mediaUrl. */
+export function viewOnceDeliveryDocFields(input: {
+  uid: string;
+  mediaUrl: string;
+  consumeSecret: boolean;
+  nowMs?: number;
+}): {
+  mediaUrl: string;
+  deliveryUid: string;
+  deliveryExpiresAtMs: number;
+  deliveryConsumeSecret: boolean;
+} {
+  const nowMs = Number.isFinite(input.nowMs) ? Number(input.nowMs) : Date.now();
+  return {
+    mediaUrl: String(input.mediaUrl || "").trim(),
+    deliveryUid: String(input.uid || "").trim(),
+    deliveryExpiresAtMs: nowMs + VIEW_ONCE_DELIVERY_TTL_MS,
+    deliveryConsumeSecret: input.consumeSecret === true,
+  };
+}
 
 export type ViewOnceMessageFields = {
   viewOnce?: boolean;
@@ -53,11 +81,25 @@ export function resolveViewOnceAuthorIds(message: ViewOnceMessageFields): Set<st
   return ids;
 }
 
-export function isViewOnceAuthor(uid: string, message: ViewOnceMessageFields) {
+export function isViewOnceAuthor(
+  uid: string,
+  message: ViewOnceMessageFields,
+  context?: {
+    chat?: ProfileAnonPrivateAuthChat | null;
+    privateVisitorAuthUid?: string;
+  },
+) {
   const clean = String(uid || "").trim();
   if (!clean) return false;
   const authors = resolveViewOnceAuthorIds(message);
-  return authors.has(clean) || authors.has(`profile_${clean}`);
+  if (authors.has(clean) || authors.has(`profile_${clean}`)) return true;
+  if (isProfileOwnerMessageAuthor({ uid: clean, message })) return true;
+  return isPrivateAnonVisitorAuthor({
+    uid: clean,
+    message,
+    chat: context?.chat,
+    privateVisitorAuthUid: context?.privateVisitorAuthUid,
+  });
 }
 
 export function viewOnceRemaining(input: {
@@ -96,6 +138,10 @@ export function decideViewOnceClaim(input: {
   isMember: boolean;
   message: ViewOnceMessageFields;
   secretMediaUrl?: string;
+  authorContext?: {
+    chat?: ProfileAnonPrivateAuthChat | null;
+    privateVisitorAuthUid?: string;
+  };
 }): ViewOnceClaimDecision {
   const message = input.message || {};
   const limit = normalizeViewOnceLimit(message.viewOnceLimit);
@@ -113,7 +159,7 @@ export function decideViewOnceClaim(input: {
     };
   }
 
-  if (isViewOnceAuthor(input.uid, message)) {
+  if (isViewOnceAuthor(input.uid, message, input.authorContext)) {
     return {
       ok: false,
       reason: "author",

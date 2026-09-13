@@ -36,6 +36,7 @@ function loadAdminSubpath(subpath: string): unknown {
 export type FirebaseAdminAppModule = {
   applicationDefault: (...args: never[]) => unknown;
   cert: (serviceAccount: unknown) => unknown;
+  getApp: () => { options?: { projectId?: string } };
   getApps: () => Array<{ options?: { projectId?: string } }>;
   initializeApp: (options?: unknown) => unknown;
 };

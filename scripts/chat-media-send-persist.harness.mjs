@@ -56,7 +56,7 @@ console.log(
         "new+existing",
         "camera+gallery",
         "photo+video",
-        "bomb_1_to_5",
+        "bomb_any_positive_safe_limit",
         "orphan_rollback",
         "no_ghost_bubble",
       ],

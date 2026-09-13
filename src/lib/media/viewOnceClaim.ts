@@ -28,7 +28,6 @@ export type CommitViewOnceSecretResult = {
 
 export type ClaimViewOnceMediaResult = {
   ok: boolean;
-  mediaUrl?: string;
   remaining: number;
   openedCount: number;
   limit: number;
@@ -62,7 +61,6 @@ export async function claimViewOnceMedia(
   const result = await callable({ chatId, messageId });
   return {
     ok: Boolean(result.data?.ok),
-    mediaUrl: result.data?.mediaUrl ? String(result.data.mediaUrl) : undefined,
     remaining: Math.max(0, Number(result.data?.remaining) || 0),
     openedCount: Math.max(0, Number(result.data?.openedCount) || 0),
     limit: normalizeViewOnceLimit(result.data?.limit),
