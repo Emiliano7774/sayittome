@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback } from "react";
 
 import AdminAntiacosoPanel from "@/components/admin/panels/AdminAntiacosoPanel";
+import AdminAnonExpressChatsPanel from "@/components/admin/panels/AdminAnonExpressChatsPanel";
 import AdminGeneralClaimsPanel from "@/components/admin/panels/AdminGeneralClaimsPanel";
 import AdminReportsPanel from "@/components/admin/panels/AdminReportsPanel";
 import AdminStoriesPanel from "@/components/admin/panels/AdminStoriesPanel";
@@ -16,6 +17,7 @@ export type AdminModerationTab =
   | "fake_profiles"
   | "claims"
   | "chats"
+  | "express_chats"
   | "stories"
   | "antiacoso";
 
@@ -24,6 +26,7 @@ const TABS: AdminModerationTab[] = [
   "fake_profiles",
   "claims",
   "chats",
+  "express_chats",
   "stories",
   "antiacoso",
 ];
@@ -33,6 +36,7 @@ const TAB_KEYS: Record<AdminModerationTab, MessageKey> = {
   fake_profiles: "admin_mod_tab_fake_profiles",
   claims: "admin_mod_tab_claims",
   chats: "admin_mod_tab_chats",
+  express_chats: "admin_mod_tab_express_chats",
   stories: "admin_mod_tab_stories",
   antiacoso: "admin_mod_tab_antiacoso",
 };
@@ -78,6 +82,7 @@ function AdminModerationWorkspaceInner() {
       {activeTab === "fake_profiles" ? <AdminReportsPanel filter="fake_profiles" /> : null}
       {activeTab === "claims" ? <AdminGeneralClaimsPanel /> : null}
       {activeTab === "chats" ? <SpectatorModerationHub /> : null}
+      {activeTab === "express_chats" ? <AdminAnonExpressChatsPanel /> : null}
       {activeTab === "stories" ? <AdminStoriesPanel /> : null}
       {activeTab === "antiacoso" ? <AdminAntiacosoPanel /> : null}
     </div>

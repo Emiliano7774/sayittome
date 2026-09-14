@@ -240,6 +240,38 @@ export async function POST(req: Request) {
         suspiciousAt: "",
         suspiciousBy: "",
       });
+    } else if (action === "delete_anon_chat" && chatId) {
+      await patchFirestoreDoc("chats_anonimos", chatId, {
+        estado: "cerrado",
+        adminDeleted: true,
+        adminDeletedAt: new Date().toISOString(),
+        adminDeletedBy: adminEmail,
+        updatedAt: new Date().toISOString(),
+      });
+    } else if (action === "delete_anon_message" && chatId && messageId) {
+      const collectionName = exactMessageCollectionName(String(body.collectionName || ""));
+      if (!collectionName) {
+        return NextResponse.json({ ok: false, error: "collection_required" }, { status: 400 });
+      }
+      await patchFirestoreDoc(`chats_anonimos/${chatId}/${collectionName}`, messageId, {
+        deleted: true,
+        texto: "[mensaje eliminado por admin]",
+        text: "[mensaje eliminado por admin]",
+      });
+    } else if (action === "mark_anon_chat_suspicious" && chatId) {
+      await patchFirestoreDoc("chats_anonimos", chatId, {
+        suspicious: true,
+        suspiciousAt: new Date().toISOString(),
+        suspiciousBy: adminEmail,
+        updatedAt: new Date().toISOString(),
+      });
+    } else if (action === "unmark_anon_chat_suspicious" && chatId) {
+      await patchFirestoreDoc("chats_anonimos", chatId, {
+        suspicious: false,
+        suspiciousAt: "",
+        suspiciousBy: "",
+        updatedAt: new Date().toISOString(),
+      });
     } else if (action === "remove_abuse_block" && blockId) {
       const { removeProfileAnonAbuseBlock } = await import(
         "@/lib/abuse/profileAnonAbuseBlockWrite"

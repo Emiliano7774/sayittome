@@ -5,6 +5,7 @@ import {
 } from "@/lib/moderation/moderationMessageCollections";
 
 const VIEW_ONCE_SECRETS_COLLECTION = "viewOnceSecrets";
+const CHAT_ROOTS = ["chats", "chats_anonimos"] as const;
 
 function viewOnceSecretDocId(chatId: string, messageId: string) {
   return `${String(chatId || "").trim()}_${String(messageId || "").trim()}`;
@@ -40,13 +41,20 @@ export async function readAdminMessageMedia(input: {
 
   const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
   const db = getRepairAdminDb();
-  const messageRef = db
-    .collection("chats")
-    .doc(chatId)
-    .collection(collectionName)
-    .doc(messageId);
-  const messageSnap = await messageRef.get();
-  if (!messageSnap.exists) {
+  let messageSnap: any = null;
+  for (const chatRoot of CHAT_ROOTS) {
+    const candidate = await db
+      .collection(chatRoot)
+      .doc(chatId)
+      .collection(collectionName)
+      .doc(messageId)
+      .get();
+    if (candidate.exists) {
+      messageSnap = candidate;
+      break;
+    }
+  }
+  if (!messageSnap?.exists) {
     return { ok: false, error: "message_not_found", status: 404 };
   }
 
