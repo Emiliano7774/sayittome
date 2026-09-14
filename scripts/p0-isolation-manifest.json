@@ -14,6 +14,7 @@
   "files": {
     "rules": [
       "firebase.json",
+      "firebase.p0-rollback-open.json",
       "firestore.rules",
       "firestore.rules.p0-privacy-draft.rules"
     ],
@@ -40,7 +41,8 @@
       "scripts/abuse-cors-exact-origin.unit.mjs",
       "scripts/p0-gcf-ip-trust.harness.mjs",
       "scripts/profile-anon-abuse-scope.harness.mjs",
-      "scripts/profile-anon-abuse-security.harness.mjs"
+      "scripts/profile-anon-abuse-security.harness.mjs",
+      "scripts/p0-production-rules-rollout.mjs"
     ],
     "functions": [
       "functions/src/deleteChatMessage.ts",
@@ -103,21 +105,20 @@
     "verifyAnonMatchAliasHarness": "PASS",
     "p0PrivacyRulesWrapper": "PASS",
     "isolationPass": false,
-    "draftAccepted": false,
+    "draftAccepted": true,
     "deployRules": false
   },
   "rolloutBlockers": [
-    "Prod firestore.rules still openWindow() — baseline ALLOWED leak by design",
-    "isolationPass:false until coordinated rules + app deploy",
-    "Physical prod smoke not executed",
+    "Strict Firestore rules rollout pending final guarded production smoke",
+    "Physical two-account antiacoso/identity UI PASS remains pending",
     "Legacy anon-match client aliases without server binding not migratable (LEGACY_CLIENT_ALIAS_NO_CRYPTO_PROOF)",
     "UID público P0 §6 separate",
-    "Rules publish blocked until Hosting/APK client surface pinned (p0-client-rules-compat.unit.mjs)"
+    "Rules publish guarded by scripts/p0-production-rules-rollout.mjs with automatic rollback"
   ],
   "coordinatedRollout": {
     "harness": "scripts/p0-coordinated-rollout-gate.harness.mjs",
     "clientCompatUnit": "scripts/p0-client-rules-compat.unit.mjs",
     "deployOrder": ["functions", "hosting_api_client", "firestore_rules_draft"],
-    "rulesDeployAllowedPolicy": "false until clientSurfaceReady + physical smoke"
+    "rulesDeployAllowedPolicy": "explicit approval + live pre/post smoke + automatic rollback"
   }
 }

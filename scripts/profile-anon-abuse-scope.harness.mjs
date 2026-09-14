@@ -358,7 +358,12 @@ assert.equal(
   false,
 );
 
-const rules = fs.readFileSync(path.join(root, "firestore.rules"), "utf8");
+// This harness validates the hardened rollout rules. The baseline rules stay in
+// firestore.rules solely as the explicit emergency rollback target.
+const rules = fs.readFileSync(
+  path.join(root, "firestore.rules.p0-privacy-draft.rules"),
+  "utf8",
+);
 assert.match(rules, /hasValidAbuseSendPermit\(chatId, messageId\)/);
 assert.match(rules, /permitIpIndexActive/);
 assert.match(rules, /isAuthenticatedChatReceptor/);

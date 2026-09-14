@@ -58,7 +58,7 @@
     "rules": "storage.rules"
   },
   "firestore": {
-    "rules": "firestore.rules",
+    "rules": "firestore.rules.p0-privacy-draft.rules",
     "indexes": "firestore.indexes.json"
   },
   "emulators": {
