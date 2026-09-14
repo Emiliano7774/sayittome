@@ -98,8 +98,21 @@ export default function AdminAnonExpressChatsPanel() {
     setLoading(true);
     setError("");
     try {
-      const body = await fetchJson("/api/admin/anon-express-chats");
-      const rows = Array.isArray(body.chats) ? (body.chats as ExpressChat[]) : [];
+      const rows: ExpressChat[] = [];
+      const seenCursors = new Set<string>();
+      let cursor = "";
+      do {
+        const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+        const body = await fetchJson(`/api/admin/anon-express-chats${suffix}`);
+        const page = Array.isArray(body.chats) ? (body.chats as ExpressChat[]) : [];
+        rows.push(...page);
+        const nextCursor = String(body.nextCursor || "");
+        if (!nextCursor) break;
+        if (seenCursors.has(nextCursor)) throw new Error("pagination_loop");
+        seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      } while (true);
+      rows.sort((a, b) => dateMs(b.updatedAt || b.createdAt) - dateMs(a.updatedAt || a.createdAt));
       setChats(rows);
       setSelectedId((current) => current || rows[0]?.id || "");
     } catch (cause) {

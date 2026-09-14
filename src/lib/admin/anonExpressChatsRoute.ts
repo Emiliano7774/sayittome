@@ -1,7 +1,6 @@
 import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 
-const MAX_CHATS = 300;
-const MAX_MESSAGES = 300;
+const CHAT_PAGE_SIZE = 250;
 
 function asText(value: unknown) {
   return String(value || "").trim();
@@ -40,12 +39,15 @@ function serializeDoc(id: string, data: Record<string, unknown>) {
   return { id, ...jsonValue(data) as Record<string, unknown> };
 }
 
-async function listChats(db: any) {
-  try {
-    return await db.collection("chats_anonimos").orderBy("updatedAt", "desc").limit(MAX_CHATS).get();
-  } catch {
-    return await db.collection("chats_anonimos").limit(MAX_CHATS).get();
+async function listChatsPage(db: any, cursor: string) {
+  const collection = db.collection("chats_anonimos");
+  let query = collection.limit(CHAT_PAGE_SIZE);
+  if (cursor) {
+    const cursorSnap = await collection.doc(cursor).get();
+    if (!cursorSnap.exists) throw new Error("invalid_cursor");
+    query = query.startAfter(cursorSnap);
   }
+  return query.get();
 }
 
 async function listMessages(db: any, chatId: string) {
@@ -57,7 +59,6 @@ async function listMessages(db: any, chatId: string) {
         .doc(chatId)
         .collection(collectionName)
         .orderBy("createdAt", "asc")
-        .limit(MAX_MESSAGES)
         .get();
       rows.push({ collectionName, snap });
     } catch {
@@ -66,7 +67,6 @@ async function listMessages(db: any, chatId: string) {
           .collection("chats_anonimos")
           .doc(chatId)
           .collection(collectionName)
-          .limit(MAX_MESSAGES)
           .get();
         rows.push({ collectionName, snap });
       } catch {
@@ -83,14 +83,14 @@ async function listMessages(db: any, chatId: string) {
         createdAtMs: timestampMs(doc.data()?.createdAt),
       })),
     )
-    .sort((a, b) => Number(a.createdAtMs || 0) - Number(b.createdAtMs || 0))
-    .slice(0, MAX_MESSAGES);
+    .sort((a, b) => Number(a.createdAtMs || 0) - Number(b.createdAtMs || 0));
 }
 
 export async function handleAdminAnonExpressChatsGet(req: Request) {
   const db = getRepairAdminDb();
   const url = new URL(req.url);
   const chatId = asText(url.searchParams.get("chatId"));
+  const cursor = asText(url.searchParams.get("cursor"));
 
   if (chatId) {
     const snap = await db.collection("chats_anonimos").doc(chatId).get();
@@ -105,13 +105,17 @@ export async function handleAdminAnonExpressChatsGet(req: Request) {
     };
   }
 
-  const snap = await listChats(db);
+  const snap = await listChatsPage(db, cursor);
   const chats = snap.docs.map((doc: any) => serializeDoc(doc.id, doc.data() || {}));
   chats.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
     return timestampMs(b.updatedAt) - timestampMs(a.updatedAt);
   });
   return {
     status: 200,
-    body: { ok: true, chats, total: chats.length },
+    body: {
+      ok: true,
+      chats,
+      nextCursor: snap.size === CHAT_PAGE_SIZE ? String(snap.docs.at(-1)?.id || "") : "",
+    },
   };
 }
