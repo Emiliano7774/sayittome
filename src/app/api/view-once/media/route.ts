@@ -13,6 +13,21 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const PRIVATE_RESPONSE_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0, must-revalidate",
+  "CDN-Cache-Control": "no-store",
+  "Surrogate-Control": "no-store",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function deniedResponse(body: Record<string, unknown>, status: number) {
+  return NextResponse.json(body, {
+    status,
+    headers: PRIVATE_RESPONSE_HEADERS,
+  });
+}
+
 async function getViewOnceDeliverDb(): Promise<{
   db: ViewOnceDeliverDb;
   fieldDelete: unknown;
@@ -66,9 +81,9 @@ export async function POST(req: NextRequest) {
     uid = String(principal.uid || "").trim();
   } catch (error) {
     const mapped = mapAdminAuthFailure(error);
-    return NextResponse.json(
+    return deniedResponse(
       { ok: false, error: mapped.error, status: "DENIED" },
-      { status: mapped.status },
+      mapped.status,
     );
   }
 
@@ -76,7 +91,7 @@ export async function POST(req: NextRequest) {
   try {
     body = (await req.json()) as { chatId?: string; messageId?: string; mediaUrl?: unknown };
   } catch {
-    return NextResponse.json({ ok: false, error: "invalid_json", status: "DENIED" }, { status: 400 });
+    return deniedResponse({ ok: false, error: "invalid_json", status: "DENIED" }, 400);
   }
 
   let db: ViewOnceDeliverDb;
@@ -86,7 +101,7 @@ export async function POST(req: NextRequest) {
     db = wired.db;
     fieldDelete = wired.fieldDelete;
   } catch {
-    return NextResponse.json({ ok: false, error: "unavailable", status: "DENIED" }, { status: 503 });
+    return deniedResponse({ ok: false, error: "unavailable", status: "DENIED" }, 503);
   }
 
   const result = await executeViewOnceMediaDelivery({
@@ -115,9 +130,9 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result.ok) {
-    return NextResponse.json(
+    return deniedResponse(
       { ok: false, error: result.error, status: result.gate },
-      { status: result.status },
+      result.status,
     );
   }
 
