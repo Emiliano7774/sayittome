@@ -40,18 +40,17 @@ function hostingReq(xff) {
 assert.equal(ip.getTrustedRequestClientIp(hostingReq("203.0.113.1, 198.51.100.55")), "");
 assert.equal(ip.isDirectCloudFunctionsRequest(hostingReq("")), false);
 
-// Forged left XFF on direct GCF: trust LAST hop only, not left public IP.
+// Generic Run hosts are not trusted: only this project's exact GCF host is.
 const directRun = gcfReq("ssrsayittomeapp-xyz-uc.a.run.app", "203.0.113.99, 198.51.100.55");
-assert.equal(ip.isDirectCloudFunctionsRequest(directRun), true);
-assert.equal(ip.getTrustedRequestClientIp(directRun), "198.51.100.55");
-assert.notEqual(ip.getTrustedRequestClientIp(directRun), "203.0.113.99");
+assert.equal(ip.isDirectCloudFunctionsRequest(directRun), false);
+assert.equal(ip.getTrustedRequestClientIp(directRun), "");
 
 // cloudfunctions.net host accepted.
 const cfn = gcfReq("us-central1-sayittome-app.cloudfunctions.net", "198.51.100.10");
 assert.equal(ip.getTrustedRequestClientIp(cfn), "198.51.100.10");
 
 // Private last hop → empty (PENDING).
-const privateLast = gcfReq("ssrsayittomeapp-uc.a.run.app", "203.0.113.1, 10.0.0.5");
+const privateLast = gcfReq("us-central1-sayittome-app.cloudfunctions.net", "203.0.113.1, 10.0.0.5");
 assert.equal(ip.getTrustedRequestClientIp(privateLast), "");
 
 // Writer fail-closed on hosting (no emulator in this harness — contract via source).
@@ -61,7 +60,7 @@ assert.match(writeSrc, /getTrustedRequestClientIp/);
 
 const results = [
   "hosting_xff_rejected",
-  "direct_last_hop_only",
+  "generic_run_host_rejected",
   "cloudfunctions_host_ok",
   "private_last_hop_empty",
   "writer_hosting_fail_closed_contract",

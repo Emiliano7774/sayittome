@@ -1,0 +1,123 @@
+{
+  "baseCommit": "5703298",
+  "branch": "deploy/p0-rollout-20260914",
+  "worktree": ".worktrees/p0-rollout-20260914",
+  "scope": "P0 isolation, antiacoso and anonymous identity rollout from current production",
+  "excluded": [
+    "shuffle/hotfix commits after f2c54ce",
+    "APK/AAB/build-release artifacts",
+    "p0-checkpoint-status.json and other generated rollout logs",
+    "P0 IP-trust diag harnesses (abuseIpTrustProbe*)",
+    "admin spectator / SSR firebase guard / unrelated UI",
+    "UID público P0 §6"
+  ],
+  "files": {
+    "rules": [
+      "firebase.json",
+      "firestore.rules",
+      "firestore.rules.p0-privacy-draft.rules"
+    ],
+    "harness": [
+      "scripts/p0-privacy-rules.harness.mjs",
+      "scripts/p0-privacy-rules.emulator.mjs",
+      "scripts/p0-privacy-rules-compile.mjs",
+      "scripts/p0-privacy-rules-independent.emulator.mjs",
+      "scripts/p0-privacy-rules-independent-1627.emulator.mjs",
+      "scripts/p0-privacy-rules-independent-1630.emulator.mjs",
+      "scripts/p0-privacy-rules-independent-1631.emulator.mjs",
+      "scripts/p0-privacy-rules-independent-1635.emulator.mjs",
+      "scripts/p0-privacy-rules-independent-1648.emulator.mjs",
+      "scripts/p0-privacy-materialize-outgoing-batch.mjs",
+      "scripts/p0-privacy-status.json",
+      "scripts/profile-anon-send-payload.production.unit.mjs",
+      "scripts/profile-anon-private-auth-functions.unit.mjs",
+      "scripts/harness-alias.mjs",
+      "scripts/verify-anon-match-alias.harness.mjs",
+      "scripts/verify-anon-match-alias.integration.mjs",
+      "scripts/verify-anon-match-alias.unit.mjs",
+      "scripts/verify-anon-match-consumer.unit.mjs",
+      "scripts/verify-anon-match-first-click.unit.mjs",
+      "scripts/abuse-cors-exact-origin.unit.mjs",
+      "scripts/p0-gcf-ip-trust.harness.mjs",
+      "scripts/profile-anon-abuse-scope.harness.mjs",
+      "scripts/profile-anon-abuse-security.harness.mjs"
+    ],
+    "functions": [
+      "functions/src/deleteChatMessage.ts",
+      "functions/src/deleteChatMessageCore.ts",
+      "functions/src/index.ts",
+      "functions/src/verifiedProfileLink.ts",
+      "functions/src/viewOnceClaim.ts",
+      "functions/src/viewOnceClaimCore.ts"
+    ],
+    "profileAnonPayload": [
+      "src/lib/chat/profileAnonSendPayload.ts",
+      "src/lib/chat/persistAnonMessage.ts",
+      "src/lib/chat/migrate.ts",
+      "src/lib/chat/sessionChats.ts",
+      "src/lib/abuse/abuseAdminTypes.ts",
+      "src/lib/abuse/abuseApiBase.ts",
+      "src/lib/abuse/abuseCors.ts",
+      "src/lib/abuse/abuseCorsPolicy.ts",
+      "src/lib/abuse/abuseIpHash.ts",
+      "src/lib/abuse/bindProfileAnonVisitorSession.ts",
+      "src/lib/abuse/checkProfileAnonAbuseGate.ts",
+      "src/lib/abuse/issueProfileAnonAbuseSendPermit.ts",
+      "src/lib/abuse/profileAnonAbuseBlock.ts",
+      "src/lib/abuse/profileAnonAbuseBlockIds.ts",
+      "src/lib/abuse/profileAnonAbuseBlockWrite.ts",
+      "src/app/api/abuse/block/route.ts",
+      "src/app/api/abuse/check/route.ts",
+      "src/app/api/abuse/bind-visitor-session/route.ts",
+      "src/app/api/abuse/issue-send-permit/route.ts"
+    ],
+    "anonMatchR8": [
+      "src/lib/anonMatch/anonMatchAliasAdmin.ts",
+      "src/lib/anonMatch/anonMatchAliasBinding.ts",
+      "src/lib/anonMatch/anonMatchConsumer.ts",
+      "src/lib/anonMatch/anonMatchLegacyTransition.ts",
+      "src/lib/anonMatch/anonMatchSession.ts",
+      "src/lib/anonMatch/anonMatchSolicitudAuth.ts",
+      "src/lib/anonMatch/fetchAnonMatch.ts",
+      "src/lib/anonMatch/verifyAnonMatchCaller.ts",
+      "src/lib/anonMatch/service.ts",
+      "src/app/api/anon-match/bind-alias/route.ts",
+      "src/app/api/anon-match/close/route.ts",
+      "src/app/api/anon-match/report/route.ts",
+      "src/app/api/anon-match/request/route.ts",
+      "src/app/api/anon-match/respond/route.ts",
+      "src/contexts/AnonMatchContext.tsx",
+      "src/components/anonMatch/AnonDirectChatWindow.tsx",
+      "src/components/anonMatch/ClassicAnonConnectCard.tsx",
+      "src/components/anonMatch/ModernAnonConnectCard.tsx"
+    ],
+    "adminAuth": [
+      "src/lib/admin/verifyAdminRequest.ts",
+      "src/lib/admin/firebaseAdminNative.ts",
+      "src/lib/chat/historicalAuthorshipRepairAdmin.ts"
+    ]
+  },
+  "gates": {
+    "functionsBuild": "PASS",
+    "profileAnonPrivateAuthFunctions": "PASS",
+    "verifyAnonMatchAliasHarness": "PASS",
+    "p0PrivacyRulesWrapper": "PASS",
+    "isolationPass": false,
+    "draftAccepted": false,
+    "deployRules": false
+  },
+  "rolloutBlockers": [
+    "Prod firestore.rules still openWindow() — baseline ALLOWED leak by design",
+    "isolationPass:false until coordinated rules + app deploy",
+    "Physical prod smoke not executed",
+    "Legacy anon-match client aliases without server binding not migratable (LEGACY_CLIENT_ALIAS_NO_CRYPTO_PROOF)",
+    "UID público P0 §6 separate",
+    "Rules publish blocked until Hosting/APK client surface pinned (p0-client-rules-compat.unit.mjs)"
+  ],
+  "coordinatedRollout": {
+    "harness": "scripts/p0-coordinated-rollout-gate.harness.mjs",
+    "clientCompatUnit": "scripts/p0-client-rules-compat.unit.mjs",
+    "deployOrder": ["functions", "hosting_api_client", "firestore_rules_draft"],
+    "rulesDeployAllowedPolicy": "false until clientSurfaceReady + physical smoke"
+  }
+}

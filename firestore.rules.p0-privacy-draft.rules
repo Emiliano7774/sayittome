@@ -90,11 +90,12 @@ service cloud.firestore {
 
     /** Visitor bound by server lease — not client alias / arbitrary UID. */
     function isVerifiedChatVisitor(chatId) {
+      let leaseVisitor = chatLeaseVisitorUid(chatId);
       return isProfileAnonChatId(chatId)
         && request.auth != null
-        && chatLeaseVisitorUid(chatId) is string
-        && chatLeaseVisitorUid(chatId).size() > 0
-        && request.auth.uid == chatLeaseVisitorUid(chatId);
+        && leaseVisitor is string
+        && leaseVisitor.size() > 0
+        && request.auth.uid == leaseVisitor;
     }
 
     /** Legacy non-profile-anon chats: participantes array on chat doc only. */
@@ -161,9 +162,10 @@ service cloud.firestore {
     }
 
     function isAuthenticatedChatReceptorFromData(data) {
+      let receptor = chatReceptorFromData(data);
       return request.auth != null
-        && chatReceptorFromData(data) != ''
-        && request.auth.uid == chatReceptorFromData(data);
+        && receptor != ''
+        && request.auth.uid == receptor;
     }
 
     function isLegacyChatParticipantFromData(chatId, data) {
@@ -503,31 +505,8 @@ service cloud.firestore {
       );
     }
 
-    function onlyOutgoingSendChatMetaUpdate() {
-      return request.resource.data.diff(resource.data)
-        .affectedKeys()
-        .hasOnly([
-          'lastMessage',
-          'lastMessageSender',
-          'updatedAt',
-          'lastMessageAt',
-          'latestMessageId',
-          'latestSenderKind',
-          'latestSenderAnonSessionId',
-          'typing',
-          'readBy',
-          'unreadCounts',
-          'targetPhoto',
-          'senderIsAnonymous',
-        ]);
-    }
-
     function outgoingMessagePath(chatId, messageId) {
       return /databases/$(database)/documents/chats/$(chatId)/mensajes/$(messageId);
-    }
-
-    function outgoingMessageIdTouched() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['latestMessageId']);
     }
 
     function afterMessageData(chatId, messageId) {
@@ -548,27 +527,84 @@ service cloud.firestore {
         && validAbuseSendPermitData(abusePermitRef(permitId).data, chatId, messageId);
     }
 
-    function visitorAtomicOutgoingMessage(chatId) {
-      let msgId = safeStr(request.resource.data.get('latestMessageId', ''));
-      let threadAnon = profileAnonSenderFromChatId(chatId);
-      let msgData = afterMessageData(chatId, msgId);
-      return outgoingMessageIdTouched()
-        && msgId != ''
-        && !exists(outgoingMessagePath(chatId, msgId))
-        && msgData != null
-        && msgData.get('fromUid', '') == threadAnon
-        && msgData.get('senderKind', '') == 'anon'
-        && messageDataHasNoPublicAuthUid(msgData)
-        && validAbuseSendPermitForMessageData(chatId, msgId, msgData);
+    function onlyOutgoingSendChatMetaKeys(touched) {
+      return touched.hasOnly([
+          'lastMessage',
+          'lastMessageSender',
+          'updatedAt',
+          'lastMessageAt',
+          'latestMessageId',
+          'latestSenderKind',
+          'latestSenderAnonSessionId',
+          'typing',
+          'readBy',
+          'unreadCounts',
+          'targetPhoto',
+          'senderIsAnonymous',
+        ]);
     }
 
-    function ownerAtomicOutgoingMessage(chatId, data) {
-      let msgId = safeStr(request.resource.data.get('latestMessageId', ''));
-      let receptor = chatReceptorFromData(data);
-      let rAlias = profileReplyAlias(receptor);
-      let msgData = afterMessageData(chatId, msgId);
-      return outgoingMessageIdTouched()
-        && msgId != ''
+    function outgoingSenderKindMatches(touched, kind) {
+      return !touched.hasAny(['latestSenderKind'])
+        || request.resource.data.get('latestSenderKind', '') == kind;
+    }
+
+    function outgoingLatestSenderAnonValid(touched, threadAnon) {
+      let nextVal = safeStr(request.resource.data.get('latestSenderAnonSessionId', ''));
+      return !touched.hasAny(['latestSenderAnonSessionId'])
+        || nextVal == ''
+        || nextVal == threadAnon;
+    }
+
+    function ownerOutgoingSendReadByAllowed(touched, receptor, threadAnon, rAlias) {
+      let changed = receiptMapDiffKeys('readBy');
+      let nextRb = request.resource.data.get('readBy', null);
+      return !touched.hasAny(['readBy'])
+        || (
+          (
+            changed.size() == 0
+            || changed.hasOnly([receptor, threadAnon, rAlias])
+            || changed.hasOnly([receptor, threadAnon])
+          )
+          && nextRb is map
+          && nextRb.get(receptor, false) == true
+          && nextRb.get(threadAnon, true) == false
+        );
+    }
+
+    function ownerOutgoingSendUnreadAllowed(touched, threadAnon) {
+      let changed = receiptMapDiffKeys('unreadCounts');
+      let nextUc = request.resource.data.get('unreadCounts', null);
+      let prevUc = resource.data.get('unreadCounts', null);
+      let prevMap = prevUc is map ? prevUc : {};
+      return !touched.hasAny(['unreadCounts'])
+        || (
+          (changed.size() == 0 || changed.hasOnly([threadAnon]))
+          && nextUc is map
+          && nextUc.get(threadAnon, 0) == prevMap.get(threadAnon, 0) + 1
+        );
+    }
+
+    function ownerOutgoingSendTypingAllowed(touched, receptor) {
+      let changed = receiptMapDiffKeys('typing');
+      let nextTyping = request.resource.data.get('typing', null);
+      return !touched.hasAny(['typing'])
+        || (
+          (changed.size() == 0 || changed.hasOnly([receptor]))
+          && nextTyping is map
+          && nextTyping.get(receptor, true) == false
+        );
+    }
+
+    function ownerOutgoingSendLastMessageSenderAllowed(touched, receptor, rAlias) {
+      let sender = request.resource.data.get('lastMessageSender', '');
+      return !touched.hasAny(['lastMessageSender'])
+        || sender == receptor
+        || sender == rAlias;
+    }
+
+    function ownerAtomicOutgoingMessage(chatId, receptor, rAlias, msgId, msgData) {
+      return msgId != ''
         && !exists(outgoingMessagePath(chatId, msgId))
         && msgData != null
         && msgData.get('senderKind', '') == 'profile'
@@ -578,98 +614,117 @@ service cloud.firestore {
         );
     }
 
-    function outgoingSenderKindMatches(kind) {
-      let touched = request.resource.data.diff(resource.data).affectedKeys();
-      return !touched.hasAny(['latestSenderKind'])
-        || request.resource.data.get('latestSenderKind', '') == kind;
-    }
-
-    function ownerOutgoingSendReadByAllowed(chatId, data) {
-      let touched = request.resource.data.diff(resource.data).affectedKeys();
-      let receptor = chatReceptorFromData(data);
-      let rAlias = profileReplyAlias(receptor);
-      let threadAnon = profileAnonSenderFromChatId(chatId);
-      let nextRb = request.resource.data.get('readBy', null);
-      return !touched.hasAny(['readBy'])
-        || (
-          nextRb is map
-          && nextRb.get(receptor, false) == true
-          && nextRb.get(threadAnon, true) == false
-        );
-    }
-
-    function ownerOutgoingSendUnreadAllowed(chatId, data) {
-      let touched = request.resource.data.diff(resource.data).affectedKeys();
-      let threadAnon = profileAnonSenderFromChatId(chatId);
-      let nextUc = request.resource.data.get('unreadCounts', null);
-      let prevUc = resource.data.get('unreadCounts', null);
-      let prevMap = prevUc is map ? prevUc : {};
-      return !touched.hasAny(['unreadCounts'])
-        || (
-          nextUc is map
-          && nextUc.get(threadAnon, 0) == prevMap.get(threadAnon, 0) + 1
-        );
-    }
-
     function profileAnonOwnerOutgoingSendUpdate(chatId) {
       let data = resource.data;
-      return onlyOutgoingSendChatMetaUpdate()
-        && outgoingMessageIdTouched()
-        && ownerAtomicOutgoingMessage(chatId, data)
-        && ownerOutgoingSendReadByAllowed(chatId, data)
-        && ownerOutgoingSendUnreadAllowed(chatId, data)
-        && outgoingLatestSenderAnonValid(chatId)
-        && outgoingSenderKindMatches('profile');
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      let receptor = chatReceptorFromData(data);
+      let threadAnon = profileAnonSenderFromChatId(chatId);
+      let rAlias = profileReplyAlias(receptor);
+      let msgId = safeStr(request.resource.data.get('latestMessageId', ''));
+      let msgData = afterMessageData(chatId, msgId);
+      return onlyOutgoingSendChatMetaKeys(touched)
+        ? (
+          touched.hasAny(['latestMessageId'])
+            ? (
+              ownerAtomicOutgoingMessage(chatId, receptor, rAlias, msgId, msgData)
+              && ownerOutgoingSendReadByAllowed(touched, receptor, threadAnon, rAlias)
+              && ownerOutgoingSendUnreadAllowed(touched, threadAnon)
+              && ownerOutgoingSendTypingAllowed(touched, receptor)
+              && ownerOutgoingSendLastMessageSenderAllowed(touched, receptor, rAlias)
+              && outgoingLatestSenderAnonValid(touched, threadAnon)
+              && outgoingSenderKindMatches(touched, 'profile')
+            )
+            : false
+        )
+        : false;
     }
 
-    function visitorOutgoingSendReadByAllowed(chatId, data) {
-      let touched = request.resource.data.diff(resource.data).affectedKeys();
-      let threadAnon = profileAnonSenderFromChatId(chatId);
-      let receptor = chatReceptorFromData(data);
-      let rAlias = profileReplyAlias(receptor);
+    function visitorAtomicOutgoingMessage(chatId, threadAnon, msgId, msgData) {
+      return msgId != ''
+        && !exists(outgoingMessagePath(chatId, msgId))
+        && msgData != null
+        && msgData.get('fromUid', '') == threadAnon
+        && msgData.get('senderKind', '') == 'anon'
+        && messageDataHasNoPublicAuthUid(msgData)
+        && validAbuseSendPermitForMessageData(chatId, msgId, msgData);
+    }
+
+    function visitorOutgoingSendReadByAllowed(touched, receptor, threadAnon, rAlias) {
+      let changed = receiptMapDiffKeys('readBy');
       let nextRb = request.resource.data.get('readBy', null);
       return !touched.hasAny(['readBy'])
         || (
-          nextRb is map
-          && nextRb.get(threadAnon, false) == true
-          && nextRb.get(receptor, true) == false
-          && nextRb.get(rAlias, true) == false
+          changed.size() == 0
+          || (
+            changed.hasOnly([threadAnon, receptor, rAlias])
+            && nextRb is map
+            && nextRb.get(threadAnon, false) == true
+            && nextRb.get(receptor, true) == false
+            && nextRb.get(rAlias, true) == false
+          )
         );
     }
 
-    function visitorOutgoingSendUnreadAllowed(chatId, data) {
-      let touched = request.resource.data.diff(resource.data).affectedKeys();
-      let receptor = chatReceptorFromData(data);
-      let rAlias = profileReplyAlias(receptor);
+    function visitorOutgoingSendUnreadAllowed(touched, receptor, rAlias) {
+      let changed = receiptMapDiffKeys('unreadCounts');
       let nextUc = request.resource.data.get('unreadCounts', null);
       let prevUc = resource.data.get('unreadCounts', null);
       let prevMap = prevUc is map ? prevUc : {};
       return !touched.hasAny(['unreadCounts'])
         || (
-          nextUc is map
-          && nextUc.get(receptor, 0) == prevMap.get(receptor, 0) + 1
-          && nextUc.get(rAlias, 0) == prevMap.get(rAlias, 0) + 1
+          changed.size() == 0
+          || (
+            changed.hasOnly([receptor, rAlias])
+            && !changed.hasAny([request.auth.uid, profileReplyAlias(request.auth.uid)])
+            && nextUc is map
+            && nextUc.get(receptor, 0) == prevMap.get(receptor, 0) + 1
+            && nextUc.get(rAlias, 0) == prevMap.get(rAlias, 0) + 1
+          )
         );
     }
 
-    function outgoingLatestSenderAnonValid(chatId) {
-      let touched = request.resource.data.diff(resource.data).affectedKeys();
-      let nextVal = safeStr(request.resource.data.get('latestSenderAnonSessionId', ''));
-      let threadAnon = profileAnonSenderFromChatId(chatId);
-      return !touched.hasAny(['latestSenderAnonSessionId'])
-        || nextVal == ''
-        || nextVal == threadAnon;
+    function visitorOutgoingSendTypingAllowed(touched, threadAnon) {
+      let changed = receiptMapDiffKeys('typing');
+      let nextTyping = request.resource.data.get('typing', null);
+      return !touched.hasAny(['typing'])
+        || (
+          changed.size() == 0
+          || (
+            changed.hasOnly([threadAnon])
+            && nextTyping is map
+            && nextTyping.get(threadAnon, true) == false
+          )
+        );
+    }
+
+    function visitorOutgoingSendLastMessageSenderAllowed(touched, threadAnon) {
+      return !touched.hasAny(['lastMessageSender'])
+        || request.resource.data.get('lastMessageSender', '') == threadAnon;
     }
 
     function profileAnonVisitorOutgoingSendUpdate(chatId) {
       let data = resource.data;
-      return onlyOutgoingSendChatMetaUpdate()
-        && outgoingMessageIdTouched()
-        && visitorAtomicOutgoingMessage(chatId)
-        && visitorOutgoingSendReadByAllowed(chatId, data)
-        && visitorOutgoingSendUnreadAllowed(chatId, data)
-        && outgoingLatestSenderAnonValid(chatId)
-        && outgoingSenderKindMatches('anon');
+      let touched = request.resource.data.diff(resource.data).affectedKeys();
+      let threadAnon = profileAnonSenderFromChatId(chatId);
+      let receptor = chatReceptorFromData(data);
+      let rAlias = profileReplyAlias(receptor);
+      let msgId = safeStr(request.resource.data.get('latestMessageId', ''));
+      let msgData = afterMessageData(chatId, msgId);
+      return onlyOutgoingSendChatMetaKeys(touched)
+        ? (
+          touched.hasAny(['latestMessageId'])
+            ? (
+              visitorAtomicOutgoingMessage(chatId, threadAnon, msgId, msgData)
+              && visitorOutgoingSendReadByAllowed(touched, receptor, threadAnon, rAlias)
+              && visitorOutgoingSendUnreadAllowed(touched, receptor, rAlias)
+              && visitorOutgoingSendTypingAllowed(touched, threadAnon)
+              && visitorOutgoingSendLastMessageSenderAllowed(touched, threadAnon)
+              && outgoingLatestSenderAnonValid(touched, threadAnon)
+              && outgoingSenderKindMatches(touched, 'anon')
+            )
+            : false
+        )
+        : false;
     }
 
     function profileAnonVisitorMessageCreate(chatId, messageId) {
@@ -748,28 +803,29 @@ service cloud.firestore {
     function chatReceiptUpdateAllowed(chatId) {
       let data = resource.data;
       let touched = request.resource.data.diff(resource.data).affectedKeys();
-      return (
-        (isAuthenticatedChatReceptorFromData(data) || isLegacyChatParticipantFromData(chatId, data))
-        && (!touched.hasAny(['readBy'])
-          || ownerReceiptKeysAllowed(receiptFieldChangedKeys('readBy')))
-        && (!touched.hasAny(['readAt'])
-          || ownerReceiptKeysAllowed(receiptFieldChangedKeys('readAt')))
-        && (!touched.hasAny(['unreadCounts'])
-          || ownerReceiptKeysAllowed(receiptFieldChangedKeys('unreadCounts')))
-        && (!touched.hasAny(['latestReadMessageIds'])
-          || ownerReceiptKeysAllowed(receiptFieldChangedKeys('latestReadMessageIds')))
-      ) || (
-        isProfileAnonChatId(chatId)
-        && isVerifiedChatVisitor(chatId)
-        && (!touched.hasAny(['readBy'])
-          || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('readBy')))
-        && (!touched.hasAny(['readAt'])
-          || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('readAt')))
-        && (!touched.hasAny(['unreadCounts'])
-          || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('unreadCounts')))
-        && (!touched.hasAny(['latestReadMessageIds'])
-          || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('latestReadMessageIds')))
-      );
+      return isProfileAnonChatId(chatId) && isVerifiedChatVisitor(chatId)
+        ? (
+          (!touched.hasAny(['readBy'])
+            || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('readBy')))
+          && (!touched.hasAny(['readAt'])
+            || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('readAt')))
+          && (!touched.hasAny(['unreadCounts'])
+            || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('unreadCounts')))
+          && (!touched.hasAny(['latestReadMessageIds'])
+            || visitorReceiptKeysAllowedFromData(chatId, data, receiptFieldChangedKeys('latestReadMessageIds')))
+        )
+        : (isAuthenticatedChatReceptorFromData(data) || isLegacyChatParticipantFromData(chatId, data))
+        ? (
+          (!touched.hasAny(['readBy'])
+            || ownerReceiptKeysAllowed(receiptFieldChangedKeys('readBy')))
+          && (!touched.hasAny(['readAt'])
+            || ownerReceiptKeysAllowed(receiptFieldChangedKeys('readAt')))
+          && (!touched.hasAny(['unreadCounts'])
+            || ownerReceiptKeysAllowed(receiptFieldChangedKeys('unreadCounts')))
+          && (!touched.hasAny(['latestReadMessageIds'])
+            || ownerReceiptKeysAllowed(receiptFieldChangedKeys('latestReadMessageIds')))
+        )
+        : false;
     }
 
     function receiptMapKeysCanonicalFromData(chatId, data, field) {
@@ -889,6 +945,9 @@ service cloud.firestore {
       allow write: if false;
     }
     match /anon_abuse_anon_aliases/{docId} {
+      allow read, write: if false;
+    }
+    match /anon_abuse_anon_match_sessions/{docId} {
       allow read, write: if false;
     }
 
@@ -1044,6 +1103,7 @@ service cloud.firestore {
         && collection != 'anon_abuse_send_permits'
         && collection != 'anon_abuse_block_audit'
         && collection != 'anon_abuse_anon_aliases'
+        && collection != 'anon_abuse_anon_match_sessions'
         && collection != 'chats'
         && collection != 'historias'
         && collection != 'photo_moderation_chats'

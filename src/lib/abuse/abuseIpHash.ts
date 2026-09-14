@@ -1,6 +1,9 @@
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 
+const DIRECT_ABUSE_FUNCTION_HOST =
+  "us-central1-sayittome-app.cloudfunctions.net";
+
 /**
  * Private HMAC salt for visitor IP hashes.
  * ONLY ABUSE_IP_HASH_SECRET — never public client keys. Never log this value.
@@ -93,10 +96,7 @@ export function isDirectCloudFunctionsRequest(req: Request): boolean {
     .trim()
     .toLowerCase()
     .split(":")[0];
-  if (!host) return false;
-  if (host.endsWith(".cloudfunctions.net")) return true;
-  if (host.endsWith(".a.run.app")) return true;
-  return false;
+  return host === DIRECT_ABUSE_FUNCTION_HOST;
 }
 
 /**

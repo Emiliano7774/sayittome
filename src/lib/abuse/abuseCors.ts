@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
 
-const DEFAULT_ALLOW_ORIGIN = "*";
+import { allowedAbuseOrigin } from "@/lib/abuse/abuseCorsPolicy";
 
 /**
  * CORS for abuse APIs called via direct Cloud Functions / Run origin
  * (NEXT_PUBLIC_ABUSE_API_BASE), not only same-origin Hosting.
  */
 export function abuseCorsHeaders(req: Request): HeadersInit {
-  const requestOrigin = String(req.headers.get("origin") || "").trim();
-  const allow =
-    String(process.env.ABUSE_CORS_ALLOW_ORIGIN || "").trim() ||
-    requestOrigin ||
-    DEFAULT_ALLOW_ORIGIN;
+  const allow = allowedAbuseOrigin(String(req.headers.get("origin") || ""));
   return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",

@@ -258,7 +258,7 @@ assert.ok(!revoked.includes("prm_c_other_ip"), "C prior permit must NOT be revok
 assert.ok(!revoked.includes("prm_other_receptor"));
 
 // --- XFF: exact last hop only; no left walk ---
-const gcfHost = "ssrsayittomeapp-xyz-uc.a.run.app";
+const gcfHost = "us-central1-sayittome-app.cloudfunctions.net";
 assert.equal(
   ip.getTrustedRequestClientIp(
     new Request("https://example.test", {
