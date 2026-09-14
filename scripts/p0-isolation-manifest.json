@@ -104,12 +104,11 @@
     "profileAnonPrivateAuthFunctions": "PASS",
     "verifyAnonMatchAliasHarness": "PASS",
     "p0PrivacyRulesWrapper": "PASS",
-    "isolationPass": false,
+    "isolationPass": true,
     "draftAccepted": true,
-    "deployRules": false
+    "deployRules": true
   },
   "rolloutBlockers": [
-    "Strict Firestore rules rollout pending final guarded production smoke",
     "Physical two-account antiacoso/identity UI PASS remains pending",
     "Legacy anon-match client aliases without server binding not migratable (LEGACY_CLIENT_ALIAS_NO_CRYPTO_PROOF)",
     "UID público P0 §6 separate",
@@ -119,6 +118,8 @@
     "harness": "scripts/p0-coordinated-rollout-gate.harness.mjs",
     "clientCompatUnit": "scripts/p0-client-rules-compat.unit.mjs",
     "deployOrder": ["functions", "hosting_api_client", "firestore_rules_draft"],
-    "rulesDeployAllowedPolicy": "explicit approval + live pre/post smoke + automatic rollback"
+    "rulesDeployAllowedPolicy": "explicit approval + live pre/post smoke + automatic rollback",
+    "productionRulesSmoke": "PASS",
+    "productionRulesRollbackExecuted": false
   }
 }

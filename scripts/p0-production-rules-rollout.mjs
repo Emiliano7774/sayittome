@@ -1,6 +1,8 @@
 /**
  * Coordinated P0 production smoke + Rules rollout.
- * Requires explicit P0_APPROVE_RULES_DEPLOY=YES. Never prints auth tokens or IDs.
+ * Requires explicit P0_APPROVE_RULES_DEPLOY=YES for the one-time deployment.
+ * P0_VERIFY_ONLY=YES reruns the strict production smoke without deploying.
+ * Never prints auth tokens or IDs.
  * On a post-deploy smoke failure, restores the committed open rules immediately.
  */
 import assert from "node:assert/strict";
@@ -39,6 +41,7 @@ const firebaseConfig = {
 const WEB = "https://sayittome-app.web.app";
 const DIRECT = "https://us-central1-sayittome-app.cloudfunctions.net/ssrsayittomeapp";
 const approved = process.env.P0_APPROVE_RULES_DEPLOY === "YES";
+const verifyOnly = process.env.P0_VERIFY_ONLY === "YES";
 const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const username = `p0qa_${stamp}`;
 
@@ -166,6 +169,7 @@ const report = {
   gate: "P0_PRODUCTION_RULES_ROLLOUT",
   pass: false,
   approved,
+  verifyOnly,
   pre: {},
   post: {},
   deploy: "not_started",
@@ -216,6 +220,27 @@ try {
     (await getDoc(doc(owner.db, "chats", chatId, "mensajes", preMessageId))).exists(),
     true,
   );
+  if (verifyOnly) {
+    report.deploy = "verify_only_no_deploy";
+    report.post.legitimateVisitorSend = "PASS";
+    report.post.ownerRead = "PASS";
+    await assert.rejects(
+      getDoc(doc(stranger.db, "chats", chatId, "mensajes", preMessageId)),
+    );
+    report.post.strangerReadDenied = "PASS";
+    await assert.rejects(
+      setDoc(
+        doc(visitor.db, "chats", chatId),
+        { readBy: { [stranger.auth.currentUser.uid]: true } },
+        { merge: true },
+      ),
+    );
+    report.post.foreignReceiptWriteDenied = "PASS";
+    report.pass = true;
+    console.log(JSON.stringify(report));
+    await cleanup();
+    process.exit(0);
+  }
   assert.equal(
     (await getDoc(doc(stranger.db, "chats", chatId, "mensajes", preMessageId))).exists(),
     true,
