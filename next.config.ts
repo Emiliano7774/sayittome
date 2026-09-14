@@ -51,12 +51,26 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/((?!_next/static|_next/image|downloads/|icons/|favicon).*)",
+        source:
+          "/((?!_next/static|_next/image|downloads/|icons/|favicon|api/view-once/media(?:/|$)).*)",
         headers: [
           {
             key: "Cache-Control",
             value: "public, max-age=0, must-revalidate",
           },
+        ],
+      },
+      {
+        source: "/api/view-once/media",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-store, max-age=0, must-revalidate",
+          },
+          { key: "CDN-Cache-Control", value: "no-store" },
+          { key: "Surrogate-Control", value: "no-store" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Expires", value: "0" },
         ],
       },
     ];
