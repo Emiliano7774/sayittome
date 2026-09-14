@@ -33,7 +33,7 @@ export async function sendStoryReplyMessage(
     ownerUsername: username,
   };
 
-  await persistAnonChatMessage({
+  const persisted = await persistAnonChatMessage({
     chatId: resolved.chatId,
     username: resolved.username,
     senderId: resolved.senderId,
@@ -45,5 +45,8 @@ export async function sendStoryReplyMessage(
     isOwnerReply: false,
   });
 
-  return resolved.chatId;
+  // A private anonymous chat may be rebound to a canonical epoch-specific ID
+  // while persisting. Return that committed ID so callers can open the exact
+  // thread that the Chats inbox will observe.
+  return persisted.canonicalChatId || resolved.chatId;
 }

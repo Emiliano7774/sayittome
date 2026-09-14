@@ -16,6 +16,7 @@ import {
   pinShuffleWindowWhileAway,
   prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
+import { clearShuffleRevealFromNonMainMarker } from "@/lib/navigation/nonMainToShuffleReveal";
 import {
   ghostFrameWatchBegin,
   ghostFrameWatchInspect,
@@ -215,6 +216,10 @@ export function fastRouterPush(
     // over the next non-main route.
     if (currentPath === "/shuffle" && (destinationPath.startsWith("/u/") || destinationPath.startsWith("/chat/"))) {
       clearInstantShuffleReturn();
+      // A profile/chat → Shuffle handoff leaves a reveal marker while the
+      // destination layout settles. Remove it before opening the next
+      // non-main route so its own route kind can win deterministically.
+      clearShuffleRevealFromNonMainMarker();
     }
     maybePinShuffleKeepAliveFromPath(currentPath);
 

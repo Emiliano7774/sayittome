@@ -571,8 +571,6 @@ export async function persistAnonChatMessage(
         })
       : chatMeta;
 
-  registerSessionChat(effectiveChatId);
-
   const storyReply = storyReplyPersist.storyReply;
   const storedReply = storyReplyPersist.storedReply;
 
@@ -657,6 +655,7 @@ export async function persistAnonChatMessage(
       error,
     );
   }
+
   const writeAckAt = Date.now();
   recordQaCriticalEvent("chat", "CHAT_MESSAGE_PERSISTED", {
     threadId: chatId,
@@ -713,6 +712,13 @@ export async function persistAnonChatMessage(
       );
     }
   }
+
+  // Register only after the chat summary/message (and any view-once secret)
+  // are durably committed. Registering before the batch can make the Chats
+  // inbox attach a listener to a still-missing document; that transient empty
+  // snapshot was then removed from the session inbox, so a story reply could
+  // appear sent but never show as a chat until a later reload.
+  registerSessionChat(effectiveChatId);
 
   if (!isProfileAnonChatId(effectiveChatId)) {
     if (!canonicalMigrationStarted.has(effectiveChatId)) {

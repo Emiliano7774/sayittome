@@ -21,6 +21,29 @@ const author = await import(
 const cache = await import(
   pathToFileURL(path.join(root, "src/lib/chat/chatMessageCache.ts")).href
 );
+const fs = await import("node:fs");
+const persistSource = fs.readFileSync(
+  path.join(root, "src/lib/chat/persistAnonMessage.ts"),
+  "utf8",
+);
+const storyReplySendSource = fs.readFileSync(
+  path.join(root, "src/lib/stories/sendStoryReply.ts"),
+  "utf8",
+);
+const commitIndex = persistSource.indexOf("await commitWithStoryReplyRulesFallback");
+const sessionRegistrationIndex = persistSource.indexOf(
+  "registerSessionChat(effectiveChatId)",
+);
+assert.ok(commitIndex >= 0, "story reply must use the atomic commit path");
+assert.ok(
+  sessionRegistrationIndex > commitIndex,
+  "session inbox registration must happen after the chat commit",
+);
+assert.match(
+  storyReplySendSource,
+  /return persisted\.canonicalChatId \|\| resolved\.chatId/,
+  "story reply must return the committed canonical chat id",
+);
 
 const story = {
   id: "story_1",

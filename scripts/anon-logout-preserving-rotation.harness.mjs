@@ -63,8 +63,16 @@ assert.notEqual(rotated.next, first);
 assert.equal(anon.getAnonSessionId(), rotated.next);
 assert.deepEqual(sessionChats.getSessionChatIds(), beforeIds);
 
-const reused = sessionChats.findSessionProfileChatIdForUsername("demo_user");
-assert.equal(reused, `${first}__anon_to__demo_user`);
+// The old chat remains in session storage for history, but a lookup without a
+// live anon proof must never select it. Reusing by username alone would let a
+// rotated anon impersonate the previous visitor; the new-thread contract is
+// fail-closed and requires the current alias to match explicitly.
+const reusedWithoutProof = sessionChats.findSessionProfileChatIdForUsername("demo_user");
+assert.equal(reusedWithoutProof, "");
+assert.equal(
+  sessionChats.findSessionProfileChatIdForUsername("demo_user", rotated.next),
+  "",
+);
 
 assert.equal(
   identity.shouldShowAnonIdentityGuide({

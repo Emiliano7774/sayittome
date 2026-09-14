@@ -131,6 +131,15 @@ const present = await import(
   pathToFileURL(path.join(root, "src/lib/navigation/shuffleSnapshotPresent.ts")).href
 );
 const fs = await import("node:fs");
+const fastNavigateSrc = fs.readFileSync(
+  path.join(root, "src/lib/navigation/fastNavigate.ts"),
+  "utf8",
+);
+assert.match(
+  fastNavigateSrc,
+  /clearInstantShuffleReturn\(\);[\s\S]*clearShuffleRevealFromNonMainMarker\(\);/,
+  "opening the next profile/chat must clear the previous Shuffle reveal marker",
+);
 const nativeBoot = fs.readFileSync(
   path.join(root, "src/components/app/NativeAppBootstrap.tsx"),
   "utf8",
