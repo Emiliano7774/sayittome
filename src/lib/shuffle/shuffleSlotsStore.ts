@@ -101,6 +101,8 @@ export function setShuffleSlots(
             blurPhoto: next.blurPhoto,
             moderationTag: next.moderationTag,
             fakeProfileTag: next.fakeProfileTag,
+            groomingTag: next.groomingTag,
+            potentialPedophileTag: next.potentialPedophileTag,
             mediaBlurFlags: next.mediaBlurFlags,
             adminBlurProfilePhoto: next.adminBlurProfilePhoto,
             adminBlurFotosPerfil: next.adminBlurFotosPerfil,
@@ -114,6 +116,8 @@ export function setShuffleSlots(
         prev.blurPhoto !== updated.blurPhoto ||
         prev.moderationTag !== updated.moderationTag ||
         prev.fakeProfileTag !== updated.fakeProfileTag ||
+        prev.groomingTag !== updated.groomingTag ||
+        prev.potentialPedophileTag !== updated.potentialPedophileTag ||
         prev.mediaBlurFlags !== updated.mediaBlurFlags
       ) {
         slots[slot] = updated;
@@ -162,15 +166,35 @@ export function patchShuffleProfileFakeTag(uid: string, fakeProfileTag: string) 
   scheduleFlush();
 }
 
+export function patchShuffleProfileSafetyTag(
+  uid: string,
+  kind: "grooming" | "potential_pedophile",
+  active: boolean,
+) {
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = slots[slot];
+    if (!profile || profile.uid !== uid) continue;
+    slots[slot] = kind === "grooming"
+      ? { ...profile, groomingTag: active }
+      : { ...profile, potentialPedophileTag: active };
+    dirtySlots.add(slot);
+  }
+  scheduleFlush();
+}
+
 export function patchShuffleProfileBlurFlags(
   uid: string,
   mediaBlurFlags: Record<string, boolean>,
+  adminBlurAt = "",
 ) {
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
     if (!profile || profile.uid !== uid) continue;
 
-    slots[slot] = applyShuffleProfileBlurFlags(profile, mediaBlurFlags);
+    slots[slot] = {
+      ...applyShuffleProfileBlurFlags(profile, mediaBlurFlags),
+      ...(adminBlurAt ? { adminBlurAt } : {}),
+    };
     dirtySlots.add(slot);
   }
 

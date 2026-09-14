@@ -32,11 +32,13 @@ const readSrc = fs.readFileSync(
 assert.match(evidenceSrc, /mediaType/);
 assert.match(evidenceSrc, /explicit === "video"/);
 assert.match(spectatorSrc, /adminMediaScopeKey/);
-assert.match(spectatorSrc, /`\$\{chatId\}\/\$\{collection\}\/\$\{msg\.id\}`/);
+assert.match(spectatorSrc, /key=\{scopeKey\}/);
+assert.match(spectatorSrc, /adminSpectatorMediaDisplay/);
 assert.match(spectatorSrc, /mediaType="video"/);
 assert.match(spectatorSrc, /mediaType="image"/);
 assert.match(spectatorSrc, /Reintentar/);
 assert.doesNotMatch(spectatorSrc, /isVideoMediaUrl\(mediaUrl\)/);
+assert.doesNotMatch(spectatorSrc, /setMediaUrl\(inlineUrl\)/);
 assert.match(routeSrc, /verifyAdminIdToken/);
 assert.match(routeSrc, /Cache-Control.*no-store/);
 assert.match(readSrc, /never increments viewOnce/);
@@ -52,5 +54,50 @@ function resolveRenderKind(url, mediaType) {
 assert.equal(resolveRenderKind("https://cdn.example/noext", "video"), "video");
 assert.equal(resolveRenderKind("https://cdn.example/noext.mp4", "image"), "image");
 assert.equal(resolveRenderKind("https://cdn.example/audio", "audio"), "image");
+
+const mediaMod = await import(
+  pathToFileURL(path.join(root, "src/lib/admin/adminSpectatorMediaDisplay.ts")).href,
+);
+
+assert.equal(
+  mediaMod.shouldApplyAdminMediaFetchResult("chatA/mensajes/m1:0", "chatA/mensajes/m1:0"),
+  true,
+);
+assert.equal(
+  mediaMod.shouldApplyAdminMediaFetchResult("chatA/mensajes/m1:0", "chatB/mensajes/m2:0"),
+  false,
+);
+
+const stale = mediaMod.resolveAdminMediaDisplay({
+  needsAdminFetch: true,
+  inlineUrl: "",
+  inlineType: "video",
+  fetchKey: "chatB/mensajes/m2:0",
+  asyncMedia: {
+    fetchKey: "chatA/mensajes/m1:0",
+    mediaUrl: "https://cdn.example/stale-noext",
+    resolvedType: "video",
+    status: "ready",
+    error: "",
+  },
+});
+assert.equal(stale.loading, true, "pending fetch for chatB must not show chatA media");
+assert.equal(stale.mediaUrl, "", "stale URL must not surface while scope changed");
+
+const inline = mediaMod.resolveAdminMediaDisplay({
+  needsAdminFetch: false,
+  inlineUrl: "https://cdn.example/inline-noext",
+  inlineType: "image",
+  fetchKey: "",
+  asyncMedia: {
+    fetchKey: "",
+    mediaUrl: "",
+    resolvedType: "image",
+    status: "ready",
+    error: "",
+  },
+});
+assert.equal(inline.mediaUrl, "https://cdn.example/inline-noext");
+assert.equal(inline.loading, false);
 
 console.log(JSON.stringify({ gate: "ADMIN_SPECTATOR_MEDIA", pass: true }, null, 2));

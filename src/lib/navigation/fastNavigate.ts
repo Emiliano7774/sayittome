@@ -209,6 +209,13 @@ export function fastRouterPush(
 
   if (typeof window !== "undefined") {
     const currentPath = window.location.pathname.split("?")[0].split("#")[0];
+    const destinationPath = normalizePath(href);
+    // A profile/chat tap can happen immediately after returning to Shuffle.
+    // Never let the previous profile->Shuffle return latch keep Shuffle painted
+    // over the next non-main route.
+    if (currentPath === "/shuffle" && (destinationPath.startsWith("/u/") || destinationPath.startsWith("/chat/"))) {
+      clearInstantShuffleReturn();
+    }
     maybePinShuffleKeepAliveFromPath(currentPath);
 
     pinShuffleWindowIfNeeded(currentPath);

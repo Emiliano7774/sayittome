@@ -5,8 +5,9 @@ import { memo } from "react";
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
+import AdminProfileSafetyTagButtons from "@/components/profile/AdminProfileSafetyTagButtons";
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
-import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import ProfileModerationBadges from "@/components/profile/ProfileModerationBadges";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
@@ -72,20 +73,17 @@ function ClassicShuffleProfileRow({
               </span>
             ) : null}
           </h2>
-          {(profile.moderationTag === "roleplay" || profile.fakeProfileTag === "fake") ? (
-            <div className="mt-1 flex flex-col items-start gap-1">
-              {profile.moderationTag === "roleplay" ? (
-                <ProfileModerationTag tag="roleplay" compact />
-              ) : null}
-              {profile.fakeProfileTag === "fake" ? (
-                <ProfileModerationTag tag="fake" compact />
-              ) : null}
-            </div>
-          ) : null}
+          <ProfileModerationBadges
+            moderationTag={profile.moderationTag}
+            fakeProfileTag={profile.fakeProfileTag}
+            groomingTag={profile.groomingTag}
+            potentialPedophileTag={profile.potentialPedophileTag}
+            className="mt-1"
+          />
           <p className={`mt-0.5 ${tokens.bioClass}`}>{bio}</p>
         </button>
 
-        <div className="flex shrink-0 flex-col gap-1">
+        <div className="grid shrink-0 grid-flow-col grid-rows-3 gap-1">
           <AdminProfileRoleplayButton
             profile={profile}
             variant="classic"
@@ -96,6 +94,7 @@ function ClassicShuffleProfileRow({
             variant="classic"
             appearance="shuffle"
           />
+          <AdminProfileSafetyTagButtons profile={profile} variant="classic" appearance="shuffle" />
           <AdminProfileBlurPhotosButton
             profile={profile}
             variant="classic"
@@ -113,5 +112,7 @@ export default memo(
     a.profile.uid === b.profile.uid &&
     a.profile.moderationTag === b.profile.moderationTag &&
     a.profile.fakeProfileTag === b.profile.fakeProfileTag &&
+    a.profile.groomingTag === b.profile.groomingTag &&
+    a.profile.potentialPedophileTag === b.profile.potentialPedophileTag &&
     a.profile.blurPhoto === b.profile.blurPhoto,
 );

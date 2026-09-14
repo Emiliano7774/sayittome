@@ -5,6 +5,8 @@ export type ShuffleProfile = {
   usernameLower?: string;
   email?: string;
   moderationTag?: string;
+  groomingTag?: boolean;
+  potentialPedophileTag?: boolean;
   /** Independent admin mark — does not replace moderationTag/roleplay. */
   fakeProfileTag?: string;
   bio: string;
@@ -18,6 +20,8 @@ export type ShuffleProfile = {
   adminBlurFotosPerfil?: boolean;
   adminBlurGallery?: boolean;
   mediaBlurFlags?: Record<string, boolean>;
+  /** Monotonic admin blur revision; resolves stale 8m Shuffle cache vs explicit unblur. */
+  adminBlurAt?: string;
   provincia?: string;
   ciudad?: string;
   pais?: string;

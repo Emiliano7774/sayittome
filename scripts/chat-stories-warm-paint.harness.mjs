@@ -1,12 +1,18 @@
 /**
  * Chat warm cache is chatId-keyed; Stories snapshot is viewer-isolated.
  * Usage: node --experimental-strip-types scripts/chat-stories-warm-paint.harness.mjs
+ *
+ * chatMessageCache (and deps) use `@/` imports; install harness alias before
+ * loading product modules so Node can resolve them without changing product.
  */
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { installHarnessAlias } from "./harness-alias.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+installHarnessAlias(root);
 const src = (rel) => pathToFileURL(path.join(root, rel)).href;
 
 const {

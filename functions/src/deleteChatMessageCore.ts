@@ -1,5 +1,131 @@
 export const DELETED_MESSAGE_PREVIEW = "Mensaje eliminado";
 
+export type ProfileAnonPrivateAuthMessage = {
+  fromUid?: string;
+  ownerId?: string;
+  senderUid?: string;
+  senderAuthUid?: string;
+  createdByAuthUid?: string;
+  senderKind?: string;
+  profileUid?: string;
+  senderProfileId?: string;
+};
+
+export type ProfileAnonPrivateAuthChat = {
+  anonSessionId?: string | null;
+  solicitanteAnonId?: string | null;
+  initiatorUid?: string | null;
+  solicitanteUid?: string | null;
+  targetUid?: string | null;
+  receptorUid?: string | null;
+  anonOwnerUid?: string | null;
+};
+
+export function messagePublicAuthorId(message: ProfileAnonPrivateAuthMessage) {
+  return asTrimmedId(message.fromUid || message.ownerId || message.senderUid);
+}
+
+export function profileReplyAlias(uid: string) {
+  const id = asTrimmedId(uid);
+  if (!id || id.startsWith("anon_") || id.startsWith("profile_")) return id;
+  return `profile_${id}`;
+}
+
+/** Owner-side author uid for verified links / scrub — uses private lease when anon has no public auth. */
+export function resolveVerifiedProfileMessageAuthorUid(
+  message: ProfileAnonPrivateAuthMessage,
+  context?: {
+    privateVisitorAuthUid?: string;
+    chat?: ProfileAnonPrivateAuthChat | null;
+  },
+) {
+  const senderAuth = asTrimmedId(message.senderAuthUid || message.createdByAuthUid);
+  if (senderAuth) return senderAuth;
+
+  const profileFrom = asTrimmedId(message.profileUid || message.senderProfileId);
+  if (profileFrom) return profileFrom;
+
+  const from = messagePublicAuthorId(message);
+  const privateVisitor = asTrimmedId(context?.privateVisitorAuthUid);
+  if (from.startsWith("anon_") && privateVisitor) {
+    const session = anonSessionIdFromChat(context?.chat);
+    if (!session || from === session) return privateVisitor;
+  }
+
+  return asTrimmedId(
+    from || message.ownerId || message.senderUid,
+  );
+}
+
+function anonSessionIdFromChat(chat: ProfileAnonPrivateAuthChat | null | undefined) {
+  if (!chat) return "";
+  return asTrimmedId(chat.anonSessionId || chat.solicitanteAnonId);
+}
+
+/** Firebase auth holder for anon messages without public senderAuthUid. */
+export function isPrivateAnonVisitorAuthor(input: {
+  uid: string;
+  message: ProfileAnonPrivateAuthMessage;
+  chat?: ProfileAnonPrivateAuthChat | null;
+  privateVisitorAuthUid?: string;
+}) {
+  const uid = asTrimmedId(input.uid);
+  const privateVisitorAuthUid = asTrimmedId(input.privateVisitorAuthUid);
+  if (!uid || !privateVisitorAuthUid || uid !== privateVisitorAuthUid) return false;
+
+  const from = messagePublicAuthorId(input.message);
+  if (!from.startsWith("anon_")) return false;
+
+  const session = anonSessionIdFromChat(input.chat);
+  if (session && from === session) return true;
+
+  const publicAuth = asTrimmedId(
+    input.message.senderAuthUid || input.message.createdByAuthUid,
+  );
+  if (publicAuth && publicAuth === uid) return true;
+
+  const initiator = asTrimmedId(input.chat?.initiatorUid || input.chat?.solicitanteUid);
+  return initiator === uid && (!session || from === session);
+}
+
+/** Lease-bound visitor is a thread member even when not the message author (e.g. owner reply). */
+export function isPrivateAnonLeaseMember(input: {
+  uid: string;
+  chat: ChatMessageDeleteChat;
+  privateVisitorAuthUid?: string;
+}) {
+  const uid = asTrimmedId(input.uid);
+  const bound = asTrimmedId(input.privateVisitorAuthUid);
+  if (!uid || !bound || uid !== bound) return false;
+
+  const session = anonSessionIdFromChat(input.chat);
+  if (!session) return false;
+
+  for (const list of [input.chat.participantes, input.chat.participants]) {
+    for (const entry of list || []) {
+      if (asTrimmedId(entry) === session) return true;
+    }
+  }
+  return false;
+}
+
+export function isProfileOwnerMessageAuthor(input: {
+  uid: string;
+  message: ProfileAnonPrivateAuthMessage;
+}) {
+  const uid = asTrimmedId(input.uid);
+  if (!uid) return false;
+  const message = input.message;
+  const senderAuth = asTrimmedId(message.senderAuthUid || message.createdByAuthUid);
+  if (senderAuth && senderAuth === uid) return true;
+
+  const from = messagePublicAuthorId(message);
+  if (from === uid || from === profileReplyAlias(uid)) return true;
+
+  const profileFromMessage = asTrimmedId(message.profileUid || message.senderProfileId);
+  return Boolean(profileFromMessage && profileFromMessage === uid && from.startsWith("profile_"));
+}
+
 export type ChatMessageDeleteMode = "me" | "everyone";
 
 export const CHAT_ROOT_COLLECTIONS = ["chats", "chats_anonimos"] as const;
@@ -112,27 +238,29 @@ export function isCanonicalMessageAuthor(input: {
   uid: string;
   message: ChatMessageDeleteMessage;
   chat?: ChatMessageDeleteChat;
+  privateVisitorAuthUid?: string;
 }) {
   const uid = asTrimmedId(input.uid);
   if (!uid) return false;
   const message = input.message;
   const from = messageAuthorId(message);
-  const senderAuth = asTrimmedId(message.senderAuthUid || message.createdByAuthUid);
-  if (senderAuth && senderAuth === uid) return true;
+  if (isProfileOwnerMessageAuthor({ uid, message })) return true;
   if (from === uid) return true;
   if (from === `profile_${uid}`) return true;
-  const profileFromMessage = asTrimmedId(message.profileUid || message.senderProfileId);
-  if (profileFromMessage && profileFromMessage === uid && from.startsWith("profile_")) {
+
+  const chat = input.chat;
+  if (
+    isPrivateAnonVisitorAuthor({
+      uid,
+      message,
+      chat,
+      privateVisitorAuthUid: input.privateVisitorAuthUid,
+    })
+  ) {
     return true;
   }
-  const chat = input.chat;
+
   if (from.startsWith("anon_") && chat) {
-    const session = asTrimmedId(chat.anonSessionId || chat.solicitanteAnonId);
-    const initiator = asTrimmedId(chat.initiatorUid || chat.solicitanteUid);
-    if (senderAuth === uid) return true;
-    if (initiator === uid && (from === session || from === asTrimmedId(chat.solicitanteAnonId) || !session)) {
-      return true;
-    }
     const destAnon = asTrimmedId(chat.destinatarioAnonId || chat.anonId);
     const destUid = asTrimmedId(chat.destinatarioUid);
     if (destUid === uid && destAnon && from === destAnon) return true;
@@ -144,10 +272,12 @@ export function isChatMember(input: {
   uid: string;
   chat: ChatMessageDeleteChat;
   message: ChatMessageDeleteMessage;
+  privateVisitorAuthUid?: string;
 }) {
   const uid = asTrimmedId(input.uid);
   if (!uid) return false;
   if (isCanonicalMessageAuthor(input)) return true;
+  if (isPrivateAnonLeaseMember(input)) return true;
 
   const ids = new Set<string>();
   for (const list of [input.chat.participantes, input.chat.participants]) {
@@ -265,6 +395,7 @@ export function decideChatMessageDelete(input: {
   messageId?: string;
   chat?: ChatMessageDeleteChat | null;
   message?: ChatMessageDeleteMessage | null;
+  privateVisitorAuthUid?: string;
 }): ChatMessageDeleteDecision {
   const uid = asTrimmedId(input.uid);
   if (!uid) return { ok: false, error: "unauthenticated" };
@@ -277,7 +408,14 @@ export function decideChatMessageDelete(input: {
   if (!input.chat || !input.message) return { ok: false, error: "not-found" };
 
   if (mode === "me") {
-    if (!isChatMember({ uid, chat: input.chat, message: input.message })) {
+    if (
+      !isChatMember({
+        uid,
+        chat: input.chat,
+        message: input.message,
+        privateVisitorAuthUid: input.privateVisitorAuthUid,
+      })
+    ) {
       return { ok: false, error: "permission-denied" };
     }
     const hideKey = hideKeyForAuthUid(uid);
@@ -289,7 +427,14 @@ export function decideChatMessageDelete(input: {
     };
   }
 
-  if (!isCanonicalMessageAuthor({ uid, message: input.message, chat: input.chat })) {
+  if (
+    !isCanonicalMessageAuthor({
+      uid,
+      message: input.message,
+      chat: input.chat,
+      privateVisitorAuthUid: input.privateVisitorAuthUid,
+    })
+  ) {
     return { ok: false, error: "permission-denied" };
   }
 

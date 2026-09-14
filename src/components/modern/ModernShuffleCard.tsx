@@ -8,8 +8,9 @@ import { UserRound } from "lucide-react";
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
+import AdminProfileSafetyTagButtons from "@/components/profile/AdminProfileSafetyTagButtons";
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
-import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import ProfileModerationBadges from "@/components/profile/ProfileModerationBadges";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useProfilePrefetchIntent } from "@/hooks/useProfilePrefetchIntent";
@@ -73,7 +74,7 @@ function ModernShuffleCard({
     >
       <div
         className={[
-          "pointer-events-auto absolute right-3 z-30 flex shrink-0 flex-col gap-1.5",
+          "pointer-events-auto absolute right-3 z-30 grid shrink-0 grid-flow-col grid-rows-3 gap-1.5",
           profile.showOnline ? "top-14" : "top-3",
         ].join(" ")}
       >
@@ -87,6 +88,7 @@ function ModernShuffleCard({
           variant="modern"
           appearance="shuffle"
         />
+        <AdminProfileSafetyTagButtons profile={profile} variant="modern" appearance="shuffle" />
         <AdminProfileBlurPhotosButton
           profile={profile}
           variant="modern"
@@ -167,16 +169,13 @@ function ModernShuffleCard({
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-semibold sm:text-xl">@{profile.username}</p>
-                {(profile.moderationTag === "roleplay" || profile.fakeProfileTag === "fake") ? (
-                  <div className="mt-1.5 flex flex-col items-start gap-1">
-                    {profile.moderationTag === "roleplay" ? (
-                      <ProfileModerationTag tag="roleplay" compact />
-                    ) : null}
-                    {profile.fakeProfileTag === "fake" ? (
-                      <ProfileModerationTag tag="fake" compact />
-                    ) : null}
-                  </div>
-                ) : null}
+                <ProfileModerationBadges
+                  moderationTag={profile.moderationTag}
+                  fakeProfileTag={profile.fakeProfileTag}
+                  groomingTag={profile.groomingTag}
+                  potentialPedophileTag={profile.potentialPedophileTag}
+                  className="mt-1.5"
+                />
                 <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-white/55 sm:text-sm sm:leading-6">
                   {subtext}
                 </p>
@@ -200,5 +199,7 @@ export default memo(
     a.profile.shuffleFeatured === b.profile.shuffleFeatured &&
     a.profile.moderationTag === b.profile.moderationTag &&
     a.profile.fakeProfileTag === b.profile.fakeProfileTag &&
+    a.profile.groomingTag === b.profile.groomingTag &&
+    a.profile.potentialPedophileTag === b.profile.potentialPedophileTag &&
     a.profile.blurPhoto === b.profile.blurPhoto,
 );

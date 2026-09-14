@@ -50,9 +50,10 @@ import {
   consumeProfileReturnTo,
   peekProfileReturnTo,
 } from "@/lib/navigation/profileReturnNav";
-import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import ProfileModerationBadges from "@/components/profile/ProfileModerationBadges";
 import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
+import AdminProfileSafetyTagButtons from "@/components/profile/AdminProfileSafetyTagButtons";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
@@ -94,6 +95,8 @@ export type ModernProfileData = {
   adminBlurFotosPerfil?: boolean;
   moderationTag?: string;
   moderationTagNote?: string;
+  groomingTag?: boolean;
+  potentialPedophileTag?: boolean;
   fakeProfileTag?: string;
 };
 
@@ -107,6 +110,7 @@ type Props = {
   showShuffleBack?: boolean;
   onModerationTagChange?: (moderationTag: string) => void;
   onFakeProfileTagChange?: (fakeProfileTag: string) => void;
+  onSafetyTagChange?: (patch: { moderationTag?: string; groomingTag?: boolean; potentialPedophileTag?: boolean }) => void;
 };
 
 export default function ModernPublicProfile({
@@ -118,6 +122,7 @@ export default function ModernPublicProfile({
   showShuffleBack = true,
   onModerationTagChange,
   onFakeProfileTagChange,
+  onSafetyTagChange,
 }: Props) {
   const router = useRouter();
   const { locale } = useLocale();
@@ -389,14 +394,13 @@ export default function ModernPublicProfile({
                     minimal
                   />
                 ) : null}
-                <div className="flex flex-col items-start gap-1.5">
-                  {profile.moderationTag ? (
-                    <ProfileModerationTag tag={profile.moderationTag} compact />
-                  ) : null}
-                  {profile.fakeProfileTag === "fake" ? (
-                    <ProfileModerationTag tag="fake" compact />
-                  ) : null}
-                </div>
+                <ProfileModerationBadges
+                  moderationTag={profile.moderationTag}
+                  fakeProfileTag={profile.fakeProfileTag}
+                  groomingTag={profile.groomingTag}
+                  potentialPedophileTag={profile.potentialPedophileTag}
+                  className="max-w-[28rem]"
+                />
                 <AdminProfileRoleplayButton
                   profile={profile}
                   variant="modern"
@@ -407,6 +411,7 @@ export default function ModernPublicProfile({
                   variant="modern"
                   onTagChange={onFakeProfileTagChange}
                 />
+                <AdminProfileSafetyTagButtons profile={profile} variant="modern" onSafetyChange={onSafetyTagChange} />
               </div>
             </div>
 

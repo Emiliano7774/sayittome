@@ -15,23 +15,31 @@ const status = JSON.parse(fs.readFileSync(statusPath, "utf8"));
 const draftRules = fs.readFileSync(path.join(root, "firestore.rules.p0-privacy-draft.rules"), "utf8");
 const liveRules = fs.readFileSync(path.join(root, "firestore.rules"), "utf8");
 
-assert.equal(status.isolation.status, "FAIL_OPEN");
-assert.equal(status.isolation.physicalPass, false);
-assert.match(draftRules, /mayReadChatData/);
-assert.match(draftRules, /participantes/);
-assert.match(draftRules, /allow delete: if false/);
-assert.match(draftRules, /chats_anonimos/);
-assert.match(draftRules, /moderation_seen/);
-assert.match(draftRules, /leaseBoundAnonId/);
-assert.match(draftRules, /latestSenderAnonSessionId/);
-assert.match(draftRules, /receiptFieldKeysAllowed/);
-assert.match(draftRules, /onlyAnonMatchChatMetaUpdate/);
-assert.match(liveRules, /allow read: if openWindow\(\)/);
+function parseGateLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed.gate && parsed.pass === true) return parsed;
+  } catch {
+    /* not gate JSON */
+  }
+  return null;
+}
 
-function parseEmulatorJson(out) {
+function parseEmulatorJson(stdout, stderr = "") {
+  for (const text of [stdout, `${stdout}\n${stderr}`]) {
+    const lines = text.split(/\r?\n/);
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const parsed = parseGateLine(lines[i]);
+      if (parsed) return parsed;
+    }
+  }
+
   const blocks = [];
   let depth = 0;
   let start = -1;
+  const out = `${stdout}\n${stderr}`;
   for (let i = 0; i < out.length; i++) {
     const ch = out[i];
     if (ch === "{") {
@@ -56,6 +64,63 @@ function parseEmulatorJson(out) {
   throw new Error("emulator_json_not_found");
 }
 
+function runNodeScript(script, stripTypes = false) {
+  const args = stripTypes ? ["--experimental-strip-types", script] : [script];
+  const result = spawnSync("node", args, {
+    cwd: root,
+    encoding: "utf8",
+    shell: false,
+    timeout: 120_000,
+  });
+  const stdout = result.stdout || "";
+  const stderr = result.stderr || "";
+  if (result.status !== 0) {
+    console.error(`${stdout}\n${stderr}`);
+    process.exit(1);
+  }
+  return { stdout, stderr };
+}
+
+const productionPayloadRun = runNodeScript(
+  "scripts/profile-anon-send-payload.production.unit.mjs",
+  true,
+);
+const productionPayloadGate = parseEmulatorJson(
+  productionPayloadRun.stdout,
+  productionPayloadRun.stderr,
+);
+assert.equal(productionPayloadGate.gate, "PROFILE_ANON_SEND_PAYLOAD_PRODUCTION");
+assert.equal(productionPayloadGate.pass, true);
+
+const functionsBuild = spawnSync("npm", ["run", "build"], {
+  cwd: path.join(root, "functions"),
+  encoding: "utf8",
+  shell: true,
+  timeout: 120_000,
+});
+if (functionsBuild.status !== 0) {
+  console.error(`${functionsBuild.stdout || ""}\n${functionsBuild.stderr || ""}`);
+  process.exit(1);
+}
+
+const privateAuthRun = runNodeScript("scripts/profile-anon-private-auth-functions.unit.mjs");
+const privateAuthGate = parseEmulatorJson(privateAuthRun.stdout, privateAuthRun.stderr);
+assert.equal(privateAuthGate.gate, "PROFILE_ANON_PRIVATE_AUTH_FUNCTIONS");
+assert.equal(privateAuthGate.pass, true);
+
+assert.equal(status.isolation.status, "FAIL_OPEN");
+assert.equal(status.isolation.physicalPass, false);
+assert.match(draftRules, /mayReadChatData/);
+assert.match(draftRules, /participantes/);
+assert.match(draftRules, /allow delete: if false/);
+assert.match(draftRules, /chats_anonimos/);
+assert.match(draftRules, /moderation_seen/);
+assert.match(draftRules, /leaseBoundAnonId/);
+assert.match(draftRules, /latestSenderAnonSessionId/);
+assert.match(draftRules, /receiptFieldKeysAllowed/);
+assert.match(draftRules, /onlyAnonMatchChatMetaUpdate/);
+assert.match(liveRules, /allow read: if openWindow\(\)/);
+
 function runIndependent(script, port, stripTypes = false) {
   const args = stripTypes ? ["--experimental-strip-types", script] : [script];
   const result = spawnSync("node", args, {
@@ -74,7 +139,7 @@ function runIndependent(script, port, stripTypes = false) {
     console.error(out);
     process.exit(1);
   }
-  return parseEmulatorJson(out);
+  return parseEmulatorJson(result.stdout || "", result.stderr || "");
 }
 
 async function probeEmulator(host, port) {
@@ -114,6 +179,7 @@ let independent1618 = { skipped: true };
 let independent1627 = { skipped: true };
 let independent1630 = { skipped: true };
 let independent1635 = { skipped: true };
+let independent1648 = { skipped: true };
 let compileGate = { skipped: true };
 let emulatorMode = "none";
 
@@ -127,7 +193,7 @@ if (port8080 || port8099) {
     console.error(compileOut);
     process.exit(1);
   }
-  compileGate = parseEmulatorJson(compileOut);
+  compileGate = parseEmulatorJson(compileResult.stdout || "", compileResult.stderr || "");
   assert.equal(compileGate.gate, "P0_PRIVACY_RULES_COMPILE");
   assert.equal(compileGate.pass, true);
 
@@ -138,7 +204,7 @@ if (port8080 || port8099) {
       console.error(out);
       process.exit(1);
     }
-    const parsed = parseEmulatorJson(out);
+    const parsed = parseEmulatorJson(result.stdout || "", result.stderr || "");
     assert.equal(parsed.pass, true, `${mode} emulator pass`);
     assert.equal(parsed.isolationPass, false);
     if (mode === "baseline") {
@@ -216,7 +282,8 @@ if (port8080 || port8099) {
   );
   assert.equal(independent1635.gate, "P0_PRIVACY_INDEPENDENT_1635");
   assert.equal(independent1635.results.visitor_atomic_batch_allowed, "ALLOWED");
-  assert.equal(independent1635.results.owner_atomic_batch_allowed, "ALLOWED");
+  assert.equal(independent1635.results.visitor_second_send_from_unread_gt0_allowed, "ALLOWED");
+  assert.equal(independent1635.results.owner_reply_readBy_false_both_aliases_allowed, "ALLOWED");
   assert.equal(independent1635.results.preview_without_message_denied, "DENIED");
   assert.equal(independent1635.results.unread_arbitrary_without_message_denied, "DENIED");
   assert.equal(independent1635.results.replay_existing_message_denied, "DENIED");
@@ -224,6 +291,23 @@ if (port8080 || port8099) {
   assert.equal(independent1635.results.senderAuthUid_denied_with_valid_permit, "DENIED");
   assert.equal(independent1635.results.createdByAuthUid_denied_with_valid_permit, "DENIED");
   assert.equal(independent1635.results.receptor_reads_visitor_message_authorship, "ALLOWED");
+
+  independent1648 = runIndependent(
+    "scripts/p0-privacy-rules-independent-1648.emulator.mjs",
+    port,
+    true,
+  );
+  assert.equal(independent1648.gate, "P0_PRIVACY_INDEPENDENT_1648");
+  assert.equal(independent1648.results.visitor_control_batch_allowed, "ALLOWED");
+  assert.equal(independent1648.results.owner_control_batch_allowed, "ALLOWED");
+  assert.equal(independent1648.results.visitor_batch_foreign_readBy_denied, "DENIED");
+  assert.equal(independent1648.results.visitor_batch_foreign_unreadCounts_denied, "DENIED");
+  assert.equal(independent1648.results.visitor_batch_spoof_lastMessageSender_denied, "DENIED");
+  assert.equal(independent1648.results.visitor_batch_foreign_typing_denied, "DENIED");
+  assert.equal(independent1648.results.owner_batch_foreign_readBy_denied, "DENIED");
+  assert.equal(independent1648.results.owner_batch_foreign_unreadCounts_denied, "DENIED");
+  assert.equal(independent1648.results.owner_batch_spoof_lastMessageSender_denied, "DENIED");
+  assert.equal(independent1648.results.owner_batch_foreign_typing_denied, "DENIED");
 } else {
   baseline = { skipped: true, reason: "no_emulator_on_8080_or_8099" };
   draft = { skipped: true, reason: "no_emulator_on_8080_or_8099" };
@@ -231,6 +315,7 @@ if (port8080 || port8099) {
   independent1627 = { skipped: true, reason: "no_emulator_on_8080_or_8099" };
   independent1630 = { skipped: true, reason: "no_emulator_on_8080_or_8099" };
   independent1635 = { skipped: true, reason: "no_emulator_on_8080_or_8099" };
+  independent1648 = { skipped: true, reason: "no_emulator_on_8080_or_8099" };
   compileGate = { skipped: true, reason: "no_emulator_on_8080_or_8099" };
 }
 
@@ -249,6 +334,7 @@ console.log(
     independent1627,
     independent1630,
     independent1635,
+    independent1648,
     deployRules: false,
     rollout: "PENDING_coordinated_release",
     physical: "PENDING_prod_rules_rollout",

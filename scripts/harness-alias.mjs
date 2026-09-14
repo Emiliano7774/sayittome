@@ -18,6 +18,9 @@ export function installHarnessAlias(root = path.resolve(path.dirname(fileURLToPa
     if (specifier === "server-only") {
       return pathToFileURL(path.join(root, "scripts/harness-server-only-stub.mjs")).href;
     }
+    if (specifier === "next/server") {
+      return pathToFileURL(path.join(root, "node_modules/next/server.js")).href;
+    }
     if (specifier.startsWith("@/")) {
       return resolveExisting(path.join(root, "src", specifier.slice(2)));
     }

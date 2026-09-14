@@ -61,13 +61,15 @@ export default function ClassicAnonConnectCard() {
   );
 
   const uid = String(
-    firebaseUser?.uid ||
+    (firebaseUser && !firebaseUser.isAnonymous ? firebaseUser.uid : "") ||
       (loading ? peekCachedViewerIdentity()?.uid || "" : "") ||
       "",
   );
   const authPending = !match || loading;
   const cached = uid ? readCachedAnonCardSnapshot(uid) : null;
-  const isProfileUser = authPending ? Boolean(cached?.isProfileUser || uid) : Boolean(uid);
+  const isProfileUser = authPending
+    ? Boolean(cached?.isProfileUser || uid)
+    : Boolean(firebaseUser && !firebaseUser.isAnonymous);
   const isIncognitoVisitor = authPending
     ? Boolean(cached?.isIncognitoVisitor || (incognitoMode && !isProfileUser))
     : incognitoMode && !isProfileUser;

@@ -8,8 +8,6 @@ import {
 } from "@/lib/admin/usuarioModerationTagAdmin";
 import { exactMessageCollectionName } from "@/lib/moderation/moderationMessageCollections";
 import {
-  createFirestoreDoc,
-  deleteFirestoreDoc,
   getFirestoreDoc,
   patchFirestoreDoc,
   patchFirestoreDocAuthed,
@@ -24,7 +22,7 @@ async function resolveAdmin(req: Request, body: Record<string, unknown>) {
   void body;
   const verified = await verifyAdminIdToken(req);
   const idToken = readBearerToken(req);
-  return { email: verified.email, idToken };
+  return { email: verified.email, uid: verified.uid, idToken };
 }
 
 async function patchUsuarioAuthed(
@@ -63,10 +61,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     let adminEmail = "";
+    let adminUid = "";
     let idToken = "";
     try {
       const admin = await resolveAdmin(req, body);
       adminEmail = admin.email;
+      adminUid = admin.uid;
       idToken = admin.idToken;
     } catch (error) {
       const mapped = (() => {
@@ -85,7 +85,6 @@ export async function POST(req: Request) {
     const messageId = String(body?.messageId || "");
     const storyId = String(body?.storyId || "");
     const blockId = String(body?.blockId || "");
-    const extraMinutes = Number(body?.extraMinutes || 30);
 
     if (action === "ban_temp") {
       const until = new Date(Date.now() + (Number(body?.days || 7) * 86400000)).toISOString();
@@ -148,6 +147,10 @@ export async function POST(req: Request) {
       await patchUsuarioAuthed(idToken, uid, { bio: "", descripcion: "" });
     } else if (
       action === "tag_roleplay" ||
+      action === "tag_grooming" ||
+      action === "tag_potential_pedophile" ||
+      action === "clear_grooming_tag" ||
+      action === "clear_potential_pedophile_tag" ||
       action === "clear_moderation_tag" ||
       action === "tag_fake_profile" ||
       action === "clear_fake_profile_tag"
@@ -238,23 +241,25 @@ export async function POST(req: Request) {
         suspiciousBy: "",
       });
     } else if (action === "remove_abuse_block" && blockId) {
-      await deleteFirestoreDoc("anon_abuse_blocks", blockId);
-    } else if (action === "extend_abuse_block" && blockId) {
-      await patchFirestoreDoc("anon_abuse_blocks", blockId, {
-        expiresAt: new Date(Date.now() + extraMinutes * 60 * 1000).toISOString(),
+      const { removeProfileAnonAbuseBlock } = await import(
+        "@/lib/abuse/profileAnonAbuseBlockWrite"
+      );
+      const removed = await removeProfileAnonAbuseBlock({
+        blockId,
+        adminUid,
+        adminEmail,
       });
-    } else if (action === "create_abuse_block") {
-      await createFirestoreDoc("anon_abuse_blocks", {
-        receptorUid: String(body?.receptorUid || ""),
-        blockedFingerprint: String(body?.blockedFingerprint || ""),
-        blockedAnonId: String(body?.blockedAnonId || ""),
-        blockedVisitorId: String(body?.blockedVisitorId || ""),
-        motivo: String(body?.motivo || "admin"),
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + extraMinutes * 60 * 1000).toISOString(),
-        chatId: chatId || "",
-        blockedBy: adminEmail,
-      });
+      if (!removed.ok) {
+        return NextResponse.json(
+          { ok: false, error: removed.error },
+          { status: removed.status },
+        );
+      }
+    } else if (action === "extend_abuse_block" || action === "create_abuse_block") {
+      return NextResponse.json(
+        { ok: false, error: "action_removed_use_profile_block_30m" },
+        { status: 410 },
+      );
     } else if (action === "delete_orphan_user" && uid) {
       await deleteOrphanProfile(uid, adminEmail, { idToken });
     } else if (action === "reply_general_claim") {

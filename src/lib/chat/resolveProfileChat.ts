@@ -193,9 +193,12 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
   const isLoggedIn = Boolean(firebaseUid);
 
   let chatId = buildProfileAnonChatId(senderId, lookup.currentUsername);
-  // After preserving anon rotation, reuse the existing session thread so
-  // history/authorship stay on the original chatId (oldAnon__anon_to__user).
-  const sessionExisting = findSessionProfileChatIdForUsername(lookup.currentUsername);
+  // Same-session reopen: reuse only when session chat sender === live anon.
+  // Logout rotation mints a new anon → no reuse → receptor gets a new thread.
+  const sessionExisting = findSessionProfileChatIdForUsername(
+    lookup.currentUsername,
+    senderId,
+  );
   if (sessionExisting) {
     chatId = sessionExisting;
   }
@@ -212,19 +215,17 @@ async function resolveProfileChatUncached(username: string): Promise<ResolvedPro
   const effectiveSender = parseProfileAnonChatId(chatId).senderId.startsWith("anon_")
     ? parseProfileAnonChatId(chatId).senderId
     : senderId;
+  // Do not merge Firebase authUid / new-anon into an old epoch chatId.
+  // When session reuse is gated by live anon, chatId sender === senderId.
   const legacyIds = [
     ...buildLegacyProfileChatIds(effectiveSender, lookup.currentUsername, targetUid),
-    ...(firebaseUid
-      ? buildLegacyProfileChatIds(firebaseUid, lookup.currentUsername, targetUid)
-      : []),
-    ...(effectiveSender !== senderId
-      ? buildLegacyProfileChatIds(senderId, lookup.currentUsername, targetUid)
-      : []),
   ];
 
   const participantes = Array.from(
     new Set(
-      [effectiveSender, senderId, firebaseUid, targetUid].filter(Boolean) as string[],
+      [effectiveSender, targetUid, ...(effectiveSender === senderId ? [firebaseUid] : [])].filter(
+        Boolean,
+      ) as string[],
     ),
   );
 

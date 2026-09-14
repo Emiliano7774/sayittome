@@ -163,6 +163,26 @@ const anonAuthor = core.isCanonicalMessageAuthor({
 });
 assert.equal(anonAuthor, true);
 
+const privateLeaseAuthor = core.isCanonicalMessageAuthor({
+  uid: "visitorLeaseUid",
+  message: { fromUid: "anon_sess", senderKind: "anon" },
+  chat: { anonSessionId: "anon_sess", participantes: ["anon_sess", "ownerUid"] },
+  privateVisitorAuthUid: "visitorLeaseUid",
+});
+assert.equal(privateLeaseAuthor, true);
+
+const privateLeaseStranger = core.decideChatMessageDelete({
+  uid: "stranger",
+  mode: "everyone",
+  chatId: "c1",
+  messageId: "m1",
+  chat: { latestMessageId: "m1", anonSessionId: "anon_sess" },
+  message: { fromUid: "anon_sess", senderKind: "anon" },
+  privateVisitorAuthUid: "visitorLeaseUid",
+});
+assert.equal(privateLeaseStranger.ok, false);
+assert.equal(privateLeaseStranger.error, "permission-denied");
+
 const legacyAuthor = core.isCanonicalMessageAuthor({
   uid: "legacyUid",
   message: { fromUid: "legacyUid" },

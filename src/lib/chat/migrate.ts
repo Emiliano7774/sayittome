@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { isProfileAnonChatId } from "@/lib/chat/anonChatId";
 
 function pickNewer(
   a?: { updatedAt?: Timestamp; lastMessage?: string },
@@ -95,6 +96,15 @@ export async function migrateToCanonicalChat(
 ) {
   const uniqueLegacy = legacyIds.filter((id) => id && id !== canonicalId);
   if (uniqueLegacy.length === 0) {
+    const existing = await getDoc(doc(db, "chats", canonicalId));
+    if (existing.exists()) {
+      await setDoc(doc(db, "chats", canonicalId), meta, { merge: true });
+      return canonicalId;
+    }
+    // Profile-anon only: never pre-create empty shells — server bind owns first create.
+    if (isProfileAnonChatId(canonicalId)) {
+      return canonicalId;
+    }
     await setDoc(doc(db, "chats", canonicalId), meta, { merge: true });
     return canonicalId;
   }

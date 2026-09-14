@@ -105,6 +105,9 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
           mediaBlurFlags,
         }),
         moderationTag: String(item?.moderationTag || ""),
+        groomingTag: item?.groomingTag === true || item?.moderationTag === "grooming",
+        potentialPedophileTag:
+          item?.potentialPedophileTag === true || item?.moderationTag === "potential_pedophile",
         fakeProfileTag: String(item?.fakeProfileTag || ""),
         shuffleFeatured: item?.shuffleFeatured === true,
       };

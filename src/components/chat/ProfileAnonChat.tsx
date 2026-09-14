@@ -80,7 +80,7 @@ import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useMainTabShell } from "@/contexts/MainTabShellContext";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
-import { findActiveAbuseBlock } from "@/lib/abuse/anonAbuseBlocks";
+import { checkProfileAnonAbuseGate } from "@/lib/abuse/checkProfileAnonAbuseGate";
 import {
   clearAnonBlocksProfile,
   isProfileBlockedByAnon,
@@ -151,7 +151,7 @@ import {
 } from "@/lib/chat/chatNotificationOpen";
 import { prefetchChatThreadAsync } from "@/lib/chat/prefetchChatThread";
 import { useAuth } from "@/contexts/AuthContext";
-import { isChatThreadRoute } from "@/lib/navigation/routeKind";
+import { isChatThreadRoute, isProfileChatRoute } from "@/lib/navigation/routeKind";
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { isProfileAnonMessageUnreadForViewer } from "@/lib/chat/incomingChatActivity";
 import {
@@ -203,6 +203,7 @@ import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import { setSecureBombScreen } from "@/lib/security/secureBombScreen";
 import {
   isInstantShuffleReturnDestination,
   isShuffleKeepAliveActive,
@@ -262,6 +263,8 @@ type Message = {
   viewOnce?: boolean;
   viewOnceLimit?: number;
   viewOnceOpenedCount?: number;
+  viewOnceLastOpenedBy?: string;
+  viewOnceLastOpenedAt?: { toDate?: () => Date };
   viewOnceExhausted?: boolean;
   viewOnceSealed?: boolean;
   autoModerationRequiresBlur?: boolean;
@@ -466,9 +469,11 @@ function readInitialTargetProfile(username: string) {
 export default function ProfileAnonChat({
   chatId,
   username,
+  onThreadIdChange,
 }: {
   chatId: string;
   username: string;
+  onThreadIdChange?: (nextChatId: string) => void;
 }) {
 
   const searchParams = useSearchParams();
@@ -524,6 +529,8 @@ export default function ProfileAnonChat({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMoreOlder, setHasMoreOlder] = useState(true);
   const [fullscreenUrl, setFullscreenUrl] = useState("");
+  const [fullscreenMediaType, setFullscreenMediaType] = useState<"image" | "video">("image");
+  const [fullscreenSecureBomb, setFullscreenSecureBomb] = useState(false);
   const [audioPreview, setAudioPreview] = useState("");
   const [imagePreview, setImagePreview] = useState("");
   const [videoPreview, setVideoPreview] = useState("");
@@ -572,6 +579,8 @@ export default function ProfileAnonChat({
   const audioPreviewUrlRef = useRef("");
   const imagePreviewUrlRef = useRef("");
   const videoPreviewUrlRef = useRef("");
+  const secureBombObjectUrlRef = useRef("");
+  const secureBombOpenRef = useRef(false);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const historyOldestSnapRef = useRef<QueryDocumentSnapshot | null>(null);
@@ -819,12 +828,31 @@ export default function ProfileAnonChat({
     });
   }
 
+  function revokeSecureBombObjectUrl() {
+    if (!secureBombObjectUrlRef.current) return;
+    URL.revokeObjectURL(secureBombObjectUrlRef.current);
+    secureBombObjectUrlRef.current = "";
+  }
+
+  function leaveSecureBombMode() {
+    secureBombOpenRef.current = false;
+    setFullscreenSecureBomb(false);
+    setSecureBombScreen(false);
+    revokeSecureBombObjectUrl();
+  }
+
+  function closeFullscreenMedia() {
+    setFullscreenUrl("");
+    if (secureBombOpenRef.current) leaveSecureBombMode();
+  }
+
   useEffect(() => {
     document.body.classList.toggle("sayittome-chat-fullscreen-open", Boolean(fullscreenUrl));
+    document.body.classList.toggle("sayittome-bomb-secure-open", Boolean(fullscreenUrl && fullscreenSecureBomb));
     return () => {
-      document.body.classList.remove("sayittome-chat-fullscreen-open");
+      document.body.classList.remove("sayittome-chat-fullscreen-open", "sayittome-bomb-secure-open");
     };
-  }, [fullscreenUrl]);
+  }, [fullscreenSecureBomb, fullscreenUrl]);
 
   useEffect(() => {
     if (!currentUid || currentUid.startsWith("anon_")) return;
@@ -836,14 +864,31 @@ export default function ProfileAnonChat({
       audioRecordingSessionRef.current += 1;
       revokePreviewUrls();
       resetAudioRecorder();
+      secureBombOpenRef.current = false;
+      setSecureBombScreen(false);
+      revokeSecureBombObjectUrl();
     };
   }, []);
 
   useEffect(() => {
-    const onBack = () => setFullscreenUrl("");
+    const onBack = () => closeFullscreenMedia();
     window.addEventListener("sayittome:close-chat-fullscreen", onBack);
-    return () => window.removeEventListener("sayittome:close-chat-fullscreen", onBack);
+    window.addEventListener("sayittome:close-secure-bomb", onBack);
+    return () => {
+      window.removeEventListener("sayittome:close-chat-fullscreen", onBack);
+      window.removeEventListener("sayittome:close-secure-bomb", onBack);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!isChatThreadRoute(pathname) && !isProfileChatRoute(pathname) && secureBombOpenRef.current) {
+      closeFullscreenMedia();
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    if (secureBombOpenRef.current) closeFullscreenMedia();
+  }, [chatId]);
 
   useChatViewportLock(chatViewportLockActive);
 
@@ -1041,14 +1086,11 @@ export default function ProfileAnonChat({
     );
     if (ownerViewing) return;
 
-    const visitorId = getVisitorId();
-
-    findActiveAbuseBlock({
+    void checkProfileAnonAbuseGate({
       receptorUid: profileOwnerUid,
-      blockedAnonId: senderId,
-      blockedVisitorId: visitorId,
+      chatId,
     })
-      .then((block) => setBlockedByAbuse(Boolean(block)))
+      .then((result) => setBlockedByAbuse(Boolean(result.blocked)))
       .catch(() => setBlockedByAbuse(false));
 
     void isProfileBlockedByAnon({
@@ -1861,8 +1903,11 @@ export default function ProfileAnonChat({
     };
 
     recorder.onstop = () => {
+      const recordedMimeType =
+        String(recorder.mimeType || liveVideoChunksRef.current[0]?.type || "").trim() ||
+        "video/webm";
       const blob = new Blob(liveVideoChunksRef.current, {
-        type: "video/webm",
+        type: recordedMimeType,
       });
 
       const url = URL.createObjectURL(blob);
@@ -1945,9 +1990,13 @@ export default function ProfileAnonChat({
     audioPhaseRef.current = "idle";
   }
 
-  function handleFile(file: File | null, source: "camera" | "gallery") {
+  function handleFile(
+    file: File | null,
+    source: "camera" | "gallery",
+    expectedType?: "image" | "video",
+  ) {
     if (!file) return;
-    const picked = fileFromChatInput(file, source);
+    const picked = fileFromChatInput(file, source, expectedType);
     if (!picked) {
       alert(source === "camera" ? t("chat_camera_fail") : t("chat_gallery_fail"));
       return;
@@ -2183,6 +2232,24 @@ export default function ProfileAnonChat({
     }
   }
 
+  async function resolveVisitorSendChatId(isOwnerReply: boolean): Promise<string> {
+    if (isOwnerReply) return chatId;
+    const receptor = String(profileUid || chatOwnerUid || "").trim();
+    if (!receptor) throw new Error("missing_receptor");
+    const { ensureProfileAnonSendEpoch } = await import(
+      "@/lib/abuse/bindProfileAnonVisitorSession"
+    );
+    const epoch = await ensureProfileAnonSendEpoch({
+      receptorUid: receptor,
+      chatId,
+      username,
+    });
+    if (epoch.chatId !== chatId) {
+      onThreadIdChange?.(epoch.chatId);
+    }
+    return epoch.chatId;
+  }
+
   async function sendMedia() {
     if (!pendingBlob || !pendingType) {
       alert(t("chat_upload_fail"));
@@ -2204,13 +2271,22 @@ export default function ProfileAnonChat({
       return;
     }
 
-    const senderId = outgoingSender.ok
+    let sendChatId = chatId;
+    try {
+      sendChatId = await resolveVisitorSendChatId(provenOwner);
+    } catch (error) {
+      console.error(error);
+      alert(t("chat_load_fail"));
+      return;
+    }
+
+    const senderId = provenOwner && outgoingSender.ok
       ? outgoingSender.sender.fromUid
-      : getProfileChatAnonSenderId(chatId, chatAnonSessionId);
+      : getProfileChatAnonSenderId(sendChatId, "");
     const clientId = crypto.randomUUID();
     const previewType = pendingType;
     const previewSource = pendingSource;
-    const previewViewOnce = previewSource === "camera" ? viewOnce : false;
+    const previewViewOnce = (previewType === "image" || previewType === "video") ? viewOnce : false;
     const previewViewOnceLimit = previewViewOnce
       ? normalizeViewOnceLimit(viewOnceLimit)
       : VIEW_ONCE_DEFAULT_LIMIT;
@@ -2268,7 +2344,7 @@ export default function ProfileAnonChat({
       let uploaded;
       try {
         uploaded = await uploadChatMessageMedia(
-          chatId,
+          sendChatId,
           clientId,
           blob,
           previewType,
@@ -2305,9 +2381,10 @@ export default function ProfileAnonChat({
         ),
       );
 
+      let persisted: { messageId: string; canonicalChatId: string };
       try {
-        await persistAnonChatMessage({
-          chatId,
+        persisted = await persistAnonChatMessage({
+          chatId: sendChatId,
           username,
           senderId,
           currentUid,
@@ -2321,13 +2398,16 @@ export default function ProfileAnonChat({
           viewOnce: previewViewOnce,
           viewOnceLimit: previewViewOnce ? previewViewOnceLimit : undefined,
           reply: replyText || undefined,
-          existingChatData: chatDocDataRef.current,
+          existingChatData: sendChatId === chatId ? chatDocDataRef.current : undefined,
           clientId,
           isOwnerReply: provenOwner,
           viewerUsername,
           autoModerationRequiresBlur: scanResult.requiresBlur,
           moderationRequiresBlur: scanResult.requiresBlur,
         });
+        if (persisted.canonicalChatId && persisted.canonicalChatId !== chatId) {
+          onThreadIdChange?.(persisted.canonicalChatId);
+        }
       } catch (persistError) {
         try {
           await deleteChatMessageMediaAtPath(storagePath);
@@ -2351,12 +2431,13 @@ export default function ProfileAnonChat({
       }
 
       if (!provenOwner && identityReady) {
-        rememberOwnThreadAnonId(chatId, senderId, {
+        rememberOwnThreadAnonId(persisted.canonicalChatId || sendChatId, senderId, {
           authUid: currentUid,
           rootAnonSessionId: rootAnonContinuityId(),
           ownerUncertain: !identityReady,
         });
       }
+      setMessages((old) => old.map((message) => message.clientId === clientId ? { ...message, id: persisted.messageId, status: undefined } : message));
       messagePersistedRef.current = true;
       setUploadProgress(null);
     } catch (e) {
@@ -2402,21 +2483,26 @@ export default function ProfileAnonChat({
       ),
     );
 
-    void persistAnonChatMessage({
-      chatId,
-      username,
-      senderId: input.senderId,
-      currentUid,
-      targetUid: input.targetUid,
-      targetPhoto,
-      messageText: input.message.text,
-      reply: input.message.reply,
-      existingChatData: chatDocDataRef.current,
-      isOwnerReply: input.isOwnerReply,
-      viewerUsername,
-      clientId,
-    })
-      .then(async (persisted) => {
+    void (async () => {
+      try {
+        const sendChatId = await resolveVisitorSendChatId(input.isOwnerReply);
+        const persisted = await persistAnonChatMessage({
+          chatId: sendChatId,
+          username,
+          senderId: input.senderId,
+          currentUid,
+          targetUid: input.targetUid,
+          targetPhoto,
+          messageText: input.message.text,
+          reply: input.message.reply,
+          existingChatData: chatDocDataRef.current,
+          isOwnerReply: input.isOwnerReply,
+          viewerUsername,
+          clientId,
+        });
+        if (persisted.canonicalChatId && persisted.canonicalChatId !== chatId) {
+          onThreadIdChange?.(persisted.canonicalChatId);
+        }
         const claim = await maybeClaimVerifiedProfileLink({
           chatId: persisted.canonicalChatId,
           messageId: persisted.messageId,
@@ -2440,7 +2526,7 @@ export default function ProfileAnonChat({
           scheduleVerifiedProfileLinkClaimRetry(currentUid);
         }
         if (!input.isOwnerReply && identityReady) {
-          rememberOwnThreadAnonId(chatId, input.senderId, {
+          rememberOwnThreadAnonId(persisted.canonicalChatId || sendChatId, input.senderId, {
             authUid: currentUid,
             rootAnonSessionId: rootAnonContinuityId(),
             ownerUncertain: !identityReady,
@@ -2449,8 +2535,7 @@ export default function ProfileAnonChat({
         messagePersistedRef.current = true;
         keepComposerFocusRef.current = true;
         refocusComposer();
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error(error);
         if (error instanceof PersistIdentityError) {
           alert(t("chat_load_fail"));
@@ -2467,7 +2552,8 @@ export default function ProfileAnonChat({
             message.clientId === clientId ? { ...message, status: "error" as const } : message,
           ),
         );
-      });
+      }
+    })();
   }
 
   function retryTextMessage(message: Message) {
@@ -2573,13 +2659,12 @@ export default function ProfileAnonChat({
     });
 
     if (effectiveTargetUid && !isOwnerReply) {
-      void findActiveAbuseBlock({
+      void checkProfileAnonAbuseGate({
         receptorUid: effectiveTargetUid,
-        blockedAnonId: senderId,
-        blockedVisitorId: getVisitorId(),
+        chatId,
       })
-        .then((block) => {
-          if (!block) return;
+        .then((result) => {
+          if (!result.blocked) return;
           setBlockedByAbuse(true);
           setMessages((old) =>
             old.map((message) =>
@@ -2620,7 +2705,8 @@ export default function ProfileAnonChat({
 
     setClaimingBombId(message.id);
     try {
-      const claimed = await claimViewOnceMedia({ chatId, messageId: message.id });
+      const claimChatId = verifiedLinkChatId || chatId;
+      const claimed = await claimViewOnceMedia({ chatId: claimChatId, messageId: message.id });
       setMessages((old) =>
         old.map((row) =>
           row.id === message.id
@@ -2634,13 +2720,38 @@ export default function ProfileAnonChat({
             : row,
         ),
       );
-      if (!claimed.ok || !claimed.mediaUrl) {
+      if (!claimed.ok) {
         alert(claimed.exhausted ? "Esta bomba ya se agotó" : t("chat_load_fail"));
         return;
       }
-      setFullscreenUrl(claimed.mediaUrl);
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error("bomb_media_unauthenticated");
+
+      secureBombOpenRef.current = true;
+      setFullscreenSecureBomb(true);
+      setSecureBombScreen(true);
+
+      const response = await fetch("/api/view-once/media", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ chatId: claimChatId, messageId: message.id }),
+      });
+      if (!response.ok) throw new Error("bomb_media_fetch_failed");
+      const mediaBlob = await response.blob();
+      const objectUrl = URL.createObjectURL(mediaBlob);
+      revokeSecureBombObjectUrl();
+      secureBombObjectUrlRef.current = objectUrl;
+      setFullscreenMediaType(message.type === "video" ? "video" : "image");
+      setFullscreenUrl(objectUrl);
     } catch (error) {
       console.error(error);
+      setFullscreenUrl("");
+      if (secureBombOpenRef.current) leaveSecureBombMode();
       alert(t("chat_load_fail"));
     } finally {
       endViewOnceClaim(message.id);
@@ -2761,7 +2872,12 @@ export default function ProfileAnonChat({
   return (
     <main id="sayittome-chat-page-root" className="sayittome-chat-shell text-white">
       {fullscreenUrl ? (
-        <FullscreenMedia url={fullscreenUrl} onClose={() => setFullscreenUrl("")} />
+        <FullscreenMedia
+          url={fullscreenUrl}
+          mediaType={fullscreenMediaType}
+          secure={fullscreenSecureBomb}
+          onClose={closeFullscreenMedia}
+        />
       ) : null}
 
       <section className={`${CHAT_THREAD_COLUMN_CLASS} bg-black`}>
@@ -3085,7 +3201,9 @@ export default function ProfileAnonChat({
                       <p className="mt-3 text-xl font-black">{t("chat_bomb")}</p>
                       <p className="mt-1 text-sm text-orange-200/70">
                         {message.mine
-                          ? `Enviada · hasta ${limit} vista${limit === 1 ? "" : "s"}`
+                          ? (message.viewOnceOpenedCount || 0) > 0
+                            ? `Abierta ${message.viewOnceOpenedCount} vez${message.viewOnceOpenedCount === 1 ? "" : "ces"}${formatMessageTime(message.viewOnceLastOpenedAt) ? ` · ${formatMessageTime(message.viewOnceLastOpenedAt)}` : ""}`
+                            : `Enviada · hasta ${limit} vista${limit === 1 ? "" : "s"}`
                           : locked
                             ? "Agotada · ya no se puede ver"
                             : claimingBombId === message.id
@@ -3112,6 +3230,9 @@ export default function ProfileAnonChat({
                     >
                       <button
                         onClick={() => {
+                          if (secureBombOpenRef.current) leaveSecureBombMode();
+                          setFullscreenSecureBomb(false);
+                          setFullscreenMediaType("image");
                           setFullscreenUrl(message.mediaUrl || "");
                         }}
                       >
@@ -3274,7 +3395,7 @@ export default function ProfileAnonChat({
                 ) : null}
 
                 {imagePreview ? (
-                  pendingSource === "camera" && viewOnce ? (
+                  viewOnce ? (
                     <div className="flex min-h-[140px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
                       <Bomb size={44} />
                       <p className="mt-3 text-xl font-black">Bomba activada</p>
@@ -3290,7 +3411,7 @@ export default function ProfileAnonChat({
                 ) : null}
 
                 {videoPreview ? (
-                  pendingSource === "camera" && viewOnce ? (
+                  viewOnce ? (
                     <div className="flex min-h-[140px] flex-col items-center justify-center rounded-[22px] border border-orange-400/30 bg-orange-500/10 text-orange-300">
                       <Bomb size={44} />
                       <p className="mt-3 text-xl font-black">Bomba activada</p>
@@ -3307,7 +3428,7 @@ export default function ProfileAnonChat({
               </div>
 
               <div className="sayittome-chat-media-preview-actions">
-                {pendingSource === "camera" ? (
+                {(pendingType === "image" || pendingType === "video") ? (
                   <div className="space-y-2">
                   <button
                     type="button"
@@ -3343,9 +3464,19 @@ export default function ProfileAnonChat({
                         >
                           −
                         </button>
-                        <span className="min-w-[2ch] text-center text-base font-black tabular-nums">
-                          {viewOnceLimit}
-                        </span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={VIEW_ONCE_MIN_LIMIT}
+                          max={VIEW_ONCE_MAX_LIMIT}
+                          step={1}
+                          aria-label="Cantidad de vistas"
+                          value={viewOnceLimit}
+                          onChange={(event) =>
+                            setViewOnceLimit(normalizeViewOnceLimit(event.target.value))
+                          }
+                          className="w-24 rounded-xl border border-white/10 bg-black/30 px-2 py-2 text-center text-base font-black tabular-nums outline-none"
+                        />
                         <button
                           type="button"
                           aria-label="Más vistas"
@@ -3441,7 +3572,7 @@ export default function ProfileAnonChat({
               disabled={composerLocked}
               onChange={(e) => {
                 if (composerLocked) return;
-                handleFile(e.target.files?.[0] || null, "camera");
+                handleFile(e.target.files?.[0] || null, "camera", "image");
                 e.target.value = "";
               }}
             />
@@ -3455,7 +3586,7 @@ export default function ProfileAnonChat({
               disabled={composerLocked}
               onChange={(e) => {
                 if (composerLocked) return;
-                handleFile(e.target.files?.[0] || null, "camera");
+                handleFile(e.target.files?.[0] || null, "camera", "video");
                 e.target.value = "";
               }}
             />

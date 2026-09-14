@@ -46,7 +46,10 @@ export function stripNativeChatFullscreen() {
   if (typeof document === "undefined") return;
 
   const body = document.body;
-  body.classList.remove("sayittome-chat-fullscreen-open");
+  if (body.classList.contains("sayittome-bomb-secure-open")) {
+    window.dispatchEvent(new Event("sayittome:close-secure-bomb"));
+  }
+  body.classList.remove("sayittome-chat-fullscreen-open", "sayittome-bomb-secure-open");
   releaseChatViewportLock();
 }
 
@@ -55,6 +58,11 @@ export function tryCloseNativeOverlays(): boolean {
   if (typeof document === "undefined") return false;
 
   const body = document.body;
+
+  if (body.classList.contains("sayittome-bomb-secure-open")) {
+    window.dispatchEvent(new Event("sayittome:close-secure-bomb"));
+    return true;
+  }
 
   if (body.classList.contains("sayittome-chat-fullscreen-open")) {
     window.dispatchEvent(new Event("sayittome:close-chat-fullscreen"));

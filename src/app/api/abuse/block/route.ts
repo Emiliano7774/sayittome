@@ -1,66 +1,54 @@
 import { NextResponse } from "next/server";
 
-import {
-  DEFAULT_ABUSE_BLOCK_MINUTES,
-  getRequestClientIp,
-} from "@/lib/abuse/anonAbuseBlocks";
-import { buildAbuseFingerprint, buildVisitorBlockKey } from "@/lib/abuse/fingerprint";
-import { createFirestoreDoc } from "@/lib/firestore/rest";
+import { verifyFirebaseIdToken } from "@/lib/admin/verifyAdminRequest";
+import { applyProfileAnonAbuseBlock } from "@/lib/abuse/profileAnonAbuseBlockWrite";
+import { redactAbuseBlockForClient } from "@/lib/abuse/profileAnonAbuseBlock";
 
 export const dynamic = "force-dynamic";
 
-function blockDocId(receptorUid: string, blockedVisitorId: string) {
-  const safeVisitor = blockedVisitorId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
-  return `${receptorUid}__vis__${safeVisitor}`;
-}
-
+/**
+ * Profile owner → block anon visitor for exactly 30 minutes (server clock).
+ * Body may only supply chatId + optional motivo. Identity/IP/duration derived server-side.
+ * Blocks the verified thread/anon even when IP coverage is still pending.
+ */
 export async function POST(req: Request) {
+  let authUid = "";
   try {
-    const body = await req.json();
-    const receptorUid = String(body?.receptorUid || "");
-    const blockedAnonId = String(body?.blockedAnonId || "");
-    const blockedVisitorId = String(body?.blockedVisitorId || "");
-    const chatId = String(body?.chatId || "");
-    const motivo = String(body?.motivo || "bloqueo_30m");
-    const blockedBy = String(body?.blockedBy || "");
-    const durationMinutes = Number(body?.durationMinutes || DEFAULT_ABUSE_BLOCK_MINUTES);
-
-    if (!receptorUid || !blockedVisitorId || !chatId) {
-      return NextResponse.json({ ok: false, error: "missing fields" }, { status: 400 });
-    }
-
-    const blockedClientIp = getRequestClientIp(req);
-    const blockedFingerprint = buildVisitorBlockKey(blockedVisitorId);
-    const legacyFingerprint = buildAbuseFingerprint(blockedAnonId, blockedVisitorId);
-    const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
-    const id = blockDocId(receptorUid, blockedVisitorId);
-
-    const block = await createFirestoreDoc(
-      "anon_abuse_blocks",
-      {
-        receptorUid,
-        blockedFingerprint,
-        legacyFingerprint,
-        blockedAnonId,
-        blockedVisitorId,
-        blockedClientIp: blockedClientIp || null,
-        motivo,
-        createdAt: new Date().toISOString(),
-        expiresAt,
-        chatId,
-        blockedBy,
-      },
-      id,
+    const user = await verifyFirebaseIdToken(req);
+    authUid = user.uid;
+  } catch (error) {
+    const status = Number((error as { status?: number })?.status || 401);
+    return NextResponse.json(
+      { ok: false, error: String((error as Error)?.message || "unauthorized") },
+      { status },
     );
-
-    return NextResponse.json({
-      ok: true,
-      block,
-      blockedClientIp,
-      ts: Date.now(),
-    });
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "unknown";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
+
+  let body: { chatId?: string; motivo?: string };
+  try {
+    body = (await req.json()) as { chatId?: string; motivo?: string };
+  } catch {
+    return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
+  }
+
+  // Ignore any client-supplied receptorUid / visitorId / IP / durationMinutes.
+  const result = await applyProfileAnonAbuseBlock({
+    authUid,
+    chatId: String(body.chatId || "").trim(),
+    motivo: String(body.motivo || "bloqueo_30m"),
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { ok: false, error: result.error },
+      { status: result.status },
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    replayed: result.replayed,
+    ipCoverage: result.ipCoverage,
+    block: redactAbuseBlockForClient(result.block),
+  });
 }

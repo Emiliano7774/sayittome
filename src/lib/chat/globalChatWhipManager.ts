@@ -40,28 +40,12 @@ function sameIdSet(a: Set<string>, b: Set<string>) {
 
 const MAX_WHIP_CHAT_LISTENERS = 25;
 
-function messageCreatedAtMs(data: {
-  createdAt?: { toMillis?: () => number; seconds?: number };
-}): number {
-  const createdAt = data.createdAt;
-  if (!createdAt) return 0;
-  if (typeof createdAt.toMillis === "function") {
-    const ms = createdAt.toMillis();
-    return Number.isFinite(ms) ? ms : 0;
-  }
-  if (typeof createdAt.seconds === "number") {
-    return createdAt.seconds * 1000;
-  }
-  return 0;
-}
-
 class GlobalChatWhipManager {
   private context: WhipContext | null = null;
   private inboxIds = new Set<string>();
   private sessionIds = new Set<string>();
   private messageUnsubs = new Map<string, Unsubscribe>();
   private lastMessageId = new Map<string, string>();
-  private listenerAttachedAt = new Map<string, number>();
   private bootstrapped = false;
   private sessionListenerAttached = false;
   private paused = false;
@@ -144,12 +128,12 @@ class GlobalChatWhipManager {
       if (!nextSet.has(chatId)) {
         unsub();
         this.messageUnsubs.delete(chatId);
+        this.lastMessageId.delete(chatId);
       }
     }
 
     for (const chatId of nextSet) {
       if (this.messageUnsubs.has(chatId)) continue;
-      this.listenerAttachedAt.set(chatId, Date.now());
       this.messageUnsubs.set(chatId, this.attachMessageListener(chatId));
     }
   }
@@ -199,56 +183,17 @@ class GlobalChatWhipManager {
         );
         const activeChatId = ctx.getActiveChatId();
         const viewingActiveChat = activeChatId === chatId && !document.hidden;
-        const isNewMessage = Boolean(previousId && previousId !== messageId);
-        // First snapshot after attaching a listener used to always suppress sound.
-        // Profile←anon fails that path (chat just entered the watch set); anon←profile
-        // already had previousId from the visitor's outgoing message. Treat a fresh
-        // inbound created around attach time as live — never hydrate-old.
-        //
-        // Manual post-771a927: first inbound often arrives with pending
-        // serverTimestamp (createdAtMs===0) and inbox unreadHint not yet visible.
-        // That used to suppress + burn dedupe, so the first whip never played.
-        const attachedAt = this.listenerAttachedAt.get(chatId) || Date.now();
-        const createdAtMs = messageCreatedAtMs(data);
-        const unreadHint = (() => {
-          if (!chat) return false;
-          const readBy = chat.readBy || {};
-          const counts = chat.unreadCounts || {};
-          const keys = new Set<string>([viewerId, ctx.viewerId, ctx.firebaseUid].filter(Boolean));
-          for (const id of keys) {
-            if (Number(counts[id] || 0) > 0) return true;
-            if (readBy[id] === false) return true;
-          }
-          return Object.values(counts).some((n) => Number(n || 0) > 0);
-        })();
-        const LIVE_ATTACH_WINDOW_MS = 8_000;
-        const pendingServerTimestamp = createdAtMs === 0;
-        const createdNearAttach =
-          createdAtMs > 0 && createdAtMs >= attachedAt - LIVE_ATTACH_WINDOW_MS;
-        const liveInboundOnAttach =
-          !previousId &&
-          incoming &&
-          !viewingActiveChat &&
-          (createdNearAttach || pendingServerTimestamp || unreadHint);
-
-        this.lastMessageId.set(chatId, messageId);
-
-        if (!isNewMessage && !liveInboundOnAttach) {
-          // Only burn dedupe for clearly-old hydration. Pending createdAt on a
-          // non-live first snapshot must not permanently silence that messageId.
-          const clearlyOldHydration =
-            createdAtMs > 0 && createdAtMs < attachedAt - LIVE_ATTACH_WINDOW_MS;
-          if (clearlyOldHydration || !incoming) {
-            tryAlertIncomingMessage({
-              chatId,
-              messageId,
-              incoming: false,
-              suppress: true,
-              onAlert: () => undefined,
-            });
-          }
+        // First snapshot is baseline only. Unread backlog, tab entry and listener
+        // reattachment must NEVER replay the whip. Only a message id observed
+        // changing while this listener is alive counts as a newly-arrived message.
+        if (!previousId) {
+          this.lastMessageId.set(chatId, messageId);
           return;
         }
+
+        const isNewMessage = previousId !== messageId;
+        this.lastMessageId.set(chatId, messageId);
+        if (!isNewMessage) return;
 
         tryAlertIncomingMessage({
           chatId,
@@ -286,7 +231,9 @@ class GlobalChatWhipManager {
       unsub();
     }
     this.messageUnsubs.clear();
-    this.listenerAttachedAt.clear();
+    // Any reattach must establish a fresh baseline. Messages that arrived while
+    // listeners were paused/absent are backlog, never a live whip event.
+    this.lastMessageId.clear();
   }
 }
 

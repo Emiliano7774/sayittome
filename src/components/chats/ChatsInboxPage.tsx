@@ -45,6 +45,7 @@ export default function ChatsInboxPage() {
           sortedChats={inbox.sortedChats}
           uid={inbox.uid}
           isAnonymousSession={inbox.isAnonymousSession}
+          firestoreSynced={inbox.firestoreSynced}
           selection={selection}
         />
       ) : (
@@ -52,6 +53,7 @@ export default function ChatsInboxPage() {
           sortedChats={inbox.sortedChats}
           uid={inbox.uid}
           isAnonymousSession={inbox.isAnonymousSession}
+          firestoreSynced={inbox.firestoreSynced}
           selection={selection}
         />
       )}

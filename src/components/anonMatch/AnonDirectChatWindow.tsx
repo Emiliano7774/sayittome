@@ -14,8 +14,9 @@ import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
-import { getAnonSessionId } from "@/lib/chat/anonSession";
-import { getVisitorId } from "@/lib/abuse/fingerprint";
+import { fetchAnonMatch, resolveAnonMatchSessionId } from "@/lib/anonMatch/fetchAnonMatch";
+import { isRegisteredProfileCaller } from "@/lib/anonMatch/anonMatchConsumer";
+import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 import { persistAnonDirectMessage } from "@/lib/anonMatch/persistDirectMessage";
 import {
   notifyIncomingChatMessage,
@@ -146,8 +147,22 @@ export default function AnonDirectChatWindow() {
   const role = openChat?.role || "anonimo";
   const chatView = match?.chatView || "compact";
 
+  const [anonSenderId, setAnonSenderId] = useState("");
+
+  useEffect(() => {
+    if (role === "perfil") {
+      setAnonSenderId("");
+      return;
+    }
+    void resolveAnonMatchSessionId()
+      .then((id) => setAnonSenderId(id))
+      .catch(() => setAnonSenderId(""));
+  }, [role, chatId]);
+
   const senderId =
-    role === "perfil" ? firebaseUser?.uid || "" : getAnonSessionId();
+    role === "perfil" && isRegisteredProfileCaller(firebaseUser)
+      ? firebaseUser?.uid || ""
+      : anonSenderId;
   const senderTipo = role === "perfil" ? "perfil" : "anonimo";
 
   useEffect(() => {
@@ -300,9 +315,8 @@ export default function AnonDirectChatWindow() {
   async function handleClose() {
     if (!chatId) return;
     try {
-      await fetch("/api/anon-match/close", {
+      await fetchAnonMatch("/api/anon-match/close", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chatId, closedBy: senderId }),
       });
     } catch {
@@ -315,13 +329,11 @@ export default function AnonDirectChatWindow() {
     if (!chatId || reporting) return;
     setReporting(true);
     try {
-      await fetch("/api/anon-match/report", {
+      await fetchAnonMatch("/api/anon-match/report", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chatId,
-          reporterId: getVisitorId(),
-          reporterUid: firebaseUser?.uid || "",
+          reporterId: senderId || getStoredAnonMatchAlias(),
         }),
       });
       setReportConfirmOpen(false);

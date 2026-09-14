@@ -7,8 +7,15 @@ import { setGlobalOptions } from "firebase-functions/v2/options";
 import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onTaskDispatched } from "firebase-functions/v2/tasks";
 
 import { db, ensureAdminApp, messaging } from "./adminApp";
+import {
+  processAccountInactivityTask,
+  repairAccountInactivitySchedules,
+  scheduleAccountInactivityForUid,
+} from "./accountInactivity";
 
 import { isValidFcmInstallationId, isValidInstallationProof } from "./fcmInstallation";
 import {
@@ -64,6 +71,31 @@ export {
 } from "./deleteChatMessageCore";
 
 setGlobalOptions({ region: "us-central1" });
+
+export const accountInactivityCheck = onTaskDispatched(
+  {
+    retryConfig: { maxAttempts: 5, minBackoffSeconds: 30, maxBackoffSeconds: 3600 },
+    rateLimits: { maxConcurrentDispatches: 5, maxDispatchesPerSecond: 5 },
+    timeoutSeconds: 1800,
+  },
+  async (request) => {
+    await processAccountInactivityTask(request.data || { uid: "" });
+  },
+);
+
+export const scheduleAccountInactivityOnProfileCreate = onDocumentCreated(
+  "usuarios/{uid}",
+  async (event) => {
+    await scheduleAccountInactivityForUid(String(event.params.uid || ""));
+  },
+);
+
+export const repairAccountInactivityScheduleBackfill = onSchedule(
+  { schedule: "17 4 * * *", timeZone: "America/Argentina/Cordoba", timeoutSeconds: 540 },
+  async () => {
+    await repairAccountInactivitySchedules();
+  },
+);
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
 const MAX_TOKENS_PER_USER = 20;
@@ -126,7 +158,11 @@ function isOwnerReply(message: MessageDoc, chat: ChatDoc, from: string) {
 }
 
 /** Recipients that can own FCM tokens (Firebase Auth UIDs only). */
-export function resolvePushRecipientUids(message: MessageDoc, chat: ChatDoc): string[] {
+export function resolvePushRecipientUids(
+  message: MessageDoc,
+  chat: ChatDoc,
+  privateVisitorAuthUid?: string,
+): string[] {
   const from = messageAuthorId(message);
   const recipients = new Set<string>();
   const members = [...(chat.participantes || []), ...(chat.participants || [])]
@@ -142,6 +178,8 @@ export function resolvePushRecipientUids(message: MessageDoc, chat: ChatDoc): st
       if (isFirebaseUid(id) && id !== from) recipients.add(id);
     }
   } else {
+    const boundVisitor = asId(privateVisitorAuthUid);
+    if (isFirebaseUid(boundVisitor)) recipients.add(boundVisitor);
     const initiator = asId(chat.initiatorUid);
     if (isFirebaseUid(initiator)) recipients.add(initiator);
     for (const id of members) {
@@ -451,16 +489,15 @@ export const scrubVerifiedProfileLinkMensajes = onDocumentWritten(
     const after = event.data?.after;
     if (!after?.exists) return;
     const data = after.data() || {};
+    const chatId = String(event.params.chatId || "");
     await handleScrubVerifiedProfileAttestation({
       db: db(),
       secret: readVerifiedProfileLinkMacSecret(),
-      chatId: String(event.params.chatId || ""),
+      chatId,
       messageId: String(event.params.messageId || ""),
       attestation: data.verifiedProfileAttestation,
       messageText: String(data.texto || data.text || ""),
-      messageAuthorUid: String(
-        data.senderAuthUid || data.createdByAuthUid || data.profileUid || data.fromUid || "",
-      ),
+      message: data as Record<string, unknown>,
       messageRef: after.ref,
     });
   },
@@ -531,6 +568,8 @@ export const onChatMessageCreated = onDocumentCreated(
 
     const chatSnap = await db().collection("chats").doc(chatId).get();
     const chat = (chatSnap.data() || {}) as ChatDoc;
+    const leaseSnap = await db().collection("anon_abuse_chat_leases").doc(chatId).get();
+    const privateVisitorAuthUid = asId(leaseSnap.data()?.visitorAuthUid);
 
     // Defense-in-depth: rules should already reject profile→anon writes when blocked.
     try {
@@ -571,7 +610,7 @@ export const onChatMessageCreated = onDocumentCreated(
       logger.warn("anon_profile_block check failed", { chatId, messageId, error });
     }
 
-    const recipients = resolvePushRecipientUids(message, chat);
+    const recipients = resolvePushRecipientUids(message, chat, privateVisitorAuthUid);
 
     if (recipients.length === 0) {
       await markDelivery(chatId, messageId, {

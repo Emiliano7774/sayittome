@@ -121,6 +121,10 @@
     "gate:ssr-functions-package": "node scripts/ssr-firebase-admin-zero-hash-predeploy.mjs",
     "smoke:admin-auth": "node scripts/admin-moderacion-auth-smoke.mjs",
     "test:view-once-claim": "node --experimental-strip-types scripts/view-once-claim.harness.mjs",
+    "test:view-once-media-access": "node --experimental-strip-types scripts/view-once-media-access.harness.mjs",
+    "test:view-once-media-deliver": "node --experimental-strip-types scripts/view-once-media-deliver.harness.mjs",
+    "test:chat-bomb-secure-viewer": "node --experimental-strip-types scripts/chat-bomb-secure-viewer.harness.mjs",
+    "test:chat-bomb-video-fullscreen": "node --experimental-strip-types scripts/chat-bomb-video-fullscreen.harness.mjs",
     "test:android-incognito-slot-reserve": "node --experimental-strip-types scripts/android-incognito-slot-reserve.harness.mjs",
     "test:android-shuffle-back-repeat": "node --experimental-strip-types scripts/android-shuffle-back-repeat.harness.mjs",
     "test:chats-to-shuffle-present": "node --experimental-strip-types scripts/chats-to-shuffle-present.harness.mjs",
@@ -188,5 +192,8 @@
     "sharp": "^0.34.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": "22"
   }
 }

@@ -48,7 +48,13 @@ const seeded = measureSync("profile-seed", () => profileCache.getCachedFullProfi
 assert.equal(seeded.value, null);
 assert.equal(profileCache.isPaintableFullProfileCache("maria"), false);
 assert.equal(profileCache.getCachedProfile("maria")?.uid, "uidM");
-assert.equal(profileCache.shouldIdleRevalidateFullProfile("maria"), false);
+// Product contract: shuffle-seed is partial (not paintable as full). Idle must
+// revalidate so the next quiet tick fetches a real API/full envelope. Expect true.
+assert.equal(
+  profileCache.shouldIdleRevalidateFullProfile("maria"),
+  true,
+  "shuffle-seed partial must idle-revalidate (shouldIdleRevalidateFullProfile === true)",
+);
 assert.ok(seeded.ms < 20, `sync seed too slow: ${seeded.ms}`);
 
 profileCache.setCachedFullProfile("maria", { uid: "uidM", username: "maria", likes: 3, seguidores: 2 }, { source: "api" });
@@ -56,6 +62,7 @@ const warm = measureSync("profile-warm", () => profileCache.measureProfileCacheP
 assert.equal(warm.value.hit, true);
 assert.equal(warm.value.fresh, true);
 assert.equal(profileCache.isPaintableFullProfileCache("maria"), true);
+// Fresh API full envelope: idle revalidate stays false until TTL expires.
 assert.equal(profileCache.shouldIdleRevalidateFullProfile("maria"), false);
 assert.ok(warm.ms < 20, `warm paint too slow: ${warm.ms}`);
 

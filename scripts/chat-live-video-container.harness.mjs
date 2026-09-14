@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import {installHarnessAlias,installHarnessWindow} from './harness-alias.mjs';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+installHarnessWindow(); installHarnessAlias(root);
+const upload=await import(pathToFileURL(path.join(root,'src/lib/media/upload.ts')).href);
+assert.match(upload.chatMessageMediaPath('c','id','video','video/webm;codecs=vp9,opus'),/_webm$/);
+assert.match(upload.chatMessageMediaPath('c','id','video','video/mp4'),/_mp4$/);
+assert.match(upload.chatMessageMediaPath('c','id','video','video/quicktime'),/_mov$/);
+assert.match(upload.chatMessageMediaPath('c','id','video','video/3gpp'),/_3gp$/);
+const source=fs.readFileSync(path.join(root,'src/components/chat/ProfileAnonChat.tsx'),'utf8');
+assert.match(source,/recorder\.mimeType \|\| liveVideoChunksRef\.current\[0\]\?\.type/);
+assert.doesNotMatch(source,/new Blob\(liveVideoChunksRef\.current, \{\s*type: "video\/webm"/s);
+console.log(JSON.stringify({gate:'CHAT_LIVE_VIDEO_CONTAINER',pass:true},null,2));

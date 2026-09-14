@@ -4,6 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 
 import AdminEvidenceMedia from "@/components/admin/AdminEvidenceMedia";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
+import {
+  adminMediaScopeKey,
+  resolveAdminMediaDisplay,
+  shouldApplyAdminMediaFetchResult,
+  type AsyncMediaSnapshot,
+} from "@/lib/admin/adminSpectatorMediaDisplay";
 import { fetchAdminJson } from "@/lib/admin/fetchAdminJson";
 import { chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import { messageDisplayText, type SpectatorMessage } from "@/lib/moderation/spectator";
@@ -24,42 +30,45 @@ function isMediaType(type: string) {
   );
 }
 
-function adminMediaScopeKey(chatId: string, msg: SpectatorMessage) {
-  const collection = String(msg.collectionName || "mensajes").trim() || "mensajes";
-  return `${chatId}/${collection}/${msg.id}`;
-}
-
-export default function AdminSpectatorMessageContent({ chatId, msg, compact = false }: Props) {
+function AdminSpectatorMessageContentBody({ chatId, msg, compact = false }: Props) {
   const type = String(msg.type || "text").trim() || "text";
   const inlineUrl = String(msg.mediaUrl || "").trim();
   const needsAdminFetch = Boolean(msg.viewOnce) || (isMediaType(type) && !inlineUrl);
-  const mediaScopeKey = adminMediaScopeKey(chatId, msg);
+  const requestKey = adminMediaScopeKey(chatId, msg);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const fetchKey = `${requestKey}:${retryNonce}`;
 
-  const [mediaUrl, setMediaUrl] = useState(inlineUrl);
-  const [resolvedType, setResolvedType] = useState(type);
-  const [loading, setLoading] = useState(needsAdminFetch);
-  const [error, setError] = useState("");
-  const [fetchGeneration, setFetchGeneration] = useState(0);
+  const [asyncMedia, setAsyncMedia] = useState<AsyncMediaSnapshot>(() =>
+    needsAdminFetch
+      ? {
+          fetchKey,
+          mediaUrl: "",
+          resolvedType: type,
+          status: "loading",
+          error: "",
+        }
+      : {
+          fetchKey: "",
+          mediaUrl: inlineUrl,
+          resolvedType: type,
+          status: "ready",
+          error: "",
+        },
+  );
 
   const retryLoad = useCallback(() => {
-    setFetchGeneration((value) => value + 1);
+    setRetryNonce((value) => value + 1);
   }, []);
 
   useEffect(() => {
-    setMediaUrl(inlineUrl);
-    setResolvedType(type);
-    setError("");
-    if (!needsAdminFetch) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
+    if (!needsAdminFetch) return;
 
     let cancelled = false;
+    const capturedKey = fetchKey;
+    const collection = msg.collectionName || "mensajes";
 
     void (async () => {
       try {
-        const collection = msg.collectionName || "mensajes";
         const res = await fetchAdminJson<{
           ok?: boolean;
           mediaUrl?: string;
@@ -69,24 +78,50 @@ export default function AdminSpectatorMessageContent({ chatId, msg, compact = fa
           `/api/admin/message-media?chatId=${encodeURIComponent(chatId)}&messageId=${encodeURIComponent(msg.id)}&collection=${encodeURIComponent(collection)}`,
         );
         if (cancelled) return;
+        if (!shouldApplyAdminMediaFetchResult(capturedKey, capturedKey)) return;
+
         if (!res.ok || !res.mediaUrl) {
-          setError(res.error || "media_unavailable");
-          setMediaUrl("");
+          setAsyncMedia({
+            fetchKey: capturedKey,
+            mediaUrl: "",
+            resolvedType: type,
+            status: "error",
+            error: res.error || "media_unavailable",
+          });
           return;
         }
-        setMediaUrl(String(res.mediaUrl));
-        setResolvedType(String(res.type || type));
+
+        setAsyncMedia({
+          fetchKey: capturedKey,
+          mediaUrl: String(res.mediaUrl),
+          resolvedType: String(res.type || type),
+          status: "ready",
+          error: "",
+        });
       } catch {
-        if (!cancelled) setError("media_unavailable");
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setAsyncMedia({
+          fetchKey: capturedKey,
+          mediaUrl: "",
+          resolvedType: type,
+          status: "error",
+          error: "media_unavailable",
+        });
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [chatId, fetchGeneration, inlineUrl, msg.collectionName, msg.id, needsAdminFetch, type]);
+  }, [chatId, fetchKey, msg.collectionName, msg.id, needsAdminFetch, type]);
+
+  const { mediaUrl, resolvedType, loading, error } = resolveAdminMediaDisplay({
+    needsAdminFetch,
+    inlineUrl,
+    inlineType: type,
+    fetchKey,
+    asyncMedia,
+  });
 
   const text = messageDisplayText(msg);
   const showText =
@@ -120,27 +155,17 @@ export default function AdminSpectatorMessageContent({ chatId, msg, compact = fa
           </button>
         </div>
       ) : mediaUrl && isAudio ? (
-        <ChatAudioPlayer
-          key={mediaScopeKey}
-          src={mediaUrl}
-          failLabel="No se pudo reproducir"
-          className="max-w-xs"
-        />
+        <ChatAudioPlayer src={mediaUrl} failLabel="No se pudo reproducir" className="max-w-xs" />
       ) : mediaUrl && isVideo ? (
-        <AdminEvidenceMedia
-          key={mediaScopeKey}
-          url={mediaUrl}
-          mediaType="video"
-          maxHeightClass="max-h-56"
-        />
+        <AdminEvidenceMedia url={mediaUrl} mediaType="video" maxHeightClass="max-h-56" />
       ) : mediaUrl && isImage ? (
-        <AdminEvidenceMedia
-          key={mediaScopeKey}
-          url={mediaUrl}
-          mediaType="image"
-          maxHeightClass="max-h-56"
-        />
+        <AdminEvidenceMedia url={mediaUrl} mediaType="image" maxHeightClass="max-h-56" />
       ) : null}
     </div>
   );
+}
+
+export default function AdminSpectatorMessageContent(props: Props) {
+  const scopeKey = adminMediaScopeKey(props.chatId, props.msg);
+  return <AdminSpectatorMessageContentBody key={scopeKey} {...props} />;
 }

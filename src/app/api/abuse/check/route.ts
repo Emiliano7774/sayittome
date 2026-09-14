@@ -1,57 +1,49 @@
 import { NextResponse } from "next/server";
 
-import { getRequestClientIp } from "@/lib/abuse/anonAbuseBlocks";
-import { runCollectionQuery } from "@/lib/firestore/rest";
+import { verifyFirebaseIdTokenAllowingAnonymous } from "@/lib/admin/verifyAdminRequest";
+import { findActiveProfileAnonAbuseForRequest } from "@/lib/abuse/profileAnonAbuseBlockWrite";
 
 export const dynamic = "force-dynamic";
 
-function isBlockActive(block: Record<string, unknown>, now: number) {
-  const expiresAt = String(block.expiresAt || "");
-  if (!expiresAt) return true;
-  const date = new Date(expiresAt);
-  if (Number.isNaN(date.getTime())) return true;
-  return date.getTime() > now;
-}
-
-export async function GET(req: Request) {
+/**
+ * UI-only block probe. Does NOT stamp IP or create leases.
+ * Authorization for send is issue-send-permit + Rules.
+ */
+export async function POST(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const receptorUid = String(searchParams.get("receptorUid") || "");
-    const fingerprint = String(searchParams.get("fingerprint") || "");
-    const blockedAnonId = String(searchParams.get("blockedAnonId") || "");
-    const blockedVisitorId = String(searchParams.get("blockedVisitorId") || "");
-    const clientIp = getRequestClientIp(req);
+    await verifyFirebaseIdTokenAllowingAnonymous(req);
+  } catch (error) {
+    const status = Number((error as { status?: number })?.status || 401);
+    return NextResponse.json(
+      { ok: false, error: String((error as Error)?.message || "unauthorized") },
+      { status },
+    );
+  }
 
-    if (!receptorUid) {
-      return NextResponse.json({ ok: false, error: "missing receptorUid" }, { status: 400 });
+  try {
+    let body: { receptorUid?: string; chatId?: string };
+    try {
+      body = (await req.json()) as { receptorUid?: string; chatId?: string };
+    } catch {
+      return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
     }
 
-    const blocks = await runCollectionQuery("anon_abuse_blocks", 500);
-    const now = Date.now();
+    const receptorUid = String(body.receptorUid || "").trim();
+    const chatId = String(body.chatId || "").trim();
+    if (!receptorUid) {
+      return NextResponse.json({ ok: false, error: "missing_receptor" }, { status: 400 });
+    }
 
-    const active = blocks.find((block) => {
-      if (String(block.receptorUid) !== receptorUid) return false;
-      if (!isBlockActive(block, now)) return false;
-
-      if (blockedVisitorId && String(block.blockedVisitorId) === blockedVisitorId) {
-        return true;
-      }
-
-      if (clientIp && String(block.blockedClientIp) === clientIp) {
-        return true;
-      }
-
-      if (fingerprint && String(block.blockedFingerprint) === fingerprint) return true;
-      if (blockedAnonId && String(block.blockedAnonId) === blockedAnonId) return true;
-
-      return false;
+    const hit = await findActiveProfileAnonAbuseForRequest({
+      receptorUid,
+      chatId,
+      req,
     });
 
     return NextResponse.json({
       ok: true,
-      blocked: Boolean(active),
-      block: active || null,
-      ts: now,
+      blocked: hit.blocked,
+      reason: hit.blocked ? "blocked" : "",
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "unknown";

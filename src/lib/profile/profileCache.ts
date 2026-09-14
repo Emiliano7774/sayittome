@@ -232,6 +232,8 @@ export function getCachedFullProfile(username: string, options?: { allowStale?: 
     uid?: string;
     moderationTag?: string;
     fakeProfileTag?: string;
+    groomingTag?: boolean;
+    potentialPedophileTag?: boolean;
   };
   const uid = String(profile?.uid || "").trim();
   if (uid) {
@@ -270,7 +272,7 @@ export function setCachedFullProfile(
 
 export function patchCachedFullProfileAdminTags(
   username: string,
-  patch: { moderationTag?: string; fakeProfileTag?: string },
+  patch: { moderationTag?: string; fakeProfileTag?: string; groomingTag?: boolean; potentialPedophileTag?: boolean },
 ) {
   const key = normalizeUsername(username);
   if (!key) return;
@@ -289,6 +291,17 @@ export function patchCachedFullProfileAdminTags(
   }
 }
 
+export function patchCachedFullProfileAdminBlur(
+  username: string,
+  patch: { mediaBlurFlags: Record<string, boolean>; adminBlurAt?: string },
+) {
+  const key = normalizeUsername(username);
+  if (!key) return;
+  const envelope = peekFullProfileEnvelope(key);
+  if (!envelope?.profile || typeof envelope.profile !== "object") return;
+  persistFull({ ...envelope, profile: { ...(envelope.profile as Record<string, unknown>), ...patch } }, key);
+}
+
 export function seedFullProfileFromShuffleCard(profile: ShuffleProfile) {
   const username = normalizeUsername(profile.username);
   if (!username) return false;
@@ -299,6 +312,14 @@ export function seedFullProfileFromShuffleCard(profile: ShuffleProfile) {
     lastActive: profile.lastActive || "",
     online: profile.showOnline === true,
   });
+  setCachedFullProfile(username, {
+    ...profile,
+    fotoPrincipal: profile.photo,
+    fotoPortada: profile.coverPhoto || "",
+    videoPortada: profile.coverVideo || "",
+    online: profile.online ?? profile.showOnline,
+    mostrarUltimaVez: profile.mostrarUltimaVez !== false,
+  }, { source: "shuffle-seed" });
   return true;
 }
 
@@ -327,7 +348,8 @@ export function measureProfileCachePaint(username: string, now = nowMs()) {
 
 export function shouldIdleRevalidateFullProfile(username: string) {
   const envelope = peekFullProfileEnvelope(username);
-  if (!envelope || envelope.source === "shuffle-seed") return false;
+  if (!envelope) return false;
+  if (envelope.source === "shuffle-seed") return true;
   return !isFullProfileCacheFresh(username);
 }
 

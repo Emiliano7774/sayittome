@@ -63,11 +63,19 @@ export function chatMessageMediaPath(
   kind: "image" | "video" | "audio",
   mime?: string,
 ) {
+  const normalizedMime = String(mime || "").toLowerCase();
+  const videoExt = normalizedMime.includes("webm")
+    ? "webm"
+    : normalizedMime.includes("quicktime")
+      ? "mov"
+      : normalizedMime.includes("3gpp")
+        ? "3gp"
+        : "mp4";
   const ext =
     kind === "audio"
       ? chatAudioExtension(mime || "audio/webm")
       : kind === "video"
-        ? "mp4"
+        ? videoExt
         : "jpg";
   return `chats/${chatId}/${clientId}_${ext}`;
 }

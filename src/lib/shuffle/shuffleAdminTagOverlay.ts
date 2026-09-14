@@ -6,6 +6,8 @@ const TTL_MS = 24 * 60 * 60_000;
 export type ShuffleAdminTagOverlay = {
   moderationTag?: string;
   fakeProfileTag?: string;
+  groomingTag?: boolean;
+  potentialPedophileTag?: boolean;
 };
 
 const ram = new Map<string, ShuffleAdminTagOverlay>();
@@ -39,18 +41,22 @@ export function reconcileShuffleAdminTagOverlayFromServer(profile: {
   uid?: string;
   moderationTag?: string;
   fakeProfileTag?: string;
+  groomingTag?: boolean;
+  potentialPedophileTag?: boolean;
 }) {
   const uid = String(profile.uid || "").trim();
   if (!uid) return;
   const patch: Partial<ShuffleAdminTagOverlay> = {};
   if (profile.fakeProfileTag === "fake") patch.fakeProfileTag = "fake";
   if (profile.moderationTag === "roleplay") patch.moderationTag = "roleplay";
+  if (profile.groomingTag === true) patch.groomingTag = true;
+  if (profile.potentialPedophileTag === true) patch.potentialPedophileTag = true;
   if (Object.keys(patch).length === 0) return;
   setShuffleAdminTagOverlay(uid, patch);
 }
 
 export function applyShuffleAdminTagOverlay<
-  T extends { uid: string; moderationTag?: string; fakeProfileTag?: string },
+  T extends { uid: string; moderationTag?: string; fakeProfileTag?: string; groomingTag?: boolean; potentialPedophileTag?: boolean },
 >(profile: T): T {
   if (ram.size === 0) hydrateRamFromStorage();
   const overlay = ram.get(String(profile.uid || "").trim());
@@ -59,23 +65,27 @@ export function applyShuffleAdminTagOverlay<
     ...profile,
     ...(overlay.moderationTag !== undefined ? { moderationTag: overlay.moderationTag } : {}),
     ...(overlay.fakeProfileTag !== undefined ? { fakeProfileTag: overlay.fakeProfileTag } : {}),
+    ...(overlay.groomingTag !== undefined ? { groomingTag: overlay.groomingTag } : {}),
+    ...(overlay.potentialPedophileTag !== undefined ? { potentialPedophileTag: overlay.potentialPedophileTag } : {}),
   };
 }
 
 export function applyShuffleAdminTagOverlays<
-  T extends { uid: string; moderationTag?: string; fakeProfileTag?: string },
+  T extends { uid: string; moderationTag?: string; fakeProfileTag?: string; groomingTag?: boolean; potentialPedophileTag?: boolean },
 >(profiles: T[]): T[] {
   if (profiles.length === 0) return profiles;
   return profiles.map(applyShuffleAdminTagOverlay);
 }
 
 export function mergeStickyShuffleAdminTags<
-  T extends { moderationTag?: string; fakeProfileTag?: string },
+  T extends { moderationTag?: string; fakeProfileTag?: string; groomingTag?: boolean; potentialPedophileTag?: boolean },
 >(incoming: T, existing?: T | null): T {
   if (!existing) return incoming;
   return {
     ...incoming,
     moderationTag: incoming.moderationTag || existing.moderationTag || "",
     fakeProfileTag: incoming.fakeProfileTag || existing.fakeProfileTag || "",
+    groomingTag: incoming.groomingTag ?? existing.groomingTag ?? false,
+    potentialPedophileTag: incoming.potentialPedophileTag ?? existing.potentialPedophileTag ?? false,
   };
 }

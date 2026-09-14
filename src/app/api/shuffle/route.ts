@@ -88,8 +88,11 @@ type ApiProfile = {
   adminBlurStories?: boolean;
   adminBlurGallery?: boolean;
   mediaBlurFlags?: Record<string, boolean>;
+  adminBlurAt?: string;
   banned?: boolean;
   moderationTag?: string;
+  groomingTag?: boolean;
+  potentialPedophileTag?: boolean;
   fakeProfileTag?: string;
   shuffleFeatured?: boolean;
 };
@@ -296,6 +299,7 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
     ? raw.aliasIds.map((value) => String(value || "")).filter(Boolean)
     : [];
 
+  const legacyModerationTag = String(raw.moderationTag || "");
   const profile: ApiProfile = {
     uid: docId || firebaseUid || fallbackUid || "",
     authUid: firebaseUid || docId || fallbackUid || "",
@@ -345,12 +349,15 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
       raw.mediaBlurFlags && typeof raw.mediaBlurFlags === "object"
         ? (raw.mediaBlurFlags as Record<string, boolean>)
         : undefined,
+    adminBlurAt: String(raw.adminBlurAt || ""),
     banned:
       raw.banned === true ||
       raw.suspendido === true ||
       String(raw.estado || "") === "bloqueado",
     mostrarUltimaVez: raw.mostrarUltimaVez !== false,
-    moderationTag: String(raw.moderationTag || ""),
+    moderationTag: legacyModerationTag === "roleplay" ? "roleplay" : "",
+    groomingTag: raw.groomingTag === true || legacyModerationTag === "grooming",
+    potentialPedophileTag: raw.potentialPedophileTag === true || legacyModerationTag === "potential_pedophile",
     fakeProfileTag: String(raw.fakeProfileTag || ""),
   };
 

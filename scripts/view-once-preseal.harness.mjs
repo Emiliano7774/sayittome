@@ -1,6 +1,6 @@
 /**
  * VIEW_ONCE_PRESEAL
- * Bomb messages must birth without client-readable mediaUrl; only claim returns media.
+ * Bomb messages must birth without client-readable mediaUrl; bytes only via claim delivery + /api/view-once/media.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -67,6 +67,7 @@ const claimClient = fs.readFileSync(
 );
 assert.match(claimClient, /COMMIT_VIEW_ONCE_SECRET/);
 assert.match(claimClient, /commitViewOnceSecret/);
+assert.doesNotMatch(claimClient, /mediaUrl:\s*result\.data\?\.mediaUrl/);
 
 const fnSrc = fs.readFileSync(path.join(root, "functions/src/index.ts"), "utf8");
 assert.match(fnSrc, /commitViewOnceSecret/);
@@ -79,6 +80,8 @@ const claimFn = fs.readFileSync(
 assert.match(claimFn, /handleCommitViewOnceSecret/);
 assert.match(claimFn, /viewOnceSealed \? "" : asId\(message\.mediaUrl\)/);
 assert.match(claimFn, /mediaUrl: FieldValue\.delete\(\)/);
+assert.match(claimFn, /viewOnceDeliveryDocFields/);
+assert.match(claimFn, /Never return mediaUrl/);
 
 const authorSrc = fs.readFileSync(
   path.join(root, "src/lib/chat/profileAnonMessageAuthor.ts"),

@@ -10,6 +10,10 @@ import "server-only";
 
 export type UsuarioModerationTagAction =
   | "tag_roleplay"
+  | "tag_grooming"
+  | "tag_potential_pedophile"
+  | "clear_grooming_tag"
+  | "clear_potential_pedophile_tag"
   | "clear_moderation_tag"
   | "tag_fake_profile"
   | "clear_fake_profile_tag";
@@ -45,6 +49,8 @@ export type UsuarioModerationTagAdminDeps = {
 };
 
 const DEFAULT_ROLEPLAY_NOTE = "Perfil de rol marcado por moderación.";
+const DEFAULT_GROOMING_NOTE = "Perfil marcado por moderación por señales fuertes de grooming.";
+const DEFAULT_POTENTIAL_PEDOPHILE_NOTE = "Perfil marcado por moderación por evidencia fuerte de posible conducta pedófila.";
 const DEFAULT_FAKE_PROFILE_NOTE = "Perfil falso marcado por moderación.";
 
 /** Sentinel: patch omits undefined from body while keeping updateMask. */
@@ -162,6 +168,32 @@ export async function applyUsuarioModerationTagAdmin(input: {
           String(input.note || DEFAULT_ROLEPLAY_NOTE).trim() || DEFAULT_ROLEPLAY_NOTE,
         moderationTagAt: deps.serverTimestamp(),
         moderationTagBy: adminEmail,
+      };
+      break;
+    case "tag_grooming":
+      patch = {
+        groomingTag: true,
+        groomingTagNote: String(input.note || DEFAULT_GROOMING_NOTE).trim() || DEFAULT_GROOMING_NOTE,
+        groomingTagAt: deps.serverTimestamp(),
+        groomingTagBy: adminEmail,
+      };
+      break;
+    case "tag_potential_pedophile":
+      patch = {
+        potentialPedophileTag: true,
+        potentialPedophileTagNote: String(input.note || DEFAULT_POTENTIAL_PEDOPHILE_NOTE).trim() || DEFAULT_POTENTIAL_PEDOPHILE_NOTE,
+        potentialPedophileTagAt: deps.serverTimestamp(),
+        potentialPedophileTagBy: adminEmail,
+      };
+      break;
+    case "clear_grooming_tag":
+      patch = {
+        groomingTag: del, groomingTagNote: del, groomingTagAt: del, groomingTagBy: del,
+      };
+      break;
+    case "clear_potential_pedophile_tag":
+      patch = {
+        potentialPedophileTag: del, potentialPedophileTagNote: del, potentialPedophileTagAt: del, potentialPedophileTagBy: del,
       };
       break;
     case "clear_moderation_tag":

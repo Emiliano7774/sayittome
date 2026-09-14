@@ -1312,23 +1312,45 @@ export function useShufflePool() {
       }
     }
 
+    function onProfileSafety(event: Event) {
+      const detail = (event as CustomEvent<{ uid?: string; kind?: "grooming" | "potential_pedophile"; active?: boolean }>).detail;
+      const uid = String(detail?.uid || "");
+      const kind = detail?.kind;
+      if (!uid || !kind) return;
+      const active = detail?.active === true;
+      const patchSafety = (profile: ShuffleProfile) => profile.uid !== uid ? profile : kind === "grooming" ? { ...profile, groomingTag: active } : { ...profile, potentialPedophileTag: active };
+      poolRef.current = poolRef.current.map(patchSafety);
+      activePoolRef.current = activePoolRef.current.map(patchSafety);
+      featuredRef.current = featuredRef.current.map(patchSafety);
+      writeCachedShufflePool(poolRef.current);
+      if (!shuffleFeedFrozenRef.current) filterActivePool(searchRef.current.trim(), filtersRef.current);
+    }
+
     function onProfileBlur(event: Event) {
-      const detail = (event as CustomEvent<{ uid?: string; mediaBlurFlags?: Record<string, boolean> }>)
+      const detail = (event as CustomEvent<{ uid?: string; mediaBlurFlags?: Record<string, boolean>; adminBlurAt?: string }>)
         .detail;
       const uid = String(detail?.uid || "");
       const mediaBlurFlags = detail?.mediaBlurFlags || {};
+      const adminBlurAt = String(detail?.adminBlurAt || "");
       if (!uid) return;
 
       const patchBlur = (profile: ShuffleProfile) =>
-        profile.uid === uid ? applyShuffleProfileBlurFlags(profile, mediaBlurFlags) : profile;
+        profile.uid === uid
+          ? { ...applyShuffleProfileBlurFlags(profile, mediaBlurFlags), ...(adminBlurAt ? { adminBlurAt } : {}) }
+          : profile;
 
       poolRef.current = poolRef.current.map(patchBlur);
       activePoolRef.current = activePoolRef.current.map(patchBlur);
       featuredRef.current = featuredRef.current.map(patchBlur);
+      writeCachedShufflePool(poolRef.current);
+      if (!shuffleFeedFrozenRef.current) {
+        filterActivePool(searchRef.current.trim(), filtersRef.current);
+      }
     }
 
     window.addEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
     window.addEventListener("sayittome:shuffle-profile-fake", onProfileFake);
+    window.addEventListener("sayittome:shuffle-profile-safety", onProfileSafety);
     window.addEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
 
     function onPoolWarmed() {
@@ -1406,6 +1428,7 @@ export function useShufflePool() {
       window.clearInterval(poolSyncTimer);
       window.removeEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
       window.removeEventListener("sayittome:shuffle-profile-fake", onProfileFake);
+      window.removeEventListener("sayittome:shuffle-profile-safety", onProfileSafety);
       window.removeEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
       window.removeEventListener("sayittome:shuffle-pool-warmed", onPoolWarmed);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);

@@ -29,6 +29,13 @@ import {
   signVerifiedProfileLinkTicket,
   type VerifiedProfileLinkTicket,
 } from "./verifiedProfileLinkCore";
+import { resolveVerifiedProfileMessageAuthorUid } from "./deleteChatMessageCore";
+import type {
+  ProfileAnonPrivateAuthChat,
+  ProfileAnonPrivateAuthMessage,
+} from "./deleteChatMessageCore";
+
+const ABUSE_CHAT_LEASE_COLLECTION = "anon_abuse_chat_leases";
 
 function asId(value: unknown) {
   return String(value || "").trim();
@@ -107,16 +114,31 @@ function ticketFromDoc(
   };
 }
 
-function messageAuthorUid(message: Record<string, unknown>) {
-  return asId(
-    message.senderAuthUid ||
-      message.createdByAuthUid ||
-      message.profileUid ||
-      message.senderProfileId ||
-      message.ownerId ||
-      message.senderUid ||
-      message.fromUid,
+function messageAuthorUid(
+  message: Record<string, unknown>,
+  context?: {
+    privateVisitorAuthUid?: string;
+    chat?: Record<string, unknown>;
+  },
+) {
+  return resolveVerifiedProfileMessageAuthorUid(
+    message as ProfileAnonPrivateAuthMessage,
+    {
+      privateVisitorAuthUid: context?.privateVisitorAuthUid,
+      chat: context?.chat as ProfileAnonPrivateAuthChat,
+    },
   );
+}
+
+function privateVisitorAuthUidFromLease(data: unknown) {
+  return asId((data as { visitorAuthUid?: string } | null)?.visitorAuthUid);
+}
+
+function anonSessionFromProfileChatId(chatId: string) {
+  const marker = "__anon_to__";
+  if (!chatId.includes(marker)) return "";
+  const sender = chatId.split(marker)[0] || "";
+  return sender.startsWith("anon_") ? sender : "";
 }
 
 function throwHttps(
@@ -200,13 +222,22 @@ export async function handleClaimVerifiedProfileLink(
 
     const boundChatId = asId(located.boundChatId) || chatId;
     const message = located.message as Record<string, unknown>;
+    const leaseSnap = await tx.get(
+      db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(boundChatId),
+    );
+    const privateVisitorAuthUid = leaseSnap.exists
+      ? privateVisitorAuthUidFromLease(leaseSnap.data())
+      : "";
     const ticket = ticketFromDoc(ticketId, ticketSnap.data());
     const decision = decideClaimVerifiedProfileLinkTicket({
       uid,
       secret,
       ticket,
       messageText: asId(message.texto || message.text),
-      messageAuthorUid: messageAuthorUid(message),
+      messageAuthorUid: messageAuthorUid(message, {
+        privateVisitorAuthUid,
+        chat: located.chat as Record<string, unknown>,
+      }),
       chatId: boundChatId,
       messageId,
       nowMs: Date.now(),
@@ -290,12 +321,19 @@ export async function handleVerifyVerifiedProfileLink(
 
   const boundChatId = asId(located.boundChatId) || chatId;
   const message = located.message as Record<string, unknown>;
+  const leaseSnap = await db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(boundChatId).get();
+  const privateVisitorAuthUid = leaseSnap.exists
+    ? privateVisitorAuthUidFromLease(leaseSnap.data())
+    : "";
   const ticketSnap = await db.collection(VERIFIED_PROFILE_LINK_TICKET_COLLECTION).doc(ticketId).get();
   const decision = decideVerifyVerifiedProfileLink({
     secret,
     ticket: ticketFromDoc(ticketId, ticketSnap.data()),
     messageText: asId(message.texto || message.text),
-    messageAuthorUid: messageAuthorUid(message),
+    messageAuthorUid: messageAuthorUid(message, {
+      privateVisitorAuthUid,
+      chat: located.chat as Record<string, unknown>,
+    }),
     chatId: boundChatId,
     messageId,
     deletedForEveryone: message.deletedForEveryone === true,
@@ -318,9 +356,22 @@ export async function handleScrubVerifiedProfileAttestation(input: {
   messageId: string;
   attestation: unknown;
   messageText: string;
-  messageAuthorUid: string;
+  messageAuthorUid?: string;
+  message?: Record<string, unknown>;
   messageRef: { update: (data: Record<string, unknown>) => Promise<unknown> };
 }) {
+  const leaseSnap = await input.db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(input.chatId).get();
+  const privateVisitorAuthUid = leaseSnap.exists
+    ? privateVisitorAuthUidFromLease(leaseSnap.data())
+    : "";
+  const resolvedAuthor =
+    input.messageAuthorUid ||
+    (input.message
+      ? messageAuthorUid(input.message, {
+          privateVisitorAuthUid,
+          chat: { anonSessionId: anonSessionFromProfileChatId(input.chatId) },
+        })
+      : "");
   const hint = readAttestationHint(input.attestation);
   const ticketSnap = hint
     ? await input.db.collection(VERIFIED_PROFILE_LINK_TICKET_COLLECTION).doc(hint.ticketId).get()
@@ -332,7 +383,7 @@ export async function handleScrubVerifiedProfileAttestation(input: {
     chatId: input.chatId,
     messageId: input.messageId,
     messageText: input.messageText,
-    messageAuthorUid: input.messageAuthorUid,
+    messageAuthorUid: resolvedAuthor,
   });
   if (keep === "strip") {
     await input.messageRef.update({

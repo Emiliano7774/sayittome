@@ -153,7 +153,22 @@ function parseDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+type AnonMatchRequestLookupHook = (
+  solicitudId: string,
+) => Promise<Record<string, unknown> | null> | Record<string, unknown> | null;
+
+let testGetAnonMatchRequestHook: AnonMatchRequestLookupHook | null = null;
+
+/** Integration harness only — inject solicitud rows without production Firestore REST. */
+export function setAnonMatchTestGetRequestHook(hook: AnonMatchRequestLookupHook | null) {
+  if (process.env.ANON_MATCH_INTEGRATION_TEST !== "1") return;
+  testGetAnonMatchRequestHook = hook;
+}
+
 export async function getAnonMatchRequest(solicitudId: string) {
+  if (process.env.ANON_MATCH_INTEGRATION_TEST === "1" && testGetAnonMatchRequestHook) {
+    return testGetAnonMatchRequestHook(solicitudId);
+  }
   const url = `https://firestore.googleapis.com/v1/projects/sayittome-app/databases/(default)/documents/solicitudes_chat_anonimo/${encodeURIComponent(solicitudId)}?key=${process.env.FIREBASE_API_KEY || "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk"}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return null;
@@ -248,7 +263,7 @@ async function closeActiveChatsForParticipantPair(
   }
 }
 
-function userIsChatParticipant(
+export function userIsChatParticipant(
   chat: Record<string, unknown>,
   uid: string,
   anonId: string,
@@ -440,6 +455,10 @@ export async function respondAnonMatchRequest(input: {
   }
 
   return { ok: true as const, estado: "aceptado" as const, chatId };
+}
+
+export async function getAnonDirectChatRow(chatId: string) {
+  return getAnonDirectChat(chatId);
 }
 
 export async function closeAnonDirectChat(input: {

@@ -12,12 +12,16 @@ import {
   initializeTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import { doc, writeBatch } from "firebase/firestore";
-import {
-  buildProfileAnonAtomicSendBatch,
-  buildProfileAnonMessagePayload,
-} from "../src/lib/chat/profileAnonSendPayload.ts";
+import { installHarnessAlias, installHarnessWindow } from "./harness-alias.mjs";
+import { materializeOutgoingBatchForRulesEmulator } from "./p0-privacy-materialize-outgoing-batch.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+installHarnessWindow();
+installHarnessAlias(root);
+
+const { buildProfileAnonAtomicSendBatch, buildProfileAnonMessagePayload } = await import(
+  new URL("../src/lib/chat/profileAnonSendPayload.ts", import.meta.url).href,
+);
 const rules = readFileSync(path.join(root, "firestore.rules.p0-privacy-draft.rules"), "utf8");
 
 const PROJECT = "demo-p0-atomic-review-1635";
@@ -57,6 +61,7 @@ const CHAT_ID = `${ANON}__anon_to__profile_1635`;
 const PREVIEW = "payload compartido real";
 
 const MSG_VISITOR = "msg_visitor_atomic_1635";
+const MSG_VISITOR_2 = "msg_visitor_atomic_1635b";
 const MSG_OWNER = "msg_owner_atomic_1635";
 const MSG_CTRL = "msg_ctrl_no_uid_1635";
 const MSG_LEAK_AUTH = "msg_leak_senderAuthUid_1635";
@@ -69,7 +74,6 @@ function permitIdFor(messageId) {
 
 function visitorBatch(messageId) {
   return buildProfileAnonAtomicSendBatch({
-    mode: "emulator",
     messageText: PREVIEW,
     messageId,
     senderAuthorId: ANON,
@@ -84,7 +88,6 @@ function visitorBatch(messageId) {
 
 function ownerBatch(messageId) {
   return buildProfileAnonAtomicSendBatch({
-    mode: "emulator",
     messageText: PREVIEW,
     messageId,
     senderAuthorId: RECEPTOR,
@@ -108,6 +111,7 @@ const testEnv = await initializeTestEnvironment({
 const results = {};
 
 try {
+  await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await db.doc(`chats/${CHAT_ID}`).set({
@@ -119,8 +123,8 @@ try {
       participantes: [ANON, RECEPTOR],
       canonicalChatId: CHAT_ID,
       schemaVersion: 2,
-      readBy: { [ANON]: true, [RECEPTOR]: true },
-      unreadCounts: { [RECEPTOR]: 0, [ANON]: 0, [`profile_${RECEPTOR}`]: 0 },
+      readBy: { [ANON]: true, [RECEPTOR]: false, [`profile_${RECEPTOR}`]: false },
+      unreadCounts: { [RECEPTOR]: 2, [`profile_${RECEPTOR}`]: 2, [ANON]: 0 },
     });
     await db.doc(`anon_abuse_chat_leases/${CHAT_ID}`).set({
       chatId: CHAT_ID,
@@ -131,6 +135,7 @@ try {
     });
     for (const messageId of [
       MSG_VISITOR,
+      MSG_VISITOR_2,
       MSG_OWNER,
       MSG_CTRL,
       MSG_LEAK_AUTH,
@@ -188,7 +193,19 @@ try {
   );
 
   await probe(
-    "owner_atomic_batch_allowed",
+    "visitor_second_send_from_unread_gt0_allowed",
+    async () => {
+      const payload = visitorBatch(MSG_VISITOR_2);
+      const batch = writeBatch(vDb);
+      batch.set(doc(vDb, "chats", CHAT_ID), payload.chatWritePayload, { merge: true });
+      batch.set(doc(vDb, "chats", CHAT_ID, "mensajes", MSG_VISITOR_2), payload.messagePayload);
+      await batch.commit();
+    },
+    false,
+  );
+
+  await probe(
+    "owner_reply_readBy_false_both_aliases_allowed",
     async () => {
       const payload = ownerBatch(MSG_OWNER);
       const batch = writeBatch(rDb);
@@ -240,7 +257,6 @@ try {
         .doc(`chats/${CHAT_ID}/mensajes/${MSG_CTRL}`)
         .set(
           buildProfileAnonMessagePayload({
-            mode: "emulator",
             messageText: PREVIEW,
             senderAuthorId: ANON,
             senderKind: "anon",
@@ -256,7 +272,6 @@ try {
     () =>
       vDb.doc(`chats/${CHAT_ID}/mensajes/${MSG_LEAK_AUTH}`).set({
         ...buildProfileAnonMessagePayload({
-          mode: "emulator",
           messageText: PREVIEW,
           senderAuthorId: ANON,
           senderKind: "anon",
@@ -273,7 +288,6 @@ try {
     () =>
       vDb.doc(`chats/${CHAT_ID}/mensajes/${MSG_LEAK_CREATED}`).set({
         ...buildProfileAnonMessagePayload({
-          mode: "emulator",
           messageText: PREVIEW,
           senderAuthorId: ANON,
           senderKind: "anon",
@@ -310,7 +324,7 @@ try {
       isolationPass: false,
       deployRules: false,
       results,
-      note: "Atomic getAfter send + shared payload constructor; supersedes false PASS1631",
+      note: "Atomic getAfter send + shared production payload; second send unread>0; owner reply",
     }),
   );
 } finally {

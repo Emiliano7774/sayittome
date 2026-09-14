@@ -115,10 +115,18 @@ check(
     persistSrc.includes("never the profile owner's live browser anon"),
 );
 
+// Product contract (current): first snapshot / reattach is baseline only.
+// liveInboundOnAttach + listenerAttachedAt were removed so unread backlog and
+// listener reattachment NEVER replay the whip — only a post-baseline messageId
+// change while the listener is alive can sound. Align with chat-bidirectional-
+// unread-sound (expects !liveInboundOnAttach).
 check(
-  "WHIP_LIVE_INBOUND_ON_ATTACH",
-  whipSrc.includes("liveInboundOnAttach") &&
-    whipSrc.includes("listenerAttachedAt"),
+  "WHIP_ATTACH_BASELINE_ONLY_NO_LIVE_INBOUND",
+  whipSrc.includes("First snapshot is baseline only") &&
+    whipSrc.includes("if (!previousId)") &&
+    whipSrc.includes("this.lastMessageId.clear()") &&
+    !whipSrc.includes("liveInboundOnAttach") &&
+    !whipSrc.includes("listenerAttachedAt"),
 );
 
 const failed = checks.filter((c) => !c.pass);

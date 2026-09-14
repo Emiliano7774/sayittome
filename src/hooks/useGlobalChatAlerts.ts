@@ -87,9 +87,10 @@ export function useGlobalChatAlerts() {
     return match ? decodeURIComponent(match[1]) : "";
   })();
 
-  const totalUnread = totalUnreadCount(sortedChats, firebaseUid, {
-    excludeChatId: activeChatId,
-  });
+  const unreadHydrated = !inboxRouteEnabled || firestoreSynced;
+  const totalUnread = unreadHydrated
+    ? totalUnreadCount(sortedChats, firebaseUid, { excludeChatId: activeChatId })
+    : 0;
 
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);

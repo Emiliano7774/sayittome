@@ -57,20 +57,31 @@ export function registerSessionChat(chatId: string) {
   notifySessionChatsChanged();
 }
 
-/** Existing profile-anon thread for a username (preserves chatId across anon rotation). */
-export function findSessionProfileChatIdForUsername(username: string) {
+/**
+ * Reuse a session profile-anon thread only when live anon matches the chatId sender.
+ * After logout rotation, live anon ≠ old sender → return "" → new chat for receptor.
+ */
+export function findSessionProfileChatIdForUsername(
+  username: string,
+  liveAnonId = "",
+) {
   const needle = String(username || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gi, "_")
     .slice(0, 80);
   if (!needle) return "";
+  const live = String(liveAnonId || "").trim();
   const marker = "__anon_to__";
   for (const chatId of getSessionChatIds()) {
     const id = String(chatId || "");
     if (!id.includes(marker)) continue;
-    const target = id.split(marker)[1] || "";
-    if (target === needle) return id;
+    const [sender = "", target = ""] = id.split(marker);
+    if (target !== needle) continue;
+    if (!sender.startsWith("anon_")) continue;
+    if (live.startsWith("anon_") && sender !== live) continue;
+    if (!live.startsWith("anon_")) continue;
+    return id;
   }
   return "";
 }

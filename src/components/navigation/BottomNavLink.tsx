@@ -57,8 +57,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
   const router = useRouter();
   // Native shell normally uses hard <a> navigations. The bidirectional no-loading
   // contract requires same-document soft nav so keep-alive handoff can freeze source.
-  const forceSoftMainTabNav =
-    isTabShellNoLoadingTransitionContractActive() && isMainTabHref(href);
+  const forceSoftMainTabNav = isMainTabHref(href);
   /** Set when pointerdown already committed a soft push during an active slide. */
   const softPushFromPointerDownRef = useRef<string | null>(null);
 

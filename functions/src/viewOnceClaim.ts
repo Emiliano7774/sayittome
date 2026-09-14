@@ -14,12 +14,19 @@ import {
   decideViewOnceClaim,
   isViewOnceAuthor,
   normalizeViewOnceLimit,
+  viewOnceDeliveryDocFields,
   viewOnceSecretDocId,
   type ViewOnceMessageFields,
 } from "./viewOnceClaimCore";
 
+const ABUSE_CHAT_LEASE_COLLECTION = "anon_abuse_chat_leases";
+
 function asId(value: unknown) {
   return String(value || "").trim();
+}
+
+function privateVisitorAuthUidFromLease(data: unknown) {
+  return asId((data as { visitorAuthUid?: string } | null)?.visitorAuthUid);
 }
 
 export type ViewOnceClaimDeps = {
@@ -28,7 +35,6 @@ export type ViewOnceClaimDeps = {
 
 export type ClaimViewOnceResult = {
   ok: boolean;
-  mediaUrl?: string;
   remaining: number;
   openedCount: number;
   limit: number;
@@ -115,7 +121,12 @@ export async function handleClaimViewOnceMedia(
 
     const message = located.message as ChatMessageDeleteMessage & ViewOnceMessageFields;
     const chat = located.chat as ChatMessageDeleteChat;
-    const member = isChatMember({ uid, chat, message });
+    const leaseSnap = await tx.get(deps.db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(chatId));
+    const privateVisitorAuthUid = leaseSnap.exists
+      ? privateVisitorAuthUidFromLease(leaseSnap.data())
+      : "";
+    const authorContext = { chat, privateVisitorAuthUid };
+    const member = isChatMember({ uid, chat, message, privateVisitorAuthUid });
     const secretSnap = await tx.get(secretRef);
     const secretMediaUrl = asId(secretSnap.data()?.mediaUrl);
 
@@ -127,6 +138,7 @@ export async function handleClaimViewOnceMedia(
       secretMediaUrl:
         secretMediaUrl ||
         (message.viewOnceSealed ? "" : asId(message.mediaUrl)),
+      authorContext,
     });
 
     if (!decision.ok) {
@@ -163,30 +175,41 @@ export async function handleClaimViewOnceMedia(
       viewOnceOpenedCount: decision.openedCount,
       viewOnceLimit: decision.limit,
       viewOnceSealed: true,
+      viewOnceLastOpenedBy: uid,
+      viewOnceLastOpenedAt: FieldValue.serverTimestamp(),
       mediaUrl: FieldValue.delete(),
     };
     if (decision.exhausted) {
       patch.viewOnceExhausted = true;
-      if (secretSnap.exists) tx.delete(secretRef);
-    } else if (!secretSnap.exists && decision.mediaUrl) {
-      tx.set(
-        secretRef,
-        {
-          chatId,
-          messageId,
-          mediaUrl: decision.mediaUrl,
-          viewOnceLimit: decision.limit,
-          sealedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
     }
+
+    const delivery = viewOnceDeliveryDocFields({
+      uid,
+      mediaUrl: decision.mediaUrl,
+      consumeSecret: decision.exhausted,
+    });
+    tx.set(
+      secretRef,
+      {
+        chatId,
+        messageId,
+        mediaUrl: delivery.mediaUrl,
+        viewOnceLimit: decision.limit,
+        sealedAt: FieldValue.serverTimestamp(),
+        deliveryUid: delivery.deliveryUid,
+        deliveryExpiresAtMs: delivery.deliveryExpiresAtMs,
+        deliveryConsumeSecret: delivery.deliveryConsumeSecret,
+        // Invalidate any in-flight media reservation so restore/finalize cannot clobber this grant.
+        deliveryReservationId: FieldValue.delete(),
+      },
+      { merge: true },
+    );
 
     tx.update(messageRef, patch);
 
+    // Never return mediaUrl — bytes only via authenticated /api/view-once/media.
     return {
       ok: true,
-      mediaUrl: String(decision.mediaUrl || ""),
       remaining: decision.remaining,
       openedCount: decision.openedCount,
       limit: decision.limit,
@@ -228,14 +251,18 @@ export async function handleCommitViewOnceSecret(
 
     const message = located.message as ChatMessageDeleteMessage & ViewOnceMessageFields;
     const chat = located.chat as ChatMessageDeleteChat;
+    const leaseSnap = await tx.get(deps.db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(chatId));
+    const privateVisitorAuthUid = leaseSnap.exists
+      ? privateVisitorAuthUidFromLease(leaseSnap.data())
+      : "";
 
     if (!message.viewOnce) {
       throw new HttpsError("failed-precondition", "not_view_once");
     }
-    if (!isViewOnceAuthor(uid, message)) {
+    if (!isViewOnceAuthor(uid, message, { chat, privateVisitorAuthUid })) {
       throw new HttpsError("permission-denied", "author_required");
     }
-    if (!isChatMember({ uid, chat, message })) {
+    if (!isChatMember({ uid, chat, message, privateVisitorAuthUid })) {
       throw new HttpsError("permission-denied", "Not allowed");
     }
 

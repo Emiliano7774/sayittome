@@ -1,0 +1,241 @@
+{
+  "manifestPath": "C:/Users/emibe/sayittome-web/scripts/stabilize-manifests/20260913-stabilize-current.json",
+  "summaryPath": "C:/Users/emibe/sayittome-web/scripts/stabilize-manifests/20260913-stabilize-current.summary.md",
+  "copied": 1160,
+  "skipped": [],
+  "A": 847,
+  "B": 313,
+  "C": 5058,
+  "secretsBlocked": [
+    {
+      "path": "scripts/.tmp-admin-id-token.txt",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-08e270a-nav-shell-not-ready-tooling-fix-1784923062773/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-0e3b2e5-tab-consistency-liveprobe-tooling-fix-1784475571314/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-29e898d-stories-prod-visible-loading-fix-1784851266767/secret-scan.txt",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-698d0d9-warm-shuffle-refetch-fix-1784386192107/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-771a927-manual-chat-sound-unread-shuffle-android-search-fix-1784949592885/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-8a011fc-delivery-verify-tooling-fix-1784756916485/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-8d68bb6-android-cold-profile-to-shuffle-fix-1785188685819/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-a0d46d9-tab-nav-timeout-prepaint-source-tooling-fix-1784749792268/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-bidirectional-no-loading-fix-1784007084998/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-bidirectional-prod-probe-hardening-1784013256615/secret-scan-raw.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-bidirectional-prod-probe-hardening-1784013256615/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-cf7fa23-tab-loading-stalelocator-tooling-fix-1784595467457/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-direct-cold-boost-source-fix-1784139747309/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-f8a8e06-shuffle-search-live-nofetch-fix-1785267683126/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-ff9ecd3-seed-reenter-recovery-metric-tooling-fix-1784932100560/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-fresh-anon-sequence-shuffle-chats-loading-fix-1784105480956/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-logged-in-destination-loading-fix-1784025935185/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-logged-in-shuffle-chats-loading-fix-1784100009471/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-no-loading-fresh-anon-fix-1783937167507/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-post-dd28351-chat-sound-shuffle-android-fix-1784373317389/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-prepaint-chats-remount-suppress-fix-1784116356110/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-prod-fresh-anon-bidirectional-failure-fix-1784016955405/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-prod-fresh-anon-sequence-shuffle-boost-loading-fix-1784046222728/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-prod-fresh-anon-shuffle-chats-loading-fix-1784039617975/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-prod-targeted-shuffle-boost-loading-fix-1784031099110/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-profile-isolation-shuffle-stories-live-fix-1784306592852/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-profile-route-main-tab-isolation-fix-1784221694474/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-sequence-boost-post-reveal-loading-fix-1784021406782/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-sequence-guard-and-orphan-loading-fix-1784091119262/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-shuffle-post-arrival-flash-fix-1784203047499/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-tab-consistency-chat-unread-badge-fix-1784215212121/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-targeted-shuffle-boost-loading-fix-1784123134813/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-targeted-shuffle-chats-flag-desync-fix-1784111932889/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/commit-tooling-smoke-series-fix-1783931625312/secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/fresh-anon-sequence-shuffle-chats-loading-product-fix-1784102559156/fresh-sequence-chats-token-lifecycle.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/logged-in-boost-shuffle-orphan-loading-product-fix-1784051658677/boost-shuffle-token-lifecycle.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/logged-in-shuffle-chats-loading-product-fix-1784096350494/chats-token-lifecycle.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/push-771a927-to-origin-master-1784943494939/secret-staged-scan.txt",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "scripts/ghost-filmstrip-out/staging-commit-clean-after-waapi-classifier-1783929204333/precommit-secret-scan.json",
+      "reason": "secret_filename"
+    },
+    {
+      "path": "src/app/api/anonymous-presence/route.ts",
+      "reason": "secret_content"
+    },
+    {
+      "path": "src/app/api/profile/[username]/route.ts",
+      "reason": "secret_content"
+    },
+    {
+      "path": "src/app/api/shuffle/route.ts",
+      "reason": "secret_content"
+    },
+    {
+      "path": "src/lib/anonMatch/service.ts",
+      "reason": "secret_content"
+    },
+    {
+      "path": "src/lib/firebase.ts",
+      "reason": "secret_content"
+    },
+    {
+      "path": "src/lib/firestore/publicStats.ts",
+      "reason": "secret_content"
+    },
+    {
+      "path": "src/lib/firestore/rest.ts",
+      "reason": "secret_content"
+    }
+  ],
+  "undecidedSample": [
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Crashpad/metadata",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Crashpad/settings.dat",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/CrashpadMetrics-active.pma",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Account Web Data",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Account Web Data-journal",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Affiliation Database",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Affiliation Database-journal",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/AutofillAiModelCache/LOCK",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/AutofillAiModelCache/LOG",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/AutofillStrikeDatabase/LOCK",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/AutofillStrikeDatabase/LOG",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/BookmarkMergedSurfaceOrdering",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/BudgetDatabase/LOCK",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/BudgetDatabase/LOG",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/data_0",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/data_1",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/data_2",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/data_3",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000001",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000002",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000003",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000004",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000005",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000006",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000007",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000008",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000009",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_00000a",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_00000b",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_00000c",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_00000d",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_00000e",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_00000f",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000010",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/f_000011",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/Cache_Data/index",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/No_Vary_Search/journal.baj",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/Cache/No_Vary_Search/snapshot.baf",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/ClientCertificates/LOCK",
+    "scripts/.auth-capture-profile-chrome-activation-fresh-1783452510833/Default/ClientCertificates/LOG"
+  ]
+}

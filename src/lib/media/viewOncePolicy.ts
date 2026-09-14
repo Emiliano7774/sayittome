@@ -1,5 +1,5 @@
 export const VIEW_ONCE_MIN_LIMIT = 1;
-export const VIEW_ONCE_MAX_LIMIT = 5;
+export const VIEW_ONCE_MAX_LIMIT = Number.MAX_SAFE_INTEGER;
 export const VIEW_ONCE_DEFAULT_LIMIT = 1;
 
 /** Legacy messages without viewOnceLimit count as 1. */
@@ -23,7 +23,7 @@ export function viewOnceRemaining(input: {
   return Math.max(0, limit - opened);
 }
 
-/** Recipients never get mediaUrl from the listener — only via claim. */
+/** Recipients never get mediaUrl from the listener — only via authenticated media delivery. */
 export function redactViewOnceMediaUrl<T extends {
   viewOnce?: boolean;
   mediaUrl?: string;

@@ -49,6 +49,9 @@ export function resolveStoryAutoExitDestination(currentPath?: string) {
   if (explicit && explicit !== "/shuffle") {
     return resolveStoryReturnPath(explicit);
   }
+  if (typeof window === "undefined") {
+    return resolveStoryReturnPath(viewerPath(currentPath));
+  }
   return "/stories";
 }
 
