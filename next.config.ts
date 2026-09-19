@@ -52,7 +52,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source:
-          "/((?!_next/static|_next/image|downloads/|icons/|favicon|api/view-once/media(?:/|$)).*)",
+          "/((?!_next/static|_next/image|downloads/|icons/|favicon|api/view-once/media(?:/|$)|api/admin/anon-express-chats(?:/|$)).*)",
         headers: [
           {
             key: "Cache-Control",
@@ -62,6 +62,19 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/api/view-once/media",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-store, max-age=0, must-revalidate",
+          },
+          { key: "CDN-Cache-Control", value: "no-store" },
+          { key: "Surrogate-Control", value: "no-store" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Expires", value: "0" },
+        ],
+      },
+      {
+        source: "/api/admin/anon-express-chats",
         headers: [
           {
             key: "Cache-Control",

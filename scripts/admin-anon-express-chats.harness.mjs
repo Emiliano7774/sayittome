@@ -11,10 +11,13 @@ const panel = read("src/components/admin/panels/AdminAnonExpressChatsPanel.tsx")
 const workspace = read("src/components/admin/AdminModerationWorkspace.tsx");
 const actions = read("src/app/api/admin/action/route.ts");
 const media = read("src/lib/admin/adminMessageMediaRead.ts");
+const nextConfig = read("next.config.ts");
 
 assert.match(route, /verifyAdminIdToken\(req\)/);
 assert.match(route, /handleAdminAnonExpressChatsGet/);
 assert.match(route, /Cache-Control.*private, no-store/);
+assert.match(nextConfig, /api\/admin\/anon-express-chats/);
+assert.match(nextConfig, /private, no-store, max-age=0, must-revalidate/);
 assert.match(server, /collection\("chats_anonimos"\)/);
 assert.match(server, /collectionName of \["mensajes", "messages"\]/);
 assert.match(server, /CHAT_PAGE_SIZE = 250/);
