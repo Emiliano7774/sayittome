@@ -222,13 +222,24 @@ installHarnessWindow();
 installHarnessAlias(root);
 
 const hostClassList = classListStub(["sayittome-shuffle-keepalive-frozen"]);
+const paintedCard = {
+  classList: classListStub(),
+  childNodes: [{}],
+  getAttribute() {
+    return null;
+  },
+  getBoundingClientRect() {
+    return { width: 320, height: 420, top: 0, left: 0, right: 320, bottom: 420 };
+  },
+};
+const paintedList = { children: [paintedCard] };
 const host = {
   id: "sayittome-shuffle-keepalive-host",
   classList: hostClassList,
   style: {},
   hidden: false,
-  querySelector() {
-    return null;
+  querySelector(selector) {
+    return selector === "[data-shuffle-list]" ? paintedList : null;
   },
   querySelectorAll() {
     return [];
