@@ -36,6 +36,21 @@ function hashValue(value: string) {
 
 function parseMs(value: unknown) {
   if (!value) return 0;
+  if (typeof value === "number") {
+    return value > 1_000_000_000_000 ? value : value * 1000;
+  }
+  if (typeof value === "object") {
+    const timestamp = value as {
+      toMillis?: () => number;
+      toDate?: () => Date;
+      seconds?: number;
+      _seconds?: number;
+    };
+    if (typeof timestamp.toMillis === "function") return timestamp.toMillis();
+    if (typeof timestamp.toDate === "function") return timestamp.toDate().getTime();
+    const seconds = Number(timestamp.seconds ?? timestamp._seconds ?? 0);
+    if (seconds > 0) return seconds * 1000;
+  }
   const ms = Date.parse(String(value));
   return Number.isNaN(ms) ? 0 : ms;
 }
@@ -309,12 +324,30 @@ export async function getActiveBoostProfiles(now = Date.now()) {
     return cachedActiveBoosts.rows.filter((row) => parseMs(row.expiresAt) > now);
   }
 
-  const rows = await runCollectionQuery(
-    "shuffle_boosts",
-    MAX_ACTIVE_BOOSTS_QUERY,
-    "activatedAt",
-    "ASCENDING",
-  );
+  let rows: Record<string, unknown>[] = [];
+  try {
+    // Boost documents are private operational state. Reading them through the
+    // public REST helper makes /api/shuffle fail with 403 and repeatedly serve
+    // the same cached fallback window. Keep the read server-side instead.
+    const { getRepairAdminDb } = await import(
+      "@/lib/chat/historicalAuthorshipRepairAdmin"
+    );
+    const snapshot = await getRepairAdminDb()
+      .collection("shuffle_boosts")
+      .orderBy("activatedAt", "asc")
+      .limit(MAX_ACTIVE_BOOSTS_QUERY)
+      .get();
+    rows = snapshot.docs.map(
+      (doc: { id: string; data: () => Record<string, unknown> }) => ({
+        id: doc.id,
+        ...doc.data(),
+      }),
+    );
+  } catch (error) {
+    // Boost placement is optional enrichment; it must never take the complete
+    // public Shuffle pool down. Preserve profiles even if boost state is down.
+    console.error("active boost read failed", error);
+  }
 
   const active = rows.filter((row) => row.active === true && parseMs(row.expiresAt) > now);
   cachedActiveBoosts = { rows: active, fetchedAt: now };
