@@ -1,20 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { onAuthStateChanged } from "firebase/auth";
 
-import {
-  deleteDoc,
-  doc,
-  increment,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  writeBatch,
-} from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 
 import { auth, db } from "@/lib/firebase";
 import { useT } from "@/contexts/LocaleContext";
@@ -44,14 +35,9 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
   const resolvedTargetUid = resolveFollowButtonTargetUid(targetUid);
   const isSelf = Boolean(myUid && resolvedTargetUid && myUid === resolvedTargetUid);
 
-  const followId = useMemo(() => {
-    if (!myUid || !resolvedTargetUid) return "";
-    return buildFollowId(myUid, resolvedTargetUid);
-  }, [myUid, resolvedTargetUid]);
-
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      setMyUid(user?.uid || "");
+      setMyUid(user && !user.isAnonymous ? user.uid : "");
       setAuthReady(true);
     });
 
@@ -93,90 +79,30 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
     setFollowing(nextFollowing);
 
     try {
-      const batch = writeBatch(db);
-
-      const followRef = doc(db, "seguidores", followId);
-      const followerSubRef = doc(
-        db,
-        "usuarios",
-        resolvedTargetUid,
-        "seguidores",
-        myUid
-      );
-      const followingSubRef = doc(
-        db,
-        "usuarios",
-        myUid,
-        "siguiendo",
-        resolvedTargetUid
-      );
-
-      const targetUserRef = doc(db, "usuarios", resolvedTargetUid);
-      const myUserRef = doc(db, "usuarios", myUid);
-
-      if (nextFollowing) {
-        const payload = {
-          id: followId,
-          seguidorUid: myUid,
-          seguidoUid: resolvedTargetUid,
-          createdAt: serverTimestamp(),
-        };
-
-        batch.set(followRef, payload, { merge: true });
-        batch.set(followerSubRef, payload, { merge: true });
-        batch.set(
-          followingSubRef,
-          {
-            id: followId,
-            seguidorUid: myUid,
-            seguidoUid: resolvedTargetUid,
-            createdAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        batch.set(
-          targetUserRef,
-          {
-            seguidoresCount: increment(1),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        batch.set(
-          myUserRef,
-          {
-            siguiendoCount: increment(1),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } else {
-        batch.delete(followRef);
-        batch.delete(followerSubRef);
-        batch.delete(followingSubRef);
-
-        batch.set(
-          targetUserRef,
-          {
-            seguidoresCount: increment(-1),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        batch.set(
-          myUserRef,
-          {
-            siguiendoCount: increment(-1),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
+      const user = auth.currentUser;
+      if (!user || user.isAnonymous) throw new Error("login_required");
+      const token = await user.getIdToken();
+      const res = await fetch("/api/follow/toggle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          targetUid: resolvedTargetUid,
+          following: nextFollowing,
+        }),
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        following?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !json.ok) {
+        throw new Error(String(json.error || `follow_${res.status}`));
       }
-
-      await batch.commit();
+      setFollowing(Boolean(json.following));
     } catch (e) {
       console.error("follow toggle error", e);
       setFollowing(!nextFollowing);

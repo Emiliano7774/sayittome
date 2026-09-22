@@ -25,10 +25,11 @@ const helperSrc = fs.readFileSync(
   path.join(root, "src/lib/admin/usuarioModerationTagAdmin.ts"),
   "utf8",
 );
-assert.match(helperSrc, /createAuthedRestUsuarioModerationTagDeps/);
-assert.match(helperSrc, /patchFirestoreDocAuthed/);
+assert.match(helperSrc, /createAdminSdkUsuarioModerationTagDeps/);
+assert.match(helperSrc, /isAdminEmail\(adminEmail\)/);
+assert.match(helperSrc, /getRepairAdminDb/);
 assert.doesNotMatch(helperSrc, /patchFirestoreDoc\(/);
-assert.doesNotMatch(helperSrc, /getRepairAdminDb/);
+assert.doesNotMatch(helperSrc, /patchFirestoreDocAuthed/);
 
 const restSrc = fs.readFileSync(path.join(root, "src/lib/firestore/rest.ts"), "utf8");
 assert.match(restSrc, /export async function patchFirestoreDocAuthed/);

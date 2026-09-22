@@ -1,7 +1,7 @@
 /**
  * ADMIN_USUARIO_MODERATION_TAG
- * Product-importing: tag/clear via Bearer-authed REST; never API-key-only.
- * Authority = verified admin email + idToken for rules isAdmin().
+ * Tag/clear runs on the Admin SDK only after verifyAdminIdToken allowlist.
+ * Client and API-key writes stay denied by rules. Body email never authorizes.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -35,10 +35,12 @@ assert.match(routeSrc, /void body/);
 assert.match(routeSrc, /applyUsuarioModerationTagAdmin/);
 assert.match(routeSrc, /idToken/);
 assert.match(helperSrc, /import "server-only"/);
-assert.match(helperSrc, /createAuthedRestUsuarioModerationTagDeps/);
-assert.match(helperSrc, /patchFirestoreDocAuthed/);
-assert.doesNotMatch(helperSrc, /getRepairAdminDb/);
+assert.match(helperSrc, /createAdminSdkUsuarioModerationTagDeps/);
+assert.match(helperSrc, /getRepairAdminDb/);
+assert.match(helperSrc, /isAdminEmail\(adminEmail\)/);
+assert.doesNotMatch(helperSrc, /patchFirestoreDocAuthed/);
 assert.doesNotMatch(helperSrc, /await patchFirestoreDoc\(/);
+assert.doesNotMatch(helperSrc, /patchFirestoreDoc\(/);
 assert.match(restSrc, /export async function patchFirestoreDocAuthed/);
 assert.match(restSrc, /Authorization:\s*`Bearer \$\{token\}`/);
 assert.match(rulesSrc, /collection != 'usuarios'/);
@@ -56,7 +58,11 @@ assert.match(buttonSrc, /admin_tag_roleplay_fail/);
 assert.match(buttonSrc, /admin_clear_roleplay_tag_fail/);
 
 const UID = "user_abc123xyz";
-const ADMIN = "admin@sayittome.app";
+const adminEmailMatch = fs
+  .readFileSync(path.join(root, "src/lib/admin/isAdmin.ts"), "utf8")
+  .match(/ADMIN_EMAIL = "([^"]+)"/);
+const ADMIN = String(adminEmailMatch?.[1] || "");
+assert.ok(ADMIN.includes("@"), "admin allowlist email must be readable");
 
 function makeDeps({ exists = true, failWrite = false, store = new Map() } = {}) {
   const writes = [];
@@ -133,16 +139,16 @@ function makeDeps({ exists = true, failWrite = false, store = new Map() } = {}) 
   assert.equal(store.get(UID).moderationTag, undefined);
 }
 
-// --- missing idToken without deps ---
+// --- non-allowlisted email never reaches the writer ---
 {
   await assert.rejects(
     () =>
       mod.applyUsuarioModerationTagAdmin({
         uid: UID,
-        adminEmail: ADMIN,
+        adminEmail: "not-admin@example.com",
         action: "tag_roleplay",
       }),
-    (err) => err.code === "missing_id_token" && err.status === 401,
+    (err) => err.code === "write_failed" && err.status === 403,
   );
 }
 
@@ -209,7 +215,8 @@ if (String(process.env.ADMIN_TAG_LIVE || "").trim() === "1") {
   }
   assert.equal(nakedDenied, true, "API-key-only usuarios write must be denied by rules");
 
-  const deps = await mod.createAuthedRestUsuarioModerationTagDeps(idToken);
+  const deps = await mod.createAdminSdkUsuarioModerationTagDeps();
+  void idToken;
   const tagged = await mod.applyUsuarioModerationTagAdmin({
     uid: liveUid,
     adminEmail,
@@ -234,7 +241,7 @@ if (String(process.env.ADMIN_TAG_LIVE || "").trim() === "1") {
 
   live = {
     uid: liveUid,
-    writer: "firestore_rest_authed",
+    writer: "admin_sdk_after_allowlist",
     nakedApiKeyDenied: true,
     tagged: true,
     cleared: true,
@@ -246,7 +253,7 @@ console.log(
     {
       gate: "ADMIN_USUARIO_MODERATION_TAG",
       pass: true,
-      productiveWriter: "firestore_rest_authed_bearer",
+      productiveWriter: "admin_sdk_after_verified_allowlist",
       live,
     },
     null,

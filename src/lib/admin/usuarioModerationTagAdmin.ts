@@ -2,14 +2,19 @@
  * Server-only moderation tag writes for usuarios/{uid}.
  * Call only AFTER verifyAdminIdToken. Never trusts body.adminEmail as authority.
  *
- * Productive writer = Firestore REST with the verified admin Bearer ID token.
- * Rules require isAdmin() for moderationTag* (usuarios excluded from catch-all).
- * Never write usuarios with API-key-only unauthenticated REST.
+ * Productive writer = Admin SDK, only after verified admin allowlist.
+ * Rules still deny client/API-key-only writes to moderation fields.
  */
 import "server-only";
 
+import { ADMIN_EMAIL, isAdminEmail } from "@/lib/admin/isAdmin";
+
 export type UsuarioModerationTagAction =
   | "tag_roleplay"
+  | "tag_grooming"
+  | "tag_potential_pedophile"
+  | "clear_grooming_tag"
+  | "clear_potential_pedophile_tag"
   | "clear_moderation_tag"
   | "tag_fake_profile"
   | "clear_fake_profile_tag";
@@ -45,6 +50,8 @@ export type UsuarioModerationTagAdminDeps = {
 };
 
 const DEFAULT_ROLEPLAY_NOTE = "Perfil de rol marcado por moderación.";
+const DEFAULT_GROOMING_NOTE = "Perfil marcado por moderación por señales fuertes de grooming.";
+const DEFAULT_POTENTIAL_PEDOPHILE_NOTE = "Perfil marcado por moderación por evidencia fuerte de posible conducta pedófila.";
 const DEFAULT_FAKE_PROFILE_NOTE = "Perfil falso marcado por moderación.";
 
 /** Sentinel: patch omits undefined from body while keeping updateMask. */
@@ -71,29 +78,30 @@ export function assertExactUsuarioUid(uid: unknown): string {
 }
 
 /**
- * Productive Hosting-safe deps: public read + Bearer-authenticated patch.
- * idToken must be the same verified admin token from verifyAdminIdToken.
+ * Productive writer after the API has already verified the admin ID token.
+ * Admin SDK avoids a second, redundant client-rules authorization hop.
  */
-export async function createAuthedRestUsuarioModerationTagDeps(
-  idToken: string,
-): Promise<UsuarioModerationTagAdminDeps> {
-  const token = String(idToken || "").trim();
-  if (!token) {
-    throw new UsuarioModerationTagAdminError("missing_id_token", 401);
-  }
-  const { getFirestoreDoc, patchFirestoreDocAuthed } = await import("@/lib/firestore/rest");
+export async function createAdminSdkUsuarioModerationTagDeps(): Promise<UsuarioModerationTagAdminDeps> {
+  const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+  const { loadFirebaseAdminFirestore } = await import("@/lib/admin/firebaseAdminNative");
+  const db = getRepairAdminDb();
+  const { FieldValue } = loadFirebaseAdminFirestore();
+
   return {
-    getUsuarioRef: (uid: string) => ({
-      get: async () => {
-        const doc = await getFirestoreDoc("usuarios", uid);
-        return { exists: Boolean(doc) };
-      },
-      update: async (patch: Record<string, unknown>) => {
-        await patchFirestoreDocAuthed(token, "usuarios", uid, patch);
-      },
-    }),
-    serverTimestamp: () => new Date().toISOString(),
-    deleteField: () => REST_DELETE_FIELD,
+    getUsuarioRef: (uid: string) => {
+      const ref = db.collection("usuarios").doc(uid);
+      return {
+        get: async () => {
+          const snap = await ref.get();
+          return { exists: Boolean(snap.exists) };
+        },
+        update: async (patch: Record<string, unknown>) => {
+          await ref.update(patch);
+        },
+      };
+    },
+    serverTimestamp: () => FieldValue.serverTimestamp(),
+    deleteField: () => FieldValue.delete(),
   };
 }
 
@@ -102,12 +110,9 @@ async function resolveDeps(input: {
   idToken?: string;
 }): Promise<UsuarioModerationTagAdminDeps> {
   if (input.deps) return input.deps;
-  const token = String(input.idToken || "").trim();
-  if (!token) {
-    throw new UsuarioModerationTagAdminError("missing_id_token", 401);
-  }
+  void input.idToken;
   try {
-    return await createAuthedRestUsuarioModerationTagDeps(token);
+    return await createAdminSdkUsuarioModerationTagDeps();
   } catch (error) {
     if (error instanceof UsuarioModerationTagAdminError) throw error;
     throw new UsuarioModerationTagAdminError("admin_writer_unavailable", 503);
@@ -123,7 +128,7 @@ export async function applyUsuarioModerationTagAdmin(input: {
   uid: unknown;
   /** Verified admin email from ID token — never from request body. */
   adminEmail: string;
-  /** Verified Bearer ID token — required for productive authed REST writer. */
+  /** Kept for route/harness compatibility; authority was already verified by the API. */
   idToken?: string;
   action: UsuarioModerationTagAction;
   note?: unknown;
@@ -131,8 +136,8 @@ export async function applyUsuarioModerationTagAdmin(input: {
 }): Promise<{ ok: true; uid: string; action: UsuarioModerationTagAction }> {
   const uid = assertExactUsuarioUid(input.uid);
   const adminEmail = String(input.adminEmail || "").trim().toLowerCase();
-  if (!adminEmail) {
-    throw new UsuarioModerationTagAdminError("write_failed", 500);
+  if (!isAdminEmail(adminEmail) || adminEmail !== ADMIN_EMAIL) {
+    throw new UsuarioModerationTagAdminError("write_failed", 403);
   }
 
   const deps = await resolveDeps({ deps: input.deps, idToken: input.idToken });
@@ -162,6 +167,32 @@ export async function applyUsuarioModerationTagAdmin(input: {
           String(input.note || DEFAULT_ROLEPLAY_NOTE).trim() || DEFAULT_ROLEPLAY_NOTE,
         moderationTagAt: deps.serverTimestamp(),
         moderationTagBy: adminEmail,
+      };
+      break;
+    case "tag_grooming":
+      patch = {
+        groomingTag: true,
+        groomingTagNote: String(input.note || DEFAULT_GROOMING_NOTE).trim() || DEFAULT_GROOMING_NOTE,
+        groomingTagAt: deps.serverTimestamp(),
+        groomingTagBy: adminEmail,
+      };
+      break;
+    case "tag_potential_pedophile":
+      patch = {
+        potentialPedophileTag: true,
+        potentialPedophileTagNote: String(input.note || DEFAULT_POTENTIAL_PEDOPHILE_NOTE).trim() || DEFAULT_POTENTIAL_PEDOPHILE_NOTE,
+        potentialPedophileTagAt: deps.serverTimestamp(),
+        potentialPedophileTagBy: adminEmail,
+      };
+      break;
+    case "clear_grooming_tag":
+      patch = {
+        groomingTag: del, groomingTagNote: del, groomingTagAt: del, groomingTagBy: del,
+      };
+      break;
+    case "clear_potential_pedophile_tag":
+      patch = {
+        potentialPedophileTag: del, potentialPedophileTagNote: del, potentialPedophileTagAt: del, potentialPedophileTagBy: del,
       };
       break;
     case "clear_moderation_tag":
