@@ -64,6 +64,12 @@ export default function AdminDashboardPage() {
   return (
     <AdminShell title="Resumen">
       <div className="mb-6 flex flex-wrap gap-3">
+        <Link
+          href="/admin/usage"
+          className="rounded-full border border-violet-400/30 bg-violet-500/15 px-4 py-2 text-sm font-black text-violet-100"
+        >
+          Uso de la app →
+        </Link>
         {stats && stats.reportsOpen > 0 ? (
           <Link
             href="/admin/moderation?tab=reports"

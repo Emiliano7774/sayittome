@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { History, LayoutDashboard, Shield, Settings, Users } from "lucide-react";
+import { Activity, History, LayoutDashboard, Shield, Settings, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { auth } from "@/lib/firebase";
@@ -23,6 +23,12 @@ const NAV: Array<{
     key: "admin_nav_overview",
     icon: LayoutDashboard,
     match: (pathname) => pathname === "/admin",
+  },
+  {
+    href: "/admin/usage",
+    key: "admin_nav_usage",
+    icon: Activity,
+    match: (pathname) => pathname.startsWith("/admin/usage"),
   },
   {
     href: "/admin/moderation",

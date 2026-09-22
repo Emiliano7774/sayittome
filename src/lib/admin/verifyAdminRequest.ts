@@ -88,7 +88,7 @@ export function assertAdminAllowlist(email: string) {
 
 async function verifyIdTokenWithAdminSdk(
   token: string,
-  options?: { allowAnonymous?: boolean },
+  options?: { allowAnonymous?: boolean; allowUnverifiedEmail?: boolean },
 ): Promise<VerifiedFirebasePrincipal> {
   const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
   const { loadFirebaseAdminAuth } = await import("@/lib/admin/firebaseAdminNative");
@@ -100,14 +100,17 @@ async function verifyIdTokenWithAdminSdk(
     (decoded as { firebase?: { sign_in_provider?: string } })?.firebase?.sign_in_provider || "",
   );
   const isAnonymous = provider === "anonymous";
-  if (options?.allowAnonymous && isAnonymous) {
+  if (isAnonymous) {
+    if (!options?.allowAnonymous) {
+      throw Object.assign(new Error("unauthorized"), { status: 401 });
+    }
     return {
       email: "",
       uid: String(decoded.uid || ""),
       isAnonymous: true,
     };
   }
-  if (decoded.email_verified !== true) {
+  if (decoded.email_verified !== true && !options?.allowUnverifiedEmail) {
     throw Object.assign(new Error("unauthorized"), { status: 401 });
   }
   return {
@@ -119,7 +122,7 @@ async function verifyIdTokenWithAdminSdk(
 
 async function verifyIdTokenViaIdentityToolkit(
   token: string,
-  options?: { allowAnonymous?: boolean },
+  options?: { allowAnonymous?: boolean; allowUnverifiedEmail?: boolean },
 ): Promise<VerifiedFirebasePrincipal> {
   const response = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIRESTORE_API_KEY)}`,
@@ -150,14 +153,17 @@ async function verifyIdTokenViaIdentityToolkit(
   const isAnonymous =
     providers.length === 0 ||
     providers.every((entry) => String(entry.providerId || "") === "anonymous");
-  if (options?.allowAnonymous && isAnonymous) {
+  if (isAnonymous) {
+    if (!options?.allowAnonymous) {
+      throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
+    }
     return {
       email: "",
       uid: String(user.localId || ""),
       isAnonymous: true,
     };
   }
-  if (user.emailVerified !== true) {
+  if (user.emailVerified !== true && !options?.allowUnverifiedEmail) {
     throw Object.assign(new Error("invalid_auth_token"), { status: 401 });
   }
   return {
@@ -206,11 +212,16 @@ export async function verifyFirebaseIdToken(req: Request): Promise<VerifiedFireb
  */
 export async function verifyFirebaseIdTokenAllowingAnonymous(
   req: Request,
+  options?: { allowUnverifiedEmail?: boolean },
 ): Promise<VerifiedFirebasePrincipal> {
   const token = readBearerToken(req);
+  const verifyOptions = {
+    allowAnonymous: true,
+    allowUnverifiedEmail: options?.allowUnverifiedEmail === true,
+  };
 
   try {
-    return await verifyIdTokenWithAdminSdk(token, { allowAnonymous: true });
+    return await verifyIdTokenWithAdminSdk(token, verifyOptions);
   } catch (adminError) {
     if (isTerminalFirebaseAuthSdkError(adminError)) {
       const mapped = mapAdminAuthFailure(adminError);
@@ -222,7 +233,7 @@ export async function verifyFirebaseIdTokenAllowingAnonymous(
   }
 
   try {
-    return await verifyIdTokenViaIdentityToolkit(token, { allowAnonymous: true });
+    return await verifyIdTokenViaIdentityToolkit(token, verifyOptions);
   } catch (error) {
     const status = Number((error as { status?: number })?.status || 0);
     if (status === 403) throw error;
