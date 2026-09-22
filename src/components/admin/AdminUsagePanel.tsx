@@ -20,6 +20,7 @@ type UsagePerson = {
   lastSeenAt: string;
   visibleMs: number;
   sessions: number;
+  measured?: boolean;
 };
 
 type UsageDay = UsageSummary & { day: string };
@@ -116,9 +117,9 @@ export default function AdminUsagePanel() {
   return (
     <div className="space-y-6">
       <p className="max-w-3xl text-sm font-bold leading-6 text-white/55">
-        Cuenta gente con la app abierta en primer plano, en horario de Argentina. El historial
-        arranca el día en que este registro quedó activo. Los anónimos suman en los totales y no
-        aparecen en la lista.
+        Cada día desde la primera actividad guardada. Los días anteriores se reconstruyen con
+        altas, última conexión, historias, mensajes enviados y seguimientos. El tiempo en primer
+        plano solo aparece cuando ya se midió con la app abierta. Horario de Argentina.
       </p>
 
       {error ? <p className="font-black text-red-300">{error}</p> : null}
@@ -143,7 +144,7 @@ export default function AdminUsagePanel() {
       {days.length > 0 ? (
         <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
           <p className="mb-4 font-black">Entradas por día</p>
-          <div className="flex items-end gap-2 overflow-x-auto pb-2">
+          <div className="flex items-end gap-1 overflow-x-auto pb-2">
             {days.map((day) => {
               const height = Math.max(8, Math.round((day.entries / maxEntries) * 96));
               const selected = day.day === activeDay;
@@ -152,7 +153,7 @@ export default function AdminUsagePanel() {
                   key={day.day}
                   type="button"
                   onClick={() => setSelectedDay(day.day)}
-                  className="flex w-12 shrink-0 flex-col items-center gap-2"
+                  className="flex w-10 shrink-0 flex-col items-center gap-2"
                 >
                   <span className="text-xs font-black text-white/70">{day.entries}</span>
                   <span
@@ -186,7 +187,7 @@ export default function AdminUsagePanel() {
 
         {people.length === 0 ? (
           <p className="py-8 text-center font-bold text-white/40">
-            Todavía no hay perfiles medidos en este día.
+            Todavía no hay perfiles con actividad en este día.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -217,7 +218,9 @@ export default function AdminUsagePanel() {
                     </td>
                     <td className="px-2 py-3 font-bold text-white/70">{formatClock(person.enteredAt)}</td>
                     <td className="px-2 py-3 font-bold text-white/70">{formatClock(person.lastSeenAt)}</td>
-                    <td className="px-2 py-3 font-bold">{formatUsageDuration(person.visibleMs)}</td>
+                    <td className="px-2 py-3 font-bold">
+                      {person.measured ? formatUsageDuration(person.visibleMs) : "—"}
+                    </td>
                     <td className="px-2 py-3 font-bold">{person.sessions}</td>
                   </tr>
                 ))}

@@ -13,6 +13,8 @@ export type UsageVisitRecord = {
   lastSeenAt: string;
   visibleMs: number;
   sessions: number;
+  /** True when foreground pings measured this visit. Reconstructed days stay false. */
+  measured: boolean;
 };
 
 export function usageDayKey(now = new Date(), timeZone = USAGE_TIME_ZONE) {
@@ -38,6 +40,21 @@ export function recentUsageDayKeys(today: string, count = USAGE_HISTORY_DAYS) {
   const keys: string[] = [];
   for (let offset = count - 1; offset >= 0; offset -= 1) {
     keys.push(shiftUsageDayKey(today, -offset));
+  }
+  return keys;
+}
+
+/** Inclusive YYYY-MM-DD range. Stops at 500 days so a bad timestamp cannot fan out. */
+export function usageDayKeysBetween(startDay: string, endDay: string) {
+  if (!isUsageDayKey(startDay) || !isUsageDayKey(endDay) || startDay > endDay) return [];
+  const keys: string[] = [];
+  let cursor = startDay;
+  for (let guard = 0; guard < 500; guard += 1) {
+    keys.push(cursor);
+    if (cursor === endDay) break;
+    const next = shiftUsageDayKey(cursor, 1);
+    if (next === cursor || next < cursor) break;
+    cursor = next;
   }
   return keys;
 }
@@ -90,6 +107,7 @@ export function applyUsagePing(
       lastSeenAt: input.nowIso,
       visibleMs: added,
       sessions: 1,
+      measured: true,
     };
   }
 
@@ -106,6 +124,7 @@ export function applyUsagePing(
     lastSeenAt: input.nowIso,
     visibleMs: Math.max(0, Math.floor(existing.visibleMs) || 0) + added,
     sessions: Math.max(1, Math.floor(existing.sessions) || 1) + (countSession ? 1 : 0),
+    measured: true,
   };
 }
 
@@ -124,7 +143,12 @@ export function readUsageVisit(raw: Record<string, unknown> | null | undefined):
     lastSeenAt: String(raw.lastSeenAt || ""),
     visibleMs: Math.max(0, Math.floor(Number(raw.visibleMs) || 0)),
     sessions: Math.max(0, Math.floor(Number(raw.sessions) || 0)),
+    measured: raw.measured === true,
   };
+}
+
+export function isLiveUsageVisit(visit: UsageVisitRecord | null) {
+  return Boolean(visit && (visit.measured || visit.visibleMs > 0));
 }
 
 export function summarizeUsageVisits(visits: UsageVisitRecord[]) {
@@ -143,6 +167,7 @@ export function summarizeUsageVisits(visits: UsageVisitRecord[]) {
     sessions,
     totalVisibleMs,
     averageVisibleMs,
+    measuredEntries: visits.filter((visit) => visit.measured || visit.visibleMs > 0).length,
   };
 }
 

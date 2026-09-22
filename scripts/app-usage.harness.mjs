@@ -12,6 +12,7 @@ installHarnessWindow();
 installHarnessAlias(root);
 
 const usage = await import(pathToFileURL(path.join(root, "src/lib/usage/appUsage.ts")).href);
+const rebuild = await import(pathToFileURL(path.join(root, "src/lib/usage/reconstructUsage.ts")).href);
 
 assert.equal(usage.usageDayKey(new Date("2026-09-23T02:30:00.000Z")), "2026-09-22");
 assert.equal(usage.usageDayKey(new Date("2026-09-23T03:30:00.000Z")), "2026-09-23");
@@ -75,5 +76,45 @@ assert.equal(summary.registered, 1);
 assert.equal(summary.anonymous, 1);
 assert.equal(usage.formatUsageDuration(90_000), "2 min");
 assert.equal(usage.formatUsageDuration(0), "0 min");
+assert.equal(first.measured, true);
+
+const rebuilt = rebuild.reconstructUsageDays([
+  {
+    uid: "uid_ada",
+    username: "Ada",
+    atMs: Date.parse("2026-09-01T15:00:00.000Z"),
+    anonymous: false,
+  },
+  {
+    uid: "uid_ada",
+    username: "Ada",
+    atMs: Date.parse("2026-09-01T18:00:00.000Z"),
+    anonymous: false,
+  },
+  {
+    uid: "profile_uid_ada",
+    username: "",
+    atMs: Date.parse("2026-09-02T12:00:00.000Z"),
+    anonymous: false,
+  },
+]);
+assert.equal(rebuilt.length, 2);
+assert.equal(rebuilt[0].visits.length, 1);
+assert.equal(rebuilt[0].visits[0].enteredAt < rebuilt[0].visits[0].lastSeenAt, true);
+assert.equal(rebuilt[0].visits[0].measured, false);
+assert.equal(rebuilt[0].visits[0].visibleMs, 0);
+assert.equal(rebuilt[1].visits[0].actorKey, "uid_ada");
+assert.equal(
+  rebuild.mergeReconstructedVisit(
+    { ...rebuilt[0].visits[0], measured: true, visibleMs: 5000 },
+    rebuilt[0].visits[0],
+  ),
+  null,
+);
+assert.deepEqual(usage.usageDayKeysBetween("2026-09-01", "2026-09-03"), [
+  "2026-09-01",
+  "2026-09-02",
+  "2026-09-03",
+]);
 
 console.log(JSON.stringify({ gate: "APP_USAGE", pass: true }));
