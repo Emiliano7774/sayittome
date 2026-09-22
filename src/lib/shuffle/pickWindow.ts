@@ -8,7 +8,7 @@ export const SHUFFLE_WINDOW_SIZE = 35;
 /**
  * Prior shuffle windows to exclude so the next tap prefers unseen people.
  * Leaves at least one full window of unused profiles: floor((pool - window) / window).
- * ~340 → 8, ~505 → 13, and it grows as more people register.
+ * ~340 → 8, ~505 → 13, ~574 → 15, and it grows as more people register.
  */
 export function shuffleBatchMemoryForPool(
   poolSize: number,

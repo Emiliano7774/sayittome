@@ -55,13 +55,19 @@ export function buildDeterministicStartAt(
   };
 }
 
-/** Skip cursor doc on subsequent pages — Firestore startAt is inclusive. */
+/**
+ * Skip the cursor doc only when the next page repeats it.
+ * startAt is not always inclusive, so dropping pageDocs[0] unconditionally
+ * removes a real profile at every page boundary.
+ */
 export function mergePaginatedQueryDocs(
   accumulated: Record<string, unknown>[],
   pageDocs: Record<string, unknown>[],
   hadCursor: boolean,
 ) {
-  const startIndex = hadCursor ? 1 : 0;
+  const cursorId = hadCursor ? String(accumulated[accumulated.length - 1]?.id || "") : "";
+  const startIndex =
+    cursorId && pageDocs.length > 0 && String(pageDocs[0]?.id || "") === cursorId ? 1 : 0;
   for (let i = startIndex; i < pageDocs.length; i += 1) {
     accumulated.push(pageDocs[i]);
   }

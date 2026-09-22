@@ -23,6 +23,7 @@ assert.equal(WINDOW, 35);
 assert.equal(pickWindow.shuffleBatchMemoryForPool(340), 8, "legacy ~340 pool stays at 8");
 assert.equal(pickWindow.SHUFFLE_BATCH_MEMORY, 8);
 assert.equal(pickWindow.shuffleBatchMemoryForPool(505), 13, "505 registered → 13 prior windows");
+assert.equal(pickWindow.shuffleBatchMemoryForPool(574), 15, "574 registered → 15 prior windows");
 assert.equal(pickWindow.shuffleBatchMemoryForPool(500), 13);
 assert.equal(pickWindow.shuffleBatchMemoryForPool(525), 14);
 assert.equal(pickWindow.shuffleBatchMemoryForPool(35), 0);

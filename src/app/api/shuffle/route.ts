@@ -47,7 +47,7 @@ const STATS_REFRESH_MS = 10 * 60_000;
 const SHUFFLE_RESPONSE_LIMIT = 10_000;
 /** Max profiles considered when searching by username text. */
 const SHUFFLE_SEARCH_LIMIT = 200;
-const SHUFFLE_FETCH_PAGE_SIZE = 500;
+const SHUFFLE_FETCH_PAGE_SIZE = 1000;
 const SHUFFLE_FETCH_MAX_PAGES = 40;
 const ANON_SCAN_LIMIT = 40;
 const ANON_ACTIVE_MS = 90 * 1000;

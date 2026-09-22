@@ -108,6 +108,16 @@ assert.equal(
 );
 assert.equal(merged[500].id, allProfiles[500].id, "first doc after boundary present");
 
+const exclusive = [];
+pagination.mergePaginatedQueryDocs(exclusive, page1Docs, false);
+pagination.mergePaginatedQueryDocs(exclusive, allProfiles.slice(PAGE_SIZE), true);
+assert.equal(
+  exclusive.length,
+  552,
+  "exclusive startAt must not drop the first profile of the next page",
+);
+assert.equal(exclusive[500].id, allProfiles[500].id);
+
 assert.match(restSrc, /runCollectionQueryAll[\s\S]*buildPaginatedCollectionStructuredQuery/);
 assert.match(restSrc, /runFilteredCollectionQueryAll[\s\S]*buildPaginatedCollectionStructuredQuery/);
 assert.doesNotMatch(
