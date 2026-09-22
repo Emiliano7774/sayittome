@@ -1,3 +1,4 @@
+import { withoutDeletedInboxChats } from "@/lib/chat/deletedInboxChats";
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import {
   isProfileAnonChatId,
@@ -215,7 +216,10 @@ export function mergeVisibleInboxThreads(
   viewerUid = "",
   firestoreSynced = false,
 ) {
-  const nextLive = dedupeInboxChats(live, viewerUid).filter(isVisibleInboxChat);
+  const nextLive = withoutDeletedInboxChats(
+    dedupeInboxChats(live, viewerUid).filter(isVisibleInboxChat),
+  );
+  const keptPrevious = withoutDeletedInboxChats(previous);
 
   // Anonymous recovery is principal/lease based and can legitimately return a
   // partial subset after anon-identity rotation, WebView recreation, or a
@@ -223,7 +227,7 @@ export function mergeVisibleInboxThreads(
   // older visible visitor thread was deleted. This also applies when the visitor
   // has a registered profile: their outgoing anonymous chats are lease-owned,
   // not discoverable by the profile UID Firestore queries.
-  const protectedVisitorThreads = previous.filter((chat) => {
+  const protectedVisitorThreads = keptPrevious.filter((chat) => {
     const id = chat.canonicalChatId || chat.id;
     if (!isProfileAnonChatId(id)) return false;
     return !viewerUid || !isIncomingAnonChatForOwner(chat, viewerUid);
@@ -238,11 +242,11 @@ export function mergeVisibleInboxThreads(
     protectedVisitorThreads.length > 0 ||
     firestoreSynced ||
     previous.length === 0 ||
-    nextLive.length >= previous.length
+    nextLive.length >= keptPrevious.length
   ) {
     return liveWithProtectedVisitors;
   }
-  return dedupeInboxChats([...previous, ...nextLive], viewerUid).filter(
+  return dedupeInboxChats([...keptPrevious, ...nextLive], viewerUid).filter(
     isVisibleInboxChat,
   );
 }

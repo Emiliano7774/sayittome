@@ -36,6 +36,7 @@ import {
 } from "@/lib/chat/inboxShellGuard";
 import { normalizeInboxChat } from "@/lib/chat/normalizeInboxChat";
 import { markChatsInboxHydrated, rememberInboxChatCount } from "@/hooks/useChatsInboxReady";
+import { withoutDeletedInboxChats } from "@/lib/chat/deletedInboxChats";
 import {
   readInboxSnapshot,
   removeInboxSnapshotChat,
@@ -132,7 +133,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   const forceAnonRecovery = options?.forceAnonRecovery ?? false;
   const { firebaseUser, loading } = useAuth();
   const [chats, setChats] = useState<InboxChat[]>(() => {
-    const snapshot = readInboxSnapshot();
+    const snapshot = withoutDeletedInboxChats(readInboxSnapshot());
     if (snapshot.length > 0) rememberInboxChatCount(snapshot.length);
     return snapshot;
   });
@@ -198,7 +199,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     anonRecovery: new Map(),
   });
   const snapshotBootstrappedRef = useRef(false);
-  const lastSortedChatsRef = useRef<InboxChat[]>(readInboxSnapshot());
+  const lastSortedChatsRef = useRef<InboxChat[]>(withoutDeletedInboxChats(readInboxSnapshot()));
   if (!snapshotBootstrappedRef.current && lastSortedChatsRef.current.length > 0) {
     rememberInboxChatCount(lastSortedChatsRef.current.length);
     snapshotBootstrappedRef.current = true;
@@ -659,12 +660,18 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       lastSortedChatsRef.current = next;
       writeInboxSnapshot(next);
       rememberInboxChatCount(next.length);
+    } else if (firestoreSynced) {
+      lastSortedChatsRef.current = [];
+      writeInboxSnapshot([]);
+      rememberInboxChatCount(0);
     }
     return next;
   }, [chats, sessionChats, uid, firestoreSynced]);
 
   const displaySortedChats =
-    sortedChats.length > 0 ? sortedChats : lastSortedChatsRef.current;
+    sortedChats.length > 0 || firestoreSynced
+      ? sortedChats
+      : withoutDeletedInboxChats(lastSortedChatsRef.current);
 
   return {
     uid,

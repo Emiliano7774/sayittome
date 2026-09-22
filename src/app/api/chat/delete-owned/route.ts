@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { ABUSE_CHAT_LEASE_COLLECTION } from "@/lib/abuse/profileAnonAbuseBlock";
 import { verifyFirebaseIdToken } from "@/lib/admin/verifyAdminRequest";
 import { callerOwnsInboxChat, exactChatId } from "@/lib/chat/ownedChatDelete";
 import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
@@ -13,6 +14,44 @@ function reply(body: unknown, status = 200) {
     status,
     headers: { "Cache-Control": "private, no-store, max-age=0, must-revalidate" },
   });
+}
+
+const MESSAGE_COLLECTIONS = ["mensajes", "messages"];
+
+async function deleteCollectionPages(db: {
+  batch: () => { delete: (ref: unknown) => void; commit: () => Promise<unknown> };
+}, collection: { limit: (n: number) => { get: () => Promise<{ empty: boolean; size: number; docs: Array<{ ref: unknown }> }> } }) {
+  for (;;) {
+    const snap = await collection.limit(200).get();
+    if (snap.empty) return;
+    const batch = db.batch();
+    for (const docSnap of snap.docs) batch.delete(docSnap.ref);
+    await batch.commit();
+    if (snap.size < 200) return;
+  }
+}
+
+async function deleteOwnedChatTree(db: {
+  batch: () => { delete: (ref: unknown) => void; commit: () => Promise<unknown> };
+  collection: (name: string) => { doc: (id: string) => { delete: () => Promise<unknown> } };
+}, chatRef: {
+  collection: (name: string) => { limit: (n: number) => { get: () => Promise<{ empty: boolean; size: number; docs: Array<{ ref: unknown }> }> } };
+  listCollections?: () => Promise<Array<{ id: string; limit: (n: number) => { get: () => Promise<{ empty: boolean; size: number; docs: Array<{ ref: unknown }> }> } }>>;
+  delete: () => Promise<unknown>;
+  id: string;
+}) {
+  for (const name of MESSAGE_COLLECTIONS) {
+    await deleteCollectionPages(db, chatRef.collection(name));
+  }
+  if (typeof chatRef.listCollections === "function") {
+    const collections = await chatRef.listCollections();
+    for (const collection of collections) {
+      if (MESSAGE_COLLECTIONS.includes(collection.id)) continue;
+      await deleteCollectionPages(db, collection);
+    }
+  }
+  await chatRef.delete();
+  await db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(chatRef.id).delete().catch(() => undefined);
 }
 
 export async function POST(req: Request) {
@@ -39,7 +78,8 @@ export async function POST(req: Request) {
     const db = getRepairAdminDb();
     const userSnap = await db.collection("usuarios").doc(actor.uid).get();
     const userData = (userSnap.data() || {}) as Record<string, unknown>;
-    const username = String(userData.username || userData.usernameLower || "");
+    const username = String(userData.username || "");
+    const usernameLower = String(userData.usernameLower || "");
 
     const deleted: string[] = [];
     const denied: string[] = [];
@@ -52,11 +92,11 @@ export async function POST(req: Request) {
         continue;
       }
       const data = (snap.data() || {}) as Record<string, unknown>;
-      if (!callerOwnsInboxChat({ uid: actor.uid, username, chatId, data })) {
+      if (!callerOwnsInboxChat({ uid: actor.uid, username, usernameLower, chatId, data })) {
         denied.push(chatId);
         continue;
       }
-      await db.recursiveDelete(ref);
+      await deleteOwnedChatTree(db, ref);
       deleted.push(chatId);
     }
 

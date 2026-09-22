@@ -63,9 +63,11 @@ function hasHumanShuffleContent(host: HTMLElement | null) {
 export function ShuffleEmergencyShell({
   error = false,
   global = false,
+  onRetry,
 }: {
   error?: boolean;
   global?: boolean;
+  onRetry?: () => void;
 }) {
   useEffect(() => {
     if (!error && !global) return;
@@ -104,19 +106,29 @@ export function ShuffleEmergencyShell({
           ? "Shuffle tuvo un problema, pero la pantalla se recuperó. Podés volver a intentarlo."
           : "Preparando perfiles…"}
       </p>
+      {error && onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mx-auto mt-5 rounded-full bg-white px-5 py-3 text-sm font-black text-black"
+        >
+          Reintentar
+        </button>
+      ) : null}
     </section>
   );
 }
 
-type BoundaryState = { failed: boolean };
+type BoundaryState = { failed: boolean; attempt: number };
 
 export class ShuffleSurfaceErrorBoundary extends Component<
   { children: ReactNode },
   BoundaryState
 > {
-  state: BoundaryState = { failed: false };
+  state: BoundaryState = { failed: false, attempt: 0 };
+  private recoverTimer: number | null = null;
 
-  static getDerivedStateFromError(): BoundaryState {
+  static getDerivedStateFromError(): Partial<BoundaryState> {
     return { failed: true };
   }
 
@@ -131,7 +143,6 @@ export class ShuffleSurfaceErrorBoundary extends Component<
       surface: "shuffle",
       pathname:
         typeof window !== "undefined" ? window.location.pathname : "",
-      // Safe, non-sensitive render diagnostics for recovery triage.
       hooksOrderLikely: /Rendered (more|fewer) hooks than expected|Rendered more hooks than during the previous render/i.test(
         message,
       ),
@@ -139,10 +150,33 @@ export class ShuffleSurfaceErrorBoundary extends Component<
     if (typeof console !== "undefined" && typeof console.error === "function") {
       console.error("[ShuffleSurfaceErrorBoundary]", name, message, componentStack);
     }
+    const attempt = this.state.attempt + 1;
+    this.setState({ attempt });
+    if (attempt > 1 || typeof window === "undefined") return;
+    this.recoverTimer = window.setTimeout(() => {
+      this.recoverTimer = null;
+      this.setState({ failed: false });
+    }, 50);
   }
 
+  componentWillUnmount() {
+    if (this.recoverTimer !== null && typeof window !== "undefined") {
+      window.clearTimeout(this.recoverTimer);
+    }
+  }
+
+  private retry = () => {
+    if (this.recoverTimer !== null && typeof window !== "undefined") {
+      window.clearTimeout(this.recoverTimer);
+      this.recoverTimer = null;
+    }
+    this.setState({ failed: false, attempt: 1 });
+  };
+
   render() {
-    if (this.state.failed) return <ShuffleEmergencyShell error />;
+    if (this.state.failed) {
+      return <ShuffleEmergencyShell error onRetry={this.retry} />;
+    }
     return this.props.children;
   }
 }

@@ -1,4 +1,4 @@
-import { usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
+import { safeChatPart, usernameHintFromAnonChatId } from "@/lib/chat/anonChatId";
 
 const OWN_UID_FIELDS = [
   "receptorUid",
@@ -23,6 +23,7 @@ function uidList(value: unknown) {
 export function callerOwnsInboxChat(input: {
   uid: string;
   username?: string;
+  usernameLower?: string;
   chatId: string;
   data: Record<string, unknown> | null;
 }) {
@@ -40,6 +41,16 @@ export function callerOwnsInboxChat(input: {
   if (participants.includes(uid)) return true;
 
   const hint = usernameHintFromAnonChatId(input.chatId);
-  const username = String(input.username || "").trim().toLowerCase();
-  return Boolean(hint && username && hint === username);
+  if (!hint) return false;
+  const names = [
+    input.username,
+    input.usernameLower,
+    input.data.targetUsername,
+    input.data.receptorUsername,
+    input.data.username,
+  ];
+  return names.some((value) => {
+    const raw = String(value || "").trim();
+    return Boolean(raw) && safeChatPart(raw) === hint;
+  });
 }

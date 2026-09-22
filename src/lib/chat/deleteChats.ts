@@ -1,3 +1,4 @@
+import { rememberDeletedInboxChats } from "@/lib/chat/deletedInboxChats";
 import { auth } from "@/lib/firebase";
 import { removeInboxSnapshotChat } from "@/lib/chat/inboxSnapshot";
 import { unregisterSessionChat } from "@/lib/chat/sessionChats";
@@ -5,6 +6,7 @@ import { unregisterSessionChat } from "@/lib/chat/sessionChats";
 const CHUNK = 25;
 
 function forgetLocalChat(chatId: string) {
+  rememberDeletedInboxChats([chatId]);
   unregisterSessionChat(chatId);
   removeInboxSnapshotChat(chatId);
 }
@@ -29,6 +31,10 @@ export async function hardDeleteChats(chatIds: string[]) {
       },
       body: JSON.stringify({ chatIds: slice }),
       cache: "no-store",
+      signal:
+        typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+          ? AbortSignal.timeout(25000)
+          : undefined,
     });
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
