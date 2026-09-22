@@ -6,6 +6,10 @@ import { isActiveWithinWindow, isRecentlyActive } from "@/lib/presence";
 import { parseFirestoreDoc } from "@/lib/firestore/rest";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { normalizeProfileMediaSources } from "@/lib/profile/mediaSource";
+import {
+  readPublicProfileRouteCache,
+  writePublicProfileRouteCache,
+} from "@/lib/profile/publicProfileRouteCache";
 
 const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
 const PROJECT_ID = "sayittome-app";
@@ -53,6 +57,7 @@ async function runProfileQuery(body: Record<string, unknown>) {
   return Array.isArray(json) ? json.find((x: any) => x.document) : null;
 }
 
+
 function buildProfilePayload(found: any, fallbackUsername: string) {
   const rawProfile = parseFirestoreDoc(found.document);
   if (!isPublicProfile(rawProfile)) {
@@ -85,6 +90,7 @@ function buildProfilePayload(found: any, fallbackUsername: string) {
     mostrarUltimaVez: fields?.mostrarUltimaVez?.booleanValue,
   });
 
+  const legacyModerationTag = str(fields, "moderationTag");
   const profile = {
     uid: str(fields, "uid") || String(found.document.name || "").split("/").pop() || "",
     email: str(fields, "email"),
@@ -140,8 +146,10 @@ function buildProfilePayload(found: any, fallbackUsername: string) {
             ),
           )
         : {},
-    moderationTag: str(fields, "moderationTag"),
-    moderationTagNote: str(fields, "moderationTagNote"),
+    moderationTag: legacyModerationTag === "roleplay" ? "roleplay" : "",
+    moderationTagNote: legacyModerationTag === "roleplay" ? str(fields, "moderationTagNote") : "",
+    groomingTag: fields?.groomingTag?.booleanValue === true || legacyModerationTag === "grooming",
+    potentialPedophileTag: fields?.potentialPedophileTag?.booleanValue === true || legacyModerationTag === "potential_pedophile",
     fakeProfileTag: str(fields, "fakeProfileTag"),
   };
 
@@ -154,6 +162,22 @@ export async function GET(
 ) {
   const { username } = await ctx.params;
   const wanted = decodeURIComponent(username || "").toLowerCase();
+  const requestUrl = new URL(_req.url);
+  const bypassCache =
+    requestUrl.searchParams.has("ts") ||
+    requestUrl.searchParams.get("fresh") === "1";
+
+  if (!bypassCache) {
+    const cached = readPublicProfileRouteCache(wanted);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          "Cache-Control": "private, no-store",
+          "x-sytm-profile-cache": "hit",
+        },
+      });
+    }
+  }
 
   const currentMatch = await runProfileQuery({
     structuredQuery: {
@@ -188,7 +212,14 @@ export async function GET(
     if (!payload.ok) {
       return NextResponse.json({ ok: false, profile: null, reason: payload.reason });
     }
-    return NextResponse.json({ ok: true, profile: payload.profile });
+    const body = { ok: true, profile: payload.profile };
+    writePublicProfileRouteCache(wanted, body);
+    return NextResponse.json(body, {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "x-sytm-profile-cache": bypassCache ? "refresh" : "miss",
+      },
+    });
   }
 
   const aliasMatch = await runProfileQuery({

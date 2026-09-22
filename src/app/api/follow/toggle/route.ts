@@ -4,6 +4,7 @@ import { loadFirebaseAdminFirestore } from "@/lib/admin/firebaseAdminNative";
 import { verifyFirebaseIdToken } from "@/lib/admin/verifyAdminRequest";
 import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 import { nextSocialCount } from "@/lib/profile/followToggleCore";
+import { invalidatePublicProfileRouteCache } from "@/lib/profile/publicProfileRouteCache";
 
 export const dynamic = "force-dynamic";
 
@@ -89,17 +90,32 @@ export async function POST(req: Request) {
         const nextFollowing = nextSocialCount(actorData.siguiendoCount, delta);
         const nextFollowers = nextSocialCount(targetData.seguidoresCount, delta);
         tx.set(actorRef, { siguiendoCount: nextFollowing, updatedAt: now }, { merge: true });
-        tx.set(targetRef, { seguidoresCount: nextFollowers, updatedAt: now }, { merge: true });
-        return { following: desired, siguiendoCount: nextFollowing, seguidoresCount: nextFollowers };
+        tx.set(
+          targetRef,
+          {
+            seguidoresCount: nextFollowers,
+            followersCount: nextFollowers,
+            updatedAt: now,
+          },
+          { merge: true },
+        );
+        return {
+          following: desired,
+          siguiendoCount: nextFollowing,
+          seguidoresCount: nextFollowers,
+          username: String(targetData.username || targetData.usernameLower || "").trim(),
+        };
       }
 
       return {
         following: desired,
         siguiendoCount: Number((actorSnap.data() || {}).siguiendoCount || 0),
         seguidoresCount: Number((targetSnap.data() || {}).seguidoresCount || 0),
+        username: String((targetSnap.data() || {}).username || (targetSnap.data() || {}).usernameLower || "").trim(),
       };
     });
 
+    if (result.username) invalidatePublicProfileRouteCache(result.username);
     return reply({ ok: true, ...result });
   } catch (error) {
     const code = String((error as Error)?.message || "");

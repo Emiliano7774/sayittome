@@ -98,11 +98,26 @@ export default function FollowButton({ targetUid, variant = "default" }: Props) 
         ok?: boolean;
         following?: boolean;
         error?: string;
+        seguidoresCount?: number;
+        username?: string;
       };
       if (!res.ok || !json.ok) {
         throw new Error(String(json.error || `follow_${res.status}`));
       }
       setFollowing(Boolean(json.following));
+      const seguidoresCount = Number(json.seguidoresCount);
+      if (Number.isFinite(seguidoresCount)) {
+        window.dispatchEvent(
+          new CustomEvent("sayittome:follow-changed", {
+            detail: {
+              targetUid: resolvedTargetUid,
+              following: Boolean(json.following),
+              seguidoresCount,
+              username: String(json.username || ""),
+            },
+          }),
+        );
+      }
     } catch (e) {
       console.error("follow toggle error", e);
       setFollowing(!nextFollowing);

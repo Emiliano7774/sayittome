@@ -100,8 +100,8 @@ export function computeThreadPendingForViewer(
   const latestSenderAnonSessionId = String(
     chat.latestSenderAnonSessionId || "",
   ).trim();
-  const latestAt =
-    chatTimestampMs(chat.lastMessageAt) || chatTimestampMs(chat.updatedAt);
+  // updatedAt moves on receipts and shell writes. Only the message time can open unread.
+  const latestAt = chatTimestampMs(chat.lastMessageAt);
   const activeDetail =
     Boolean(activeDetailThreadId) &&
     (activeDetailThreadId === threadId || activeDetailThreadId === chat.id);

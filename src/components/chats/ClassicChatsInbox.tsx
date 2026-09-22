@@ -26,6 +26,7 @@ type Props = {
   sortedChats: InboxChat[];
   uid: string;
   isAnonymousSession: boolean;
+  firestoreSynced: boolean;
   selection: ReturnType<typeof useChatsSelection>;
 };
 
@@ -144,6 +145,7 @@ export default function ClassicChatsInbox({
   sortedChats,
   uid,
   isAnonymousSession: _isAnonymousSession,
+  firestoreSynced,
   selection,
 }: Props) {
   const t = useT();
@@ -176,7 +178,7 @@ export default function ClassicChatsInbox({
           onRequestDelete={selection.requestDeleteSelected}
           onConfirmDelete={() => {
             selection.confirmDeleteSelected().catch(() => {
-              window.alert(t("chat_save_fail"));
+              window.alert(t("chats_delete_fail"));
             });
           }}
           onCancelConfirm={() => selection.setConfirmOpen(false)}
@@ -202,7 +204,7 @@ export default function ClassicChatsInbox({
               t={t}
               photo={inboxChatPhoto(chat, photos)}
               blurPhoto={inboxChatBlur(chat, blurPhotos)}
-              unread={chatUnreadCountForViewer(chat, uid)}
+              unread={firestoreSynced ? chatUnreadCountForViewer(chat, uid) : 0}
               selectionMode={selection.selectionMode}
               selected={selection.selectedIds.has(chat.id)}
               onToggle={() => selection.toggleChat(chat.id)}

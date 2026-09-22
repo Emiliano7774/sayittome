@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useLayoutEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useCallback, useLayoutEffect, useSyncExternalStore, useRef } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -27,9 +27,10 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
-import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import ProfileModerationBadges from "@/components/profile/ProfileModerationBadges";
 import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
+import AdminProfileSafetyTagButtons from "@/components/profile/AdminProfileSafetyTagButtons";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
@@ -46,7 +47,7 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { lookupProfileByUsername } from "@/lib/chat/resolveProfileChat";
-import { getCachedFullProfile, setCachedFullProfile, shouldIdleRevalidateFullProfile } from "@/lib/profile/profileCache";
+import { getCachedFullProfile, patchCachedFullProfileFollowers, setCachedFullProfile, shouldIdleRevalidateFullProfile } from "@/lib/profile/profileCache";
 import { markProfileHydrated, shouldShowProfileLoading } from "@/hooks/useProfileReady";
 import {
   profilePipelineBegin,
@@ -62,7 +63,11 @@ import {
 } from "@/lib/chat/profileChatWarmup";
 import { recordPathBeforeChatOpen } from "@/lib/navigation/chatBackNavigation";
 import { fastRouterPush, fastRouterReplace } from "@/lib/navigation/fastNavigate";
-import { prepareInstantShuffleReturn } from "@/lib/navigation/shuffleKeepAlive";
+import {
+  parkShuffleKeepAliveForNonMainRoute,
+  prepareInstantShuffleReturn,
+} from "@/lib/navigation/shuffleKeepAlive";
+import { neutralizeMainTabPresentationForNonMainRoute } from "@/lib/navigation/nonMainRouteMainTabIsolation";
 import {
   consumeProfileReturnTo,
   peekProfileReturnTo,
@@ -112,6 +117,8 @@ type Profile = {
   adminBlurFotosPerfil?: boolean;
   moderationTag?: string;
   moderationTagNote?: string;
+  groomingTag?: boolean;
+  potentialPedophileTag?: boolean;
   fakeProfileTag?: string;
 };
 
@@ -134,13 +141,14 @@ export default function PublicProfilePage() {
   );
 
   const [profile, setProfile] = useState<Profile | null>(() => {
-    const cached = usernameParam ? getCachedFullProfile(usernameParam) : null;
+    const cached = usernameParam ? getCachedFullProfile(usernameParam, { allowPartial: true }) : null;
     return (cached as Profile | null) || null;
   });
   const [loading, setLoading] = useState(() => {
     if (!usernameParam) return true;
-    return !getCachedFullProfile(usernameParam);
+    return !getCachedFullProfile(usernameParam, { allowPartial: true });
   });
+  const profileRouteKeyRef = useRef(usernameParam);
   const [currentUid, setCurrentUid] = useState("");
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
@@ -151,6 +159,33 @@ export default function PublicProfilePage() {
   const profileUi = getClassicProfileUiTokens(density);
   const formatLastSeen = useFormatLastSeen();
   const t = useT();
+
+  // Shuffle -> profile must be an atomic visual handoff. The keep-alive feed is
+  // intentionally retained for instant Back, but it must be parked before this
+  // route's first paint so stale Shuffle handoff classes cannot leak controls or
+  // cards under the public profile.
+  useLayoutEffect(() => {
+    if (!usernameParam) return;
+    const routePath = `/u/${encodeURIComponent(usernameParam)}`;
+    neutralizeMainTabPresentationForNonMainRoute(routePath);
+    parkShuffleKeepAliveForNonMainRoute();
+  }, [usernameParam]);
+
+  useLayoutEffect(() => {
+    if (profileRouteKeyRef.current === usernameParam) return;
+    profileRouteKeyRef.current = usernameParam;
+    const cached = usernameParam
+      ? getCachedFullProfile(usernameParam, { allowPartial: true })
+      : null;
+    setProfile((cached as Profile | null) || null);
+    setLoading(!cached);
+    setUsernameChanged(null);
+    setViewerOpen(false);
+    setViewerIndex(0);
+    setHeroIndex(0);
+    setVideoViewerUrl(null);
+    setVideoViewerSource(undefined);
+  }, [usernameParam]);
 
   useEffect(() => {
     if (!usernameParam) return;
@@ -168,8 +203,30 @@ export default function PublicProfilePage() {
   }, []);
 
   useEffect(() => {
+    const onFollow = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        targetUid?: string;
+        seguidoresCount?: number;
+        username?: string;
+      }>).detail;
+      if (!detail || typeof detail.seguidoresCount !== "number") return;
+      const targetUid = String(detail.targetUid || "");
+      if (profile?.uid && targetUid && targetUid !== profile.uid) return;
+      const name = String(detail.username || profile?.username || usernameParam || "");
+      if (profile?.uid && (!targetUid || targetUid === profile.uid)) {
+        setProfile((current) =>
+          current ? { ...current, seguidores: detail.seguidoresCount as number } : current,
+        );
+      }
+      if (name) patchCachedFullProfileFollowers(name, detail.seguidoresCount);
+    };
+    window.addEventListener("sayittome:follow-changed", onFollow);
+    return () => window.removeEventListener("sayittome:follow-changed", onFollow);
+  }, [profile?.uid, profile?.username, usernameParam]);
+
+  useEffect(() => {
     async function load() {
-      const cached = getCachedFullProfile(usernameParam);
+      const cached = getCachedFullProfile(usernameParam, { allowPartial: true });
       if (cached) {
         profilePipelineMark("cache-hit");
         navTraceMarkDetail("profile-cache-hit");
@@ -251,7 +308,7 @@ export default function PublicProfilePage() {
 
   useLayoutEffect(() => {
     if (!usernameParam) return;
-    const cached = getCachedFullProfile(usernameParam);
+    const cached = getCachedFullProfile(usernameParam, { allowPartial: true });
     if (cached) {
       profilePipelineMark("cache-hit");
       navTraceMarkDetail("profile-cache-hit");
@@ -480,6 +537,8 @@ export default function PublicProfilePage() {
           adminBlurFotosPerfil: profile.adminBlurFotosPerfil,
           moderationTag: profile.moderationTag,
           moderationTagNote: profile.moderationTagNote,
+          groomingTag: profile.groomingTag,
+          potentialPedophileTag: profile.potentialPedophileTag,
           fakeProfileTag: profile.fakeProfileTag,
         }}
         isOwner={isOwner}
@@ -490,6 +549,9 @@ export default function PublicProfilePage() {
         }
         onFakeProfileTagChange={(fakeProfileTag) =>
           setProfile((current) => (current ? { ...current, fakeProfileTag } : current))
+        }
+        onSafetyTagChange={(patch) =>
+          setProfile((current) => (current ? { ...current, ...patch } : current))
         }
       />
       </div>
@@ -578,15 +640,13 @@ export default function PublicProfilePage() {
               minimal
             />
           ) : null}
-          <div className="flex flex-col items-start gap-1.5">
-            {profile.moderationTag &&
-            (isOwner ? profile.moderationTag === "roleplay" : true) ? (
-              <ProfileModerationTag tag={profile.moderationTag} compact />
-            ) : null}
-            {profile.fakeProfileTag === "fake" ? (
-              <ProfileModerationTag tag="fake" compact />
-            ) : null}
-          </div>
+          <ProfileModerationBadges
+            moderationTag={profile.moderationTag}
+            fakeProfileTag={profile.fakeProfileTag}
+            groomingTag={profile.groomingTag}
+            potentialPedophileTag={profile.potentialPedophileTag}
+            className="max-w-[28rem]"
+          />
           <AdminProfileRoleplayButton
             profile={profile}
             variant="classic"
@@ -599,6 +659,13 @@ export default function PublicProfilePage() {
             variant="classic"
             onTagChange={(fakeProfileTag) =>
               setProfile((current) => (current ? { ...current, fakeProfileTag } : current))
+            }
+          />
+          <AdminProfileSafetyTagButtons
+            profile={profile}
+            variant="classic"
+            onSafetyChange={(patch) =>
+              setProfile((current) => (current ? { ...current, ...patch } : current))
             }
           />
         </div>

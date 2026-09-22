@@ -28,6 +28,7 @@ type Props = {
   sortedChats: InboxChat[];
   uid: string;
   isAnonymousSession: boolean;
+  firestoreSynced: boolean;
   selection: ReturnType<typeof useChatsSelection>;
 };
 
@@ -35,6 +36,7 @@ export default function ModernChatsInbox({
   sortedChats,
   uid,
   isAnonymousSession,
+  firestoreSynced,
   selection,
 }: Props) {
   const t = useT();
@@ -66,7 +68,7 @@ export default function ModernChatsInbox({
             onRequestDelete={selection.requestDeleteSelected}
             onConfirmDelete={() => {
               selection.confirmDeleteSelected().catch(() => {
-                window.alert(t("chat_save_fail"));
+                window.alert(t("chats_delete_fail"));
               });
             }}
             onCancelConfirm={() => selection.setConfirmOpen(false)}
@@ -116,7 +118,7 @@ export default function ModernChatsInbox({
           <div className="space-y-3" data-nav-chats-primary>
             {sortedChats.map((chat) => {
               const chatViewerId = resolveChatViewerId(chat, uid);
-              const unread = chatUnreadCountForViewer(chat, uid);
+              const unread = firestoreSynced ? chatUnreadCountForViewer(chat, uid) : 0;
               const title = chatPeerTitle(chat, uid);
               const selected = selection.selectedIds.has(chat.id);
               const photo = shouldHidePeerProfilePhoto(chat, uid)

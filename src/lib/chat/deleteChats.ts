@@ -1,38 +1,47 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  limit,
-  query,
-} from "firebase/firestore";
-
-import { db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
+import { removeInboxSnapshotChat } from "@/lib/chat/inboxSnapshot";
 import { unregisterSessionChat } from "@/lib/chat/sessionChats";
 
-const MESSAGE_BATCH = 250;
+const CHUNK = 25;
 
-export async function hardDeleteChat(chatId: string) {
-  const cleanId = String(chatId || "").trim();
-  if (!cleanId) return;
-
-  while (true) {
-    const snap = await getDocs(
-      query(collection(db, "chats", cleanId, "mensajes"), limit(MESSAGE_BATCH)),
-    );
-    if (snap.empty) break;
-
-    await Promise.all(snap.docs.map((messageDoc) => deleteDoc(messageDoc.ref)));
-    if (snap.size < MESSAGE_BATCH) break;
-  }
-
-  await deleteDoc(doc(db, "chats", cleanId));
-  unregisterSessionChat(cleanId);
+function forgetLocalChat(chatId: string) {
+  unregisterSessionChat(chatId);
+  removeInboxSnapshotChat(chatId);
 }
 
 export async function hardDeleteChats(chatIds: string[]) {
-  const unique = [...new Set(chatIds.map((id) => id.trim()).filter(Boolean))];
-  for (const chatId of unique) {
-    await hardDeleteChat(chatId);
+  const unique = [...new Set(chatIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (unique.length === 0) return;
+
+  const user = auth.currentUser;
+  if (!user || user.isAnonymous) {
+    throw new Error("login_required");
   }
+  const token = await user.getIdToken();
+
+  for (let index = 0; index < unique.length; index += CHUNK) {
+    const slice = unique.slice(index, index + CHUNK);
+    const res = await fetch("/api/chat/delete-owned", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ chatIds: slice }),
+      cache: "no-store",
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      deleted?: string[];
+      error?: string;
+    };
+    for (const chatId of json.deleted || []) forgetLocalChat(chatId);
+    if (!res.ok || !json.ok) {
+      throw new Error(String(json.error || `delete_${res.status}`));
+    }
+  }
+}
+
+export async function hardDeleteChat(chatId: string) {
+  await hardDeleteChats([chatId]);
 }

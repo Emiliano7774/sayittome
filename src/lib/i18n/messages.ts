@@ -167,6 +167,7 @@ const es = {
   chats_delete_confirm_title: "Borrar chats seleccionados",
   chats_delete_confirm_body:
     "Se van a borrar completamente los chats seleccionados, incluyendo todos sus mensajes.",
+  chats_delete_fail: "No se pudieron borrar los chats. Probá de nuevo.",
 
   shuffle_title: "Shuffle",
   shuffle_subtitle: "Perfiles activos, historias recientes y gente conectada en tiempo real.",
@@ -572,6 +573,14 @@ const es = {
   profile_moderation_fake_title: "Perfil falso",
   profile_moderation_fake_hint:
     "Administración verificó que este perfil de Instagram es falso y usa fotos o videos robados. Extremá el cuidado al vincularte.",
+  profile_moderation_grooming_title: "RIESGO DE GROOMING",
+  profile_moderation_grooming_hint:
+    "Administración encontró señales fuertes compatibles con grooming. Si sos menor de edad, no compartas datos personales ni contenido íntimo y avisale a un adulto de confianza.",
+  profile_moderation_potential_pedophile_title: "PERFIL MARCADO COMO POTENCIALMENTE PEDÓFILO",
+  profile_moderation_potential_pedophile_hint:
+    "Administración encontró evidencia fuerte de que este perfil podría estar manejado por una persona pedófila. Si sos menor de edad, no hables con este perfil y avisale a un adulto de confianza.",
+  admin_report_tag_grooming: "Marcar riesgo de grooming",
+  admin_report_tag_potential_pedophile: "Marcar potencialmente pedófilo",
   admin_report_tag_roleplay: "Marcar perfil de rol",
   admin_report_tag_fake_profile: "Marcar perfil falso",
   admin_blur_photos_open: "Blur de fotos de perfil",
@@ -1008,6 +1017,7 @@ const en: Record<keyof typeof es, string> = {
   chats_delete_confirm_title: "Delete selected chats",
   chats_delete_confirm_body:
     "Selected chats will be permanently deleted, including all their messages.",
+  chats_delete_fail: "Could not delete the chats. Try again.",
 
   shuffle_title: "Shuffle",
   shuffle_subtitle: "Active profiles, recent stories and people connected in real time.",
@@ -1412,6 +1422,14 @@ const en: Record<keyof typeof es, string> = {
   profile_moderation_fake_title: "Fake profile",
   profile_moderation_fake_hint:
     "Administration verified that this Instagram profile is fake and uses stolen photos or videos. Be extremely careful before engaging.",
+  profile_moderation_grooming_title: "GROOMING RISK",
+  profile_moderation_grooming_hint:
+    "Administration found strong signals consistent with grooming. If you are a minor, do not share personal information or intimate content and tell a trusted adult.",
+  profile_moderation_potential_pedophile_title: "PROFILE FLAGGED AS POTENTIALLY PEDOPHILIC",
+  profile_moderation_potential_pedophile_hint:
+    "Administration found strong evidence that this profile may be operated by a pedophilic person. If you are a minor, do not talk to this profile and tell a trusted adult.",
+  admin_report_tag_grooming: "Flag grooming risk",
+  admin_report_tag_potential_pedophile: "Flag potentially pedophilic",
   admin_report_tag_roleplay: "Mark as roleplay profile",
   admin_report_tag_fake_profile: "Mark as fake profile",
   admin_blur_photos_open: "Blur profile photos",

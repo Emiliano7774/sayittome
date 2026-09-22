@@ -84,9 +84,13 @@ export function useChatsSelection(chats: InboxChat[]) {
   const confirmDeleteSelected = useCallback(async () => {
     if (selectedIds.size === 0 || deleting) return;
 
+    const ids = [...selectedIds].flatMap((id) => {
+      const chat = chats.find((row) => row.id === id || row.canonicalChatId === id);
+      return [chat?.canonicalChatId, id].filter((value): value is string => Boolean(value));
+    });
     setDeleting(true);
     try {
-      await hardDeleteChats([...selectedIds]);
+      await hardDeleteChats(ids);
       exitSelectionMode();
     } catch (error) {
       console.error(error);
@@ -95,7 +99,7 @@ export function useChatsSelection(chats: InboxChat[]) {
       setDeleting(false);
       setConfirmOpen(false);
     }
-  }, [deleting, exitSelectionMode, selectedIds]);
+  }, [chats, deleting, exitSelectionMode, selectedIds]);
 
   return {
     selectionMode,
