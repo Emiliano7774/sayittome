@@ -43,6 +43,7 @@ import {
   installMainTabInternalPathnameStore,
   resetMainTabHistoryPathnameStore,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
+import { presentNativeBarSectionNow } from "@/lib/navigation/stuckTabSurfaceReconcile";
 
 export type FastRouterPushOptions = {
   /** Force same-document router.push, bypassing native-shell hardNavigate for this call only. */
@@ -78,7 +79,11 @@ function clearStaleMainTabPathnameOverrideForHref(href: string) {
   resetMainTabHistoryPathnameStore("soft-nav-non-main-tab");
 }
 
-function commitHistoryPushState(href: string, reason: string) {
+function commitHistoryPushState(
+  href: string,
+  reason: string,
+  options?: { allowConcreteMainTab?: boolean },
+) {
   installMainTabInternalPathnameStore();
   const dest = normalizePath(href);
   const prevPathname =
@@ -102,10 +107,15 @@ function commitHistoryPushState(href: string, reason: string) {
     return false;
   }
 
-  if (dest !== "/shuffle") {
+  const destinationAllowed =
+    dest === "/shuffle" ||
+    (options?.allowConcreteMainTab === true &&
+      (MAIN_TAB_HREFS as readonly string[]).includes(dest));
+
+  if (!destinationAllowed) {
     emitMicroSlideCommitNavDiag("MICRO_SLIDE_HISTORY_COMMIT_BLOCKED", {
       href: dest,
-      reason: "destination-not-shuffle",
+      reason: "destination-not-allowed",
       forcedSoft: false,
       forcedHistory: true,
       caller: "fastRouterPush",
@@ -165,9 +175,11 @@ function commitHistoryPushState(href: string, reason: string) {
   commitMainTabPathnameForHistoryNavigation(dest, {
     txId: tx?.transactionId ?? null,
     reason,
+    fromPathname: prevPathname,
   });
+  presentNativeBarSectionNow(dest);
 
-  if (nextPathname !== "/shuffle") {
+  if (nextPathname !== dest) {
     emitMicroSlideCommitNavDiag("MICRO_SLIDE_HISTORY_NAVIGATION_FAILED", {
       href: dest,
       reason: "url-not-committed",
@@ -198,6 +210,21 @@ function commitHistoryPushState(href: string, reason: string) {
   return true;
 }
 
+/**
+ * Same-document main-tab navigation. Firebase Hosting currently serves static
+ * HTML for Next RSC requests on prerendered routes in production, which makes
+ * App Router fall back to an MPA reload. Main tabs already have keep-alive
+ * panels, so history + the internal pathname store is the canonical fast path.
+ */
+export function fastMainTabHistoryPush(
+  href: string,
+  reason = "main-tab-history-navigation",
+) {
+  const dest = normalizePath(href);
+  if (!(MAIN_TAB_HREFS as readonly string[]).includes(dest)) return false;
+  return commitHistoryPushState(dest, reason, { allowConcreteMainTab: true });
+}
+
 export function fastRouterPush(
   router: AppRouterInstance,
   href: string,
@@ -209,6 +236,13 @@ export function fastRouterPush(
 
   if (typeof window !== "undefined") {
     const currentPath = window.location.pathname.split("?")[0].split("#")[0];
+    const destinationPath = normalizePath(href);
+    // A profile/chat tap can happen immediately after returning to Shuffle.
+    // Never let the previous profile->Shuffle return latch keep Shuffle painted
+    // over the next non-main route.
+    if (currentPath === "/shuffle" && (destinationPath.startsWith("/u/") || destinationPath.startsWith("/chat/"))) {
+      clearInstantShuffleReturn();
+    }
     maybePinShuffleKeepAliveFromPath(currentPath);
 
     pinShuffleWindowIfNeeded(currentPath);

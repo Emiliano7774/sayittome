@@ -225,8 +225,20 @@ main[data-scroll-root].sayittome-shuffle-scroll {
   padding-bottom: 0;
 }
 
-main[data-scroll-root].sayittome-boost-page {
-  padding-bottom: calc(var(--sayittome-bottom-ui, 74px) + 13.5rem);
+body.sayittome-boost-route {
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.sayittome-boost-route .sayittome-shuffle-toolbar {
+  display: none !important;
+}
+
+main[data-scroll-root].sayittome-boost-page,
+body.sayittome-has-bottom-nav main[data-scroll-root].sayittome-boost-page {
+  padding-bottom: calc(var(--sayittome-bottom-ui, 74px) + 13.5rem) !important;
 }
 
 .sayittome-boost-sticky-shell {
@@ -302,6 +314,19 @@ body.sayittome-chat-open {
   position: relative;
   z-index: auto;
   visibility: visible;
+}
+
+/*
+ * Same-document main-tab commit from /u/, /chat/ or another non-main route:
+ * keep the old route shell until the destination keep-alive is actually visible,
+ * then remove it from layout atomically. Without this, the stale profile shell
+ * occupies one full viewport and pushes Chats/Stories/etc. below the fold.
+ */
+html[data-sayittome-main-tab-history-from-nonmain="1"]:has(
+    .sayittome-main-tab-keepalive-visible
+  )
+  .sayittome-route-shell {
+  display: none !important;
 }
 
 .sayittome-shuffle-keepalive-frozen {
@@ -496,6 +521,55 @@ html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-settin
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+/* Native bar: a leftover exit/entry latch must not keep the previous section
+   painted over the one that was just selected. */
+html.sayittome-native-shell.sayittome-shuffle-exit-handoff-pending:not(
+    [data-sayittome-route-kind="profile"]
+  ):not([data-sayittome-route-kind="profile-chat"]):not(
+    [data-sayittome-route-kind="chat-thread"]
+  ):not([data-sayittome-route-kind="non-main"])
+  #sayittome-shuffle-keepalive-host {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+html.sayittome-native-shell.sayittome-shuffle-exit-handoff-pending
+  #sayittome-main-tab-keepalive-stories.sayittome-main-tab-keepalive-visible,
+html.sayittome-native-shell.sayittome-shuffle-exit-handoff-pending
+  #sayittome-main-tab-keepalive-chats.sayittome-main-tab-keepalive-visible,
+html.sayittome-native-shell.sayittome-shuffle-exit-handoff-pending
+  #sayittome-main-tab-keepalive-boost.sayittome-main-tab-keepalive-visible,
+html.sayittome-native-shell.sayittome-shuffle-exit-handoff-pending
+  #sayittome-main-tab-keepalive-settings.sayittome-main-tab-keepalive-visible,
+html.sayittome-native-shell.sayittome-main-tab-handoff-pending
+  #sayittome-main-tab-keepalive-stories.sayittome-main-tab-keepalive-visible,
+html.sayittome-native-shell.sayittome-main-tab-handoff-pending
+  #sayittome-main-tab-keepalive-chats.sayittome-main-tab-keepalive-visible,
+html.sayittome-native-shell.sayittome-main-tab-handoff-pending
+  #sayittome-main-tab-keepalive-boost.sayittome-main-tab-keepalive-visible,
+html.sayittome-native-shell.sayittome-main-tab-handoff-pending
+  #sayittome-main-tab-keepalive-settings.sayittome-main-tab-keepalive-visible {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 4 !important;
+}
+
+html.sayittome-native-shell[data-sayittome-route-kind="shuffle"]
+  #sayittome-main-tab-keepalive-stories,
+html.sayittome-native-shell[data-sayittome-route-kind="shuffle"]
+  #sayittome-main-tab-keepalive-chats,
+html.sayittome-native-shell[data-sayittome-route-kind="shuffle"]
+  #sayittome-main-tab-keepalive-boost,
+html.sayittome-native-shell[data-sayittome-route-kind="shuffle"]
+  #sayittome-main-tab-keepalive-settings {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
 }
 
 /* Never present loading chrome as the frozen/moving surface during tab-shell handoffs. */

@@ -69,6 +69,7 @@ import {
 import { neutralizeMainTabPresentationForNonMainRoute } from "@/lib/navigation/nonMainRouteMainTabIsolation";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { scheduleStuckTabSurfaceReconcile } from "@/lib/navigation/stuckTabSurfaceReconcile";
 import { settingsPipelineMark } from "@/lib/perf/settingsPipelineTrace";
 
@@ -276,7 +277,7 @@ export default function MainTabKeepAliveHost() {
           // while "Cargando historias..." is still painted flashes user-visible
           // loading during Shuffle→Stories / mid-slide supersede. Let the exit
           // watchdog release once destination loading is gone.
-          if (href === "/stories") {
+          if (href === "/stories" && !isNativeAppShell()) {
             const visual = getTabDestinationVisualReadiness("/stories");
             const storiesHost =
               typeof document !== "undefined"
@@ -307,6 +308,9 @@ export default function MainTabKeepAliveHost() {
               clearShuffleExitToMainTab({ destination: href, force: true });
             }
           } else {
+            if (isNativeAppShell()) {
+              releaseShuffleTabSurface();
+            }
             clearShuffleExitToMainTab({ destination: href, force: true });
           }
         }

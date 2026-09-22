@@ -17,6 +17,7 @@ export type CachedChatMessage = {
     mediaUrl?: string;
     mediaType?: string;
     ownerUsername?: string;
+    text?: string;
   };
   type?: "text" | "audio" | "image" | "video";
   mediaUrl?: string;

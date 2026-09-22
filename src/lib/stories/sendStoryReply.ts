@@ -1,16 +1,12 @@
-import { auth } from "@/lib/firebase";
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
 import { trackPendingChatSend } from "@/lib/chat/pendingChatSends";
 import { profileAuthUid } from "@/lib/chat/profileAnonMessageAuthor";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
+import { auth } from "@/lib/firebase";
+import { buildStoryReplyPayload } from "@/lib/stories/storyReplySnapshot";
 import type { StoryItem } from "@/lib/stories/types";
 
-export type StoryReplyPayload = {
-  storyId: string;
-  mediaUrl?: string;
-  mediaType?: string;
-  ownerUsername?: string;
-};
+export type { StoryReplySnapshot as StoryReplyPayload } from "@/lib/stories/storyReplySnapshot";
 
 export async function sendStoryReplyMessage(
   story: StoryItem,
@@ -27,12 +23,7 @@ export async function sendStoryReplyMessage(
     throw new Error("missing_story_reply_target");
   }
 
-  const storyReply: StoryReplyPayload = {
-    storyId: story.id,
-    mediaUrl: story.mediaUrl || undefined,
-    mediaType: story.mediaType,
-    ownerUsername: username,
-  };
+  const storyReply = buildStoryReplyPayload(story, username);
 
   await trackPendingChatSend(
     persistAnonChatMessage({

@@ -1,3 +1,4 @@
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
 import {
   beginTabPostAuthStabilityTracking,
@@ -70,6 +71,16 @@ export function onMainTabRouteChange(pathname: string) {
   if (!isMainTabHref(path)) return;
 
   const next = path as MainTabHref;
+  // Android WebView keeps the previous bar section painted while destination
+  // readiness (loading text, stable frames) never arrives. Show the tapped
+  // section in the same turn.
+  if (isNativeAppShell()) {
+    presentedTab = next;
+    handoffTarget = null;
+    markMainTabHandoffPendingDom(false);
+    notify();
+    return;
+  }
   if (!presentedTab) {
     presentedTab = next;
     handoffTarget = null;

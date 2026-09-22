@@ -264,6 +264,7 @@ type Message = {
     mediaUrl?: string;
     mediaType?: string;
     ownerUsername?: string;
+    text?: string;
   };
   type?: "text" | "audio" | "image" | "video";
   mediaUrl?: string;
@@ -3257,6 +3258,11 @@ export default function ProfileAnonChat({
                       {message.storyReply.ownerUsername ? (
                         <p className="px-3 py-1.5 text-xs font-semibold text-white/55">
                           @{message.storyReply.ownerUsername}
+                        </p>
+                      ) : null}
+                      {message.storyReply.text ? (
+                        <p className="px-3 pb-2 text-xs text-white/80">
+                          {message.storyReply.text}
                         </p>
                       ) : null}
                     </div>

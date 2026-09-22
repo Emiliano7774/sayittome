@@ -52,6 +52,7 @@ import { preloadNextPlayTarget, preloadStoryMedia } from "@/lib/stories/preload"
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { resolveStoryViewerExitDestination, type StoryViewerExitReason } from "@/lib/navigation/storyReturnNav";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
+import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import StoryMediaBuffers from "@/components/stories/StoryMediaBuffers";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import ContentReportDialog from "@/components/moderation/ContentReportDialog";
@@ -662,21 +663,22 @@ export default function StoryViewer({
     const username = profileUsername;
 
     closeReply();
-    setReplySentToast(true);
+    setReplyText("");
 
-    if (replySentTimerRef.current) {
-      window.clearTimeout(replySentTimerRef.current);
-    }
-    replySentTimerRef.current = window.setTimeout(() => {
-      setReplySentToast(false);
-      replySentTimerRef.current = null;
-    }, 1800);
-
-    void sendStoryReplyMessage(story, username, text).catch((error) => {
-      console.error(error);
-      setReplySentToast(false);
-      window.alert(t("chat_save_fail"));
-    });
+    void sendStoryReplyMessage(story, username, text)
+      .then((chatId) => {
+        const query = new URLSearchParams({ u: username });
+        fastRouterPush(
+          router,
+          `/chat/${encodeURIComponent(chatId)}?${query.toString()}`,
+        );
+      })
+      .catch((error) => {
+        console.error(error);
+        setReplyText(text);
+        setReplyOpen(true);
+        window.alert(t("chat_save_fail"));
+      });
   }
 
   function openProfile() {

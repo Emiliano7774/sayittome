@@ -61,6 +61,7 @@ export type ProfileAnonFirestoreMessage = {
     mediaUrl?: string;
     mediaType?: string;
     ownerUsername?: string;
+    text?: string;
   };
   readBy?: Record<string, boolean>;
   type?: "text" | "audio" | "image" | "video";
@@ -69,6 +70,8 @@ export type ProfileAnonFirestoreMessage = {
   viewOnce?: boolean;
   viewOnceLimit?: number;
   viewOnceOpenedCount?: number;
+  viewOnceLastOpenedBy?: string;
+  viewOnceLastOpenedAt?: { toDate?: () => Date };
   viewOnceExhausted?: boolean;
   viewOnceSealed?: boolean;
   clientId?: string;
@@ -97,6 +100,8 @@ export type ProfileAnonUiMessage = {
   viewOnce?: boolean;
   viewOnceLimit?: number;
   viewOnceOpenedCount?: number;
+  viewOnceLastOpenedBy?: string;
+  viewOnceLastOpenedAt?: { toDate?: () => Date };
   viewOnceExhausted?: boolean;
   viewOnceSealed?: boolean;
   autoModerationRequiresBlur?: boolean;
@@ -299,7 +304,7 @@ export function mapFirestoreDocToProfileAnonMessage(
     ? DELETED_MESSAGE_PREVIEW
     : String(data.texto || data.text || "").trim();
   const mediaUrl = deletedForEveryone ? "" : String(data.mediaUrl || "");
-  if (!deletedForEveryone && !text && !mediaUrl) return null;
+  if (!deletedForEveryone && !text && !mediaUrl && data.viewOnce !== true) return null;
 
   const from = firestoreMessageAuthorId(data);
   const messageProfileUid =
@@ -364,6 +369,8 @@ export function mapFirestoreDocToProfileAnonMessage(
       data.viewOnce === true
         ? Math.max(0, Math.floor(Number(data.viewOnceOpenedCount) || 0))
         : undefined,
+    viewOnceLastOpenedBy: data.viewOnce === true && data.viewOnceLastOpenedBy ? String(data.viewOnceLastOpenedBy) : undefined,
+    viewOnceLastOpenedAt: data.viewOnce === true ? data.viewOnceLastOpenedAt : undefined,
     viewOnceExhausted: data.viewOnce === true ? data.viewOnceExhausted === true : undefined,
     viewOnceSealed: data.viewOnce === true ? data.viewOnceSealed === true : undefined,
     autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,

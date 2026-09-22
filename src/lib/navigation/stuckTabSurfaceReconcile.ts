@@ -1,7 +1,16 @@
+import { isNativeAppShell } from "@/lib/app/nativeShell";
+import { forcePresentMainTabAfterStableExit } from "@/lib/navigation/atomicMainTabHandoff";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { MAIN_TAB_HREFS } from "@/lib/navigation/mainTabs";
+import {
+  abortMainTabToShuffleTransition,
+  isInternalMainTabToShuffleTransitionActive,
+} from "@/lib/navigation/mainTabToShuffleTransition";
+import { activateShuffleTabSurface, releaseShuffleTabSurface } from "@/lib/navigation/shuffleKeepAlive";
+import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
 
 const RECONCILE_MS = 450;
+const NATIVE_RECONCILE_MS = 80;
 let token = 0;
 let scheduledFor = "";
 
@@ -24,6 +33,36 @@ function clearStuckPaintLocks() {
 }
 
 /**
+ * Native bar tap: the live URL owns the screen in the same turn. Do not wait
+ * for destination-readiness gates that keep the previous section painted.
+ */
+export function presentNativeBarSectionNow(expectedPath: string) {
+  if (typeof window === "undefined" || !isNativeAppShell()) return;
+  const path = normalize(expectedPath);
+  if (!isBarPath(path)) return;
+
+  if (isInternalMainTabToShuffleTransitionActive()) {
+    abortMainTabToShuffleTransition("native-bar-present");
+  }
+  clearStuckPaintLocks();
+  const html = document.documentElement;
+
+  if (path === "/shuffle") {
+    html.setAttribute("data-sayittome-route-kind", "shuffle");
+    html.classList.remove("sayittome-shuffle-exit-handoff-pending");
+    html.removeAttribute("data-shuffle-exit-handoff-target");
+    clearShuffleExitToMainTab({ destination: path, force: true });
+    activateShuffleTabSurface({ microSlideSettle: true });
+    return;
+  }
+
+  html.setAttribute("data-sayittome-route-kind", "main-tab");
+  forcePresentMainTabAfterStableExit(path as MainTabHref);
+  releaseShuffleTabSurface();
+  clearShuffleExitToMainTab({ destination: path, force: true });
+}
+
+/**
  * Bottom-bar history can commit (the icon changes) while a keep-alive latch
  * keeps the previous screen painted. If that disagreement is still true after
  * a short beat, force the live URL to own the screen.
@@ -36,13 +75,14 @@ export function scheduleStuckTabSurfaceReconcile(expectedPath: string) {
   scheduledFor = path;
   token += 1;
   const mine = token;
+  const waitMs = isNativeAppShell() ? NATIVE_RECONCILE_MS : RECONCILE_MS;
   window.setTimeout(() => {
     if (mine !== token) return;
     scheduledFor = "";
     const live = normalize(window.location.pathname);
     if (live !== path) return;
     void reconcileStuckTabSurface(live);
-  }, RECONCILE_MS);
+  }, waitMs);
 }
 
 async function reconcileStuckTabSurface(path: string) {
@@ -60,7 +100,12 @@ async function reconcileStuckTabSurface(path: string) {
 
   if (path === "/shuffle") {
     const mainOnTop = document.querySelector(".sayittome-main-tab-keepalive-visible");
-    if (!mainOnTop || shufflePainted) return;
+    const sourceHeld =
+      html.classList.contains("sayittome-shuffle-handoff-pending") ||
+      html.classList.contains("sayittome-main-tab-handoff-pending") ||
+      slideStuck;
+    if (!mainOnTop) return;
+    if (shufflePainted && !sourceHeld) return;
     const slideMod = await import("@/lib/navigation/mainTabToShuffleTransition");
     if (slideMod.isInternalMainTabToShuffleTransitionActive()) {
       slideMod.abortMainTabToShuffleTransition("stuck-surface-reconcile");

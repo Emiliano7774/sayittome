@@ -5,6 +5,7 @@ export type StoryReplySnapshot = {
   mediaUrl?: string;
   mediaType?: string;
   ownerUsername?: string;
+  text?: string;
 };
 
 export const STORY_REPLY_PREFIX = "\u001eSTORY_REPLY\u001e";
@@ -18,17 +19,19 @@ export function sanitizeStoryReplySnapshot(
   const mediaUrl = String(input?.mediaUrl || "").trim();
   const mediaType = String(input?.mediaType || "").trim();
   const ownerUsername = String(input?.ownerUsername || "").trim();
+  const text = String(input?.text || "").trim().slice(0, 180);
 
   return {
     storyId,
     ...(mediaUrl ? { mediaUrl } : {}),
     ...(mediaType ? { mediaType } : {}),
     ...(ownerUsername ? { ownerUsername } : {}),
+    ...(text ? { text } : {}),
   };
 }
 
 export function buildStoryReplyPayload(
-  story: Pick<StoryItem, "id" | "mediaUrl" | "mediaType" | "ownerUsername">,
+  story: Pick<StoryItem, "id" | "mediaUrl" | "mediaType" | "ownerUsername" | "texto">,
   ownerUsername: string,
 ): StoryReplySnapshot {
   const username = String(ownerUsername || story.ownerUsername || "").trim();
@@ -37,6 +40,7 @@ export function buildStoryReplyPayload(
     mediaUrl: story.mediaUrl || undefined,
     mediaType: story.mediaType,
     ownerUsername: username,
+    text: story.texto,
   });
   if (!payload) {
     throw new Error("missing_story_reply_target");

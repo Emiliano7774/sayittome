@@ -98,7 +98,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       const fromShuffle =
         typeof window !== "undefined" &&
         window.location.pathname.split("?")[0].split("#")[0] === "/shuffle";
-      if (dest === "/stories" && (wasInFlightShuffle || fromShuffle)) {
+      if (dest === "/stories" && (wasInFlightShuffle || fromShuffle) && !isNativeAppShell()) {
         beginShuffleExitToMainTab(dest);
         // Layout effect can miss arming if prevPath already advanced past /shuffle.
         ensureShuffleExitNoLoadingWatchdog(dest);
@@ -136,7 +136,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
         // pointerenter hover used to beginShuffleWarmHandoff while still on
         // /stories|/chats, leaving sayittome-shuffle-handoff-pending stuck after
         // Stories stay samples (FROM_CHATS_SHUFFLE_TO_STORIES handoffFinal).
-        if (allowSupersede) {
+        if (allowSupersede && !isNativeAppShell()) {
           if (isNavTraceEnabled()) {
             ghostFrameWatchBegin(`warm:${currentPath}->/shuffle`);
             ghostFrameWatchInspect("pointerdown-prepare");
