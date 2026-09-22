@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useRef } from "react";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
+import {
+  hasPendingChatSends,
+  waitForPendingChatSends,
+} from "@/lib/chat/pendingChatSends";
+import { fastMainTabHistoryPush } from "@/lib/navigation/fastNavigate";
 import {
   hasMainTabBeenVisited,
   markMainTabVisited,
@@ -54,13 +58,27 @@ function isConcreteMainTabHref(href: string) {
 
 /** Main tabs navigate via real routes; keep-alive hosts preserve mounted panels. */
 export default function BottomNavLink({ href, className, children, ...rest }: Props) {
-  const router = useRouter();
-  // Native shell normally uses hard <a> navigations. The bidirectional no-loading
-  // contract requires same-document soft nav so keep-alive handoff can freeze source.
-  const forceSoftMainTabNav =
-    isTabShellNoLoadingTransitionContractActive() && isMainTabHref(href);
+  // Main tabs use same-document history commits. Besides preserving keep-alive,
+  // this avoids Firebase Hosting's production RSC->HTML fallback on static tabs.
+  const forceSoftMainTabNav = isMainTabHref(href);
   /** Set when pointerdown already committed a soft push during an active slide. */
   const softPushFromPointerDownRef = useRef<string | null>(null);
+  const deferredMainTabRef = useRef<string | null>(null);
+
+  function scheduleMainTabHistory(hrefTo: string, reason: string) {
+    if (!hasPendingChatSends()) {
+      deferredMainTabRef.current = null;
+      fastMainTabHistoryPush(hrefTo, reason);
+      return;
+    }
+    if (deferredMainTabRef.current === hrefTo) return;
+    deferredMainTabRef.current = hrefTo;
+    void waitForPendingChatSends().finally(() => {
+      if (deferredMainTabRef.current !== hrefTo) return;
+      deferredMainTabRef.current = null;
+      fastMainTabHistoryPush(hrefTo, reason);
+    });
+  }
 
   function supersedeInFlightShuffle(reason: string) {
     noteConcreteMainTabSupersede(href);
@@ -164,10 +182,10 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     }
   }
 
-  function commitConcreteMainTabSoft(hrefTo: string) {
+  function commitConcreteMainTabHistory(hrefTo: string) {
     supersedeInFlightShuffle("navigation-replaced");
     softPushFromPointerDownRef.current = hrefTo;
-    router.push(hrefTo);
+    scheduleMainTabHistory(hrefTo, "bottom-nav-pointerdown-history");
   }
 
   function onPointerDown() {
@@ -184,17 +202,28 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       isInternalMainTabToShuffleTransitionActive();
     warmTab({ allowSupersede: true });
     if (mustCommitDuringHandoff) {
-      commitConcreteMainTabSoft(href);
+      commitConcreteMainTabHistory(href);
     }
   }
 
-  function onNativeClick(event: React.MouseEvent<HTMLAnchorElement>) {
+  function onMainTabClick(event: React.MouseEvent<HTMLAnchorElement>) {
     if (!forceSoftMainTabNav) return;
     if (event.defaultPrevented) return;
     if (event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
+
     const concreteMainTabDestination = isConcreteMainTabHref(href);
+    const livePath =
+      typeof window !== "undefined"
+        ? window.location.pathname.split("?")[0].split("#")[0]
+        : "";
+
+    // Re-tapping the current tab is a no-op; do not create duplicate history.
+    if (livePath === href) {
+      softPushFromPointerDownRef.current = null;
+      return;
+    }
 
     if (
       concreteMainTabDestination &&
@@ -202,17 +231,14 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     ) {
       softPushFromPointerDownRef.current = null;
       supersedeInFlightShuffle("navigation-replaced");
-      if (
-        typeof window !== "undefined" &&
-        window.location.pathname.split("?")[0].split("#")[0] !== href
-      ) {
-        router.push(href);
+      if (livePath !== href) {
+        scheduleMainTabHistory(href, "bottom-nav-pointerdown-reconcile");
       }
       return;
     }
 
-    // Abort any in-flight slide / deferred Shuffle commit before push so
-    // preventDefault cannot orphan the click or lose to a late /shuffle commit.
+    // Abort any in-flight Shuffle slide before the history commit so a late
+    // deferred /shuffle commit cannot overwrite the selected concrete tab.
     if (concreteMainTabDestination) {
       supersedeInFlightShuffle("navigation-replaced");
     }
@@ -223,16 +249,25 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     if (concreteMainTabDestination) {
       supersedeInFlightShuffle("navigation-replaced");
     }
-    router.push(href);
+
+    scheduleMainTabHistory(href, "bottom-nav-main-tab-history");
   }
 
-  if (isNativeAppShell() && !forceSoftMainTabNav) {
+  if (forceSoftMainTabNav) {
     return (
       <a
-        href={href}
+        role="button"
+        tabIndex={0}
+        data-nav-tab={href}
         className={className}
         onPointerDown={onPointerDown}
         onPointerEnter={() => warmTab()}
+        onClick={onMainTabClick}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.currentTarget.click();
+        }}
         {...rest}
       >
         {children}
@@ -240,14 +275,13 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     );
   }
 
-  if (isNativeAppShell() && forceSoftMainTabNav) {
+  if (isNativeAppShell()) {
     return (
       <a
         href={href}
         className={className}
         onPointerDown={onPointerDown}
         onPointerEnter={() => warmTab()}
-        onClick={onNativeClick}
         {...rest}
       >
         {children}

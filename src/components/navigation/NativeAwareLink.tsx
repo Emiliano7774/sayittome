@@ -3,7 +3,8 @@
 import Link from "next/link";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
-import { shouldHardNavigatePath } from "@/lib/navigation/hardNavigate";
+import { hardNavigate, shouldHardNavigatePath } from "@/lib/navigation/hardNavigate";
+import { hasPendingChatSends } from "@/lib/chat/pendingChatSends";
 
 type Props = {
   href: string;
@@ -26,13 +27,32 @@ export default function NativeAwareLink({
   onClick,
 }: Props) {
   if (isNativeAppShell() && shouldHardNavigatePath(href)) {
+    const handleClick: React.MouseEventHandler<HTMLAnchorElement> = (event) => {
+      onClick?.(event);
+      if (event.defaultPrevented) return;
+      if (
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      if (!hasPendingChatSends()) return;
+
+      event.preventDefault();
+      hardNavigate(href);
+    };
+
     return (
       <a
         href={href}
         className={className}
         onPointerDown={onPointerDown}
         onPointerEnter={onPointerEnter}
-        onClick={onClick}
+        onClick={handleClick}
       >
         {children}
       </a>

@@ -1,6 +1,10 @@
 "use client";
 
 import { isNativeAppShell } from "@/lib/app/nativeShell";
+import {
+  hasPendingChatSends,
+  waitForPendingChatSends,
+} from "@/lib/chat/pendingChatSends";
 import { isMainTabHref } from "@/lib/navigation/mainTabs";
 
 const NATIVE_HARD_NAV_PREFIXES = [
@@ -22,6 +26,8 @@ export function shouldHardNavigate() {
   return isNativeAppShell();
 }
 
+let queuedHardNavigation: string | null = null;
+
 export function hardNavigate(path: string) {
   if (typeof window === "undefined") return;
 
@@ -33,5 +39,22 @@ export function hardNavigate(path: string) {
     return;
   }
 
-  window.location.assign(target);
+  const assign = () => {
+    window.location.assign(target);
+  };
+
+  if (!hasPendingChatSends()) {
+    queuedHardNavigation = null;
+    assign();
+    return;
+  }
+
+  // A second tap for the same target must not schedule a second load.
+  if (queuedHardNavigation === target) return;
+  queuedHardNavigation = target;
+  void waitForPendingChatSends().finally(() => {
+    if (queuedHardNavigation !== target) return;
+    queuedHardNavigation = null;
+    assign();
+  });
 }

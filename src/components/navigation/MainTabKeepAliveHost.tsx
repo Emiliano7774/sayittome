@@ -69,6 +69,7 @@ import {
 import { neutralizeMainTabPresentationForNonMainRoute } from "@/lib/navigation/nonMainRouteMainTabIsolation";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
+import { scheduleStuckTabSurfaceReconcile } from "@/lib/navigation/stuckTabSurfaceReconcile";
 import { settingsPipelineMark } from "@/lib/perf/settingsPipelineTrace";
 
 const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
@@ -183,18 +184,28 @@ export default function MainTabKeepAliveHost() {
     const nextIsMainTabOrShuffle =
       nextPath === "/shuffle" ||
       (MAIN_TAB_HREFS as readonly string[]).includes(nextPath);
-    if (
-      hasMainTabHistoryPathnameOverride() &&
-      nextPath &&
-      !nextIsMainTabOrShuffle
-    ) {
-      resetMainTabHistoryPathnameStore("keepalive-host-non-main-tab");
-    }
-
     const livePath =
       typeof window !== "undefined"
         ? window.location.pathname.split("?")[0].split("#")[0]
         : nextPath;
+    const liveIsMainTabOrShuffle =
+      livePath === "/shuffle" ||
+      (MAIN_TAB_HREFS as readonly string[]).includes(livePath);
+    if (liveIsMainTabOrShuffle) {
+      scheduleStuckTabSurfaceReconcile(livePath);
+    }
+
+    // Same-document main-tab commits intentionally leave Next usePathname()
+    // one route behind. Preserve the history override while the *live URL* is
+    // already a main tab; otherwise profile -> Chats instantly resets itself.
+    if (
+      hasMainTabHistoryPathnameOverride() &&
+      nextPath &&
+      !nextIsMainTabOrShuffle &&
+      !liveIsMainTabOrShuffle
+    ) {
+      resetMainTabHistoryPathnameStore("keepalive-host-non-main-tab");
+    }
     // PROFILE_ROUTE_MAIN_TAB_LEAK: neutralize only while the *live* URL is
     // non-main. Never use lagged Next/store pathnames alone — that can stamp
     // data-sayittome-route-kind=profile onto /stories and CSS-hide Stories.

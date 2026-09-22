@@ -5,8 +5,10 @@ import type { QuerySnapshot } from "firebase/firestore";
 import {
   collection,
   doc,
+  getDocs,
   limit,
   onSnapshot,
+  orderBy,
   query,
   where,
 } from "firebase/firestore";
@@ -24,12 +26,36 @@ import {
   reduceInboxQueryCohort,
 } from "@/lib/chat/inboxQueryCohort";
 import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
+import {
+  hasInboxActivity,
+  missingPreviewRetryDelayMs,
+  preferInboxChat,
+  previewFromMessageData,
+  shellCreatedAtMs,
+  shouldRetryMissingPreview,
+} from "@/lib/chat/inboxShellGuard";
 import { normalizeInboxChat } from "@/lib/chat/normalizeInboxChat";
 import { markChatsInboxHydrated, rememberInboxChatCount } from "@/hooks/useChatsInboxReady";
-import { readInboxSnapshot, writeInboxSnapshot } from "@/lib/chat/inboxSnapshot";
+import {
+  readInboxSnapshot,
+  removeInboxSnapshotChat,
+  writeInboxSnapshot,
+} from "@/lib/chat/inboxSnapshot";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
-import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
+import {
+  getSessionChatIds,
+  registerSessionChat,
+  SESSION_CHATS_CHANGED_EVENT,
+  SESSION_CHAT_REMOVED_EVENT,
+} from "@/lib/chat/sessionChats";
+import { fetchRecoveredAnonInboxChats } from "@/lib/chat/anonInboxRecovery";
+import {
+  hadRecentInterruptedChatSend,
+  hasPendingChatSends,
+  listPendingChatSendIds,
+  waitForPendingChatSends,
+} from "@/lib/chat/pendingChatSends";
 
 export type InboxChat = {
   id: string;
@@ -55,6 +81,7 @@ export type InboxChat = {
   updatedAt?: { toMillis?: () => number };
   unreadCounts?: Record<string, number>;
   canonicalChatId?: string;
+  createdAtMs?: number;
 };
 
 export function resolveChatUsername(chat: InboxChat) {
@@ -91,8 +118,10 @@ export type UseChatsInboxOptions = {
   enableInboxQueries?: boolean;
   /** Per-doc listeners for chats opened this browser session (anonymous threads). */
   enableSessionChatListeners?: boolean;
-  /** Anonymous visitor: participantes query for the current anon session id. */
+  /** Anonymous/visitor inbox recovery for the current Firebase principal. */
   enableAnonInboxQuery?: boolean;
+  /** Force one authoritative anon reconciliation when the real /chats inbox is entered. */
+  forceAnonRecovery?: boolean;
 };
 
 export function useChatsInbox(options?: UseChatsInboxOptions) {
@@ -100,6 +129,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   const enableSessionChatListeners =
     options?.enableSessionChatListeners ?? enableInboxQueries;
   const enableAnonInboxQuery = options?.enableAnonInboxQuery ?? false;
+  const forceAnonRecovery = options?.forceAnonRecovery ?? false;
   const { firebaseUser, loading } = useAuth();
   const [chats, setChats] = useState<InboxChat[]>(() => {
     const snapshot = readInboxSnapshot();
@@ -111,6 +141,10 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   const [anonSessionId, setAnonSessionId] = useState("");
   const [firestoreSynced, setFirestoreSynced] = useState(false);
   const inboxCohortRef = useRef(createInboxQueryCohortState());
+  const forcedAnonRecoveryKeyRef = useRef("");
+  const fallbackAnonRecoveryKeyRef = useRef("");
+  const missingPreviewAttemptsRef = useRef(new Map<string, number>());
+  const missingPreviewTimersRef = useRef(new Map<string, number>());
 
   const uid = profileAuthUid(firebaseUser) || profileAuthUid(auth.currentUser);
 
@@ -161,8 +195,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     anonOwner: new Map(),
     receptor: new Map(),
     target: new Map(),
-    anonParticipantes: new Map(),
-    anonSession: new Map(),
+    anonRecovery: new Map(),
   });
   const snapshotBootstrappedRef = useRef(false);
   const lastSortedChatsRef = useRef<InboxChat[]>(readInboxSnapshot());
@@ -175,22 +208,140 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     const merged = new Map<string, InboxChat>();
     for (const map of Object.values(queryMapsRef.current)) {
       for (const [id, chat] of map) {
-        merged.set(id, chat);
+        merged.set(id, preferInboxChat(merged.get(id), chat));
       }
     }
     setChats([...merged.values()]);
   };
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onRemoved = (event: Event) => {
+      const chatId = String(
+        (event as CustomEvent<{ chatId?: string }>).detail?.chatId || "",
+      ).trim();
+      if (!chatId) return;
+
+      const matches = (chat: InboxChat) =>
+        chat.id === chatId || chat.canonicalChatId === chatId;
+
+      for (const map of Object.values(queryMapsRef.current)) {
+        for (const [key, chat] of map) {
+          if (key === chatId || matches(chat)) map.delete(key);
+        }
+      }
+
+      setSessionChats((prev) => prev.filter((chat) => !matches(chat)));
+      setChats((prev) => prev.filter((chat) => !matches(chat)));
+      lastSortedChatsRef.current = lastSortedChatsRef.current.filter(
+        (chat) => !matches(chat),
+      );
+      removeInboxSnapshotChat(chatId);
+    };
+
+    window.addEventListener(SESSION_CHAT_REMOVED_EVENT, onRemoved);
+    return () => window.removeEventListener(SESSION_CHAT_REMOVED_EVENT, onRemoved);
+  }, []);
+
+  const applyHydratedPreview = (chatId: string, hydrated: InboxChat, key: string) => {
+    if (key === "session") {
+      setSessionChats((prev) => {
+        const existing = prev.find((chat) => chat.id === chatId);
+        const rest = prev.filter((chat) => chat.id !== chatId);
+        return [...rest, preferInboxChat(existing, hydrated)];
+      });
+      return;
+    }
+    const map = queryMapsRef.current[key];
+    if (!map) return;
+    map.set(chatId, preferInboxChat(map.get(chatId), hydrated));
+    rebuildChats();
+  };
+
+  const hydrateMissingPreview = async (
+    chatId: string,
+    normalized: InboxChat,
+    key: string,
+  ) => {
+    if (hasInboxActivity(normalized)) return;
+    const attempts = missingPreviewAttemptsRef.current.get(chatId) ?? 0;
+    const pendingIds = listPendingChatSendIds();
+    const interrupted = hadRecentInterruptedChatSend() || pendingIds.includes(chatId);
+    if (
+      attempts > 0 &&
+      !shouldRetryMissingPreview({
+        attempts,
+        createdAtMs: shellCreatedAtMs(normalized as unknown as Record<string, unknown>),
+        nowMs: Date.now(),
+        chatId,
+        pendingChatIds: pendingIds,
+        interrupted,
+      })
+    ) {
+      return;
+    }
+    missingPreviewAttemptsRef.current.set(chatId, attempts + 1);
+    try {
+      const messages = await getDocs(
+        query(
+          collection(db, "chats", chatId, "mensajes"),
+          orderBy("createdAt", "desc"),
+          limit(1),
+        ),
+      );
+      const latest = messages.docs[0];
+      if (!latest) {
+        if (
+          shouldRetryMissingPreview({
+            attempts: attempts + 1,
+            createdAtMs: shellCreatedAtMs(normalized as unknown as Record<string, unknown>),
+            nowMs: Date.now(),
+            chatId,
+            pendingChatIds: listPendingChatSendIds(),
+            interrupted: hadRecentInterruptedChatSend(),
+          })
+        ) {
+          const existingTimer = missingPreviewTimersRef.current.get(chatId);
+          if (existingTimer) window.clearTimeout(existingTimer);
+          const timer = window.setTimeout(() => {
+            missingPreviewTimersRef.current.delete(chatId);
+            void hydrateMissingPreview(chatId, normalized, key);
+          }, missingPreviewRetryDelayMs(attempts));
+          missingPreviewTimersRef.current.set(chatId, timer);
+        }
+        return;
+      }
+      const message = latest.data() as Record<string, unknown>;
+      const preview = previewFromMessageData(message, latest.id);
+      const createdAt = preview.createdAt as InboxChat["updatedAt"];
+      const hydrated = normalizeInboxChat({
+        ...normalized,
+        lastMessage: preview.lastMessage,
+        lastMessageSender: preview.lastMessageSender,
+        latestMessageId: preview.latestMessageId,
+        latestSenderKind: preview.latestSenderKind,
+        updatedAt: createdAt || normalized.updatedAt,
+        lastMessageAt: createdAt || normalized.lastMessageAt,
+      });
+      if (!hydrated || !hasInboxActivity(hydrated)) return;
+      missingPreviewAttemptsRef.current.delete(chatId);
+      applyHydratedPreview(chatId, hydrated, key);
+    } catch (error) {
+      console.error("inbox missing preview", key, chatId, error);
+    }
+  };
+
+  useEffect(() => {
     if (loading) return;
-    const anonId = anonSessionId || getChatAnonSenderId();
+    const recoveryPrincipal = firebaseUser?.uid || "";
     const next = reduceInboxQueryCohort(inboxCohortRef.current, {
       type: "rotate",
       key: inboxQueryCohortKey({
         uid,
-        anonId,
+        anonId: recoveryPrincipal,
         uidFamily: Boolean(enableInboxQueries && uid),
-        anonFamily: Boolean(enableAnonInboxQuery && anonId.startsWith("anon_")),
+        anonFamily: Boolean(enableAnonInboxQuery && recoveryPrincipal),
       }),
     });
     if (
@@ -208,7 +359,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       lastSortedChatsRef.current = [];
       setChats([]);
     }
-  }, [loading, uid, anonSessionId, enableInboxQueries, enableAnonInboxQuery]);
+  }, [loading, uid, firebaseUser, enableInboxQueries, enableAnonInboxQuery]);
 
   useEffect(() => {
     if (loading) return;
@@ -222,10 +373,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     const unsubscribers: Array<() => void> = [];
     const inboxFamilies = {
       uid: true,
-      anon: Boolean(
-        enableAnonInboxQuery &&
-          (anonSessionId || getChatAnonSenderId()).startsWith("anon_"),
-      ),
+      anon: Boolean(enableAnonInboxQuery && firebaseUser),
     };
 
     const registerInboxQueries = () => {
@@ -254,7 +402,10 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
             id: docSnap.id,
             ...(docSnap.data() as Omit<InboxChat, "id">),
           });
-          if (normalized) map.set(docSnap.id, normalized);
+          if (normalized) {
+            map.set(docSnap.id, normalized);
+            void hydrateMissingPreview(docSnap.id, normalized, key);
+          }
         }
         queryMapsRef.current[key] = map;
         rebuildChats();
@@ -270,39 +421,31 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       const byParticipantes = query(
         collection(db, "chats"),
         where("participantes", "array-contains", uid),
-        limit(50),
       );
 
-      const byOwner = query(
-        collection(db, "chats"),
-        where("anonOwnerUid", "==", uid),
-        limit(50),
-      );
-
+      // anonOwnerUid mirrors receptor/target on profile-anon threads, but
+      // Firestore list rules intentionally do not authorize queries on that field.
+      // Query receptorUid/targetUid instead so the UID cohort can actually reach
+      // its first-snapshot synced state without a permanent permission-denied.
       const byReceptor = query(
         collection(db, "chats"),
         where("receptorUid", "==", uid),
-        limit(50),
       );
 
       const byTarget = query(
         collection(db, "chats"),
         where("targetUid", "==", uid),
-        limit(50),
       );
 
       unsubscribers.push(
         onSnapshot(byParticipantes, mergeQuery("participantes"), (error) => {
-          console.error(error);
-        }),
-        onSnapshot(byOwner, mergeQuery("anonOwner"), (error) => {
-          console.error(error);
+          console.error("inbox snapshot listener", "participantes", error);
         }),
         onSnapshot(byReceptor, mergeQuery("receptor"), (error) => {
-          console.error(error);
+          console.error("inbox snapshot listener", "receptor", error);
         }),
         onSnapshot(byTarget, mergeQuery("target"), (error) => {
-          console.error(error);
+          console.error("inbox snapshot listener", "target", error);
         }),
       );
     };
@@ -312,77 +455,142 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       cancelled = true;
       for (const unsub of unsubscribers) unsub();
     };
-  }, [uid, loading, enableInboxQueries, enableAnonInboxQuery, anonSessionId]);
+  }, [uid, loading, enableInboxQueries, enableAnonInboxQuery, firebaseUser]);
 
   useEffect(() => {
-    if (loading) return;
-    if (!enableAnonInboxQuery) return;
+    if (loading || !enableAnonInboxQuery) return;
 
-    const anonId = anonSessionId || getChatAnonSenderId();
-    if (!anonId.startsWith("anon_")) return;
+    // Leaving the real inbox arms the next /chats entry for a fresh
+    // authoritative reconciliation.
+    if (!forceAnonRecovery) {
+      forcedAnonRecoveryKeyRef.current = "";
+    }
 
+    // Recovery is keyed by the persisted Firebase principal plus the current
+    // session chat registry. A newly persisted thread changes this key and
+    // forces one server reconciliation even if the keep-alive never unmounted.
     const generation = inboxCohortRef.current.generation;
     const inboxFamilies = {
       uid: Boolean(enableInboxQueries && uid),
-      anon: true,
+      anon: Boolean(firebaseUser),
     };
 
-    const mergeAnonQuery = (key: string) => (snap: QuerySnapshot) => {
-      const next = reduceInboxQueryCohort(inboxCohortRef.current, {
-        type: "snapshot",
-        generation,
-        queryKey: key,
-        families: inboxFamilies,
-      });
-      if (next.ignored) return;
-      inboxCohortRef.current = next;
-      if (next.synced) {
+    // Before any Firebase principal exists there cannot be a bound private
+    // visitor lease to recover. Mark the anonymous side hydrated so /chats
+    // can render its empty state instead of waiting forever.
+    if (!firebaseUser) {
+      queryMapsRef.current.anonRecovery = new Map();
+      // A transient/no-anon-auth state must never authorize replacing a
+      // previously visible inbox with empty. Only declare an authoritative
+      // empty inbox when there is genuinely nothing local to preserve.
+      if (
+        !uid &&
+        sessionChatIds.length === 0 &&
+        lastSortedChatsRef.current.length === 0
+      ) {
         setFirestoreSynced(true);
       }
-      const map = new Map<string, InboxChat>();
-      for (const docSnap of snap.docs) {
-        const normalized = normalizeInboxChat({
-          id: docSnap.id,
-          ...(docSnap.data() as Omit<InboxChat, "id">),
-        });
-        if (normalized) map.set(docSnap.id, normalized);
-      }
-      queryMapsRef.current[key] = map;
       rebuildChats();
-    };
+      return;
+    }
 
-    const byAnonParticipantes = query(
-      collection(db, "chats"),
-      where("participantes", "array-contains", anonId),
-      limit(50),
-    );
+    const recoveryKey = `${firebaseUser.uid}|${sessionChatIds.join(",")}`;
 
-    const byAnonSession = query(
-      collection(db, "chats"),
-      where("anonSessionId", "==", anonId),
-      limit(50),
-    );
+    if (forceAnonRecovery) {
+      if (forcedAnonRecoveryKeyRef.current === recoveryKey) return;
+      forcedAnonRecoveryKeyRef.current = recoveryKey;
+    } else {
+      if (fallbackAnonRecoveryKeyRef.current === recoveryKey) return;
+      fallbackAnonRecoveryKeyRef.current = recoveryKey;
+    }
 
-    const unsubA = onSnapshot(
-      byAnonParticipantes,
-      mergeAnonQuery("anonParticipantes"),
-      (error) => {
-        console.error(error);
-      },
-    );
-    const unsubB = onSnapshot(
-      byAnonSession,
-      mergeAnonQuery("anonSession"),
-      (error) => {
-        console.error(error);
-      },
-    );
+    let cancelled = false;
+    void (async () => {
+      // Entering Chats while a send is still binding/issuing its permit can
+      // otherwise snapshot the server-created shell before its first message
+      // commit, then incorrectly treat that empty shell as authoritative.
+      if (forceAnonRecovery && hasPendingChatSends()) {
+        await waitForPendingChatSends();
+        if (cancelled) return null;
+      }
+
+      const interruptedSend =
+        forceAnonRecovery &&
+        (hadRecentInterruptedChatSend() || listPendingChatSendIds().length > 0);
+      let rows = await fetchRecoveredAnonInboxChats(firebaseUser);
+
+      // A hard navigation / Android WebView recreation destroys in-memory
+      // promises. The durable marker tells us a send was interrupted recently;
+      // retry only that exceptional case so an empty shell is not mistaken for
+      // the final inbox state. Normal inbox opens still make one recovery call.
+      if (interruptedSend) {
+        for (const delayMs of [250, 650, 1200]) {
+          const hasEmptyShell =
+            rows.length === 0 ||
+            rows.some((row) => !String(row.lastMessage || "").trim());
+          if (!hasEmptyShell) break;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          if (cancelled) return null;
+          rows = await fetchRecoveredAnonInboxChats(firebaseUser);
+        }
+      }
+
+      return rows;
+    })()
+      .then((rows) => {
+        if (!rows) return;
+        if (cancelled) return;
+        const map = new Map<string, InboxChat>();
+        for (const row of rows) {
+          const normalized = normalizeInboxChat(
+            row as InboxChat,
+          );
+          if (!normalized) continue;
+          map.set(normalized.id, normalized);
+          // Re-seed volatile per-thread listeners after Android/WebView process
+          // recreation. This is intentionally session-only after recovery.
+          registerSessionChat(normalized.canonicalChatId || normalized.id);
+          if (!hasInboxActivity(normalized)) {
+            void hydrateMissingPreview(normalized.id, normalized, "anonRecovery");
+          }
+        }
+        queryMapsRef.current.anonRecovery = map;
+
+        const next = reduceInboxQueryCohort(inboxCohortRef.current, {
+          type: "snapshot",
+          generation,
+          queryKey: "anonRecovery",
+          families: inboxFamilies,
+        });
+        if (!next.ignored) {
+          inboxCohortRef.current = next;
+          if (next.synced || !uid) setFirestoreSynced(true);
+        }
+        rebuildChats();
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        // Recovery is a fallback; existing sessionChat listeners still own the
+        // live happy path. A failed recovery is NOT an authoritative empty
+        // snapshot, so keep firestoreSynced false and preserve visible rows.
+        console.error("anon inbox recovery", error);
+        if (forceAnonRecovery) {
+          forcedAnonRecoveryKeyRef.current = "";
+        }
+      });
 
     return () => {
-      unsubA();
-      unsubB();
+      cancelled = true;
     };
-  }, [enableAnonInboxQuery, enableInboxQueries, loading, anonSessionId, uid]);
+  }, [
+    enableAnonInboxQuery,
+    enableInboxQueries,
+    firebaseUser,
+    forceAnonRecovery,
+    loading,
+    sessionChatIds,
+    uid,
+  ]);
 
   useEffect(() => {
     if (loading) return;
@@ -397,22 +605,40 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     }
 
     const unsubs = sessionChatIds.map((chatId) =>
-      onSnapshot(doc(db, "chats", chatId), (snap) => {
-        if (!snap.exists()) {
-          setSessionChats((prev) => prev.filter((c) => c.id !== chatId));
-          return;
-        }
+      onSnapshot(
+        doc(db, "chats", chatId),
+        (snap) => {
+          if (!snap.exists()) {
+            if (
+              listPendingChatSendIds().includes(chatId) ||
+              hadRecentInterruptedChatSend()
+            ) {
+              return;
+            }
+            setSessionChats((prev) => prev.filter((c) => c.id !== chatId));
+            return;
+          }
 
-        const normalized = normalizeInboxChat({
-          id: snap.id,
-          ...(snap.data() as Omit<InboxChat, "id">),
-        });
-        setSessionChats((prev) => {
-          const next = prev.filter((c) => c.id !== chatId);
-          if (!normalized) return next;
-          return [...next, normalized];
-        });
-      }),
+          const data = snap.data() as Omit<InboxChat, "id">;
+          const normalized = normalizeInboxChat({
+            id: snap.id,
+            ...data,
+            createdAtMs: shellCreatedAtMs(data as unknown as Record<string, unknown>),
+          });
+          setSessionChats((prev) => {
+            const existing = prev.find((chat) => chat.id === chatId);
+            const next = prev.filter((c) => c.id !== chatId);
+            if (!normalized) return next;
+            return [...next, preferInboxChat(existing, normalized)];
+          });
+          if (normalized && !hasInboxActivity(normalized)) {
+            void hydrateMissingPreview(chatId, normalized, "session");
+          }
+        },
+        (error) => {
+          console.error("session chat snapshot listener", chatId, error);
+        },
+      ),
     );
 
     return () => {

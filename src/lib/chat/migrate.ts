@@ -12,6 +12,15 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { isProfileAnonChatId } from "@/lib/chat/anonChatId";
+
+const LOCKED_CHAT_IDENTITY_KEYS = ["receptorUid", "targetUid", "anonOwnerUid"] as const;
+
+function withoutLockedChatIdentity(meta: DocumentData) {
+  const next = { ...meta };
+  for (const key of LOCKED_CHAT_IDENTITY_KEYS) delete next[key];
+  return next;
+}
 
 function pickNewer(
   a?: { updatedAt?: Timestamp; lastMessage?: string },
@@ -35,6 +44,9 @@ export async function chatHasActivity(chatId: string) {
 
 export async function deleteEmptyChatIfIdle(chatId: string) {
   if (!chatId) return;
+  // Profile-anon shells are created by the server lease. Client delete is
+  // denied and would race the first message commit.
+  if (isProfileAnonChatId(chatId)) return;
   if (await chatHasActivity(chatId)) return;
 
   try {
@@ -69,6 +81,7 @@ export async function maybeMigrateExistingProfileChat(
   }
 
   for (const id of emptyIds) {
+    if (isProfileAnonChatId(id)) continue;
     try {
       await deleteDoc(doc(db, "chats", id));
     } catch (e) {
@@ -95,6 +108,16 @@ export async function migrateToCanonicalChat(
 ) {
   const uniqueLegacy = legacyIds.filter((id) => id && id !== canonicalId);
   if (uniqueLegacy.length === 0) {
+    const existing = await getDoc(doc(db, "chats", canonicalId));
+    if (existing.exists()) {
+      const payload = isProfileAnonChatId(canonicalId) ? withoutLockedChatIdentity(meta) : meta;
+      await setDoc(doc(db, "chats", canonicalId), payload, { merge: true });
+      return canonicalId;
+    }
+    // Profile-anon only: never pre-create empty shells — server bind owns first create.
+    if (isProfileAnonChatId(canonicalId)) {
+      return canonicalId;
+    }
     await setDoc(doc(db, "chats", canonicalId), meta, { merge: true });
     return canonicalId;
   }
@@ -145,6 +168,9 @@ export async function migrateToCanonicalChat(
     }
   }
 
-  await setDoc(doc(db, "chats", canonicalId), mergedMeta, { merge: true });
+  const canonicalPayload = isProfileAnonChatId(canonicalId)
+    ? withoutLockedChatIdentity(mergedMeta)
+    : mergedMeta;
+  await setDoc(doc(db, "chats", canonicalId), canonicalPayload, { merge: true });
   return canonicalId;
 }

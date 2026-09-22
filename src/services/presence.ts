@@ -74,7 +74,12 @@ export function startPresenceSystem() {
     lastWriteAt = 0;
     stopHeartbeat();
 
-    if (!user) return;
+    // Anonymous visitors have no usuarios profile. updateDoc would throw and
+    // is unrelated to chat delivery.
+    if (!user || user.isAnonymous) {
+      currentUid = null;
+      return;
+    }
 
     writePresence(user.uid, true, true);
     startHeartbeat(user.uid);

@@ -1,8 +1,10 @@
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
+  runTransaction,
   serverTimestamp,
   writeBatch,
 } from "firebase/firestore";
@@ -22,6 +24,7 @@ import {
 } from "@/lib/chat/profileAnonSendPayload";
 import { buildCanonicalSender } from "@/lib/chat/canonicalSender";
 import { type ProfileAnonSenderKind } from "@/lib/chat/profileAnonMessageAuthor";
+import { forgetPendingChatSend, rememberPendingChatSend } from "@/lib/chat/pendingChatSends";
 import { registerSessionChat } from "@/lib/chat/sessionChats";
 import { scheduleModerationActivityTouch } from "@/lib/moderation/touchModerationActivity";
 import { auth, db } from "@/lib/firebase";
@@ -41,6 +44,32 @@ function livePersistAuthUid(fallbackUid: string) {
 
 function firebaseErrorCode(error: unknown) {
   return String((error as { code?: string })?.code || (error as Error)?.message || "error");
+}
+
+async function rollbackFailedViewOnceSummary(input: {
+  chatId: string;
+  messageId: string;
+  previous: Record<string, unknown>;
+}) {
+  const ref = doc(db, "chats", input.chatId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const live = snap.data() as Record<string, unknown>;
+    if (String(live.latestMessageId || "") !== input.messageId) return;
+    const keys = [
+      "lastMessage", "lastMessageSender", "latestMessageId", "latestSenderKind",
+      "latestSenderAnonSessionId", "lastMessageAt", "updatedAt", "unreadCounts", "readBy",
+      "readAt", "latestReadMessageId", "latestReadMessageIds",
+    ];
+    const patch: Record<string, unknown> = {};
+    for (const key of keys) {
+      patch[key] = Object.prototype.hasOwnProperty.call(input.previous, key)
+        ? input.previous[key]
+        : deleteField();
+    }
+    tx.update(ref, patch);
+  });
 }
 
 async function commitViewOnceSecretWithRetry(input: {
@@ -81,7 +110,7 @@ type PersistAnonMessageInput = {
   messageText: string;
   /** Skip the pre-write chat read when the open thread already has metadata. */
   existingChatData?: Record<string, unknown>;
-  /** Explicit owner/profile reply — must match UI isOwnerViewing, not only uid==targetUid. */
+  /** Explicit owner/profile reply â€” must match UI isOwnerViewing, not only uid==targetUid. */
   isOwnerReply?: boolean;
   /** Logged-in profile username; used to detect owner via chatId slug on cold start. */
   viewerUsername?: string;
@@ -94,7 +123,7 @@ type PersistAnonMessageInput = {
     mediaType?: string;
     ownerUsername?: string;
   };
-  type?: "text" | "audio" | "image" | "video";
+  type?: "text" | "audio" | "image" | "video" | "profile";
   mediaUrl?: string;
   source?: "camera" | "gallery" | "audio";
   viewOnce?: boolean;
@@ -105,7 +134,10 @@ type PersistAnonMessageInput = {
   moderationUncertain?: boolean;
   moderationScannedAt?: string;
   moderationModel?: string;
+  sharedProfile?: { uid: string; username: string; photo?: string; bio?: string };
   clientId?: string;
+  /** Caller already completed the fail-closed visitor lease bind for chatId. */
+  visitorLeaseAlreadyBound?: boolean;
 };
 
 const canonicalMigrationStarted = new Set<string>();
@@ -113,7 +145,7 @@ const canonicalMigrationStarted = new Set<string>();
 export function resolvePersistAnonMessageType(
   type?: PersistAnonMessageInput["type"],
 ): NonNullable<PersistAnonMessageInput["type"]> {
-  if (type === "audio" || type === "image" || type === "video") return type;
+  if (type === "audio" || type === "image" || type === "video" || type === "profile") return type;
   return "text";
 }
 
@@ -128,7 +160,7 @@ export function hasUsableChatData(data?: Record<string, unknown> | null) {
   return Boolean(data && Object.keys(data).length > 0);
 }
 
-/** Author id is never derived from late targetUid. Owner → profile_{currentUid}. */
+/** Author id is never derived from late targetUid. Owner â†’ profile_{currentUid}. */
 export function resolvePersistMessageAuthor(input: {
   chatId: string;
   currentUid: string;
@@ -198,9 +230,9 @@ function resolveThreadAnonRecipientIds(input: {
     recipients.add(id);
   };
 
-  // Canonical visitor from chatId first — required for profile→anon unread.
+  // Canonical visitor from chatId first â€” required for profileâ†’anon unread.
   addAnon(chatIdAnon);
-  // Visitor thread identity only — never the profile owner's live browser anon
+  // Visitor thread identity only â€” never the profile owner's live browser anon
   // session (that poisoned unreadCounts and hid the visitor badge/row).
   if (input.anonSessionId !== ownerLiveAnon || input.anonSessionId === chatIdAnon) {
     addAnon(input.anonSessionId);
@@ -260,8 +292,10 @@ export async function persistAnonChatMessage(
     viewOnce,
   } = input;
   const type = resolvePersistAnonMessageType(persistType);
+  const pendingClientId = String(input.clientId || "");
+  rememberPendingChatSend({ chatId, clientId: pendingClientId });
   // Prefer live Firebase Auth uid so Storage upload + Firestore + commitViewOnce
-  // share the same principal (avoids empty React uid → commit author/member deny).
+  // share the same principal (avoids empty React uid â†’ commit author/member deny).
   const persistAuthUid = livePersistAuthUid(currentUid);
 
   const storedText = type === "text" ? messageText : "";
@@ -413,7 +447,7 @@ export async function persistAnonChatMessage(
       ? storedAnonSession
       : senderAnon || chatIdAnon || liveBrowserAnon;
 
-  const unreadRecipients = resolveProfileAnonUnreadRecipients({
+  let unreadRecipients = resolveProfileAnonUnreadRecipients({
     isOwnerReply,
     messageAuthorId,
     targetUid: resolvedTargetUid,
@@ -444,29 +478,44 @@ export async function persistAnonChatMessage(
   let writeSenderAnon = senderAnon;
 
   if (!isOwnerReply && isProfileAnonChatId(effectiveChatId) && resolvedTargetUid) {
-    const { bindProfileAnonVisitorSession } = await import(
-      "@/lib/abuse/bindProfileAnonVisitorSession"
-    );
     try {
-      const bound = await bindProfileAnonVisitorSession({
-        receptorUid: resolvedTargetUid,
-        chatId: effectiveChatId,
-        username,
-      });
+      if (!input.visitorLeaseAlreadyBound) {
+        const { bindProfileAnonVisitorSession } = await import(
+          "@/lib/abuse/bindProfileAnonVisitorSession"
+        );
+        const bound = await bindProfileAnonVisitorSession({
+          receptorUid: resolvedTargetUid,
+          chatId: effectiveChatId,
+          username,
+        });
       if (bound.chatId !== effectiveChatId) {
         effectiveChatId = bound.chatId;
-        writeChatRef = doc(db, "chats", effectiveChatId);
-        messageRef = doc(collection(db, "chats", effectiveChatId, "mensajes"));
-        const nextAnon = parseProfileAnonChatId(effectiveChatId).senderId;
-        writeAnonSessionId = nextAnon.startsWith("anon_") ? nextAnon : writeAnonSessionId;
-        writeSenderAnon = writeAnonSessionId.startsWith("anon_") ? writeAnonSessionId : "";
-        writeMessageAuthorId = writeSenderAnon || writeMessageAuthorId;
-        writeParticipantes = Array.from(
-          new Set(
-            [writeAnonSessionId, resolvedTargetUid].filter(Boolean) as string[],
-          ),
-        );
+        rememberPendingChatSend({ chatId: effectiveChatId, clientId: pendingClientId });
+          writeChatRef = doc(db, "chats", effectiveChatId);
+          messageRef = doc(collection(db, "chats", effectiveChatId, "mensajes"));
+        }
       }
+
+      // The server-confirmed chatId embeds the authoritative visitor anon id.
+      // Normalize even when the caller already bound it, because a pre-bind
+      // epoch rotation can make the earlier senderId stale.
+      const boundAnon = parseProfileAnonChatId(effectiveChatId).senderId;
+      if (boundAnon.startsWith("anon_")) {
+        writeAnonSessionId = boundAnon;
+        writeSenderAnon = boundAnon;
+        writeMessageAuthorId = boundAnon;
+        writeParticipantes = [boundAnon, resolvedTargetUid].filter(Boolean);
+        unreadRecipients = resolveProfileAnonUnreadRecipients({
+          isOwnerReply: false,
+          messageAuthorId: boundAnon,
+          targetUid: resolvedTargetUid,
+          participantes: writeParticipantes,
+          anonSessionId: boundAnon,
+          senderId: boundAnon,
+          chatId: effectiveChatId,
+        });
+      }
+
       const permit = await issueProfileAnonAbuseSendPermit({
         receptorUid: resolvedTargetUid,
         chatId: effectiveChatId,
@@ -501,7 +550,6 @@ export async function persistAnonChatMessage(
       isOwnerReply && persistAuthor.senderProfileId
         ? persistAuthor.senderProfileId
         : undefined,
-    mode: "production",
   });
 
   const outgoingPatch = atomicBatch.chatWritePayload;
@@ -528,8 +576,14 @@ export async function persistAnonChatMessage(
     ...outgoingPatch,
   };
 
+  // Profile-anon chats are created/bound server-side by bindVisitorChatLease
+  // before the client obtains a one-shot send permit. Even when our pre-bind
+  // getDoc saw no document (or was permission-denied while anon auth was still
+  // warming), the chat exists by the time we commit this batch. Never replay
+  // identity/binding fields from chatMeta here: strict production rules lock
+  // those fields and would reject the whole atomic message write.
   const chatWritePayload =
-    isProfileAnonChatId(effectiveChatId) && hasUsableChatData(existingData)
+    isProfileAnonChatId(effectiveChatId)
       ? buildProfileAnonChatWritePayload({
           senderAuthorId: writeMessageAuthorId,
           unreadRecipients,
@@ -540,11 +594,8 @@ export async function persistAnonChatMessage(
             senderKind === "anon" ? writeSenderAnon || writeAnonSessionId : "",
           senderIsAnonymous: !isOwnerReply,
           targetPhoto: targetPhoto || null,
-          mode: "production",
         })
       : chatMeta;
-
-  registerSessionChat(effectiveChatId);
 
   const storyReply = storyReplyPersist.storyReply;
   const storedReply = storyReplyPersist.storedReply;
@@ -564,12 +615,11 @@ export async function persistAnonChatMessage(
           ? persistAuthor.senderProfileId
           : undefined,
       type,
-      mode: "production",
     }),
     ...(storedReply ? { reply: storedReply } : {}),
     ...(storyReply ? { storyReply } : {}),
     type,
-    // Bomb (viewOnce): never birth with client-readable mediaUrl — secret via commit.
+    // Bomb (viewOnce): never birth with client-readable mediaUrl â€” secret via commit.
     ...(mediaUrl && !viewOnce ? { mediaUrl } : {}),
     ...(source ? { source } : {}),
     ...(viewOnce ? buildViewOncePublicBirthFields({ viewOnceLimit: input.viewOnceLimit }) : {}),
@@ -585,9 +635,11 @@ export async function persistAnonChatMessage(
       : {}),
     ...(input.moderationScannedAt ? { moderationScannedAt: input.moderationScannedAt } : {}),
     ...(input.moderationModel ? { moderationModel: input.moderationModel } : {}),
+    ...(input.sharedProfile ? { sharedProfile: input.sharedProfile } : {}),
     ...(input.clientId ? { clientId: input.clientId } : {}),
   };
 
+  rememberPendingChatSend({ chatId: effectiveChatId, clientId: pendingClientId });
   const writeStartedAt = Date.now();
   recordQaCriticalEvent("chat", "CHAT_MESSAGE_WRITE_START", {
     threadId: effectiveChatId,
@@ -659,6 +711,11 @@ export async function persistAnonChatMessage(
       // Drop unsealed bomb doc so UI/listener never keep a ghost bubble.
       try {
         await deleteDoc(messageRef);
+        await rollbackFailedViewOnceSummary({
+          chatId: effectiveChatId,
+          messageId: messageRef.id,
+          previous: existingData,
+        });
       } catch (rollbackError) {
         throw new ChatMediaSendError(
           {
@@ -701,6 +758,15 @@ export async function persistAnonChatMessage(
       });
     }
   }
+
+  // Only publish the thread to the inbox registry after the message (and any
+  // view-once secret) is durably committed. This prevents Chats from racing an
+  // empty server-created shell and then never reconciling the real first message.
+  forgetPendingChatSend({ chatId: effectiveChatId, clientId: pendingClientId });
+  if (effectiveChatId !== chatId) {
+    forgetPendingChatSend({ chatId, clientId: pendingClientId });
+  }
+  registerSessionChat(effectiveChatId);
 
   scheduleModerationActivityTouch({
     id: effectiveChatId,

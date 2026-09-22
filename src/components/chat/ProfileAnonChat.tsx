@@ -102,7 +102,7 @@ import {
 } from "@/lib/chat/anonIdentity";
 import { chatHasActivity, deleteEmptyChatIfIdle } from "@/lib/chat/migrate";
 import { resolveMessageReceiptStatus } from "@/lib/chat/messageReceipt";
-import { unregisterSessionChat, registerSessionChat, getSessionChatIds } from "@/lib/chat/sessionChats";
+import { unregisterSessionChat, getSessionChatIds } from "@/lib/chat/sessionChats";
 import {
   buildProfileAnonViewerContext,
   inferOwnerViewingFromAuthors,
@@ -183,6 +183,14 @@ import {
 } from "@/lib/chat/chatMessageCache";
 import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
+import {
+  hadRecentInterruptedChatSend,
+  hasPendingChatSends,
+  listPendingChatSendIds,
+  trackPendingChatSend,
+  waitForPendingChatSends,
+} from "@/lib/chat/pendingChatSends";
+import { isProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { persistMessageDelete } from "@/lib/chat/persistMessageDelete";
 import {
   DELETED_MESSAGE_PREVIEW,
@@ -597,6 +605,7 @@ export default function ProfileAnonChat({
   const chatMetaRef = useRef<InboxChat | null>(null);
   const chatDocDataRef = useRef<Record<string, unknown>>({});
   const [chatMetaVersion, setChatMetaVersion] = useState(0);
+  const [messageListenerEpoch, setMessageListenerEpoch] = useState(0);
   const threadContextRef = useRef({
     chatId: "",
     currentUid: "",
@@ -705,12 +714,17 @@ export default function ProfileAnonChat({
     if (leave.mark) markOpenChatAsRead(inboundId);
   }
 
-  function goBackFromChat() {
+  async function goBackFromChat() {
     const backAction = resolveChatBackAction(pathname);
     if (backAction?.kind === "dismiss-keyboard") {
       keepComposerFocusRef.current = false;
       return;
     }
+
+    // Native-shell navigation may become a full document load. Never leave the
+    // chat while a send is still waiting for bind/permit/Firestore ACK, or the
+    // browser can terminate the in-flight request and leave an empty chat shell.
+    await waitForPendingChatSends();
     flushSeenThreadReadOnLeave();
 
     const dest = resolveChatBackDestination(pathname);
@@ -1050,22 +1064,33 @@ export default function ProfileAnonChat({
   }, [chatId, chatAnonSessionId, targetUid, chatOwnerUid]);
 
   useEffect(() => {
-    if (!chatId) return;
-    registerSessionChat(chatId);
-  }, [chatId]);
-
-  useEffect(() => {
     messagePersistedRef.current = false;
 
     return () => {
-      if (messagePersistedRef.current) return;
+      if (messagePersistedRef.current || hasPendingChatSends()) return;
       const leavingId = chatId;
+      if (
+        listPendingChatSendIds().includes(leavingId) ||
+        hadRecentInterruptedChatSend()
+      ) {
+        return;
+      }
 
       void (async () => {
         try {
+          if (hasPendingChatSends() || listPendingChatSendIds().includes(leavingId)) return;
           const hasActivity = await chatHasActivity(leavingId);
-          if (hasActivity) return;
+          if (hasActivity || hasPendingChatSends()) return;
+          if (isProfileAnonChatId(leavingId)) {
+            const stillEmpty = !(await chatHasActivity(leavingId));
+            if (!stillEmpty || hasPendingChatSends() || listPendingChatSendIds().includes(leavingId)) {
+              return;
+            }
+            unregisterSessionChat(leavingId);
+            return;
+          }
           await deleteEmptyChatIfIdle(leavingId);
+          if (await chatHasActivity(leavingId)) return;
           unregisterSessionChat(leavingId);
         } catch {
           // Keep the authorized thread in session history if the idle check fails.
@@ -1684,7 +1709,17 @@ export default function ProfileAnonChat({
       }
       unsub();
     };
-  }, [chatId, authReady, chatAnonSessionId, currentUid, targetUid, chatOwnerUid, pathname, firebaseUid]);
+  }, [
+    chatId,
+    authReady,
+    chatAnonSessionId,
+    currentUid,
+    targetUid,
+    chatOwnerUid,
+    pathname,
+    firebaseUid,
+    messageListenerEpoch,
+  ]);
 
   useEffect(() => {
     if (!chatId || !authReady) return;
@@ -2404,6 +2439,7 @@ export default function ProfileAnonChat({
           viewerUsername,
           autoModerationRequiresBlur: scanResult.requiresBlur,
           moderationRequiresBlur: scanResult.requiresBlur,
+          visitorLeaseAlreadyBound: !provenOwner,
         });
         if (persisted.canonicalChatId && persisted.canonicalChatId !== chatId) {
           onThreadIdChange?.(persisted.canonicalChatId);
@@ -2430,15 +2466,35 @@ export default function ProfileAnonChat({
         throw persistError;
       }
 
+      const persistedAnonSenderId = getProfileChatAnonSenderId(
+        persisted.canonicalChatId || sendChatId,
+        "",
+      );
       if (!provenOwner && identityReady) {
-        rememberOwnThreadAnonId(persisted.canonicalChatId || sendChatId, senderId, {
-          authUid: currentUid,
-          rootAnonSessionId: rootAnonContinuityId(),
-          ownerUncertain: !identityReady,
-        });
+        rememberOwnThreadAnonId(
+          persisted.canonicalChatId || sendChatId,
+          persistedAnonSenderId,
+          {
+            authUid: currentUid,
+            rootAnonSessionId: rootAnonContinuityId(),
+            ownerUncertain: !identityReady,
+          },
+        );
       }
-      setMessages((old) => old.map((message) => message.clientId === clientId ? { ...message, id: persisted.messageId, status: undefined } : message));
+      setMessages((old) =>
+        old.map((message) =>
+          message.clientId === clientId
+            ? {
+                ...message,
+                id: persisted.messageId,
+                ...(!provenOwner ? { fromUid: persistedAnonSenderId } : {}),
+                status: undefined,
+              }
+            : message,
+        ),
+      );
       messagePersistedRef.current = true;
+      setMessageListenerEpoch((value) => value + 1);
       setUploadProgress(null);
     } catch (e) {
       console.error(e);
@@ -2485,21 +2541,29 @@ export default function ProfileAnonChat({
 
     void (async () => {
       try {
-        const sendChatId = await resolveVisitorSendChatId(input.isOwnerReply);
-        const persisted = await persistAnonChatMessage({
-          chatId: sendChatId,
-          username,
-          senderId: input.senderId,
-          currentUid,
-          targetUid: input.targetUid,
-          targetPhoto,
-          messageText: input.message.text,
-          reply: input.message.reply,
-          existingChatData: chatDocDataRef.current,
-          isOwnerReply: input.isOwnerReply,
-          viewerUsername,
-          clientId,
-        });
+        const persistence = trackPendingChatSend(
+          (async () => {
+            const sendChatId = await resolveVisitorSendChatId(input.isOwnerReply);
+            const persisted = await persistAnonChatMessage({
+              chatId: sendChatId,
+              username,
+              senderId: input.senderId,
+              currentUid,
+              targetUid: input.targetUid,
+              targetPhoto,
+              messageText: input.message.text,
+              reply: input.message.reply,
+              existingChatData: chatDocDataRef.current,
+              isOwnerReply: input.isOwnerReply,
+              viewerUsername,
+              clientId,
+              visitorLeaseAlreadyBound: !input.isOwnerReply,
+            });
+            return { sendChatId, persisted };
+          })(),
+          { chatId, clientId: clientId || "" },
+        );
+        const { sendChatId, persisted } = await persistence;
         if (persisted.canonicalChatId && persisted.canonicalChatId !== chatId) {
           onThreadIdChange?.(persisted.canonicalChatId);
         }
@@ -2525,14 +2589,32 @@ export default function ProfileAnonChat({
         } else if (claim.retryable) {
           scheduleVerifiedProfileLinkClaimRetry(currentUid);
         }
+        const persistedAnonSenderId = getProfileChatAnonSenderId(
+          persisted.canonicalChatId || sendChatId,
+          "",
+        );
         if (!input.isOwnerReply && identityReady) {
-          rememberOwnThreadAnonId(persisted.canonicalChatId || sendChatId, input.senderId, {
-            authUid: currentUid,
-            rootAnonSessionId: rootAnonContinuityId(),
-            ownerUncertain: !identityReady,
-          });
+          rememberOwnThreadAnonId(
+            persisted.canonicalChatId || sendChatId,
+            persistedAnonSenderId,
+            {
+              authUid: currentUid,
+              rootAnonSessionId: rootAnonContinuityId(),
+              ownerUncertain: !identityReady,
+            },
+          );
+        }
+        if (!input.isOwnerReply) {
+          setMessages((old) =>
+            old.map((message) =>
+              message.clientId === clientId
+                ? { ...message, fromUid: persistedAnonSenderId }
+                : message,
+            ),
+          );
         }
         messagePersistedRef.current = true;
+      setMessageListenerEpoch((value) => value + 1);
         keepComposerFocusRef.current = true;
         refocusComposer();
       } catch (error) {
@@ -3510,7 +3592,7 @@ export default function ProfileAnonChat({
                     type="button"
                     onPointerDown={(event) => {
                       event.preventDefault();
-                      void sendMedia();
+                      void trackPendingChatSend(sendMedia(), { chatId });
                     }}
                     className="rounded-2xl bg-violet-500/80 px-5 py-3 text-lg font-bold"
                   >

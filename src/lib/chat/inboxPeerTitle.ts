@@ -6,7 +6,8 @@ import {
   usernameHintFromAnonChatId,
 } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { hasInboxPreview, isVisibleInboxChat } from "@/lib/chat/inboxVisible";
+import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
+import { preferInboxChat } from "@/lib/chat/inboxShellGuard";
 
 export function formatAnonSessionLabel(sessionId: string) {
   const raw = String(sessionId || "").trim();
@@ -153,35 +154,51 @@ export function inboxPeerDedupeKey(chat: InboxChat, viewerUid?: string) {
   return `id:${chatId}`;
 }
 
+function inboxActivityMatches(a: InboxChat, b: InboxChat) {
+  const aid = String(a.latestMessageId || "").trim();
+  const bid = String(b.latestMessageId || "").trim();
+  if (aid || bid) return Boolean(aid && bid && aid === bid);
+  return String(a.lastMessage || "") === String(b.lastMessage || "") && String(a.lastMessageSender || "") === String(b.lastMessageSender || "");
+}
+
+function mapTimestampMs(value: unknown) {
+  if (!value || typeof value !== "object") return 0;
+  const row = value as { toMillis?: () => number; seconds?: number; _seconds?: number };
+  if (typeof row.toMillis === "function") { try { return Number(row.toMillis()) || 0; } catch { return 0; } }
+  return Number(row.seconds ?? row._seconds ?? 0) * 1000;
+}
+
+export function mergeSameActivityReadState(winner: InboxChat, other: InboxChat): InboxChat {
+  if (!inboxActivityMatches(winner, other)) return winner;
+  const readBy: Record<string, boolean> = { ...(other.readBy || {}), ...(winner.readBy || {}) };
+  for (const key of new Set([...Object.keys(other.readBy || {}), ...Object.keys(winner.readBy || {})])) if (other.readBy?.[key] === true || winner.readBy?.[key] === true) readBy[key] = true;
+  const unreadCounts: Record<string, number> = { ...(other.unreadCounts || {}), ...(winner.unreadCounts || {}) };
+  for (const key of new Set([...Object.keys(other.unreadCounts || {}), ...Object.keys(winner.unreadCounts || {})])) { const values=[other.unreadCounts?.[key],winner.unreadCounts?.[key]].filter((v): v is number => typeof v === "number"); if(values.length) unreadCounts[key]=Math.min(...values); }
+  const readAt: Record<string, unknown> = { ...(other.readAt || {}), ...(winner.readAt || {}) };
+  for (const key of new Set([...Object.keys(other.readAt || {}), ...Object.keys(winner.readAt || {})])) { const a=other.readAt?.[key], b=winner.readAt?.[key]; readAt[key]=mapTimestampMs(a)>mapTimestampMs(b)?a:b; }
+  const latest = String(winner.latestMessageId || other.latestMessageId || "").trim();
+  const latestReadMessageIds = { ...(other.latestReadMessageIds || {}), ...(winner.latestReadMessageIds || {}) };
+  if (latest) for (const key of new Set([...Object.keys(other.latestReadMessageIds || {}), ...Object.keys(winner.latestReadMessageIds || {})])) if (other.latestReadMessageIds?.[key] === latest || winner.latestReadMessageIds?.[key] === latest) latestReadMessageIds[key] = latest;
+  const latestReadMessageId = latest && (other.latestReadMessageId === latest || winner.latestReadMessageId === latest) ? latest : winner.latestReadMessageId;
+  return { ...winner, readBy, unreadCounts, readAt, latestReadMessageIds, latestReadMessageId };
+}
+
 export function dedupeInboxChats(chats: InboxChat[], viewerUid = "") {
   const map = new Map<string, InboxChat>();
 
   for (const chat of chats) {
     const key = inboxPeerDedupeKey(chat, viewerUid || undefined);
     const existing = map.get(key);
-    const chatMs = chat.updatedAt?.toMillis?.() ?? 0;
-    const existingMs = existing?.updatedAt?.toMillis?.() ?? 0;
     const mergedPhoto = chat.targetPhoto || existing?.targetPhoto;
-    const chatVisible = hasInboxPreview(chat);
-    const existingVisible = existing ? hasInboxPreview(existing) : false;
+    const winner = preferInboxChat(existing, chat);
 
-    let winner = chat;
-    if (existing) {
-      if (chatVisible && !existingVisible) {
-        winner = chat;
-      } else if (!chatVisible && existingVisible) {
-        winner = existing;
-      } else if (chatMs >= existingMs) {
-        winner = chat;
-      } else {
-        winner = existing;
-      }
-    }
-
-    const mergedTargetPhoto = winner.targetPhoto || mergedPhoto;
+    const readSafeWinner = existing
+      ? mergeSameActivityReadState(winner, winner === chat ? existing : chat)
+      : winner;
+    const mergedTargetPhoto = readSafeWinner.targetPhoto || mergedPhoto;
     map.set(
       key,
-      mergedTargetPhoto ? { ...winner, targetPhoto: mergedTargetPhoto } : winner,
+      mergedTargetPhoto ? { ...readSafeWinner, targetPhoto: mergedTargetPhoto } : readSafeWinner,
     );
   }
 
@@ -199,8 +216,31 @@ export function mergeVisibleInboxThreads(
   firestoreSynced = false,
 ) {
   const nextLive = dedupeInboxChats(live, viewerUid).filter(isVisibleInboxChat);
-  if (firestoreSynced || previous.length === 0 || nextLive.length >= previous.length) {
-    return nextLive;
+
+  // Anonymous recovery is principal/lease based and can legitimately return a
+  // partial subset after anon-identity rotation, WebView recreation, or a
+  // transient recovery failure. Never interpret that subset as proof that an
+  // older visible visitor thread was deleted. This also applies when the visitor
+  // has a registered profile: their outgoing anonymous chats are lease-owned,
+  // not discoverable by the profile UID Firestore queries.
+  const protectedVisitorThreads = previous.filter((chat) => {
+    const id = chat.canonicalChatId || chat.id;
+    if (!isProfileAnonChatId(id)) return false;
+    return !viewerUid || !isIncomingAnonChatForOwner(chat, viewerUid);
+  });
+
+  const liveWithProtectedVisitors = dedupeInboxChats(
+    [...protectedVisitorThreads, ...nextLive],
+    viewerUid,
+  ).filter(isVisibleInboxChat);
+
+  if (
+    protectedVisitorThreads.length > 0 ||
+    firestoreSynced ||
+    previous.length === 0 ||
+    nextLive.length >= previous.length
+  ) {
+    return liveWithProtectedVisitors;
   }
   return dedupeInboxChats([...previous, ...nextLive], viewerUid).filter(
     isVisibleInboxChat,
@@ -209,15 +249,11 @@ export function mergeVisibleInboxThreads(
 
 export const UID_INBOX_QUERY_KEYS = [
   "participantes",
-  "anonOwner",
   "receptor",
   "target",
 ] as const;
 
-export const ANON_INBOX_QUERY_KEYS = [
-  "anonParticipantes",
-  "anonSession",
-] as const;
+export const ANON_INBOX_QUERY_KEYS = ["anonRecovery"] as const;
 
 /** Live inbox is complete only after every active query family has a first snapshot. */
 export function areInboxQuerySnapshotsComplete(

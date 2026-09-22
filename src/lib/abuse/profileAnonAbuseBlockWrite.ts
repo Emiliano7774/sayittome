@@ -35,6 +35,7 @@ import {
   profileAnonAbuseIpIndexId,
   profileAnonAbuseMessagePermitId,
 } from "@/lib/abuse/profileAnonAbuseBlockIds";
+import { decideExistingPermitReuse } from "@/lib/abuse/permitReuse";
 import {
   getTrustedRequestClientIp,
   hashAbuseClientIp,
@@ -566,7 +567,7 @@ export async function issueAbuseSendPermit(input: {
     const permitId = profileAnonAbuseMessagePermitId(chatId, messageId);
     const expiresAtMs = nowMs + ABUSE_SEND_PERMIT_TTL_MS;
 
-    await db.runTransaction(async (tx: AbuseAdminTx) => {
+    const issued = await db.runTransaction(async (tx: AbuseAdminTx) => {
       const freshLease = await tx.get(db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(chatId));
       if (!freshLease.exists) {
         throw Object.assign(new Error("legacy_unbound"), { status: 409 });
@@ -579,7 +580,19 @@ export async function issueAbuseSendPermit(input: {
       const permitRef = db.collection(ABUSE_SEND_PERMIT_COLLECTION).doc(permitId);
       const existingPermit = await tx.get(permitRef);
       if (existingPermit.exists) {
-        throw Object.assign(new Error("message_id_permit_reuse"), { status: 409 });
+        const reuse = decideExistingPermitReuse(
+          (existingPermit.data() || {}) as Record<string, unknown>,
+          { visitorAuthUid, chatId, messageId },
+          nowMs,
+        );
+        if (reuse !== "accept") {
+          throw Object.assign(new Error("message_id_permit_reuse"), { status: 409 });
+        }
+        return {
+          reused: true as const,
+          permitId,
+          expiresAtMs: Number((existingPermit.data() || {}).expiresAtMs || expiresAtMs),
+        };
       }
 
       const prevHashes = readIpHashes(fresh);
@@ -607,9 +620,16 @@ export async function issueAbuseSendPermit(input: {
           schemaVersion: 2,
         }),
       );
+      return { reused: false as const, permitId, expiresAtMs };
     });
 
-    return { ok: true, permitId, expiresAtMs, blocked: false, ipCoverage: coverage };
+    return {
+      ok: true,
+      permitId,
+      expiresAtMs: Number(issued?.expiresAtMs || expiresAtMs),
+      blocked: false,
+      ipCoverage: coverage,
+    };
   } catch (error) {
     const status = Number((error as { status?: number })?.status || 500);
     const message = String((error as Error)?.message || "permit_failed");
