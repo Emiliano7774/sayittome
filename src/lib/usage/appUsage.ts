@@ -52,7 +52,7 @@ export function clampUsageVisibleMs(value: unknown) {
   return Math.min(USAGE_PING_MAX_MS, ms);
 }
 
-function wallClockCap(existing: UsageVisitRecord | null, nowIso: string, requested: number) {
+function wallClockCap(existing: UsageVisitRecord | null, nowIso: string, requested: unknown) {
   const added = clampUsageVisibleMs(requested);
   if (!existing || added === 0) return added;
   const gap = Date.parse(nowIso) - Date.parse(existing.lastSeenAt);
@@ -69,7 +69,7 @@ export function applyUsagePing(
   existing: UsageVisitRecord | null,
   input: {
     nowIso: string;
-    visibleMs: number;
+    visibleMs: unknown;
     sessionStart: boolean;
     username: string;
     uid: string;
