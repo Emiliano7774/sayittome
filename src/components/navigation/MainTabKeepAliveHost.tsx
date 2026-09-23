@@ -221,12 +221,27 @@ export default function MainTabKeepAliveHost() {
     // Respect shuffle-reveal-from so profile→Shuffle pointerdown is not undone.
     if (isNonMainRoute(livePath)) {
       neutralizeMainTabPresentationForNonMainRoute(livePath);
+      document.documentElement.removeAttribute("data-sayittome-bar-target");
     } else if (typeof document !== "undefined") {
+      const incoming = getIncomingBarTab();
       const kindPath = livePath || nextPath || pathname;
+      if (incoming && incoming !== "/shuffle") {
+        document.documentElement.setAttribute("data-sayittome-route-kind", "main-tab");
+        document.documentElement.setAttribute(
+          "data-sayittome-bar-target",
+          incoming.slice(1),
+        );
+        document.body.classList.remove("sayittome-shuffle-route");
+        document.body.classList.remove("sayittome-shuffle-surface-active");
+      } else {
       const kind = classifyAppRouteKind(kindPath);
       document.documentElement.setAttribute(
         "data-sayittome-route-kind",
         kind === "shuffle" || kindPath === "/shuffle" ? "shuffle" : "main-tab",
+      );
+      document.documentElement.setAttribute(
+        "data-sayittome-bar-target",
+        kindPath === "/shuffle" || kind === "shuffle" ? "shuffle" : kindPath.slice(1),
       );
       if (kindPath === "/shuffle" || kind === "shuffle") {
         document.documentElement.removeAttribute(
@@ -235,6 +250,7 @@ export default function MainTabKeepAliveHost() {
         // Keep route shell released — Shuffle page is null; keepalive owns paint.
       } else {
         restoreNonMainRouteShellAfterShuffleReveal();
+      }
       }
     }
 

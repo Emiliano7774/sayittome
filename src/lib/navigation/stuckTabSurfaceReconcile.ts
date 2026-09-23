@@ -26,6 +26,33 @@ function isBarPath(path: string) {
   return (MAIN_TAB_HREFS as readonly string[]).includes(path);
 }
 
+function paintChosenBarSection(path: string) {
+  const html = document.documentElement;
+  const target = path === "/shuffle" ? "shuffle" : path.slice(1);
+  html.setAttribute("data-sayittome-bar-target", target);
+  if (path !== "/shuffle") {
+    html.removeAttribute("data-sayittome-shuffle-reveal-from");
+    html.removeAttribute("data-sayittome-shuffle-reveal-pending");
+    html.classList.remove("sayittome-shuffle-return-pending");
+    document.body.classList.remove("sayittome-shuffle-route");
+    document.body.classList.remove("sayittome-shuffle-surface-active");
+  }
+
+  for (const name of ["stories", "chats", "boost", "settings"]) {
+    const panel = document.getElementById(`sayittome-main-tab-keepalive-${name}`);
+    if (!panel) continue;
+    const selected = path === `/${name}`;
+    panel.classList.toggle("sayittome-main-tab-keepalive-visible", selected);
+    panel.classList.toggle("sayittome-main-tab-keepalive-frozen", !selected);
+  }
+
+  const shuffle = document.getElementById("sayittome-shuffle-keepalive-host");
+  if (!shuffle || path === "/shuffle") return;
+  shuffle.classList.remove("sayittome-shuffle-keepalive-visible");
+  shuffle.classList.add("sayittome-shuffle-keepalive-frozen");
+  shuffle.setAttribute("aria-hidden", "true");
+}
+
 function clearStuckPaintLocks() {
   const html = document.documentElement;
   html.removeAttribute("data-main-tab-shuffle-slide");
@@ -51,6 +78,7 @@ export function presentNativeBarSectionNow(expectedPath: string) {
     abortMainTabToShuffleTransition("native-bar-present");
   }
   clearStuckPaintLocks();
+  paintChosenBarSection(path);
   const html = document.documentElement;
 
   if (path === "/shuffle") {
@@ -69,6 +97,7 @@ export function presentNativeBarSectionNow(expectedPath: string) {
   forcePresentMainTabAfterStableExit(path as MainTabHref);
   releaseShuffleTabSurface();
   clearShuffleExitToMainTab({ destination: path, force: true });
+  paintChosenBarSection(path);
 }
 
 /**
