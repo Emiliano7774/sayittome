@@ -959,6 +959,46 @@ html[data-sayittome-bar-target="settings"].sayittome-shuffle-exit-handoff-pendin
   z-index: 0 !important;
 }
 
+/* A tapped chat covers the inbox in the same pointerdown, before the route commits. */
+html[data-sayittome-chat-open="1"] #sayittome-main-tab-keepalive-stories,
+html[data-sayittome-chat-open="1"] #sayittome-main-tab-keepalive-chats,
+html[data-sayittome-chat-open="1"] #sayittome-main-tab-keepalive-boost,
+html[data-sayittome-chat-open="1"] #sayittome-main-tab-keepalive-settings,
+html[data-sayittome-chat-open="1"] #sayittome-shuffle-keepalive-host,
+html[data-sayittome-chat-open="1"][data-sayittome-bar-target="chats"]
+  body.sayittome-shuffle-surface-active
+  #sayittome-main-tab-keepalive-chats.sayittome-main-tab-keepalive-visible,
+html[data-sayittome-chat-open="1"][data-sayittome-bar-target="stories"]
+  body.sayittome-shuffle-surface-active
+  #sayittome-main-tab-keepalive-stories.sayittome-main-tab-keepalive-visible,
+html[data-sayittome-chat-open="1"][data-sayittome-bar-target="boost"]
+  body.sayittome-shuffle-surface-active
+  #sayittome-main-tab-keepalive-boost.sayittome-main-tab-keepalive-visible,
+html[data-sayittome-chat-open="1"][data-sayittome-bar-target="settings"]
+  body.sayittome-shuffle-surface-active
+  #sayittome-main-tab-keepalive-settings.sayittome-main-tab-keepalive-visible,
+html[data-sayittome-chat-open="1"].sayittome-shuffle-exit-handoff-pending:not(
+    [data-sayittome-route-kind="profile"]
+  ):not([data-sayittome-route-kind="profile-chat"]):not(
+    [data-sayittome-route-kind="non-main"]
+  )
+  #sayittome-shuffle-keepalive-host {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+#sayittome-chat-open-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: #fff;
+}
+
 /* While post-settle bridge owns presentation, never re-show source main tabs
    even if the host class briefly thrash — prevents post-arrival second paint. */
 html[data-post-settle-route-bridge] body.sayittome-shuffle-surface-active

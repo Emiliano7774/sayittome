@@ -3,11 +3,14 @@
 import ChatsInboxErrorBoundary from "@/components/chats/ChatsInboxErrorBoundary";
 import ClassicChatsInbox from "@/components/chats/ClassicChatsInbox";
 import ModernChatsInbox from "@/components/chats/ModernChatsInbox";
+import { useEffect } from "react";
+
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useChatsSelection } from "@/hooks/useChatsSelection";
 import { shouldShowChatsInboxSkeleton } from "@/hooks/useChatsInboxReady";
 import { useChatsTabPaint } from "@/hooks/useChatsTabPaint";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { useT } from "@/contexts/LocaleContext";
 
 function ChatsPageSkeleton() {
@@ -34,6 +37,30 @@ export default function ChatsInboxPage() {
     firestoreHydrated: inbox.firestoreSynced,
   });
 
+  const warmIds = inbox.sortedChats
+    .slice(0, 8)
+    .map((chat) => chat.canonicalChatId || chat.id)
+    .join("|");
+
+  useEffect(() => {
+    const ids = warmIds.split("|").filter(Boolean);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    const useIdle = typeof window.requestIdleCallback === "function";
+    const run = () => {
+      if (cancelled) return;
+      for (const id of ids) prefetchChatThread(id);
+    };
+    const idleId = useIdle
+      ? window.requestIdleCallback(run)
+      : window.setTimeout(run, 150);
+    return () => {
+      cancelled = true;
+      if (useIdle) window.cancelIdleCallback(idleId);
+      else window.clearTimeout(idleId);
+    };
+  }, [warmIds]);
+
   if (shouldShowChatsInboxSkeleton(inbox)) {
     return <ChatsPageSkeleton />;
   }
@@ -45,6 +72,7 @@ export default function ChatsInboxPage() {
           sortedChats={inbox.sortedChats}
           uid={inbox.uid}
           isAnonymousSession={inbox.isAnonymousSession}
+          firestoreSynced={inbox.firestoreSynced}
           selection={selection}
         />
       ) : (
@@ -52,6 +80,7 @@ export default function ChatsInboxPage() {
           sortedChats={inbox.sortedChats}
           uid={inbox.uid}
           isAnonymousSession={inbox.isAnonymousSession}
+          firestoreSynced={inbox.firestoreSynced}
           selection={selection}
         />
       )}

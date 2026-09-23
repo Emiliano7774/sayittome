@@ -200,7 +200,11 @@ export default function MainTabKeepAliveHost() {
     const liveIsMainTabOrShuffle =
       livePath === "/shuffle" ||
       (MAIN_TAB_HREFS as readonly string[]).includes(livePath);
-    if (liveIsMainTabOrShuffle) {
+    if (
+      liveIsMainTabOrShuffle &&
+      (typeof document === "undefined" ||
+        document.documentElement.getAttribute("data-sayittome-chat-open") !== "1")
+    ) {
       scheduleStuckTabSurfaceReconcile(livePath);
     }
 
@@ -219,7 +223,12 @@ export default function MainTabKeepAliveHost() {
     // non-main. Never use lagged Next/store pathnames alone — that can stamp
     // data-sayittome-route-kind=profile onto /stories and CSS-hide Stories.
     // Respect shuffle-reveal-from so profile→Shuffle pointerdown is not undone.
-    if (isNonMainRoute(livePath)) {
+    if (
+      document.documentElement.getAttribute("data-sayittome-chat-open") === "1" &&
+      !isNonMainRoute(livePath)
+    ) {
+      document.documentElement.removeAttribute("data-sayittome-bar-target");
+    } else if (isNonMainRoute(livePath)) {
       neutralizeMainTabPresentationForNonMainRoute(livePath);
       document.documentElement.removeAttribute("data-sayittome-bar-target");
     } else if (typeof document !== "undefined") {

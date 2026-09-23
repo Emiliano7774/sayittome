@@ -1,7 +1,9 @@
 "use client";
 
+import { useRef } from "react";
 import { useRouter } from "next/navigation";
 
+import { presentChatThreadNow } from "@/lib/chat/presentChatThread";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
@@ -17,18 +19,30 @@ type Props = {
 export default function ChatInboxLink({ href, className, children, ...rest }: Props) {
   const router = useRouter();
   const chatId = decodeURIComponent(href.split("/chat/")[1]?.split("?")[0] || "");
+  const openedAtRef = useRef(0);
 
   const warmThread = () => {
     if (chatId) prefetchChatThread(chatId);
+    try {
+      router.prefetch(href);
+    } catch {
+      /* prefetch is best-effort */
+    }
   };
 
-  const openChat = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
+  const openChat = (title: string) => {
+    const now = Date.now();
+    if (now - openedAtRef.current < 800) return;
+    openedAtRef.current = now;
     warmThread();
     if (chatId) captureChatsListScroll(chatId);
     clearMainTabShellOverlay();
+    presentChatThreadNow(href, { title });
     fastRouterPush(router, href);
   };
+
+  const titleFrom = (node: HTMLElement) =>
+    node.querySelector("p")?.textContent?.trim() || "";
 
   return (
     <a
@@ -37,8 +51,14 @@ export default function ChatInboxLink({ href, className, children, ...rest }: Pr
       data-chat-id={chatId || undefined}
       {...rest}
       onPointerEnter={warmThread}
-      onPointerDown={warmThread}
-      onClick={openChat}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        openChat(titleFrom(event.currentTarget));
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        openChat(titleFrom(event.currentTarget));
+      }}
     >
       {children}
     </a>

@@ -1,4 +1,5 @@
 import { isNativeAppShell } from "@/lib/app/nativeShell";
+import { dismissPresentedChatThread } from "@/lib/chat/presentChatThread";
 import { forcePresentMainTabAfterStableExit } from "@/lib/navigation/atomicMainTabHandoff";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
 import { MAIN_TAB_HREFS } from "@/lib/navigation/mainTabs";
@@ -77,6 +78,7 @@ export function presentNativeBarSectionNow(expectedPath: string) {
   if (isInternalMainTabToShuffleTransitionActive()) {
     abortMainTabToShuffleTransition("native-bar-present");
   }
+  dismissPresentedChatThread();
   clearStuckPaintLocks();
   paintChosenBarSection(path);
   const html = document.documentElement;
@@ -125,6 +127,7 @@ export function scheduleStuckTabSurfaceReconcile(expectedPath: string) {
 
 async function reconcileStuckTabSurface(path: string) {
   const html = document.documentElement;
+  if (html.getAttribute("data-sayittome-chat-open") === "1") return;
   const slide = html.getAttribute("data-main-tab-shuffle-slide");
   const slideStuck = slide === "preparing" || slide === "armed" || slide === "running";
   const bridge = html.hasAttribute("data-post-settle-route-bridge");
