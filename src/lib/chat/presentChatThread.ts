@@ -1,6 +1,3 @@
-import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
-import { readCachedChatMessages } from "@/lib/chat/chatMessageCache";
-
 const SHELL_ID = "sayittome-chat-open-shell";
 
 let shellChatId = "";
@@ -14,24 +11,6 @@ function chatIdFromHref(href: string) {
   } catch {
     return raw;
   }
-}
-
-function isClassicUx() {
-  try {
-    return window.localStorage.getItem("sayittome_ux_mode") !== "modern";
-  } catch {
-    return true;
-  }
-}
-
-function previewText(message: { text?: string; type?: string; viewOnce?: boolean }) {
-  if (message.viewOnce) return "···";
-  const text = String(message.text || "").trim();
-  if (text) return text;
-  if (message.type === "image") return "Foto";
-  if (message.type === "video") return "Video";
-  if (message.type === "audio") return "Audio";
-  return "";
 }
 
 export function dismissPresentedChatThread() {
@@ -71,10 +50,7 @@ function watchForRealThread(chatId: string) {
   }, 32);
 }
 
-/**
- * Cover the inbox on tap with the same colored bubbles the thread will use,
- * then drop the cover on the first real paint. No extra hold after that.
- */
+/** Cover the inbox until the real thread has its final bubble colors. */
 export function presentChatThreadNow(href: string, _options?: { title?: string }) {
   if (typeof document === "undefined") return;
   const chatId = chatIdFromHref(href);
@@ -91,30 +67,6 @@ export function presentChatThreadNow(href: string, _options?: { title?: string }
     document.body.appendChild(shell);
   }
   shell.replaceChildren();
-
-  const classic = isClassicUx();
-  const scroller = document.createElement("div");
-  scroller.style.cssText =
-    "margin-top:auto;display:flex;flex-direction:column;gap:8px;padding:12px 16px calc(5.5rem + env(safe-area-inset-bottom));";
-
-  const cached = readCachedChatMessages(chatId) || [];
-  for (const message of cached.slice(-12)) {
-    const text = previewText(message);
-    if (!text) continue;
-    const mine = message.mine === true;
-    const bubble = document.createElement("div");
-    bubble.className = [
-      mine ? "self-end" : "self-start",
-      chatBubbleShellClass(classic, mine),
-    ].join(" ");
-    const label = document.createElement("p");
-    label.className = chatBubbleTextClass(classic);
-    label.textContent = text;
-    bubble.appendChild(label);
-    scroller.appendChild(bubble);
-  }
-  shell.appendChild(scroller);
-
   shellChatId = chatId;
   watchForRealThread(chatId);
 }

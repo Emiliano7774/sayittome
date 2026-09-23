@@ -149,6 +149,7 @@ import {
   shouldAutoscrollChatNotificationOpen,
   shouldHoldChatRevealUntilScrollBottom,
 } from "@/lib/chat/chatNotificationOpen";
+import { dismissPresentedChatThread } from "@/lib/chat/presentChatThread";
 import { prefetchChatThreadAsync } from "@/lib/chat/prefetchChatThread";
 import { useAuth } from "@/contexts/AuthContext";
 import { isChatThreadRoute, isProfileChatRoute } from "@/lib/navigation/routeKind";
@@ -553,7 +554,7 @@ export default function ProfileAnonChat({
   const [firebaseUid, setFirebaseUid] = useState(() => String(auth.currentUser?.uid || ""));
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const [deleteStage, setDeleteStage] = useState<"choose" | "confirm-me" | "confirm-everyone">("choose");
-  const [authReady, setAuthReady] = useState(false);
+  const [authReady, setAuthReady] = useState(() => Boolean(auth.currentUser));
   const [currentUid, setCurrentUid] = useState(() => profileAuthUid(auth.currentUser));
   const [targetUid, setTargetUid] = useState(initialProfile?.uid || "");
   const [targetPhoto, setTargetPhoto] = useState(initialProfile?.photo || "");
@@ -989,6 +990,13 @@ export default function ProfileAnonChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed apply is chatId-scoped
   }, [chatId]);
 
+  const bubblesSettledRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!bubblesSettledRef.current) return;
+    dismissPresentedChatThread();
+  });
+
   useLayoutEffect(() => {
     if (
       !shouldHoldChatRevealUntilScrollBottom({
@@ -1338,6 +1346,9 @@ export default function ProfileAnonChat({
       }),
     ),
   );
+
+  const bubblesSettled = displayMessages.length === 0 ? authReady : identityReady;
+  bubblesSettledRef.current = bubblesSettled;
 
   const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
 
@@ -3055,13 +3066,14 @@ export default function ProfileAnonChat({
             openedFromNotification && !threadRevealReady
               ? "invisible pointer-events-none"
               : "",
+            !bubblesSettled ? "invisible pointer-events-none" : "",
           ].join(" ")}
           style={
-            openedFromNotification && !threadRevealReady
+            (openedFromNotification && !threadRevealReady) || !bubblesSettled
               ? { visibility: "hidden" as const }
               : undefined
           }
-          data-chat-bubbles-settled="1"
+          data-chat-bubbles-settled={bubblesSettled ? "1" : "0"}
           data-chat-notif-reveal={
             openedFromNotification ? (threadRevealReady ? "1" : "0") : undefined
           }
