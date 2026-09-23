@@ -1,19 +1,12 @@
-import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
 import {
   beginTabPostAuthStabilityTracking,
-  clearBoostPostCommitStabilityTracking,
-  clearTabPostAuthStabilityTracking,
   getTabDestinationVisualReadiness,
-  isBoostPostCommitStabilityTrackingActive,
-  isTabDestinationVisualReady,
   isTabPostAuthStabilityTrackingActive,
   isTabShellNoLoadingTransitionContractActive,
-  resetTabDestinationReadinessStability,
   scheduleClearTabPostAuthStabilityAfterReveal,
   traceTabShellNoLoading,
 } from "@/lib/navigation/tabDestinationReadiness";
-import { isShuffleExitToMainTabPending } from "@/lib/navigation/shuffleHandoffState";
 
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
@@ -65,103 +58,17 @@ export function seedPresentedMainTab(href: MainTabHref) {
   }
 }
 
-/** Route changed — retain current presentation until destination primary is ready. */
+/** Route changed — the bar section in the URL owns the screen immediately. */
 export function onMainTabRouteChange(pathname: string) {
   const path = normalizePath(pathname);
   if (!isMainTabHref(path)) return;
 
   const next = path as MainTabHref;
-  // Android WebView keeps the previous bar section painted while destination
-  // readiness (loading text, stable frames) never arrives. Show the tapped
-  // section in the same turn.
-  if (isNativeAppShell()) {
-    presentedTab = next;
-    handoffTarget = null;
-    markMainTabHandoffPendingDom(false);
-    notify();
-    return;
-  }
-  if (!presentedTab) {
-    presentedTab = next;
-    handoffTarget = null;
-    notify();
-    return;
-  }
-
-  if (presentedTab === next) {
-    // Returning to the already-presented tab during a shuffle exit (or before
-    // destination is visually ready) must keep the freeze; otherwise loading
-    // chrome can flash once exit/main handoff classes clear.
-    if (
-      isTabShellNoLoadingTransitionContractActive() &&
-      (isShuffleExitToMainTabPending() || !isTabDestinationVisualReady(next))
-    ) {
-      handoffTarget = next;
-      resetTabDestinationReadinessStability(next);
-      if (next === "/boost" || next === "/chats" || next === "/shuffle") {
-        beginTabPostAuthStabilityTracking(next, {
-          source: presentedTab,
-          destination: next,
-          via: "same-tab-retain",
-        });
-      }
-      markMainTabHandoffPendingDom(true);
-      traceTabShellNoLoading("TAB_HANDOFF_SOURCE_FREEZE_RETAINED", {
-        source: presentedTab,
-        destination: next,
-        reason: isShuffleExitToMainTabPending()
-          ? "shuffle-exit-pending"
-          : "destination-not-ready",
-      });
-      notify();
-      return;
-    }
-    handoffTarget = null;
-    markMainTabHandoffPendingDom(false);
-    traceTabShellNoLoading("TAB_HANDOFF_ROUTE_STATE_ALIGNED", {
-      tab: next,
-      note: "same-tab-already-presented",
-    });
-    return;
-  }
-
-  handoffTarget = next;
-  resetTabDestinationReadinessStability(next);
-  if (isTabShellNoLoadingTransitionContractActive()) {
-    if (next === "/boost" || next === "/chats" || next === "/shuffle") {
-      beginTabPostAuthStabilityTracking(next, {
-        source: presentedTab,
-        destination: next,
-        via: "onMainTabRouteChange",
-      });
-    }
-    // Leaving an auth destination: clear other settle trackers when allowed by
-    // destination-scoped handoff tokens (never clear the active destination).
-    for (const tab of ["/boost", "/chats", "/shuffle"] as const) {
-      if (tab !== next && isTabPostAuthStabilityTrackingActive(tab)) {
-        clearTabPostAuthStabilityTracking(tab, {
-          via: "onMainTabRouteChange-left-destination",
-          destination: next,
-        });
-      }
-    }
-  } else if (isBoostPostCommitStabilityTrackingActive()) {
-    clearBoostPostCommitStabilityTracking({
-      via: "onMainTabRouteChange-left-boost",
-      destination: next,
-    });
-  }
-  if (isTabShellNoLoadingTransitionContractActive()) {
-    traceTabShellNoLoading("TAB_SHELL_NO_LOADING_SOURCE_FROZEN", {
-      source: presentedTab,
-      destination: next,
-    });
-    traceTabShellNoLoading("TAB_HANDOFF_ROUTE_COMMIT_REQUESTED", {
-      source: presentedTab,
-      destination: next,
-    });
-  }
-  markMainTabHandoffPendingDom(true);
+  // The tapped bar section owns the screen in this turn. Waiting for loading
+  // text or stable frames keeps the previous section (often Chats) painted.
+  presentedTab = next;
+  handoffTarget = null;
+  markMainTabHandoffPendingDom(false);
   notify();
 }
 

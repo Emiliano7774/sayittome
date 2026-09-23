@@ -18,13 +18,13 @@ import {
   subscribeAtomicMainTabHandoff,
 } from "@/lib/navigation/atomicMainTabHandoff";
 import {
-  getTabDestinationVisualReadiness,
   isTabShellNoLoadingTransitionContractActive,
 } from "@/lib/navigation/tabDestinationReadiness";
 import {
   clearPendingVisualTab,
   getMainTabKeepAliveVersion,
   getPendingVisualTab,
+  getIncomingBarTab,
   isMainTabPanelVisible,
   listMainTabKeepAliveHrefs,
   markMainTabVisited,
@@ -32,6 +32,7 @@ import {
   shouldMountMainTabPanel,
   shouldRenderMainTabKeepAliveHost,
   subscribeMainTabKeepAlive,
+  syncIncomingBarTab,
   syncPendingVisualTabWithPathname,
 } from "@/lib/navigation/mainTabKeepAlive";
 import { restoreNonMainRouteShellAfterShuffleReveal } from "@/lib/navigation/nonMainToShuffleReveal";
@@ -69,7 +70,6 @@ import {
 import { neutralizeMainTabPresentationForNonMainRoute } from "@/lib/navigation/nonMainRouteMainTabIsolation";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
-import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { scheduleStuckTabSurfaceReconcile } from "@/lib/navigation/stuckTabSurfaceReconcile";
 import { settingsPipelineMark } from "@/lib/perf/settingsPipelineTrace";
 
@@ -115,10 +115,18 @@ function armStoriesEntryHandoffScrub() {
 }
 
 function resolveMainTabPanelPath(pathname: string) {
+  const incoming = getIncomingBarTab();
+  if (incoming === "/shuffle") return "/shuffle";
+  if (incoming) return incoming;
+
   const path = pathname.split("?")[0].split("#")[0];
   const onConcreteMainTab =
     (listMainTabKeepAliveHrefs() as readonly string[]).includes(path) &&
     path !== "/shuffle";
+
+  // Shuffle must not keep the previous bar section (usually Chats) as the
+  // painted panel while its own surface is the one the user opened.
+  if (path === "/shuffle") return "/shuffle";
 
   // Once the router is on a concrete main tab, never remap the panel path back
   // to a stale Shuffle entry source (commonly /chats).
@@ -259,6 +267,7 @@ export default function MainTabKeepAliveHost() {
         : path;
     if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(effectivePath)) {
       const href = effectivePath as MainTabHref;
+      syncIncomingBarTab(href);
       markMainTabVisited(href);
       seedPresentedMainTab(href);
       onMainTabRouteChange(effectivePath);
@@ -273,46 +282,8 @@ export default function MainTabKeepAliveHost() {
           storiesEntryHandoffScrubToken += 1;
         }
         if (isShuffleExitToMainTabPending()) {
-          // Stories has no post-auth settle CSS. Force-clearing the exit latch
-          // while "Cargando historias..." is still painted flashes user-visible
-          // loading during Shuffle→Stories / mid-slide supersede. Let the exit
-          // watchdog release once destination loading is gone.
-          if (href === "/stories" && !isNativeAppShell()) {
-            const visual = getTabDestinationVisualReadiness("/stories");
-            const storiesHost =
-              typeof document !== "undefined"
-                ? document.getElementById(
-                    "sayittome-main-tab-keepalive-stories",
-                  )
-                : null;
-            const layoutLoading = storiesHost
-              ? [...storiesHost.querySelectorAll("[data-nav-loading-copy]")].some(
-                  (el) => {
-                    const style = getComputedStyle(el);
-                    const rect = el.getBoundingClientRect();
-                    return (
-                      rect.width >= 8 &&
-                      rect.height >= 8 &&
-                      style.display !== "none"
-                    );
-                  },
-                )
-              : false;
-            if (
-              !visual.hasVisibleLoadingText &&
-              !visual.hasLoadingShell &&
-              !layoutLoading
-            ) {
-              forcePresentMainTabAfterStableExit(href);
-              releaseShuffleTabSurface();
-              clearShuffleExitToMainTab({ destination: href, force: true });
-            }
-          } else {
-            if (isNativeAppShell()) {
-              releaseShuffleTabSurface();
-            }
-            clearShuffleExitToMainTab({ destination: href, force: true });
-          }
+          releaseShuffleTabSurface();
+          clearShuffleExitToMainTab({ destination: href, force: true });
         }
       }
     }

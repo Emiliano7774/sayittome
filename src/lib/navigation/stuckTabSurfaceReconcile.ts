@@ -7,7 +7,10 @@ import {
   isInternalMainTabToShuffleTransitionActive,
 } from "@/lib/navigation/mainTabToShuffleTransition";
 import { activateShuffleTabSurface, releaseShuffleTabSurface } from "@/lib/navigation/shuffleKeepAlive";
-import { clearShuffleExitToMainTab } from "@/lib/navigation/shuffleHandoffState";
+import {
+  clearShuffleExitToMainTab,
+  forcePresentShuffleSurfaceForNonMainReveal,
+} from "@/lib/navigation/shuffleHandoffState";
 
 const RECONCILE_MS = 450;
 const NATIVE_RECONCILE_MS = 80;
@@ -30,6 +33,9 @@ function clearStuckPaintLocks() {
   html.removeAttribute("data-post-settle-route-bridge");
   html.classList.remove("sayittome-shuffle-handoff-pending");
   html.classList.remove("sayittome-main-tab-handoff-pending");
+  html.classList.remove("sayittome-shuffle-exit-handoff-pending");
+  html.removeAttribute("data-shuffle-defer-source");
+  html.removeAttribute("data-shuffle-exit-handoff-target");
 }
 
 /**
@@ -37,7 +43,7 @@ function clearStuckPaintLocks() {
  * for destination-readiness gates that keep the previous section painted.
  */
 export function presentNativeBarSectionNow(expectedPath: string) {
-  if (typeof window === "undefined" || !isNativeAppShell()) return;
+  if (typeof window === "undefined") return;
   const path = normalize(expectedPath);
   if (!isBarPath(path)) return;
 
@@ -53,6 +59,9 @@ export function presentNativeBarSectionNow(expectedPath: string) {
     html.removeAttribute("data-shuffle-exit-handoff-target");
     clearShuffleExitToMainTab({ destination: path, force: true });
     activateShuffleTabSurface({ microSlideSettle: true });
+    forcePresentShuffleSurfaceForNonMainReveal();
+    html.classList.remove("sayittome-shuffle-handoff-pending");
+    html.removeAttribute("data-shuffle-defer-source");
     return;
   }
 

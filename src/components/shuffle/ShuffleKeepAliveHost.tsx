@@ -12,7 +12,6 @@ import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 import { commitPresentedMainTabIfReady, forcePresentMainTabAfterStableExit, isMainTabPrimaryReady } from "@/lib/navigation/atomicMainTabHandoff";
 import { clearQueuedShuffleTriggers } from "@/lib/shuffle/shuffleClickBridge";
 import {
-  beginShuffleExitToMainTab,
   clearShuffleExitToMainTab,
   getShuffleExitMainTabTarget,
   getShuffleHandoffVersion,
@@ -485,28 +484,17 @@ export default function ShuffleKeepAliveHost() {
     const exitTarget = getShuffleExitMainTabTarget();
     if (
       isMainTabPath(path) &&
-      (isShuffleExitToMainTabPending() || isShuffleSurfacePresented())
+      path !== "/shuffle" &&
+      !isInternalMainTabToShuffleTransitionActive() &&
+      (isShuffleExitToMainTabPending() || isShuffleSurfacePresented()) &&
+      (!exitTarget || exitTarget === path)
     ) {
-      if (
-        !requiresStrictPostAuthExit(path) &&
-        (!exitTarget || exitTarget === path)
-      ) {
-        forcePresentMainTabAfterStableExit(path);
-        releaseShuffleTabSurface();
-        clearShuffleExitToMainTab({ destination: path, force: true });
-        pinShuffleWindowWhileAway();
-        clearQueuedShuffleTriggers();
-        resetShuffleGeometryStability();
-      } else if (path === "/stories" && isShuffleExitToMainTabPending()) {
-        // Stories is strict under no-loading: re-arm module watchdog and try a
-        // safe force-release so cancelled layout rAF cannot leave Stories frozen.
-        armShuffleExitNoLoadingWatchdog(path, pathname);
-        forceReleaseShuffleExitIfNoVisibleLoading(
-          path,
-          NO_LOADING_EXIT_FRAME_BUDGET,
-          "layout-stuck-stories-recovery",
-        );
-      }
+      forcePresentMainTabAfterStableExit(path);
+      releaseShuffleTabSurface();
+      clearShuffleExitToMainTab({ destination: path, force: true });
+      pinShuffleWindowWhileAway();
+      clearQueuedShuffleTriggers();
+      resetShuffleGeometryStability();
     }
 
     if (path === "/shuffle") {
@@ -603,207 +591,16 @@ export default function ShuffleKeepAliveHost() {
         reconcileOrphanedShuffleHandoffDom();
       }
     } else if (prev === "/shuffle" && path !== "/shuffle" && isShuffleKeepAliveActive()) {
-      handoffLoopRef.current += 1;
-      const loopId = handoffLoopRef.current;
-
       if (isMainTabPath(path)) {
-        const contractActive = isTabShellNoLoadingTransitionContractActive();
-        const frameBudget = contractActive
-          ? NO_LOADING_EXIT_FRAME_BUDGET
-          : HANDOFF_FRAME_BUDGET;
-        beginShuffleExitToMainTab(path);
-        resetTabDestinationReadinessStability(path);
-        if (contractActive) {
-          if (path === "/boost" || path === "/chats") {
-            beginTabPostAuthStabilityTracking(path, {
-              source: "/shuffle",
-              destination: path,
-              via: "shuffle-exit-layout",
-            });
-          }
-          armShuffleExitNoLoadingWatchdog(path, pathname);
-          traceTabShellNoLoading("TAB_SHELL_NO_LOADING_SOURCE_FROZEN", {
-            source: "/shuffle",
-            destination: path,
-          });
-        }
-        let frames = 0;
-        let cancelled = false;
-
-        const destinationReady = () => {
-          if (contractActive) {
-            const visual = getTabDestinationVisualReadiness(path);
-            return (
-              visual.ready &&
-              !visual.hasLoadingShell &&
-              !visual.hasVisibleLoadingText &&
-              visual.geometryValid &&
-              visual.stableFramesReady
-            );
-          }
-          return isMainTabPrimaryReady(path);
-        };
-
-        const releaseWhenMainTabReady = () => {
-          if (cancelled || handoffLoopRef.current !== loopId) return;
-          frames += 1;
-
-          if (destinationReady()) {
-            const committed = commitPresentedMainTabIfReady(pathname);
-            if (!committed) {
-              if (contractActive) {
-                traceTabShellNoLoading("TAB_HANDOFF_EXIT_WATCHDOG_BLOCKED_LOADING_RELEASE", {
-                  destination: path,
-                  frames,
-                  via: "layout-exit-loop",
-                });
-              }
-              if (frames < frameBudget || (contractActive && frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET)) {
-                requestAnimationFrame(releaseWhenMainTabReady);
-              }
-              return;
-            }
-            releaseShuffleTabSurface();
-            clearShuffleExitToMainTab({ destination: path, force: true });
-            pinShuffleWindowWhileAway();
-            clearQueuedShuffleTriggers();
-            resetShuffleGeometryStability();
-            if (contractActive) {
-              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", {
-                source: "/shuffle",
-                destination: path,
-                frames,
-              });
-            }
-            return;
-          }
-
-          // Non-auth destinations (Stories/Settings): never stay latched in
-          // exit-handoff. Exit CSS hides destination loading, so waiting on
-          // visual readiness here caused Shuffle→Stories blank desync.
-          if (!requiresStrictPostAuthExit(path) && frames >= 45) {
-            forcePresentMainTabAfterStableExit(path);
-            releaseShuffleTabSurface();
-            clearShuffleExitToMainTab({ destination: path, force: true });
-            pinShuffleWindowWhileAway();
-            clearQueuedShuffleTriggers();
-            resetShuffleGeometryStability();
-            if (contractActive) {
-              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", {
-                source: "/shuffle",
-                destination: path,
-                frames,
-                via: "non-auth-early-settle",
-              });
-            }
-            return;
-          }
-
-          if (frames < frameBudget) {
-            if (contractActive && frames % 30 === 0) {
-              const visual = getTabDestinationVisualReadiness(path);
-              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_DESTINATION_REVEAL_BLOCKED", {
-                destination: path,
-                reason: visual.reason,
-                frames,
-              });
-            }
-            requestAnimationFrame(releaseWhenMainTabReady);
-            return;
-          }
-
-          // Soft timeout: under no-loading contract, never reveal a loading destination.
-          if (contractActive) {
-            const visual = getTabDestinationVisualReadiness(path);
-            if (frames === frameBudget || frames % 60 === 0) {
-              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_DESTINATION_READY_TIMEOUT", {
-                destination: path,
-                frames,
-                visual,
-              });
-            }
-            // After soft budget: if loading is only CSS-hidden (or latch-suppressed),
-            // force-present so exit-handoff cannot exceed probe canonical-idle window.
-            if (
-              requiresStrictPostAuthExit(path) &&
-              forceReleaseShuffleExitIfNoVisibleLoading(
-                path,
-                frames,
-                "layout-exit-soft-budget-visual-clear",
-              )
-            ) {
-              return;
-            }
-            // Safe settle for non-auth tabs (Stories/Settings): never latch forever
-            // waiting for content-root readiness. Force-present destination so
-            // Shuffle→Stories cannot stick in exit-handoff with all panels frozen.
-            if (
-              !requiresStrictPostAuthExit(path) &&
-              !visual.hasLoadingShell &&
-              !visual.hasVisibleLoadingText
-            ) {
-              const committed = commitPresentedMainTabIfReady(pathname);
-              if (!committed) {
-                forcePresentMainTabAfterStableExit(path);
-              }
-              releaseShuffleTabSurface();
-              clearShuffleExitToMainTab({ destination: path, force: true });
-              pinShuffleWindowWhileAway();
-              clearQueuedShuffleTriggers();
-              resetShuffleGeometryStability();
-              traceTabShellNoLoading("TAB_SHELL_NO_LOADING_READY", {
-                source: "/shuffle",
-                destination: path,
-                frames,
-                via: committed ? "safe-settle" : "safe-settle-force-present",
-              });
-              return;
-            }
-            if (path === "/boost") {
-              traceTabShellNoLoading("TAB_HANDOFF_RELEASE_BLOCKED_BY_BOOST_LOADING", {
-                frames,
-                reason: visual.reason,
-                via: "soft-timeout-no-boost-soft-settle",
-              });
-            }
-            // Still not safe — keep polling until absolute budget.
-            if (frames < NO_LOADING_EXIT_ABSOLUTE_BUDGET) {
-              requestAnimationFrame(releaseWhenMainTabReady);
-              return;
-            }
-            // Absolute give-up: if no VISIBLE loading, force-present so exit cannot latch.
-            if (
-              forceReleaseShuffleExitIfNoVisibleLoading(
-                path,
-                frames,
-                "layout-exit-absolute",
-              )
-            ) {
-              return;
-            }
-            // Absolute give-up with visible loading still present: keep Shuffle frozen.
-            pinShuffleWindowWhileAway();
-            clearQueuedShuffleTriggers();
-            resetShuffleGeometryStability();
-            return;
-          }
-
-          releaseShuffleTabSurface();
-          clearShuffleExitToMainTab({ destination: path, force: true });
-          pinShuffleWindowWhileAway();
-          clearQueuedShuffleTriggers();
-          resetShuffleGeometryStability();
-        };
-
-        requestAnimationFrame(releaseWhenMainTabReady);
-        return () => {
-          cancelled = true;
-          if (contractActive) {
-            traceTabShellNoLoading("TAB_SHELL_NO_LOADING_CANCELLED", {
-              destination: path,
-            });
-          }
-        };
+        // The tapped section is already mounted. Waiting for its loading text
+        // keeps Shuffle, or the previous Chats screen, painted.
+        forcePresentMainTabAfterStableExit(path);
+        releaseShuffleTabSurface();
+        clearShuffleExitToMainTab({ destination: path, force: true });
+        pinShuffleWindowWhileAway();
+        clearQueuedShuffleTriggers();
+        resetShuffleGeometryStability();
+        return;
       }
 
       parkShuffleKeepAliveForNonMainRoute();

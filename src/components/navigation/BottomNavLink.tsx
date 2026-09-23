@@ -10,10 +10,9 @@ import {
 } from "@/lib/chat/pendingChatSends";
 import { fastMainTabHistoryPush } from "@/lib/navigation/fastNavigate";
 import {
-  hasMainTabBeenVisited,
+  armIncomingBarTab,
   markMainTabVisited,
   pinMainTabKeepAlive,
-  setPendingVisualTab,
 } from "@/lib/navigation/mainTabKeepAlive";
 import { isMainTabHref } from "@/lib/navigation/mainTabs";
 import {
@@ -22,9 +21,7 @@ import {
   pinShuffleWindowWhileAway,
 } from "@/lib/navigation/shuffleKeepAlive";
 import {
-  beginShuffleExitToMainTab,
   clearStaleShuffleEntryHandoffForMainTabDestination,
-  ensureShuffleExitNoLoadingWatchdog,
 } from "@/lib/navigation/shuffleHandoffState";
 import {
   abortMainTabToShuffleTransition,
@@ -34,6 +31,7 @@ import {
   noteConcreteMainTabSupersede,
 } from "@/lib/navigation/mainTabToShuffleTransition";
 import type { MainTabHref } from "@/lib/navigation/mainTabs";
+import { presentNativeBarSectionNow } from "@/lib/navigation/stuckTabSurfaceReconcile";
 import { isTabShellNoLoadingTransitionContractActive } from "@/lib/navigation/tabDestinationReadiness";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import {
@@ -94,17 +92,9 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     // so promote Shuffle→Stories (mid-slide or settled) to an exit latch until
     // Stories is no-loading ready.
     if (isConcreteMainTabHref(href)) {
-      const dest = href as Exclude<MainTabHref, "/shuffle">;
-      const fromShuffle =
-        typeof window !== "undefined" &&
-        window.location.pathname.split("?")[0].split("#")[0] === "/shuffle";
-      if (dest === "/stories" && (wasInFlightShuffle || fromShuffle) && !isNativeAppShell()) {
-        beginShuffleExitToMainTab(dest);
-        // Layout effect can miss arming if prevPath already advanced past /shuffle.
-        ensureShuffleExitNoLoadingWatchdog(dest);
-      } else {
-        clearStaleShuffleEntryHandoffForMainTabDestination(dest);
-      }
+      clearStaleShuffleEntryHandoffForMainTabDestination(
+        href as Exclude<MainTabHref, "/shuffle">,
+      );
     }
   }
 
@@ -173,12 +163,8 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     }
 
     if (isMainTabHref(href) && href !== "/shuffle") {
-      const wasVisited = hasMainTabBeenVisited(href);
       pinMainTabKeepAlive();
       markMainTabVisited(href);
-      if (wasVisited) {
-        setPendingVisualTab(href);
-      }
     }
   }
 
@@ -186,6 +172,12 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     supersedeInFlightShuffle("navigation-replaced");
     softPushFromPointerDownRef.current = hrefTo;
     scheduleMainTabHistory(hrefTo, "bottom-nav-pointerdown-history");
+  }
+
+  function paintBarSection(hrefTo: string) {
+    if (!isMainTabHref(hrefTo)) return;
+    armIncomingBarTab(hrefTo);
+    presentNativeBarSectionNow(hrefTo);
   }
 
   function onPointerDown() {
@@ -197,13 +189,9 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     // During an active micro-slide the nav hit-target can briefly collapse
     // (0×0) and the subsequent click never fires. Commit on pointerdown so the
     // Stories/Chats/Boost/Settings tap cannot be swallowed.
-    const mustCommitDuringHandoff =
-      blockMainTabNavigationDuringSlide() ||
-      isInternalMainTabToShuffleTransitionActive();
     warmTab({ allowSupersede: true });
-    if (mustCommitDuringHandoff) {
-      commitConcreteMainTabHistory(href);
-    }
+    paintBarSection(href);
+    commitConcreteMainTabHistory(href);
   }
 
   function onMainTabClick(event: React.MouseEvent<HTMLAnchorElement>) {
@@ -251,6 +239,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     }
 
     scheduleMainTabHistory(href, "bottom-nav-main-tab-history");
+    paintBarSection(href);
   }
 
   if (forceSoftMainTabNav) {

@@ -8,7 +8,8 @@ import BottomNavLink from "@/components/navigation/BottomNavLink";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
-import { resolveEffectiveMainTab } from "@/lib/navigation/mainTabKeepAlive";
+import { armIncomingBarTab, resolveEffectiveMainTab } from "@/lib/navigation/mainTabKeepAlive";
+import { presentNativeBarSectionNow } from "@/lib/navigation/stuckTabSurfaceReconcile";
 import {
   getCurrentMainTabPathname,
   getMainTabInternalPathnameVersion,
@@ -24,7 +25,7 @@ import {
   completeWarmShuffleTabNavigation,
   prepareMainTabToShuffleNavigation,
 } from "@/lib/navigation/warmShuffleTabNavigation";
-import { blockMainTabNavigationDuringSlide, getMainTabToShufflePhase } from "@/lib/navigation/mainTabToShuffleTransition";
+import { abortMainTabToShuffleTransition, blockMainTabNavigationDuringSlide, getMainTabToShufflePhase } from "@/lib/navigation/mainTabToShuffleTransition";
 import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
 
 type NavItem =
@@ -62,11 +63,13 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
   }
 
   function openShuffleTab(event?: { preventDefault: () => void }) {
-    // <a href="/shuffle"> is the progressive fallback when JS has not hydrated.
-    // When hydrated, preventDefault + instant same-document commit owns navigation.
     event?.preventDefault();
-    if (blockMainTabNavigationDuringSlide()) return;
+    if (blockMainTabNavigationDuringSlide()) {
+      abortMainTabToShuffleTransition("bar-instant-shuffle");
+    }
     if (!navSelectable || isNonMainRoute(pathname)) {
+      armIncomingBarTab("/shuffle");
+      presentNativeBarSectionNow("/shuffle");
       commitNonMainRouteToShuffleNavigation(router, fastRouterPush, pathname);
       return;
     }
@@ -74,19 +77,17 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
       beginWarmShuffleTabNavigation(pathname, { triggerType: "user-main-tab-click" });
     }
     completeWarmShuffleTabNavigation(router, fastRouterPush, pathname);
+    armIncomingBarTab("/shuffle");
+    presentNativeBarSectionNow("/shuffle");
   }
 
   function warmShuffleTabPointerDown() {
+    if (pathname === "/shuffle") return;
     if (blockMainTabNavigationDuringSlide()) {
-      prepareMainTabToShuffleNavigation(pathname, {
-        blockedDuringSlide: true,
-        triggerType: "user-main-tab-pointerdown",
-      });
-      return;
+      abortMainTabToShuffleTransition("bar-instant-shuffle");
     }
-    if (pathname !== "/shuffle") {
-      prepareMainTabToShuffleNavigation(pathname, { triggerType: "user-main-tab-pointerdown" });
-    }
+    armIncomingBarTab("/shuffle");
+    presentNativeBarSectionNow("/shuffle");
   }
 
   function warmShuffleTabPointerEnter() {
@@ -157,12 +158,18 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
             return (
               <a
                 key={item.id}
-                href="/shuffle"
+                role="button"
+                tabIndex={0}
                 data-nav-tab="shuffle"
                 data-sayittome-main-tab-shuffle-href="1"
                 onPointerDown={warmShuffleTabPointerDown}
                 onPointerEnter={warmShuffleTabPointerEnter}
                 onClick={openShuffleTab}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  openShuffleTab(event);
+                }}
                 className="flex h-full flex-1 appearance-none items-center justify-center border-0 bg-transparent p-0 no-underline"
                 aria-label={t("nav_shuffle_refresh")}
               >

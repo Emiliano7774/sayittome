@@ -523,6 +523,43 @@ html.sayittome-shuffle-exit-handoff-pending #sayittome-main-tab-keepalive-settin
   pointer-events: none !important;
 }
 
+/* A concrete bar section already owns the route. Do not keep Shuffle, or the
+   previous Chats underlay, painted over it. */
+html[data-sayittome-route-kind="main-tab"].sayittome-shuffle-exit-handoff-pending:not(
+    [data-sayittome-route-kind="profile"]
+  ):not([data-sayittome-route-kind="profile-chat"]):not(
+    [data-sayittome-route-kind="chat-thread"]
+  ):not([data-sayittome-route-kind="non-main"])
+  #sayittome-shuffle-keepalive-host {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+/* The selected bar panel stays visible even if an exit latch is still on html. */
+html.sayittome-shuffle-exit-handoff-pending
+  #sayittome-main-tab-keepalive-stories.sayittome-main-tab-keepalive-visible,
+html.sayittome-shuffle-exit-handoff-pending
+  #sayittome-main-tab-keepalive-chats.sayittome-main-tab-keepalive-visible,
+html.sayittome-shuffle-exit-handoff-pending
+  #sayittome-main-tab-keepalive-boost.sayittome-main-tab-keepalive-visible,
+html.sayittome-shuffle-exit-handoff-pending
+  #sayittome-main-tab-keepalive-settings.sayittome-main-tab-keepalive-visible,
+html.sayittome-main-tab-handoff-pending
+  #sayittome-main-tab-keepalive-stories.sayittome-main-tab-keepalive-visible,
+html.sayittome-main-tab-handoff-pending
+  #sayittome-main-tab-keepalive-chats.sayittome-main-tab-keepalive-visible,
+html.sayittome-main-tab-handoff-pending
+  #sayittome-main-tab-keepalive-boost.sayittome-main-tab-keepalive-visible,
+html.sayittome-main-tab-handoff-pending
+  #sayittome-main-tab-keepalive-settings.sayittome-main-tab-keepalive-visible {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 4 !important;
+}
+
 /* Native bar: a leftover exit/entry latch must not keep the previous section
    painted over the one that was just selected. */
 html.sayittome-native-shell.sayittome-shuffle-exit-handoff-pending:not(

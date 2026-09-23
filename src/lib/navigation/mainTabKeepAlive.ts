@@ -1,19 +1,4 @@
 import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
-import {
-  getPresentedMainTab,
-  isAtomicMainTabHandoffActive,
-} from "@/lib/navigation/atomicMainTabHandoff";
-import {
-  getShuffleDeferSourcePath,
-  isShuffleExitToMainTabPending,
-  isShuffleRevealDeferred,
-  isShuffleSurfacePresented,
-} from "@/lib/navigation/shuffleHandoffState";
-import { isShuffleKeepAliveActive } from "@/lib/navigation/shuffleKeepAlive";
-import {
-  getMainTabToShuffleTransaction,
-  isMainTabToShufflePresentationOwned,
-} from "@/lib/navigation/mainTabToShuffleTransition";
 import { isVisualFirstTabsEnabled } from "@/lib/perf/instantaneityFlags";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 
@@ -26,6 +11,8 @@ function normalizePath(pathname: string) {
 let keepAliveActive = false;
 let keepAliveVersion = 0;
 let pendingVisualTab: MainTabHref | null = null;
+/** Bar tap target painted before the URL catches up. */
+let incomingBarTab: MainTabHref | null = null;
 const visitedTabs = new Set<MainTabHref>();
 const listeners = new Set<() => void>();
 
@@ -116,79 +103,46 @@ export function clearPendingVisualTab() {
   notifyListeners();
 }
 
+/** Paint a bottom-bar section in this turn, before history and readiness gates. */
+export function armIncomingBarTab(href: MainTabHref) {
+  incomingBarTab = href;
+  if (href !== "/shuffle") {
+    pinMainTabKeepAlive();
+    markMainTabVisited(href);
+  }
+  notifyListeners();
+}
+
+export function getIncomingBarTab() {
+  return incomingBarTab;
+}
+
+export function syncIncomingBarTab(pathname: string) {
+  const path = normalizePath(pathname);
+  if (!incomingBarTab || path !== incomingBarTab) return;
+  incomingBarTab = null;
+  notifyListeners();
+}
+
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
   const path = normalizePath(pathname);
-  const onConcreteMainTab =
-    (MAIN_TAB_HREFS as readonly string[]).includes(path) && path !== "/shuffle";
 
-  // Shuffle→main exit latch: hide all main panels while Shuffle still owns paint.
-  if (isShuffleExitToMainTabPending()) {
-    return false;
-  }
-
-  // Profile (/u/...), chat threads (/chat/...), and any other non-main-tab route:
-  // keep panels mounted for instant return, but never paint sticky presented /
-  // pending / handoff tabs underneath in-flow pages (transparent stack / double UI).
   if (!(MAIN_TAB_HREFS as readonly string[]).includes(path)) {
     return false;
   }
 
-  // While already on a concrete main-tab route, pathname/presented win over stale
-  // main→shuffle ownership or entry defer (e.g. /stories must never paint /chats).
-  if (!onConcreteMainTab && isMainTabToShufflePresentationOwned()) {
-    const source = getMainTabToShuffleTransaction()?.source;
-    if (source) {
-      return href === (`/${source}` as MainTabHref);
-    }
+  if (incomingBarTab === "/shuffle") return false;
+  if (incomingBarTab && incomingBarTab !== "/shuffle") {
+    return href === incomingBarTab;
   }
 
-  if (path === "/shuffle") {
-    if (isShuffleSurfacePresented()) {
-      return false;
-    }
-    if (isShuffleRevealDeferred()) {
-      return getShuffleDeferSourcePath() === href;
-    }
-    if (isShuffleKeepAliveActive() && !isShuffleSurfacePresented()) {
-      return getShuffleDeferSourcePath() === href;
-    }
-    return false;
+  // The live bar URL owns the screen. A shuffle-exit latch must not keep Chats
+  // painted over Stories, Boost, or Settings.
+  if (path !== "/shuffle") {
+    return path === href;
   }
 
-  if (isAtomicMainTabHandoffActive()) {
-    const presented = getPresentedMainTab(pathname);
-    // If handoff presented lags behind an already-routed destination, prefer route.
-    if (
-      onConcreteMainTab &&
-      (MAIN_TAB_HREFS as readonly string[]).includes(presented) &&
-      presented !== path
-    ) {
-      return path === href;
-    }
-    return presented === href;
-  }
-
-  // Entry defer must not outlive landing on a different main tab.
-  if (isShuffleRevealDeferred() && !onConcreteMainTab) {
-    return getShuffleDeferSourcePath() === href;
-  }
-
-  if (
-    isVisualFirstTabsEnabled() &&
-    pendingVisualTab === href &&
-    hasMainTabBeenVisited(href)
-  ) {
-    return true;
-  }
-
-  const presented = getPresentedMainTab(pathname);
-  if ((MAIN_TAB_HREFS as readonly string[]).includes(presented)) {
-    if (onConcreteMainTab && presented !== path) {
-      return path === href;
-    }
-    return presented === href;
-  }
-  return path === href;
+  return false;
 }
 
 export function shouldMountMainTabPanel(pathname: string, href: MainTabHref) {
