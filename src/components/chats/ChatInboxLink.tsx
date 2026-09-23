@@ -53,7 +53,7 @@ export default function ChatInboxLink({ href, className, children, ...rest }: Pr
       onPointerEnter={warmThread}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
-        openChat(titleFrom(event.currentTarget));
+        warmThread();
       }}
       onClick={(event) => {
         event.preventDefault();

@@ -69,4 +69,38 @@ assert.equal(
   "own photo stays hidden when the uid already matches",
 );
 
+const firstPaintIncoming = {
+  ...incoming,
+  targetUsername: "",
+  targetUid: "",
+  receptorUid: "",
+  anonOwnerUid: "",
+  participantes: [ownerUid, "anon_r121522"],
+};
+assert.equal(
+  peer.shouldShowAnonPeerInbox(firstPaintIncoming, ownerUid, ""),
+  true,
+  "unresolved first paint must fail closed to the anon avatar",
+);
+assert.equal(
+  peer.shouldHidePeerProfilePhoto(firstPaintIncoming, ownerUid, "", ""),
+  true,
+  "targetPhoto must stay hidden before the owner profile hydrates",
+);
+
+const outgoingByTargetUid = {
+  ...outgoing,
+  anonSessionId: "anon_old_session",
+  participantes: ["anon_old_session", "otherUid"],
+};
+assert.equal(
+  peer.shouldShowAnonPeerInbox(outgoingByTargetUid, ownerUid, ""),
+  false,
+  "a stable different target uid keeps outgoing chats on the profile avatar",
+);
+assert.equal(
+  peer.shouldHidePeerProfilePhoto(outgoingByTargetUid, ownerUid, "", ownerPhoto),
+  false,
+);
+
 console.log("inbox-anon-avatar harness: PASS");

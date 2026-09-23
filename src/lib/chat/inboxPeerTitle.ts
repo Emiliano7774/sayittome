@@ -116,9 +116,28 @@ export function isAnonVisitorProfileChat(chat: InboxChat, firebaseUid = "") {
   if (liveAnonId.startsWith("anon_")) {
     const members = chat.participantes || [];
     if (members.includes(liveAnonId)) return true;
-    // Live anon present and viewer is not profile owner ⇒ visitor context even
-    // when session regenerated away from chatId (inbox still keyed by thread).
-    return true;
+  }
+
+  return false;
+}
+
+function profileAnonThreadTargetsOtherViewer(
+  chat: InboxChat,
+  viewerUid?: string,
+  viewerUsername?: string,
+) {
+  const uid = String(viewerUid || "").trim();
+  const targetUids = [chat.targetUid, chat.receptorUid, chat.anonOwnerUid]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  if (uid && targetUids.length > 0) {
+    return targetUids.every((targetUid) => targetUid !== uid);
+  }
+
+  const username = String(viewerUsername || "").trim();
+  if (username) {
+    return !profileAnonThreadTargetsUsername(chat, username);
   }
 
   return false;
@@ -137,7 +156,14 @@ export function isProfilePeerForInbox(
     return false;
   }
 
-  return true;
+  if (isAnonVisitorProfileChat(chat, firebaseUid || "")) {
+    return true;
+  }
+
+  // A profile-anon document stores the target profile's photo. Until there is
+  // stable evidence that this viewer is the outgoing visitor, fail closed to
+  // the anonymous avatar so the owner's photo can never flash on first paint.
+  return profileAnonThreadTargetsOtherViewer(chat, firebaseUid, viewerUsername);
 }
 
 export function chatPeerTitle(
