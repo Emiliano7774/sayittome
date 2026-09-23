@@ -284,7 +284,8 @@ export default function StoryViewer({
     errored: frontError,
     durationMs: current?.durationMs,
   });
-  const isPaused = paused || replyOpen || (needsBlur && blurLocked) || !playbackReady;
+  const playbackHeld = paused || replyOpen || reportOpen || (needsBlur && blurLocked);
+  const isPaused = playbackHeld || !playbackReady;
   const canDelete = current ? canManageStory(current, ownerKey || getStoryOwnerKey()) : false;
   const likerId = getLikerId();
   const storyLiked = Boolean(likerId && current?.likedBy?.[likerId]);
@@ -795,7 +796,7 @@ export default function StoryViewer({
       <div
         className={[
           "absolute inset-0 z-20 touch-none",
-          replyOpen ? "pointer-events-none" : "",
+          replyOpen || reportOpen ? "pointer-events-none" : "",
         ].join(" ")}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -811,6 +812,7 @@ export default function StoryViewer({
             nextStory={nextStory}
             needsBlur={needsBlur}
             blurLocked={blurLocked}
+            playbackHeld={playbackHeld}
             onNextReadyChange={setNextMediaReady}
             onFrontReady={() => {
               setFrontReady(true);

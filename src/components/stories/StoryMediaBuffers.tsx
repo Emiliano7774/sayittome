@@ -36,6 +36,8 @@ type Props = {
   nextStory: StoryItem | null;
   needsBlur: boolean;
   blurLocked: boolean;
+  /** Freeze the visible video while a story sheet (report, reply, hold) is open. */
+  playbackHeld?: boolean;
   onNextReadyChange?: (ready: boolean) => void;
   onFrontReady?: () => void;
   onFrontError?: () => void;
@@ -57,6 +59,7 @@ export default function StoryMediaBuffers({
   nextStory,
   needsBlur,
   blurLocked,
+  playbackHeld = false,
   onNextReadyChange,
   onFrontReady,
   onFrontError,
@@ -194,7 +197,7 @@ export default function StoryMediaBuffers({
         visible: true,
       });
     }
-    if (el && "play" in el) {
+    if (el && "play" in el && !playbackHeld) {
       void (el as HTMLVideoElement).play?.().catch(() => {});
     }
     if (el && "readyState" in el && Number((el as HTMLVideoElement).readyState || 0) >= 2) {
@@ -205,7 +208,22 @@ export default function StoryMediaBuffers({
       };
       queueMicrotask(() => markSlotReady(readyEvent));
     }
-  }, [active, current.id, emitMetadata, markSlotReady, slots]);
+  }, [active, current.id, emitMetadata, markSlotReady, playbackHeld, slots]);
+
+  useEffect(() => {
+    const el = refs[active].current;
+    if (!el || !("pause" in el)) return;
+    const video = el as HTMLVideoElement;
+    if (playbackHeld) {
+      video.pause();
+      const keepPaused = () => {
+        video.pause();
+      };
+      video.addEventListener("play", keepPaused);
+      return () => video.removeEventListener("play", keepPaused);
+    }
+    void video.play?.().catch(() => {});
+  }, [active, current.id, playbackHeld]);
 
   useEffect(() => {
     if (!back.mediaUrl || back.ready || back.errored) return undefined;
@@ -237,7 +255,7 @@ export default function StoryMediaBuffers({
           key={mediaSlotDomKey(slotId)}
           src={slot.mediaUrl}
           className={mediaClass(needsBlur, blurLocked, visible)}
-          autoPlay={visible}
+          autoPlay={visible && !playbackHeld}
           playsInline
           muted={!visible}
           preload={visible ? "auto" : "metadata"}
