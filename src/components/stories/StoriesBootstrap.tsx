@@ -11,6 +11,16 @@ import { resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/s
 import { refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
 
 const STORIES_REFRESH_MS = 10 * 60_000;
+const STORIES_QUIET_REFRESH_MS = 10_000;
+
+function quietStoriesRefresh(pathname: string) {
+  return (
+    pathname === "/stories" ||
+    pathname.startsWith("/stories/") ||
+    pathname === "/chats" ||
+    pathname.startsWith("/chat/")
+  );
+}
 
 export default function StoriesBootstrap() {
   const pathname = usePathname();
@@ -20,6 +30,7 @@ export default function StoriesBootstrap() {
     () => shouldEnableStoriesRefresh(pathname),
     [pathname],
   );
+  const quietRefresh = useMemo(() => quietStoriesRefresh(pathname), [pathname]);
   const pollingActive = storiesRouteEnabled && !documentHidden;
 
   useEffect(() => {
@@ -50,16 +61,16 @@ export default function StoriesBootstrap() {
       if (!authSettled) return;
       void resolveStoryViewerIdReady().then((viewerKey) => {
         if (cancelled || !viewerKey) return;
-        refreshStoriesIndex(viewerKey, false).catch(() => {});
+        refreshStoriesIndex(viewerKey, quietRefresh).catch(() => {});
       });
-    }, STORIES_REFRESH_MS);
+    }, quietRefresh ? STORIES_QUIET_REFRESH_MS : STORIES_REFRESH_MS);
 
     return () => {
       cancelled = true;
       unsub();
       window.clearInterval(timer);
     };
-  }, [pollingActive]);
+  }, [pollingActive, quietRefresh]);
 
   return null;
 }

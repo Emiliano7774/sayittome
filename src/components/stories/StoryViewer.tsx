@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Heart, Send, Trash2, UserRound, X, Flag } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -36,7 +36,9 @@ import {
 import {
   getCachedStoryGroups,
   getPreviousStoryGroup,
+  getStoriesIndexVersion,
   markStoryViewedLocally,
+  subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import {
   firstUnseenStoryIndex,
@@ -144,23 +146,41 @@ export default function StoryViewer({
     viewerUid,
   ].join("|");
   const [appliedStoryKey, setAppliedStoryKey] = useState(incomingStoryKey);
+  const storiesIndexVersion = useSyncExternalStore(
+    subscribeStoriesIndex,
+    getStoriesIndexVersion,
+    getStoriesIndexVersion,
+  );
   if (appliedStoryKey !== incomingStoryKey) {
+    const routeOwner = ownerUid || stories[0]?.ownerUid || "";
+    const stillOnRouteOwner = !activeOwnerUid || activeOwnerUid === routeOwner;
+    const previousId = localStories[index]?.id || "";
+    const keptIndex = previousId
+      ? stories.findIndex((story) => story.id === previousId)
+      : -1;
     setAppliedStoryKey(incomingStoryKey);
-    setLocalStories(stories);
-    if (ownerUid) setActiveOwnerUid(ownerUid);
-    if (ownerUsername) setActiveOwnerUsername(ownerUsername);
-    setReplayLocked(
-      Boolean(viewerUid) &&
-        shouldReplayStoryPlayback({
-          stories,
-          viewerId: viewerUid,
-          initialStoryId,
-          isUnseen: isStoryUnseenForViewer,
-        }),
-    );
-    setIndex(viewerUid ? initialStoryIndex(stories, initialStoryId, viewerUid) : 0);
-    setFrontReady(false);
-    setFrontError(false);
+    const appliedViewer = appliedStoryKey.split("|").pop() || "";
+    const viewerChanged = appliedViewer !== (viewerUid || "");
+    if (stillOnRouteOwner && keptIndex >= 0 && !viewerChanged) {
+      setLocalStories(stories);
+      if (keptIndex !== index) setIndex(keptIndex);
+    } else if (stillOnRouteOwner) {
+      setLocalStories(stories);
+      if (ownerUid) setActiveOwnerUid(ownerUid);
+      if (ownerUsername) setActiveOwnerUsername(ownerUsername);
+      setReplayLocked(
+        Boolean(viewerUid) &&
+          shouldReplayStoryPlayback({
+            stories,
+            viewerId: viewerUid,
+            initialStoryId,
+            isUnseen: isStoryUnseenForViewer,
+          }),
+      );
+      setIndex(viewerUid ? initialStoryIndex(stories, initialStoryId, viewerUid) : 0);
+      setFrontReady(false);
+      setFrontError(false);
+    }
   }
 
   useEffect(() => {
@@ -211,7 +231,7 @@ export default function StoryViewer({
         isUnseen: isStoryUnseenForViewer,
         groupIsUnseen: groupIsUnseenForViewer,
       }),
-    [index, localStories, replayLocked, resolvedOwnerUid, viewerUid],
+    [index, localStories, replayLocked, resolvedOwnerUid, storiesIndexVersion, viewerUid],
   );
   const nextStory = useMemo(() => {
     if (nextTarget.kind === "same-group") {

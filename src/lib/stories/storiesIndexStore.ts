@@ -136,6 +136,12 @@ const byUid = new Map<string, StoryUserGroup>();
 const byUsername = new Map<string, StoryUserGroup>();
 const listeners = new Set<() => void>();
 
+function storyMembershipKey(groups: StoryUserGroup[]) {
+  return groups
+    .map((group) => `${group.ownerUid}:${group.stories.map((story) => story.id).join(",")}`)
+    .join("|");
+}
+
 function notify() {
   version += 1;
   // Mark hydrated after any successful index materialization, including empty.
@@ -231,11 +237,14 @@ export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = fal
       if (!live()) return;
       viewerUid = requestViewer;
       const nextGroups = preserveViewerSeenState(groups, previousByUid, requestViewer);
-      cachedGroups = nextGroups;
-      rebuildLookupMaps(nextGroups);
+      const membershipChanged =
+        viewerChanged || storyMembershipKey(nextGroups) !== storyMembershipKey(cachedGroups);
       lastFetch = Date.now();
       hasMaterialized = true;
       snapshotTruncated = didTruncateStoriesSnapshot(nextGroups);
+      if (!membershipChanged) return;
+      cachedGroups = nextGroups;
+      rebuildLookupMaps(nextGroups);
       writeStoriesSnapshot(requestViewer, nextGroups, { source: "network", now: lastFetch });
       recordStoryIndexTiming({ phase: "query", ms: queryMs });
       notify();
