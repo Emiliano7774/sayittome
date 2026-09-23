@@ -132,7 +132,7 @@ export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
   }
 
   if (incomingBarTab === "/shuffle") return false;
-  if (incomingBarTab && incomingBarTab !== "/shuffle") {
+  if (incomingBarTab) {
     return href === incomingBarTab;
   }
 
