@@ -3,9 +3,13 @@
 import { useRouter } from "next/navigation";
 
 import ChatInboxAvatar from "@/components/chats/ChatInboxAvatar";
+import { useAuth } from "@/contexts/AuthContext";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { chatHref, resolveChatUsername, type InboxChat } from "@/hooks/useChatsInbox";
-import { shouldHidePeerProfilePhoto } from "@/lib/chat/inboxPeerTitle";
+import {
+  shouldHidePeerProfilePhoto,
+  shouldShowAnonPeerInbox,
+} from "@/lib/chat/inboxPeerTitle";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { clearMainTabShellOverlay } from "@/lib/navigation/mainTabShellBridge";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
@@ -34,10 +38,19 @@ export default function ChatInboxPeerAvatar({
   anonKey = "",
 }: Props) {
   const router = useRouter();
+  const { profile } = useAuth();
+  const viewerUsername = String(profile?.username || "");
+  const viewerPhoto = String(profile?.fotoPrincipal || "");
   const profileUsername = resolveChatUsername(chat);
   const ownerUid = String(chat.targetUid || chat.receptorUid || "");
-  const story = useStoryStatus(ownerUid, profileUsername);
-  const hidePhoto = shouldHidePeerProfilePhoto(chat, viewerUid);
+  const hidePhoto = shouldHidePeerProfilePhoto(
+    chat,
+    viewerUid,
+    viewerUsername,
+    viewerPhoto,
+  );
+  const showAnon = anonAvatar || shouldShowAnonPeerInbox(chat, viewerUid, viewerUsername) || hidePhoto;
+  const story = useStoryStatus(hidePhoto ? "" : ownerUid, hidePhoto ? "" : profileUsername);
 
   function openChat() {
     clearMainTabShellOverlay();
@@ -76,12 +89,12 @@ export default function ChatInboxPeerAvatar({
       }
     >
       <ChatInboxAvatar
-        photo={photo}
+        photo={showAnon ? "" : photo}
         username={username}
         size={size}
         blurPhoto={blurPhoto}
         variant={variant}
-        anonAvatar={anonAvatar}
+        anonAvatar={showAnon}
         anonKey={anonKey}
       />
     </button>

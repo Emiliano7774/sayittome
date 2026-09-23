@@ -18,6 +18,7 @@ import { isMessageSeenByOther } from "@/lib/chat/messageReceipt";
 import { getLocalChatReadVersion, subscribeLocalChatRead } from "@/lib/chat/localChatRead";
 import { inboxChatBlur, inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
 import type { useChatsSelection } from "@/hooks/useChatsSelection";
+import { useAuth } from "@/contexts/AuthContext";
 import { useT } from "@/contexts/LocaleContext";
 import { restoreChatsListScroll } from "@/lib/navigation/chatsListScrollStore";
 import { useEffect, useSyncExternalStore } from "react";
@@ -55,8 +56,11 @@ function ClassicChatRow({
   isAnonPeer: boolean;
   anonKey: string;
 }) {
+  const { profile } = useAuth();
+  const viewerUsername = String(profile?.username || "");
+  const viewerPhoto = String(profile?.fotoPrincipal || "");
   const chatViewerId = resolveChatViewerId(chat, uid);
-  const title = chatPeerTitle(chat, uid);
+  const title = chatPeerTitle(chat, uid, viewerUsername);
   const lastSender = String(chat.lastMessageSender || "").trim();
   const timeLabel = formatClassicInboxTime(chat, chatViewerId, t, uid);
   const mine = isOwnInboxLastSender(chat, chatViewerId, uid);
@@ -75,7 +79,9 @@ function ClassicChatRow({
       <ChatInboxPeerAvatar
         chat={chat}
         viewerUid={uid}
-        photo={shouldHidePeerProfilePhoto(chat, uid) ? "" : photo}
+        photo={
+          shouldHidePeerProfilePhoto(chat, uid, viewerUsername, viewerPhoto) ? "" : photo
+        }
         username={title}
         size="md"
         blurPhoto={blurPhoto}
@@ -149,6 +155,8 @@ export default function ClassicChatsInbox({
   selection,
 }: Props) {
   const t = useT();
+  const { profile } = useAuth();
+  const viewerUsername = String(profile?.username || "");
   const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
 
@@ -193,8 +201,7 @@ export default function ClassicChatsInbox({
         ) : (
           <div data-nav-chats-primary>
           {sortedChats.map((chat) => {
-            const title = chatPeerTitle(chat, uid);
-            const isAnonPeer = shouldShowAnonPeerInbox(chat, uid);
+            const isAnonPeer = shouldShowAnonPeerInbox(chat, uid, viewerUsername);
 
             return (
             <ClassicChatRow

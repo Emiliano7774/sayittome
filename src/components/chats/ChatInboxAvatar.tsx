@@ -35,7 +35,7 @@ export default function ChatInboxAvatar({
   anonAvatar = false,
   anonKey = "",
 }: Props) {
-  const showAnonAvatar = anonAvatar && !photo;
+  const showAnonAvatar = anonAvatar;
   const resolvedAnonKey = anonKey || username || "anon";
 
   return (
@@ -44,7 +44,14 @@ export default function ChatInboxAvatar({
         showAnonAvatar && variant === "modern" ? "bg-black" : "bg-[#141414]"
       }`}
     >
-      {photo ? (
+      {showAnonAvatar ? (
+        <div
+          className="flex h-full w-full items-center justify-center"
+          style={{ backgroundColor: classicAnonAvatarColor(resolvedAnonKey) }}
+        >
+          <UserRound size={ICON_SIZE[size]} strokeWidth={1.85} className="text-white/92" />
+        </div>
+      ) : photo ? (
         <img
           src={photo}
           alt={username || "Perfil"}
@@ -52,13 +59,6 @@ export default function ChatInboxAvatar({
           decoding="async"
           className={`h-full w-full object-cover ${blurPhoto ? "scale-110 blur-2xl" : ""}`}
         />
-      ) : showAnonAvatar ? (
-        <div
-          className="flex h-full w-full items-center justify-center"
-          style={{ backgroundColor: classicAnonAvatarColor(resolvedAnonKey) }}
-        >
-          <UserRound size={ICON_SIZE[size]} strokeWidth={1.85} className="text-white/92" />
-        </div>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-white/30">
           <UserRound size={ICON_SIZE[size]} strokeWidth={1.75} />

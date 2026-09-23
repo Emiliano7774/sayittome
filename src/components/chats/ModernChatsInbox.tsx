@@ -22,6 +22,7 @@ import { getLocalChatReadVersion, subscribeLocalChatRead } from "@/lib/chat/loca
 import { inboxChatBlur, inboxChatPhoto, useInboxProfilePhotos } from "@/hooks/useInboxProfilePhotos";
 import type { useChatsSelection } from "@/hooks/useChatsSelection";
 import { restoreChatsListScroll } from "@/lib/navigation/chatsListScrollStore";
+import { useAuth } from "@/contexts/AuthContext";
 import { useT } from "@/contexts/LocaleContext";
 
 type Props = {
@@ -40,6 +41,9 @@ export default function ModernChatsInbox({
   selection,
 }: Props) {
   const t = useT();
+  const { profile } = useAuth();
+  const viewerUsername = String(profile?.username || "");
+  const viewerPhoto = String(profile?.fotoPrincipal || "");
   const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
 
@@ -119,12 +123,12 @@ export default function ModernChatsInbox({
             {sortedChats.map((chat) => {
               const chatViewerId = resolveChatViewerId(chat, uid);
               const unread = firestoreSynced ? chatUnreadCountForViewer(chat, uid) : 0;
-              const title = chatPeerTitle(chat, uid);
+              const title = chatPeerTitle(chat, uid, viewerUsername);
               const selected = selection.selectedIds.has(chat.id);
-              const photo = shouldHidePeerProfilePhoto(chat, uid)
+              const photo = shouldHidePeerProfilePhoto(chat, uid, viewerUsername, viewerPhoto)
                 ? ""
                 : inboxChatPhoto(chat, photos);
-              const isAnonPeer = shouldShowAnonPeerInbox(chat, uid);
+              const isAnonPeer = shouldShowAnonPeerInbox(chat, uid, viewerUsername);
               const blurPhoto = inboxChatBlur(chat, blurPhotos);
               const lastSender = String(chat.lastMessageSender || "").trim();
               const timeLabel = formatClassicInboxTime(chat, chatViewerId, t, uid);

@@ -51,28 +51,52 @@ export function profileAnonSenderFromChat(chat: InboxChat) {
   return "";
 }
 
-export function isIncomingAnonChatForOwner(chat: InboxChat, viewerUid?: string) {
-  if (!viewerUid || viewerUid.startsWith("anon_")) return false;
+function profileAnonSenderId(chat: InboxChat) {
+  const chatId = chat.canonicalChatId || chat.id;
+  const parsedSenderId = isProfileAnonChatId(chatId)
+    ? parseProfileAnonChatId(chatId).senderId
+    : "";
+  const storedAnonId = String(chat.anonSessionId || "").trim();
+  if (storedAnonId.startsWith("anon_")) return storedAnonId;
+  if (parsedSenderId.startsWith("anon_")) return parsedSenderId;
+  return parsedSenderId || storedAnonId;
+}
+
+/** Chat id / target username slug is the profile being written to. */
+export function profileAnonThreadTargetsUsername(chat: InboxChat, viewerUsername?: string) {
+  const slug = safeChatPart(String(viewerUsername || ""));
+  if (!slug || slug === "usuario") return false;
+  const chatId = chat.canonicalChatId || chat.id;
+  const hint = usernameHintFromAnonChatId(chatId);
+  if (hint && safeChatPart(hint) === slug) return true;
+  return [chat.targetUsername, chat.receptorUsername, chat.otherUsername].some(
+    (name) => safeChatPart(String(name || "")) === slug,
+  );
+}
+
+export function isIncomingAnonChatForOwner(
+  chat: InboxChat,
+  viewerUid?: string,
+  viewerUsername?: string,
+) {
+  const uid = String(viewerUid || "").trim();
+  if (uid.startsWith("anon_")) return false;
 
   const chatId = chat.canonicalChatId || chat.id;
   if (!isProfileAnonChatId(chatId)) return false;
 
-  const parsedSenderId = parseProfileAnonChatId(chatId).senderId;
-  const storedAnonId = String(chat.anonSessionId || "").trim();
-  const senderId = storedAnonId.startsWith("anon_")
-    ? storedAnonId
-    : parsedSenderId.startsWith("anon_")
-      ? parsedSenderId
-      : parsedSenderId || storedAnonId;
-
-  if (!senderId || senderId === viewerUid) return false;
+  const senderId = profileAnonSenderId(chat);
+  if (!senderId.startsWith("anon_")) return false;
+  if (uid && senderId === uid) return false;
 
   const ownerByUid =
-    chat.targetUid === viewerUid ||
-    chat.receptorUid === viewerUid ||
-    chat.anonOwnerUid === viewerUid;
+    Boolean(uid) &&
+    (chat.targetUid === uid || chat.receptorUid === uid || chat.anonOwnerUid === uid);
+  if (ownerByUid) return true;
 
-  return ownerByUid;
+  // Owner fields can arrive a snapshot later than targetPhoto. The chat id
+  // already names the profile being written to, so don't paint that photo first.
+  return profileAnonThreadTargetsUsername(chat, viewerUsername);
 }
 
 /** Visitor messaging a profile as anon (not the profile owner inbox row). */
@@ -101,11 +125,15 @@ export function isAnonVisitorProfileChat(chat: InboxChat, firebaseUid = "") {
 }
 
 /** Inbox row shows the profile (name + photo), not the anon label. */
-export function isProfilePeerForInbox(chat: InboxChat, firebaseUid?: string) {
+export function isProfilePeerForInbox(
+  chat: InboxChat,
+  firebaseUid?: string,
+  viewerUsername?: string,
+) {
   const chatId = chat.canonicalChatId || chat.id;
   if (!isProfileAnonChatId(chatId)) return true;
 
-  if (firebaseUid && isIncomingAnonChatForOwner(chat, firebaseUid)) {
+  if (isIncomingAnonChatForOwner(chat, firebaseUid, viewerUsername)) {
     return false;
   }
 
@@ -120,7 +148,7 @@ export function chatPeerTitle(
   const chatId = chat.canonicalChatId || chat.id;
   const username = profileUsername(chat);
 
-  if (isProfilePeerForInbox(chat, viewerUid)) {
+  if (isProfilePeerForInbox(chat, viewerUid, viewerUsername)) {
     return username || "Chat anónimo";
   }
 
@@ -274,12 +302,28 @@ export function areInboxQuerySnapshotsComplete(
   return required.length > 0 && required.every((key) => received.has(key));
 }
 
-export function shouldHidePeerProfilePhoto(chat: InboxChat, viewerUid?: string) {
-  return !isProfilePeerForInbox(chat, viewerUid);
+export function shouldHidePeerProfilePhoto(
+  chat: InboxChat,
+  viewerUid?: string,
+  viewerUsername?: string,
+  viewerPhoto?: string,
+) {
+  if (!isProfilePeerForInbox(chat, viewerUid, viewerUsername)) return true;
+  const mine = String(viewerPhoto || "").trim();
+  const photo = String(chat.targetPhoto || "").trim();
+  if (!mine || !photo || mine !== photo) return false;
+  const chatId = chat.canonicalChatId || chat.id;
+  if (!isProfileAnonChatId(chatId)) return false;
+  const senderId = profileAnonSenderId(chat);
+  return senderId.startsWith("anon_") && senderId !== String(viewerUid || "");
 }
 
-export function shouldShowAnonPeerInbox(chat: InboxChat, viewerUid?: string) {
-  return !isProfilePeerForInbox(chat, viewerUid);
+export function shouldShowAnonPeerInbox(
+  chat: InboxChat,
+  viewerUid?: string,
+  viewerUsername?: string,
+) {
+  return !isProfilePeerForInbox(chat, viewerUid, viewerUsername);
 }
 
 export function resolveChatViewerId(chat: InboxChat, firebaseUid = "") {
