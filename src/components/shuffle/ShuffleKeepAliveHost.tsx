@@ -484,7 +484,6 @@ export default function ShuffleKeepAliveHost() {
     const exitTarget = getShuffleExitMainTabTarget();
     if (
       isMainTabPath(path) &&
-      path !== "/shuffle" &&
       !isInternalMainTabToShuffleTransitionActive() &&
       (isShuffleExitToMainTabPending() || isShuffleSurfacePresented()) &&
       (!exitTarget || exitTarget === path)
