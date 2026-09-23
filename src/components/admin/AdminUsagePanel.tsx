@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchAdminJson } from "@/lib/admin/fetchAdminJson";
 import { formatUsageDuration } from "@/lib/usage/appUsage";
@@ -31,6 +31,7 @@ type UsageResponse = {
   timezone?: string;
   today?: string;
   selectedDay?: string;
+  generatedAt?: string;
   summary?: UsageSummary;
   people?: UsagePerson[];
   days?: UsageDay[];
@@ -52,12 +53,19 @@ function formatDayLabel(day: string) {
   return `${date}/${month}`;
 }
 
+function isHereNow(iso: string) {
+  const at = Date.parse(iso);
+  return Number.isFinite(at) && Date.now() - at < 75_000;
+}
+
 export default function AdminUsagePanel() {
   const [selectedDay, setSelectedDay] = useState("");
   const [payload, setPayload] = useState<UsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const payloadRef = useRef(payload);
+  payloadRef.current = payload;
 
   useEffect(() => {
     let cancelled = false;
@@ -83,16 +91,30 @@ export default function AdminUsagePanel() {
       }
     }
 
-    setLoading(true);
+    const current = payloadRef.current;
+    if (!current || (selectedDay && current.selectedDay && selectedDay !== current.selectedDay)) {
+      setLoading(true);
+    }
     void load();
-    const timer = window.setInterval(() => void load(), 30_000);
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void load();
+    }, 5_000);
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [selectedDay]);
 
   const summary = payload?.summary;
+  const dayMismatch = Boolean(
+    selectedDay && payload?.selectedDay && selectedDay !== payload.selectedDay,
+  );
   const days = payload?.days || [];
   const maxEntries = Math.max(...days.map((day) => day.entries), 1);
   const activeDay = payload?.selectedDay || payload?.today || "";
@@ -117,17 +139,19 @@ export default function AdminUsagePanel() {
   return (
     <div className="space-y-6">
       <p className="max-w-3xl text-sm font-bold leading-6 text-white/55">
-        Cada día desde la primera actividad guardada. Los días anteriores se reconstruyen con
-        altas, última conexión, historias, mensajes enviados y seguimientos. El tiempo en primer
-        plano solo aparece cuando ya se midió con la app abierta. Horario de Argentina.
+        Este día se actualiza solo, cada pocos segundos. El tiempo es el que la app midió con la
+        pantalla abierta. Los días anteriores salen de altas, última conexión, historias publicadas,
+        mensajes enviados y seguimientos. Un retoque interno del perfil no cuenta como entrada.
+        Horario de Argentina.
+        {payload?.generatedAt ? ` Actualizado ${formatClock(payload.generatedAt)}.` : ""}
       </p>
 
       {error ? <p className="font-black text-red-300">{error}</p> : null}
-      {loading && !payload ? (
+      {loading && (!payload || dayMismatch) ? (
         <p className="text-2xl font-black text-white/40">Cargando actividad...</p>
       ) : null}
 
-      {summary ? (
+      {summary && !dayMismatch ? (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           {cards.map((card) => (
             <div
@@ -141,7 +165,7 @@ export default function AdminUsagePanel() {
         </div>
       ) : null}
 
-      {days.length > 0 ? (
+      {days.length > 0 && !dayMismatch ? (
         <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
           <p className="mb-4 font-black">Entradas por día</p>
           <div className="flex items-end gap-1 overflow-x-auto pb-2">
@@ -171,6 +195,7 @@ export default function AdminUsagePanel() {
         </section>
       ) : null}
 
+      {!dayMismatch ? (
       <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -215,6 +240,9 @@ export default function AdminUsagePanel() {
                       ) : (
                         "Sin nombre"
                       )}
+                      {isHereNow(person.lastSeenAt) ? (
+                        <span className="ml-2 text-xs font-black text-emerald-300">en línea</span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-3 font-bold text-white/70">{formatClock(person.enteredAt)}</td>
                     <td className="px-2 py-3 font-bold text-white/70">{formatClock(person.lastSeenAt)}</td>
@@ -229,6 +257,7 @@ export default function AdminUsagePanel() {
           </div>
         )}
       </section>
+      ) : null}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
 
-const PING_MS = 60_000;
+const PING_MS = 20_000;
 
 let started = false;
 let timer: ReturnType<typeof setInterval> | null = null;

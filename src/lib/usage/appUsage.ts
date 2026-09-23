@@ -151,14 +151,36 @@ export function isLiveUsageVisit(visit: UsageVisitRecord | null) {
   return Boolean(visit && (visit.measured || visit.visibleMs > 0));
 }
 
-export function summarizeUsageVisits(visits: UsageVisitRecord[]) {
+export type UsageDaySummary = {
+  entries: number;
+  registered: number;
+  anonymous: number;
+  sessions: number;
+  totalVisibleMs: number;
+  averageVisibleMs: number;
+  measuredEntries: number;
+  timedEntries: number;
+};
+
+export function emptyUsageDaySummary(): UsageDaySummary {
+  return {
+    entries: 0,
+    registered: 0,
+    anonymous: 0,
+    sessions: 0,
+    totalVisibleMs: 0,
+    averageVisibleMs: 0,
+    measuredEntries: 0,
+    timedEntries: 0,
+  };
+}
+
+export function summarizeUsageVisits(visits: UsageVisitRecord[]): UsageDaySummary {
   const registered = visits.filter((visit) => visit.kind === "registered").length;
   const totalVisibleMs = visits.reduce((sum, visit) => sum + visit.visibleMs, 0);
   const sessions = visits.reduce((sum, visit) => sum + visit.sessions, 0);
-  const withTime = visits.filter((visit) => visit.visibleMs > 0);
-  const averageVisibleMs = withTime.length
-    ? Math.round(withTime.reduce((sum, visit) => sum + visit.visibleMs, 0) / withTime.length)
-    : 0;
+  const timedEntries = visits.filter((visit) => visit.visibleMs > 0).length;
+  const averageVisibleMs = timedEntries ? Math.round(totalVisibleMs / timedEntries) : 0;
 
   return {
     entries: visits.length,
@@ -168,7 +190,34 @@ export function summarizeUsageVisits(visits: UsageVisitRecord[]) {
     totalVisibleMs,
     averageVisibleMs,
     measuredEntries: visits.filter((visit) => visit.measured || visit.visibleMs > 0).length,
+    timedEntries,
   };
+}
+
+export function readUsageDaySummary(
+  raw: Record<string, unknown> | null | undefined,
+): UsageDaySummary | null {
+  if (!raw || raw.entries == null) return null;
+  const summary = emptyUsageDaySummary();
+  summary.entries = Math.max(0, Math.floor(Number(raw.entries) || 0));
+  summary.registered = Math.max(0, Math.floor(Number(raw.registered) || 0));
+  summary.anonymous = Math.max(
+    0,
+    Math.floor(Number(raw.anonymous) || Math.max(0, summary.entries - summary.registered)),
+  );
+  summary.sessions = Math.max(0, Math.floor(Number(raw.sessions) || 0));
+  summary.totalVisibleMs = Math.max(0, Math.floor(Number(raw.totalVisibleMs) || 0));
+  summary.measuredEntries = Math.max(0, Math.floor(Number(raw.measuredEntries) || 0));
+  summary.timedEntries =
+    raw.timedEntries == null
+      ? summary.totalVisibleMs > 0
+        ? summary.entries
+        : 0
+      : Math.max(0, Math.floor(Number(raw.timedEntries) || 0));
+  summary.averageVisibleMs = summary.timedEntries
+    ? Math.round(summary.totalVisibleMs / summary.timedEntries)
+    : 0;
+  return summary;
 }
 
 export function formatUsageDuration(ms: number) {

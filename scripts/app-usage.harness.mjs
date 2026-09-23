@@ -117,4 +117,38 @@ assert.deepEqual(usage.usageDayKeysBetween("2026-09-01", "2026-09-03"), [
   "2026-09-03",
 ]);
 
+const profileNoise = rebuild.usageEventsFromProfile({
+  id: "uid_ada",
+  updateTime: "2026-09-20T12:00:00.000Z",
+  data: {
+    username: "Ada",
+    createdAt: "2026-09-01T15:00:00.000Z",
+    updatedAt: "2026-09-21T12:00:00.000Z",
+  },
+});
+assert.deepEqual(
+  profileNoise.map((event) => event.atMs),
+  [Date.parse("2026-09-01T15:00:00.000Z")],
+);
+
+assert.equal(
+  rebuild.usageEventsFromMessage({
+    id: "msg",
+    data: { ownerId: "uid_owner", createdAt: "2026-09-03T12:00:00.000Z" },
+  }).length,
+  0,
+);
+assert.equal(
+  rebuild.usageEventsFromStory({
+    id: "story_doc",
+    createTime: "2026-09-04T12:00:00.000Z",
+    data: {},
+  }).length,
+  0,
+);
+
+const rolled = usage.summarizeUsageVisits([later]);
+assert.equal(rolled.timedEntries, 1);
+assert.equal(rolled.entries, 1);
+
 console.log(JSON.stringify({ gate: "APP_USAGE", pass: true }));

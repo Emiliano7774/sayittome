@@ -26,6 +26,7 @@ function emptySummary(day: string): DaySummary {
     totalVisibleMs: 0,
     averageVisibleMs: 0,
     measuredEntries: 0,
+    timedEntries: 0,
   };
 }
 
@@ -42,7 +43,57 @@ function summaryFromParent(day: string, data: Record<string, unknown> | undefine
     totalVisibleMs: Math.max(0, Math.floor(Number(data.totalVisibleMs) || 0)),
     averageVisibleMs: Math.max(0, Math.floor(Number(data.averageVisibleMs) || 0)),
     measuredEntries: Math.max(0, Math.floor(Number(data.measuredEntries) || 0)),
+    timedEntries: Math.max(0, Math.floor(Number(data.timedEntries) || 0)),
   };
+}
+
+function cleanUsername(value: unknown) {
+  return String(value || "")
+    .replace(/[\u0000-\u001f]/g, "")
+    .trim()
+    .slice(0, 80);
+}
+
+async function keepRealProfiles(
+  db: {
+    collection: (name: string) => { doc: (id: string) => unknown };
+    getAll: (...refs: unknown[]) => Promise<Array<{ id: string; exists: boolean; data: () => Record<string, unknown> }>>;
+  },
+  visits: UsageVisitRecord[],
+) {
+  const missing = [
+    ...new Set(
+      visits.filter((visit) => visit.kind === "registered" && !visit.username).map((visit) => visit.uid),
+    ),
+  ];
+  const names = new Map<string, string>();
+  const profiles = new Set<string>();
+  for (let index = 0; index < missing.length; index += 100) {
+    const chunk = missing.slice(index, index + 100);
+    const snaps = await db.getAll(...chunk.map((uid) => db.collection("usuarios").doc(uid)));
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      profiles.add(snap.id);
+      const data = snap.data() || {};
+      const username = cleanUsername(data.username || data.nombre);
+      if (username) names.set(snap.id, username);
+    }
+  }
+
+  const seen = new Set<string>();
+  const kept: UsageVisitRecord[] = [];
+  for (const visit of visits) {
+    if (seen.has(visit.actorKey)) continue;
+    seen.add(visit.actorKey);
+    if (visit.kind !== "registered") {
+      kept.push(visit);
+      continue;
+    }
+    const username = visit.username || names.get(visit.uid) || "";
+    if (!username && !profiles.has(visit.uid)) continue;
+    kept.push({ ...visit, username });
+  }
+  return kept;
 }
 
 async function loadVisits(db: {
@@ -90,10 +141,12 @@ export async function GET(req: Request) {
     const range = usageDayKeysBetween(start, today);
     const selectedDay = range.includes(requested) ? requested : today;
 
-    const [selectedVisits, todayVisits] = await Promise.all([
+    const [selectedRaw, todayRaw] = await Promise.all([
       loadVisits(db, selectedDay),
       selectedDay === today ? Promise.resolve(null) : loadVisits(db, today),
     ]);
+    const selectedVisits = await keepRealProfiles(db, selectedRaw);
+    const todayVisits = todayRaw ? await keepRealProfiles(db, todayRaw) : null;
     const recounted = new Map<string, DaySummary>([
       [selectedDay, { day: selectedDay, ...summarizeUsageVisits(selectedVisits) }],
     ]);
@@ -120,6 +173,7 @@ export async function GET(req: Request) {
       timezone: "America/Argentina/Buenos_Aires",
       today,
       selectedDay,
+      generatedAt: new Date().toISOString(),
       summary,
       people,
       days,

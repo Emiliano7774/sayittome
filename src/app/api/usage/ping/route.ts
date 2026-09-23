@@ -5,7 +5,9 @@ import {
   USAGE_COLLECTION,
   applyUsagePing,
   readUsageVisit,
+  summarizeUsageVisits,
   usageDayKey,
+  type UsageVisitRecord,
 } from "@/lib/usage/appUsage";
 
 export const dynamic = "force-dynamic";
@@ -31,12 +33,17 @@ export async function POST(req: Request) {
     const db = getRepairAdminDb();
     const nowIso = new Date().toISOString();
     const day = usageDayKey(new Date(nowIso));
-    const ref = db.collection(USAGE_COLLECTION).doc(day).collection("visits").doc(
-      actor.isAnonymous ? `anon_${actor.uid}` : actor.uid,
-    );
+    const dayRef = db.collection(USAGE_COLLECTION).doc(day);
+    const ref = dayRef.collection("visits").doc(actor.isAnonymous ? `anon_${actor.uid}` : actor.uid);
 
     await db.runTransaction(async (tx: {
-      get: (target: unknown) => Promise<{ exists: boolean; data: () => Record<string, unknown> }>;
+      get: (target: unknown) => Promise<{
+        exists: boolean;
+        id?: string;
+        size?: number;
+        docs?: Array<{ id: string; data: () => Record<string, unknown> }>;
+        data: () => Record<string, unknown>;
+      }>;
       set: (target: unknown, data: Record<string, unknown>, options: { merge: boolean }) => void;
     }) => {
       const snap = await tx.get(ref);
@@ -58,7 +65,23 @@ export async function POST(req: Request) {
         uid: actor.uid,
         anonymous: actor.isAnonymous,
       });
+      const siblings = await tx.get(dayRef.collection("visits").limit(500));
+      const visits: UsageVisitRecord[] = [];
+      const siblingDocs = siblings.docs || [];
+      if (siblingDocs.length > 0 && siblingDocs.length < 500) {
+        for (const doc of siblingDocs) {
+          if (doc.id === (actor.isAnonymous ? `anon_${actor.uid}` : actor.uid)) continue;
+          const visit = readUsageVisit(doc.data());
+          if (visit) visits.push(visit);
+        }
+        visits.push(next);
+      } else if (siblingDocs.length === 0) {
+        visits.push(next);
+      }
       tx.set(ref, next, { merge: true });
+      if (visits.length > 0) {
+        tx.set(dayRef, { day, updatedAt: nowIso, ...summarizeUsageVisits(visits) }, { merge: true });
+      }
     });
 
     return NextResponse.json({ ok: true, day });

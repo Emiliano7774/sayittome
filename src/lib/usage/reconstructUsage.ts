@@ -97,17 +97,21 @@ function pushEvent(
   });
 }
 
-function timesOf(doc: UsageSourceDoc, keys: string[], now: number) {
-  const values = keys.map((key) => usageTimestampMs(doc.data[key], now));
-  values.push(usageTimestampMs(doc.createTime, now), usageTimestampMs(doc.updateTime, now));
-  return values;
+/** Explicit activity instants. Document updateTime and profile updatedAt are system writes, not entries. */
+function activityInstants(doc: UsageSourceDoc, keys: string[], now: number) {
+  const found = keys
+    .map((key) => usageTimestampMs(doc.data[key], now))
+    .filter((ms): ms is number => ms != null);
+  if (found.length > 0) return found;
+  const created = usageTimestampMs(doc.createTime, now);
+  return created == null ? [] : [created];
 }
 
 export function usageEventsFromProfile(doc: UsageSourceDoc, now = Date.now()) {
   const events: UsageActivityEvent[] = [];
   const actor = resolveUsageActor(doc.data.uid || doc.id, false);
   const username = cleanUsername(doc.data.username || doc.data.nombre);
-  for (const atMs of timesOf(
+  for (const atMs of activityInstants(
     doc,
     [
       "createdAt",
@@ -119,7 +123,6 @@ export function usageEventsFromProfile(doc: UsageSourceDoc, now = Date.now()) {
       "lastActive",
       "lastActiveAtClient",
       "presenceUpdatedAt",
-      "updatedAt",
     ],
     now,
   )) {
@@ -131,9 +134,9 @@ export function usageEventsFromProfile(doc: UsageSourceDoc, now = Date.now()) {
 export function usageEventsFromStory(doc: UsageSourceDoc, now = Date.now()) {
   const events: UsageActivityEvent[] = [];
   const anonymous = doc.data.isAnonymousStory === true;
-  const actor = resolveUsageActor(doc.data.ownerUid || doc.data.anonSessionId || doc.id, anonymous);
+  const actor = resolveUsageActor(doc.data.ownerUid || doc.data.anonSessionId, anonymous);
   const username = cleanUsername(doc.data.ownerUsername);
-  for (const atMs of [usageTimestampMs(doc.data.createdAt, now), usageTimestampMs(doc.createTime, now)]) {
+  for (const atMs of activityInstants(doc, ["createdAt"], now)) {
     pushEvent(events, actor, username, atMs);
   }
   return events;
@@ -142,7 +145,7 @@ export function usageEventsFromStory(doc: UsageSourceDoc, now = Date.now()) {
 export function usageEventsFromFollow(doc: UsageSourceDoc, now = Date.now()) {
   const events: UsageActivityEvent[] = [];
   const actor = resolveUsageActor(doc.data.seguidorUid, false);
-  for (const atMs of [usageTimestampMs(doc.data.createdAt, now), usageTimestampMs(doc.createTime, now)]) {
+  for (const atMs of activityInstants(doc, ["createdAt"], now)) {
     pushEvent(events, actor, "", atMs);
   }
   return events;
@@ -154,11 +157,8 @@ export function usageEventsFromMessage(doc: UsageSourceDoc, now = Date.now()) {
   const anonymous = kind === "anon" || kind === "anonymous";
   const actor = anonymous
     ? resolveUsageActor(doc.data.fromUid || doc.data.senderUid || doc.data.anonSessionId, true)
-    : resolveUsageActor(
-        doc.data.profileUid || doc.data.fromUid || doc.data.senderUid || doc.data.ownerId,
-        false,
-      );
-  for (const atMs of [usageTimestampMs(doc.data.createdAt, now), usageTimestampMs(doc.createTime, now)]) {
+    : resolveUsageActor(doc.data.profileUid || doc.data.fromUid || doc.data.senderUid, false);
+  for (const atMs of activityInstants(doc, ["createdAt"], now)) {
     pushEvent(events, actor, "", atMs);
   }
   return events;
