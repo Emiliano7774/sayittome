@@ -533,7 +533,6 @@ export default function ProfileAnonChat({
   const [threadRevealReady, setThreadRevealReady] = useState(
     () => !openedFromNotificationRef.current,
   );
-  const [bubbleHoldExpired, setBubbleHoldExpired] = useState(false);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -1340,9 +1339,6 @@ export default function ProfileAnonChat({
     ),
   );
 
-  const bubblesSettled =
-    displayMessages.length === 0 || identityReady || bubbleHoldExpired;
-
   const anonSenderId = getProfileChatAnonSenderId(chatId, chatAnonSessionId);
 
   if (displayMessages.length > 0) {
@@ -1541,12 +1537,6 @@ export default function ProfileAnonChat({
       messageRenderedAt: Date.now(),
     });
   }, [chatId, messages]);
-
-  useEffect(() => {
-    setBubbleHoldExpired(false);
-    const timer = window.setTimeout(() => setBubbleHoldExpired(true), 450);
-    return () => window.clearTimeout(timer);
-  }, [chatId]);
 
   useEffect(() => {
     if (!showAnonIdentityNotice || !chatId || typeof window === "undefined") return;
@@ -3065,14 +3055,13 @@ export default function ProfileAnonChat({
             openedFromNotification && !threadRevealReady
               ? "invisible pointer-events-none"
               : "",
-            !bubblesSettled ? "invisible pointer-events-none" : "",
           ].join(" ")}
           style={
-            (openedFromNotification && !threadRevealReady) || !bubblesSettled
+            openedFromNotification && !threadRevealReady
               ? { visibility: "hidden" as const }
               : undefined
           }
-          data-chat-bubbles-settled={bubblesSettled ? "1" : "0"}
+          data-chat-bubbles-settled="1"
           data-chat-notif-reveal={
             openedFromNotification ? (threadRevealReady ? "1" : "0") : undefined
           }
