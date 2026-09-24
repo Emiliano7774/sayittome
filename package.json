@@ -102,6 +102,7 @@
     "test:presence-online-windows": "node --experimental-strip-types scripts/presence-online-windows.harness.mjs",
     "test:chats-admin-scroll-restore": "node --experimental-strip-types scripts/chats-admin-scroll-restore.harness.mjs",
     "test:chat-inbox-tap-vs-swipe": "node scripts/chat-inbox-tap-vs-swipe.harness.mjs",
+    "test:chat-inbox-long-scroll": "node scripts/chat-inbox-long-scroll.harness.mjs",
     "test:shuffle-multitap-lock": "node --experimental-strip-types scripts/shuffle-multitap-lock.harness.mjs",
     "test:anon-profile-block-rules": "node --experimental-strip-types scripts/anon-profile-block-rules.harness.mjs",
     "test:fcm-expandable-unread": "node --experimental-strip-types scripts/fcm-expandable-unread.harness.mjs",

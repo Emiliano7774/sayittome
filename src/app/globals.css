@@ -913,6 +913,27 @@ html[data-sayittome-bar-target="settings"] #sayittome-main-tab-keepalive-setting
   background: #000;
 }
 
+/*
+ * The fixed cover above is only needed while the bar handoff is in flight.
+ * Once Chats owns the settled main-tab route it must return to document flow;
+ * otherwise a long inbox is clipped to one viewport and Android has no page
+ * height to pan through.
+ */
+html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="chats"]:not(
+    .sayittome-shuffle-exit-handoff-pending
+  ):not(.sayittome-main-tab-handoff-pending):not(
+    [data-main-tab-shuffle-slide]
+  )
+  #sayittome-main-tab-keepalive-chats.sayittome-main-tab-keepalive-visible {
+  position: relative !important;
+  inset: auto !important;
+  z-index: auto !important;
+  min-height: 100dvh;
+  overflow: visible !important;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+}
+
 html[data-sayittome-bar-target="stories"] #sayittome-shuffle-keepalive-host,
 html[data-sayittome-bar-target="chats"] #sayittome-shuffle-keepalive-host,
 html[data-sayittome-bar-target="boost"] #sayittome-shuffle-keepalive-host,
