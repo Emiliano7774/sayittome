@@ -15,6 +15,7 @@ import {
 } from "@/lib/anonMatch/chatId";
 import {
   countAvailableMatchTargets,
+  invalidateAnonMatchAvailabilityCache,
   pickAvailableMatchTarget,
   type MatchCandidate,
 } from "@/lib/anonMatch/matchPool";
@@ -111,6 +112,7 @@ export async function createAnonMatchRequest(input: {
     },
     solicitudId,
   );
+  invalidateAnonMatchAvailabilityCache();
 
   return {
     ok: true as const,
@@ -248,7 +250,7 @@ async function closeActiveChatsForParticipantPair(
   }
 }
 
-function userIsChatParticipant(
+export function userIsChatParticipant(
   chat: Record<string, unknown>,
   uid: string,
   anonId: string,
@@ -264,34 +266,64 @@ function userIsChatParticipant(
   return false;
 }
 
-async function closeActiveChatsForUser(input: {
-  uid?: string;
-  anonId?: string;
-  closedBy: string;
-  exceptChatId?: string;
-}) {
-  const uid = String(input.uid || "");
-  const anonId = String(input.anonId || "");
-  if (!uid && !anonId) return;
+export function anonMatchRequestInvolvesParticipant(
+  row: Record<string, unknown>,
+  uid: string,
+  anonId: string,
+) {
+  if (uid) {
+    if (String(row.solicitanteUid || "") === uid) return true;
+    if (String(row.destinatarioUid || "") === uid) return true;
+  }
+  if (anonId) {
+    if (String(row.solicitanteAnonId || "") === anonId) return true;
+    if (String(row.anonId || "") === anonId) return true;
+  }
+  return false;
+}
 
+async function hasActiveDirectChatForParticipant(uid: string, anonId: string) {
+  if (!uid && !anonId) return false;
   const rows = await runCollectionQuery("chats_anonimos", 200, "updatedAt", "DESCENDING");
-  const now = new Date().toISOString();
+  return rows.some(
+    (row) =>
+      String(row.estado || "") === "activo" &&
+      userIsChatParticipant(row, uid, anonId),
+  );
+}
+
+async function cancelCompetingAnonMatchRequests(input: {
+  exceptSolicitudId: string;
+  participantUids: string[];
+  participantAnonIds: string[];
+  now: string;
+}) {
+  const rows = await runCollectionQuery(
+    "solicitudes_chat_anonimo",
+    200,
+    "createdAt",
+    "DESCENDING",
+  );
 
   for (const row of rows) {
-    if (String(row.estado || "") !== "activo") continue;
+    const solicitudId = String(row.solicitudId || row.id || "");
+    if (!solicitudId || solicitudId === input.exceptSolicitudId) continue;
+    if (String(row.estado || "") !== "pendiente") continue;
+    const involvesAcceptedParticipant =
+      input.participantUids.some((uid) =>
+        anonMatchRequestInvolvesParticipant(row, uid, ""),
+      ) ||
+      input.participantAnonIds.some((anonId) =>
+        anonMatchRequestInvolvesParticipant(row, "", anonId),
+      );
+    if (!involvesAcceptedParticipant) continue;
 
-    const chatId = String(row.chatId || row.id || "");
-    if (!chatId || chatId === input.exceptChatId) continue;
-    if (!userIsChatParticipant(row, uid, anonId)) continue;
-
-    await patchFirestoreDoc("chats_anonimos", chatId, {
-      estado: "cerrado",
-      cerradoPor: input.closedBy,
-      cerradoAt: now,
-      updatedAt: now,
+    await patchFirestoreDoc("solicitudes_chat_anonimo", solicitudId, {
+      estado: "cancelado",
+      updatedAt: input.now,
     });
-    await releaseDirectChatParticipants(row, now);
   }
+  invalidateAnonMatchAvailabilityCache();
 }
 
 export async function expireAnonMatchRequestIfNeeded(row: Record<string, unknown>) {
@@ -308,6 +340,7 @@ export async function expireAnonMatchRequestIfNeeded(row: Record<string, unknown
     estado: "expirado",
     updatedAt: new Date().toISOString(),
   });
+  invalidateAnonMatchAvailabilityCache();
 
   return "expirado";
 }
@@ -358,7 +391,27 @@ export async function respondAnonMatchRequest(input: {
       estado: "rechazado",
       updatedAt: now,
     });
+    invalidateAnonMatchAvailabilityCache();
     return { ok: true as const, estado: "rechazado" as const };
+  }
+
+  const [responderBusy, requesterBusy] = await Promise.all([
+    hasActiveDirectChatForParticipant(
+      String(input.responderUid || ""),
+      String(input.responderAnonId || ""),
+    ),
+    hasActiveDirectChatForParticipant(solicitanteUid, solicitanteAnonId),
+  ]);
+  if (responderBusy || requesterBusy) {
+    await patchFirestoreDoc("solicitudes_chat_anonimo", input.solicitudId, {
+      estado: "cancelado",
+      updatedAt: now,
+    });
+    invalidateAnonMatchAvailabilityCache();
+    return {
+      ok: false as const,
+      reason: responderBusy ? ("target_busy" as const) : ("requester_busy" as const),
+    };
   }
 
   const chatId = buildDirectChatSessionId({
@@ -374,19 +427,6 @@ export async function respondAnonMatchRequest(input: {
     solicitanteUid ||
     solicitanteAnonId ||
     "system";
-
-  await closeActiveChatsForUser({
-    uid: input.responderUid,
-    anonId: input.responderAnonId,
-    closedBy,
-    exceptChatId: chatId,
-  });
-  await closeActiveChatsForUser({
-    uid: solicitanteUid,
-    anonId: solicitanteAnonId,
-    closedBy,
-    exceptChatId: chatId,
-  });
 
   await closeActiveChatsForParticipantPair(
     {
@@ -421,6 +461,13 @@ export async function respondAnonMatchRequest(input: {
     updatedAt: now,
   });
 
+  await cancelCompetingAnonMatchRequests({
+    exceptSolicitudId: input.solicitudId,
+    participantUids: [solicitanteUid, destinatarioUid].filter(Boolean),
+    participantAnonIds: [solicitanteAnonId, destinatarioAnonId].filter(Boolean),
+    now,
+  });
+
   if (destinatarioAnonId) {
     await patchFirestoreDoc("anonimos_activos", destinatarioAnonId, {
       enChat: true,
@@ -438,6 +485,8 @@ export async function respondAnonMatchRequest(input: {
       updatedAt: now,
     });
   }
+
+  invalidateAnonMatchAvailabilityCache();
 
   return { ok: true as const, estado: "aceptado" as const, chatId };
 }

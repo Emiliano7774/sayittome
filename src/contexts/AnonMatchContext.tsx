@@ -36,9 +36,11 @@ import {
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import {
   bindWhipSoundUnlock,
-  notifyIncomingChatMessage,
-  playIncomingWhipSound,
 } from "@/lib/chat/whipSound";
+import {
+  alertIncomingAnonMatchRequest,
+  dismissIncomingAnonMatchRequestAlert,
+} from "@/lib/anonMatch/incomingMatchAlert";
 import {
   clearAnonDirectChatSession,
   loadAnonDirectChatSession,
@@ -730,16 +732,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
       if (next && !alertedRequestIds.has(next.solicitudId)) {
         alertedRequestIds.add(next.solicitudId);
-        playIncomingWhipSound();
-        notifyIncomingChatMessage({
-          title: "Solicitud de chat",
-          body: "Alguien quiere iniciar un chat anónimo con vos.",
-        });
+        alertIncomingAnonMatchRequest(next.solicitudId);
       }
 
       for (const id of [...alertedRequestIds]) {
         if (!pending.some((row) => row.solicitudId === id)) {
           alertedRequestIds.delete(id);
+          dismissIncomingAnonMatchRequestAlert(id);
         }
       }
 
@@ -840,6 +839,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
       if (!accept) {
         respondingIncomingRef.current = true;
+        dismissIncomingAnonMatchRequestAlert(solicitudId);
         rememberDismissedRequestId(solicitudId);
         rememberRejectedSolicitanteKey(
           resolveSolicitanteKey({
@@ -864,6 +864,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       }
 
       respondingIncomingRef.current = true;
+      dismissIncomingAnonMatchRequestAlert(solicitudId);
 
       const openAcceptedChat = (chatId: string) => {
         openDirectChat(chatId, receiverRole);

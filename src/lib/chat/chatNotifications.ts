@@ -10,12 +10,14 @@ import {
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 
 const CHAT_CHANNEL_ID = "chat-messages";
+const ANON_MATCH_CHANNEL_ID = "anon-match-requests";
 const ICON_PATH = "/icons/Icon-192.png";
 
 let bootstrapped = false;
 let permissionRequested = false;
 let nativePermissionGranted = false;
 let actionListenerAttached = false;
+const webAnonMatchNotifications = new Map<string, Notification>();
 
 /** Stable numeric id from an opaque key (prefer messageId so banners do not replace). */
 export function stableNotificationId(key: string) {
@@ -78,8 +80,111 @@ async function ensureNativeChannel() {
       sound: "default",
       visibility: 1,
     });
+    await LocalNotifications.createChannel({
+      id: ANON_MATCH_CHANNEL_ID,
+      name: "Coincidencias anónimas",
+      description: "Avisos para aceptar una coincidencia de chat anónimo",
+      importance: 5,
+      vibration: true,
+      sound: "default",
+      visibility: 1,
+    });
   } catch {
     // Plugin unavailable.
+  }
+}
+
+function anonMatchNotificationId(requestId: string) {
+  return stableNotificationId(`anon-match:${String(requestId || "").trim()}`);
+}
+
+/**
+ * Match invitations are transactional, not an optional message preference.
+ * The in-app modal/sound always run; this adds an OS banner when the operating
+ * system has already granted permission. Browser/Android denial is respected.
+ */
+export async function showRequiredAnonMatchNotification(input: {
+  requestId: string;
+  title: string;
+  body: string;
+}) {
+  if (typeof window === "undefined") return false;
+  const requestId = String(input.requestId || "").trim();
+  if (!requestId) return false;
+
+  await initChatNotifications();
+  const title = String(input.title || "Encontramos un chat").trim();
+  const body = notificationBody({ body: input.body });
+
+  if (isCapacitorNative()) {
+    try {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      const permission = await LocalNotifications.checkPermissions();
+      if (permission.display !== "granted") return false;
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: anonMatchNotificationId(requestId),
+            title,
+            body,
+            channelId: ANON_MATCH_CHANNEL_ID,
+            sound: "default",
+            smallIcon: "ic_launcher_foreground",
+            extra: { kind: "anon-match", requestId },
+          },
+        ],
+      });
+      return true;
+    } catch {
+      // Fall through to the Web Notification API when available.
+    }
+  }
+
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return false;
+  }
+
+  try {
+    webAnonMatchNotifications.get(requestId)?.close();
+    const notification = new Notification(title, {
+      body,
+      tag: `sayittome-anon-match-${requestId}`,
+      icon: ICON_PATH,
+      silent: false,
+      data: { kind: "anon-match", requestId },
+    });
+    webAnonMatchNotifications.set(requestId, notification);
+    notification.onclose = () => webAnonMatchNotifications.delete(requestId);
+    notification.onclick = () => {
+      try {
+        window.focus();
+      } catch {
+        // ignore
+      }
+      notification.close();
+    };
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function dismissRequiredAnonMatchNotification(requestId: string) {
+  if (typeof window === "undefined") return;
+  const id = String(requestId || "").trim();
+  if (!id) return;
+
+  webAnonMatchNotifications.get(id)?.close();
+  webAnonMatchNotifications.delete(id);
+
+  if (!isCapacitorNative()) return;
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    await LocalNotifications.cancel({
+      notifications: [{ id: anonMatchNotificationId(id) }],
+    });
+  } catch {
+    // Notification may already be gone or the plugin may be unavailable.
   }
 }
 

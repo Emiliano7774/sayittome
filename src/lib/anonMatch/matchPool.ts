@@ -61,6 +61,11 @@ let busyParticipantsCache: {
   fetchedAt: number;
 } | null = null;
 
+export function invalidateAnonMatchAvailabilityCache() {
+  pendingTargetsCache = null;
+  busyParticipantsCache = null;
+}
+
 function parseDate(value?: string | null) {
   if (!value) return null;
   const date = new Date(value);
