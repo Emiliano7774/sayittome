@@ -934,6 +934,23 @@ html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="chats"]:no
   touch-action: pan-y;
 }
 
+/* STORIES_LONG_SCROLL: once Stories is settled, let its full content define
+   the document height. Keep the fixed cover only for active tab handoffs. */
+html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="stories"]:not(
+    .sayittome-shuffle-exit-handoff-pending
+  ):not(.sayittome-main-tab-handoff-pending):not(
+    [data-main-tab-shuffle-slide]
+  )
+  #sayittome-main-tab-keepalive-stories.sayittome-main-tab-keepalive-visible {
+  position: relative !important;
+  inset: auto !important;
+  z-index: auto !important;
+  min-height: 100dvh;
+  overflow: visible !important;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+}
+
 html[data-sayittome-bar-target="stories"] #sayittome-shuffle-keepalive-host,
 html[data-sayittome-bar-target="chats"] #sayittome-shuffle-keepalive-host,
 html[data-sayittome-bar-target="boost"] #sayittome-shuffle-keepalive-host,
