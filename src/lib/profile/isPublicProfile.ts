@@ -34,7 +34,10 @@ export function getProfileValidationIssues(
   if (username && usernameLower && usernameLower !== username.toLowerCase()) {
     issues.push("username_lower_mismatch");
   }
-  if (!provincia) issues.push("missing_provincia");
+  // Current onboarding explicitly marks a finished profile. Province is an
+  // optional/private field there, so an empty value must not hide the profile.
+  // Keep requiring it only for legacy documents that lack the completion flag.
+  if (!provincia && !setupComplete) issues.push("missing_provincia");
   if (!setupComplete && !legacyComplete) issues.push("setup_incomplete");
 
   return issues;

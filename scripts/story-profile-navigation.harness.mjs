@@ -16,6 +16,10 @@ const route = fs.readFileSync(
   path.join(root, "src/app/api/profile/resolve-uid/route.ts"),
   "utf8",
 );
+const publicProfile = fs.readFileSync(
+  path.join(root, "src/lib/profile/isPublicProfile.ts"),
+  "utf8",
+);
 
 assert.match(viewer, /resolveStoryProfileUsername/);
 assert.match(
@@ -31,6 +35,7 @@ assert.match(resolver, /never navigate using a potentially stale/);
 assert.match(route, /await import\(/);
 assert.match(route, /collection\("usuarios"\)\.doc\(uid\)\.get\(\)/);
 assert.match(route, /isPublicProfile\(data\)/);
+assert.match(publicProfile, /if \(!provincia && !setupComplete\)/);
 assert.match(viewer, /fastRouterPush\(router, `\/u\/\$\{encodeURIComponent\(username\)\}`\)/);
 assert.doesNotMatch(viewer, /router\.push\(`\/u\/\$\{encodeURIComponent\(profileUsername\)\}`\)/);
 
