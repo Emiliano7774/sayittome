@@ -28,6 +28,7 @@ assert.match(
 );
 assert.match(resolver, /\/api\/profile\/resolve-uid\?uid=/);
 assert.match(resolver, /never navigate using a potentially stale/);
+assert.match(route, /await import\(/);
 assert.match(route, /collection\("usuarios"\)\.doc\(uid\)\.get\(\)/);
 assert.match(route, /isPublicProfile\(data\)/);
 assert.match(viewer, /fastRouterPush\(router, `\/u\/\$\{encodeURIComponent\(username\)\}`\)/);

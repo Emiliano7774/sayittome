@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
 
@@ -28,6 +27,9 @@ export async function GET(req: Request) {
   }
 
   try {
+    const { getRepairAdminDb } = await import(
+      "@/lib/chat/historicalAuthorshipRepairAdmin"
+    );
     const snapshot = await getRepairAdminDb().collection("usuarios").doc(uid).get();
     if (!snapshot.exists) {
       return response({ ok: false, username: "", reason: "profile_not_found" }, 404);
