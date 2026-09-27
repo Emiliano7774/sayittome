@@ -18,10 +18,10 @@ import { toggleStoryLike } from "@/lib/likes/storyLike";
 import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/anonStories";
 import {
-  fetchProfileStoryIdentity,
   getStoryOwnerKey,
   isInvalidPublicStoryUsername,
 } from "@/lib/stories/storyAuthor";
+import { resolveStoryProfileUsername } from "@/lib/stories/storyProfileNavigation";
 import {
   shouldPersistVideoDuration,
   videoDurationMsFromMetadata,
@@ -287,11 +287,15 @@ export default function StoryViewer({
     current?.ownerUsername || resolvedOwnerUsername || "",
   ).trim();
   const profilePhoto = String(current?.ownerPhoto || "").trim();
+  const stableProfileOwnerUid = String(current?.ownerUid || resolvedOwnerUid || "").trim();
   const canOpenProfile =
+    !anonymousStory &&
+    ((Boolean(stableProfileOwnerUid) && !stableProfileOwnerUid.startsWith("anon_")) ||
+      (Boolean(profileUsername) && !isInvalidPublicStoryUsername(profileUsername)));
+  const canReply =
     !anonymousStory &&
     Boolean(profileUsername) &&
     !isInvalidPublicStoryUsername(profileUsername);
-  const canReply = canOpenProfile;
   const needsBlur = current ? storyRequiresBlur(current) : false;
   const playbackReady = shouldStartStoryProgress({
     viewerReady,
@@ -712,23 +716,14 @@ export default function StoryViewer({
     profileOpenInFlightRef.current = true;
 
     try {
-      let username = profileUsername;
       const stableOwnerUid = String(current?.ownerUid || resolvedOwnerUid || "").trim();
-
-      if (stableOwnerUid && !stableOwnerUid.startsWith("anon_")) {
-        try {
-          const identity = await fetchProfileStoryIdentity(stableOwnerUid, { force: true });
-          const currentUsername = String(identity.username || "").trim();
-          if (currentUsername && !isInvalidPublicStoryUsername(currentUsername)) {
-            username = currentUsername;
-            setActiveOwnerUsername(currentUsername);
-          }
-        } catch (error) {
-          console.error("story profile identity", error);
-        }
-      }
+      const username = await resolveStoryProfileUsername({
+        ownerUid: stableOwnerUid,
+        fallbackUsername: profileUsername,
+      });
 
       if (!username || isInvalidPublicStoryUsername(username)) return;
+      setActiveOwnerUsername(username);
       fastRouterPush(router, `/u/${encodeURIComponent(username)}`);
     } finally {
       profileOpenInFlightRef.current = false;
