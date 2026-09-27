@@ -17,7 +17,11 @@ import { getLikerId } from "@/lib/likes/profileLike";
 import { toggleStoryLike } from "@/lib/likes/storyLike";
 import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/anonStories";
-import { getStoryOwnerKey, isInvalidPublicStoryUsername } from "@/lib/stories/storyAuthor";
+import {
+  fetchProfileStoryIdentity,
+  getStoryOwnerKey,
+  isInvalidPublicStoryUsername,
+} from "@/lib/stories/storyAuthor";
 import {
   shouldPersistVideoDuration,
   videoDurationMsFromMetadata,
@@ -138,6 +142,7 @@ export default function StoryViewer({
   const pointerRef = useRef({ x: 0, y: 0, t: 0, swiped: false });
   const replyPointerRef = useRef({ y: 0, dragging: false });
   const replySentTimerRef = useRef<number | null>(null);
+  const profileOpenInFlightRef = useRef(false);
   const incomingStoryKey = [
     ownerUid || "",
     ownerUsername || "",
@@ -702,9 +707,32 @@ export default function StoryViewer({
       });
   }
 
-  function openProfile() {
-    if (!canOpenProfile) return;
-    router.push(`/u/${encodeURIComponent(profileUsername)}`);
+  async function openProfile() {
+    if (!canOpenProfile || profileOpenInFlightRef.current) return;
+    profileOpenInFlightRef.current = true;
+
+    try {
+      let username = profileUsername;
+      const stableOwnerUid = String(current?.ownerUid || resolvedOwnerUid || "").trim();
+
+      if (stableOwnerUid && !stableOwnerUid.startsWith("anon_")) {
+        try {
+          const identity = await fetchProfileStoryIdentity(stableOwnerUid, { force: true });
+          const currentUsername = String(identity.username || "").trim();
+          if (currentUsername && !isInvalidPublicStoryUsername(currentUsername)) {
+            username = currentUsername;
+            setActiveOwnerUsername(currentUsername);
+          }
+        } catch (error) {
+          console.error("story profile identity", error);
+        }
+      }
+
+      if (!username || isInvalidPublicStoryUsername(username)) return;
+      fastRouterPush(router, `/u/${encodeURIComponent(username)}`);
+    } finally {
+      profileOpenInFlightRef.current = false;
+    }
   }
 
   if (!current) {
