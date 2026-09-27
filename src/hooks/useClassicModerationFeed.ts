@@ -269,12 +269,19 @@ export function useUserModerationChats(username: string) {
       };
     }
 
-    async function loadHistory() {
-      setLoading(true);
-      setErrorText("");
-      setErrorCode("");
+    let inFlight = false;
+
+    async function loadHistory(options: { silent?: boolean; forceRefresh?: boolean } = {}) {
+      if (inFlight) return;
+      inFlight = true;
+      const silent = options.silent === true;
+      if (!silent) {
+        setLoading(true);
+        setErrorText("");
+        setErrorCode("");
+      }
       try {
-        let result = await fetchUserChats(true);
+        let result = await fetchUserChats(options.forceRefresh === true);
         // One safe retry: token refresh / transient unavailable.
         if (
           !result.ok &&
@@ -287,16 +294,18 @@ export function useUserModerationChats(username: string) {
         }
         if (cancelled) return;
         if (!result.ok) {
-          setErrorCode(result.error);
-          setErrorText(result.message);
-          setChats([]);
-          setUid("");
+          if (!silent) {
+            setErrorCode(result.error);
+            setErrorText(result.message);
+            setChats([]);
+            setUid("");
+          }
           return;
         }
         setUid(result.uid);
         setChats(result.chats);
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           const code = String((error as Error)?.message || "client_fetch_failed");
           const { adminUserChatsErrorMessage } = await import("@/lib/admin/adminUsernameParam");
           setErrorCode(code);
@@ -304,14 +313,25 @@ export function useUserModerationChats(username: string) {
           setChats([]);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        inFlight = false;
+        if (!cancelled && !silent) setLoading(false);
       }
     }
 
-    void loadHistory();
+    void loadHistory({ forceRefresh: true });
+    const refresh = () => void loadHistory({ silent: true });
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(refresh, 10_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [username, retryToken]);
 

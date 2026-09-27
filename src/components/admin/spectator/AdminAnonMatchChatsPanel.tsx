@@ -33,7 +33,7 @@ async function adminGet(path: string) {
   await auth.authStateReady();
   const user = auth.currentUser;
   if (!user) throw new Error("unauthorized");
-  const token = await user.getIdToken(true);
+  const token = await user.getIdToken(false);
   const res = await fetch(path, {
     cache: "no-store",
     headers: { Authorization: `Bearer ${token}` },
@@ -58,23 +58,37 @@ export default function AdminAnonMatchChatsPanel() {
   const [detailError, setDetailError] = useState("");
   const [selectedChat, setSelectedChat] = useState<AnonMatchChat | null>(null);
 
-  async function loadChats() {
-    setLoading(true);
-    setError("");
+  async function loadChats(silent = false) {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const json = await adminGet("/api/admin/anon-match-chats");
       const rows = Array.isArray(json.chats) ? json.chats : [];
       setChats(rows);
       setSelected((current) => current || String(rows[0]?.id || ""));
     } catch (e) {
-      setError(String((e as Error)?.message || "load_failed"));
+      if (!silent) setError(String((e as Error)?.message || "load_failed"));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
   useEffect(() => {
     void loadChats();
+    const refresh = () => void loadChats(true);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const timer = window.setInterval(refresh, 10_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   useEffect(() => {
@@ -85,23 +99,36 @@ export default function AdminAnonMatchChatsPanel() {
       return;
     }
     let cancelled = false;
-    setDetailLoading(true);
-    setDetailError("");
-    setMessages([]);
-    void adminGet(`/api/admin/anon-match-chats?chatId=${encodeURIComponent(selected)}`)
-      .then((json) => {
+    let inFlight = false;
+    async function loadDetail(silent = false) {
+      if (inFlight) return;
+      inFlight = true;
+      if (!silent) {
+        setDetailLoading(true);
+        setDetailError("");
+        setMessages([]);
+      }
+      try {
+        const json = await adminGet(
+          `/api/admin/anon-match-chats?chatId=${encodeURIComponent(selected)}`,
+        );
         if (cancelled) return;
         setMessages(Array.isArray(json.messages) ? json.messages : []);
         setSelectedChat(json.chat && typeof json.chat === "object" ? json.chat : null);
-      })
-      .catch((e) => {
-        if (!cancelled) setDetailError(String((e as Error)?.message || "detail_failed"));
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
+      } catch (e) {
+        if (!cancelled && !silent) {
+          setDetailError(String((e as Error)?.message || "detail_failed"));
+        }
+      } finally {
+        inFlight = false;
+        if (!cancelled && !silent) setDetailLoading(false);
+      }
+    }
+    void loadDetail();
+    const timer = window.setInterval(() => void loadDetail(true), 5_000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [selected]);
 

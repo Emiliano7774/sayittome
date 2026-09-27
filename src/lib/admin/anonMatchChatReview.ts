@@ -38,3 +38,29 @@ export function anonMatchMessageText(data: Record<string, unknown>): string {
 export function anonMatchActivityMs(data: Record<string, unknown>): number {
   return firestoreTimeMs(data.updatedAt) || firestoreTimeMs(data.createdAt);
 }
+
+export type AdminAnonMatchMessageRow = {
+  id: string;
+  collectionName: "mensajes" | "messages";
+  text: string;
+  senderId: string;
+  senderTipo: string;
+  type: string;
+  createdAtMs: number;
+};
+
+/**
+ * Modern anonymous-match chats write exclusively to `mensajes`. Some legacy
+ * records used `messages`. Reading both at once can splice two historical
+ * formats into one apparent conversation, so the canonical collection wins
+ * and the legacy collection is only a fallback.
+ */
+export function selectAnonMatchMessageRows(input: {
+  mensajes: AdminAnonMatchMessageRow[];
+  messages: AdminAnonMatchMessageRow[];
+}) {
+  const selected = input.mensajes.length > 0 ? input.mensajes : input.messages;
+  return [...selected].sort(
+    (a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id),
+  );
+}

@@ -4,6 +4,7 @@ import {
   anonMatchActivityMs,
   anonMatchMessageText,
   firestoreTimeMs,
+  selectAnonMatchMessageRows,
 } from "@/lib/admin/anonMatchChatReview";
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
 import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
@@ -53,13 +54,9 @@ async function participantLabel(
 
 async function listChats() {
   const db = getRepairAdminDb();
-  // createdAt stays an ISO string. updatedAt becomes a Timestamp after the first
-  // message, so ordering the collection by updatedAt fails on mixed types.
-  try {
-    return await db.collection("chats_anonimos").orderBy("createdAt", "desc").limit(250).get();
-  } catch {
-    return await db.collection("chats_anonimos").limit(250).get();
-  }
+  // Admin review is intentionally retroactive. A creation-ordered limit hid
+  // active older sessions as soon as more than 250 chats existed.
+  return db.collection("chats_anonimos").get();
 }
 
 export async function GET(req: Request) {
@@ -99,9 +96,9 @@ export async function GET(req: Request) {
       collections.map(async (name) => {
         let snap;
         try {
-          snap = await chatRef.collection(name).orderBy("createdAt", "desc").limit(400).get();
+          snap = await chatRef.collection(name).orderBy("createdAt", "asc").get();
         } catch {
-          snap = await chatRef.collection(name).limit(400).get();
+          snap = await chatRef.collection(name).get();
         }
         return snap.docs.map((row: { id: string; data: () => Record<string, unknown> }) => {
           const data = row.data() || {};
@@ -125,11 +122,10 @@ export async function GET(req: Request) {
         String(chatData.destinatarioAnonId || chatData.anonId || ""),
       ),
     ]);
-    const messages = batches
-      .flat()
-      .sort((a: { createdAtMs: number; id: string }, b: { createdAtMs: number; id: string }) =>
-        a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id),
-      );
+    const messages = selectAnonMatchMessageRows({
+      mensajes: batches[0],
+      messages: batches[1],
+    });
 
     return noStore({
       ok: true,
