@@ -55,7 +55,9 @@ function markPushZoneLoaded(zoneId: string) {
 }
 
 /**
- * Monetag web zones (Vignette 11011520/11255233/11255234 + Push 11255229).
+ * Monetag web zones (Vignette 11011520/11255233 + Push 11255229).
+ * The retired third zone stays disabled because its final fullscreen overlay
+ * could keep intercepting touches after the close control was pressed.
  * Official script lifecycle only — Monetag controls real delivery frequency.
  */
 export default function MonetagScripts() {

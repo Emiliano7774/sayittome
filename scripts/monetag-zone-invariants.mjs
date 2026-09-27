@@ -56,8 +56,9 @@ function run() {
   assert(zones.includes('zoneId: "11255233"'), "M2 failed");
   results.push("M2 PASS — 11255233 configured");
 
-  assert(zones.includes('zoneId: "11255234"'), "M3 failed");
-  results.push("M3 PASS — 11255234 configured");
+  assert(!zones.includes('zoneId: "11255234"'), "M3 failed in zones");
+  assert(!scripts.includes("11255234"), "M3 failed in scripts");
+  results.push("M3 PASS — blocking vignette 11255234 retired");
 
   assert(zones.includes('zoneId: "11255229"'), "M4 failed");
   results.push("M4 PASS — 11255229 configured");
@@ -68,8 +69,8 @@ function run() {
 
   assert(zones.includes("monetag-vignette-11011520"), "M6 failed");
   assert(zones.includes("monetag-vignette-11255233"), "M6 failed");
-  assert(zones.includes("monetag-vignette-11255234"), "M6 failed");
-  results.push("M6 PASS — unique vignette script IDs");
+  assert(!zones.includes("monetag-vignette-11255234"), "M6 failed");
+  results.push("M6 PASS — only safe vignette script IDs remain");
 
   assert(zones.includes("MONETAG_VIGNETTE_SRC"), "M7 failed");
   assert(
@@ -132,8 +133,8 @@ function run() {
 
   assert(zones.includes('"11011520"'), "M25 failed");
   assert(zones.includes('"11255233"'), "M25 failed");
-  assert(zones.includes('"11255234"'), "M25 failed");
-  results.push("M25 PASS — official zone IDs preserved");
+  assert(!zones.includes('"11255234"'), "M25 failed");
+  results.push("M25 PASS — safe official zone IDs preserved");
 
   return results;
 }

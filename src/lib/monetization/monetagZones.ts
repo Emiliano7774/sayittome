@@ -13,12 +13,6 @@ export const MONETAG_VIGNETTE_ZONES = [
     scriptId: "monetag-vignette-11255233",
     integration: "official-iife",
   },
-  {
-    zoneId: "11255234",
-    src: MONETAG_VIGNETTE_SRC,
-    scriptId: "monetag-vignette-11255234",
-    integration: "official-iife",
-  },
 ] as const;
 
 export type MonetagVignetteZoneId = (typeof MONETAG_VIGNETTE_ZONES)[number]["zoneId"];
