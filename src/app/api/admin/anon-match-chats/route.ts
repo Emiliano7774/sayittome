@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 
 import {
   anonMatchActivityMs,
+  anonMatchInteractionId,
   anonMatchMessageText,
+  collapseAnonMatchChatRows,
   firestoreTimeMs,
   selectAnonMatchMessageRows,
 } from "@/lib/admin/anonMatchChatReview";
@@ -20,8 +22,11 @@ function noStore(body: unknown, status = 200) {
 
 function safeChat(row: { id: string; data: () => Record<string, unknown> }) {
   const data = row.data() || {};
+  const interactionId = anonMatchInteractionId(row.id, data);
   return {
-    id: row.id,
+    id: interactionId,
+    sourceDocIds: [row.id],
+    sourceCount: 1,
     tipo: String(data.tipo || ""),
     estado: String(data.estado || ""),
     solicitanteUid: String(data.solicitanteUid || ""),
@@ -32,6 +37,32 @@ function safeChat(row: { id: string; data: () => Record<string, unknown> }) {
     createdAtMs: firestoreTimeMs(data.createdAt),
     updatedAtMs: anonMatchActivityMs(data),
   };
+}
+
+async function interactionDocs(
+  db: ReturnType<typeof getRepairAdminDb>,
+  interactionId: string,
+) {
+  const byId = new Map<
+    string,
+    { id: string; data: () => Record<string, unknown> }
+  >();
+  const direct = await db.collection("chats_anonimos").doc(interactionId).get();
+  if (direct.exists) byId.set(direct.id, direct);
+
+  for (const field of ["chatId", "directChatId", "sessionId"] as const) {
+    try {
+      const snap = await db
+        .collection("chats_anonimos")
+        .where(field, "==", interactionId)
+        .get();
+      for (const row of snap.docs) byId.set(row.id, row);
+    } catch (error) {
+      console.error("admin_anon_match_interaction_lookup", field, error);
+    }
+  }
+
+  return [...byId.values()];
 }
 
 async function participantLabel(
@@ -72,12 +103,10 @@ export async function GET(req: Request) {
     const db = getRepairAdminDb();
     if (!chatId) {
       const snap = await listChats();
-      const chats = snap.docs.map((row: { id: string; data: () => Record<string, unknown> }) =>
-        safeChat(row),
-      );
-      chats.sort(
-        (a: { updatedAtMs: number; id: string }, b: { updatedAtMs: number; id: string }) =>
-          b.updatedAtMs - a.updatedAtMs || a.id.localeCompare(b.id),
+      const chats = collapseAnonMatchChatRows(
+        snap.docs.map((row: { id: string; data: () => Record<string, unknown> }) =>
+          safeChat(row),
+        ),
       );
       return noStore({ ok: true, chats });
     }
@@ -86,33 +115,42 @@ export async function GET(req: Request) {
       return noStore({ ok: false, error: "invalid_chat" }, 400);
     }
 
-    const chatRef = db.collection("chats_anonimos").doc(chatId);
-    const chatSnap = await chatRef.get();
-    if (!chatSnap.exists) return noStore({ ok: false, error: "chat_not_found" }, 404);
-
-    const chatData = chatSnap.data() || {};
+    const sourceDocs = await interactionDocs(db, chatId);
+    if (sourceDocs.length === 0) {
+      return noStore({ ok: false, error: "chat_not_found" }, 404);
+    }
+    sourceDocs.sort(
+      (a, b) => anonMatchActivityMs(b.data() || {}) - anonMatchActivityMs(a.data() || {}),
+    );
+    const representative = sourceDocs[0];
+    const chatData = representative.data() || {};
     const collections = ["mensajes", "messages"] as const;
-    const batches = await Promise.all(
-      collections.map(async (name) => {
-        let snap;
-        try {
-          snap = await chatRef.collection(name).orderBy("createdAt", "asc").get();
-        } catch {
-          snap = await chatRef.collection(name).get();
-        }
-        return snap.docs.map((row: { id: string; data: () => Record<string, unknown> }) => {
-          const data = row.data() || {};
-          return {
-            id: row.id,
-            collectionName: name,
-            text: anonMatchMessageText(data),
-            senderId: String(data.senderId || data.fromUid || data.ownerId || ""),
-            senderTipo: String(data.senderTipo || data.senderKind || ""),
-            type: String(data.type || "text"),
-            createdAtMs: firestoreTimeMs(data.createdAt),
-          };
-        });
-      }),
+    const batchesBySource = await Promise.all(
+      sourceDocs.map((sourceDoc) =>
+        Promise.all(
+          collections.map(async (name) => {
+            const chatRef = db.collection("chats_anonimos").doc(sourceDoc.id);
+            let snap;
+            try {
+              snap = await chatRef.collection(name).orderBy("createdAt", "asc").get();
+            } catch {
+              snap = await chatRef.collection(name).get();
+            }
+            return snap.docs.map((row: { id: string; data: () => Record<string, unknown> }) => {
+              const data = row.data() || {};
+              return {
+                id: `${sourceDoc.id}:${row.id}`,
+                collectionName: name,
+                text: anonMatchMessageText(data),
+                senderId: String(data.senderId || data.fromUid || data.ownerId || ""),
+                senderTipo: String(data.senderTipo || data.senderKind || ""),
+                type: String(data.type || "text"),
+                createdAtMs: firestoreTimeMs(data.createdAt),
+              };
+            });
+          }),
+        ),
+      ),
     );
     const [solicitanteLabel, destinatarioLabel] = await Promise.all([
       participantLabel(db, String(chatData.solicitanteUid || ""), String(chatData.solicitanteAnonId || "")),
@@ -123,14 +161,16 @@ export async function GET(req: Request) {
       ),
     ]);
     const messages = selectAnonMatchMessageRows({
-      mensajes: batches[0],
-      messages: batches[1],
+      mensajes: batchesBySource.flatMap((batch) => batch[0]),
+      messages: batchesBySource.flatMap((batch) => batch[1]),
     });
 
     return noStore({
       ok: true,
       chat: {
-        ...safeChat({ id: chatSnap.id, data: () => chatData }),
+        ...safeChat({ id: chatId, data: () => ({ ...chatData, chatId }) }),
+        sourceDocIds: sourceDocs.map((row) => row.id),
+        sourceCount: sourceDocs.length,
         solicitanteLabel,
         destinatarioLabel,
       },

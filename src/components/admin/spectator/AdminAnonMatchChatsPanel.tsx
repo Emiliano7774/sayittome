@@ -6,6 +6,7 @@ import { auth } from "@/lib/firebase";
 
 type AnonMatchChat = {
   id: string;
+  sourceCount?: number;
   tipo: string;
   estado: string;
   solicitanteUid: string;
@@ -46,6 +47,20 @@ async function adminGet(path: string) {
 function when(ms: number) {
   if (!ms) return "sin fecha";
   return new Date(ms).toLocaleString("es-AR");
+}
+
+function conversationKind(chat: AnonMatchChat) {
+  switch (chat.tipo) {
+    case "perfil_con_perfil":
+      return "Perfil ↔ Perfil";
+    case "anon_con_anonimo":
+      return "Anónimo ↔ Anónimo";
+    case "anon_con_perfil":
+    case "perfil_con_anonimo":
+      return "Perfil ↔ Anónimo";
+    default:
+      return "Chat temporal";
+  }
 }
 
 export default function AdminAnonMatchChatsPanel() {
@@ -148,7 +163,8 @@ export default function AdminAnonMatchChatsPanel() {
   }
 
   return (
-    <div className="grid min-h-[min(76dvh,760px)] gap-4 lg:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]">
+    <div className="overflow-x-auto pb-2">
+      <div className="grid h-[min(76dvh,760px)] min-h-[520px] min-w-[760px] grid-cols-[minmax(280px,0.8fr)_minmax(380px,1.2fr)] gap-4">
       <section className="min-h-0 overflow-y-auto rounded-2xl border border-white/10 bg-[#080808] p-3">
         <div className="mb-3 px-2">
           <p className="text-sm font-black">No encontraste a nadie interesante</p>
@@ -165,9 +181,12 @@ export default function AdminAnonMatchChatsPanel() {
                 selected === chat.id ? "border-violet-400/40 bg-violet-500/10" : "border-white/10 bg-white/[.02]",
               ].join(" ")}
             >
-              <p className="truncate text-sm font-black">{chat.ultimoMensaje || chat.id}</p>
+              <p className="truncate text-sm font-black">Conversación temporal</p>
+              <p className="mt-1 line-clamp-2 text-xs font-semibold text-white/55">
+                {chat.ultimoMensaje || "Sin mensajes"}
+              </p>
               <p className="mt-1 text-xs font-bold text-white/45">
-                {chat.tipo || "anon-match"} · {chat.estado || "sin estado"}
+                {conversationKind(chat)} · {chat.estado || "sin estado"}
               </p>
               <p className="mt-1 truncate text-[11px] text-white/30">
                 {when(chat.updatedAtMs || chat.createdAtMs)}
@@ -175,6 +194,11 @@ export default function AdminAnonMatchChatsPanel() {
                   ? ` · ${chat.solicitanteAnonId || "perfil"} → ${chat.destinatarioAnonId || chat.destinatarioUid || "perfil"}`
                   : ""}
               </p>
+              {(chat.sourceCount || 1) > 1 ? (
+                <p className="mt-1 text-[10px] font-bold text-violet-200/60">
+                  {chat.sourceCount} fragmentos reunidos en esta interacción
+                </p>
+              ) : null}
             </button>
           ))}
           {chats.length === 0 ? <p className="p-4 text-sm font-bold text-white/35">No hay chats anon-match.</p> : null}
@@ -226,6 +250,7 @@ export default function AdminAnonMatchChatsPanel() {
           </>
         )}
       </section>
+      </div>
     </div>
   );
 }

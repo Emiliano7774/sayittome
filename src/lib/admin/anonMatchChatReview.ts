@@ -39,6 +39,71 @@ export function anonMatchActivityMs(data: Record<string, unknown>): number {
   return firestoreTimeMs(data.updatedAt) || firestoreTimeMs(data.createdAt);
 }
 
+export function anonMatchInteractionId(
+  sourceDocId: string,
+  data: Record<string, unknown>,
+) {
+  for (const value of [data.chatId, data.directChatId, data.sessionId]) {
+    const clean = String(value || "").trim();
+    if (clean) return clean;
+  }
+  return String(sourceDocId || "").trim();
+}
+
+export type AdminAnonMatchChatRow = {
+  id: string;
+  sourceDocIds: string[];
+  sourceCount: number;
+  tipo: string;
+  estado: string;
+  solicitanteUid: string;
+  destinatarioUid: string;
+  solicitanteAnonId: string;
+  destinatarioAnonId: string;
+  ultimoMensaje: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+/** Collapse historical fragments that explicitly point to the same chat/session. */
+export function collapseAnonMatchChatRows(rows: AdminAnonMatchChatRow[]) {
+  const grouped = new Map<string, AdminAnonMatchChatRow>();
+  for (const row of rows) {
+    const id = String(row.id || "").trim();
+    if (!id) continue;
+    const previous = grouped.get(id);
+    if (!previous) {
+      grouped.set(id, {
+        ...row,
+        sourceDocIds: [...new Set(row.sourceDocIds.filter(Boolean))],
+        sourceCount: Math.max(1, row.sourceCount || row.sourceDocIds.length),
+      });
+      continue;
+    }
+
+    const newest = row.updatedAtMs >= previous.updatedAtMs ? row : previous;
+    const oldestCreated =
+      [previous.createdAtMs, row.createdAtMs]
+        .filter((value) => value > 0)
+        .sort((a, b) => a - b)[0] || 0;
+    const sourceDocIds = [...new Set([...previous.sourceDocIds, ...row.sourceDocIds])];
+    grouped.set(id, {
+      ...previous,
+      ...newest,
+      id,
+      sourceDocIds,
+      sourceCount: sourceDocIds.length,
+      createdAtMs: oldestCreated,
+      updatedAtMs: Math.max(previous.updatedAtMs, row.updatedAtMs),
+      ultimoMensaje: newest.ultimoMensaje || previous.ultimoMensaje || row.ultimoMensaje,
+    });
+  }
+
+  return [...grouped.values()].sort(
+    (a, b) => b.updatedAtMs - a.updatedAtMs || a.id.localeCompare(b.id),
+  );
+}
+
 export type AdminAnonMatchMessageRow = {
   id: string;
   collectionName: "mensajes" | "messages";
@@ -60,7 +125,12 @@ export function selectAnonMatchMessageRows(input: {
   messages: AdminAnonMatchMessageRow[];
 }) {
   const selected = input.mensajes.length > 0 ? input.mensajes : input.messages;
-  return [...selected].sort(
+  const byMessage = new Map<string, AdminAnonMatchMessageRow>();
+  for (const row of selected) {
+    const key = `${row.collectionName}:${row.id}`;
+    if (!byMessage.has(key)) byMessage.set(key, row);
+  }
+  return [...byMessage.values()].sort(
     (a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id),
   );
 }
