@@ -85,6 +85,10 @@ export function getPendingVisualTab() {
 }
 
 export function resolveEffectiveMainTab(pathname: string) {
+  // The tapped bar section owns highlight + panel until the live URL catches up.
+  if (incomingBarTab && incomingBarTab !== "/shuffle") {
+    return incomingBarTab;
+  }
   if (!isVisualFirstTabsEnabled()) return normalizePath(pathname);
   return pendingVisualTab ?? normalizePath(pathname);
 }
@@ -127,13 +131,13 @@ export function syncIncomingBarTab(pathname: string) {
 export function isMainTabPanelVisible(pathname: string, href: MainTabHref) {
   const path = normalizePath(pathname);
 
-  if (!(MAIN_TAB_HREFS as readonly string[]).includes(path)) {
-    return false;
-  }
-
   if (incomingBarTab === "/shuffle") return false;
   if (incomingBarTab) {
     return href === incomingBarTab;
+  }
+
+  if (!(MAIN_TAB_HREFS as readonly string[]).includes(path)) {
+    return false;
   }
 
   // The live bar URL owns the screen. A shuffle-exit latch must not keep Chats

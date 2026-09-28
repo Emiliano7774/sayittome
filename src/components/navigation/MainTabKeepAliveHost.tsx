@@ -283,16 +283,25 @@ export default function MainTabKeepAliveHost() {
       typeof window !== "undefined"
         ? window.location.pathname.split("?")[0].split("#")[0]
         : path;
-    // Prefer the live browser URL when keep-alive pathname lags (history sync /
-    // Next usePathname desync). Otherwise Stories can stay under an exit latch.
+    const incomingForPresent = getIncomingBarTab();
+    // Destination latch: the tapped bar section wins over a lagged live URL.
+    // Otherwise a layout effect that flushes from armIncomingBarTab *before*
+    // pushState can forcePresent the previous Stories/Chats panel.
     const effectivePath =
-      (listMainTabKeepAliveHrefs() as readonly string[]).includes(livePathForMain) &&
-      livePathForMain !== "/shuffle"
-        ? livePathForMain
-        : path;
+      incomingForPresent &&
+      incomingForPresent !== "/shuffle" &&
+      (listMainTabKeepAliveHrefs() as readonly string[]).includes(incomingForPresent)
+        ? incomingForPresent
+        : (listMainTabKeepAliveHrefs() as readonly string[]).includes(livePathForMain) &&
+            livePathForMain !== "/shuffle"
+          ? livePathForMain
+          : path;
     if ((listMainTabKeepAliveHrefs() as readonly string[]).includes(effectivePath)) {
       const href = effectivePath as MainTabHref;
-      syncIncomingBarTab(href);
+      // Only consume the latch once the live browser URL matches the destination.
+      if (livePathForMain === href) {
+        syncIncomingBarTab(href);
+      }
       markMainTabVisited(href);
       seedPresentedMainTab(href);
       onMainTabRouteChange(effectivePath);

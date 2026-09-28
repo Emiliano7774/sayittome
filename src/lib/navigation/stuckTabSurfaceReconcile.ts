@@ -174,4 +174,7 @@ async function reconcileStuckTabSurface(path: string) {
   shuffle.releaseShuffleTabSurface();
   const state = await import("@/lib/navigation/shuffleHandoffState");
   state.clearShuffleExitToMainTab({ destination: path, force: true });
+  // Re-assert DOM classes — forcePresent alone does not flip keep-alive panels,
+  // and a stale React render can leave Stories visible under a /chats URL.
+  paintChosenBarSection(path);
 }

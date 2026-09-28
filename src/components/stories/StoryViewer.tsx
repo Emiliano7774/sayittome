@@ -58,6 +58,10 @@ import { preloadNextPlayTarget, preloadStoryMedia } from "@/lib/stories/preload"
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { resolveStoryViewerExitDestination, type StoryViewerExitReason } from "@/lib/navigation/storyReturnNav";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
+import {
+  applyStoryReplySendAck,
+  formatStoryReplyFailure,
+} from "@/lib/stories/storyReplySnapshot";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import StoryMediaBuffers from "@/components/stories/StoryMediaBuffers";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
@@ -128,6 +132,7 @@ export default function StoryViewer({
   const [deleting, setDeleting] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
   const [replyDragY, setReplyDragY] = useState(0);
   const [replyDragging, setReplyDragging] = useState(false);
   const [replySentToast, setReplySentToast] = useState(false);
@@ -686,17 +691,24 @@ export default function StoryViewer({
   }
 
   function handleSendReply() {
-    if (!current || !canReply || !replyText.trim()) return;
+    if (!current || !canReply || !replyText.trim() || replySending) return;
 
     const text = replyText.trim();
     const story = current;
     const username = profileUsername;
 
-    closeReply();
-    setReplyText("");
+    setReplySending(true);
 
     void sendStoryReplyMessage(story, username, text)
       .then((chatId) => {
+        const ack = applyStoryReplySendAck(true);
+        if (ack.closeComposer) {
+          closeReply();
+        }
+        if (ack.showSentToast) {
+          setReplySentToast(true);
+          window.setTimeout(() => setReplySentToast(false), 1600);
+        }
         const query = new URLSearchParams({ u: username });
         fastRouterPush(
           router,
@@ -705,9 +717,15 @@ export default function StoryViewer({
       })
       .catch((error) => {
         console.error(error);
-        setReplyText(text);
+        const ack = applyStoryReplySendAck(false);
+        if (ack.keepComposerText) {
+          setReplyText(text);
+        }
         setReplyOpen(true);
-        window.alert(t("chat_save_fail"));
+        window.alert(formatStoryReplyFailure(error));
+      })
+      .finally(() => {
+        setReplySending(false);
       });
   }
 
@@ -1049,6 +1067,7 @@ export default function StoryViewer({
                 placeholder={t("story_reply_placeholder")}
                 className="min-w-0 flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm outline-none placeholder:text-white/35"
                 autoFocus
+                disabled={replySending}
                 onPointerDown={(event) => event.stopPropagation()}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
@@ -1060,7 +1079,7 @@ export default function StoryViewer({
               <button
                 type="button"
                 onClick={handleSendReply}
-                disabled={!replyText.trim()}
+                disabled={!replyText.trim() || replySending}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white disabled:opacity-40"
                 aria-label={t("story_reply_send")}
               >

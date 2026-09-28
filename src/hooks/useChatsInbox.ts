@@ -42,6 +42,9 @@ import {
   removeInboxSnapshotChat,
   writeInboxSnapshot,
 } from "@/lib/chat/inboxSnapshot";
+import {
+  OUTGOING_INBOX_CHAT_EVENT,
+} from "@/lib/chat/publishOutgoingInboxChat";
 import { isNavTraceEnabled } from "@/lib/perf/navTrace";
 import { chatsPipelineMark } from "@/lib/perf/chatsPipelineTrace";
 import {
@@ -188,6 +191,38 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
 
     return () => {
       window.removeEventListener(SESSION_CHATS_CHANGED_EVENT, syncSessionChatIds);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onOutgoing = (event: Event) => {
+      const chat = (event as CustomEvent<{ chat?: InboxChat }>).detail?.chat;
+      if (!chat?.id || !hasInboxActivity(chat)) return;
+      const normalized = normalizeInboxChat(chat);
+      if (!normalized || !hasInboxActivity(normalized)) return;
+
+      setSessionChats((prev) => {
+        const existing = prev.find(
+          (row) =>
+            row.id === normalized.id ||
+            row.canonicalChatId === normalized.id ||
+            row.id === normalized.canonicalChatId,
+        );
+        const rest = prev.filter(
+          (row) =>
+            row.id !== normalized.id &&
+            row.canonicalChatId !== normalized.id &&
+            row.id !== normalized.canonicalChatId,
+        );
+        return [...rest, preferInboxChat(existing, normalized)];
+      });
+    };
+
+    window.addEventListener(OUTGOING_INBOX_CHAT_EVENT, onOutgoing);
+    return () => {
+      window.removeEventListener(OUTGOING_INBOX_CHAT_EVENT, onOutgoing);
     };
   }, []);
 

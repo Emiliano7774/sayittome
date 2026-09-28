@@ -189,9 +189,13 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     // During an active micro-slide the nav hit-target can briefly collapse
     // (0×0) and the subsequent click never fires. Commit on pointerdown so the
     // Stories/Chats/Boost/Settings tap cannot be swallowed.
+    //
+    // Order matters: pushState/live URL first, then arm+paint. Arming notifies
+    // React; if the keep-alive effect runs before history commits it must not
+    // see the previous URL as authoritative and re-present the old panel.
     warmTab({ allowSupersede: true });
-    paintBarSection(href);
     commitConcreteMainTabHistory(href);
+    paintBarSection(href);
   }
 
   function onMainTabClick(event: React.MouseEvent<HTMLAnchorElement>) {
@@ -210,6 +214,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     // Re-tapping the current tab is a no-op; do not create duplicate history.
     if (livePath === href) {
       softPushFromPointerDownRef.current = null;
+      paintBarSection(href);
       return;
     }
 
@@ -222,6 +227,9 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       if (livePath !== href) {
         scheduleMainTabHistory(href, "bottom-nav-pointerdown-reconcile");
       }
+      // Pointerdown already armed+painted; re-assert so a stale layout effect
+      // cannot leave the previous panel visible after history caught up.
+      paintBarSection(href);
       return;
     }
 
