@@ -400,12 +400,5 @@ export default function MainTabKeepAliveHost() {
   );
 }
 
-export function isMainTabRouteHandledByKeepAlive(pathname: string, href: MainTabHref) {
-  if (!shouldRenderMainTabKeepAliveHost(pathname)) return false;
-  if (normalizeRoute(pathname) !== href) return false;
-  return shouldMountMainTabPanel(pathname, href);
-}
-
-function normalizeRoute(pathname: string) {
-  return pathname.split("?")[0].split("#")[0];
-}
+/** Re-export for existing page imports that pull from the host module. */
+export { isMainTabRouteHandledByKeepAlive } from "@/lib/navigation/mainTabKeepAlive";

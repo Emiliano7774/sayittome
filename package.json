@@ -84,6 +84,8 @@
     "test:android-mic-webview-wiring": "node --experimental-strip-types scripts/android-mic-webview-wiring.harness.mjs",
     "test:nav-zone-paint": "node --experimental-strip-types scripts/nav-zone-paint.harness.mjs",
     "test:bar-instant-tab": "node --experimental-strip-types scripts/bar-instant-tab.harness.mjs",
+    "test:stale-main-tab-route-shell": "node --experimental-strip-types scripts/stale-main-tab-route-shell.harness.mjs",
+    "test:prod-stories-chats-paint-owner": "node scripts/prod-stories-chats-paint-owner.mjs",
     "test:story-reply-writer-render": "node --experimental-strip-types scripts/story-reply-writer-render.harness.mjs",
     "test:android-release-version": "node scripts/android-release-version.harness.mjs",
     "test:chat-storage-auth": "node --experimental-strip-types scripts/chat-storage-auth.harness.mjs",

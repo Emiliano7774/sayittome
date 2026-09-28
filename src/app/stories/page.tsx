@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 
 import { useUxMode } from "@/contexts/UxModeContext";
 import ModernStoriesPage from "@/components/modern/ModernStoriesPage";
-import { isMainTabRouteHandledByKeepAlive } from "@/components/navigation/MainTabKeepAliveHost";
 import {
   getMainTabKeepAliveVersion,
+  isMainTabRouteHandledByKeepAlive,
   subscribeMainTabKeepAlive,
 } from "@/lib/navigation/mainTabKeepAlive";
 
@@ -32,6 +32,8 @@ export default function StoriesPage() {
     getMainTabKeepAliveVersion,
   );
 
+  // Suppress when keep-alive owns this tab OR another concrete main tab
+  // (stale Next page slot after soft history pushState).
   if (isMainTabRouteHandledByKeepAlive(pathname, "/stories")) {
     return null;
   }

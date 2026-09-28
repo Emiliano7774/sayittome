@@ -21,12 +21,19 @@ import {
   OPEN_MAIN_TAB_EVENT,
 } from "@/lib/navigation/mainTabShellBridge";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
+import { waitForPendingChatSends } from "@/lib/chat/pendingChatSends";
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
   hardNavigate,
   shouldHardNavigatePath,
 } from "@/lib/navigation/hardNavigate";
-import { pinMainTabKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
+import {
+  getIncomingBarTab,
+  getMainTabKeepAliveVersion,
+  pinMainTabKeepAlive,
+  shouldRenderMainTabKeepAliveHost,
+  subscribeMainTabKeepAlive,
+} from "@/lib/navigation/mainTabKeepAlive";
 import { recordNativeNavPath } from "@/lib/navigation/nativeNavStack";
 import {
   getCurrentMainTabPathname,
@@ -72,6 +79,12 @@ export function MainTabShellProvider({
   const [shellTab, setShellTab] = useState<MainTabHref | null>(null);
   const shellMountedTabs = useMemo(() => new Set<MainTabHref>(), []);
 
+  useSyncExternalStore(
+    subscribeMainTabKeepAlive,
+    getMainTabKeepAliveVersion,
+    getMainTabKeepAliveVersion,
+  );
+
   useEffect(() => {
     if (isMainTabHref(resolvedPathname)) return;
     setShellTab(null);
@@ -88,10 +101,15 @@ export function MainTabShellProvider({
   }, [shellTab]);
 
   const openMainTab = useCallback(
-    (href: MainTabHref) => {
+    async (href: MainTabHref) => {
       setShellTab(null);
       resetMainTabHistoryPathnameStore("open-main-tab");
       if (href === resolvedPathname) return;
+
+      // Native tab changes may become full-document navigations. Never tear
+      // down bind/permit/Firestore while a chat send is still in flight.
+      await waitForPendingChatSends();
+
       pinMainTabKeepAlive();
       recordNativeNavPath(href);
       releaseChatViewportLock();
@@ -130,7 +148,18 @@ export function MainTabShellProvider({
   }, [openMainTab]);
 
   const activeShellTab = shellTab;
-  const childrenHidden = activeShellTab !== null;
+  const incoming = getIncomingBarTab();
+  const keepAliveOwner =
+    incoming && incoming !== "/shuffle"
+      ? incoming
+      : isMainTabHref(resolvedPathname) && resolvedPathname !== "/shuffle"
+        ? resolvedPathname
+        : null;
+  // Soft history leaves the previous Next page mounted; hide the route shell
+  // whenever keep-alive owns a concrete main tab so stale children cannot paint.
+  const keepAliveOwnsConcreteMainTab =
+    keepAliveOwner !== null && shouldRenderMainTabKeepAliveHost(keepAliveOwner);
+  const childrenHidden = activeShellTab !== null || keepAliveOwnsConcreteMainTab;
   const effectivePathname = activeShellTab ?? resolvedPathname;
 
   const value = useMemo<MainTabShellContextValue>(

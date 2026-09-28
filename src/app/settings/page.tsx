@@ -9,9 +9,9 @@ import { logoutAndResetAnon } from "@/lib/auth/logout";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
-import { isMainTabRouteHandledByKeepAlive } from "@/components/navigation/MainTabKeepAliveHost";
 import {
   getMainTabKeepAliveVersion,
+  isMainTabRouteHandledByKeepAlive,
   subscribeMainTabKeepAlive,
 } from "@/lib/navigation/mainTabKeepAlive";
 import ProfileEntryGate from "@/components/profile/ProfileEntryGate";

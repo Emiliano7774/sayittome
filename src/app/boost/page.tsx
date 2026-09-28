@@ -5,10 +5,10 @@ import { useSyncExternalStore } from "react";
 
 import ClassicBoostPage from "@/components/boost/ClassicBoostPage";
 import ModernBoostPage from "@/components/boost/ModernBoostPage";
-import { isMainTabRouteHandledByKeepAlive } from "@/components/navigation/MainTabKeepAliveHost";
 import { useUxMode } from "@/contexts/UxModeContext";
 import {
   getMainTabKeepAliveVersion,
+  isMainTabRouteHandledByKeepAlive,
   subscribeMainTabKeepAlive,
 } from "@/lib/navigation/mainTabKeepAlive";
 

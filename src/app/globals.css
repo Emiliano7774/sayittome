@@ -329,6 +329,37 @@ html[data-sayittome-main-tab-history-from-nonmain="1"]:has(
   display: none !important;
 }
 
+/*
+ * Soft Stories↔Chats (and other concrete main tabs): Next 16 can update
+ * usePathname via pushState while leaving the previous page component mounted.
+ * That stale child used to re-expand .sayittome-route-shell to a full viewport
+ * and shove the destination keep-alive panel below the fold. Fail-safe: when a
+ * keep-alive panel owns the bar target, the Next route shell must not paint.
+ */
+html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="stories"]:has(
+    #sayittome-main-tab-keepalive-stories.sayittome-main-tab-keepalive-visible
+  )
+  .sayittome-route-shell,
+html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="chats"]:has(
+    #sayittome-main-tab-keepalive-chats.sayittome-main-tab-keepalive-visible
+  )
+  .sayittome-route-shell,
+html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="boost"]:has(
+    #sayittome-main-tab-keepalive-boost.sayittome-main-tab-keepalive-visible
+  )
+  .sayittome-route-shell,
+html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="settings"]:has(
+    #sayittome-main-tab-keepalive-settings.sayittome-main-tab-keepalive-visible
+  )
+  .sayittome-route-shell {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
 .sayittome-shuffle-keepalive-frozen {
   position: fixed;
   inset: 0;

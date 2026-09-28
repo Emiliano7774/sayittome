@@ -153,6 +153,40 @@ export function shouldMountMainTabPanel(pathname: string, href: MainTabHref) {
   return isMainTabPanelVisible(pathname, href) || hasMainTabBeenVisited(href);
 }
 
+/**
+ * Suppress Next main-tab page slots when keep-alive owns paint.
+ *
+ * Next 16 can sync usePathname() to history.pushState while leaving the previous
+ * page component mounted (StoriesPage still alive after soft-nav to /chats).
+ * Requiring pathname===ownHref resurrected <StoriesRouteContent/> into
+ * .sayittome-route-shell and pushed the destination keep-alive panel below the fold.
+ */
+export function isMainTabRouteHandledByKeepAlive(pathname: string, href: MainTabHref) {
+  const path = normalizePath(pathname);
+  const effective =
+    incomingBarTab && incomingBarTab !== "/shuffle" ? incomingBarTab : path;
+
+  if (!shouldRenderMainTabKeepAliveHost(path) && !shouldRenderMainTabKeepAliveHost(effective)) {
+    return false;
+  }
+
+  const effectiveIsConcreteMainTab =
+    (MAIN_TAB_HREFS as readonly string[]).includes(effective) &&
+    effective !== "/shuffle";
+
+  // Stale page slot: keep-alive already owns a different concrete main tab.
+  if (effectiveIsConcreteMainTab && effective !== href) {
+    return true;
+  }
+
+  // Own route: keep-alive mounts this panel — avoid duplicate trees/fetches.
+  if (path === href || effective === href) {
+    return shouldMountMainTabPanel(effective === href ? effective : path, href);
+  }
+
+  return false;
+}
+
 export function listMainTabKeepAliveHrefs() {
   return MAIN_TAB_HREFS;
 }
