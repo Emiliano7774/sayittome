@@ -33,6 +33,10 @@ import {
   rememberRejectedSolicitanteKey,
   resolveSolicitanteKey,
 } from "@/lib/anonMatch/dismissedIncoming";
+import {
+  ANON_MATCH_DOOR_EVENT,
+  isAnonMatchDoorOpen,
+} from "@/lib/anonMatch/anonMatchDoor";
 import { fetchAnonMatch, resolveAnonMatchSessionId, resolveLiveAnonMatchCaller } from "@/lib/anonMatch/fetchAnonMatch";
 import {
   buildAnonMatchCloseBody,
@@ -188,6 +192,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const [chatView, setChatViewState] = useState<AnonDirectChatView>("compact");
   const [incomingRequest, setIncomingRequest] = useState<IncomingRequest | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [matchDoorOpen, setMatchDoorOpen] = useState(false);
 
   const phaseRef = useRef(phase);
   const solicitudRef = useRef(solicitudId);
@@ -232,6 +237,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => bindWhipSoundUnlock(), []);
+
+  useEffect(() => {
+    const syncDoor = () => {
+      setMatchDoorOpen(isAnonMatchDoorOpen(firebaseUser || auth.currentUser));
+    };
+    syncDoor();
+    window.addEventListener(ANON_MATCH_DOOR_EVENT, syncDoor);
+    return () => window.removeEventListener(ANON_MATCH_DOOR_EVENT, syncDoor);
+  }, [firebaseUser?.isAnonymous, firebaseUser?.uid]);
 
   useEffect(() => {
     let cancelled = false;
@@ -670,6 +684,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   const startSearchSession = useCallback(async () => {
     const live = await resolveLiveAnonMatchCaller();
+    if (!isAnonMatchDoorOpen(live.user)) return;
     if (!live.isRegisteredProfile) {
       const issued = await resolveAnonMatchSessionId().catch(() => "");
       if (!issued) return;
@@ -910,6 +925,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
+    // Do not auto-sign anonymous / listen for matches until the door is open
+    // (registered profile, or explicit anonymous shuffle enter).
+    if (!matchDoorOpen) {
+      setIncomingRequest(null);
+      return;
+    }
 
     let uid = "";
     let cancelled = false;
@@ -1129,7 +1150,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       unsubs.forEach((unsub) => unsub());
       if (pollTimer != null) window.clearInterval(pollTimer);
     };
-  }, [firebaseUser?.isAnonymous, firebaseUser?.uid, hydrated]);
+  }, [firebaseUser?.isAnonymous, firebaseUser?.uid, hydrated, matchDoorOpen]);
 
   useEffect(() => {
     if (!openChat?.chatId) return;

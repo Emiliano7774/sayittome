@@ -9,6 +9,7 @@ import {
   resolveLegacyAnonPresenceCleanupId,
   shouldPublishAnonMatchPresence,
 } from "@/lib/anonMatch/anonymousPresenceIdentity";
+import { isAnonMatchDoorOpen, ANON_MATCH_DOOR_EVENT } from "@/lib/anonMatch/anonMatchDoor";
 import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 import { resolveAnonMatchSessionId } from "@/lib/anonMatch/fetchAnonMatch";
 import { auth } from "@/lib/firebase";
@@ -60,6 +61,11 @@ async function writeAnonymousPresence(force = false) {
   });
   if (!shouldPublishAnonMatchPresence(kind)) {
     cachedPresenceAlias = "";
+    return;
+  }
+  // Auto-signed Firebase anonymous auth must not join the match pool until
+  // the visitor explicitly enters shuffle (legal accept / Enter anonymously).
+  if (!isAnonMatchDoorOpen(user)) {
     return;
   }
 
@@ -163,9 +169,8 @@ function onUserChanged(user: User | null) {
     isAnonymous: user?.isAnonymous,
   });
 
-  if (!shouldPublishAnonMatchPresence(kind)) {
-    // Registered profile: never publish ghost anon presence.
-    // Best-effort: clear any alias we still have cached from a prior anon session.
+  if (!shouldPublishAnonMatchPresence(kind) || !isAnonMatchDoorOpen(user)) {
+    // Registered profile, pre-enter ghost anon, or door closed: never publish.
     if (cachedPresenceAlias) {
       void removeAnonymousPresence().finally(() => {
         cachedPresenceAlias = "";
@@ -187,6 +192,10 @@ export function startAnonymousPresenceSystem() {
 
   authUnsub = onAuthStateChanged(auth, (user) => {
     onUserChanged(user);
+  });
+
+  window.addEventListener(ANON_MATCH_DOOR_EVENT, () => {
+    onUserChanged(auth.currentUser);
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -211,9 +220,17 @@ export function startAnonymousPresenceSystem() {
 /** Force a presence heartbeat before match search so peers can find this session. */
 export async function bumpAnonymousPresenceForMatch(): Promise<string> {
   if (typeof window === "undefined") return "";
+  if (!isAnonMatchDoorOpen(auth.currentUser)) return "";
   lastWriteAt = 0;
   await writeAnonymousPresence(true);
   return cachedPresenceAlias || getStoredAnonMatchAlias() || "";
+}
+
+/** Leave the match pool when the anonymous legal/session door closes. */
+export async function removeAnonymousPresenceForMatchDoorClose() {
+  await removeAnonymousPresence();
+  cachedPresenceAlias = "";
+  lastWriteAt = 0;
 }
 
 /** Test/harness seam — current publisher kind after auth callback. */

@@ -49,6 +49,24 @@ export function loadRejectedSolicitanteKeys() {
   return readIds(REJECTED_SOLICITANTES_KEY);
 }
 
+export function clearRejectedSolicitanteKeys() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(REJECTED_SOLICITANTES_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function clearDismissedRequestIds() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(DISMISSED_REQUESTS_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function rememberRejectedSolicitanteKey(key: string) {
   const trimmed = key.trim();
   if (!trimmed) return;

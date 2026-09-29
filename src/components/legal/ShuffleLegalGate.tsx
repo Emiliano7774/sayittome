@@ -53,7 +53,9 @@ export default function ShuffleLegalGate({ children }: { children: React.ReactNo
     unlockShuffleLegalGate();
     setAcceptedInThisMount(true);
 
-    if (!uid) {
+    // Persisted Firebase anonymous auth still needs enterAnonymousMode so the
+    // match door rotates alias + publishes presence (not only first-time !uid).
+    if (!firebaseUser || firebaseUser.isAnonymous) {
       await enterAnonymousMode();
     }
   }
