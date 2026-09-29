@@ -202,6 +202,98 @@ export async function getAnonMatchRequest(solicitudId: string) {
   return getAnonMatchAdminDoc("solicitudes_chat_anonimo", solicitudId);
 }
 
+export type IncomingAnonMatchRequestRow = {
+  solicitudId: string;
+  solicitanteUid: string;
+  solicitanteAnonId: string;
+  destinatarioTipo: "perfil" | "anonimo";
+  expiresAt: string;
+};
+
+/**
+ * Server-side incoming solicitudes for the authenticated caller.
+ * Used by the client poller so match alerts do not depend on Firestore list rules
+ * (legacy clients queried by anonId and always got permission-denied under privacy rules).
+ */
+export async function listIncomingAnonMatchRequests(input: {
+  callerAuthUid: string;
+  callerIsAnonymous: boolean;
+  callerAnonId?: string;
+}): Promise<IncomingAnonMatchRequestRow[]> {
+  const authUid = String(input.callerAuthUid || "").trim();
+  if (!authUid) return [];
+
+  const callerAnonId = String(input.callerAnonId || "").trim();
+  const now = Date.now();
+  const rows: Record<string, unknown>[] = [];
+
+  if (input.callerIsAnonymous) {
+    const byAuth = await listAnonMatchAdminDocs("solicitudes_chat_anonimo", {
+      limit: 25,
+      where: { field: "destinatarioAuthUid", value: authUid },
+    });
+    rows.push(...byAuth);
+    if (callerAnonId) {
+      const byAnon = await listAnonMatchAdminDocs("solicitudes_chat_anonimo", {
+        limit: 25,
+        where: { field: "anonId", value: callerAnonId },
+      });
+      rows.push(...byAnon);
+    }
+  } else {
+    const byUid = await listAnonMatchAdminDocs("solicitudes_chat_anonimo", {
+      limit: 25,
+      where: { field: "destinatarioUid", value: authUid },
+    });
+    rows.push(...byUid);
+  }
+
+  const seen = new Set<string>();
+  const out: IncomingAnonMatchRequestRow[] = [];
+
+  for (const row of rows) {
+    const solicitudId = String(row.solicitudId || row.id || "").trim();
+    if (!solicitudId || seen.has(solicitudId)) continue;
+    seen.add(solicitudId);
+
+    let estado = String(row.estado || "");
+    if (estado === "pendiente") {
+      estado = await expireAnonMatchRequestIfNeeded(row);
+    }
+    if (estado !== "pendiente") continue;
+
+    const expiresAt = String(row.expiresAt || "");
+    const expiresDate = parseDate(expiresAt);
+    if (expiresDate && expiresDate.getTime() <= now) continue;
+
+    const destinatarioTipo =
+      String(row.destinatarioTipo || "") === "perfil" ? "perfil" : "anonimo";
+    const solicitanteUid = String(row.solicitanteUid || "");
+    const solicitanteAnonId = String(row.solicitanteAnonId || "");
+
+    if (input.callerIsAnonymous) {
+      if (destinatarioTipo === "perfil") continue;
+      const destAuth = String(row.destinatarioAuthUid || "");
+      const targetAnon = String(row.anonId || "");
+      if (destAuth !== authUid && targetAnon !== callerAnonId) continue;
+      if (callerAnonId && solicitanteAnonId === callerAnonId) continue;
+    } else {
+      if (String(row.destinatarioUid || "") !== authUid) continue;
+      if (solicitanteUid && solicitanteUid === authUid) continue;
+    }
+
+    out.push({
+      solicitudId,
+      solicitanteUid,
+      solicitanteAnonId,
+      destinatarioTipo,
+      expiresAt,
+    });
+  }
+
+  return out.sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
+}
+
 async function getAnonDirectChat(chatId: string) {
   return getAnonMatchAdminDoc("chats_anonimos", chatId);
 }

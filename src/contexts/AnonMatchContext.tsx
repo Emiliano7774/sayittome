@@ -77,6 +77,9 @@ import { ANON_MATCH_REQUEST_MS } from "@/lib/anonMatch/types";
 import { auth, db } from "@/lib/firebase";
 import type { AnonMatchRequestState } from "@/lib/anonMatch/types";
 
+const INCOMING_POLL_MS = 2_500;
+const WAITING_POLL_MS = 3_000;
+
 export type AnonMatchConnectPhase =
   | "idle"
   | "searching"
@@ -614,12 +617,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         }
       },
       (error) => {
+        // Do not abandon the solicitud on permission-denied — poll via API instead.
         console.warn("[anon-match] waiting solicitud snapshot error", error?.code || error);
-        handleFailure();
       },
     );
 
-    const expiryTimer = window.setTimeout(async () => {
+    const pollWaiting = async () => {
       if (phaseRef.current !== "waiting" || solicitudRef.current !== solicitudId) return;
       if (!searchSessionActiveRef.current) return;
 
@@ -661,12 +664,22 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           handleFailure();
         }
       } catch {
-        handleFailure();
+        // Keep waiting; next poll retries.
       }
+    };
+
+    void pollWaiting();
+    const pollTimer = window.setInterval(() => {
+      void pollWaiting();
+    }, WAITING_POLL_MS);
+
+    const expiryTimer = window.setTimeout(() => {
+      void pollWaiting();
     }, ANON_MATCH_REQUEST_MS + 500);
 
     return () => {
       unsub();
+      window.clearInterval(pollTimer);
       window.clearTimeout(expiryTimer);
     };
   }, [openDirectChat, phase, scheduleRetry, solicitudId]);
@@ -788,7 +801,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     let anonId = "";
     let anonDocs: IncomingRequest[] = [];
     let profileDocs: IncomingRequest[] = [];
+    let apiDocs: IncomingRequest[] = [];
     const unsubs: Array<() => void> = [];
+    let pollTimer: number | null = null;
 
     function normalizeIncoming(
       item: { id: string; data: () => Record<string, unknown> },
@@ -833,7 +848,11 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         setIncomingRequest(null);
         return;
       }
-      const allDocs = [...profileDocs, ...anonDocs];
+      const byId = new Map<string, IncomingRequest>();
+      for (const row of [...profileDocs, ...anonDocs, ...apiDocs]) {
+        if (!byId.has(row.solicitudId)) byId.set(row.solicitudId, row);
+      }
+      const allDocs = Array.from(byId.values());
       const pending = allDocs
         .filter((row) => !isDismissedRequestId(row.solicitudId))
         .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
@@ -857,6 +876,53 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         if (!allDocs.some((row) => row.solicitudId === id)) {
           forgetDismissedRequestId(id);
         }
+      }
+    }
+
+    async function pollIncomingFromApi() {
+      if (cancelled) return;
+      try {
+        const live = await resolveLiveAnonMatchCaller();
+        let alias = "";
+        if (!live.isRegisteredProfile) {
+          alias = anonId || (await resolveAnonMatchSessionId().catch(() => ""));
+        }
+        const path = alias
+          ? `/api/anon-match/incoming?anonId=${encodeURIComponent(alias)}`
+          : "/api/anon-match/incoming";
+        const res = await fetchAnonMatch(path, { method: "GET" });
+        const json = await res.json().catch(() => null);
+        if (cancelled || !json?.ok || !Array.isArray(json.incoming)) return;
+
+        apiDocs = (json.incoming as Array<Record<string, unknown>>)
+          .map((row) => {
+            const solicitudId = String(row.solicitudId || "").trim();
+            if (!solicitudId || isDismissedRequestId(solicitudId)) return null;
+            const solicitanteUid = String(row.solicitanteUid || "");
+            const solicitanteAnonId = String(row.solicitanteAnonId || "");
+            if (solicitanteAnonId && solicitanteAnonId === alias) return null;
+            if (uid && solicitanteUid === uid) return null;
+            if (
+              isRejectedSolicitanteKey(
+                resolveSolicitanteKey({ solicitanteUid, solicitanteAnonId }),
+              )
+            ) {
+              return null;
+            }
+            const destinatarioTipo =
+              String(row.destinatarioTipo || "") === "perfil" ? "perfil" : "anonimo";
+            return {
+              solicitudId,
+              solicitanteUid,
+              solicitanteAnonId,
+              destinatarioTipo: destinatarioTipo as "perfil" | "anonimo",
+              expiresAt: String(row.expiresAt || ""),
+            } satisfies IncomingRequest;
+          })
+          .filter(Boolean) as IncomingRequest[];
+        publishIncoming();
+      } catch {
+        // Poll is best-effort; Firestore listener may still deliver.
       }
     }
 
@@ -935,11 +1001,18 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           ),
         );
       }
+
+      // Admin API poll — works even when Firestore list rules deny legacy queries.
+      void pollIncomingFromApi();
+      pollTimer = window.setInterval(() => {
+        void pollIncomingFromApi();
+      }, INCOMING_POLL_MS);
     })();
 
     return () => {
       cancelled = true;
       unsubs.forEach((unsub) => unsub());
+      if (pollTimer != null) window.clearInterval(pollTimer);
     };
   }, [firebaseUser?.isAnonymous, firebaseUser?.uid, hydrated]);
 
