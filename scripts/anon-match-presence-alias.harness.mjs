@@ -159,7 +159,8 @@ covers.push("waiting_stops_retry");
 
 // 9) Profile rows may cache; anonimos_activos must always re-read (live matching).
 assert.match(poolSrc, /MATCH_POOL_CACHE_MS\s*=\s*2\s*\*\s*60_000/);
-assert.match(poolSrc, /Always re-read anonimos_activos/);
+assert.match(poolSrc, /Always re-read live anon presence|Always re-read anonimos_activos/);
+assert.match(poolSrc, /where:\s*\{\s*field:\s*"source",\s*value:\s*"anon_match_presence"/);
 assert.match(poolSrc, /invalidateAnonMatchAvailabilityCache[\s\S]*poolCache\s*=\s*null/);
 assert.match(
   fs.readFileSync(path.join(root, "src/app/api/anonymous-presence/route.ts"), "utf8"),

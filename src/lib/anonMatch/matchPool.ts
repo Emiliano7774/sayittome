@@ -120,10 +120,11 @@ function isProfileAvailable(
 }
 
 async function getMatchPoolRows(now = Date.now()) {
-  // Always re-read anonimos_activos — a warm Cloud Function instance otherwise
-  // serves 2-minute-stale presence and live searchers never see each other.
+  // Always re-read live anon presence. Filter source server-side so legacy
+  // ghost docs cannot crowd out the MATCH_ANON_QUERY_LIMIT window.
   const anonRows = (await listAnonMatchAdminDocs("anonimos_activos", {
     limit: MATCH_ANON_QUERY_LIMIT,
+    where: { field: "source", value: "anon_match_presence" },
   })) as AnonPresenceRow[];
 
   if (poolCache && now - poolCache.fetchedAt < MATCH_POOL_CACHE_MS) {
