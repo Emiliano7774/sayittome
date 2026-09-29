@@ -13,6 +13,7 @@ import {
   deleteAnonMatchAdminDoc,
   setAnonMatchAdminDoc,
 } from "@/lib/anonMatch/anonMatchAdminStore";
+import { invalidateAnonMatchAvailabilityCache } from "@/lib/anonMatch/matchPool";
 import { verifyAnonMatchCaller } from "@/lib/anonMatch/verifyAnonMatchCaller";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +85,7 @@ export async function POST(req: Request) {
     }
 
     await writePresenceDoc(decision.anonId, caller.uid);
+    invalidateAnonMatchAvailabilityCache();
 
     const legacyLocal = String(body?.legacyLocalAnonId || "").trim();
     let legacyCleaned: string | null = null;
@@ -159,6 +161,7 @@ export async function DELETE(req: Request) {
     }
 
     await deletePresenceDoc(anonId);
+    invalidateAnonMatchAvailabilityCache();
 
     const legacyLocal = String(body?.legacyLocalAnonId || "").trim();
     let legacyCleaned: string | null = null;

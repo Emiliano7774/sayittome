@@ -45,10 +45,10 @@ type ProfileRow = Record<string, unknown> & {
 const MATCH_PROFILE_QUERY_LIMIT = 2_000;
 const MATCH_ANON_QUERY_LIMIT = 1_000;
 const MATCH_AUX_QUERY_LIMIT = 500;
-const MATCH_POOL_CACHE_MS = 2 * 60_000;
+/** Profiles can stay cached briefly; anon presence is always re-read (see getMatchPoolRows). */
+export const MATCH_POOL_CACHE_MS = 2 * 60_000;
 
 type PoolCache = {
-  anonRows: AnonPresenceRow[];
   profileRows: ProfileRow[];
   fetchedAt: number;
 };
@@ -66,6 +66,7 @@ let busyParticipantsCache: {
 } | null = null;
 
 export function invalidateAnonMatchAvailabilityCache() {
+  poolCache = null;
   pendingTargetsCache = null;
   busyParticipantsCache = null;
 }
@@ -119,21 +120,37 @@ function isProfileAvailable(
 }
 
 async function getMatchPoolRows(now = Date.now()) {
+  // Always re-read anonimos_activos — a warm Cloud Function instance otherwise
+  // serves 2-minute-stale presence and live searchers never see each other.
+  const anonRows = (await listAnonMatchAdminDocs("anonimos_activos", {
+    limit: MATCH_ANON_QUERY_LIMIT,
+  })) as AnonPresenceRow[];
+
   if (poolCache && now - poolCache.fetchedAt < MATCH_POOL_CACHE_MS) {
-    return poolCache;
+    return { anonRows, profileRows: poolCache.profileRows, fetchedAt: poolCache.fetchedAt };
   }
 
-  const [anonRows, profileRows] = await Promise.all([
-    listAnonMatchAdminDocs("anonimos_activos", {
-      limit: MATCH_ANON_QUERY_LIMIT,
-    }) as Promise<AnonPresenceRow[]>,
-    listAnonMatchAdminDocs("usuarios", {
-      limit: MATCH_PROFILE_QUERY_LIMIT,
-    }) as Promise<ProfileRow[]>,
-  ]);
+  const profileRows = (await listAnonMatchAdminDocs("usuarios", {
+    limit: MATCH_PROFILE_QUERY_LIMIT,
+  })) as ProfileRow[];
 
-  poolCache = { anonRows, profileRows, fetchedAt: now };
-  return poolCache;
+  poolCache = { profileRows, fetchedAt: now };
+  return { anonRows, profileRows, fetchedAt: now };
+}
+
+/**
+ * Prefer live anonymous presence over registered profiles so searching anons
+ * receive the incoming match alert instead of only idle online profiles.
+ */
+export function selectMatchCandidateFromPool(
+  eligible: MatchCandidate[],
+  preferred: MatchCandidate[],
+): MatchCandidate | null {
+  const pool = preferred.length > 0 ? preferred : eligible;
+  if (pool.length === 0) return null;
+  const anonPool = pool.filter((row) => row.tipo === "anonimo");
+  const pickFrom = anonPool.length > 0 ? anonPool : pool;
+  return pickFrom[Math.floor(Math.random() * pickFrom.length)];
 }
 
 export async function listPendingMatchTargets(now = Date.now()) {
@@ -271,8 +288,7 @@ export async function pickAvailableMatchTarget(input: {
     return true;
   });
 
-  const pool = preferred.length > 0 ? preferred : eligible;
-  return pool[Math.floor(Math.random() * pool.length)];
+  return selectMatchCandidateFromPool(eligible, preferred);
 }
 
 export async function countAvailableMatchTargets(

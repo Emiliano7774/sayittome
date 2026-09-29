@@ -157,10 +157,20 @@ covers.push("retry_3_to_5s");
 assert.match(contextSrc, /setPhase\("waiting"\)[\s\S]{0,40}clearRetryTimer\(\)/);
 covers.push("waiting_stops_retry");
 
-// 9) Pool cache avoids full scan each retry.
+// 9) Profile rows may cache; anonimos_activos must always re-read (live matching).
 assert.match(poolSrc, /MATCH_POOL_CACHE_MS\s*=\s*2\s*\*\s*60_000/);
-assert.match(poolSrc, /poolCache && now - poolCache\.fetchedAt < MATCH_POOL_CACHE_MS/);
+assert.match(poolSrc, /Always re-read anonimos_activos/);
+assert.match(poolSrc, /invalidateAnonMatchAvailabilityCache[\s\S]*poolCache\s*=\s*null/);
+assert.match(
+  fs.readFileSync(path.join(root, "src/app/api/anonymous-presence/route.ts"), "utf8"),
+  /invalidateAnonMatchAvailabilityCache/,
+);
+// Prefer live anons over idle profiles so incoming alerts actually fire.
+assert.match(poolSrc, /selectMatchCandidateFromPool/);
+assert.match(poolSrc, /anonPool\.length\s*>\s*0\s*\?\s*anonPool\s*:\s*pool/);
 covers.push("pool_cache_2m");
+covers.push("anon_presence_always_fresh");
+covers.push("prefer_live_anons_for_incoming");
 
 // 10) Old local session id cannot spoof presence.
 const foreignCleanup = identity.decideLegacyAnonPresenceCleanup({

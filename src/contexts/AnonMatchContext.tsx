@@ -47,6 +47,7 @@ import {
   bindWhipSoundUnlock,
 } from "@/lib/chat/whipSound";
 import {
+  alertAnonMatchChatOpened,
   alertIncomingAnonMatchRequest,
   dismissIncomingAnonMatchRequestAlert,
 } from "@/lib/anonMatch/incomingMatchAlert";
@@ -453,10 +454,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     });
     skipServerDiscoveryRef.current = false;
     const next = { chatId, role };
+    const isNewChat = previous?.chatId !== chatId;
     setOpenChat(next);
     setChatViewState("compact");
     setPhase("accepted");
     persistOpenChat(next, "compact", "accepted");
+    // Floating tab + OS banner (when notifications are granted) on both sides.
+    if (isNewChat) {
+      alertAnonMatchChatOpened(chatId);
+    }
   }, [clearRetryTimer]);
 
   const attemptConnect = useCallback(async () => {

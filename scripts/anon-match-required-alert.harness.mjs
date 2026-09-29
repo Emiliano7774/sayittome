@@ -19,12 +19,31 @@ const serviceSource = read("src/lib/anonMatch/service.ts");
 assert.match(alertSource, /playIncomingWhipSound\(\)/);
 assert.match(alertSource, /navigator\.vibrate/);
 assert.match(alertSource, /showRequiredAnonMatchNotification/);
+assert.match(alertSource, /alertAnonMatchChatOpened/);
+assert.match(alertSource, /Se encontró un chat/);
 assert.match(notificationSource, /ANON_MATCH_CHANNEL_ID/);
 assert.match(notificationSource, /showRequiredAnonMatchNotification/);
 assert.match(notificationSource, /dismissRequiredAnonMatchNotification/);
 assert.match(contextSource, /dismissIncomingAnonMatchRequestAlert\(id\)/);
+assert.match(contextSource, /alertAnonMatchChatOpened\(chatId\)/);
+assert.match(contextSource, /setChatViewState\("compact"\)/);
 assert.match(serviceSource, /cancelCompetingAnonMatchRequests/);
 assert.match(serviceSource, /reason:\s*responderBusy[\s\S]*target_busy/);
+
+const pool = await import(
+  pathToFileURL(path.join(root, "src/lib/anonMatch/matchPool.ts")).href
+);
+const onlyProfiles = [
+  { tipo: "perfil", id: "p1" },
+  { tipo: "perfil", id: "p2" },
+];
+const mixed = [
+  { tipo: "perfil", id: "p1" },
+  { tipo: "anonimo", id: "anon_live" },
+];
+assert.equal(pool.selectMatchCandidateFromPool(onlyProfiles, onlyProfiles)?.tipo, "perfil");
+assert.equal(pool.selectMatchCandidateFromPool(mixed, mixed)?.tipo, "anonimo");
+assert.equal(pool.selectMatchCandidateFromPool(mixed, mixed)?.id, "anon_live");
 
 const service = await import(
   pathToFileURL(path.join(root, "src/lib/anonMatch/service.ts")).href
