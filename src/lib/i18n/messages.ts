@@ -237,6 +237,11 @@ const es = {
   anon_match_incoming_body: "Aceptá la solicitud para empezar o rechazala para seguir disponible.",
   anon_match_accept: "Aceptar",
   anon_match_reject: "Rechazar",
+  anon_match_dnd_label: "No molestar durante",
+  anon_match_dnd_minutes: "{minutes} min",
+  anon_match_dnd_action: "Activar",
+  anon_match_dnd_hint:
+    "Rechaza esta solicitud y no te llegan más pings de match por ese tiempo.",
   anon_match_chat_title: "Chat anónimo",
   anon_match_chat_subtitle: "Conversación privada sin perfil público",
   anon_match_chat_empty: "Todavía no hay mensajes.",
@@ -1088,6 +1093,11 @@ const en: Record<keyof typeof es, string> = {
   anon_match_incoming_body: "Accept to start, or decline to remain available.",
   anon_match_accept: "Accept",
   anon_match_reject: "Decline",
+  anon_match_dnd_label: "Do not disturb for",
+  anon_match_dnd_minutes: "{minutes} min",
+  anon_match_dnd_action: "Enable",
+  anon_match_dnd_hint:
+    "Declines this request and pauses match pings for that time.",
   anon_match_chat_title: "Anonymous chat",
   anon_match_chat_subtitle: "Private conversation without a public profile",
   anon_match_chat_empty: "No messages yet.",

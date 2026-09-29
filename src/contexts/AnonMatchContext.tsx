@@ -47,6 +47,17 @@ import {
   bindWhipSoundUnlock,
 } from "@/lib/chat/whipSound";
 import {
+  isLocalAnonMatchDndActive,
+  writeLocalAnonMatchDndUntil,
+} from "@/lib/anonMatch/doNotDisturb";
+import {
+  clearRejectedMatchTargets,
+  loadRejectedMatchTargets,
+  rememberRejectedMatchTarget,
+  resolveRejectedMatchTargetKey,
+  splitRejectedMatchTargets,
+} from "@/lib/anonMatch/rejectedMatchTargets";
+import {
   alertAnonMatchChatOpened,
   alertIncomingAnonMatchRequest,
   dismissIncomingAnonMatchRequestAlert,
@@ -87,6 +98,8 @@ type AnonMatchContextValue = {
   incomingRequest: IncomingRequest | null;
   startSearchSession: () => Promise<void>;
   respondIncoming: (accept: boolean) => Promise<void>;
+  /** Reject current request and pause incoming targeting for N minutes (server + local). */
+  enableDoNotDisturb: (minutes: number) => Promise<boolean>;
   openDirectChat: (chatId: string, role: "perfil" | "anonimo") => void;
   setChatView: (view: AnonDirectChatView) => void;
   minimizeChat: () => void;
@@ -483,19 +496,35 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     setSolicitudId("");
 
     try {
+      if (!live.isRegisteredProfile) {
+        await import("@/services/anonymousPresence")
+          .then((mod) => mod.bumpAnonymousPresenceForMatch())
+          .catch(() => "");
+      }
       const localAnonId = live.isRegisteredProfile
         ? ""
         : getStoredAnonMatchAlias() || serverAnonAlias;
+      const body = buildAnonMatchRequestBody({
+        callerKind: live.callerKind,
+        registeredUid: live.registeredUid,
+        serverAnonAlias: localAnonId,
+        localAnonId: live.isRegisteredProfile ? localAnonId : undefined,
+      });
+      const rejected = splitRejectedMatchTargets(loadRejectedMatchTargets());
+      const excludeAnonIds = [
+        ...((body.excludeAnonIds as string[]) || []),
+        ...rejected.excludeAnonIds,
+      ];
+      const excludeUids = [
+        ...((body.excludeUids as string[]) || []),
+        ...rejected.excludeUids,
+      ];
+      body.excludeAnonIds = Array.from(new Set(excludeAnonIds.filter(Boolean)));
+      body.excludeUids = Array.from(new Set(excludeUids.filter(Boolean)));
+
       const res = await fetchAnonMatch("/api/anon-match/request", {
         method: "POST",
-        body: JSON.stringify(
-          buildAnonMatchRequestBody({
-            callerKind: live.callerKind,
-            registeredUid: live.registeredUid,
-            serverAnonAlias: localAnonId,
-            localAnonId: live.isRegisteredProfile ? localAnonId : undefined,
-          }),
-        ),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
 
@@ -527,6 +556,10 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     if (!live.isRegisteredProfile) {
       const issued = await resolveAnonMatchSessionId().catch(() => "");
       if (!issued) return;
+      // Publish presence immediately so the other side can pick us up.
+      await import("@/services/anonymousPresence")
+        .then((mod) => mod.bumpAnonymousPresenceForMatch())
+        .catch(() => "");
     }
     if (searchSessionActiveRef.current) return;
 
@@ -568,6 +601,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         }
 
         if (estado === "rechazado" || estado === "expirado" || estado === "cancelado") {
+          if (estado === "rechazado") {
+            rememberRejectedMatchTarget(
+              resolveRejectedMatchTargetKey({
+                destinatarioTipo: String(data.destinatarioTipo || ""),
+                destinatarioUid: String(data.destinatarioUid || ""),
+                anonId: String(data.anonId || ""),
+              }),
+            );
+          }
           handleFailure();
         }
       },
@@ -599,6 +641,23 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         }
 
         if (estado === "expirado" || estado === "rechazado" || estado === "cancelado") {
+          if (estado === "rechazado") {
+            try {
+              const snap = await getDoc(doc(db, "solicitudes_chat_anonimo", solicitudId));
+              if (snap.exists()) {
+                const data = snap.data();
+                rememberRejectedMatchTarget(
+                  resolveRejectedMatchTargetKey({
+                    destinatarioTipo: String(data.destinatarioTipo || ""),
+                    destinatarioUid: String(data.destinatarioUid || ""),
+                    anonId: String(data.anonId || ""),
+                  }),
+                );
+              }
+            } catch {
+              // Best effort — retry without the exclude if read fails.
+            }
+          }
           handleFailure();
         }
       } catch {
@@ -770,6 +829,10 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     }
 
     function publishIncoming() {
+      if (isLocalAnonMatchDndActive()) {
+        setIncomingRequest(null);
+        return;
+      }
       const allDocs = [...profileDocs, ...anonDocs];
       const pending = allDocs
         .filter((row) => !isDismissedRequestId(row.solicitudId))
@@ -1003,6 +1066,29 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     [incomingRequest, openDirectChat],
   );
 
+  const enableDoNotDisturb = useCallback(
+    async (minutes: number) => {
+      try {
+        const res = await fetchAnonMatch("/api/anon-match/dnd", {
+          method: "POST",
+          body: JSON.stringify({ minutes }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.ok) return false;
+        const until = String(json.doNotDisturbUntil || "").trim();
+        if (until) writeLocalAnonMatchDndUntil(until);
+        // Reject the current ping so the searcher moves on (and won't re-target
+        // this recipient until they close a later chat — classic semantics).
+        await respondIncoming(false);
+        setIncomingRequest(null);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [respondIncoming],
+  );
+
   const minimizeChat = useCallback(() => setChatView("minimized"), [setChatView]);
   const restoreChat = useCallback(() => setChatView("compact"), [setChatView]);
   const expandChat = useCallback(() => setChatView("expanded"), [setChatView]);
@@ -1019,6 +1105,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     setOpenChat(null);
     setChatViewState("compact");
     clearAnonDirectChatSession();
+    // Classic semantics: rejected targets become eligible again after chat close.
+    clearRejectedMatchTargets();
   }, [clearRetryTimer]);
 
   useEffect(() => () => clearRetryTimer(), [clearRetryTimer]);
@@ -1033,6 +1121,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       incomingRequest,
       startSearchSession,
       respondIncoming,
+      enableDoNotDisturb,
       openDirectChat,
       setChatView,
       minimizeChat,
@@ -1049,6 +1138,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       incomingRequest,
       startSearchSession,
       respondIncoming,
+      enableDoNotDisturb,
       openDirectChat,
       setChatView,
       minimizeChat,

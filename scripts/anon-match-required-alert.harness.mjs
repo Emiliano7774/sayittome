@@ -39,11 +39,54 @@ const onlyProfiles = [
 ];
 const mixed = [
   { tipo: "perfil", id: "p1" },
-  { tipo: "anonimo", id: "anon_live" },
+  { tipo: "anonimo", id: "anon_live", lastSeenMs: Date.now() },
 ];
 assert.equal(pool.selectMatchCandidateFromPool(onlyProfiles, onlyProfiles)?.tipo, "perfil");
 assert.equal(pool.selectMatchCandidateFromPool(mixed, mixed)?.tipo, "anonimo");
 assert.equal(pool.selectMatchCandidateFromPool(mixed, mixed)?.id, "anon_live");
+
+const staleAndFresh = [
+  { tipo: "anonimo", id: "anon_stale", lastSeenMs: Date.now() - 10 * 60_000 },
+  { tipo: "anonimo", id: "anon_fresh", lastSeenMs: Date.now() - 5_000 },
+  { tipo: "perfil", id: "p1" },
+];
+assert.equal(
+  pool.selectMatchCandidateFromPool(staleAndFresh, staleAndFresh)?.id,
+  "anon_fresh",
+);
+
+const typesSrc = fs.readFileSync(
+  path.join(root, "src/lib/anonMatch/types.ts"),
+  "utf8",
+);
+assert.match(typesSrc, /ANON_MATCH_REQUEST_MS\s*=\s*45_000/);
+assert.match(typesSrc, /ANON_MATCH_PRESENCE_FRESH_MS\s*=\s*3\s*\*\s*60\s*\*\s*1000/);
+assert.match(contextSource, /bumpAnonymousPresenceForMatch/);
+assert.match(contextSource, /rememberRejectedMatchTarget/);
+assert.match(contextSource, /clearRejectedMatchTargets/);
+
+const rejectedTargets = await import(
+  pathToFileURL(path.join(root, "src/lib/anonMatch/rejectedMatchTargets.ts")).href
+);
+assert.equal(
+  rejectedTargets.resolveRejectedMatchTargetKey({
+    destinatarioTipo: "anonimo",
+    anonId: "anon_x",
+  }),
+  "anon_x",
+);
+assert.equal(
+  rejectedTargets.resolveRejectedMatchTargetKey({
+    destinatarioTipo: "perfil",
+    destinatarioUid: "uid_y",
+    anonId: "anon_x",
+  }),
+  "uid_y",
+);
+assert.deepEqual(rejectedTargets.splitRejectedMatchTargets(["anon_a", "uid_b"]), {
+  excludeAnonIds: ["anon_a"],
+  excludeUids: ["uid_b"],
+});
 
 const service = await import(
   pathToFileURL(path.join(root, "src/lib/anonMatch/service.ts")).href

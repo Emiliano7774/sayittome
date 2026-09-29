@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
+import { ANON_MATCH_DND_MINUTE_OPTIONS } from "@/lib/anonMatch/doNotDisturb";
 
 export default function AnonMatchIncomingModal() {
   const match = useAnonMatchOptional();
@@ -12,6 +13,7 @@ export default function AnonMatchIncomingModal() {
   const t = useT();
   const modern = uxMode === "modern";
   const [responding, setResponding] = useState(false);
+  const [dndMinutes, setDndMinutes] = useState<number>(ANON_MATCH_DND_MINUTE_OPTIONS[1]);
   const incomingRequest = match?.incomingRequest;
 
   useEffect(() => {
@@ -28,6 +30,14 @@ export default function AnonMatchIncomingModal() {
     },
     [match, responding],
   );
+
+  const handleDoNotDisturb = useCallback(() => {
+    if (!match || responding) return;
+    setResponding(true);
+    void match.enableDoNotDisturb(dndMinutes).finally(() => {
+      setResponding(false);
+    });
+  }, [dndMinutes, match, responding]);
 
   if (!incomingRequest) return null;
 
@@ -85,6 +95,48 @@ export default function AnonMatchIncomingModal() {
           >
             {t("anon_match_accept")}
           </button>
+        </div>
+
+        <div
+          className={
+            modern
+              ? "mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-3"
+              : "mt-5 rounded-2xl border border-white/10 bg-white/5 p-3"
+          }
+        >
+          <p className="text-left text-sm font-bold text-white/55">{t("anon_match_dnd_label")}</p>
+          <div className="mt-3 flex items-center gap-2">
+            <select
+              value={dndMinutes}
+              disabled={responding}
+              onChange={(event) => setDndMinutes(Number(event.target.value))}
+              className={
+                modern
+                  ? "h-12 flex-1 rounded-xl border border-white/10 bg-black/40 px-3 text-sm font-bold text-white"
+                  : "h-12 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm font-bold text-white"
+              }
+              aria-label={t("anon_match_dnd_label")}
+            >
+              {ANON_MATCH_DND_MINUTE_OPTIONS.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {t("anon_match_dnd_minutes").replace("{minutes}", String(minutes))}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={responding}
+              onClick={() => void handleDoNotDisturb()}
+              className={
+                modern
+                  ? "h-12 shrink-0 rounded-xl border border-violet-500/30 bg-violet-600/20 px-4 text-sm font-black text-violet-100"
+                  : "h-12 shrink-0 rounded-xl border border-[#8C84FF]/40 bg-[#8C84FF]/15 px-4 text-sm font-black text-white"
+              }
+            >
+              {t("anon_match_dnd_action")}
+            </button>
+          </div>
+          <p className="mt-2 text-left text-xs font-bold text-white/35">{t("anon_match_dnd_hint")}</p>
         </div>
       </div>
     </div>

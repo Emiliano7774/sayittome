@@ -42,5 +42,7 @@ export type AnonDirectChat = {
   denunciadoAt?: string;
 };
 
-export const ANON_MATCH_REQUEST_MS = 10_000;
+export const ANON_MATCH_REQUEST_MS = 45_000;
 export const ANON_MATCH_ACTIVE_MS = 15 * 60 * 1000;
+/** Anon presence older than this is treated as offline for matchmaking. */
+export const ANON_MATCH_PRESENCE_FRESH_MS = 3 * 60 * 1000;

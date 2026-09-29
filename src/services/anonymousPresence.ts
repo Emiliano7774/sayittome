@@ -205,6 +205,14 @@ export function startAnonymousPresenceSystem() {
   });
 }
 
+/** Force a presence heartbeat before match search so peers can find this session. */
+export async function bumpAnonymousPresenceForMatch(): Promise<string> {
+  if (typeof window === "undefined") return "";
+  lastWriteAt = 0;
+  await writeAnonymousPresence(true);
+  return cachedPresenceAlias || getStoredAnonMatchAlias() || "";
+}
+
 /** Test/harness seam — current publisher kind after auth callback. */
 export function __anonPresenceDebugState() {
   return {

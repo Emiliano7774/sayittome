@@ -2,6 +2,8 @@ import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { listAnonMatchAdminDocs } from "@/lib/anonMatch/anonMatchAdminStore";
 import { isVerifiedAnonMatchPresence } from "@/lib/anonMatch/anonymousPresenceIdentity";
+import { isAnonMatchDoNotDisturbActive } from "@/lib/anonMatch/doNotDisturb";
+import { ANON_MATCH_PRESENCE_FRESH_MS } from "@/lib/anonMatch/types";
 
 export type MatchParticipantTipo = "perfil" | "anonimo";
 
@@ -11,6 +13,8 @@ export type MatchCandidate = {
   pais?: string;
   provincia?: string;
   idioma?: string;
+  /** Epoch ms of last presence heartbeat — used to prefer live anons. */
+  lastSeenMs?: number;
 };
 
 type AnonPresenceRow = {
@@ -21,6 +25,7 @@ type AnonPresenceRow = {
   lastSeenAt?: string;
   updatedAt?: string;
   expiresAt?: string;
+  doNotDisturbUntil?: string;
   disponibleParaChat?: boolean;
   enChat?: boolean;
   chatActualId?: string;
@@ -36,6 +41,7 @@ type ProfileRow = Record<string, unknown> & {
   lastActive?: string;
   lastActiveAt?: string;
   lastSeenAt?: string;
+  anonMatchDoNotDisturbUntil?: string;
   pais?: string;
   provincia?: string;
   idioma?: string;
@@ -80,12 +86,18 @@ function parseDate(value?: string | null) {
 function isAnonOnline(row: AnonPresenceRow, now = Date.now()) {
   const lastSeen = parseDate(row.lastSeenAt || row.updatedAt);
   if (!lastSeen) return false;
-  return now - lastSeen.getTime() <= ONLINE_WINDOW_MS;
+  // Match pool uses a tight freshness window so closed-tab ghosts do not
+  // steal requests from people actually searching right now.
+  if (now - lastSeen.getTime() > ANON_MATCH_PRESENCE_FRESH_MS) return false;
+  const expiresAt = parseDate(row.expiresAt);
+  if (expiresAt && expiresAt.getTime() <= now) return false;
+  return true;
 }
 
 function isAnonAvailable(row: AnonPresenceRow, now = Date.now()) {
   if (!isVerifiedAnonMatchPresence(row)) return false;
   if (!isAnonOnline(row, now)) return false;
+  if (isAnonMatchDoNotDisturbActive(row.doNotDisturbUntil, now)) return false;
   if (row.disponibleParaChat === false) return false;
   if (row.enChat === true) return false;
   if (row.chatActualId) return false;
@@ -111,6 +123,9 @@ function isProfileAvailable(
   }
   if (row.banned === true) return false;
   if (!isPublicProfile(row)) return false;
+  if (isAnonMatchDoNotDisturbActive(String(row.anonMatchDoNotDisturbUntil || ""), now)) {
+    return false;
+  }
 
   return isShuffleProfileOnline(
     { presenceAt: profilePresenceAt(row), lastActive: profilePresenceAt(row) },
@@ -142,16 +157,33 @@ async function getMatchPoolRows(now = Date.now()) {
 /**
  * Prefer live anonymous presence over registered profiles so searching anons
  * receive the incoming match alert instead of only idle online profiles.
+ * Among anons, prefer the freshest heartbeats (top few), not stale ghosts.
  */
 export function selectMatchCandidateFromPool(
   eligible: MatchCandidate[],
   preferred: MatchCandidate[],
+  now = Date.now(),
 ): MatchCandidate | null {
   const pool = preferred.length > 0 ? preferred : eligible;
   if (pool.length === 0) return null;
+
   const anonPool = pool.filter((row) => row.tipo === "anonimo");
-  const pickFrom = anonPool.length > 0 ? anonPool : pool;
-  return pickFrom[Math.floor(Math.random() * pickFrom.length)];
+  const freshAnonPool = anonPool.filter((row) => {
+    const seen = Number(row.lastSeenMs || 0);
+    return seen > 0 && now - seen <= ANON_MATCH_PRESENCE_FRESH_MS;
+  });
+  const anonPickFrom =
+    freshAnonPool.length > 0 ? freshAnonPool : anonPool.length > 0 ? anonPool : null;
+
+  if (anonPickFrom) {
+    const sorted = [...anonPickFrom].sort(
+      (a, b) => Number(b.lastSeenMs || 0) - Number(a.lastSeenMs || 0),
+    );
+    const top = sorted.slice(0, Math.min(3, sorted.length));
+    return top[Math.floor(Math.random() * top.length)];
+  }
+
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 export async function listPendingMatchTargets(now = Date.now()) {
@@ -255,12 +287,14 @@ export async function pickAvailableMatchTarget(input: {
         return null;
       }
       if (!isAnonAvailable(row, now)) return null;
+      const lastSeen = parseDate(row.lastSeenAt || row.updatedAt);
       return {
         tipo: "anonimo" as const,
         id,
         pais: String(row.pais || ""),
         provincia: String(row.provincia || ""),
         idioma: String(row.idioma || "es"),
+        lastSeenMs: lastSeen ? lastSeen.getTime() : 0,
       };
     })
     .filter(Boolean) as MatchCandidate[];
@@ -289,7 +323,7 @@ export async function pickAvailableMatchTarget(input: {
     return true;
   });
 
-  return selectMatchCandidateFromPool(eligible, preferred);
+  return selectMatchCandidateFromPool(eligible, preferred, now);
 }
 
 export async function countAvailableMatchTargets(

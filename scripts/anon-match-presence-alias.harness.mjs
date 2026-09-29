@@ -168,10 +168,14 @@ assert.match(
 );
 // Prefer live anons over idle profiles so incoming alerts actually fire.
 assert.match(poolSrc, /selectMatchCandidateFromPool/);
-assert.match(poolSrc, /anonPool\.length\s*>\s*0\s*\?\s*anonPool\s*:\s*pool/);
+assert.match(poolSrc, /ANON_MATCH_PRESENCE_FRESH_MS/);
+assert.match(poolSrc, /freshAnonPool/);
+assert.match(contextSrc, /rememberRejectedMatchTarget/);
+assert.match(contextSrc, /clearRejectedMatchTargets/);
 covers.push("pool_cache_2m");
 covers.push("anon_presence_always_fresh");
 covers.push("prefer_live_anons_for_incoming");
+covers.push("reject_until_chat_close");
 
 // 10) Old local session id cannot spoof presence.
 const foreignCleanup = identity.decideLegacyAnonPresenceCleanup({
