@@ -38,6 +38,8 @@ assert.match(postAuth, /COMPLETE_POST_AUTH_PATH = \"\/shuffle\"/);
 assert.match(postAuth, /return COMPLETE_POST_AUTH_PATH/);
 assert.match(enterAnon, /isIncompleteAuthDestination/);
 assert.match(enterAnon, /deleteCurrentDeviceFcmToken/);
+assert.match(enterAnon, /useAnonymousTabPersistence/);
+assert.match(enterAnon, /signInAnonymously/);
 assert.match(settings, /next\.startsWith\(\"\/register\"\)/);
 assert.doesNotMatch(settings, /next !== \"\/settings\"/);
 

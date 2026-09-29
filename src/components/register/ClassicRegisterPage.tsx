@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 
 import HeaderControls from "@/components/HeaderControls";
+import { useRegisteredAuthPersistence } from "@/lib/auth/authPersistence";
 import { auth } from "@/lib/firebase";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
 import { mapRegisterErrorCode } from "@/lib/auth/registerErrors";
@@ -52,6 +53,7 @@ export default function ClassicRegisterPage() {
     setLoading(true);
 
     try {
+      await useRegisteredAuthPersistence();
       const cred = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
 
       await sendEmailVerification(cred.user, {

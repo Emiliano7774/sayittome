@@ -8,6 +8,7 @@ import {
   signInWithEmailAndPassword,
 } from "firebase/auth";
 
+import { useRegisteredAuthPersistence } from "@/lib/auth/authPersistence";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { shouldAutoRedirectFromLogin } from "@/lib/auth/loginSessionGate";
 import {
@@ -113,6 +114,7 @@ export default function LoginPage() {
     recordQaCriticalEvent("auth", "AUTH_LOGIN_SUBMIT", { authClickCount });
 
     try {
+      await useRegisteredAuthPersistence();
       const cred = await signInWithEmailAndPassword(
         auth,
         normalizeLoginEmail(email),
