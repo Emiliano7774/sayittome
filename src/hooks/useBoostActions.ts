@@ -7,6 +7,7 @@ import { useBoostEligibility } from "@/hooks/useBoostEligibility";
 import { useBoostStatus } from "@/hooks/useBoostStatus";
 import { clampBoostMinutes } from "@/components/boost/BoostMinutesPicker";
 import { BOOST_MIN_MINUTES } from "@/lib/boost/constants";
+import { copyReferralLink } from "@/lib/boost/copyReferralLink";
 
 export function formatBoostRemaining(untilMs: number) {
   const diff = Math.max(0, untilMs - Date.now());
@@ -74,11 +75,12 @@ export function useBoostActions(enabled = true) {
     const link = status?.referralLink;
     if (!link) return;
 
-    try {
-      await navigator.clipboard.writeText(link);
+    const copiedOk = await copyReferralLink(link);
+    if (copiedOk) {
       setCopied(true);
+      setFeedback("");
       window.setTimeout(() => setCopied(false), 2000);
-    } catch {
+    } else {
       setFeedback(t("boost_copy_fail"));
     }
   }, [canUseBoost, status?.referralLink, t]);

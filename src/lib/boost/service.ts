@@ -14,11 +14,11 @@ import { generateReferralCode } from "@/lib/boost/referralCode";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import {
-  createFirestoreDoc,
-  getFirestoreDoc,
-  patchFirestoreDoc,
-  runCollectionQuery,
-} from "@/lib/firestore/rest";
+  createBoostAdminDoc,
+  getBoostAdminDoc,
+  listBoostAdminDocs,
+  setBoostAdminDoc,
+} from "@/lib/boost/boostAdminStore";
 import { patchUsuarioPrivileged } from "@/lib/firestore/patchUsuarioPrivileged";
 
 export type BoostStatus = {
@@ -75,7 +75,7 @@ function isProfileActive(row: Record<string, unknown>, now = Date.now()) {
 }
 
 export async function ensureUserReferralCode(uid: string) {
-  const user = await getFirestoreDoc("usuarios", uid);
+  const user = await getBoostAdminDoc("usuarios", uid);
   if (!user) return null;
 
   const existing = String(user.referralCode || "").trim();
@@ -83,13 +83,13 @@ export async function ensureUserReferralCode(uid: string) {
 
   let code = generateReferralCode(uid);
   for (let attempt = 0; attempt < 5; attempt++) {
-    const taken = await getFirestoreDoc("referral_codes", code);
+    const taken = await getBoostAdminDoc("referral_codes", code);
     if (!taken) break;
     code = generateReferralCode(`${uid}:${attempt}`);
   }
 
   await patchUsuarioPrivileged(uid, { referralCode: code });
-  await patchFirestoreDoc("referral_codes", code, { uid, referralCode: code });
+  await setBoostAdminDoc("referral_codes", code, { uid, referralCode: code });
   return code;
 }
 
@@ -97,10 +97,10 @@ export async function findReferrerByCode(code: string) {
   const normalized = code.trim().toLowerCase();
   if (!normalized) return null;
 
-  const mapping = await getFirestoreDoc("referral_codes", normalized);
+  const mapping = await getBoostAdminDoc("referral_codes", normalized);
   if (!mapping?.uid) return null;
 
-  return getFirestoreDoc("usuarios", String(mapping.uid));
+  return getBoostAdminDoc("usuarios", String(mapping.uid));
 }
 
 export async function trackReferralSignup(input: {
@@ -116,7 +116,7 @@ export async function trackReferralSignup(input: {
     return { ok: false as const, reason: "missing_fields" as const };
   }
 
-  const existing = await getFirestoreDoc("referrals", inviteeUid);
+  const existing = await getBoostAdminDoc("referrals", inviteeUid);
   if (existing) {
     return { ok: true as const, alreadyTracked: true as const };
   }
@@ -145,20 +145,19 @@ export async function trackReferralSignup(input: {
   const now = Date.now();
   const eligibleAt = new Date(now + REFERRAL_QUALIFY_DELAY_MS).toISOString();
 
-  await createFirestoreDoc(
-    "referrals",
-    {
-      inviteeUid,
-      referrerUid,
-      referralCode,
-      status: "pending",
-      createdAt: new Date(now).toISOString(),
-      eligibleAt,
-      inviteeEmailHash: email ? hashValue(email) : "",
-      inviteeVisitorId,
-    },
+  const created = await createBoostAdminDoc("referrals", inviteeUid, {
     inviteeUid,
-  );
+    referrerUid,
+    referralCode,
+    status: "pending",
+    createdAt: new Date(now).toISOString(),
+    eligibleAt,
+    inviteeEmailHash: email ? hashValue(email) : "",
+    inviteeVisitorId,
+  });
+  if (!created.created) {
+    return { ok: true as const, alreadyTracked: true as const };
+  }
 
   if (inviteeVisitorId) {
     await patchUsuarioPrivileged(inviteeUid, {
@@ -170,7 +169,7 @@ export async function trackReferralSignup(input: {
 }
 
 async function countReferralsQualifiedToday(referrerUid: string) {
-  const rows = await runCollectionQuery("referrals", 200, "createdAt", "DESCENDING");
+  const rows = await listBoostAdminDocs("referrals", { limit: 500, orderField: "createdAt", direction: "desc" });
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
@@ -183,7 +182,7 @@ async function countReferralsQualifiedToday(referrerUid: string) {
 }
 
 export async function processPendingReferrals(referrerUid: string) {
-  const rows = await runCollectionQuery("referrals", 200, "createdAt", "DESCENDING");
+  const rows = await listBoostAdminDocs("referrals", { limit: 500, orderField: "createdAt", direction: "desc" });
   const now = Date.now();
   let awarded = 0;
 
@@ -199,9 +198,9 @@ export async function processPendingReferrals(referrerUid: string) {
     const inviteeUid = String(row.inviteeUid || row.id || "");
     if (!inviteeUid) continue;
 
-    const invitee = await getFirestoreDoc("usuarios", inviteeUid);
+    const invitee = await getBoostAdminDoc("usuarios", inviteeUid);
     if (!invitee || !isProfileActive(invitee, now)) {
-      await patchFirestoreDoc("referrals", inviteeUid, {
+      await setBoostAdminDoc("referrals", inviteeUid, {
         status: "rejected",
         rejectReason: "invitee_inactive",
         resolvedAt: new Date(now).toISOString(),
@@ -209,11 +208,11 @@ export async function processPendingReferrals(referrerUid: string) {
       continue;
     }
 
-    const referrer = await getFirestoreDoc("usuarios", referrerUid);
+    const referrer = await getBoostAdminDoc("usuarios", referrerUid);
     const inviteeVisitor = String(row.inviteeVisitorId || invitee.deviceVisitorId || "");
     const referrerVisitor = String(referrer?.deviceVisitorId || "");
     if (inviteeVisitor && referrerVisitor && inviteeVisitor === referrerVisitor) {
-      await patchFirestoreDoc("referrals", inviteeUid, {
+      await setBoostAdminDoc("referrals", inviteeUid, {
         status: "rejected",
         rejectReason: "same_device",
         resolvedAt: new Date(now).toISOString(),
@@ -230,7 +229,7 @@ export async function processPendingReferrals(referrerUid: string) {
       referralsQualifiedCount: Number(referrer?.referralsQualifiedCount || 0) + 1,
     });
 
-    await patchFirestoreDoc("referrals", inviteeUid, {
+    await setBoostAdminDoc("referrals", inviteeUid, {
       status: "qualified",
       qualifiedAt: new Date(now).toISOString(),
       minutesAwarded: BOOST_MINUTES_PER_REFERRAL,
@@ -247,16 +246,18 @@ export async function getBoostStatus(uid: string, siteOrigin: string): Promise<B
 
   await processPendingReferrals(uid);
 
-  const user = await getFirestoreDoc("usuarios", uid);
+  const user = await getBoostAdminDoc("usuarios", uid);
   if (!user || !isPublicProfile(user)) return null;
 
   const referralCode = (await ensureUserReferralCode(uid)) || "";
-  const boostDoc = await getFirestoreDoc("shuffle_boosts", uid);
+  const boostDoc = await getBoostAdminDoc("shuffle_boosts", uid);
   const expiresAt = parseMs(boostDoc?.expiresAt);
   const active = boostDoc?.active === true && expiresAt > Date.now();
 
-  const referrals = await runCollectionQuery("referrals", 200, "createdAt", "DESCENDING");
-  const mine = referrals.filter((row) => String(row.referrerUid) === uid);
+  const mine = await listBoostAdminDocs("referrals", {
+    limit: 500,
+    where: { field: "referrerUid", value: uid },
+  });
 
   return {
     boostCreditsMinutes: Number(user.boostCreditsMinutes || 0),
@@ -269,7 +270,7 @@ export async function getBoostStatus(uid: string, siteOrigin: string): Promise<B
 }
 
 export async function activateBoost(uid: string, minutesRequested?: number) {
-  const user = await getFirestoreDoc("usuarios", uid);
+  const user = await getBoostAdminDoc("usuarios", uid);
   if (!user || !isPublicProfile(user)) {
     return { ok: false as const, reason: "no_profile" as const };
   }
@@ -285,7 +286,7 @@ export async function activateBoost(uid: string, minutesRequested?: number) {
     return { ok: false as const, reason: "insufficient_credits" as const };
   }
 
-  const existing = await getFirestoreDoc("shuffle_boosts", uid);
+  const existing = await getBoostAdminDoc("shuffle_boosts", uid);
   const existingExpires = parseMs(existing?.expiresAt);
   if (existing?.active === true && existingExpires > Date.now()) {
     return { ok: false as const, reason: "already_active" as const };
@@ -299,7 +300,7 @@ export async function activateBoost(uid: string, minutesRequested?: number) {
     boostCreditsMinutes: credits - minutes,
   });
 
-  await patchFirestoreDoc("shuffle_boosts", uid, {
+  await setBoostAdminDoc("shuffle_boosts", uid, {
     uid,
     username,
     active: true,

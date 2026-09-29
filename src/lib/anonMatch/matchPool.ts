@@ -1,6 +1,6 @@
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
-import { runCollectionQuery } from "@/lib/firestore/rest";
+import { listAnonMatchAdminDocs } from "@/lib/anonMatch/anonMatchAdminStore";
 
 export type MatchParticipantTipo = "perfil" | "anonimo";
 
@@ -39,8 +39,9 @@ type ProfileRow = Record<string, unknown> & {
   banned?: boolean;
 };
 
-const MATCH_POOL_QUERY_LIMIT = 50;
-const MATCH_AUX_QUERY_LIMIT = 50;
+const MATCH_PROFILE_QUERY_LIMIT = 2_000;
+const MATCH_ANON_QUERY_LIMIT = 1_000;
+const MATCH_AUX_QUERY_LIMIT = 500;
 const MATCH_POOL_CACHE_MS = 2 * 60_000;
 
 type PoolCache = {
@@ -119,10 +120,12 @@ async function getMatchPoolRows(now = Date.now()) {
   }
 
   const [anonRows, profileRows] = await Promise.all([
-    runCollectionQuery("anonimos_activos", MATCH_POOL_QUERY_LIMIT) as Promise<
-      AnonPresenceRow[]
-    >,
-    runCollectionQuery("usuarios", MATCH_POOL_QUERY_LIMIT) as Promise<ProfileRow[]>,
+    listAnonMatchAdminDocs("anonimos_activos", {
+      limit: MATCH_ANON_QUERY_LIMIT,
+    }) as Promise<AnonPresenceRow[]>,
+    listAnonMatchAdminDocs("usuarios", {
+      limit: MATCH_PROFILE_QUERY_LIMIT,
+    }) as Promise<ProfileRow[]>,
   ]);
 
   poolCache = { anonRows, profileRows, fetchedAt: now };
@@ -140,12 +143,10 @@ export async function listPendingMatchTargets(now = Date.now()) {
     };
   }
 
-  const rows = await runCollectionQuery(
-    "solicitudes_chat_anonimo",
-    MATCH_AUX_QUERY_LIMIT,
-    "createdAt",
-    "DESCENDING",
-  );
+  const rows = await listAnonMatchAdminDocs("solicitudes_chat_anonimo", {
+    limit: MATCH_AUX_QUERY_LIMIT,
+    where: { field: "estado", value: "pendiente" },
+  });
   const pendingAnonIds = new Set<string>();
   const pendingUids = new Set<string>();
 
@@ -182,12 +183,10 @@ export async function listBusyDirectChatParticipants(now = Date.now()) {
     };
   }
 
-  const rows = await runCollectionQuery(
-    "chats_anonimos",
-    MATCH_AUX_QUERY_LIMIT,
-    "updatedAt",
-    "DESCENDING",
-  );
+  const rows = await listAnonMatchAdminDocs("chats_anonimos", {
+    limit: MATCH_AUX_QUERY_LIMIT,
+    where: { field: "estado", value: "activo" },
+  });
   const busyAnonIds = new Set<string>();
   const busyUids = new Set<string>();
 

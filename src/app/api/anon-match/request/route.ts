@@ -6,11 +6,25 @@ import {
   expireAnonMatchRequestIfNeeded,
   getAnonMatchRequest,
 } from "@/lib/anonMatch/service";
+import { assertCallerOwnsAnonMatchSolicitud } from "@/lib/anonMatch/anonMatchSolicitudAuth";
+import {
+  assertAnonMatchAliasForCaller,
+  rejectSpoofedUid,
+  resolveAnonMatchRegisteredUid,
+  verifyAnonMatchCaller,
+} from "@/lib/anonMatch/verifyAnonMatchCaller";
 
 export const dynamic = "force-dynamic";
 
+function authError(error: unknown) {
+  const status = Number((error as { status?: number })?.status || 401);
+  const message = String((error as Error)?.message || "unauthorized");
+  return NextResponse.json({ ok: false, error: message }, { status });
+}
+
 export async function GET(req: Request) {
   try {
+    await verifyAnonMatchCaller(req);
     const { searchParams } = new URL(req.url);
     const excludeRaw = String(searchParams.get("exclude") || "").trim();
     const excludeAnonIds = excludeRaw ? excludeRaw.split("|").filter(Boolean) : [];
@@ -21,6 +35,8 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ ok: true, available, ts: Date.now() });
   } catch (e: unknown) {
+    const status = Number((e as { status?: number })?.status || 0);
+    if (status === 401 || status === 403) return authError(e);
     const message = e instanceof Error ? e.message : "unknown";
     return NextResponse.json({ ok: false, error: message, available: 0 }, { status: 200 });
   }
@@ -28,13 +44,20 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const caller = await verifyAnonMatchCaller(req);
     const body = await req.json().catch(() => ({}));
-    const solicitanteUid = String(body?.solicitanteUid || "").trim();
-    const solicitanteAnonId = String(body?.solicitanteAnonId || "").trim();
-    const localAnonId = String(body?.localAnonId || "").trim();
+    rejectSpoofedUid(body?.solicitanteUid, caller.uid);
 
-    if (!solicitanteUid && !solicitanteAnonId) {
-      return NextResponse.json({ ok: false, error: "missing_solicitant" }, { status: 400 });
+    const solicitanteUid = resolveAnonMatchRegisteredUid(caller);
+    const solicitanteAnonId = caller.isAnonymous
+      ? await assertAnonMatchAliasForCaller(caller, body?.solicitanteAnonId)
+      : String(body?.solicitanteAnonId || "").trim();
+    const localAnonId = caller.isAnonymous
+      ? solicitanteAnonId
+      : String(body?.localAnonId || "").trim();
+
+    if (!solicitanteAnonId && caller.isAnonymous) {
+      return NextResponse.json({ ok: false, error: "missing_solicitant_anon" }, { status: 400 });
     }
 
     const excludeRaw = String(body?.excludeAnonIds || body?.exclude || "").trim();
@@ -48,12 +71,10 @@ export async function POST(req: Request) {
       ? body.excludeUids.map(String)
       : excludeUidRaw
         ? excludeUidRaw.split("|").filter(Boolean)
-        : solicitanteUid
-          ? [solicitanteUid]
-          : [];
+        : [solicitanteUid];
 
     const result = await createAnonMatchRequest({
-      solicitanteUid: solicitanteUid || undefined,
+      solicitanteUid,
       solicitanteAnonId: solicitanteAnonId || undefined,
       localAnonId: localAnonId || undefined,
       excludeAnonIds,
@@ -75,6 +96,8 @@ export async function POST(req: Request) {
       ts: Date.now(),
     });
   } catch (e: unknown) {
+    const status = Number((e as { status?: number })?.status || 0);
+    if (status === 401 || status === 403) return authError(e);
     const message = e instanceof Error ? e.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
@@ -82,6 +105,7 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    const caller = await verifyAnonMatchCaller(req);
     const body = await req.json().catch(() => ({}));
     const solicitudId = String(body?.solicitudId || "").trim();
     if (!solicitudId) {
@@ -92,6 +116,8 @@ export async function PATCH(req: Request) {
     if (!row) {
       return NextResponse.json({ ok: false, reason: "not_found" }, { status: 404 });
     }
+
+    await assertCallerOwnsAnonMatchSolicitud(caller, row);
 
     const estado = await expireAnonMatchRequestIfNeeded(row);
     const fresh =
@@ -108,6 +134,8 @@ export async function PATCH(req: Request) {
       ts: Date.now(),
     });
   } catch (e: unknown) {
+    const status = Number((e as { status?: number })?.status || 0);
+    if (status === 401 || status === 403) return authError(e);
     const message = e instanceof Error ? e.message : "unknown";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }

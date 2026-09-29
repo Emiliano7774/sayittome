@@ -1,12 +1,11 @@
 import {
-  createFirestoreDoc,
-  getFirestoreDoc,
-  parseFirestoreDoc,
-  patchFirestoreDoc,
-  runCollectionQuery,
-  FIRESTORE_PROJECT_ID,
-  FIRESTORE_API_KEY,
-} from "@/lib/firestore/rest";
+  addAnonMatchAdminDoc,
+  createAnonMatchAdminDoc,
+  getAnonMatchAdminDoc,
+  listAnonMatchAdminDocs,
+  listAnonMatchMessageExcerpt,
+  setAnonMatchAdminDoc,
+} from "@/lib/anonMatch/anonMatchAdminStore";
 import {
   buildAnonMatchRequestId,
   buildDirectChatSessionId,
@@ -91,27 +90,26 @@ export async function createAnonMatchRequest(input: {
   const createdAt = new Date(now).toISOString();
   const expiresAt = new Date(now + ANON_MATCH_REQUEST_MS).toISOString();
 
-  await createFirestoreDoc(
-    "solicitudes_chat_anonimo",
-    {
-      solicitudId,
-      solicitanteUid,
-      solicitanteAnonId,
-      tipoSolicitud,
-      destinatarioTipo,
-      destinatarioUid,
-      anonId: destinatarioAnonId,
-      estado: "pendiente",
-      createdAt,
-      updatedAt: createdAt,
-      expiresAt,
-      chatId: "",
-      pais: input.pais || picked.pais || "",
-      provincia: input.provincia || picked.provincia || "",
-      idioma: input.idioma || picked.idioma || "es",
-    },
+  const created = await createAnonMatchAdminDoc("solicitudes_chat_anonimo", solicitudId, {
     solicitudId,
-  );
+    solicitanteUid,
+    solicitanteAnonId,
+    tipoSolicitud,
+    destinatarioTipo,
+    destinatarioUid,
+    anonId: destinatarioAnonId,
+    estado: "pendiente",
+    createdAt,
+    updatedAt: createdAt,
+    expiresAt,
+    chatId: "",
+    pais: input.pais || picked.pais || "",
+    provincia: input.provincia || picked.provincia || "",
+    idioma: input.idioma || picked.idioma || "es",
+  });
+  if (!created.created) {
+    return { ok: false as const, reason: "request_already_exists" as const };
+  }
   invalidateAnonMatchAvailabilityCache();
 
   return {
@@ -155,21 +153,30 @@ function parseDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+type AnonMatchRequestLookupHook = (
+  solicitudId: string,
+) => Promise<Record<string, unknown> | null> | Record<string, unknown> | null;
+
+let testGetAnonMatchRequestHook: AnonMatchRequestLookupHook | null = null;
+
+/** Integration harness only - inject solicitud rows without production Firestore REST. */
+export function setAnonMatchTestGetRequestHook(hook: AnonMatchRequestLookupHook | null) {
+  if (process.env.ANON_MATCH_INTEGRATION_TEST !== "1") return;
+  testGetAnonMatchRequestHook = hook;
+}
+
 export async function getAnonMatchRequest(solicitudId: string) {
-  const url = `https://firestore.googleapis.com/v1/projects/sayittome-app/databases/(default)/documents/solicitudes_chat_anonimo/${encodeURIComponent(solicitudId)}?key=${process.env.FIREBASE_API_KEY || "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk"}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
-  return parseFirestoreDoc(await res.json()) as Record<string, unknown>;
+  if (process.env.ANON_MATCH_INTEGRATION_TEST === "1" && testGetAnonMatchRequestHook) {
+    return testGetAnonMatchRequestHook(solicitudId);
+  }
+  return getAnonMatchAdminDoc("solicitudes_chat_anonimo", solicitudId);
 }
 
 async function getAnonDirectChat(chatId: string) {
-  const url = `https://firestore.googleapis.com/v1/projects/sayittome-app/databases/(default)/documents/chats_anonimos/${encodeURIComponent(chatId)}?key=${process.env.FIREBASE_API_KEY || "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk"}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
-  return parseFirestoreDoc(await res.json()) as Record<string, unknown>;
+  return getAnonMatchAdminDoc("chats_anonimos", chatId);
 }
 
-/** Vuelve a habilitar anónimos en el match — sin bloqueo permanente. */
+/** Vuelve a habilitar anonimos en el match - sin bloqueo permanente. */
 async function releaseDirectChatParticipants(
   chat: Record<string, unknown>,
   now = new Date().toISOString(),
@@ -182,7 +189,7 @@ async function releaseDirectChatParticipants(
 
   await Promise.all(
     ids.map((anonId) =>
-      patchFirestoreDoc("anonimos_activos", anonId, {
+      setAnonMatchAdminDoc("anonimos_activos", anonId, {
         enChat: false,
         disponibleParaChat: true,
         chatActualId: "",
@@ -230,7 +237,7 @@ async function closeActiveChatsForParticipantPair(
   closedBy: string,
 ) {
   const target = participantFingerprint(participants);
-  const rows = await runCollectionQuery("chats_anonimos", 200, "updatedAt", "DESCENDING");
+  const rows = await listAnonMatchAdminDocs("chats_anonimos", { limit: 500, where: { field: "estado", value: "activo" } });
   const now = new Date().toISOString();
 
   for (const row of rows) {
@@ -240,7 +247,7 @@ async function closeActiveChatsForParticipantPair(
     const chatId = String(row.chatId || row.id || "");
     if (!chatId) continue;
 
-    await patchFirestoreDoc("chats_anonimos", chatId, {
+    await setAnonMatchAdminDoc("chats_anonimos", chatId, {
       estado: "cerrado",
       cerradoPor: closedBy,
       cerradoAt: now,
@@ -284,7 +291,7 @@ export function anonMatchRequestInvolvesParticipant(
 
 async function hasActiveDirectChatForParticipant(uid: string, anonId: string) {
   if (!uid && !anonId) return false;
-  const rows = await runCollectionQuery("chats_anonimos", 200, "updatedAt", "DESCENDING");
+  const rows = await listAnonMatchAdminDocs("chats_anonimos", { limit: 500, where: { field: "estado", value: "activo" } });
   return rows.some(
     (row) =>
       String(row.estado || "") === "activo" &&
@@ -298,12 +305,10 @@ async function cancelCompetingAnonMatchRequests(input: {
   participantAnonIds: string[];
   now: string;
 }) {
-  const rows = await runCollectionQuery(
-    "solicitudes_chat_anonimo",
-    200,
-    "createdAt",
-    "DESCENDING",
-  );
+  const rows = await listAnonMatchAdminDocs("solicitudes_chat_anonimo", {
+    limit: 500,
+    where: { field: "estado", value: "pendiente" },
+  });
 
   for (const row of rows) {
     const solicitudId = String(row.solicitudId || row.id || "");
@@ -318,7 +323,7 @@ async function cancelCompetingAnonMatchRequests(input: {
       );
     if (!involvesAcceptedParticipant) continue;
 
-    await patchFirestoreDoc("solicitudes_chat_anonimo", solicitudId, {
+    await setAnonMatchAdminDoc("solicitudes_chat_anonimo", solicitudId, {
       estado: "cancelado",
       updatedAt: input.now,
     });
@@ -336,7 +341,7 @@ export async function expireAnonMatchRequestIfNeeded(row: Record<string, unknown
   const solicitudId = String(row.solicitudId || row.id || "");
   if (!solicitudId) return "expirado";
 
-  await patchFirestoreDoc("solicitudes_chat_anonimo", solicitudId, {
+  await setAnonMatchAdminDoc("solicitudes_chat_anonimo", solicitudId, {
     estado: "expirado",
     updatedAt: new Date().toISOString(),
   });
@@ -387,7 +392,7 @@ export async function respondAnonMatchRequest(input: {
   const now = new Date().toISOString();
 
   if (!input.accept) {
-    await patchFirestoreDoc("solicitudes_chat_anonimo", input.solicitudId, {
+    await setAnonMatchAdminDoc("solicitudes_chat_anonimo", input.solicitudId, {
       estado: "rechazado",
       updatedAt: now,
     });
@@ -403,7 +408,7 @@ export async function respondAnonMatchRequest(input: {
     hasActiveDirectChatForParticipant(solicitanteUid, solicitanteAnonId),
   ]);
   if (responderBusy || requesterBusy) {
-    await patchFirestoreDoc("solicitudes_chat_anonimo", input.solicitudId, {
+    await setAnonMatchAdminDoc("solicitudes_chat_anonimo", input.solicitudId, {
       estado: "cancelado",
       updatedAt: now,
     });
@@ -438,24 +443,20 @@ export async function respondAnonMatchRequest(input: {
     closedBy,
   );
 
-  await createFirestoreDoc(
-    "chats_anonimos",
-    {
-      chatId,
-      tipo: chatTipo,
-      solicitanteUid,
-      solicitanteAnonId,
-      destinatarioUid,
-      anonId: destinatarioAnonId,
-      estado: "activo",
-      createdAt: now,
-      updatedAt: now,
-      ultimoMensaje: "",
-    },
+  await setAnonMatchAdminDoc("chats_anonimos", chatId, {
     chatId,
-  );
+    tipo: chatTipo,
+    solicitanteUid,
+    solicitanteAnonId,
+    destinatarioUid,
+    anonId: destinatarioAnonId,
+    estado: "activo",
+    createdAt: now,
+    updatedAt: now,
+    ultimoMensaje: "",
+  });
 
-  await patchFirestoreDoc("solicitudes_chat_anonimo", input.solicitudId, {
+  await setAnonMatchAdminDoc("solicitudes_chat_anonimo", input.solicitudId, {
     estado: "aceptado",
     chatId,
     updatedAt: now,
@@ -469,7 +470,7 @@ export async function respondAnonMatchRequest(input: {
   });
 
   if (destinatarioAnonId) {
-    await patchFirestoreDoc("anonimos_activos", destinatarioAnonId, {
+    await setAnonMatchAdminDoc("anonimos_activos", destinatarioAnonId, {
       enChat: true,
       disponibleParaChat: false,
       chatActualId: chatId,
@@ -478,7 +479,7 @@ export async function respondAnonMatchRequest(input: {
   }
 
   if (solicitanteAnonId) {
-    await patchFirestoreDoc("anonimos_activos", solicitanteAnonId, {
+    await setAnonMatchAdminDoc("anonimos_activos", solicitanteAnonId, {
       enChat: true,
       disponibleParaChat: false,
       chatActualId: chatId,
@@ -491,6 +492,10 @@ export async function respondAnonMatchRequest(input: {
   return { ok: true as const, estado: "aceptado" as const, chatId };
 }
 
+export async function getAnonDirectChatRow(chatId: string) {
+  return getAnonDirectChat(chatId);
+}
+
 export async function closeAnonDirectChat(input: {
   chatId: string;
   closedBy: string;
@@ -498,7 +503,7 @@ export async function closeAnonDirectChat(input: {
   const now = new Date().toISOString();
   const chat = await getAnonDirectChat(input.chatId);
 
-  await patchFirestoreDoc("chats_anonimos", input.chatId, {
+  await setAnonMatchAdminDoc("chats_anonimos", input.chatId, {
     estado: "cerrado",
     cerradoPor: input.closedBy,
     cerradoAt: now,
@@ -514,37 +519,15 @@ export async function closeAnonDirectChat(input: {
 
 async function resolveProfileUsername(uid: string) {
   if (!uid) return "";
-  const user = await getFirestoreDoc("usuarios", uid);
+  const user = await getAnonMatchAdminDoc("usuarios", uid);
   return String(user?.username || user?.usernameLower || "");
 }
 
 async function getAnonChatMessageExcerpt(chatId: string, limit = 8) {
   if (!chatId) return "";
 
-  const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/chats_anonimos/${encodeURIComponent(chatId)}:runQuery?key=${FIRESTORE_API_KEY}`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify({
-      structuredQuery: {
-        from: [{ collectionId: "mensajes" }],
-        orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }],
-        limit,
-      },
-    }),
-  });
-
-  if (!res.ok) return "";
-
-  const json = await res.json();
-  if (!Array.isArray(json)) return "";
-
-  const lines = json
-    .map((row: { document?: unknown }) => row.document)
-    .filter(Boolean)
-    .map(parseFirestoreDoc)
+  const rows = await listAnonMatchMessageExcerpt(chatId, limit).catch(() => []);
+  const lines = rows
     .reverse()
     .map((message) => {
       const text = String(message.text || message.texto || message.mensaje || "").trim();
@@ -623,14 +606,14 @@ export async function reportAnonDirectChat(input: {
   const targetLabel = targetUsername
     ? `@${targetUsername}`
     : reportedParty.targetAnonId
-      ? `Anónimo ${reportedParty.targetAnonId.slice(0, 8)}`
+      ? `An\u00f3nimo ${reportedParty.targetAnonId.slice(0, 8)}`
       : "";
   const reporterLabel = reporterUsername
     ? `@${reporterUsername}`
     : reporterUid
       ? reporterUid.slice(0, 8)
       : reporterId
-        ? `Anónimo ${reporterId.slice(0, 8)}`
+        ? `An\u00f3nimo ${reporterId.slice(0, 8)}`
         : "Desconocido";
 
   const detailParts = [
@@ -638,17 +621,17 @@ export async function reportAnonDirectChat(input: {
     chatExcerpt ? `Mensajes del chat:\n${chatExcerpt}` : "",
   ].filter(Boolean);
 
-  await patchFirestoreDoc("chats_anonimos", input.chatId, {
+  await setAnonMatchAdminDoc("chats_anonimos", input.chatId, {
     estado: "denunciado",
     denunciadoPor: reporterId,
     denunciadoAt: now,
     updatedAt: now,
   });
 
-  await createFirestoreDoc("reportes", {
+  await addAnonMatchAdminDoc("reportes", {
     tipo: "chat_anonimo_directo",
     motivo: "denuncia_chat_anonimo",
-    detalle: detailParts.join("\n\n") || "Chat anónimo denunciado sin detalle adicional.",
+    detalle: detailParts.join("\n\n") || "Chat an\u00f3nimo denunciado sin detalle adicional.",
     chatId: input.chatId,
     reporterUid,
     reporterEmail: "",

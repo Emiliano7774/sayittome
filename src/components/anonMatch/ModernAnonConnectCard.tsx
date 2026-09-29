@@ -56,7 +56,7 @@ export default function ModernAnonConnectCard() {
   );
 
   const authPending = !match || loading;
-  const liveProfile = Boolean(firebaseUser?.uid);
+  const liveProfile = Boolean(firebaseUser && !firebaseUser.isAnonymous);
   const liveIncognito = Boolean(incognitoMode && !liveProfile);
   const identity = resolveAnonCardIdentity({
     authPending,
