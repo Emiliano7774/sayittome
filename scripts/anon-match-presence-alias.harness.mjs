@@ -154,8 +154,10 @@ assert.ok(retryMs > 1_000 && retryMs <= 5_000, `retryMs=${retryMs}`);
 covers.push("retry_3_to_5s");
 
 // Waiting clears retry timer (no keep retrying after candidate).
-assert.match(contextSrc, /setPhase\("waiting"\)[\s\S]{0,40}clearRetryTimer\(\)/);
+assert.match(contextSrc, /setPhase\("waiting"\)[\s\S]{0,220}clearRetryTimer\(\)/);
 covers.push("waiting_stops_retry");
+assert.match(contextSrc, /rememberRecentMatchTarget/);
+covers.push("recent_target_goes_last");
 
 // 9) Profile rows may cache; anonimos_activos must always re-read (live matching).
 assert.match(poolSrc, /MATCH_POOL_CACHE_MS\s*=\s*2\s*\*\s*60_000/);

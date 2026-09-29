@@ -86,6 +86,12 @@ export async function POST(req: Request) {
       : excludeUidRaw
         ? excludeUidRaw.split("|").filter(Boolean)
         : [solicitanteUid];
+    const recentTargetIds = Array.isArray(body?.recentTargetIds)
+      ? body.recentTargetIds.map(String).filter(Boolean)
+      : String(body?.recentTargetIds || "")
+          .split("|")
+          .map((id: string) => id.trim())
+          .filter(Boolean);
 
     const result = await createAnonMatchRequest({
       solicitanteUid,
@@ -94,6 +100,7 @@ export async function POST(req: Request) {
       localAnonId: localAnonId || undefined,
       excludeAnonIds,
       excludeUids,
+      recentTargetIds,
       pais: String(body?.pais || "").trim(),
       provincia: String(body?.provincia || "").trim(),
       idioma: String(body?.idioma || "es").trim(),
@@ -107,6 +114,8 @@ export async function POST(req: Request) {
       ok: true,
       solicitudId: result.solicitudId,
       anonId: result.anonId,
+      destinatarioUid: result.destinatarioUid,
+      destinatarioTipo: result.destinatarioTipo,
       expiresAt: result.expiresAt,
       ts: Date.now(),
     });

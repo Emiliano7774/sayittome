@@ -157,15 +157,33 @@ async function getMatchPoolRows(now = Date.now()) {
 /**
  * Prefer live anonymous presence over registered profiles so searching anons
  * receive the incoming match alert instead of only idle online profiles.
- * Among anons, prefer the freshest heartbeats (top few), not stale ghosts.
+ *
+ * Queue semantics (not pure random):
+ * 1) Anons before profiles
+ * 2) Never-tried ahead of recently contacted (recentOrder: oldest → newest)
+ * 3) Among the same recency tier, freshest heartbeat first
+ * 4) Deterministic pick of the best candidate (no random among top-3)
  */
 export function selectMatchCandidateFromPool(
   eligible: MatchCandidate[],
   preferred: MatchCandidate[],
   now = Date.now(),
+  recentOrder: string[] = [],
 ): MatchCandidate | null {
   const pool = preferred.length > 0 ? preferred : eligible;
   if (pool.length === 0) return null;
+
+  const rankOf = (id: string) => {
+    const index = recentOrder.indexOf(id);
+    return index === -1 ? -1 : index;
+  };
+
+  const compare = (a: MatchCandidate, b: MatchCandidate) => {
+    const rankA = rankOf(a.id);
+    const rankB = rankOf(b.id);
+    if (rankA !== rankB) return rankA - rankB;
+    return Number(b.lastSeenMs || 0) - Number(a.lastSeenMs || 0);
+  };
 
   const anonPool = pool.filter((row) => row.tipo === "anonimo");
   const freshAnonPool = anonPool.filter((row) => {
@@ -176,14 +194,12 @@ export function selectMatchCandidateFromPool(
     freshAnonPool.length > 0 ? freshAnonPool : anonPool.length > 0 ? anonPool : null;
 
   if (anonPickFrom) {
-    const sorted = [...anonPickFrom].sort(
-      (a, b) => Number(b.lastSeenMs || 0) - Number(a.lastSeenMs || 0),
-    );
-    const top = sorted.slice(0, Math.min(3, sorted.length));
-    return top[Math.floor(Math.random() * top.length)];
+    const sorted = [...anonPickFrom].sort(compare);
+    return sorted[0] || null;
   }
 
-  return pool[Math.floor(Math.random() * pool.length)];
+  const sortedProfiles = [...pool].sort(compare);
+  return sortedProfiles[0] || null;
 }
 
 export async function listPendingMatchTargets(now = Date.now()) {
@@ -269,6 +285,8 @@ export async function listBusyDirectChatParticipants(now = Date.now()) {
 export async function pickAvailableMatchTarget(input: {
   excludeAnonIds?: string[];
   excludeUids?: string[];
+  /** Oldest → newest contacted ids; never-tried stay ahead of this queue. */
+  recentTargetIds?: string[];
   pais?: string;
   idioma?: string;
   now?: number;
@@ -276,6 +294,9 @@ export async function pickAvailableMatchTarget(input: {
   const now = input.now ?? Date.now();
   const excludeAnonIds = new Set(input.excludeAnonIds || []);
   const excludeUids = new Set(input.excludeUids || []);
+  const recentOrder = (input.recentTargetIds || [])
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
   const { pendingAnonIds, pendingUids } = await listPendingMatchTargets(now);
   const { busyAnonIds, busyUids } = await listBusyDirectChatParticipants(now);
   const { anonRows, profileRows } = await getMatchPoolRows(now);
@@ -323,7 +344,7 @@ export async function pickAvailableMatchTarget(input: {
     return true;
   });
 
-  return selectMatchCandidateFromPool(eligible, preferred, now);
+  return selectMatchCandidateFromPool(eligible, preferred, now, recentOrder);
 }
 
 export async function countAvailableMatchTargets(

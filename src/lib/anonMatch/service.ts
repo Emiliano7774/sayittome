@@ -61,6 +61,7 @@ export async function createAnonMatchRequest(input: {
   localAnonId?: string;
   excludeAnonIds?: string[];
   excludeUids?: string[];
+  recentTargetIds?: string[];
   pais?: string;
   provincia?: string;
   idioma?: string;
@@ -87,6 +88,7 @@ export async function createAnonMatchRequest(input: {
   const picked = await pickAvailableMatchTarget({
     excludeAnonIds: Array.from(excludeAnonIds),
     excludeUids: Array.from(excludeUids),
+    recentTargetIds: input.recentTargetIds,
     pais: input.pais,
     idioma: input.idioma,
     now,

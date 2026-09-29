@@ -55,6 +55,21 @@ assert.equal(
   "anon_fresh",
 );
 
+// Recently contacted target goes to the back of the queue.
+const queue = [
+  { tipo: "anonimo", id: "anon_a", lastSeenMs: Date.now() },
+  { tipo: "anonimo", id: "anon_b", lastSeenMs: Date.now() - 1_000 },
+  { tipo: "anonimo", id: "anon_c", lastSeenMs: Date.now() - 2_000 },
+];
+assert.equal(
+  pool.selectMatchCandidateFromPool(queue, queue, Date.now(), ["anon_a"])?.id,
+  "anon_b",
+);
+assert.equal(
+  pool.selectMatchCandidateFromPool(queue, queue, Date.now(), ["anon_a", "anon_b"])?.id,
+  "anon_c",
+);
+
 const typesSrc = fs.readFileSync(
   path.join(root, "src/lib/anonMatch/types.ts"),
   "utf8",

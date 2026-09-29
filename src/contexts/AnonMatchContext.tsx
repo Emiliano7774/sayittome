@@ -62,6 +62,10 @@ import {
   splitRejectedMatchTargets,
 } from "@/lib/anonMatch/rejectedMatchTargets";
 import {
+  loadRecentMatchTargets,
+  rememberRecentMatchTarget,
+} from "@/lib/anonMatch/recentMatchTargets";
+import {
   alertAnonMatchChatOpened,
   alertIncomingAnonMatchRequest,
   dismissIncomingAnonMatchRequestAlert,
@@ -552,6 +556,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       ];
       body.excludeAnonIds = Array.from(new Set(excludeAnonIds.filter(Boolean)));
       body.excludeUids = Array.from(new Set(excludeUids.filter(Boolean)));
+      body.recentTargetIds = loadRecentMatchTargets();
 
       const res = await fetchAnonMatch("/api/anon-match/request", {
         method: "POST",
@@ -569,6 +574,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
       const nextSolicitudId = String(json.solicitudId || "");
       const targetAnonId = String(json.anonId || "");
+      const targetUid = String(json.destinatarioUid || "");
+      // Just-contacted target goes to the back of the searcher's queue.
+      rememberRecentMatchTarget(targetAnonId || targetUid);
       setSolicitudId(nextSolicitudId);
       setPhase("waiting");
       waitingMetaRef.current = {
