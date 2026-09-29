@@ -982,6 +982,24 @@ html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="stories"]:
   touch-action: pan-y;
 }
 
+/* BOOST_LONG_SCROLL: Destacar can be taller than one viewport. Once the Boost
+   tab is settled, return its keep-alive host to document flow so Android has
+   real page height to pan through. During handoff it remains a fixed cover. */
+html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="boost"]:not(
+    .sayittome-shuffle-exit-handoff-pending
+  ):not(.sayittome-main-tab-handoff-pending):not(
+    [data-main-tab-shuffle-slide]
+  )
+  #sayittome-main-tab-keepalive-boost.sayittome-main-tab-keepalive-visible {
+  position: relative !important;
+  inset: auto !important;
+  z-index: auto !important;
+  min-height: 100dvh;
+  overflow: visible !important;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+}
+
 html[data-sayittome-bar-target="stories"] #sayittome-shuffle-keepalive-host,
 html[data-sayittome-bar-target="chats"] #sayittome-shuffle-keepalive-host,
 html[data-sayittome-bar-target="boost"] #sayittome-shuffle-keepalive-host,
