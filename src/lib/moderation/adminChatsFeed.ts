@@ -60,30 +60,21 @@ async function scanAllChatDocs() {
   const db = getRepairAdminDb();
   const all: Record<string, unknown>[] = [];
 
-  async function pageQuery(ordered: boolean) {
+  // Unordered pagination on document ID. Do NOT orderBy updatedAt: Firestore
+  // omits docs missing that field, which silently under-counts discovery.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cursor: any = null;
+  for (;;) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let cursor: any = null;
-    for (;;) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let q: any = db.collection("chats");
-      if (ordered) q = q.orderBy("updatedAt", "desc");
-      q = q.limit(PAGE_SIZE);
-      if (cursor) q = q.startAfter(cursor);
-      const snap = await q.get();
-      if (!snap || snap.empty) break;
-      for (const docSnap of snap.docs) {
-        all.push(rowFromAdminDoc(docSnap.id, docSnap.data()));
-      }
-      cursor = snap.docs[snap.docs.length - 1];
-      if (snap.size < PAGE_SIZE) break;
+    let q: any = db.collection("chats").orderBy("__name__").limit(PAGE_SIZE);
+    if (cursor) q = q.startAfter(cursor);
+    const snap = await q.get();
+    if (!snap || snap.empty) break;
+    for (const docSnap of snap.docs) {
+      all.push(rowFromAdminDoc(docSnap.id, docSnap.data()));
     }
-  }
-
-  try {
-    await pageQuery(true);
-  } catch {
-    all.length = 0;
-    await pageQuery(false);
+    cursor = snap.docs[snap.docs.length - 1];
+    if (snap.size < PAGE_SIZE) break;
   }
 
   return { db, rows: all };

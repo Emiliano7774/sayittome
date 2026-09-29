@@ -148,6 +148,8 @@ assert.match(fetchSrc, /participantes/);
   );
   assert.match(feedLib, /Never add initiatorUid|never add initiatorUid/i);
   assert.match(feedLib, /needsParticipantResolve/);
+  assert.match(feedLib, /orderBy\("__name__"\)/);
+  assert.doesNotMatch(feedLib, /orderBy\("updatedAt"/);
   const hist = fs.readFileSync(
     path.join(root, "src/lib/moderation/chatHistory.ts"),
     "utf8",
