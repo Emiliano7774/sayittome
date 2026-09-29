@@ -346,6 +346,38 @@ service cloud.firestore {
       );
     }
 
+    /** Message senderId may be Firebase uid (profile) or the bound anon_* alias. */
+    function maySendAnonMatchMessage(chatId) {
+      let data = anonMatchChatData(chatId);
+      let senderId = request.resource.data.get('senderId', '');
+      return data != null
+        && isLoggedIn()
+        && senderId is string
+        && senderId != ''
+        && (
+          // Registered profile participant: senderId is their Firebase uid.
+          (
+            senderId == request.auth.uid
+            && (
+              chatField(data, 'solicitanteUid') == request.auth.uid
+              || chatField(data, 'destinatarioUid') == request.auth.uid
+              || chatField(data, 'solicitanteAuthUid') == request.auth.uid
+              || chatField(data, 'destinatarioAuthUid') == request.auth.uid
+            )
+          )
+          // Anonymous solicitante: senderId is solicitanteAnonId, auth via AuthUid.
+          || (
+            senderId == chatField(data, 'solicitanteAnonId')
+            && chatField(data, 'solicitanteAuthUid') == request.auth.uid
+          )
+          // Anonymous destinatario: senderId is anonId (destinatario alias).
+          || (
+            senderId == chatField(data, 'anonId')
+            && chatField(data, 'destinatarioAuthUid') == request.auth.uid
+          )
+        );
+    }
+
     function chatProfileBlocksVisitor(chatId) {
       return exists(/databases/$(database)/documents/chats/$(chatId))
         && get(/databases/$(database)/documents/chats/$(chatId))
@@ -1105,9 +1137,7 @@ service cloud.firestore {
       allow get: if openWindow() && mayReadAnonMatchChat(chatId);
       allow list: if openWindow() && mayReadAnonMatchChat(chatId);
       allow create: if openWindow()
-        && mayReadAnonMatchChat(chatId)
-        && isLoggedIn()
-        && request.resource.data.get('senderId', '') == request.auth.uid
+        && maySendAnonMatchMessage(chatId)
         && onlyAnonMatchMessageCreateKeys()
         && !touchesAnonMatchMessageImmutable();
       allow update, delete: if false;

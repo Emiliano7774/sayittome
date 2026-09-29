@@ -22,7 +22,6 @@ export async function persistAnonDirectMessage(input: PersistDirectMessageInput)
   batch.set(
     chatRef,
     {
-      chatId,
       ultimoMensaje: messageText,
       updatedAt: serverTimestamp(),
     },
