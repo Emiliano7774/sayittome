@@ -66,6 +66,15 @@ export async function setAnonMatchAdminDoc(
   await getRepairAdminDb().collection(collection).doc(key).set(data, { merge: true });
 }
 
+export async function deleteAnonMatchAdminDoc(
+  collection: AnonMatchAdminCollection,
+  id: string,
+) {
+  const key = String(id || "").trim();
+  if (!key) throw new Error("missing_doc_id");
+  await getRepairAdminDb().collection(collection).doc(key).delete();
+}
+
 export async function createAnonMatchAdminDoc(
   collection: AnonMatchAdminCollection,
   id: string,

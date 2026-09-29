@@ -1,101 +1,194 @@
 import { NextResponse } from "next/server";
 
+import {
+  decideAnonymousPresenceWrite,
+  decideLegacyAnonPresenceCleanup,
+  ANON_PRESENCE_ACTIVE_MS,
+} from "@/lib/anonMatch/anonymousPresenceIdentity";
+import {
+  lookupActiveAnonMatchAliasForAuth,
+  lookupAnonMatchAliasBinding,
+} from "@/lib/anonMatch/anonMatchAliasAdmin";
+import {
+  deleteAnonMatchAdminDoc,
+  setAnonMatchAdminDoc,
+} from "@/lib/anonMatch/anonMatchAdminStore";
+import { verifyAnonMatchCaller } from "@/lib/anonMatch/verifyAnonMatchCaller";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
-const PROJECT_ID = "sayittome-app";
-const DATABASE = "(default)";
-const ACTIVE_FOR_MS = 90 * 1000;
-
-function safeId(value: unknown) {
-  const raw = String(value || "").trim();
-  const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
-  return cleaned || `anon_${Date.now().toString(36)}`;
+function authError(error: unknown) {
+  const status = Number((error as { status?: number })?.status || 401);
+  const message = String((error as Error)?.message || "unauthorized");
+  return NextResponse.json({ ok: false, error: message }, { status });
 }
 
-function documentUrl(id: string) {
-  return new URL(
-    `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE}/documents/anonimos_activos/${encodeURIComponent(id)}`,
-  );
-}
-
-async function patchAnonymousPresence(id: string) {
+async function writePresenceDoc(anonId: string, authUid: string) {
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + ACTIVE_FOR_MS);
-
-  const url = documentUrl(id);
-  url.searchParams.set("key", API_KEY);
-  url.searchParams.append("updateMask.fieldPaths", "anonId");
-  url.searchParams.append("updateMask.fieldPaths", "lastSeenAt");
-  url.searchParams.append("updateMask.fieldPaths", "updatedAt");
-  url.searchParams.append("updateMask.fieldPaths", "expiresAt");
-  url.searchParams.append("updateMask.fieldPaths", "disponibleParaChat");
-  url.searchParams.append("updateMask.fieldPaths", "enChat");
-
-  const res = await fetch(url.toString(), {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      fields: {
-        anonId: { stringValue: id },
-        lastSeenAt: { timestampValue: now.toISOString() },
-        updatedAt: { timestampValue: now.toISOString() },
-        expiresAt: { timestampValue: expiresAt.toISOString() },
-        disponibleParaChat: { booleanValue: true },
-        enChat: { booleanValue: false },
-      },
-    }),
-    cache: "no-store",
+  const expiresAt = new Date(now.getTime() + ANON_PRESENCE_ACTIVE_MS);
+  await setAnonMatchAdminDoc("anonimos_activos", anonId, {
+    anonId,
+    authUid,
+    lastSeenAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+    disponibleParaChat: true,
+    enChat: false,
+    source: "anon_match_presence",
   });
+}
 
-  if (!res.ok) {
-    throw new Error(`anonymous presence write failed ${res.status}`);
+async function deletePresenceDoc(anonId: string) {
+  try {
+    await deleteAnonMatchAdminDoc("anonimos_activos", anonId);
+  } catch (error) {
+    const code = String((error as { code?: string | number })?.code || "");
+    const message = String((error as Error)?.message || "");
+    if (code === "5" || /not.?found|NOT_FOUND/i.test(message)) return;
+    throw error;
   }
 }
 
-async function deleteAnonymousPresence(id: string) {
-  const url = documentUrl(id);
-  url.searchParams.set("key", API_KEY);
-
-  const res = await fetch(url.toString(), {
-    method: "DELETE",
-    cache: "no-store",
-  });
-
-  if (!res.ok && res.status !== 404) {
-    throw new Error(`anonymous presence delete failed ${res.status}`);
-  }
-}
-
+/**
+ * Publish / refresh anonimos_activos under the caller's server-issued match alias.
+ * Body anonId is optional and must match the bound alias when present — never trusted alone.
+ */
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const anonId = safeId(body?.anonId);
+    const caller = await verifyAnonMatchCaller(req);
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
-    await patchAnonymousPresence(anonId);
+    if (!caller.isAnonymous) {
+      return NextResponse.json(
+        { ok: false, error: "profile_cannot_publish_anon_presence" },
+        { status: 403 },
+      );
+    }
 
-    return NextResponse.json({ ok: true, anonId, ts: Date.now() });
-  } catch (e: any) {
+    const bound =
+      (await lookupActiveAnonMatchAliasForAuth(caller.uid)) ||
+      "";
+    const decision = decideAnonymousPresenceWrite({
+      callerIsAnonymous: true,
+      boundServerAlias: bound,
+      claimedAnonId: String(body?.anonId || "").trim() || undefined,
+    });
+    if (!decision.ok) {
+      const status =
+        decision.reason === "alias_spoof" ||
+        decision.reason === "profile_cannot_publish_anon_presence"
+          ? 403
+          : 400;
+      return NextResponse.json({ ok: false, error: decision.reason }, { status });
+    }
+
+    await writePresenceDoc(decision.anonId, caller.uid);
+
+    const legacyLocal = String(body?.legacyLocalAnonId || "").trim();
+    let legacyCleaned: string | null = null;
+    if (legacyLocal && legacyLocal !== decision.anonId) {
+      const boundForLegacy = await lookupAnonMatchAliasBinding(legacyLocal);
+      const cleanup = decideLegacyAnonPresenceCleanup({
+        callerIsAnonymous: true,
+        callerUid: caller.uid,
+        legacyLocalAnonId: legacyLocal,
+        boundAuthUidForLegacy: boundForLegacy,
+      });
+      if (cleanup.ok) {
+        await deletePresenceDoc(cleanup.anonId);
+        legacyCleaned = cleanup.anonId;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      anonId: decision.anonId,
+      legacyCleaned,
+      ts: Date.now(),
+    });
+  } catch (e: unknown) {
+    const status = Number((e as { status?: number })?.status || 0);
+    if (status === 401 || status === 403) return authError(e);
+    const message = e instanceof Error ? e.message : "unknown";
     return NextResponse.json(
-      { ok: false, error: e?.message || "unknown", ts: Date.now() },
-      { status: 200 },
+      { ok: false, error: message, ts: Date.now() },
+      { status: status || 500 },
     );
   }
 }
 
+/**
+ * Remove presence for the caller's bound server alias (and optional legacy local id).
+ * pagehide uses cached alias — do not require a fresh bind here.
+ */
 export async function DELETE(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const anonId = safeId(body?.anonId);
+    const caller = await verifyAnonMatchCaller(req);
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
-    await deleteAnonymousPresence(anonId);
+    if (!caller.isAnonymous) {
+      return NextResponse.json(
+        { ok: false, error: "profile_cannot_publish_anon_presence" },
+        { status: 403 },
+      );
+    }
 
-    return NextResponse.json({ ok: true, anonId, ts: Date.now() });
-  } catch (e: any) {
+    const bound = (await lookupActiveAnonMatchAliasForAuth(caller.uid)) || "";
+    const claimed = String(body?.anonId || "").trim();
+
+    let anonId = "";
+    if (bound) {
+      const decision = decideAnonymousPresenceWrite({
+        callerIsAnonymous: true,
+        boundServerAlias: bound,
+        claimedAnonId: claimed || undefined,
+      });
+      if (!decision.ok) {
+        return NextResponse.json({ ok: false, error: decision.reason }, { status: 403 });
+      }
+      anonId = decision.anonId;
+    } else if (claimed) {
+      const claimedBound = await lookupAnonMatchAliasBinding(claimed);
+      if (claimedBound !== caller.uid) {
+        return NextResponse.json({ ok: false, error: "alias_spoof" }, { status: 403 });
+      }
+      anonId = claimed;
+    } else {
+      return NextResponse.json({ ok: false, error: "missing_server_alias" }, { status: 400 });
+    }
+
+    await deletePresenceDoc(anonId);
+
+    const legacyLocal = String(body?.legacyLocalAnonId || "").trim();
+    let legacyCleaned: string | null = null;
+    if (legacyLocal && legacyLocal !== anonId) {
+      const boundForLegacy = await lookupAnonMatchAliasBinding(legacyLocal);
+      const cleanup = decideLegacyAnonPresenceCleanup({
+        callerIsAnonymous: true,
+        callerUid: caller.uid,
+        legacyLocalAnonId: legacyLocal,
+        boundAuthUidForLegacy: boundForLegacy,
+      });
+      if (cleanup.ok) {
+        await deletePresenceDoc(cleanup.anonId);
+        legacyCleaned = cleanup.anonId;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      anonId,
+      legacyCleaned,
+      ts: Date.now(),
+    });
+  } catch (e: unknown) {
+    const status = Number((e as { status?: number })?.status || 0);
+    if (status === 401 || status === 403) return authError(e);
+    const message = e instanceof Error ? e.message : "unknown";
     return NextResponse.json(
-      { ok: false, error: e?.message || "unknown", ts: Date.now() },
-      { status: 200 },
+      { ok: false, error: message, ts: Date.now() },
+      { status: status || 500 },
     );
   }
 }

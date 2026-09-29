@@ -102,7 +102,8 @@ type IncomingRequest = {
   expiresAt: string;
 };
 
-const RETRY_DELAY_MS = 30_000;
+/** Pool cache is 2m — short retry is cheap and restores historical UX. */
+const RETRY_DELAY_MS = 4_000;
 
 const AnonMatchContext = createContext<AnonMatchContextValue | null>(null);
 
@@ -501,6 +502,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
       setSolicitudId(String(json.solicitudId || ""));
       setPhase("waiting");
+      clearRetryTimer();
     } catch {
       if (searchSessionActiveRef.current) {
         scheduleRetry();
@@ -508,7 +510,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     } finally {
       connectInFlightRef.current = false;
     }
-  }, [scheduleRetry]);
+  }, [clearRetryTimer, scheduleRetry]);
 
   useEffect(() => {
     attemptConnectRef.current = attemptConnect;
@@ -543,25 +545,31 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       scheduleRetry();
     };
 
-    const unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      const estado = String(data.estado || "pendiente") as AnonMatchRequestState;
-      const chatId = String(data.chatId || "");
-      const anonId = String(data.anonId || "");
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const estado = String(data.estado || "pendiente") as AnonMatchRequestState;
+        const chatId = String(data.chatId || "");
 
-      if (estado === "aceptado" && chatId) {
-        const acceptedRole = resolveAcceptedChatRole(
-          resolveAnonMatchCallerKind(auth.currentUser),
-        );
-        openDirectChat(chatId, acceptedRole);
-        return;
-      }
+        if (estado === "aceptado" && chatId) {
+          const acceptedRole = resolveAcceptedChatRole(
+            resolveAnonMatchCallerKind(auth.currentUser),
+          );
+          openDirectChat(chatId, acceptedRole);
+          return;
+        }
 
-      if (estado === "rechazado" || estado === "expirado" || estado === "cancelado") {
+        if (estado === "rechazado" || estado === "expirado" || estado === "cancelado") {
+          handleFailure();
+        }
+      },
+      (error) => {
+        console.warn("[anon-match] waiting solicitud snapshot error", error?.code || error);
         handleFailure();
-      }
-    });
+      },
+    );
 
     const expiryTimer = window.setTimeout(async () => {
       if (phaseRef.current !== "waiting" || solicitudRef.current !== solicitudId) return;
@@ -610,10 +618,17 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       role: "perfil" | "anonimo",
     ) {
       unsubs.push(
-        onSnapshot(chatQuery, (snap) => {
-          if (cancelled || snap.empty) return;
-          openDirectChat(snap.docs[0].id, role);
-        }),
+        onSnapshot(
+          chatQuery,
+          (snap) => {
+            if (cancelled || snap.empty) return;
+            openDirectChat(snap.docs[0].id, role);
+          },
+          (error) => {
+            if (cancelled) return;
+            console.warn("[anon-match] active chat snapshot error", error?.code || error);
+          },
+        ),
       );
     }
 
@@ -681,15 +696,21 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
     const ref = doc(db, "solicitudes_chat_anonimo", incomingRequest.solicitudId);
     const receiverRole = incomingRequest.destinatarioTipo === "perfil" ? "perfil" : "anonimo";
-    const unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
-      const estado = String(snap.data().estado || "");
-      const chatId = String(snap.data().chatId || "");
-      if (estado === "aceptado" && chatId) {
-        openDirectChat(chatId, receiverRole);
-        setIncomingRequest(null);
-      }
-    });
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) return;
+        const estado = String(snap.data().estado || "");
+        const chatId = String(snap.data().chatId || "");
+        if (estado === "aceptado" && chatId) {
+          openDirectChat(chatId, receiverRole);
+          setIncomingRequest(null);
+        }
+      },
+      (error) => {
+        console.warn("[anon-match] incoming solicitud snapshot error", error?.code || error);
+      },
+    );
 
     return () => unsub();
   }, [incomingRequest?.destinatarioTipo, incomingRequest?.solicitudId, openDirectChat]);
@@ -800,6 +821,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
                 .filter(Boolean) as IncomingRequest[];
               publishIncoming();
             },
+            (error) => {
+              if (cancelled) return;
+              console.warn(
+                "[anon-match] profile incoming listener error",
+                error?.code || error,
+              );
+            },
           ),
         );
       }
@@ -824,6 +852,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
                 .filter(Boolean) as IncomingRequest[];
               publishIncoming();
             },
+            (error) => {
+              if (cancelled) return;
+              console.warn(
+                "[anon-match] anon incoming listener error",
+                error?.code || error,
+              );
+            },
           ),
         );
       }
@@ -839,20 +874,26 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     if (!openChat?.chatId) return;
 
     const ref = doc(db, "chats_anonimos", openChat.chatId);
-    const unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
-      const estado = String(snap.data().estado || "activo");
-      if (estado === "activo") return;
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) return;
+        const estado = String(snap.data().estado || "activo");
+        if (estado === "activo") return;
 
-      setOpenChat((prev) =>
-        prev
-          ? {
-              ...prev,
-              closedReason: estado === "denunciado" ? "denunciado" : "peer_closed",
-            }
-          : prev,
-      );
-    });
+        setOpenChat((prev) =>
+          prev
+            ? {
+                ...prev,
+                closedReason: estado === "denunciado" ? "denunciado" : "peer_closed",
+              }
+            : prev,
+        );
+      },
+      (error) => {
+        console.warn("[anon-match] open chat snapshot error", error?.code || error);
+      },
+    );
 
     return () => unsub();
   }, [openChat?.chatId]);

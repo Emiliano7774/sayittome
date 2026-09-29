@@ -111,6 +111,7 @@
     "test:boost-long-scroll": "node scripts/boost-long-scroll.harness.mjs",
     "test:story-profile-navigation": "node scripts/story-profile-navigation.harness.mjs",
     "test:anon-match-required-alert": "node --experimental-strip-types scripts/anon-match-required-alert.harness.mjs",
+    "test:anon-match-presence-alias": "node --experimental-strip-types scripts/anon-match-presence-alias.harness.mjs",
     "test:shuffle-multitap-lock": "node --experimental-strip-types scripts/shuffle-multitap-lock.harness.mjs",
     "test:anon-profile-block-rules": "node --experimental-strip-types scripts/anon-profile-block-rules.harness.mjs",
     "test:fcm-expandable-unread": "node --experimental-strip-types scripts/fcm-expandable-unread.harness.mjs",
