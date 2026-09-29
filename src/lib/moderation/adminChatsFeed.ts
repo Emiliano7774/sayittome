@@ -101,18 +101,54 @@ export type AdminChatsFeedResult = {
 /**
  * Full chats collection metadata for admin discovery.
  * Does not filter by admin UID/email/initiator.
+ *
+ * UID→username resolution is minimized:
+ * - never resolve initiatorUid (not an owner; unused for discovery)
+ * - skip receptor/target UIDs when the chat already has owner usernames
+ * - resolve participant UIDs mainly for legacy/generic chats missing names
  */
 export async function buildAuthoritativeAdminChatsFeed(): Promise<AdminChatsFeedResult> {
   const { db, rows } = await scanAllChatDocs();
   const uidSet = new Set<string>();
 
   for (const row of rows) {
-    for (const uid of discoveryOwnerUids(row)) uidSet.add(uid);
-    for (const uid of extractParticipantUids(row)) uidSet.add(uid);
-    for (const key of ["receptorUid", "targetUid", "initiatorUid", "anonOwnerUid"] as const) {
-      const uid = String(row[key] || "").trim();
-      if (uid && !uid.startsWith("anon_")) uidSet.add(uid);
+    const targetName = String(row.targetUsername || "").trim();
+    const receptorName = String(row.receptorUsername || "").trim();
+    const hasOwnerUsername = Boolean(targetName || receptorName);
+    const isProfileAnon =
+      String(row.id || "").includes("__anon_to__") ||
+      row.anon === true ||
+      row.senderIsAnonymous === true;
+
+    // Owner UIDs only when username is missing (legacy / incomplete docs).
+    if (!hasOwnerUsername) {
+      for (const uid of discoveryOwnerUids(row)) {
+        if (uid && !uid.startsWith("anon_") && !uid.startsWith("profile_")) {
+          uidSet.add(uid);
+        }
+      }
+    } else {
+      // Named profile-anon chats: names are enough. Still resolve owner UIDs
+      // only when the corresponding username field is blank on that side.
+      if (!targetName) {
+        const uid = String(row.targetUid || "").trim();
+        if (uid && !uid.startsWith("anon_") && !uid.startsWith("profile_")) uidSet.add(uid);
+      }
+      if (!receptorName) {
+        const uid = String(row.receptorUid || "").trim();
+        if (uid && !uid.startsWith("anon_") && !uid.startsWith("profile_")) uidSet.add(uid);
+      }
     }
+
+    // Participants: legacy/generic without names, or non-anon chats that may
+    // list a second real participant only in participantes[].
+    const needsParticipantResolve = !hasOwnerUsername || !isProfileAnon;
+    if (needsParticipantResolve) {
+      for (const uid of extractParticipantUids(row)) {
+        uidSet.add(uid);
+      }
+    }
+    // Never add initiatorUid — not an owner and unused for feed discovery.
   }
 
   const uidToUsername = await resolveUsernamesForUids(db, [...uidSet]);

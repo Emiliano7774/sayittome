@@ -100,9 +100,10 @@ export const MODERATION_OWNER_UID_FIELDS = ["receptorUid", "targetUid"] as const
 export function isLikelyFirebaseUid(value: unknown) {
   const uid = String(value || "").trim();
   if (!uid) return false;
-  if (uid.startsWith("anon_")) return false;
-  // Firebase Auth UIDs are typically 28 chars; allow a bounded alphanumeric range.
-  return /^[A-Za-z0-9_-]{20,128}$/.test(uid);
+  // Session / synthetic ids — never treat as profile owners.
+  if (uid.startsWith("anon_") || uid.startsWith("profile_")) return false;
+  // Reasonable ID shape; existence in `usuarios` is the final validator.
+  return /^[A-Za-z0-9_-]{8,128}$/.test(uid);
 }
 
 export function extractParticipantUids(chat: Record<string, unknown>) {

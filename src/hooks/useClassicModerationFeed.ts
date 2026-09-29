@@ -28,8 +28,6 @@ import type {
   ModerationUserFeedEntry,
 } from "@/lib/moderation/types";
 
-const AUTHORITATIVE_REFRESH_MS = 45_000;
-
 export function useClassicModerationFeed(recentLiveLimit = 250) {
   const [profiles, setProfiles] = useState<ModerationProfileRow[]>([]);
   const [authoritativeChats, setAuthoritativeChats] = useState<ModerationChatRow[]>([]);
@@ -109,9 +107,8 @@ export function useClassicModerationFeed(recentLiveLimit = 250) {
     // Mount bootstrap of authoritative catalog (async). Intentional.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- admin catalog hydrate on open
     void loadAuthoritative({ silent: false });
-    const timer = window.setInterval(() => {
-      void loadAuthoritative({ silent: true });
-    }, AUTHORITATIVE_REFRESH_MS);
+    // No periodic full-scan timer: 1164 chats × UID resolve is too expensive.
+    // Refresh on focus/visibility + manual button only.
     const onFocus = () => void loadAuthoritative({ silent: true });
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
@@ -121,7 +118,6 @@ export function useClassicModerationFeed(recentLiveLimit = 250) {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
@@ -169,7 +165,10 @@ export function useClassicModerationFeed(recentLiveLimit = 250) {
           ({ id: row.id, ...(row.data() as Omit<ModerationChatRow, "id">) }) as ModerationChatRow,
       );
       rows.sort((a, b) => chatActivityMs(b) - chatActivityMs(a));
-      setRecentLiveChats(rows);
+      // Accumulate by chatId for the session so a chat that falls out of the
+      // top-N live window is not dropped until remount (authoritative covers
+      // everything that existed at last full snapshot).
+      setRecentLiveChats((prev) => mergeChatsById(prev, rows));
     };
 
     const unsub = onSnapshot(

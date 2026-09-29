@@ -95,10 +95,12 @@ assert.match(panel, /grid-cols-\[minmax\(280px,0\.8fr\)_minmax\(380px,1\.2fr\)\]
 assert.match(panel, /Conversación temporal/);
 assert.match(panel, /setInterval\(refresh, 10_000\)/);
 assert.match(panel, /setInterval\(\(\) => void loadDetail\(true\), 5_000\)/);
-// Full catalog: authoritative refresh ~45s; per-user history ~30s (never top-80 replace).
-assert.match(feed, /AUTHORITATIVE_REFRESH_MS\s*=\s*45_000/);
+// Full catalog: mount + focus/visibility + manual refresh (no periodic full-scan timer).
 assert.match(feed, /\/api\/admin\/chats-feed/);
 assert.match(feed, /mergeChatsById/);
+assert.match(feed, /setRecentLiveChats\(\(prev\) => mergeChatsById\(prev, rows\)\)/);
+assert.doesNotMatch(feed, /setInterval\(\(\) => \{\s*void loadAuthoritative/);
+assert.doesNotMatch(feed, /AUTHORITATIVE_REFRESH_MS/);
 assert.match(feed, /setInterval\(refresh, 30_000\)/);
 assert.match(feed, /visibilitychange/);
 

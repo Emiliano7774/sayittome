@@ -4,6 +4,7 @@
  * legacy participant UIDs must aggregate; never filter by admin initiator.
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -19,20 +20,21 @@ const classic = await import(
 const history = await import(
   pathToFileURL(path.join(root, "src/lib/moderation/chatHistory.ts")).href
 );
-const feedSrc = await import("node:fs").then((fs) =>
-  fs.readFileSync(path.join(root, "src/hooks/useClassicModerationFeed.ts"), "utf8"),
+const feedSrc = fs.readFileSync(
+  path.join(root, "src/hooks/useClassicModerationFeed.ts"),
+  "utf8",
 );
-const routeSrc = await import("node:fs").then((fs) =>
-  fs.readFileSync(path.join(root, "src/app/api/admin/chats-feed/route.ts"), "utf8"),
+const routeSrc = fs.readFileSync(
+  path.join(root, "src/app/api/admin/chats-feed/route.ts"),
+  "utf8",
 );
-const hubSrc = await import("node:fs").then((fs) =>
-  fs.readFileSync(
-    path.join(root, "src/components/admin/spectator/SpectatorModerationHub.tsx"),
-    "utf8",
-  ),
+const hubSrc = fs.readFileSync(
+  path.join(root, "src/components/admin/spectator/SpectatorModerationHub.tsx"),
+  "utf8",
 );
-const fetchSrc = await import("node:fs").then((fs) =>
-  fs.readFileSync(path.join(root, "src/lib/moderation/fetchUserChats.ts"), "utf8"),
+const fetchSrc = fs.readFileSync(
+  path.join(root, "src/lib/moderation/fetchUserChats.ts"),
+  "utf8",
 );
 
 function row(id, extras = {}) {
@@ -131,10 +133,28 @@ function row(id, extras = {}) {
 // Wiring: authoritative fetch + merge, not replace-by-top80
 assert.match(feedSrc, /\/api\/admin\/chats-feed/);
 assert.match(feedSrc, /mergeChatsById/);
-assert.match(feedSrc, /AUTHORITATIVE_REFRESH_MS|45_000/);
+assert.match(feedSrc, /setRecentLiveChats\(\(prev\) => mergeChatsById\(prev, rows\)\)/);
+assert.doesNotMatch(feedSrc, /setInterval\(\(\) => \{\s*void loadAuthoritative/);
+assert.doesNotMatch(feedSrc, /AUTHORITATIVE_REFRESH_MS/);
 assert.match(hubSrc, /authoritativeTotal|Catálogo admin/);
 assert.match(fetchSrc, /array-contains/);
 assert.match(fetchSrc, /participantes/);
+
+// UID resolve policy: never initiator; minimize named profile-anon
+{
+  const feedLib = fs.readFileSync(
+    path.join(root, "src/lib/moderation/adminChatsFeed.ts"),
+    "utf8",
+  );
+  assert.match(feedLib, /Never add initiatorUid|never add initiatorUid/i);
+  assert.match(feedLib, /needsParticipantResolve/);
+  const hist = fs.readFileSync(
+    path.join(root, "src/lib/moderation/chatHistory.ts"),
+    "utf8",
+  );
+  assert.match(hist, /profile_/);
+  assert.match(hist, /\{8,128\}/);
+}
 
 console.log(
   JSON.stringify({
