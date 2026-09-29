@@ -76,6 +76,7 @@ export async function POST(req: Request) {
     const result = await createAnonMatchRequest({
       solicitanteUid,
       solicitanteAnonId: solicitanteAnonId || undefined,
+      solicitanteAuthUid: caller.uid,
       localAnonId: localAnonId || undefined,
       excludeAnonIds,
       excludeUids,

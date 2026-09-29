@@ -106,18 +106,29 @@ export function buildAnonMatchRespondBody(input: {
 export type IncomingListenerTargets = {
   profileDestinatarioUid?: string;
   anonDestinatarioId?: string;
+  /** Firebase Auth uid used by privacy rules (destinatarioAuthUid). */
+  destinatarioAuthUid?: string;
 };
 
 export function resolveIncomingListenerTargets(input: {
   callerKind: AnonMatchCallerKind;
   registeredUid: string;
   serverAnonAlias: string;
+  /** Firebase Auth uid for the live caller (anonymous or registered). */
+  authUid?: string;
 }): IncomingListenerTargets {
+  const authUid = String(input.authUid || "").trim();
   if (input.callerKind === "registered_profile") {
-    return { profileDestinatarioUid: input.registeredUid };
+    return {
+      profileDestinatarioUid: input.registeredUid,
+      destinatarioAuthUid: authUid || input.registeredUid,
+    };
   }
   if (input.callerKind === "anonymous_firebase") {
-    return { anonDestinatarioId: input.serverAnonAlias };
+    return {
+      anonDestinatarioId: input.serverAnonAlias,
+      destinatarioAuthUid: authUid || undefined,
+    };
   }
   return {};
 }

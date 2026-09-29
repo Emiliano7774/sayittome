@@ -863,10 +863,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const live = await resolveLiveAnonMatchCaller();
       uid = live.registeredUid;
+      const authUid = String(live.user?.uid || "").trim();
       const targets = resolveIncomingListenerTargets({
         callerKind: live.callerKind,
         registeredUid: live.registeredUid,
         serverAnonAlias: "",
+        authUid,
       });
 
       if (!live.isRegisteredProfile) {
@@ -901,12 +903,14 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      if (targets.anonDestinatarioId) {
+      // Privacy rules authorize via destinatarioAuthUid (== Firebase Auth uid).
+      // Query must constrain that field or list is denied for anon <-> anon.
+      if (targets.destinatarioAuthUid && targets.anonDestinatarioId) {
         unsubs.push(
           onSnapshot(
             query(
               collection(db, "solicitudes_chat_anonimo"),
-              where("anonId", "==", targets.anonDestinatarioId),
+              where("destinatarioAuthUid", "==", targets.destinatarioAuthUid),
               where("estado", "==", "pendiente"),
               limit(10),
             ),

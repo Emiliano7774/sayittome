@@ -30,15 +30,7 @@ service cloud.firestore {
           'fakeProfileTag',
           'fakeProfileTagNote',
           'fakeProfileTagAt',
-          'fakeProfileTagBy',
-          'groomingTag',
-          'groomingTagNote',
-          'groomingTagAt',
-          'groomingTagBy',
-          'potentialPedophileTag',
-          'potentialPedophileTagNote',
-          'potentialPedophileTagAt',
-          'potentialPedophileTagBy'
+          'fakeProfileTagBy'
         ]);
     }
 
@@ -51,15 +43,7 @@ service cloud.firestore {
         'fakeProfileTag',
         'fakeProfileTagNote',
         'fakeProfileTagAt',
-        'fakeProfileTagBy',
-        'groomingTag',
-        'groomingTagNote',
-        'groomingTagAt',
-        'groomingTagBy',
-        'potentialPedophileTag',
-        'potentialPedophileTagNote',
-        'potentialPedophileTagAt',
-        'potentialPedophileTagBy'
+        'fakeProfileTagBy'
       ]);
     }
 
@@ -946,8 +930,6 @@ service cloud.firestore {
           && (
             chatField(data, 'solicitanteUid') == request.auth.uid
             || chatField(data, 'destinatarioUid') == request.auth.uid
-            // Anonymous Firebase Auth participants: profile uids are empty, so
-            // stamp solicitanteAuthUid / destinatarioAuthUid at create time.
             || chatField(data, 'solicitanteAuthUid') == request.auth.uid
             || chatField(data, 'destinatarioAuthUid') == request.auth.uid
           )

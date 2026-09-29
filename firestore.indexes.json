@@ -31,6 +31,14 @@
         { "fieldPath": "anonId", "order": "ASCENDING" },
         { "fieldPath": "estado", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "solicitudes_chat_anonimo",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "destinatarioAuthUid", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

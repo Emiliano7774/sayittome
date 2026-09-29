@@ -18,6 +18,7 @@ import {
   pickAvailableMatchTarget,
   type MatchCandidate,
 } from "@/lib/anonMatch/matchPool";
+import { lookupAnonMatchAliasBinding } from "@/lib/anonMatch/anonMatchAliasAdmin";
 import {
   ANON_MATCH_REQUEST_MS,
   type AnonMatchRequestState,
@@ -33,11 +34,30 @@ function resolveDestinatario(row: Record<string, unknown>) {
   return { destinatarioTipo, destinatarioUid, destinatarioAnonId };
 }
 
+async function resolveDestinatarioAuthUid(input: {
+  destinatarioTipo: string;
+  destinatarioUid: string;
+  destinatarioAnonId: string;
+  existing?: string;
+}): Promise<string> {
+  const existing = String(input.existing || "").trim();
+  if (existing) return existing;
+  if (input.destinatarioTipo === "perfil" && input.destinatarioUid) {
+    return input.destinatarioUid;
+  }
+  if (input.destinatarioAnonId) {
+    return (await lookupAnonMatchAliasBinding(input.destinatarioAnonId)) || "";
+  }
+  return "";
+}
+
 export { countAvailableMatchTargets as countAvailableAnons, countAvailableMatchTargets, pickAvailableMatchTarget as pickAvailableAnon, pickAvailableMatchTarget };
 
 export async function createAnonMatchRequest(input: {
   solicitanteUid?: string;
   solicitanteAnonId?: string;
+  /** Firebase Auth uid of the caller (anonymous or registered). Required for client listeners. */
+  solicitanteAuthUid?: string;
   localAnonId?: string;
   excludeAnonIds?: string[];
   excludeUids?: string[];
@@ -47,6 +67,9 @@ export async function createAnonMatchRequest(input: {
 }) {
   const solicitanteUid = String(input.solicitanteUid || "").trim();
   const solicitanteAnonId = String(input.solicitanteAnonId || "").trim();
+  const solicitanteAuthUid = String(
+    input.solicitanteAuthUid || solicitanteUid || "",
+  ).trim();
   const solicitanteKey = solicitanteUid || solicitanteAnonId;
 
   if (!solicitanteKey) {
@@ -80,6 +103,11 @@ export async function createAnonMatchRequest(input: {
   const destinatarioTipo = picked.tipo;
   const destinatarioUid = picked.tipo === "perfil" ? picked.id : "";
   const destinatarioAnonId = picked.tipo === "anonimo" ? picked.id : "";
+  const destinatarioAuthUid = await resolveDestinatarioAuthUid({
+    destinatarioTipo,
+    destinatarioUid,
+    destinatarioAnonId,
+  });
   const tipoSolicitud = resolveTipoSolicitud({
     solicitanteUid,
     solicitanteAnonId,
@@ -94,9 +122,11 @@ export async function createAnonMatchRequest(input: {
     solicitudId,
     solicitanteUid,
     solicitanteAnonId,
+    solicitanteAuthUid,
     tipoSolicitud,
     destinatarioTipo,
     destinatarioUid,
+    destinatarioAuthUid,
     anonId: destinatarioAnonId,
     estado: "pendiente",
     createdAt,
@@ -368,6 +398,15 @@ export async function respondAnonMatchRequest(input: {
   const solicitanteAnonId = String(row.solicitanteAnonId || "");
   const { destinatarioTipo, destinatarioUid, destinatarioAnonId } = resolveDestinatario(row);
   const tipoSolicitud = String(row.tipoSolicitud || "");
+  const solicitanteAuthUid = String(
+    row.solicitanteAuthUid || solicitanteUid || "",
+  ).trim();
+  const destinatarioAuthUid = await resolveDestinatarioAuthUid({
+    destinatarioTipo,
+    destinatarioUid,
+    destinatarioAnonId,
+    existing: String(row.destinatarioAuthUid || input.responderUid || ""),
+  });
 
   if (destinatarioTipo === "perfil") {
     if (!input.responderUid || input.responderUid !== destinatarioUid) {
@@ -448,7 +487,9 @@ export async function respondAnonMatchRequest(input: {
     tipo: chatTipo,
     solicitanteUid,
     solicitanteAnonId,
+    solicitanteAuthUid,
     destinatarioUid,
+    destinatarioAuthUid,
     anonId: destinatarioAnonId,
     estado: "activo",
     createdAt: now,
@@ -459,6 +500,8 @@ export async function respondAnonMatchRequest(input: {
   await setAnonMatchAdminDoc("solicitudes_chat_anonimo", input.solicitudId, {
     estado: "aceptado",
     chatId,
+    solicitanteAuthUid,
+    destinatarioAuthUid,
     updatedAt: now,
   });
 
