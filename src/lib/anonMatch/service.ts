@@ -472,6 +472,32 @@ export async function expireAnonMatchRequestIfNeeded(row: Record<string, unknown
   return "expirado";
 }
 
+/** Solicitante cancels their own pending request (e.g. retarget to a newly entered peer). */
+export async function cancelAnonMatchRequest(solicitudId: string) {
+  const id = String(solicitudId || "").trim();
+  if (!id) return { ok: false as const, reason: "missing_solicitud" as const };
+
+  const row = await getAnonMatchRequest(id);
+  if (!row) return { ok: false as const, reason: "not_found" as const };
+
+  const estado = await expireAnonMatchRequestIfNeeded(row);
+  if (estado !== "pendiente") {
+    return {
+      ok: false as const,
+      reason: estado === "expirado" ? ("expired" as const) : ("not_pending" as const),
+      estado,
+    };
+  }
+
+  const now = new Date().toISOString();
+  await setAnonMatchAdminDoc("solicitudes_chat_anonimo", id, {
+    estado: "cancelado",
+    updatedAt: now,
+  });
+  invalidateAnonMatchAvailabilityCache();
+  return { ok: true as const, estado: "cancelado" as const };
+}
+
 export async function respondAnonMatchRequest(input: {
   solicitudId: string;
   responderAnonId?: string;

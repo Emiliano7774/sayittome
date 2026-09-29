@@ -3,9 +3,11 @@ import { NextResponse } from "next/server";
 import {
   countAvailableMatchTargets,
   createAnonMatchRequest,
+  cancelAnonMatchRequest,
   expireAnonMatchRequestIfNeeded,
   getAnonMatchRequest,
 } from "@/lib/anonMatch/service";
+import { findFreshestAvailableAnonTarget } from "@/lib/anonMatch/matchPool";
 import { assertCallerOwnsAnonMatchSolicitud } from "@/lib/anonMatch/anonMatchSolicitudAuth";
 import {
   assertAnonMatchAliasForCaller,
@@ -13,7 +15,6 @@ import {
   resolveAnonMatchRegisteredUid,
   verifyAnonMatchCaller,
 } from "@/lib/anonMatch/verifyAnonMatchCaller";
-
 export const dynamic = "force-dynamic";
 
 function authError(error: unknown) {
@@ -30,10 +31,24 @@ export async function GET(req: Request) {
     const excludeAnonIds = excludeRaw ? excludeRaw.split("|").filter(Boolean) : [];
     const excludeUidRaw = String(searchParams.get("excludeUid") || "").trim();
     const excludeUids = excludeUidRaw ? excludeUidRaw.split("|").filter(Boolean) : [];
+    const seenAfterMs = Number(searchParams.get("seenAfterMs") || 0) || 0;
 
-    const available = await countAvailableMatchTargets({ excludeAnonIds, excludeUids });
+    const [available, freshest] = await Promise.all([
+      countAvailableMatchTargets({ excludeAnonIds, excludeUids }),
+      findFreshestAvailableAnonTarget({
+        excludeAnonIds,
+        excludeUids,
+        seenAfterMs: seenAfterMs > 0 ? seenAfterMs : undefined,
+      }),
+    ]);
 
-    return NextResponse.json({ ok: true, available, ts: Date.now() });
+    return NextResponse.json({
+      ok: true,
+      available,
+      freshestAnonId: freshest?.id || "",
+      freshestLastSeenMs: freshest?.lastSeenMs || 0,
+      ts: Date.now(),
+    });
   } catch (e: unknown) {
     const status = Number((e as { status?: number })?.status || 0);
     if (status === 401 || status === 403) return authError(e);
@@ -41,7 +56,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: message, available: 0 }, { status: 200 });
   }
 }
-
 export async function POST(req: Request) {
   try {
     const caller = await verifyAnonMatchCaller(req);
@@ -119,6 +133,26 @@ export async function PATCH(req: Request) {
     }
 
     await assertCallerOwnsAnonMatchSolicitud(caller, row);
+
+    if (body?.cancel === true) {
+      const cancelled = await cancelAnonMatchRequest(solicitudId);
+      if (!cancelled.ok) {
+        return NextResponse.json({
+          ok: false,
+          reason: cancelled.reason,
+          estado: "estado" in cancelled ? cancelled.estado : "",
+          ts: Date.now(),
+        });
+      }
+      return NextResponse.json({
+        ok: true,
+        solicitudId,
+        estado: "cancelado",
+        chatId: "",
+        anonId: String(row.anonId || ""),
+        ts: Date.now(),
+      });
+    }
 
     const estado = await expireAnonMatchRequestIfNeeded(row);
     const fresh =

@@ -354,3 +354,41 @@ export async function countAvailableMatchTargets(
 
   return anonCount + profileCount;
 }
+
+/**
+ * Freshest available anon (DND/busy/pending/excludes already applied).
+ * Used so a searching peer can retarget when someone new enters without pressing Connect.
+ */
+export async function findFreshestAvailableAnonTarget(input: {
+  excludeAnonIds?: string[];
+  excludeUids?: string[];
+  /** Only count presence heartbeats at/after this epoch ms (new entrants). */
+  seenAfterMs?: number;
+  now?: number;
+}): Promise<{ id: string; lastSeenMs: number } | null> {
+  const now = input.now ?? Date.now();
+  const seenAfterMs = Number(input.seenAfterMs || 0);
+  const excludeAnonIds = new Set(input.excludeAnonIds || []);
+  const excludeUids = new Set(input.excludeUids || []);
+  const { pendingAnonIds } = await listPendingMatchTargets(now);
+  const { busyAnonIds } = await listBusyDirectChatParticipants(now);
+  const { anonRows } = await getMatchPoolRows(now);
+
+  let best: { id: string; lastSeenMs: number } | null = null;
+  for (const row of anonRows) {
+    const id = String(row.anonId || row.id || "").trim();
+    if (!id || excludeAnonIds.has(id) || pendingAnonIds.has(id) || busyAnonIds.has(id)) {
+      continue;
+    }
+    if (!isAnonAvailable(row, now)) continue;
+    const lastSeen = parseDate(row.lastSeenAt || row.updatedAt);
+    const lastSeenMs = lastSeen ? lastSeen.getTime() : 0;
+    if (seenAfterMs > 0 && lastSeenMs < seenAfterMs) continue;
+    if (!best || lastSeenMs > best.lastSeenMs) {
+      best = { id, lastSeenMs };
+    }
+  }
+
+  void excludeUids;
+  return best;
+}

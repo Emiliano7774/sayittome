@@ -68,10 +68,10 @@ async function writeAnonymousPresence(force = false) {
   if (inFlight) return;
 
   inFlight = true;
-  lastWriteAt = now;
 
   try {
     // Prefer stored alias; bind only when missing so heartbeats stay cheap.
+    // New visitors must bind here so searchers can find them without Connect.
     let alias = getStoredAnonMatchAlias() || cachedPresenceAlias;
     if (!alias) {
       alias = await resolveAnonMatchSessionId().catch(() => "");
@@ -89,7 +89,7 @@ async function writeAnonymousPresence(force = false) {
       localAnonSessionId: readLegacyLocalId(),
     });
 
-    await fetch("/api/anonymous-presence", {
+    const res = await fetch("/api/anonymous-presence", {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -99,6 +99,9 @@ async function writeAnonymousPresence(force = false) {
       cache: "no-store",
       keepalive: true,
     });
+    if (res.ok) {
+      lastWriteAt = Date.now();
+    }
   } catch {
     // Presence is best-effort — match delivery still depends on alias identity.
   } finally {

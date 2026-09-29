@@ -5,12 +5,14 @@ import {
   decideLegacyAnonPresenceCleanup,
   ANON_PRESENCE_ACTIVE_MS,
 } from "@/lib/anonMatch/anonymousPresenceIdentity";
+import { isAnonMatchDoNotDisturbActive } from "@/lib/anonMatch/doNotDisturb";
 import {
   lookupActiveAnonMatchAliasForAuth,
   lookupAnonMatchAliasBinding,
 } from "@/lib/anonMatch/anonMatchAliasAdmin";
 import {
   deleteAnonMatchAdminDoc,
+  getAnonMatchAdminDoc,
   setAnonMatchAdminDoc,
 } from "@/lib/anonMatch/anonMatchAdminStore";
 import { invalidateAnonMatchAvailabilityCache } from "@/lib/anonMatch/matchPool";
@@ -28,14 +30,20 @@ function authError(error: unknown) {
 async function writePresenceDoc(anonId: string, authUid: string) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ANON_PRESENCE_ACTIVE_MS);
+  const existing = await getAnonMatchAdminDoc("anonimos_activos", anonId);
+  const dndUntil = String((existing || {}).doNotDisturbUntil || "");
+  const dndActive = isAnonMatchDoNotDisturbActive(dndUntil, now.getTime());
+
   await setAnonMatchAdminDoc("anonimos_activos", anonId, {
     anonId,
     authUid,
     lastSeenAt: now.toISOString(),
     updatedAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
-    disponibleParaChat: true,
+    // Keep DND closed until the timer expires — heartbeats must not reopen the door.
+    disponibleParaChat: dndActive ? false : true,
     enChat: false,
+    ...(dndUntil ? { doNotDisturbUntil: dndUntil } : {}),
     source: "anon_match_presence",
   });
 }

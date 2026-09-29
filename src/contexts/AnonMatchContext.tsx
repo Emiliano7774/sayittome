@@ -121,6 +121,9 @@ type IncomingRequest = {
 
 /** Pool cache is 2m — short retry is cheap and restores historical UX. */
 const RETRY_DELAY_MS = 4_000;
+/** After this grace, a searcher may cancel a pending request to reach a newly entered peer. */
+const WAITING_RETARGET_GRACE_MS = 5_000;
+const WAITING_RETARGET_POLL_MS = 4_000;
 
 const AnonMatchContext = createContext<AnonMatchContextValue | null>(null);
 
@@ -197,6 +200,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const openChatRef = useRef(openChat);
   const chatViewRef = useRef(chatView);
   const respondingIncomingRef = useRef(false);
+  /** Soft excludes for one connect attempt (e.g. previous waiting target when retargeting). */
+  const softExcludeAnonIdsRef = useRef<string[]>([]);
+  const waitingMetaRef = useRef<{
+    solicitudId: string;
+    targetAnonId: string;
+    startedAtMs: number;
+  } | null>(null);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -462,6 +472,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     }
 
     clearRetryTimer();
+    waitingMetaRef.current = null;
     stopSearchSessionState({
       setSearchSessionActive,
       setPhase,
@@ -514,9 +525,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         localAnonId: live.isRegisteredProfile ? localAnonId : undefined,
       });
       const rejected = splitRejectedMatchTargets(loadRejectedMatchTargets());
+      const softExclude = softExcludeAnonIdsRef.current;
+      softExcludeAnonIdsRef.current = [];
       const excludeAnonIds = [
         ...((body.excludeAnonIds as string[]) || []),
         ...rejected.excludeAnonIds,
+        ...softExclude,
       ];
       const excludeUids = [
         ...((body.excludeUids as string[]) || []),
@@ -534,15 +548,24 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       if (!searchSessionActiveRef.current) return;
 
       if (!json?.ok) {
+        waitingMetaRef.current = null;
         scheduleRetry();
         return;
       }
 
-      setSolicitudId(String(json.solicitudId || ""));
+      const nextSolicitudId = String(json.solicitudId || "");
+      const targetAnonId = String(json.anonId || "");
+      setSolicitudId(nextSolicitudId);
       setPhase("waiting");
+      waitingMetaRef.current = {
+        solicitudId: nextSolicitudId,
+        targetAnonId,
+        startedAtMs: Date.now(),
+      };
       clearRetryTimer();
     } catch {
       if (searchSessionActiveRef.current) {
+        waitingMetaRef.current = null;
         scheduleRetry();
       }
     } finally {
@@ -553,6 +576,97 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     attemptConnectRef.current = attemptConnect;
   }, [attemptConnect]);
+
+  /**
+   * While searching+waiting, detect newly entered anons (presence without Connect)
+   * and retarget after a short grace — still respects reject list + server DND.
+   */
+  useEffect(() => {
+    if (!hydrated || !searchSessionActive || phase !== "waiting" || !solicitudId) {
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const reconsider = async () => {
+      if (cancelled || inFlight) return;
+      if (!searchSessionActiveRef.current) return;
+      if (phaseRef.current !== "waiting") return;
+      if (typeof document !== "undefined" && document.hidden) return;
+
+      const meta = waitingMetaRef.current;
+      if (!meta?.solicitudId || meta.solicitudId !== solicitudRef.current) return;
+      if (Date.now() - meta.startedAtMs < WAITING_RETARGET_GRACE_MS) return;
+
+      inFlight = true;
+      try {
+        const live = await resolveLiveAnonMatchCaller();
+        let selfAnon = "";
+        if (!live.isRegisteredProfile) {
+          selfAnon = getStoredAnonMatchAlias() || (await resolveAnonMatchSessionId().catch(() => ""));
+        }
+        const rejected = splitRejectedMatchTargets(loadRejectedMatchTargets());
+        const excludeAnonIds = Array.from(
+          new Set(
+            [
+              selfAnon,
+              meta.targetAnonId,
+              ...rejected.excludeAnonIds,
+            ].filter(Boolean),
+          ),
+        );
+        const excludeUids = Array.from(
+          new Set([live.registeredUid, ...rejected.excludeUids].filter(Boolean)),
+        );
+
+        const qs = new URLSearchParams();
+        if (excludeAnonIds.length) qs.set("exclude", excludeAnonIds.join("|"));
+        if (excludeUids.length) qs.set("excludeUid", excludeUids.join("|"));
+        // Anyone who heartbeated at/after we started waiting counts as "entered now".
+        qs.set("seenAfterMs", String(Math.max(0, meta.startedAtMs - 1_500)));
+
+        const res = await fetchAnonMatch(`/api/anon-match/request?${qs.toString()}`, {
+          method: "GET",
+        });
+        const json = await res.json().catch(() => null);
+        const freshestAnonId = String(json?.freshestAnonId || "").trim();
+        if (!freshestAnonId || freshestAnonId === meta.targetAnonId) return;
+
+        const cancelRes = await fetchAnonMatch("/api/anon-match/request", {
+          method: "PATCH",
+          body: JSON.stringify({ solicitudId: meta.solicitudId, cancel: true }),
+        });
+        const cancelJson = await cancelRes.json().catch(() => null);
+        if (!cancelJson?.ok && String(cancelJson?.estado || "") === "aceptado") {
+          return;
+        }
+
+        if (cancelled || !searchSessionActiveRef.current) return;
+        if (meta.targetAnonId) {
+          softExcludeAnonIdsRef.current = [meta.targetAnonId];
+        }
+        waitingMetaRef.current = null;
+        setSolicitudId("");
+        setPhase("searching");
+        void attemptConnectRef.current?.();
+      } catch {
+        // Best-effort retarget; waiting snapshot / expiry still apply.
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void reconsider();
+    const timer = window.setInterval(() => {
+      void reconsider();
+    }, WAITING_RETARGET_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [hydrated, phase, searchSessionActive, solicitudId]);
 
   const startSearchSession = useCallback(async () => {
     const live = await resolveLiveAnonMatchCaller();
@@ -577,6 +691,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     const ref = doc(db, "solicitudes_chat_anonimo", solicitudId);
 
     const handleFailure = () => {
+      waitingMetaRef.current = null;
       if (!searchSessionActiveRef.current) {
         setPhase("idle");
         setSolicitudId("");
