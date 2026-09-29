@@ -111,11 +111,21 @@ export function AuthProvider({
             return;
           }
 
-          if (!user.isAnonymous) {
+          // Anonymous Firebase auth is not a registered profile.
+          // Keep firebaseUser for anon match/chat; never fabricate profile.
+          if (user.isAnonymous) {
+            loadedProfileUidRef.current = null;
+            setProfile(null);
+            setLoading(false);
             void import("@/lib/profile/verifiedProfileLinkClaimRetry").then((mod) => {
-              mod.armVerifiedProfileLinkClaimRetry(user.uid);
+              mod.disarmVerifiedProfileLinkClaimRetry();
             });
+            return;
           }
+
+          void import("@/lib/profile/verifiedProfileLinkClaimRetry").then((mod) => {
+            mod.armVerifiedProfileLinkClaimRetry(user.uid);
+          });
 
           const sameUser = loadedProfileUidRef.current === user.uid;
           if (!sameUser) {
@@ -132,12 +142,10 @@ export function AuthProvider({
 
             if (snap.exists()) {
               const data = snap.data();
-              if (!user.isAnonymous) {
-                writeCachedViewerIdentity(
-                  user.uid,
-                  String(data.username || data.nombre || ""),
-                );
-              }
+              writeCachedViewerIdentity(
+                user.uid,
+                String(data.username || data.nombre || ""),
+              );
 
               setProfile({
                 uid: user.uid,

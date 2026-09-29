@@ -7,6 +7,14 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, getDocFromServer } from "firebase/firestore";
 import { logoutAndResetAnon } from "@/lib/auth/logout";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
+import {
+  buildSettingsProfileCacheEnvelope,
+  readTrustedSettingsProfileCache,
+  resolveSettingsAuthDisposition,
+  resolveSettingsOwnerUid,
+  shouldAllowSettingsAccountRedirect,
+  shouldLoadSettingsProfileOnFocus,
+} from "@/lib/auth/settingsAuthDisposition";
 import { auth, db } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import {
@@ -14,6 +22,11 @@ import {
   isMainTabRouteHandledByKeepAlive,
   subscribeMainTabKeepAlive,
 } from "@/lib/navigation/mainTabKeepAlive";
+import {
+  getCurrentMainTabPathname,
+  getMainTabInternalPathnameVersion,
+  subscribeMainTabPathname,
+} from "@/lib/navigation/mainTabInternalPathnameStore";
 import ProfileEntryGate from "@/components/profile/ProfileEntryGate";
 import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
@@ -45,9 +58,20 @@ import { resolveProfileCoverPhoto,
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { getClassicProfileUiTokens } from "@/lib/shuffle/classicProfileScale";
 
-const SETTINGS_PROFILE_CACHE_KEY = "sayittome:settings-self-profile:v1";
+const SETTINGS_PROFILE_CACHE_KEY = "sayittome:settings-self-profile:v2";
 
-function readSettingsProfileCache() {
+function clearSettingsProfileCache() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(SETTINGS_PROFILE_CACHE_KEY);
+    // Drop legacy unscoped cache that caused anonymous owner flashes.
+    window.sessionStorage.removeItem("sayittome:settings-self-profile:v1");
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function readSettingsProfileCacheRaw() {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(SETTINGS_PROFILE_CACHE_KEY);
@@ -57,10 +81,15 @@ function readSettingsProfileCache() {
   }
 }
 
-function writeSettingsProfileCache(profile: unknown) {
-  if (typeof window === "undefined" || !profile) return;
+function writeSettingsProfileCache(uid: string, profile: unknown) {
+  if (typeof window === "undefined" || !profile || typeof profile !== "object") return;
+  const envelope = buildSettingsProfileCacheEnvelope(
+    uid,
+    profile as Record<string, unknown>,
+  );
+  if (!envelope) return;
   try {
-    window.sessionStorage.setItem(SETTINGS_PROFILE_CACHE_KEY, JSON.stringify(profile));
+    window.sessionStorage.setItem(SETTINGS_PROFILE_CACHE_KEY, JSON.stringify(envelope));
   } catch {
     // Ignore quota errors.
   }
@@ -74,12 +103,29 @@ type MediaItem = {
 export function SettingsRouteContent() {
   const router = useRouter();
   const pathname = usePathname();
+  const liveMainTabPath = useSyncExternalStore(
+    subscribeMainTabPathname,
+    () => getCurrentMainTabPathname(pathname),
+    () => pathname || "/settings",
+  );
+  useSyncExternalStore(
+    subscribeMainTabPathname,
+    getMainTabInternalPathnameVersion,
+    getMainTabInternalPathnameVersion,
+  );
+  const settingsRouteActive =
+    liveMainTabPath === "/settings" ||
+    (typeof window !== "undefined" &&
+      String(window.location.pathname || "").split("?")[0].split("#")[0] === "/settings");
+
   const { uxMode } = useUxMode();
   const { locale } = useLocale();
   const t = useT();
 
-  const [loading, setLoading] = useState(() => !readSettingsProfileCache());
-  const [profile, setProfile] = useState<any>(() => readSettingsProfileCache());
+  // Never paint owner UI from unscoped cache before registered auth is proven.
+  const [loading, setLoading] = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Firestore profile shape is heterogeneous
+  const [profile, setProfile] = useState<any>(null);
   const [authKnown, setAuthKnown] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [showAnonGate, setShowAnonGate] = useState(false);
@@ -89,10 +135,11 @@ export function SettingsRouteContent() {
   const profileUi = getClassicProfileUiTokens(density);
   const formatLastSeen = useFormatLastSeen();
 
-  useSettingsTabPaint({ loading, profile, showAnonGate, authKnown: authKnown || Boolean(profile) });
+  useSettingsTabPaint({ loading, profile, showAnonGate, authKnown });
   useNavUsefulPaint(!loading && (Boolean(profile) || showAnonGate), "/settings");
 
-  const loadProfile = useCallback(async (user: { uid: string }) => {
+  const loadProfile = useCallback(async (user: { uid: string; isAnonymous?: boolean }) => {
+    if (!user?.uid || user.isAnonymous) return;
     const ref = doc(db, "usuarios", user.uid);
 
     try {
@@ -103,7 +150,7 @@ export function SettingsRouteContent() {
           settingsPipelineMark("memory-profile-hit");
         }
         setProfile(nextProfile);
-        writeSettingsProfileCache(nextProfile);
+        writeSettingsProfileCache(user.uid, nextProfile);
         setLoading(false);
         return;
       }
@@ -113,14 +160,19 @@ export function SettingsRouteContent() {
 
     try {
       const snap = await getDocFromServer(ref);
-      const nextProfile = snap.exists() ? { ...snap.data(), uid: user.uid } : { uid: user.uid };
+      // Never fabricate a pseudo-owner profile for a missing doc.
+      const nextProfile = snap.exists() ? { ...snap.data(), uid: user.uid } : null;
       setProfile(nextProfile);
-      writeSettingsProfileCache(nextProfile);
+      if (nextProfile) writeSettingsProfileCache(user.uid, nextProfile);
+      else clearSettingsProfileCache();
     } catch (error) {
       console.error("settings_profile_load", error);
       try {
         const snap = await getDoc(ref);
-        setProfile(snap.exists() ? { ...snap.data(), uid: user.uid } : { uid: user.uid });
+        const nextProfile = snap.exists() ? { ...snap.data(), uid: user.uid } : null;
+        setProfile(nextProfile);
+        if (nextProfile) writeSettingsProfileCache(user.uid, nextProfile);
+        else clearSettingsProfileCache();
       } catch (fallbackError) {
         console.error("settings_profile_load_fallback", fallbackError);
       }
@@ -132,32 +184,101 @@ export function SettingsRouteContent() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setAuthKnown(true);
-      if (!user) {
+
+      const disposition = resolveSettingsAuthDisposition({
+        authReady: true,
+        user,
+        settingsRouteActive,
+      });
+
+      if (disposition.kind === "anon_gate") {
+        clearSettingsProfileCache();
+        setProfile(null);
         setShowAnonGate(true);
         setLoading(false);
         return;
       }
 
-      if (!user.emailVerified) {
-        router.replace("/register/verify-email");
+      setShowAnonGate(false);
+
+      if (disposition.kind === "registered_hidden") {
+        // Keepalive may be mounted while user browses Shuffle/Stories.
+        // Never redirect from a hidden Settings panel.
+        const trusted = readTrustedSettingsProfileCache(
+          readSettingsProfileCacheRaw(),
+          user,
+        );
+        if (trusted) setProfile({ ...trusted, uid: disposition.uid });
+        setLoading(false);
         return;
       }
 
-      const next = await resolvePostAuthPath(user.uid, true);
-      // Incomplete registration must leave settings; complete sessions stay here
-      // even though post-login / cold-start land on Shuffle.
-      if (next.startsWith("/register")) {
+      if (disposition.kind === "redirect") {
+        if (
+          shouldAllowSettingsAccountRedirect({
+            settingsRouteActive,
+            path: disposition.path,
+          })
+        ) {
+          router.replace(disposition.path);
+        }
+        return;
+      }
+
+      if (disposition.kind !== "load_profile") {
+        setLoading(false);
+        return;
+      }
+
+      const trusted = readTrustedSettingsProfileCache(
+        readSettingsProfileCacheRaw(),
+        user,
+      );
+      if (trusted) {
+        setProfile({ ...trusted, uid: disposition.uid });
+        setLoading(false);
+      }
+
+      const next = await resolvePostAuthPath(user!.uid, true);
+      // Re-check active route after await — user may have left Settings.
+      const stillActive =
+        getCurrentMainTabPathname(pathname) === "/settings" ||
+        (typeof window !== "undefined" &&
+          String(window.location.pathname || "").split("?")[0].split("#")[0] ===
+            "/settings");
+      if (!stillActive) {
+        setLoading(false);
+        return;
+      }
+      if (
+        shouldAllowSettingsAccountRedirect({
+          settingsRouteActive: stillActive,
+          path: next,
+        })
+      ) {
         router.replace(next);
         return;
       }
 
-      await loadProfile(user);
+      await loadProfile(user!);
     });
 
     function refreshProfileOnFocus() {
       const user = auth.currentUser;
-      if (!user || document.visibilityState !== "visible") return;
-      void loadProfile(user);
+      if (
+        !shouldLoadSettingsProfileOnFocus({
+          authUser: user,
+          settingsRouteActive:
+            getCurrentMainTabPathname(pathname) === "/settings" ||
+            (typeof window !== "undefined" &&
+              String(window.location.pathname || "").split("?")[0].split("#")[0] ===
+                "/settings"),
+        })
+      ) {
+        return;
+      }
+      if (document.visibilityState !== "visible") return;
+      void loadProfile(user!);
     }
 
     window.addEventListener("focus", refreshProfileOnFocus);
@@ -168,21 +289,7 @@ export function SettingsRouteContent() {
       window.removeEventListener("focus", refreshProfileOnFocus);
       document.removeEventListener("visibilitychange", refreshProfileOnFocus);
     };
-  }, [loadProfile, router]);
-
-  useEffect(() => {
-    if (pathname !== "/settings") return;
-
-    const user = auth.currentUser;
-    if (!user?.emailVerified) return;
-    if (profile) {
-      void loadProfile(user);
-      return;
-    }
-
-    setLoading(true);
-    void loadProfile(user);
-  }, [loadProfile, pathname, profile]);
+  }, [loadProfile, pathname, router, settingsRouteActive]);
 
   const localeTag =
     locale === "es"
@@ -193,16 +300,19 @@ export function SettingsRouteContent() {
           ? "it-IT"
           : "de-DE";
   const username = profile?.username || profile?.nombre || t("settings_no_username");
-  const ownerUid = String(profile?.uid || auth.currentUser?.uid || "");
+  const ownerUid = resolveSettingsOwnerUid({
+    profileUid: profile?.uid,
+    authUser: auth.currentUser,
+  });
   const ownerUsername = String(profile?.username || profile?.nombre || username || "usuario");
   const bio = profile?.bio || profile?.descripcion || t("settings_bio_empty");
-  const createdAtLabel = resolvePublicProfileCreatedLabel(profile, localeTag);
   const lastSeenLabel = resolveProfileLastSeenLabel(
     profile,
     true,
     formatLastSeen,
     profile ? isActiveWithinWindow(profile.presenceAt, profile.lastActiveAt || profile.lastActive) : false,
   );
+  const createdAtLabel = resolvePublicProfileCreatedLabel(profile, localeTag);
 
   const media = useMemo<MediaItem[]>(() => {
     const fotos = Array.isArray(profile?.fotos)

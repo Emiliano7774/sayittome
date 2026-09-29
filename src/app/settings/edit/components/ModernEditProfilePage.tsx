@@ -78,8 +78,8 @@ export default function ModernEditProfilePage() {
   useEffect(() => {
     return onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      if (!u) {
-        setLoading(false);
+      if (!u || u.isAnonymous) {
+        router.replace("/login");
         return;
       }
 

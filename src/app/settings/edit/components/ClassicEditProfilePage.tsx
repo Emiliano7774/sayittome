@@ -141,7 +141,7 @@ export default function ClassicEditProfilePage() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
+      if (!user || user.isAnonymous) {
         router.replace("/login");
         return;
       }
