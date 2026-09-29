@@ -82,6 +82,24 @@ export function decideAnonymousPresenceWrite(input: {
   return { ok: true, anonId: bound };
 }
 
+export function isVerifiedAnonMatchPresence(input: {
+  id?: string;
+  anonId?: string;
+  source?: string;
+  authUid?: string;
+}): boolean {
+  const id = String(input.id || "").trim();
+  const anonId = String(input.anonId || "").trim();
+  const source = String(input.source || "").trim();
+  const authUid = String(input.authUid || "").trim();
+
+  if (!id || !anonId || id !== anonId) return false;
+  if (!id.startsWith("anon_") || id === "anon_server") return false;
+  if (source !== "anon_match_presence") return false;
+  if (!authUid) return false;
+  return true;
+}
+
 export function decideLegacyAnonPresenceCleanup(input: {
   callerIsAnonymous: boolean;
   callerUid: string;
@@ -91,7 +109,11 @@ export function decideLegacyAnonPresenceCleanup(input: {
   | { ok: true; anonId: string }
   | {
       ok: false;
-      reason: "profile_cannot_cleanup" | "invalid_legacy_id" | "foreign_alias";
+      reason:
+        | "profile_cannot_cleanup"
+        | "invalid_legacy_id"
+        | "unowned_legacy"
+        | "foreign_alias";
     } {
   if (!input.callerIsAnonymous) {
     return { ok: false, reason: "profile_cannot_cleanup" };
@@ -100,11 +122,13 @@ export function decideLegacyAnonPresenceCleanup(input: {
   if (!legacy.startsWith("anon_") || legacy === "anon_server") {
     return { ok: false, reason: "invalid_legacy_id" };
   }
+  const callerUid = String(input.callerUid || "").trim();
   const bound = String(input.boundAuthUidForLegacy || "").trim();
-  // Bound to another auth uid → refuse (do not delete someone else's server alias).
-  if (bound && bound !== input.callerUid) {
+  if (!bound) {
+    return { ok: false, reason: "unowned_legacy" };
+  }
+  if (bound !== callerUid) {
     return { ok: false, reason: "foreign_alias" };
   }
-  // Unbound legacy docs (pre-alias era) or own binding → allow best-effort cleanup.
   return { ok: true, anonId: legacy };
 }

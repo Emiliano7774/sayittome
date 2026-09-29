@@ -1,6 +1,7 @@
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { listAnonMatchAdminDocs } from "@/lib/anonMatch/anonMatchAdminStore";
+import { isVerifiedAnonMatchPresence } from "@/lib/anonMatch/anonymousPresenceIdentity";
 
 export type MatchParticipantTipo = "perfil" | "anonimo";
 
@@ -15,6 +16,8 @@ export type MatchCandidate = {
 type AnonPresenceRow = {
   id: string;
   anonId?: string;
+  source?: string;
+  authUid?: string;
   lastSeenAt?: string;
   updatedAt?: string;
   expiresAt?: string;
@@ -80,6 +83,7 @@ function isAnonOnline(row: AnonPresenceRow, now = Date.now()) {
 }
 
 function isAnonAvailable(row: AnonPresenceRow, now = Date.now()) {
+  if (!isVerifiedAnonMatchPresence(row)) return false;
   if (!isAnonOnline(row, now)) return false;
   if (row.disponibleParaChat === false) return false;
   if (row.enChat === true) return false;

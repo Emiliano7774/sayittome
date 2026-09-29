@@ -172,17 +172,47 @@ const foreignCleanup = identity.decideLegacyAnonPresenceCleanup({
 assert.equal(foreignCleanup.ok, false);
 assert.equal(foreignCleanup.reason, "foreign_alias");
 
-const legacyCleanup = identity.decideLegacyAnonPresenceCleanup({
+const unownedLegacyCleanup = identity.decideLegacyAnonPresenceCleanup({
   callerIsAnonymous: true,
   callerUid: "auth_a",
   legacyLocalAnonId: LOCAL_LEGACY,
   boundAuthUidForLegacy: null,
 });
-assert.equal(legacyCleanup.ok, true);
+assert.equal(unownedLegacyCleanup.ok, false);
+assert.equal(unownedLegacyCleanup.reason, "unowned_legacy");
+
+const ownBoundCleanup = identity.decideLegacyAnonPresenceCleanup({
+  callerIsAnonymous: true,
+  callerUid: "auth_a",
+  legacyLocalAnonId: LOCAL_LEGACY,
+  boundAuthUidForLegacy: "auth_a",
+});
+assert.equal(ownBoundCleanup.ok, true);
 
 assert.match(routeSrc, /alias_spoof|decideAnonymousPresenceWrite/);
 assert.doesNotMatch(routeSrc, /safeId\(body\?\.anonId\)/);
 covers.push("local_id_cannot_spoof");
+
+assert.equal(
+  identity.isVerifiedAnonMatchPresence({
+    id: SERVER_ALIAS,
+    anonId: SERVER_ALIAS,
+    source: "anon_match_presence",
+    authUid: "auth_a",
+  }),
+  true,
+);
+assert.equal(
+  identity.isVerifiedAnonMatchPresence({
+    id: LOCAL_LEGACY,
+    anonId: LOCAL_LEGACY,
+    source: "",
+    authUid: "",
+  }),
+  false,
+);
+assert.match(poolSrc, /isVerifiedAnonMatchPresence/);
+covers.push("legacy_ghost_presence_excluded");
 
 // Snapshot error callbacks present (silent failures were a delivery risk).
 assert.match(contextSrc, /incoming listener error|anon incoming listener error/);
