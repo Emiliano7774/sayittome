@@ -4,6 +4,13 @@ import { listAnonMatchAdminDocs } from "@/lib/anonMatch/anonMatchAdminStore";
 import { isVerifiedAnonMatchPresence } from "@/lib/anonMatch/anonymousPresenceIdentity";
 import { isAnonMatchDoNotDisturbActive } from "@/lib/anonMatch/doNotDisturb";
 import { ANON_MATCH_PRESENCE_FRESH_MS } from "@/lib/anonMatch/types";
+import {
+  geoAudienceIncludes,
+  normalizeGeoAudience,
+  readStoredGeoAudience,
+  type GeoAudience,
+  type GeoTarget,
+} from "@/lib/geo/audience";
 
 export type MatchParticipantTipo = "perfil" | "anonimo";
 
@@ -32,6 +39,8 @@ type AnonPresenceRow = {
   pais?: string;
   provincia?: string;
   idioma?: string;
+  visibilidadPaises?: string[];
+  visibilidadProvincias?: string[];
 };
 
 type ProfileRow = Record<string, unknown> & {
@@ -45,8 +54,18 @@ type ProfileRow = Record<string, unknown> & {
   pais?: string;
   provincia?: string;
   idioma?: string;
+  visibilidadPaises?: string[];
+  visibilidadProvincias?: string[];
   banned?: boolean;
 };
+
+/** True when `row` lets someone standing in `viewer` reach them. */
+function rowAcceptsViewer(row: AnonPresenceRow | ProfileRow, viewer: GeoTarget | null) {
+  const audience = readStoredGeoAudience(row as Record<string, unknown>, "visibilidad");
+  if (audience.paises.length === 0) return true;
+  if (!viewer?.pais) return false;
+  return geoAudienceIncludes(audience, viewer);
+}
 
 const MATCH_PROFILE_QUERY_LIMIT = 2_000;
 const MATCH_ANON_QUERY_LIMIT = 1_000;
@@ -287,13 +306,26 @@ export async function pickAvailableMatchTarget(input: {
   excludeUids?: string[];
   /** Oldest → newest contacted ids; never-tried stay ahead of this queue. */
   recentTargetIds?: string[];
-  pais?: string;
+  /** A quiénes quiero ver. Empty = anyone. */
+  verPaises?: string[];
+  verProvincias?: string[];
+  /** Where the searcher is, so each candidate's visibility scope can accept them. */
+  viewerPais?: string;
+  viewerProvincia?: string;
   idioma?: string;
   now?: number;
 }): Promise<MatchCandidate | null> {
   const now = input.now ?? Date.now();
   const excludeAnonIds = new Set(input.excludeAnonIds || []);
   const excludeUids = new Set(input.excludeUids || []);
+  const discovery: GeoAudience = normalizeGeoAudience({
+    paises: input.verPaises,
+    provincias: input.verProvincias,
+  });
+  const viewer: GeoTarget = {
+    pais: String(input.viewerPais || "").trim().toUpperCase(),
+    provincia: String(input.viewerProvincia || "").trim(),
+  };
   const recentOrder = (input.recentTargetIds || [])
     .map((id) => String(id || "").trim())
     .filter(Boolean);
@@ -308,6 +340,8 @@ export async function pickAvailableMatchTarget(input: {
         return null;
       }
       if (!isAnonAvailable(row, now)) return null;
+      if (!rowAcceptsViewer(row, viewer)) return null;
+      if (!geoAudienceIncludes(discovery, row)) return null;
       const lastSeen = parseDate(row.lastSeenAt || row.updatedAt);
       return {
         tipo: "anonimo" as const,
@@ -325,6 +359,8 @@ export async function pickAvailableMatchTarget(input: {
       const id = String(row.uid || row.id || "");
       if (!id) return null;
       if (!isProfileAvailable(row, now, excludeUids, pendingUids, busyUids)) return null;
+      if (!rowAcceptsViewer(row, viewer)) return null;
+      if (!geoAudienceIncludes(discovery, row)) return null;
       return {
         tipo: "perfil" as const,
         id,
@@ -339,7 +375,6 @@ export async function pickAvailableMatchTarget(input: {
   if (eligible.length === 0) return null;
 
   const preferred = eligible.filter((row) => {
-    if (input.pais && row.pais && row.pais !== input.pais) return false;
     if (input.idioma && row.idioma && row.idioma !== input.idioma) return false;
     return true;
   });

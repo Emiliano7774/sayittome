@@ -39,6 +39,7 @@ import {
   shuffleFiltersActiveCount,
   type ShuffleFilters,
 } from "@/lib/shuffle/filters";
+import { publishVisibilityAudience } from "@/lib/shuffle/publishVisibility";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
 import { applyShuffleProfileBlurFlags, mergeShuffleProfileModeration } from "@/lib/shuffle/resolveShuffleBlur";
 import {
@@ -84,6 +85,7 @@ import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { stashStoryReturnTo } from "@/lib/navigation/storyReturnNav";
 import { isShufflePoolWarmForNav } from "@/lib/shuffle/shufflePoolWarmup";
 import {
+  isCachedShufflePoolFresh,
   readCachedShufflePool,
   readCachedShuffleStats,
   writeCachedShufflePool,
@@ -743,7 +745,9 @@ export function useShufflePool() {
           shuffle: q ? "0" : "1",
         });
         if (q) params.set("q", q);
-        if (force) params.set("force", "1");
+        // "force" here only means bypass the client-side request lock. Do not
+        // translate it into a server cache bypass on cold start; that forced a
+        // full Firestore pool rebuild even when the server cache was fresh.
 
         const res = await fetchShuffleApi(`/api/shuffle?${params.toString()}`, {
           cache: "no-store",
@@ -1036,6 +1040,7 @@ export function useShufflePool() {
       setFiltersOpen(false);
       setFiltersState(nextFilters);
       saveStoredShuffleFilters(nextFilters);
+      void publishVisibilityAudience();
       clearBatchMemory();
       clearShuffleSessionSnapshot();
 
@@ -1065,6 +1070,7 @@ export function useShufflePool() {
     setFiltersOpen(false);
     setFiltersState(cleared);
     saveStoredShuffleFilters(cleared);
+    void publishVisibilityAudience();
     clearBatchMemory();
     clearShuffleSessionSnapshot();
     filterActivePool(searchRef.current.trim(), cleared, { forceWindow: true });
@@ -1253,10 +1259,9 @@ export function useShufflePool() {
       totalLiveRef.current = cachedStats.totalLive;
     }
 
-    // Warm cache / pinned / already-hydrated: skip forced pool GET. Align with
-    // ensureShufflePoolWarmForMicroSlide so remount/race cannot refetch warm-valid.
-    // The 8m timer still refreshes TTL; Chats→Shuffle must not look like reload.
-    if (!isShufflePoolWarmForNav()) {
+    // Durable cache may paint for 30m, but network freshness remains 8m.
+    // A stale painted pool refreshes in background without showing a loading shell.
+    if (!isShufflePoolWarmForNav() || !isCachedShufflePoolFresh()) {
       void loadProfiles({ q: "", force: true });
     }
 
@@ -1312,23 +1317,45 @@ export function useShufflePool() {
       }
     }
 
+    function onProfileSafety(event: Event) {
+      const detail = (event as CustomEvent<{ uid?: string; kind?: "grooming" | "potential_pedophile"; active?: boolean }>).detail;
+      const uid = String(detail?.uid || "");
+      const kind = detail?.kind;
+      if (!uid || !kind) return;
+      const active = detail?.active === true;
+      const patchSafety = (profile: ShuffleProfile) => profile.uid !== uid ? profile : kind === "grooming" ? { ...profile, groomingTag: active } : { ...profile, potentialPedophileTag: active };
+      poolRef.current = poolRef.current.map(patchSafety);
+      activePoolRef.current = activePoolRef.current.map(patchSafety);
+      featuredRef.current = featuredRef.current.map(patchSafety);
+      writeCachedShufflePool(poolRef.current);
+      if (!shuffleFeedFrozenRef.current) filterActivePool(searchRef.current.trim(), filtersRef.current);
+    }
+
     function onProfileBlur(event: Event) {
-      const detail = (event as CustomEvent<{ uid?: string; mediaBlurFlags?: Record<string, boolean> }>)
+      const detail = (event as CustomEvent<{ uid?: string; mediaBlurFlags?: Record<string, boolean>; adminBlurAt?: string }>)
         .detail;
       const uid = String(detail?.uid || "");
       const mediaBlurFlags = detail?.mediaBlurFlags || {};
+      const adminBlurAt = String(detail?.adminBlurAt || "");
       if (!uid) return;
 
       const patchBlur = (profile: ShuffleProfile) =>
-        profile.uid === uid ? applyShuffleProfileBlurFlags(profile, mediaBlurFlags) : profile;
+        profile.uid === uid
+          ? { ...applyShuffleProfileBlurFlags(profile, mediaBlurFlags), ...(adminBlurAt ? { adminBlurAt } : {}) }
+          : profile;
 
       poolRef.current = poolRef.current.map(patchBlur);
       activePoolRef.current = activePoolRef.current.map(patchBlur);
       featuredRef.current = featuredRef.current.map(patchBlur);
+      writeCachedShufflePool(poolRef.current);
+      if (!shuffleFeedFrozenRef.current) {
+        filterActivePool(searchRef.current.trim(), filtersRef.current);
+      }
     }
 
     window.addEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
     window.addEventListener("sayittome:shuffle-profile-fake", onProfileFake);
+    window.addEventListener("sayittome:shuffle-profile-safety", onProfileSafety);
     window.addEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
 
     function onPoolWarmed() {
@@ -1389,13 +1416,10 @@ export function useShufflePool() {
       patchShuffleSlotPresence(activePoolRef.current);
     }, 45_000);
 
-    // TTL-aligned refresh: only force-fetch when session cache expired.
-    // Do not reissue pool=full while warm-valid TTL remains (long Chats↔Shuffle runs).
+    // Paint cache can outlive network freshness. Keep moderation/discovery
+    // refresh at the original 8m cadence while preserving instant durable paint.
     const poolSyncTimer = window.setInterval(() => {
-      const stillWarm = readCachedShufflePool();
-      if (stillWarm && stillWarm.length >= 3) {
-        return;
-      }
+      if (isCachedShufflePoolFresh()) return;
       void loadProfiles({ q: searchRef.current.trim(), force: true });
     }, 8 * 60_000);
 
@@ -1406,6 +1430,7 @@ export function useShufflePool() {
       window.clearInterval(poolSyncTimer);
       window.removeEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
       window.removeEventListener("sayittome:shuffle-profile-fake", onProfileFake);
+      window.removeEventListener("sayittome:shuffle-profile-safety", onProfileSafety);
       window.removeEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
       window.removeEventListener("sayittome:shuffle-pool-warmed", onPoolWarmed);
       if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
@@ -1471,7 +1496,11 @@ export function useShufflePool() {
       },
     });
 
-    void pollLivePeopleCount();
+    // Durable stats already painted on mount: do not spend an immediate
+    // countOnly request just to confirm the same coarse counters.
+    if (!readCachedShuffleStats()) {
+      void pollLivePeopleCount();
+    }
     const liveCountTimer = window.setInterval(pollLivePeopleCount, 5 * 60_000);
 
     return () => {

@@ -5,14 +5,18 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
 import { getCountryByCode, getSubdivisionsForCountry, SHUFFLE_COUNTRIES } from "@/lib/geo/countries";
+import { normalizeGeoAudience, type GeoAudience } from "@/lib/geo/audience";
 import {
   defaultShuffleFilters,
+  discoveryAudience,
   normalizeInterests,
   parseOptionalAge,
   SHUFFLE_GENDER_OPTIONS,
   SHUFFLE_INTEREST_OPTIONS,
-  shuffleFiltersHasAny,
   shuffleFiltersSummary,
+  visibilityAudience,
+  withDiscoveryAudience,
+  withVisibilityAudience,
   type ShuffleFilters,
 } from "@/lib/shuffle/filters";
 
@@ -79,6 +83,143 @@ function ToggleRow({
   );
 }
 
+/**
+ * Country + subdivision picker for one audience direction. Countries are
+ * multi-select; "todos los países" only stays available while nothing is picked,
+ * and subdivisions unlock only under a single country.
+ */
+function AudiencePicker({
+  variant,
+  hint,
+  audience,
+  onChange,
+}: {
+  variant: "classic" | "modern";
+  hint: string;
+  audience: GeoAudience;
+  onChange: (audience: GeoAudience) => void;
+}) {
+  const t = useT();
+  const isModern = variant === "modern";
+
+  const labelClass = isModern
+    ? "mb-2 block text-xs font-black tracking-wide text-white/55"
+    : "mb-2 block text-xs font-normal tracking-wide text-white/45";
+  const hintClass = isModern ? "text-white/30" : "text-white/25";
+  const boxClass = isModern
+    ? "max-h-44 overflow-y-auto rounded-2xl border border-white/10 bg-[#111] p-2"
+    : "max-h-44 overflow-y-auto rounded-2xl border border-white/10 bg-[#141414] p-2";
+
+  const singleCountry = audience.paises.length === 1 ? audience.paises[0] : "";
+  const subdivisions = getSubdivisionsForCountry(singleCountry);
+  const allCountriesBlocked = audience.paises.length > 0;
+
+  function toggleCountry(code: string) {
+    const exists = audience.paises.includes(code);
+    const paises = exists
+      ? audience.paises.filter((value) => value !== code)
+      : [...audience.paises, code];
+    onChange(normalizeGeoAudience({ paises, provincias: audience.provincias }));
+  }
+
+  function toggleSubdivision(name: string) {
+    const exists = audience.provincias.includes(name);
+    const provincias = exists
+      ? audience.provincias.filter((value) => value !== name)
+      : [...audience.provincias, name];
+    onChange(normalizeGeoAudience({ paises: audience.paises, provincias }));
+  }
+
+  function rowClass(active: boolean, disabled: boolean) {
+    const base =
+      "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition";
+    if (disabled) return `${base} cursor-not-allowed text-white/25`;
+    if (active) {
+      return `${base} ${
+        isModern ? "bg-violet-600/25 font-black text-white" : "bg-[#8C84FF]/20 text-white"
+      }`;
+    }
+    return `${base} ${isModern ? "font-bold text-white/70" : "text-white/70"} hover:bg-white/5`;
+  }
+
+  return (
+    <div>
+      <label className={labelClass}>
+        {t("shuffle_filters_country")} <span className={hintClass}>({hint})</span>
+      </label>
+
+      <div className={boxClass}>
+        <button
+          type="button"
+          disabled={allCountriesBlocked}
+          onClick={() => onChange({ paises: [], provincias: [] })}
+          className={rowClass(!allCountriesBlocked, allCountriesBlocked)}
+        >
+          {t("shuffle_filters_all_countries")}
+        </button>
+
+        {SHUFFLE_COUNTRIES.map((country) => {
+          const active = audience.paises.includes(country.code);
+          return (
+            <button
+              key={country.code}
+              type="button"
+              onClick={() => toggleCountry(country.code)}
+              className={rowClass(active, false)}
+            >
+              <span className="flex-1">{country.name}</span>
+              {active ? <Check size={16} /> : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {allCountriesBlocked ? (
+        <p className={`mt-1.5 text-[11px] leading-snug ${hintClass}`}>
+          {t("shuffle_filters_all_countries_blocked")}
+        </p>
+      ) : null}
+
+      <label className={`${labelClass} mt-3`}>
+        {getCountryByCode(singleCountry)?.subdivisionLabel || t("shuffle_filters_province")}{" "}
+        <span className={hintClass}>({hint})</span>
+      </label>
+
+      {singleCountry ? (
+        <div className={boxClass}>
+          <button
+            type="button"
+            disabled={audience.provincias.length > 0}
+            onClick={() => onChange({ paises: audience.paises, provincias: [] })}
+            className={rowClass(audience.provincias.length === 0, audience.provincias.length > 0)}
+          >
+            {t("shuffle_filters_all_provinces")}
+          </button>
+
+          {subdivisions.map((item) => {
+            const active = audience.provincias.includes(item);
+            return (
+              <button
+                key={item}
+                type="button"
+                onClick={() => toggleSubdivision(item)}
+                className={rowClass(active, false)}
+              >
+                <span className="flex-1">{item}</span>
+                {active ? <Check size={16} /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className={`text-[11px] leading-snug ${hintClass}`}>
+          {t("shuffle_filters_provinces_need_one_country")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function ShuffleFiltersSheet({
   open,
   applied,
@@ -113,7 +254,8 @@ export default function ShuffleFiltersSheet({
 
   const summaryLabels = useMemo(
     () => ({
-      country: t("shuffle_filters_country"),
+      country: t("shuffle_filters_audience_discovery"),
+      visibility: t("shuffle_filters_audience_visibility"),
       countryName: (code: string) => getCountryByCode(code)?.name || code,
       gender: {
         todos: t("shuffle_gender_all"),
@@ -144,8 +286,8 @@ export default function ShuffleFiltersSheet({
   const summary = shuffleFiltersSummary(currentDraft, summaryLabels);
   const isModern = variant === "modern";
 
-  const selectedCountry = getCountryByCode(draft.pais);
-  const subdivisions = getSubdivisionsForCountry(draft.pais);
+  const discovery = discoveryAudience(draft);
+  const visibility = visibilityAudience(draft);
 
   if (!open) return null;
 
@@ -304,50 +446,19 @@ export default function ShuffleFiltersSheet({
               </div>
             </div>
 
-            <div>
-              <label className={labelClass}>{t("shuffle_filters_country")}</label>
-              <select
-                value={draft.pais}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    pais: e.target.value,
-                    provincia: "",
-                  }))
-                }
-                className={fieldClass}
-              >
-                <option value="" className={optionClass}>
-                  {t("shuffle_filters_all_countries")}
-                </option>
-                {SHUFFLE_COUNTRIES.map((country) => (
-                  <option key={country.code} value={country.code} className={optionClass}>
-                    {country.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <AudiencePicker
+              variant={variant}
+              hint={t("shuffle_filters_audience_visibility")}
+              audience={visibility}
+              onChange={(next) => setDraft((prev) => withVisibilityAudience(prev, next))}
+            />
 
-            <div>
-              <label className={labelClass}>
-                {selectedCountry?.subdivisionLabel || t("shuffle_filters_province")}
-              </label>
-              <select
-                value={draft.provincia}
-                onChange={(e) => setDraft((prev) => ({ ...prev, provincia: e.target.value }))}
-                disabled={!draft.pais}
-                className={fieldClass}
-              >
-                <option value="" className={optionClass}>
-                  {t("shuffle_filters_all_provinces")}
-                </option>
-                {subdivisions.map((item) => (
-                  <option key={item} value={item} className={optionClass}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <AudiencePicker
+              variant={variant}
+              hint={t("shuffle_filters_audience_discovery")}
+              audience={discovery}
+              onChange={(next) => setDraft((prev) => withDiscoveryAudience(prev, next))}
+            />
 
             <div>
               <label className={labelClass}>{t("shuffle_filters_city")}</label>

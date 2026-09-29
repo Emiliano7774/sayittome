@@ -101,8 +101,14 @@ export async function POST(req: Request) {
       excludeAnonIds,
       excludeUids,
       recentTargetIds,
-      pais: String(body?.pais || "").trim(),
+      pais:
+        String(body?.pais || "").trim().toUpperCase() ||
+        String(req.headers.get("cf-ipcountry") || req.headers.get("x-country-code") || "")
+          .trim()
+          .toUpperCase(),
       provincia: String(body?.provincia || "").trim(),
+      verPaises: Array.isArray(body?.verPaises) ? body.verPaises.map(String) : [],
+      verProvincias: Array.isArray(body?.verProvincias) ? body.verProvincias.map(String) : [],
       idioma: String(body?.idioma || "es").trim(),
     });
 

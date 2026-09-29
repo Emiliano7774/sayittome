@@ -12,6 +12,7 @@ import {
 import { isAnonMatchDoorOpen, ANON_MATCH_DOOR_EVENT } from "@/lib/anonMatch/anonMatchDoor";
 import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 import { resolveAnonMatchSessionId } from "@/lib/anonMatch/fetchAnonMatch";
+import { readVisibilityPayload } from "@/lib/shuffle/audiencePayload";
 import { auth } from "@/lib/firebase";
 
 let started = false;
@@ -100,6 +101,7 @@ async function writeAnonymousPresence(force = false) {
       headers,
       body: JSON.stringify({
         anonId,
+        ...readVisibilityPayload(),
         ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
       }),
       cache: "no-store",

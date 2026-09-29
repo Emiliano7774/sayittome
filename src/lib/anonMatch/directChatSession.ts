@@ -50,3 +50,63 @@ export function clearAnonDirectChatSession() {
     // Ignore.
   }
 }
+
+/**
+ * Each tab keeps its own sessionStorage copy of the open chat, so closing one
+ * leaves the others showing a chat that no longer exists. Announce the close so
+ * every tab drops it at once instead of waiting for a Firestore round trip.
+ */
+const CLOSE_CHANNEL = "sayittome:anon-direct-chat-closed";
+
+export function broadcastAnonDirectChatClosed(chatId: string) {
+  if (typeof window === "undefined" || !chatId) return;
+
+  const payload = JSON.stringify({ chatId, at: Date.now() });
+
+  try {
+    const channel = new BroadcastChannel(CLOSE_CHANNEL);
+    channel.postMessage(payload);
+    channel.close();
+  } catch {
+    // Fall through to the storage event below.
+  }
+
+  try {
+    // Storage events only fire in other tabs, which is exactly the audience here.
+    localStorage.setItem(CLOSE_CHANNEL, payload);
+  } catch {
+    // Ignore quota errors.
+  }
+}
+
+export function subscribeAnonDirectChatClosed(onClosed: (chatId: string) => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const handlePayload = (raw: unknown) => {
+    try {
+      const chatId = String(JSON.parse(String(raw || "")).chatId || "");
+      if (chatId) onClosed(chatId);
+    } catch {
+      // Ignore malformed payloads.
+    }
+  };
+
+  let channel: BroadcastChannel | null = null;
+  try {
+    channel = new BroadcastChannel(CLOSE_CHANNEL);
+    channel.onmessage = (event) => handlePayload(event.data);
+  } catch {
+    channel = null;
+  }
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== CLOSE_CHANNEL) return;
+    handlePayload(event.newValue);
+  };
+  window.addEventListener("storage", onStorage);
+
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    channel?.close();
+  };
+}

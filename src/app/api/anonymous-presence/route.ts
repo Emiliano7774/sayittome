@@ -16,6 +16,7 @@ import {
   setAnonMatchAdminDoc,
 } from "@/lib/anonMatch/anonMatchAdminStore";
 import { invalidateAnonMatchAvailabilityCache } from "@/lib/anonMatch/matchPool";
+import { normalizeGeoAudience } from "@/lib/geo/audience";
 import { verifyAnonMatchCaller } from "@/lib/anonMatch/verifyAnonMatchCaller";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,15 @@ function authError(error: unknown) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
-async function writePresenceDoc(anonId: string, authUid: string) {
+async function writePresenceDoc(
+  anonId: string,
+  authUid: string,
+  geo: {
+    pais: string;
+    provincia: string;
+    visibilidad: { paises: string[]; provincias: string[] };
+  },
+) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ANON_PRESENCE_ACTIVE_MS);
   const existing = await getAnonMatchAdminDoc("anonimos_activos", anonId);
@@ -44,6 +53,10 @@ async function writePresenceDoc(anonId: string, authUid: string) {
     disponibleParaChat: dndActive ? false : true,
     enChat: false,
     ...(dndUntil ? { doNotDisturbUntil: dndUntil } : {}),
+    ...(geo.pais ? { pais: geo.pais } : {}),
+    ...(geo.provincia ? { provincia: geo.provincia } : {}),
+    visibilidadPaises: geo.visibilidad.paises,
+    visibilidadProvincias: geo.visibilidad.provincias,
     source: "anon_match_presence",
   });
 }
@@ -92,7 +105,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: decision.reason }, { status });
     }
 
-    await writePresenceDoc(decision.anonId, caller.uid);
+    // Anons have no profile, so their country comes from the edge header unless
+    // the client states one; without it no country filter can ever reach them.
+    const headerCountry = String(
+      req.headers.get("cf-ipcountry") || req.headers.get("x-country-code") || "",
+    ).trim().toUpperCase();
+
+    await writePresenceDoc(decision.anonId, caller.uid, {
+      pais: String(body?.pais || headerCountry || "").trim().toUpperCase(),
+      provincia: String(body?.provincia || "").trim(),
+      visibilidad: normalizeGeoAudience({
+        paises: body?.visibilidadPaises as string[],
+        provincias: body?.visibilidadProvincias as string[],
+      }),
+    });
     invalidateAnonMatchAvailabilityCache();
 
     const legacyLocal = String(body?.legacyLocalAnonId || "").trim();

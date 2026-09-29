@@ -62,8 +62,12 @@ export async function createAnonMatchRequest(input: {
   excludeAnonIds?: string[];
   excludeUids?: string[];
   recentTargetIds?: string[];
+  /** Where the searcher is — decides whose "quiénes pueden verme" accepts them. */
   pais?: string;
   provincia?: string;
+  /** A quiénes quiero ver. Empty = anyone. */
+  verPaises?: string[];
+  verProvincias?: string[];
   idioma?: string;
 }) {
   const solicitanteUid = String(input.solicitanteUid || "").trim();
@@ -89,7 +93,10 @@ export async function createAnonMatchRequest(input: {
     excludeAnonIds: Array.from(excludeAnonIds),
     excludeUids: Array.from(excludeUids),
     recentTargetIds: input.recentTargetIds,
-    pais: input.pais,
+    verPaises: input.verPaises,
+    verProvincias: input.verProvincias,
+    viewerPais: input.pais,
+    viewerProvincia: input.provincia,
     idioma: input.idioma,
     now,
   });

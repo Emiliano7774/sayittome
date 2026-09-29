@@ -47,6 +47,7 @@ import {
   resolveIncomingListenerTargets,
 } from "@/lib/anonMatch/anonMatchConsumer";
 import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
+import { readDiscoveryPayload } from "@/lib/shuffle/audiencePayload";
 import {
   bindWhipSoundUnlock,
 } from "@/lib/chat/whipSound";
@@ -71,9 +72,11 @@ import {
   dismissIncomingAnonMatchRequestAlert,
 } from "@/lib/anonMatch/incomingMatchAlert";
 import {
+  broadcastAnonDirectChatClosed,
   clearAnonDirectChatSession,
   loadAnonDirectChatSession,
   saveAnonDirectChatSession,
+  subscribeAnonDirectChatClosed,
   type AnonDirectChatView,
 } from "@/lib/anonMatch/directChatSession";
 import {
@@ -136,6 +139,17 @@ const WAITING_RETARGET_POLL_MS = 4_000;
 const AnonMatchContext = createContext<AnonMatchContextValue | null>(null);
 
 const alertedRequestIds = new Set<string>();
+
+/** True when the recorded closer is this profile (any device) or this tab's alias. */
+function closedByMe(cerradoPor: string) {
+  const closer = String(cerradoPor || "").trim();
+  if (!closer) return false;
+
+  const user = auth.currentUser;
+  if (user && !user.isAnonymous && closer === user.uid) return true;
+
+  return closer === getStoredAnonMatchAlias();
+}
 
 function persistOpenChat(
   openChat: OpenChat | null,
@@ -205,6 +219,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const retryTimerRef = useRef<number | null>(null);
   const connectInFlightRef = useRef(false);
   const skipServerDiscoveryRef = useRef(false);
+  /** Chat dismissed here — never let a listener pull it back up. */
+  const lastClosedChatIdRef = useRef("");
   const lastPathRef = useRef(pathname);
   const openChatRef = useRef(openChat);
   const chatViewRef = useRef(chatView);
@@ -429,6 +445,24 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /** Drop the chat window here without telling anyone — the close already happened. */
+  const dismissChatLocally = useCallback(() => {
+    clearRetryTimer();
+    stopSearchSessionState({
+      setSearchSessionActive,
+      setPhase,
+      setSolicitudId,
+      searchSessionActiveRef,
+    });
+    skipServerDiscoveryRef.current = true;
+    lastClosedChatIdRef.current = openChatRef.current?.chatId || "";
+    setOpenChat(null);
+    setChatViewState("compact");
+    clearAnonDirectChatSession();
+    // Classic semantics: rejected targets become eligible again after chat close.
+    clearRejectedMatchTargets();
+  }, [clearRetryTimer]);
+
   const scheduleRetry = useCallback(() => {
     if (!searchSessionActiveRef.current) return;
     if (typeof document !== "undefined" && document.hidden) return;
@@ -557,6 +591,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       body.excludeAnonIds = Array.from(new Set(excludeAnonIds.filter(Boolean)));
       body.excludeUids = Array.from(new Set(excludeUids.filter(Boolean)));
       body.recentTargetIds = loadRecentMatchTargets();
+      Object.assign(body, readDiscoveryPayload());
 
       const res = await fetchAnonMatch("/api/anon-match/request", {
         method: "POST",
@@ -823,8 +858,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   }, [openDirectChat, phase, scheduleRetry, solicitudId]);
 
   useEffect(() => {
-    if (!hydrated || openChat?.chatId || skipServerDiscoveryRef.current) return;
-    if (!searchSessionActive || phase !== "waiting") return;
+    if (!hydrated || openChat?.chatId) return;
+
+    const waitingForMatch = searchSessionActive && phase === "waiting";
+    // Closing here must not mute the watcher forever — the next chat opened on
+    // another device still has to land. Only the closed chat stays filtered out.
+    if (waitingForMatch && skipServerDiscoveryRef.current) return;
+    // A profile signed in on two devices has to pick up the chat the other one
+    // opened, even on the device that never pressed Connect.
+    if (!waitingForMatch && !matchDoorOpen) return;
 
     let cancelled = false;
     const unsubs: Array<() => void> = [];
@@ -838,7 +880,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           chatQuery,
           (snap) => {
             if (cancelled || snap.empty) return;
-            openDirectChat(snap.docs[0].id, role);
+            const chatId = snap.docs[0].id;
+            if (chatId === lastClosedChatIdRef.current) return;
+            openDirectChat(chatId, role);
           },
           (error) => {
             if (cancelled) return;
@@ -872,6 +916,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Anonymous aliases are tab-local, so there is nothing to sync across devices.
+      if (!waitingForMatch) return;
+
       const anonId = await resolveAnonMatchSessionId().catch(() => "");
       if (cancelled || !anonId) return;
 
@@ -901,6 +948,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     };
   }, [
     hydrated,
+    matchDoorOpen,
     openChat?.chatId,
     openDirectChat,
     phase,
@@ -1171,6 +1219,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         const estado = String(snap.data().estado || "activo");
         if (estado === "activo") return;
 
+        // Closing on one device must not leave the chat waiting for a second
+        // close on the others — only a peer's close deserves the banner.
+        if (estado !== "denunciado" && closedByMe(String(snap.data().cerradoPor || ""))) {
+          dismissChatLocally();
+          return;
+        }
+
         setOpenChat((prev) =>
           prev
             ? {
@@ -1186,7 +1241,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     );
 
     return () => unsub();
-  }, [openChat?.chatId]);
+  }, [dismissChatLocally, openChat?.chatId]);
 
   const respondIncoming = useCallback(
     async (accept: boolean) => {
@@ -1315,20 +1370,19 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const expandChat = useCallback(() => setChatView("expanded"), [setChatView]);
 
   const closeChatWindow = useCallback(() => {
-    clearRetryTimer();
-    stopSearchSessionState({
-      setSearchSessionActive,
-      setPhase,
-      setSolicitudId,
-      searchSessionActiveRef,
-    });
-    skipServerDiscoveryRef.current = true;
-    setOpenChat(null);
-    setChatViewState("compact");
-    clearAnonDirectChatSession();
-    // Classic semantics: rejected targets become eligible again after chat close.
-    clearRejectedMatchTargets();
-  }, [clearRetryTimer]);
+    const chatId = openChatRef.current?.chatId || "";
+    dismissChatLocally();
+    broadcastAnonDirectChatClosed(chatId);
+  }, [dismissChatLocally]);
+
+  useEffect(
+    () =>
+      subscribeAnonDirectChatClosed((chatId) => {
+        if (!chatId || openChatRef.current?.chatId !== chatId) return;
+        dismissChatLocally();
+      }),
+    [dismissChatLocally],
+  );
 
   useEffect(() => () => clearRetryTimer(), [clearRetryTimer]);
 

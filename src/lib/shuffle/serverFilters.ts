@@ -2,9 +2,19 @@ import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { inferCountryCodeFromSubdivision, normalizeGeoValue, resolveProfileCountryCode } from "@/lib/geo/countries";
 import {
+  geoAudienceIncludes,
+  normalizeGeoAudience,
+  parseGeoAudience,
+  readStoredGeoAudience,
+  serializeGeoAudience,
+  type GeoTarget,
+} from "@/lib/geo/audience";
+import {
+  discoveryAudience,
   normalizeDiscoveryValue,
   sexToStorage,
   shuffleFiltersHasAny,
+  visibilityAudience,
   type ShuffleFilters,
   type ShuffleGenderFilter,
 } from "@/lib/shuffle/filters";
@@ -12,6 +22,8 @@ import {
 export type ShuffleFilterProfile = {
   pais?: string;
   provincia?: string;
+  visibilidadPaises?: string[];
+  visibilidadProvincias?: string[];
   ciudad?: string;
   sexo?: string;
   edad?: number;
@@ -34,10 +46,22 @@ export function parseShuffleFiltersFromSearchParams(params: URLSearchParams): Sh
     ? interesesRaw.split("|").map((item) => item.trim()).filter(Boolean)
     : [];
 
+  // `pais` / `provincia` keep older clients working until their cache refreshes.
+  const discovery = parseGeoAudience(
+    params.get("verPaises") || params.get("pais") || "",
+    params.get("verProvincias") || params.get("provincia") || "",
+  );
+  const visibility = parseGeoAudience(
+    params.get("aparecerPaises") || "",
+    params.get("aparecerProvincias") || "",
+  );
+
   return {
-    pais: String(params.get("pais") || "").trim().toUpperCase(),
+    verPaises: discovery.paises,
+    verProvincias: discovery.provincias,
+    aparecerPaises: visibility.paises,
+    aparecerProvincias: visibility.provincias,
     sexo: (String(params.get("sexo") || "todos").trim() as ShuffleGenderFilter) || "todos",
-    provincia: String(params.get("provincia") || "").trim(),
     ciudad: String(params.get("ciudad") || "").trim(),
     edadMin: Number(params.get("edadMin") || 0) || 0,
     edadMax: Number(params.get("edadMax") || 0) || 0,
@@ -52,8 +76,12 @@ export function appendShuffleFiltersToSearchParams(
   params: URLSearchParams,
   filters: ShuffleFilters,
 ) {
-  if (filters.pais) params.set("pais", filters.pais);
-  if (filters.provincia) params.set("provincia", filters.provincia);
+  const discovery = serializeGeoAudience(discoveryAudience(filters));
+  const visibility = serializeGeoAudience(visibilityAudience(filters));
+  if (discovery.paises) params.set("verPaises", discovery.paises);
+  if (discovery.provincias) params.set("verProvincias", discovery.provincias);
+  if (visibility.paises) params.set("aparecerPaises", visibility.paises);
+  if (visibility.provincias) params.set("aparecerProvincias", visibility.provincias);
   if (filters.ciudad) params.set("ciudad", filters.ciudad);
   if (filters.sexo !== "todos") params.set("sexo", filters.sexo);
   if (filters.edadMin > 0) params.set("edadMin", String(filters.edadMin));
@@ -81,16 +109,7 @@ export function profileMatchesShuffleServerFilters(
 ) {
   if (!shuffleFiltersHasAny(filters)) return true;
 
-  if (filters.pais) {
-    const profileCountry = resolveProfileCountryCode(profile);
-    if (profileCountry !== filters.pais) return false;
-  }
-
-  if (filters.provincia) {
-    const wanted = normalizeGeoValue(filters.provincia);
-    const profileSubdivision = normalizeGeoValue(profile.provincia || "");
-    if (profileSubdivision !== wanted) return false;
-  }
+  if (!geoAudienceIncludes(discoveryAudience(filters), profile)) return false;
 
   if (filters.ciudad) {
     const wanted = normalizeDiscoveryValue(filters.ciudad);
@@ -133,4 +152,27 @@ export function profileMatchesShuffleServerFilters(
   return true;
 }
 
-export { inferCountryCodeFromSubdivision, resolveProfileCountryCode };
+/**
+ * "Quiénes pueden verme": a profile that narrowed its audience only shows up for
+ * viewers inside it. An empty audience (every profile today) accepts everyone.
+ */
+export function profileIsVisibleToViewer(
+  profile: ShuffleFilterProfile,
+  viewer: GeoTarget | null | undefined,
+) {
+  const audience = normalizeGeoAudience({
+    paises: profile.visibilidadPaises,
+    provincias: profile.visibilidadProvincias,
+  });
+  if (audience.paises.length === 0) return true;
+  if (!viewer) return false;
+  return geoAudienceIncludes(audience, viewer);
+}
+
+export function parseViewerGeoTarget(params: URLSearchParams, headerCountry?: string | null): GeoTarget {
+  const pais = String(params.get("viewerPais") || headerCountry || "").trim().toUpperCase();
+  const provincia = String(params.get("viewerProvincia") || "").trim();
+  return { pais, provincia };
+}
+
+export { inferCountryCodeFromSubdivision, resolveProfileCountryCode, readStoredGeoAudience };

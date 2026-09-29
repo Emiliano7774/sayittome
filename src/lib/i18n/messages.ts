@@ -278,6 +278,12 @@ const es = {
   shuffle_filters_country: "País",
   shuffle_filters_all_countries: "Todos los países",
   shuffle_filters_all_provinces: "Todas las provincias",
+  shuffle_filters_audience_visibility: "quiénes pueden verme",
+  shuffle_filters_audience_discovery: "a quiénes quiero ver",
+  shuffle_filters_all_countries_blocked:
+    "Desmarcá todos los países para volver a “Todos los países”.",
+  shuffle_filters_provinces_need_one_country:
+    "Elegí un solo país para filtrar por provincia.",
   shuffle_filters_city: "Ciudad",
   shuffle_filters_city_hint: "Ej: Córdoba Capital",
   shuffle_filters_solo_online: "Solo online / activos",
@@ -1134,6 +1140,12 @@ const en: Record<keyof typeof es, string> = {
   shuffle_filters_country: "Country",
   shuffle_filters_all_countries: "All countries",
   shuffle_filters_all_provinces: "All provinces",
+  shuffle_filters_audience_visibility: "who can see me",
+  shuffle_filters_audience_discovery: "who I want to see",
+  shuffle_filters_all_countries_blocked:
+    "Unselect every country to go back to “All countries”.",
+  shuffle_filters_provinces_need_one_country:
+    "Pick a single country to filter by province.",
   shuffle_filters_city: "City",
   shuffle_filters_city_hint: "E.g. Cordoba City",
   shuffle_filters_solo_online: "Online / active only",

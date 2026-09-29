@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 
 import { getActiveBoostProfiles } from "@/lib/boost/service";
 import { BOOST_TOP_SLOTS } from "@/lib/boost/constants";
@@ -19,6 +19,8 @@ import {
 import { shuffleProfileMatchesBoostUid } from "@/lib/shuffle/shuffleActionTargets";
 import {
   parseShuffleFiltersFromSearchParams,
+  parseViewerGeoTarget,
+  profileIsVisibleToViewer,
   profileMatchesShuffleServerFilters,
 } from "@/lib/shuffle/serverFilters";
 
@@ -28,11 +30,38 @@ const SHUFFLE_JSON_HEADERS = {
   "x-shuffle-dedupe-version": String(SHUFFLE_DEDUPE_VERSION),
 };
 
-function shuffleJson(body: Record<string, unknown>, init?: { status?: number }) {
-  return NextResponse.json(body, {
-    status: init?.status,
-    headers: SHUFFLE_JSON_HEADERS,
-  });
+function shuffleJson(
+  req: Request,
+  body: Record<string, unknown>,
+  init?: { status?: number },
+) {
+  const json = JSON.stringify(body);
+  const acceptEncoding = String(req.headers.get("accept-encoding") || "").toLowerCase();
+  const headers = new Headers(SHUFFLE_JSON_HEADERS);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+
+  // Firebase's dynamic SSR path does not currently compress this payload for us.
+  // The full pool is hundreds of KB, so explicit compression dramatically cuts
+  // cold-start transfer while leaving the response semantics untouched.
+  if (json.length >= 32_768) {
+    headers.set("Vary", "Accept-Encoding");
+    if (acceptEncoding.includes("br")) {
+      const compressed = brotliCompressSync(Buffer.from(json), {
+        params: {
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 5,
+        },
+      });
+      headers.set("Content-Encoding", "br");
+      return new Response(compressed, { status: init?.status, headers });
+    }
+    if (acceptEncoding.includes("gzip")) {
+      const compressed = gzipSync(Buffer.from(json), { level: 6 });
+      headers.set("Content-Encoding", "gzip");
+      return new Response(compressed, { status: init?.status, headers });
+    }
+  }
+
+  return new Response(json, { status: init?.status, headers });
 }
 
 export const dynamic = "force-dynamic";
@@ -40,9 +69,9 @@ export const dynamic = "force-dynamic";
 const API_KEY = "AIzaSyBpQKCAwE-8Td3ZuaDqE3nvNwRGDGY8vdk";
 const PROJECT_ID = "sayittome-app";
 
-const PROFILE_CACHE_MS = 8 * 60_000;
+const PROFILE_CACHE_MS = 10 * 60_000;
 const ANON_CACHE_MS = 5 * 60_000;
-const STATS_REFRESH_MS = 10 * 60_000;
+const STATS_REFRESH_MS = 15 * 60_000;
 /** Max profiles returned in one API response (client holds the full shuffle pool). */
 const SHUFFLE_RESPONSE_LIMIT = 10_000;
 /** Max profiles considered when searching by username text. */
@@ -75,6 +104,8 @@ type ApiProfile = {
   provincia?: string;
   ciudad?: string;
   pais?: string;
+  visibilidadPaises?: string[];
+  visibilidadProvincias?: string[];
   sexo?: string;
   edad?: number;
   intereses?: string[];
@@ -88,8 +119,11 @@ type ApiProfile = {
   adminBlurStories?: boolean;
   adminBlurGallery?: boolean;
   mediaBlurFlags?: Record<string, boolean>;
+  adminBlurAt?: string;
   banned?: boolean;
   moderationTag?: string;
+  groomingTag?: boolean;
+  potentialPedophileTag?: boolean;
   fakeProfileTag?: string;
   shuffleFeatured?: boolean;
 };
@@ -296,6 +330,7 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
     ? raw.aliasIds.map((value) => String(value || "")).filter(Boolean)
     : [];
 
+  const legacyModerationTag = String(raw.moderationTag || "");
   const profile: ApiProfile = {
     uid: docId || firebaseUid || fallbackUid || "",
     authUid: firebaseUid || docId || fallbackUid || "",
@@ -328,6 +363,12 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
     provincia: String(raw.provincia || raw.region || ""),
     ciudad: String(raw.ciudad || ""),
     pais: String(raw.pais || raw.country || raw.countryCode || ""),
+    visibilidadPaises: Array.isArray(raw.visibilidadPaises)
+      ? raw.visibilidadPaises.map((value) => String(value || "")).filter(Boolean)
+      : [],
+    visibilidadProvincias: Array.isArray(raw.visibilidadProvincias)
+      ? raw.visibilidadProvincias.map((value) => String(value || "")).filter(Boolean)
+      : [],
     sexo: String(raw.sexo || ""),
     edad: Number(raw.edad || 0),
     intereses,
@@ -345,12 +386,15 @@ function rawToProfile(raw: Record<string, unknown>, fallbackUid = ""): ApiProfil
       raw.mediaBlurFlags && typeof raw.mediaBlurFlags === "object"
         ? (raw.mediaBlurFlags as Record<string, boolean>)
         : undefined,
+    adminBlurAt: String(raw.adminBlurAt || ""),
     banned:
       raw.banned === true ||
       raw.suspendido === true ||
       String(raw.estado || "") === "bloqueado",
     mostrarUltimaVez: raw.mostrarUltimaVez !== false,
-    moderationTag: String(raw.moderationTag || ""),
+    moderationTag: legacyModerationTag === "roleplay" ? "roleplay" : "",
+    groomingTag: raw.groomingTag === true || legacyModerationTag === "grooming",
+    potentialPedophileTag: raw.potentialPedophileTag === true || legacyModerationTag === "potential_pedophile",
     fakeProfileTag: String(raw.fakeProfileTag || ""),
   };
 
@@ -618,11 +662,15 @@ export async function GET(req: Request) {
     const countOnly = searchParams.get("countOnly") === "1";
     const force = searchParams.get("force") === "1";
     const filters = parseShuffleFiltersFromSearchParams(searchParams);
+    const viewer = parseViewerGeoTarget(
+      searchParams,
+      req.headers.get("cf-ipcountry") || req.headers.get("x-country-code"),
+    );
 
     const { profilesCreated, anonymousOnline, totalLive } = await resolveLiveCounts(countOnly);
 
     if (countOnly) {
-      return shuffleJson({
+      return shuffleJson(req, {
         ok: true,
         profiles: [],
         featuredProfiles: [],
@@ -639,8 +687,10 @@ export async function GET(req: Request) {
     const allProfiles = q
       ? await searchProfilesByQuery(q, SHUFFLE_SEARCH_LIMIT, force)
       : await getProfilesCached(force);
-    const filteredByDiscovery = allProfiles.filter((profile) =>
-      profileMatchesShuffleServerFilters(profile, filters),
+    const filteredByDiscovery = allProfiles.filter(
+      (profile) =>
+        profileIsVisibleToViewer(profile, viewer) &&
+        profileMatchesShuffleServerFilters(profile, filters),
     );
 
     const filtered = filteredByDiscovery;
@@ -691,7 +741,7 @@ export async function GET(req: Request) {
     const uniqueFeatured = uniqueAll.filter((profile) => profile.shuffleFeatured);
     const uniqueSelected = uniqueAll.filter((profile) => !profile.shuffleFeatured);
 
-    return shuffleJson({
+    return shuffleJson(req, {
       ok: true,
       profiles: uniqueSelected,
       featuredProfiles: uniqueFeatured,
@@ -708,6 +758,7 @@ export async function GET(req: Request) {
     const totalLive = profilesCreated + cachedAnonymousOnline;
 
     return shuffleJson(
+      req,
       {
         ok: false,
         error: e?.message || "unknown",

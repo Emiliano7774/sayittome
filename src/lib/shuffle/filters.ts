@@ -1,12 +1,22 @@
+import {
+  emptyGeoAudience,
+  geoAudienceHasAny,
+  normalizeGeoAudience,
+  type GeoAudience,
+} from "@/lib/geo/audience";
 import { profileMatchesShuffleServerFilters } from "@/lib/shuffle/serverFilters";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export type ShuffleGenderFilter = "todos" | "hombre" | "mujer" | "otro";
 
 export type ShuffleFilters = {
-  pais: string;
+  /** A quiénes quiero ver: países cuyos perfiles entran en mi feed. Vacío = todos. */
+  verPaises: string[];
+  verProvincias: string[];
+  /** Quiénes pueden verme: países desde donde me pueden encontrar. Vacío = todos. */
+  aparecerPaises: string[];
+  aparecerProvincias: string[];
   sexo: ShuffleGenderFilter;
-  provincia: string;
   ciudad: string;
   edadMin: number;
   edadMax: number;
@@ -15,6 +25,38 @@ export type ShuffleFilters = {
   soloConHistorias: boolean;
   intereses: string[];
 };
+
+/** Los países cuyos perfiles quiero ver en el feed. */
+export function discoveryAudience(filters: ShuffleFilters): GeoAudience {
+  return normalizeGeoAudience({
+    paises: filters.verPaises,
+    provincias: filters.verProvincias,
+  });
+}
+
+/** Los países desde donde acepto que me encuentren. */
+export function visibilityAudience(filters: ShuffleFilters): GeoAudience {
+  return normalizeGeoAudience({
+    paises: filters.aparecerPaises,
+    provincias: filters.aparecerProvincias,
+  });
+}
+
+export function withDiscoveryAudience(
+  filters: ShuffleFilters,
+  audience: GeoAudience,
+): ShuffleFilters {
+  const next = normalizeGeoAudience(audience);
+  return { ...filters, verPaises: next.paises, verProvincias: next.provincias };
+}
+
+export function withVisibilityAudience(
+  filters: ShuffleFilters,
+  audience: GeoAudience,
+): ShuffleFilters {
+  const next = normalizeGeoAudience(audience);
+  return { ...filters, aparecerPaises: next.paises, aparecerProvincias: next.provincias };
+}
 
 export const SHUFFLE_FILTERS_STORAGE_KEY = "sayittome_shuffle_filters_v1";
 
@@ -49,9 +91,11 @@ export const SHUFFLE_GENDER_OPTIONS: Array<{
 
 export function defaultShuffleFilters(): ShuffleFilters {
   return {
-    pais: "",
+    verPaises: [],
+    verProvincias: [],
+    aparecerPaises: [],
+    aparecerProvincias: [],
     sexo: "todos",
-    provincia: "",
     ciudad: "",
     edadMin: 0,
     edadMax: 0,
@@ -102,11 +146,14 @@ export function normalizeInterests(values: string[]) {
   return result;
 }
 
+/**
+ * Only discovery narrows the feed. "Quiénes pueden verme" changes what others
+ * see, so it must never make my own pool look filtered.
+ */
 export function shuffleFiltersHasAny(filters: ShuffleFilters) {
   return (
-    !!filters.pais.trim() ||
+    geoAudienceHasAny(discoveryAudience(filters)) ||
     filters.sexo !== "todos" ||
-    !!filters.provincia.trim() ||
     !!filters.ciudad.trim() ||
     filters.edadMin > 0 ||
     filters.edadMax > 0 ||
@@ -118,10 +165,12 @@ export function shuffleFiltersHasAny(filters: ShuffleFilters) {
 }
 
 export function shuffleFiltersActiveCount(filters: ShuffleFilters) {
+  const discovery = discoveryAudience(filters);
   let count = 0;
-  if (filters.pais.trim()) count += 1;
+  if (discovery.paises.length > 0) count += 1;
   if (filters.sexo !== "todos") count += 1;
-  if (filters.provincia.trim()) count += 1;
+  if (discovery.provincias.length > 0) count += 1;
+  if (geoAudienceHasAny(visibilityAudience(filters))) count += 1;
   if (filters.ciudad.trim()) count += 1;
   if (filters.edadMin > 0 || filters.edadMax > 0) count += 1;
   if (filters.soloOnline) count += 1;
@@ -133,6 +182,7 @@ export function shuffleFiltersActiveCount(filters: ShuffleFilters) {
 
 type SummaryLabels = {
   country: string;
+  visibility?: string;
   countryName?: (code: string) => string;
   gender: Record<ShuffleGenderFilter, string>;
   online: string;
@@ -147,11 +197,21 @@ export function shuffleFiltersSummary(
   filters: ShuffleFilters,
   labels: SummaryLabels,
 ) {
-  if (!shuffleFiltersHasAny(filters)) return "";
+  const discovery = discoveryAudience(filters);
+  const visibility = visibilityAudience(filters);
+
+  if (!shuffleFiltersHasAny(filters) && !geoAudienceHasAny(visibility)) return "";
 
   const parts: string[] = [];
+  const countryNames = (codes: string[]) =>
+    codes.map((code) => labels.countryName?.(code) || code).join(", ");
 
-  if (filters.pais.trim()) parts.push(`${labels.country}: ${labels.countryName?.(filters.pais) || filters.pais}`);
+  if (discovery.paises.length > 0) {
+    parts.push(`${labels.country}: ${countryNames(discovery.paises)}`);
+  }
+  if (visibility.paises.length > 0 && labels.visibility) {
+    parts.push(`${labels.visibility}: ${countryNames(visibility.paises)}`);
+  }
   if (filters.sexo !== "todos") parts.push(labels.gender[filters.sexo]);
   if (filters.edadMin > 0 || filters.edadMax > 0) {
     if (filters.edadMin > 0 && filters.edadMax > 0) {
@@ -162,7 +222,7 @@ export function shuffleFiltersSummary(
       parts.push(labels.ageMax(filters.edadMax));
     }
   }
-  if (filters.provincia.trim()) parts.push(filters.provincia.trim());
+  if (discovery.provincias.length > 0) parts.push(discovery.provincias.join(", "));
   if (filters.ciudad.trim()) parts.push(filters.ciudad.trim());
   if (filters.soloOnline) parts.push(labels.online);
   if (filters.soloConFoto) parts.push(labels.withPhoto);
@@ -250,17 +310,49 @@ export function profileMatchesShuffleSearch(profile: ShuffleProfile, query: stri
   return haystack.includes(q);
 }
 
+/** Filters saved before country selection became a list. */
+type LegacySingleCountryFilters = {
+  pais?: string;
+  provincia?: string;
+};
+
+export function migrateDiscoveryAudience(
+  parsed: Partial<ShuffleFilters> & LegacySingleCountryFilters,
+): GeoAudience {
+  const hasNew =
+    Array.isArray(parsed.verPaises) || Array.isArray(parsed.verProvincias);
+  if (hasNew) {
+    return normalizeGeoAudience({
+      paises: parsed.verPaises,
+      provincias: parsed.verProvincias,
+    });
+  }
+
+  return normalizeGeoAudience({
+    paises: parsed.pais ? [parsed.pais] : [],
+    provincias: parsed.provincia ? [parsed.provincia] : [],
+  });
+}
+
 export function loadStoredShuffleFilters(): ShuffleFilters {
   if (typeof window === "undefined") return defaultShuffleFilters();
 
   try {
     const raw = localStorage.getItem(SHUFFLE_FILTERS_STORAGE_KEY);
     if (!raw) return defaultShuffleFilters();
-    const parsed = JSON.parse(raw) as Partial<ShuffleFilters>;
+    const parsed = JSON.parse(raw) as Partial<ShuffleFilters> & LegacySingleCountryFilters;
+    const discovery = migrateDiscoveryAudience(parsed);
+    const visibility = normalizeGeoAudience({
+      paises: parsed.aparecerPaises,
+      provincias: parsed.aparecerProvincias,
+    });
     return {
       ...defaultShuffleFilters(),
       ...parsed,
-      pais: String(parsed.pais || "").trim().toUpperCase(),
+      verPaises: discovery.paises,
+      verProvincias: discovery.provincias,
+      aparecerPaises: visibility.paises,
+      aparecerProvincias: visibility.provincias,
       sexo: sexToStorage(String(parsed.sexo || "todos")),
       intereses: normalizeInterests(Array.isArray(parsed.intereses) ? parsed.intereses : []),
       edadMin: Number(parsed.edadMin || 0) || 0,
@@ -278,10 +370,16 @@ export function saveStoredShuffleFilters(filters: ShuffleFilters) {
   if (typeof window === "undefined") return;
 
   try {
+    const discovery = discoveryAudience(filters);
+    const visibility = visibilityAudience(filters);
     localStorage.setItem(
       SHUFFLE_FILTERS_STORAGE_KEY,
       JSON.stringify({
         ...filters,
+        verPaises: discovery.paises,
+        verProvincias: discovery.provincias,
+        aparecerPaises: visibility.paises,
+        aparecerProvincias: visibility.provincias,
         intereses: normalizeInterests(filters.intereses),
       }),
     );
