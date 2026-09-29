@@ -8,7 +8,8 @@ import { usePhoneShell } from "@/hooks/usePhoneShell";
 
 export default function ClassicModerationFeed() {
   const router = useRouter();
-  const { feed, loading } = useClassicModerationFeed();
+  const { feed, loading, errorText, authoritativeTotal, refreshAuthoritative } =
+    useClassicModerationFeed();
   const phoneShell = usePhoneShell();
 
   return (
@@ -20,7 +21,25 @@ export default function ClassicModerationFeed() {
         <p className="mt-2 text-sm font-bold text-white/65 md:text-base">
           Ordenado por última interacción de mensajes. Sin orden alfabético.
         </p>
+        {!loading && authoritativeTotal > 0 ? (
+          <p className="mt-1 text-xs font-bold text-white/35">
+            Catálogo completo · {authoritativeTotal} chats
+          </p>
+        ) : null}
       </div>
+
+      {errorText ? (
+        <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-950/40 px-4 py-3 text-sm font-bold text-rose-200">
+          <p>{errorText}</p>
+          <button
+            type="button"
+            className="mt-2 rounded-full border border-rose-300/40 px-3 py-1 text-xs font-black"
+            onClick={() => void refreshAuthoritative()}
+          >
+            Reintentar
+          </button>
+        </div>
+      ) : null}
 
       {loading ? (
         <p className="text-lg font-bold text-white/35 md:text-2xl">Cargando actividad...</p>

@@ -30,6 +30,8 @@ export function serializeModerationChatForApi(chat: ModerationChatRow) {
     anon: chat.anon,
     senderIsAnonymous: chat.senderIsAnonymous,
     suspicious: chat.suspicious,
+    participantes: chat.participantes,
+    participants: chat.participants,
     updatedAtMs: timestampMs(chat.updatedAt),
     createdAtMs: timestampMs(chat.createdAt),
     moderationReviewedAtMs: timestampMs(chat.moderationReviewedAt),
@@ -43,6 +45,13 @@ export function normalizeModerationChatRow(
   const createdAtMs = timestampMs(raw.createdAt) || Number(raw.createdAtMs || 0);
   const reviewedAtMs =
     timestampMs(raw.moderationReviewedAt) || Number(raw.moderationReviewedAtMs || 0);
+
+  const participantes = Array.isArray(raw.participantes)
+    ? raw.participantes.map((entry) => String(entry))
+    : undefined;
+  const participants = Array.isArray(raw.participants)
+    ? raw.participants.map((entry) => String(entry))
+    : undefined;
 
   return {
     id: String(raw.id || ""),
@@ -58,6 +67,8 @@ export function normalizeModerationChatRow(
     anon: raw.anon === true,
     senderIsAnonymous: raw.senderIsAnonymous === true,
     suspicious: raw.suspicious === true,
+    participantes,
+    participants,
     updatedAt: updatedAtMs
       ? ({ toMillis: () => updatedAtMs } as ModerationChatRow["updatedAt"])
       : undefined,
@@ -86,11 +97,41 @@ export function exactChatIdEquals(left: string, right: string) {
  */
 export const MODERATION_OWNER_UID_FIELDS = ["receptorUid", "targetUid"] as const;
 
+export function isLikelyFirebaseUid(value: unknown) {
+  const uid = String(value || "").trim();
+  if (!uid) return false;
+  if (uid.startsWith("anon_")) return false;
+  // Firebase Auth UIDs are typically 28 chars; allow a bounded alphanumeric range.
+  return /^[A-Za-z0-9_-]{20,128}$/.test(uid);
+}
+
+export function extractParticipantUids(chat: Record<string, unknown>) {
+  const out: string[] = [];
+  for (const list of [chat.participantes, chat.participants]) {
+    if (!Array.isArray(list)) continue;
+    for (const entry of list) {
+      const uid = String(entry || "").trim();
+      if (!isLikelyFirebaseUid(uid)) continue;
+      if (!out.includes(uid)) out.push(uid);
+    }
+  }
+  return out;
+}
+
 export function canonicalOwnerUids(chat: Record<string, unknown>) {
   const out: string[] = [];
   for (const key of MODERATION_OWNER_UID_FIELDS) {
     const value = String(chat[key] || "").trim();
     if (value && !out.includes(value)) out.push(value);
+  }
+  return out;
+}
+
+/** Owner UIDs for admin discovery — includes legacy participant-only chats. */
+export function discoveryOwnerUids(chat: Record<string, unknown>) {
+  const out = canonicalOwnerUids(chat);
+  for (const uid of extractParticipantUids(chat)) {
+    if (!out.includes(uid)) out.push(uid);
   }
   return out;
 }
@@ -136,7 +177,7 @@ export function chatBelongsToProfile(
   if (exactUsernameEquals(String(chat.receptorUsername || ""), profile)) return true;
 
   const ownerUid = String(uid || "").trim();
-  if (ownerUid && canonicalOwnerUids(chat).includes(ownerUid)) return true;
+  if (ownerUid && discoveryOwnerUids(chat).includes(ownerUid)) return true;
 
   const chatId = String(chat.id || "");
   if (isProfileAnonChatId(chatId)) {

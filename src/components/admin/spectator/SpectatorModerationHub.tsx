@@ -11,8 +11,10 @@ import type { ModerationUserFeedEntry } from "@/lib/moderation/types";
 
 export default function SpectatorModerationHub() {
   const phoneShell = usePhoneShell();
-  const feedLimit = phoneShell ? 80 : 250;
-  const { feed, loading } = useClassicModerationFeed(feedLimit);
+  // recentLiveLimit is only for the live listener window; authoritative snapshot is full.
+  const recentLiveLimit = phoneShell ? 80 : 250;
+  const { feed, loading, errorText, authoritativeTotal, refreshAuthoritative } =
+    useClassicModerationFeed(recentLiveLimit);
   const [selectedEntry, setSelectedEntry] = useState<ModerationUserFeedEntry | null>(null);
   const [scope, setScope] = useState<"profiles" | "anon_match">("profiles");
   const username = selectedEntry?.username || "";
@@ -68,6 +70,23 @@ export default function SpectatorModerationHub() {
         ].join(" ")}
       >
         <div className="min-h-0 rounded-2xl border border-white/10 bg-[#0a0a0a]/80 p-3 md:p-4">
+          {errorText ? (
+            <div className="mb-3 rounded-xl border border-rose-500/40 bg-rose-950/40 px-3 py-2 text-sm font-bold text-rose-200">
+              <p>{errorText}</p>
+              <button
+                type="button"
+                className="mt-2 rounded-full border border-rose-300/40 px-3 py-1 text-xs font-black"
+                onClick={() => void refreshAuthoritative()}
+              >
+                Reintentar catálogo completo
+              </button>
+            </div>
+          ) : null}
+          {!loading && authoritativeTotal > 0 ? (
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">
+              Catálogo admin · {authoritativeTotal} chats escaneados
+            </p>
+          ) : null}
           <SpectatorLiveFeed
             feed={feed}
             loading={loading}

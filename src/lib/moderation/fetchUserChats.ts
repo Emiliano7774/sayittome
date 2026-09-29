@@ -196,9 +196,34 @@ function buildChatQueries(
     for (const field of MODERATION_OWNER_UID_FIELDS) {
       queries.push(collect(field, uid));
     }
+    queries.push(collectArrayContainsAdmin("participantes", uid));
+    queries.push(collectArrayContainsAdmin("participants", uid));
   }
 
   return queries;
+}
+
+async function collectArrayContainsAdmin(field: string, value: string) {
+  if (!value) return [] as Record<string, unknown>[];
+  const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+  const db = getRepairAdminDb();
+  const pageSize = 200;
+  const all: Record<string, unknown>[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cursor: any = null;
+  for (;;) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q: any = db.collection("chats").where(field, "array-contains", value).limit(pageSize);
+    if (cursor) q = q.startAfter(cursor);
+    const snap = await q.get();
+    if (!snap || snap.empty) break;
+    for (const docSnap of snap.docs) {
+      all.push(rowFromAdminDoc(docSnap.id, docSnap.data()));
+    }
+    cursor = snap.docs[snap.docs.length - 1];
+    if (snap.size < pageSize) break;
+  }
+  return all;
 }
 
 async function fetchViaAdmin(clean: string) {

@@ -1,4 +1,4 @@
-import { canonicalOwnerUids, groupChatsByCalendarDay, timestampMs } from "@/lib/moderation/chatHistory";
+import { discoveryOwnerUids, groupChatsByCalendarDay, timestampMs } from "@/lib/moderation/chatHistory";
 
 import type {
   ModerationChatRow,
@@ -36,6 +36,26 @@ export function profileUsernamesFromChat(chat: ModerationChatRow) {
   return [...names];
 }
 
+/** Merge authoritative full snapshot with a bounded live window by chatId. */
+export function mergeChatsById(
+  authoritative: ModerationChatRow[],
+  recentLive: ModerationChatRow[],
+): ModerationChatRow[] {
+  const map = new Map<string, ModerationChatRow>();
+  for (const chat of authoritative) {
+    if (!chat?.id) continue;
+    map.set(chat.id, chat);
+  }
+  for (const chat of recentLive) {
+    if (!chat?.id) continue;
+    const existing = map.get(chat.id);
+    if (!existing || chatActivityMs(chat) >= chatActivityMs(existing)) {
+      map.set(chat.id, chat);
+    }
+  }
+  return [...map.values()].sort((a, b) => chatActivityMs(b) - chatActivityMs(a));
+}
+
 export function aggregateChatsToUserFeed(
   chats: ModerationChatRow[],
   seenByUsername: Record<string, number>,
@@ -46,6 +66,8 @@ export function aggregateChatsToUserFeed(
   function touch(username: string, chat: ModerationChatRow, uid?: string) {
     const clean = String(username || "").trim();
     if (!clean) return;
+    // Never treat anon session ids as profile owners in the admin feed.
+    if (clean.startsWith("anon_")) return;
 
     const key = clean.toLowerCase();
     const activityMs = chatActivityMs(chat);
@@ -85,7 +107,7 @@ export function aggregateChatsToUserFeed(
       touch(username, chat, chat.receptorUid || chat.targetUid);
     }
 
-    for (const uid of canonicalOwnerUids(chat as unknown as Record<string, unknown>)) {
+    for (const uid of discoveryOwnerUids(chat as unknown as Record<string, unknown>)) {
       if (!uid) continue;
       const username = uidToUsername[uid];
       if (username) touch(username, chat, uid);
@@ -97,12 +119,23 @@ export function aggregateChatsToUserFeed(
     .sort((a, b) => b.lastActivityMs - a.lastActivityMs);
 }
 
+/**
+ * Profiles are optional hints (photos/unseen). Chat-derived entries always win
+ * discovery — a real chat must appear even when moderation_profiles is missing.
+ */
 export function mergeModerationFeed(
   profiles: ModerationProfileRow[],
   chatFeed: ModerationUserFeedEntry[],
   seenByUsername: Record<string, number>,
 ): ModerationUserFeedEntry[] {
   const map = new Map<string, ModerationUserFeedEntry>();
+
+  // Seed from chats first so discovery does not depend on moderation_profiles.
+  for (const entry of chatFeed) {
+    const key = safeProfileKey(entry.username);
+    if (!key) continue;
+    map.set(key, { ...entry });
+  }
 
   for (const profile of profiles) {
     const username = String(profile.username || "").trim();
@@ -111,40 +144,33 @@ export function mergeModerationFeed(
     const key = safeProfileKey(username);
     const activityMs = Number(profile.lastModerationActivityMs || 0);
     const seenMs = seenByUsername[key] ?? 0;
-
-    map.set(key, {
-      username,
-      uid: profile.uid,
-      lastActivityMs: activityMs,
-      lastMessage: profile.lastMessagePreview || "",
-      lastChatId: profile.lastChatId || "",
-      unseen: Boolean(profile.unseen) || activityMs > seenMs,
-      chatCount: 0,
-    });
-  }
-
-  for (const entry of chatFeed) {
-    const key = safeProfileKey(entry.username);
     const existing = map.get(key);
 
     if (!existing) {
-      map.set(key, entry);
+      // Profile-only rows without chats stay as soft hints (chatCount 0).
+      map.set(key, {
+        username,
+        uid: profile.uid,
+        lastActivityMs: activityMs,
+        lastMessage: profile.lastMessagePreview || "",
+        lastChatId: profile.lastChatId || "",
+        unseen: Boolean(profile.unseen) || activityMs > seenMs,
+        chatCount: 0,
+      });
       continue;
     }
 
-    existing.chatCount = Math.max(existing.chatCount, entry.chatCount);
-    if (entry.uid && !existing.uid) existing.uid = entry.uid;
-
-    if (entry.lastActivityMs > existing.lastActivityMs) {
-      existing.lastActivityMs = entry.lastActivityMs;
-      existing.lastMessage = entry.lastMessage || existing.lastMessage;
-      existing.lastChatId = entry.lastChatId || existing.lastChatId;
+    if (profile.uid && !existing.uid) existing.uid = profile.uid;
+    if (activityMs > existing.lastActivityMs) {
+      existing.lastActivityMs = activityMs;
+      existing.lastMessage =
+        profile.lastMessagePreview || existing.lastMessage;
+      existing.lastChatId = profile.lastChatId || existing.lastChatId;
     }
-
     existing.unseen =
       existing.unseen ||
-      entry.unseen ||
-      existing.lastActivityMs > (seenByUsername[key] ?? 0);
+      Boolean(profile.unseen) ||
+      existing.lastActivityMs > seenMs;
   }
 
   return [...map.values()].sort((a, b) => b.lastActivityMs - a.lastActivityMs);

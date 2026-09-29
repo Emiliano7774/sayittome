@@ -9,12 +9,13 @@ import {
   orderBy,
   query,
 } from "firebase/firestore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { auth, db } from "@/lib/firebase";
 import {
   aggregateChatsToUserFeed,
   chatActivityMs,
+  mergeChatsById,
   mergeModerationFeed,
 } from "@/lib/moderation/classicFeed";
 import { normalizeModerationChatRow } from "@/lib/moderation/chatHistory";
@@ -27,32 +28,111 @@ import type {
   ModerationUserFeedEntry,
 } from "@/lib/moderation/types";
 
-async function resolveUidForUsername(username: string) {
-  try {
-    const res = await fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
-      cache: "no-store",
-    });
-    const json = await res.json();
-    return String(json?.profile?.uid || "");
-  } catch {
-    return "";
-  }
-}
+const AUTHORITATIVE_REFRESH_MS = 45_000;
 
-export function useClassicModerationFeed(limitCount = 250) {
+export function useClassicModerationFeed(recentLiveLimit = 250) {
   const [profiles, setProfiles] = useState<ModerationProfileRow[]>([]);
-  const [chats, setChats] = useState<ModerationChatRow[]>([]);
+  const [authoritativeChats, setAuthoritativeChats] = useState<ModerationChatRow[]>([]);
+  const [recentLiveChats, setRecentLiveChats] = useState<ModerationChatRow[]>([]);
   const [seenByUsername, setSeenByUsername] = useState<Record<string, number>>({});
   const [uidToUsername, setUidToUsername] = useState<Record<string, string>>({});
   const [photoByUsername, setPhotoByUsername] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [errorText, setErrorText] = useState("");
+  const [authoritativeTotal, setAuthoritativeTotal] = useState(0);
+  const [authoritativeScanned, setAuthoritativeScanned] = useState(0);
+  const [lastAuthoritativeAt, setLastAuthoritativeAt] = useState("");
   const resolvedUidsRef = useRef<Set<string>>(new Set());
+  const inFlightRef = useRef(false);
 
+  const loadAuthoritative = useCallback(async (options?: { silent?: boolean }) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    const silent = options?.silent === true;
+    try {
+      await auth.authStateReady();
+      const user = auth.currentUser;
+      if (!user) {
+        if (!silent) {
+          setErrorText("Sesión admin requerida para el feed completo.");
+          setLoading(false);
+        }
+        return;
+      }
+      const token = await user.getIdToken();
+      const res = await fetch("/api/admin/chats-feed", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      let json: Record<string, unknown> = {};
+      try {
+        json = (await res.json()) as Record<string, unknown>;
+      } catch {
+        json = {};
+      }
+      if (!res.ok || json?.ok !== true) {
+        const code = String(json?.error || `http_${res.status}`);
+        if (!silent) {
+          setErrorText(`No se pudo cargar el catálogo admin (${code}).`);
+        }
+        return;
+      }
+      const rows = Array.isArray(json.chats)
+        ? (json.chats as Record<string, unknown>[]).map((row) =>
+            normalizeModerationChatRow(row),
+          )
+        : [];
+      setAuthoritativeChats(rows);
+      setAuthoritativeTotal(Number(json.total || rows.length) || rows.length);
+      setAuthoritativeScanned(Number(json.scanned || rows.length) || rows.length);
+      setLastAuthoritativeAt(String(json.generatedAt || new Date().toISOString()));
+      if (json.uidToUsername && typeof json.uidToUsername === "object") {
+        setUidToUsername((prev) => ({
+          ...prev,
+          ...(json.uidToUsername as Record<string, string>),
+        }));
+      }
+      setErrorText("");
+    } catch (error) {
+      if (!silent) {
+        setErrorText(
+          `Error de red al cargar catálogo admin: ${String((error as Error)?.message || "unknown")}`,
+        );
+      }
+    } finally {
+      inFlightRef.current = false;
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Mount bootstrap of authoritative catalog (async). Intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- admin catalog hydrate on open
+    void loadAuthoritative({ silent: false });
+    const timer = window.setInterval(() => {
+      void loadAuthoritative({ silent: true });
+    }, AUTHORITATIVE_REFRESH_MS);
+    const onFocus = () => void loadAuthoritative({ silent: true });
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void loadAuthoritative({ silent: true });
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [loadAuthoritative]);
+
+  // Optional hint source — never required for discovery.
   useEffect(() => {
     const q = query(
       collection(db, "moderation_profiles"),
       orderBy("lastModerationActivityMs", "desc"),
-      limit(limitCount),
+      limit(Math.max(recentLiveLimit, 250)),
     );
 
     const unsub = onSnapshot(
@@ -64,40 +144,39 @@ export function useClassicModerationFeed(limitCount = 250) {
             ...(row.data() as Omit<ModerationProfileRow, "id">),
           })),
         );
-        setLoading(false);
       },
       () => {
         setProfiles([]);
-        setLoading(false);
       },
     );
 
     return () => unsub();
-  }, [limitCount]);
+  }, [recentLiveLimit]);
 
+  // Bounded live window merged ON TOP of authoritative snapshot (never replaces it).
   useEffect(() => {
     const q = query(
       collection(db, "chats"),
       orderBy("updatedAt", "desc"),
-      limit(limitCount),
+      limit(recentLiveLimit),
     );
 
     let fallbackUnsub: (() => void) | null = null;
 
     const applyRows = (snap: { docs: Array<{ id: string; data: () => unknown }> }) => {
       const rows = snap.docs.map(
-        (row) => ({ id: row.id, ...(row.data() as Omit<ModerationChatRow, "id">) }),
+        (row) =>
+          ({ id: row.id, ...(row.data() as Omit<ModerationChatRow, "id">) }) as ModerationChatRow,
       );
       rows.sort((a, b) => chatActivityMs(b) - chatActivityMs(a));
-      setChats(rows);
-      setLoading(false);
+      setRecentLiveChats(rows);
     };
 
     const unsub = onSnapshot(
       q,
       applyRows,
       () => {
-        const fallback = query(collection(db, "chats"), limit(limitCount));
+        const fallback = query(collection(db, "chats"), limit(recentLiveLimit));
         fallbackUnsub = onSnapshot(fallback, applyRows);
       },
     );
@@ -106,11 +185,16 @@ export function useClassicModerationFeed(limitCount = 250) {
       unsub();
       fallbackUnsub?.();
     };
-  }, [limitCount]);
+  }, [recentLiveLimit]);
 
   useEffect(() => {
     return subscribeModerationSeen(setSeenByUsername);
   }, []);
+
+  const chats = useMemo(
+    () => mergeChatsById(authoritativeChats, recentLiveChats),
+    [authoritativeChats, recentLiveChats],
+  );
 
   useEffect(() => {
     const uids = new Set<string>();
@@ -120,8 +204,12 @@ export function useClassicModerationFeed(limitCount = 250) {
         chat.targetUid,
         chat.initiatorUid,
         chat.anonOwnerUid,
+        ...(chat.participantes || []),
+        ...(chat.participants || []),
       ]) {
-        if (uid && !resolvedUidsRef.current.has(uid)) uids.add(uid);
+        if (uid && !String(uid).startsWith("anon_") && !resolvedUidsRef.current.has(uid)) {
+          uids.add(String(uid));
+        }
       }
     }
 
@@ -144,7 +232,7 @@ export function useClassicModerationFeed(limitCount = 250) {
             fotos?: unknown;
           };
           const username = String(data.username || data.nombre || "").trim();
-          if (username) {
+          if (username && !username.startsWith("anon_")) {
             next[uid] = username;
             resolvedUidsRef.current.add(uid);
             const photo = resolveProfilePhoto(data);
@@ -199,7 +287,16 @@ export function useClassicModerationFeed(limitCount = 250) {
     [feed, photoByUsername, fetchedPhotos],
   );
 
-  return { feed: feedWithPhotos, loading, chats };
+  return {
+    feed: feedWithPhotos,
+    loading,
+    errorText,
+    chats,
+    authoritativeTotal,
+    authoritativeScanned,
+    lastAuthoritativeAt,
+    refreshAuthoritative: () => loadAuthoritative({ silent: false }),
+  };
 }
 
 export function useUserModerationChats(username: string) {
@@ -282,7 +379,6 @@ export function useUserModerationChats(username: string) {
       }
       try {
         let result = await fetchUserChats(options.forceRefresh === true);
-        // One safe retry: token refresh / transient unavailable.
         if (
           !result.ok &&
           (result.status === 401 ||
@@ -323,7 +419,8 @@ export function useUserModerationChats(username: string) {
     const onVisibility = () => {
       if (document.visibilityState === "visible") refresh();
     };
-    const timer = window.setInterval(refresh, 10_000);
+    // User detail: keep a gentle refresh; full catalog is on chats-feed.
+    const timer = window.setInterval(refresh, 30_000);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisibility);
 

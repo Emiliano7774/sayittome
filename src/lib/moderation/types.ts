@@ -14,6 +14,8 @@ export type ModerationChatRow = {
   anon?: boolean;
   senderIsAnonymous?: boolean;
   suspicious?: boolean;
+  participantes?: string[];
+  participants?: string[];
   updatedAt?: Timestamp;
   createdAt?: Timestamp;
   moderationReviewedAt?: Timestamp;

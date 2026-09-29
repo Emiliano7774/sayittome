@@ -95,7 +95,11 @@ assert.match(panel, /grid-cols-\[minmax\(280px,0\.8fr\)_minmax\(380px,1\.2fr\)\]
 assert.match(panel, /Conversación temporal/);
 assert.match(panel, /setInterval\(refresh, 10_000\)/);
 assert.match(panel, /setInterval\(\(\) => void loadDetail\(true\), 5_000\)/);
-assert.match(feed, /setInterval\(refresh, 10_000\)/);
+// Full catalog: authoritative refresh ~45s; per-user history ~30s (never top-80 replace).
+assert.match(feed, /AUTHORITATIVE_REFRESH_MS\s*=\s*45_000/);
+assert.match(feed, /\/api\/admin\/chats-feed/);
+assert.match(feed, /mergeChatsById/);
+assert.match(feed, /setInterval\(refresh, 30_000\)/);
 assert.match(feed, /visibilitychange/);
 
 console.log(JSON.stringify({ gate: "ADMIN_MODERATION_FRESH_ISOLATION", pass: true }, null, 2));

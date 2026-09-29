@@ -1,0 +1,136 @@
+{
+  "mode": "apply",
+  "generatedAt": "2026-09-28T23:58:47.090Z",
+  "chatsScanned": 1164,
+  "chatsTotal": 1164,
+  "usuariosScanned": 593,
+  "moderationProfilesBefore": 311,
+  "profilesPlanned": 212,
+  "missingProfileKeysBefore": 29,
+  "missingProfileKeysSample": [
+    "navbench",
+    "afrv_0411",
+    "alan",
+    "alefo123",
+    "alejandro",
+    "alexsond",
+    "cristinavelez",
+    "p0qa_1789396706441_cxvtrx",
+    "tilininsano",
+    "kevvv890",
+    "bunny",
+    "alex0101",
+    "ana",
+    "martina18rr",
+    "rockkai",
+    "qabackd2isj9",
+    "camila",
+    "yvo27",
+    "judith",
+    "nattaly",
+    "qadiagd49wgp",
+    "derek",
+    "qaimmediated4apcf",
+    "esteban192530",
+    "blancotirado666",
+    "luunita",
+    "felix",
+    "qadiagd4c4e5",
+    "p0qa_1789396617774_ma55i7"
+  ],
+  "unresolvedChats": 15,
+  "unresolvedSample": [
+    {
+      "chatId": "canary_inc_mt6xnghv",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mt6xm63j__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mt6xrju7__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mt6xy3mx__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mt71o6sx__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtv8heuu__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtvnbvig__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtvoh9jl__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mty93kks__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtyc94f7__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtyea6z1__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtyfh8u8__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtyi5r2w__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtz98gnc__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    },
+    {
+      "chatId": "canary_mtzxi48d__canary_profile",
+      "reason": "no_resolvable_owner_username"
+    }
+  ],
+  "applied": 212,
+  "moderationProfilesAfter": 340,
+  "coverageOk": true,
+  "stillMissingAfter": [],
+  "stillMissingCount": 0,
+  "sampleKeyCheck": [
+    {
+      "key": "1337",
+      "present": true,
+      "expectedSafe": "1337"
+    },
+    {
+      "key": "navbench",
+      "present": true,
+      "expectedSafe": "navbench"
+    },
+    {
+      "key": "belu37",
+      "present": true,
+      "expectedSafe": "belu37"
+    },
+    {
+      "key": "ernes444",
+      "present": true,
+      "expectedSafe": "ernes444"
+    },
+    {
+      "key": "afrv_0411",
+      "present": true,
+      "expectedSafe": "afrv_0411"
+    }
+  ]
+}
