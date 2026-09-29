@@ -160,6 +160,11 @@ function startHeartbeat() {
 }
 
 function onUserChanged(user: User | null) {
+  // A different uid owns a different alias; reusing the cached one makes the
+  // server reject presence writes as foreign.
+  if ((user?.uid || "") !== (currentUser?.uid || "")) {
+    cachedPresenceAlias = "";
+  }
   currentUser = user;
   lastWriteAt = 0;
   stopHeartbeat();

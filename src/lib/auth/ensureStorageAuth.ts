@@ -1,6 +1,10 @@
 import { signInAnonymously, type User } from "firebase/auth";
 
-import { useAnonymousTabPersistence } from "@/lib/auth/authPersistence";
+import {
+  adoptTabLocalAnonymousAuth,
+  useAnonymousTabPersistence,
+  writeTabAnonClaim,
+} from "@/lib/auth/authPersistence";
 import { auth } from "@/lib/firebase";
 
 let anonymousSignInPromise: Promise<User> | null = null;
@@ -41,7 +45,13 @@ export async function ensureStorageAuth(options?: {
 
   const action = resolveStorageAuthAction(auth.currentUser, options);
   if (action === "use-current" && auth.currentUser) {
-    return auth.currentUser;
+    const current = auth.currentUser;
+    if (current.isAnonymous && options?.allowAnonymous) {
+      // Anonymous uids inherited from shared browser storage make every tab
+      // look like the same person to match — claim a tab-local one instead.
+      return adoptTabLocalAnonymousAuth(current);
+    }
+    return current;
   }
   if (action === "reject") {
     throw new Error("auth_required");
@@ -54,7 +64,10 @@ export async function ensureStorageAuth(options?: {
   if (!anonymousSignInPromise) {
     anonymousSignInPromise = useAnonymousTabPersistence()
       .then(() => signInAnonymously(auth))
-      .then((credential) => credential.user)
+      .then((credential) => {
+        writeTabAnonClaim(credential.user.uid);
+        return credential.user;
+      })
       .finally(() => {
         anonymousSignInPromise = null;
       });

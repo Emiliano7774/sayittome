@@ -1,10 +1,10 @@
-import { signInAnonymously, signOut } from "firebase/auth";
+import { signOut } from "firebase/auth";
 
 import {
   isIncompleteAuthDestination,
   resolvePostAuthPath,
 } from "@/lib/auth/postAuthRedirect";
-import { useAnonymousTabPersistence } from "@/lib/auth/authPersistence";
+import { ensureStorageAuth } from "@/lib/auth/ensureStorageAuth";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
 import { deleteCurrentDeviceFcmToken } from "@/lib/chat/fcmPush";
 import { auth } from "@/lib/firebase";
@@ -51,15 +51,9 @@ export async function enterAnonymousMode() {
     }
   }
 
-  // Isolate this tab's anonymous Auth from sibling tabs/windows. Default
-  // IndexedDB persistence shares one anonymous uid across the whole browser.
-  await useAnonymousTabPersistence();
-  if (auth.currentUser?.isAnonymous) {
-    await signOut(auth).catch(() => null);
-  }
-  if (!auth.currentUser) {
-    await signInAnonymously(auth);
-  }
+  // Claims a tab-local anonymous uid when this browser inherited a shared one,
+  // so sibling anonymous tabs are different people for match.
+  await ensureStorageAuth({ allowAnonymous: true }).catch(() => null);
 
   openAnonMatchDoorLocally();
 

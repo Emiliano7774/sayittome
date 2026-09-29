@@ -1,6 +1,7 @@
 import type { User } from "firebase/auth";
 
 import { ensureStorageAuth } from "@/lib/auth/ensureStorageAuth";
+import { auth } from "@/lib/firebase";
 import {
   resolveAnonMatchCallerSnapshot,
   type AnonMatchCallerSnapshot,
@@ -8,6 +9,7 @@ import {
 import { auditLegacyAnonMatchStoredAlias } from "@/lib/anonMatch/anonMatchLegacyTransition";
 import {
   clearAnonMatchServerAlias,
+  dropAnonMatchAliasIfForeign,
   getStoredAnonMatchAlias,
   storeAnonMatchAlias,
 } from "@/lib/anonMatch/anonMatchSession";
@@ -63,6 +65,7 @@ export async function ensureServerAnonMatchAlias(
   options: EnsureServerAnonMatchAliasOptions = {},
 ): Promise<string> {
   const issue = async () => {
+    const user = await ensureStorageAuth({ allowAnonymous: true });
     const res = await fetchAnonMatchAuthenticated("/api/anon-match/bind-alias", {
       method: "POST",
       body: JSON.stringify({ rotate: options.rotate === true }),
@@ -76,7 +79,11 @@ export async function ensureServerAnonMatchAlias(
     if (!anonId) {
       throw Object.assign(new Error("missing_server_alias"), { status: 500 });
     }
-    storeAnonMatchAlias(anonId);
+    // A bind that raced an auth switch belongs to the old uid — never store it.
+    if (auth.currentUser && auth.currentUser.uid !== user.uid) {
+      return ensureServerAnonMatchAlias({ rotate: false });
+    }
+    storeAnonMatchAlias(anonId, user.uid);
     return anonId;
   };
 
@@ -112,6 +119,7 @@ export async function resolveAnonMatchSessionId(
   if (options.rotate === true) {
     clearAnonMatchServerAlias();
   } else {
+    dropAnonMatchAliasIfForeign(user.uid);
     const stored = getStoredAnonMatchAlias();
     const audit = auditLegacyAnonMatchStoredAlias({ storedServerAlias: stored });
     if (audit.action === "use_stored" && stored) return stored;
