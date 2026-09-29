@@ -62,7 +62,7 @@ export default function AdminStoryBlurButton({
       disabled={busy}
       data-story-chrome
       className={[
-        "absolute right-36 top-6 z-50 inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-400/35 bg-black/55 text-violet-200 backdrop-blur-sm transition active:scale-95 disabled:opacity-50",
+        "absolute right-36 top-6 z-50 inline-flex h-11 w-11 items-center justify-center rounded-full border border-violet-400/35 bg-black/55 text-violet-200 backdrop-blur-sm transition active:scale-95 disabled:opacity-50",
         blurred ? "border-orange-400/40 text-orange-200 ring-1 ring-orange-400/35" : "",
         chromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
         className,
@@ -70,7 +70,7 @@ export default function AdminStoryBlurButton({
       title={blurred ? t("admin_story_unblur") : t("admin_story_blur")}
       aria-label={blurred ? t("admin_story_unblur") : t("admin_story_blur")}
     >
-      {blurred ? <Eye size={15} strokeWidth={2.2} /> : <EyeOff size={15} strokeWidth={2.2} />}
+      {blurred ? <Eye size={20} strokeWidth={2.2} /> : <EyeOff size={20} strokeWidth={2.2} />}
     </button>
   );
 }

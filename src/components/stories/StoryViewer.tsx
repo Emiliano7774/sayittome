@@ -33,6 +33,7 @@ import {
   scheduleStoryViewAckFlush,
 } from "@/lib/stories/ackStoryView";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
+import { shouldDismissStoryGesture } from "@/lib/stories/storyDismissGesture";
 import {
   isOwnerGroupSnapshotComplete,
   isStoryUnseenForViewer,
@@ -87,6 +88,8 @@ const DEFAULT_IMAGE_MS = 5500;
 const SWIPE_REPLY_PX = 56;
 const SWIPE_DISMISS_PX = 48;
 const TAP_MAX_MS = 380;
+const STORY_DISMISS_GESTURE_LOCK_PX = 8;
+const STORY_DISMISS_ANIMATION_MS = 190;
 
 function groupIsUnseenForViewer(group: StoryUserGroup, viewerId: string) {
   if (!viewerId) return false;
@@ -137,6 +140,9 @@ export default function StoryViewer({
   const [replyDragging, setReplyDragging] = useState(false);
   const [replySentToast, setReplySentToast] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [dismissDragY, setDismissDragY] = useState(0);
+  const [dismissDragging, setDismissDragging] = useState(false);
+  const [dismissAnimating, setDismissAnimating] = useState(false);
   const durationWrittenIdRef = useRef("");
   const viewedRef = useRef<Set<string>>(new Set());
   const [frontReady, setFrontReady] = useState(false);
@@ -144,9 +150,16 @@ export default function StoryViewer({
   const [appliedFrontId, setAppliedFrontId] = useState("");
   const [nextMediaReady, setNextMediaReady] = useState(false);
   const pendingAdvanceRef = useRef(false);
-  const pointerRef = useRef({ x: 0, y: 0, t: 0, swiped: false });
+  const pointerRef = useRef({
+    x: 0,
+    y: 0,
+    t: 0,
+    swiped: false,
+    dismissing: false,
+  });
   const replyPointerRef = useRef({ y: 0, dragging: false });
   const replySentTimerRef = useRef<number | null>(null);
+  const dismissTimerRef = useRef<number | null>(null);
   const profileOpenInFlightRef = useRef(false);
   const incomingStoryKey = [
     ownerUid || "",
@@ -318,7 +331,13 @@ export default function StoryViewer({
     errored: frontError,
     durationMs: current?.durationMs,
   });
-  const playbackHeld = paused || replyOpen || reportOpen || (needsBlur && blurLocked);
+  const playbackHeld =
+    paused ||
+    replyOpen ||
+    reportOpen ||
+    dismissDragging ||
+    dismissAnimating ||
+    (needsBlur && blurLocked);
   const isPaused = playbackHeld || !playbackReady;
   const canDelete = current ? canManageStory(current, ownerKey || getStoryOwnerKey()) : false;
   const likerId = getLikerId();
@@ -414,6 +433,9 @@ export default function StoryViewer({
     return () => {
       if (replySentTimerRef.current) {
         window.clearTimeout(replySentTimerRef.current);
+      }
+      if (dismissTimerRef.current) {
+        window.clearTimeout(dismissTimerRef.current);
       }
     };
   }, []);
@@ -556,29 +578,95 @@ export default function StoryViewer({
     setBlurLocked(currentNeedsBlur);
   }
 
+  function releaseStoryPointer(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("[data-story-chrome]")) return;
+    if (replyOpen || reportOpen || dismissAnimating) return;
 
     pointerRef.current = {
       x: event.clientX,
       y: event.clientY,
       t: Date.now(),
       swiped: false,
+      dismissing: false,
     };
+    setDismissDragging(false);
+    setDismissDragY(0);
     setPaused(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (!canReply || replyOpen || pointerRef.current.swiped) return;
+    if (replyOpen || reportOpen || dismissAnimating) return;
 
-    const deltaY = pointerRef.current.y - event.clientY;
-    if (deltaY >= SWIPE_REPLY_PX) {
+    const deltaX = event.clientX - pointerRef.current.x;
+    const deltaDown = event.clientY - pointerRef.current.y;
+    const absX = Math.abs(deltaX);
+
+    if (pointerRef.current.dismissing) {
+      setDismissDragY(Math.max(0, deltaDown));
+      return;
+    }
+
+    if (
+      deltaDown >= STORY_DISMISS_GESTURE_LOCK_PX &&
+      deltaDown > absX * 1.1
+    ) {
+      pointerRef.current.dismissing = true;
+      pointerRef.current.swiped = true;
+      setDismissDragging(true);
+      setDismissDragY(deltaDown);
+      return;
+    }
+
+    if (!canReply || pointerRef.current.swiped) return;
+
+    const deltaUp = -deltaDown;
+    if (deltaUp >= SWIPE_REPLY_PX && deltaUp > absX * 1.1) {
       pointerRef.current.swiped = true;
       setReplyOpen(true);
     }
   }
 
   function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    releaseStoryPointer(event);
+
+    if (pointerRef.current.dismissing) {
+      const deltaY = Math.max(0, event.clientY - pointerRef.current.y);
+      const elapsedMs = Math.max(1, Date.now() - pointerRef.current.t);
+      const shouldDismiss = shouldDismissStoryGesture({
+        deltaY,
+        elapsedMs,
+        viewportHeight: window.innerHeight,
+      });
+
+      pointerRef.current.dismissing = false;
+      setDismissDragging(false);
+
+      if (shouldDismiss) {
+        setDismissAnimating(true);
+        setPaused(true);
+        setDismissDragY(Math.max(window.innerHeight + 32, deltaY));
+        if (dismissTimerRef.current) {
+          window.clearTimeout(dismissTimerRef.current);
+        }
+        dismissTimerRef.current = window.setTimeout(() => {
+          dismissTimerRef.current = null;
+          exitStoryViewer("manual");
+        }, STORY_DISMISS_ANIMATION_MS);
+        return;
+      }
+
+      setDismissDragY(0);
+      setPaused(false);
+      return;
+    }
+
     setPaused(false);
 
     if (pointerRef.current.swiped || replyOpen) return;
@@ -594,6 +682,17 @@ export default function StoryViewer({
       goPrev();
     } else if (event.clientX > third * 2) {
       tryAdvance();
+    }
+  }
+
+  function handlePointerCancel(event: React.PointerEvent<HTMLDivElement>) {
+    releaseStoryPointer(event);
+    pointerRef.current.dismissing = false;
+    pointerRef.current.swiped = true;
+    setDismissDragging(false);
+    if (!dismissAnimating) {
+      setDismissDragY(0);
+      setPaused(false);
     }
   }
 
@@ -753,7 +852,16 @@ export default function StoryViewer({
   }
 
   return (
-    <main className="fixed inset-0 z-[99999] bg-black text-white">
+    <main
+      className="fixed inset-0 z-[99999] bg-black text-white"
+      style={{
+        transform: `translate3d(0, ${dismissDragY}px, 0)`,
+        transition: dismissDragging
+          ? "none"
+          : `transform ${STORY_DISMISS_ANIMATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+        willChange: dismissDragging || dismissAnimating ? "transform" : undefined,
+      }}
+    >
       <div
         className={[
           "absolute left-0 right-0 top-0 z-40 flex gap-1 px-3 pb-2 pt-4 transition-opacity duration-150",
@@ -857,12 +965,12 @@ export default function StoryViewer({
       <div
         className={[
           "absolute inset-0 z-20 touch-none",
-          replyOpen || reportOpen ? "pointer-events-none" : "",
+          replyOpen || reportOpen || dismissAnimating ? "pointer-events-none" : "",
         ].join(" ")}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={() => setPaused(false)}
+        onPointerCancel={handlePointerCancel}
         aria-hidden
       />
 
