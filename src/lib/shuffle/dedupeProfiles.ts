@@ -1,6 +1,6 @@
 import { normalizeUsername } from "@/lib/profile/username";
 
-export const SHUFFLE_DEDUPE_VERSION = 16;
+export const SHUFFLE_DEDUPE_VERSION = 17;
 
 export type ShuffleIdentitySource = "cache" | "live" | "featured" | "page" | "unknown";
 
@@ -38,28 +38,41 @@ const ID_FIELDS = [
   "ownerUid",
 ] as const;
 
-function canonicalUsernameFrom(value?: string) {
+function exactUsernameFrom(value?: string) {
   const normalized = normalizeUsername(String(value || "")).toLowerCase();
   if (!normalized || normalized === "usuario" || normalized === "undefined") {
     return "";
   }
-  return canonicalShuffleUsername(normalized);
+  return normalized;
 }
 
-/** All canonical username keys for a profile (handles stale usernameLower in Firestore). */
-function usernameCanonicalCandidates(profile: {
-  username?: string;
-  usernameLower?: string;
-  usernameAliases?: string[];
-}) {
+function canonicalUsernameFrom(value?: string) {
+  return canonicalShuffleUsername(exactUsernameFrom(value));
+}
+
+/**
+ * All username keys for a profile (handles stale usernameLower in Firestore).
+ * `loose` collapses trailing punctuation variants and may only be used as a
+ * last-resort join for rows with no id/email at all — "ada" and "ada_" are
+ * separate registered accounts.
+ */
+function usernameCanonicalCandidates(
+  profile: {
+    username?: string;
+    usernameLower?: string;
+    usernameAliases?: string[];
+  },
+  options?: { loose?: boolean },
+) {
+  const pick = options?.loose === true ? canonicalUsernameFrom : exactUsernameFrom;
   const candidates = new Set<string>();
-  const fromUsername = canonicalUsernameFrom(profile.username);
-  const fromStored = canonicalUsernameFrom(profile.usernameLower);
+  const fromUsername = pick(profile.username);
+  const fromStored = pick(profile.usernameLower);
   if (fromUsername) candidates.add(fromUsername);
   if (fromStored) candidates.add(fromStored);
   if (Array.isArray(profile.usernameAliases)) {
     for (const alias of profile.usernameAliases) {
-      const next = canonicalUsernameFrom(alias);
+      const next = pick(alias);
       if (next) candidates.add(next);
     }
   }
@@ -70,10 +83,10 @@ export function resolveUsernameLower(profile: {
   username?: string;
   usernameLower?: string;
 }) {
-  const fromUsername = canonicalUsernameFrom(profile.username);
+  const fromUsername = exactUsernameFrom(profile.username);
   if (fromUsername) return fromUsername;
 
-  return canonicalUsernameFrom(profile.usernameLower);
+  return exactUsernameFrom(profile.usernameLower);
 }
 
 /** Looser username match for dedupe: strips trailing punctuation variants. */
@@ -290,7 +303,7 @@ function mergeIdentityFields<T extends DedupeableProfile>(winner: T, loser: T): 
     loser.username,
     winner.usernameLower,
     loser.usernameLower,
-  ].map((value) => canonicalUsernameFrom(value)));
+  ].map((value) => exactUsernameFrom(value)));
   const actionUid = String(winner.uid || "").trim() || String(loser.uid || "").trim();
   const authCandidates = uniqueStrings([
     winner.authUid,
@@ -367,15 +380,16 @@ export function shuffleProfileDedupeKeys(profile: {
   const email = canonicalEmailFrom(profile.email);
   if (email) keys.add(`e:${email}`);
 
-  const usernames = usernameCanonicalCandidates(profile).filter(
-    (username) => !isWeakJoinUsername(username),
-  );
   if (hasHardIdentityEvidence(profile, ids) || email) {
-    for (const username of usernames) keys.add(`u:${username}`);
+    for (const username of usernameCanonicalCandidates(profile)) {
+      if (!isWeakJoinUsername(username)) keys.add(`u:${username}`);
+    }
   }
 
   if (keys.size === 0) {
-    for (const username of usernames) keys.add(`u:${username}`);
+    for (const username of usernameCanonicalCandidates(profile, { loose: true })) {
+      if (!isWeakJoinUsername(username)) keys.add(`u:${username}`);
+    }
   }
 
   return [...keys];

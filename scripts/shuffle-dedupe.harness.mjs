@@ -116,6 +116,28 @@ assert.equal(
   dedupe.shuffleProfileIdentityKey(row({ username: "ada" })),
 );
 
+const trailingPunctuationAccounts = dedupe.dedupeShuffleProfiles([
+  row({
+    uid: "fb-aaron",
+    authUid: "fb-aaron",
+    username: "Aaron",
+    usernameLower: "aaron",
+    email: "aaron@example.com",
+  }),
+  row({
+    uid: "fb-aaron-2",
+    authUid: "fb-aaron-2",
+    username: "Aaron_",
+    usernameLower: "aaron_",
+    email: "otro@example.com",
+  }),
+]);
+assert.equal(
+  trailingPunctuationAccounts.length,
+  2,
+  "distinct registered accounts must not merge on a trailing punctuation name variant",
+);
+
 const anons = dedupe.dedupeShuffleProfiles([
   row({ uid: "anon_sess_1", username: "Guest", photo }),
   row({ uid: "anon_sess_2", username: "Guest", photo }),
@@ -212,7 +234,7 @@ assert.match(
   cache.SHUFFLE_POOL_KEY,
   new RegExp(`v${dedupe.SHUFFLE_DEDUPE_VERSION}$`),
 );
-assert.equal(dedupe.SHUFFLE_DEDUPE_VERSION, 16);
+assert.equal(dedupe.SHUFFLE_DEDUPE_VERSION, 17);
 
 chrome.writeCachedFollowingSnapshot(
   "viewer",

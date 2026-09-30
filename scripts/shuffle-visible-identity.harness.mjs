@@ -208,8 +208,8 @@ assert.equal(renamedIds.length, 1, "normalize must union docId with firebaseUid"
 cache.writeCachedShufflePool(assembled);
 const warm = cache.readCachedShufflePool();
 assertUniqueVisible(warm || [], "cache roundtrip");
-assert.match(cache.SHUFFLE_POOL_KEY, /v16$/);
-assert.equal(dedupe.SHUFFLE_DEDUPE_VERSION, 16);
+assert.match(cache.SHUFFLE_POOL_KEY, /v17$/);
+assert.equal(dedupe.SHUFFLE_DEDUPE_VERSION, 17);
 
 chrome.writeCachedFollowingSnapshot(
   "viewer",
