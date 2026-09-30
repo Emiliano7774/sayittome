@@ -2639,10 +2639,11 @@ export default function ProfileAnonChat({
           alert(t("chat_load_fail"));
         } else if (
           String((error as { code?: string; message?: string })?.code || (error as Error)?.message || "") ===
-            "blocked_by_anon" ||
-          String((error as { code?: string })?.code || "").includes("permission-denied") ||
-          /permission-denied|PERMISSION_DENIED/i.test(String((error as Error)?.message || ""))
+          "blocked_by_anon"
         ) {
+          // Only the explicit gate may claim a block. A rules rejection is not
+          // evidence that the visitor blocked anyone, and painting it as one
+          // locks the composer on a thread the owner can still write to.
           setProfileBlockedByAnon(true);
         }
         setMessages((old) =>

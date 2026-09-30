@@ -36,8 +36,18 @@ export function buildOutgoingChatMetaPatch(
     latestSenderKind?: string;
     latestSenderAnonSessionId?: string;
   },
+  options?: {
+    /**
+     * Identity that owns the receipt keys when it differs from the message
+     * author. A profile reply is authored as `profile_<uid>` but its own
+     * read/typing state belongs to the raw uid, which is the identity the chat
+     * doc is bound to and the only one Firestore rules accept for the receptor.
+     */
+    receiptSenderId?: string;
+  },
 ): Record<string, string | boolean | FieldValue> {
   const activityAt = serverTimestamp();
+  const receiptSender = String(options?.receiptSenderId || "").trim() || senderUid;
   const patch: Record<string, string | boolean | FieldValue> = {
     lastMessage: meta.lastMessage,
     lastMessageSender: meta.lastMessageSender,
@@ -50,9 +60,15 @@ export function buildOutgoingChatMetaPatch(
       ? { latestSenderKind: meta.latestSenderKind }
       : {}),
     latestSenderAnonSessionId: meta.latestSenderAnonSessionId || "",
-    [`readBy.${senderUid}`]: true,
-    [`typing.${senderUid}`]: false,
+    [`readBy.${receiptSender}`]: true,
+    // Typing stays on the canonical identity only: rules allow exactly one key.
+    [`typing.${receiptSender}`]: false,
   };
+
+  // Mirror the author alias so alias-based read checks also see it as read.
+  if (receiptSender !== senderUid) {
+    patch[`readBy.${senderUid}`] = true;
+  }
 
   for (const recipientUid of recipients) {
     for (const readByKey of expandReadByIdentityKeys(recipientUid)) {

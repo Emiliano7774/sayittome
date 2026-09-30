@@ -271,8 +271,10 @@ function resolveThreadAnonRecipientIds(input: {
     addAnon(id);
   }
 
-  // Fail-closed: owner reply must always dirty the chatId visitor key.
-  if (chatIdAnon) recipients.add(chatIdAnon);
+  // The chatId names the one visitor of this thread, and it is the only unread
+  // key rules accept from the owner. A poisoned anonSessionId or a stray anon in
+  // participantes would otherwise dirty extra keys and sink the whole reply.
+  if (chatIdAnon) return [chatIdAnon];
 
   return [...recipients];
 }
@@ -567,6 +569,7 @@ export async function persistAnonChatMessage(
     lastMessage: lastMessagePreview,
     messageId: messageRef.id,
     senderAuthorId: writeMessageAuthorId,
+    receiptSenderId: isOwnerReply ? resolvedTargetUid || persistAuthUid : undefined,
     senderKind,
     senderRole: persistAuthor.senderRole,
     unreadRecipients,
@@ -617,6 +620,7 @@ export async function persistAnonChatMessage(
     isProfileAnonChatId(effectiveChatId)
       ? buildProfileAnonChatWritePayload({
           senderAuthorId: writeMessageAuthorId,
+          receiptSenderId: isOwnerReply ? resolvedTargetUid || persistAuthUid : undefined,
           unreadRecipients,
           lastMessage: lastMessagePreview,
           latestMessageId: messageRef.id,

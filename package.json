@@ -93,6 +93,7 @@
     "test:chat-storage-auth": "node --experimental-strip-types scripts/chat-storage-auth.harness.mjs",
     "test:anon-inbox-multi-thread": "node --experimental-strip-types scripts/anon-inbox-multi-thread.harness.mjs",
     "test:anon-rotation-send-epoch": "node --experimental-strip-types scripts/anon-rotation-send-epoch.harness.mjs",
+    "test:profile-owner-reply-receipts": "node --experimental-strip-types scripts/profile-owner-reply-receipts.harness.mjs",
     "test:shuffle-visible-identity": "node --experimental-strip-types scripts/shuffle-visible-identity.harness.mjs",
     "test:shuffle-dedupe": "node --experimental-strip-types scripts/shuffle-dedupe.harness.mjs",
     "test:shuffle-stable-frame": "node --experimental-strip-types scripts/shuffle-stable-frame.harness.mjs",
