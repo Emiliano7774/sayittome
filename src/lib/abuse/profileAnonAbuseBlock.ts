@@ -468,3 +468,14 @@ export function filterSameEpochLegacyIds(canonicalChatId: string, legacyIds: str
     return Boolean(other) && other === epochAnon && id !== canonicalChatId;
   });
 }
+
+/**
+ * Two chat ids belong to the same visitor epoch. Ids without an anon epoch
+ * (legacy aliases, owner threads) cannot contradict one, so they compare equal.
+ */
+export function sameAnonChatEpoch(a: string, b: string): boolean {
+  const left = parseAnonSessionFromChatId(a);
+  const right = parseAnonSessionFromChatId(b);
+  if (!left || !right) return true;
+  return left === right;
+}

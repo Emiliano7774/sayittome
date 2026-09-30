@@ -30,7 +30,8 @@ assert.doesNotMatch(logoutSrc, /clearInboxSnapshotCache\s*\(/);
 
 assert.match(sessionSrc, /rotateAnonSessionPreserving/);
 assert.match(sessionSrc, /beginFreshAnonSession/);
-// Destructive clears belong only to beginFreshAnonSession, not rotate.
+assert.doesNotMatch(sessionSrc, /deleteAnonymousChatsForSession/);
+// Volatile clears belong only to beginFreshAnonSession, not rotate.
 const rotateStart = sessionSrc.indexOf("export function rotateAnonSessionPreserving");
 const freshStart = sessionSrc.indexOf("export function beginFreshAnonSession");
 assert.ok(rotateStart >= 0 && freshStart > rotateStart);
@@ -63,8 +64,8 @@ assert.notEqual(rotated.next, first);
 assert.equal(anon.getAnonSessionId(), rotated.next);
 assert.deepEqual(sessionChats.getSessionChatIds(), beforeIds);
 
-const reused = sessionChats.findSessionProfileChatIdForUsername("demo_user");
-assert.equal(reused, `${first}__anon_to__demo_user`);
+const reused = sessionChats.findSessionProfileChatIdForUsername("demo_user", rotated.next);
+assert.equal(reused, "");
 
 assert.equal(
   identity.shouldShowAnonIdentityGuide({

@@ -1,7 +1,10 @@
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { markChatsInboxHydrated } from "@/hooks/useChatsInboxReady";
 
 const SESSION_CHATS_KEY = "sayittome_session_chats";
+const NATIVE_SESSION_CHATS_KEY = "sayittome_native_session_chats";
 export const SESSION_CHATS_CHANGED_EVENT = "sayittome-session-chats-changed";
+export const SESSION_CHAT_REMOVED_EVENT = "sayittome-session-chat-removed";
 
 function notifySessionChatsChanged() {
   if (typeof window === "undefined") return;
@@ -12,12 +15,37 @@ export function getSessionChatIds(): string[] {
   if (typeof window === "undefined") return [];
 
   try {
-    const raw = sessionStorage.getItem(SESSION_CHATS_KEY);
+    let raw = sessionStorage.getItem(SESSION_CHATS_KEY);
+
+    // Android/WebView renderer recreation wipes sessionStorage but preserves
+    // localStorage. Restore the volatile registry so inbox rows come back
+    // immediately; the server recovery remains a secondary safety net.
+    if (!raw && isNativeAppShell()) {
+      const persisted = localStorage.getItem(NATIVE_SESSION_CHATS_KEY);
+      if (persisted) {
+        raw = persisted;
+        sessionStorage.setItem(SESSION_CHATS_KEY, persisted);
+      }
+    }
+
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.filter((id) => typeof id === "string" && id.length > 0)
-      : [];
+    if (!Array.isArray(parsed)) return [];
+
+    const ids = parsed.filter(
+      (id) => typeof id === "string" && id.length > 0,
+    );
+
+    // Migration/backfill for native sessions created before the persistent
+    // mirror existed. The currently-live session registry wins.
+    if (isNativeAppShell() && ids.length > 0) {
+      const encoded = JSON.stringify(ids);
+      if (localStorage.getItem(NATIVE_SESSION_CHATS_KEY) !== encoded) {
+        localStorage.setItem(NATIVE_SESSION_CHATS_KEY, encoded);
+      }
+    }
+
+    return ids;
   } catch {
     return [];
   }
@@ -31,11 +59,17 @@ export function unregisterSessionChat(chatId: string) {
   try {
     if (current.length === 0) {
       sessionStorage.removeItem(SESSION_CHATS_KEY);
+      if (isNativeAppShell()) localStorage.removeItem(NATIVE_SESSION_CHATS_KEY);
     } else {
-      sessionStorage.setItem(SESSION_CHATS_KEY, JSON.stringify(current));
+      const encoded = JSON.stringify(current);
+      sessionStorage.setItem(SESSION_CHATS_KEY, encoded);
+      if (isNativeAppShell()) localStorage.setItem(NATIVE_SESSION_CHATS_KEY, encoded);
     }
   } catch {}
 
+  window.dispatchEvent(
+    new CustomEvent(SESSION_CHAT_REMOVED_EVENT, { detail: { chatId } }),
+  );
   notifySessionChatsChanged();
 }
 
@@ -48,29 +82,41 @@ export function registerSessionChat(chatId: string) {
   if (current.includes(chatId)) return;
 
   try {
-    sessionStorage.setItem(
-      SESSION_CHATS_KEY,
-      JSON.stringify([chatId, ...current].slice(0, 40)),
-    );
+    const encoded = JSON.stringify([chatId, ...current]);
+    sessionStorage.setItem(SESSION_CHATS_KEY, encoded);
+    if (isNativeAppShell()) {
+      localStorage.setItem(NATIVE_SESSION_CHATS_KEY, encoded);
+    }
   } catch {}
 
   notifySessionChatsChanged();
 }
 
-/** Existing profile-anon thread for a username (preserves chatId across anon rotation). */
-export function findSessionProfileChatIdForUsername(username: string) {
+/**
+ * Reuse a session profile-anon thread only when live anon matches the chatId sender.
+ * After logout rotation, live anon ≠ old sender → return "" → new chat for receptor.
+ */
+export function findSessionProfileChatIdForUsername(
+  username: string,
+  liveAnonId = "",
+) {
   const needle = String(username || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gi, "_")
     .slice(0, 80);
   if (!needle) return "";
+  const live = String(liveAnonId || "").trim();
   const marker = "__anon_to__";
   for (const chatId of getSessionChatIds()) {
     const id = String(chatId || "");
     if (!id.includes(marker)) continue;
-    const target = id.split(marker)[1] || "";
-    if (target === needle) return id;
+    const [sender = "", target = ""] = id.split(marker);
+    if (target !== needle) continue;
+    if (!sender.startsWith("anon_")) continue;
+    if (live.startsWith("anon_") && sender !== live) continue;
+    if (!live.startsWith("anon_")) continue;
+    return id;
   }
   return "";
 }
@@ -78,5 +124,8 @@ export function findSessionProfileChatIdForUsername(username: string) {
 export function clearSessionChats() {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem(SESSION_CHATS_KEY);
+  try {
+    localStorage.removeItem(NATIVE_SESSION_CHATS_KEY);
+  } catch {}
   notifySessionChatsChanged();
 }

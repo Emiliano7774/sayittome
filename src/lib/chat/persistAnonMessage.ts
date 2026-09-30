@@ -16,7 +16,11 @@ import {
 } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { migrateToCanonicalChat } from "@/lib/chat/migrate";
-import { filterSameEpochLegacyIds } from "@/lib/abuse/profileAnonAbuseBlock";
+import {
+  filterSameEpochLegacyIds,
+  parseAnonSessionFromChatId,
+  sameAnonChatEpoch,
+} from "@/lib/abuse/profileAnonAbuseBlock";
 import {
   buildProfileAnonAtomicSendBatch,
   buildProfileAnonChatWritePayload,
@@ -158,6 +162,30 @@ export class PersistIdentityError extends Error {
 
 export function hasUsableChatData(data?: Record<string, unknown> | null) {
   return Boolean(data && Object.keys(data).length > 0);
+}
+
+/**
+ * Cached chat data may only seed a send when it describes this same thread.
+ * A rotated anon identity resolves a brand-new chatId while the open screen
+ * still holds the previous thread's doc, whose canonicalChatId points at the
+ * old epoch — trusting it writes the message back into the previous visitor's
+ * conversation and the receptor never sees a new anon.
+ */
+export function chatDataMatchesThread(
+  chatId: string,
+  data?: Record<string, unknown> | null,
+) {
+  if (!hasUsableChatData(data)) return false;
+  const threadAnon = parseAnonSessionFromChatId(chatId);
+  if (!threadAnon) return true;
+
+  for (const field of ["canonicalChatId", "id"] as const) {
+    const candidate = String(data?.[field] || "").trim();
+    if (candidate && !sameAnonChatEpoch(candidate, chatId)) return false;
+  }
+
+  const storedAnon = String(data?.anonSessionId || "").trim();
+  return !storedAnon.startsWith("anon_") || storedAnon === threadAnon;
 }
 
 /** Author id is never derived from late targetUid. Owner â†’ profile_{currentUid}. */
@@ -308,9 +336,11 @@ export async function persistAnonChatMessage(
     input.lastMessagePreview ?? storyReplyPersist.lastMessagePreview;
 
   const requestedChatRef = doc(db, "chats", chatId);
-  let existingData = input.existingChatData || {};
+  let existingData = chatDataMatchesThread(chatId, input.existingChatData)
+    ? input.existingChatData || {}
+    : {};
 
-  if (!hasUsableChatData(input.existingChatData)) {
+  if (!hasUsableChatData(existingData)) {
     try {
       const existingSnap = await getDoc(requestedChatRef);
       existingData = existingSnap.exists()
@@ -328,7 +358,8 @@ export async function persistAnonChatMessage(
   const canonicalChatId =
     storedCanonicalChatId &&
     storedCanonicalChatId !== chatId &&
-    isProfileAnonChatId(storedCanonicalChatId)
+    isProfileAnonChatId(storedCanonicalChatId) &&
+    sameAnonChatEpoch(storedCanonicalChatId, chatId)
       ? storedCanonicalChatId
       : chatId;
   const chatRef = doc(db, "chats", canonicalChatId);

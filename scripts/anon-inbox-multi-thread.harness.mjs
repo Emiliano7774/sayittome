@@ -16,10 +16,14 @@ const inbox = await import(
   pathToFileURL(path.join(root, "src/lib/chat/inboxPeerTitle.ts")).href
 );
 
+// targetUid is what marks a thread as incoming for owner_1: without it the
+// owner-view assertions below cannot tell these rows apart from outgoing
+// visitor threads, which are protected from pruning.
 const threadA = {
   id: "anon_sess1__anon_to__maria",
   canonicalChatId: "anon_sess1__anon_to__maria",
   targetUsername: "maria",
+  targetUid: "owner_1",
   lastMessage: "hola maria",
   anonSessionId: "anon_sess1",
   updatedAt: { toMillis: () => 10 },
@@ -28,6 +32,7 @@ const threadB = {
   id: "anon_sess1__anon_to__lucia",
   canonicalChatId: "anon_sess1__anon_to__lucia",
   targetUsername: "lucia",
+  targetUid: "owner_1",
   lastMessage: "hola lucia",
   anonSessionId: "anon_sess1",
   updatedAt: { toMillis: () => 20 },
@@ -36,6 +41,7 @@ const threadA2 = {
   id: "anon_sess2__anon_to__maria",
   canonicalChatId: "anon_sess2__anon_to__maria",
   targetUsername: "maria",
+  targetUid: "owner_1",
   lastMessage: "otra sesion",
   anonSessionId: "anon_sess2",
   updatedAt: { toMillis: () => 30 },
@@ -72,8 +78,20 @@ const afterSync = inbox.mergeVisibleInboxThreads(
   "",
   true,
 );
-assert.equal(afterSync.length, 1);
-assert.equal(afterSync[0].id, threadB.id);
+assert.equal(afterSync.length, 2);
+assert.equal(
+  afterSync.some((row) => row.id === threadA.id),
+  true,
+);
+
+const ownerAfterSync = inbox.mergeVisibleInboxThreads(
+  [threadA, threadB],
+  liveOnlyNew,
+  "owner_1",
+  true,
+);
+assert.equal(ownerAfterSync.length, 1);
+assert.equal(ownerAfterSync[0].id, threadB.id);
 
 assert.equal(
   inbox.areInboxQuerySnapshotsComplete(["participantes"], { uid: true, anon: false }),
@@ -81,21 +99,21 @@ assert.equal(
 );
 assert.equal(
   inbox.areInboxQuerySnapshotsComplete(
-    ["participantes", "anonOwner", "receptor", "target"],
+    ["participantes", "receptor", "target"],
     { uid: true, anon: false },
   ),
   true,
 );
 assert.equal(
   inbox.areInboxQuerySnapshotsComplete(
-    ["participantes", "anonOwner", "receptor", "target"],
+    ["participantes", "receptor", "target"],
     { uid: true, anon: true },
   ),
   false,
 );
 assert.equal(
   inbox.areInboxQuerySnapshotsComplete(
-    ["anonParticipantes", "anonSession"],
+    ["anonRecovery"],
     { uid: false, anon: true },
   ),
   true,
@@ -150,30 +168,22 @@ const genB = state.generation;
 state = cohort.reduceInboxQueryCohort(state, {
   type: "snapshot",
   generation: genB,
-  queryKey: "anonParticipantes",
+  queryKey: "anonRecovery",
   families,
 });
 assert.equal(state.synced, false);
-assert.deepEqual(state.receivedKeys, ["anonParticipantes"]);
+assert.deepEqual(state.receivedKeys, ["anonRecovery"]);
 
 const staleA = cohort.reduceInboxQueryCohort(state, {
   type: "snapshot",
   generation: genA,
-  queryKey: "anonSession",
+  queryKey: "anonRecovery",
   families,
 });
 assert.equal(staleA.ignored, true);
 assert.equal(staleA.synced, false);
-assert.deepEqual(staleA.receivedKeys, ["anonParticipantes"]);
+assert.deepEqual(staleA.receivedKeys, ["anonRecovery"]);
 state = staleA;
-
-state = cohort.reduceInboxQueryCohort(state, {
-  type: "snapshot",
-  generation: genB,
-  queryKey: "anonSession",
-  families,
-});
-assert.equal(state.synced, false);
 
 for (const queryKey of inbox.UID_INBOX_QUERY_KEYS) {
   state = cohort.reduceInboxQueryCohort(state, {

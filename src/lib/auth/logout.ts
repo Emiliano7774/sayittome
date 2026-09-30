@@ -14,9 +14,10 @@ import { disarmVerifiedProfileLinkClaimRetry } from "@/lib/profile/verifiedProfi
 import { clearVerifiedProfileLinkTicket } from "@/lib/profile/verifiedProfileLinkTicket";
 
 /**
- * Explicit logout → next login: rotate live anon identity once while preserving
- * chats, messages, read-state, session chat ids, and thread continuity.
- * Never use the destructive fresh-session path on this logout route.
+ * Explicit logout → next login: rotate live anon identity once.
+ * Session chat list may retain old ids, but resolve only reuses when live anon
+ * matches — so the receptor sees a new thread after re-login + send.
+ * Never wipe message history or delete old chats.
  */
 export async function logoutAndResetAnon() {
   await deleteCurrentAnonymousStories();

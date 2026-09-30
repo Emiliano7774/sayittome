@@ -1,9 +1,9 @@
-import { clearSessionChats } from "@/lib/chat/sessionChats";
-import { deleteAnonymousChatsForSession } from "@/lib/chat/anonChatCleanup";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 import { clearLocalChatReadForViewer } from "@/lib/chat/localChatRead";
 import { deleteAnonymousStoriesForSession } from "@/lib/stories/anonStories";
 
 const ANON_KEY = "sayittome_anon_session";
+const NATIVE_ANON_CONTINUITY_KEY = "sayittome_native_anon_session";
 const ANON_RESET_FLAG = "sayittome_anon_reset_pending";
 export const ANON_SESSION_CHANGED_EVENT = "sayittome-anon-session-changed";
 
@@ -28,10 +28,35 @@ export function getAnonSessionId() {
 
   let current = sessionStorage.getItem(ANON_KEY);
 
+  // Android/WebView can recreate the renderer and wipe sessionStorage while
+  // preserving the app's localStorage/Firebase auth. Restore the same anonymous
+  // identity so inbox threads do not disappear and the next message reuses the
+  // same profile-anon chat. Browser sessions remain session-scoped.
+  if (!current && isNativeAppShell()) {
+    try {
+      const persisted = localStorage.getItem(NATIVE_ANON_CONTINUITY_KEY) || "";
+      if (persisted.startsWith("anon_")) {
+        current = persisted;
+        sessionStorage.setItem(ANON_KEY, current);
+        notifyAnonSessionChanged();
+      }
+    } catch {}
+  }
+
   if (!current) {
     current = mintAnonSessionId();
     sessionStorage.setItem(ANON_KEY, current);
     notifyAnonSessionChanged();
+  }
+
+  // Migration/backfill for already-running native sessions that predate the
+  // continuity key. The live sessionStorage identity wins.
+  if (isNativeAppShell()) {
+    try {
+      if (localStorage.getItem(NATIVE_ANON_CONTINUITY_KEY) !== current) {
+        localStorage.setItem(NATIVE_ANON_CONTINUITY_KEY, current);
+      }
+    } catch {}
   }
 
   return current;
@@ -43,6 +68,9 @@ export function resetAnonSession() {
   }
 
   sessionStorage.removeItem(ANON_KEY);
+  try {
+    localStorage.removeItem(NATIVE_ANON_CONTINUITY_KEY);
+  } catch {}
 }
 
 /** Next shuffle entry should start with a brand-new anonymous identity. */
@@ -83,6 +111,11 @@ export function rotateAnonSessionPreserving() {
     next = mintAnonSessionId();
   }
   sessionStorage.setItem(ANON_KEY, next);
+  if (isNativeAppShell()) {
+    try {
+      localStorage.setItem(NATIVE_ANON_CONTINUITY_KEY, next);
+    } catch {}
+  }
   notifyAnonSessionChanged();
   void import("@/lib/chat/resolveProfileChat").then((mod) => {
     mod.invalidateProfileChatCache();
@@ -90,18 +123,21 @@ export function rotateAnonSessionPreserving() {
   return { previous, next };
 }
 
-/** Discards the current anonymous identity and session chats. */
+/**
+ * Starts a fresh anonymous identity without deleting persisted chat history.
+ * Keep the session chat registry across identity rotation: thread reuse is
+ * already guarded by the live anon id, while preserving the registry prevents
+ * valid inbox rows from disappearing before server recovery finishes.
+ */
 export function beginFreshAnonSession() {
   const oldSession =
     typeof window !== "undefined" ? sessionStorage.getItem(ANON_KEY) : null;
 
   resetAnonSession();
-  clearSessionChats();
 
   if (oldSession) {
     clearLocalChatReadForViewer(oldSession);
     void deleteAnonymousStoriesForSession(oldSession);
-    void deleteAnonymousChatsForSession(oldSession);
     void import("@/lib/chat/threadAnonContinuity").then((mod) => {
       mod.clearThreadAnonContinuity({ rootAnonSessionId: oldSession });
     });
