@@ -550,7 +550,11 @@ async function getRegisteredCountCached(force = false) {
     return cachedRegisteredCount;
   }
 
-  const count = await runCollectionCount("usuarios");
+  // The header counter sits on top of the list, so it must count the people you
+  // can actually reach: the eligible pool, not every `usuarios` doc. A raw
+  // collection count also includes banned accounts, which never show up.
+  const pool = await getProfilesCached(force);
+  const count = pool.length > 0 ? pool.length : await runCollectionCount("usuarios");
   cachedRegisteredCount = count;
   cachedRegisteredAt = now;
 
