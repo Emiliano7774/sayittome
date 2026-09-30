@@ -1,0 +1,18 @@
+---
+description: Do not change chats unless the user explicitly asks
+alwaysApply: true
+---
+
+# Chats: paz absoluto
+
+On 2026-09-30 the user verified chats and asked to freeze them.
+
+Pinned commit: `34cbc1de0e61ad3d615329af64c60fd350ca4b46`
+Git tag: `chats-paz-absoluto-20260930`
+Live hosting sha: `51afb02` (APK 1.0.10+138)
+
+Do not modify chat behavior, inbox, authorship, delete, anon identity, or related rules/payloads unless the user explicitly asks for a chat change in that conversation.
+
+This includes (not exhaustive): `src/components/chat/**`, `src/components/chats/**`, `src/lib/chat/**`, `src/hooks/useChats*.ts`, `src/app/chat/**`, `src/app/api/chat/**`, `firestore.rules` chat match blocks, and chat harnesses.
+
+Unrelated work must not "while we're here" touch chats.

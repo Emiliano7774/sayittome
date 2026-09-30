@@ -1,0 +1,17 @@
+{
+  "kind": "chats-paz-absoluto",
+  "frozenAt": "2026-09-30T07:51:00.000Z",
+  "tag": "chats-paz-absoluto-20260930",
+  "releaseCommit": "34cbc1de0e61ad3d615329af64c60fd350ca4b46",
+  "chatFixCommit": "51afb02",
+  "hostingSha": "51afb02",
+  "apk": "1.0.10+138",
+  "hosting": "https://sayittome-app.web.app",
+  "verified": [
+    "anon identity rotation opens a new thread for the receptor",
+    "profile owner can reply without a false block",
+    "logged-in visitor bubbles stay on the right",
+    "deleting chats does not resurrect history when reopening the profile"
+  ],
+  "restore": "git checkout chats-paz-absoluto-20260930"
+}
