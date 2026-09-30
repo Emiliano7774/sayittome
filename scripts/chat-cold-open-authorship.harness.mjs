@@ -66,6 +66,75 @@ const rotated = author.mapFirestoreDocToProfileAnonMessage(
 assert.equal(rotated.mine, false);
 assert.equal(rotated.mineResolved, false, "an unprovable author stays unresolved");
 
+// Logged-in visitor (profile A → profile B as anon): own rows stay on the
+// right before targetUid/identityReady settle. The previous gate treated any
+// Firebase uid as "not a visitor" and painted those bubbles as incoming.
+const loggedInVisitorCtx = {
+  chatId: "anon_thread_visitor__anon_to__eli0990",
+  chatAnonSessionId: threadAnonId,
+  currentUid: "visitor_uid_logged_in",
+  targetUid: "",
+  chatOwnerUid: "",
+  viewerUsername: "visitorname",
+  identityReady: false,
+  authReady: true,
+};
+const loggedInVisitor = [
+  ["m1", "hola"],
+  ["m2", "seguis ahi?"],
+].map(([id, text]) =>
+  author.mapFirestoreDocToProfileAnonMessage(id, messageData(text), {
+    ...author.buildProfileAnonViewerContext(loggedInVisitorCtx),
+    identityReady: false,
+  }),
+);
+assert.deepEqual(
+  loggedInVisitor.map((m) => m.mine),
+  [true, true],
+  "logged-in visitor messages stay on the right before target uid loads",
+);
+assert.equal(
+  author.mapFirestoreDocToProfileAnonMessage(
+    "owner-reply",
+    {
+      texto: "hola de vuelta",
+      fromUid: "profile_owner_uid_eli",
+      senderRole: "profile",
+      senderKind: "profile",
+      senderAuthUid: "owner_uid_eli",
+      createdAt: { seconds: 1790000001, nanoseconds: 0 },
+    },
+    {
+      ...author.buildProfileAnonViewerContext(loggedInVisitorCtx),
+      identityReady: false,
+    },
+  ).mine,
+  false,
+  "the other profile's replies stay incoming for the logged-in visitor",
+);
+
+const poisoned = author.remapProfileAnonMessagesMine(
+  [
+    {
+      id: "cached-wrong-side",
+      fromUid: threadAnonId,
+      senderRole: "anon",
+      senderKind: "anon",
+      mine: false,
+      mineResolved: true,
+    },
+  ],
+  {
+    ...author.buildProfileAnonViewerContext(loggedInVisitorCtx),
+    identityReady: false,
+  },
+);
+assert.equal(
+  poisoned[0].mine,
+  true,
+  "a cached incoming side on the thread anon must not stick for the visitor",
+);
+
 // Whatever is unresolved must never reach the durable cache.
 const cached = [...cold, rotated].map((m) =>
   cache.uiMessageToCached({

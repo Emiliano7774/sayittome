@@ -320,20 +320,22 @@ export function mapFirestoreDocToProfileAnonMessage(
   });
   const resolvedSenderKind =
     senderKind === "unknown" ? undefined : senderKind;
-  const mine = resolveProfileAnonMessageMine({
-    senderKind: data.senderKind,
-    from,
-    threadAnonId: ctx.threadAnonId,
-    liveAnonId: ctx.liveAnonId,
-    knownAnonIds: ctx.knownAnonIds,
-    profileUid: ctx.profileUid,
-    messageProfileUid,
-    isOwnerViewing: ctx.isOwnerViewing,
-    ownerUid: ctx.currentUid,
-    senderAuthUid: data.senderAuthUid,
-    senderRole: data.senderRole,
-    identityReady: ctx.identityReady,
-  });
+    const mine = resolveProfileAnonMessageMine({
+      senderKind: data.senderKind,
+      from,
+      threadAnonId: ctx.threadAnonId,
+      liveAnonId: ctx.liveAnonId,
+      knownAnonIds: ctx.knownAnonIds,
+      profileUid: ctx.profileUid,
+      messageProfileUid,
+      isOwnerViewing: ctx.isOwnerViewing,
+      ownerUid: ctx.currentUid,
+      senderAuthUid: data.senderAuthUid,
+      senderRole: data.senderRole,
+      identityReady: ctx.identityReady,
+      chatId: ctx.chatId,
+      viewerUsername: ctx.viewerUsername,
+    });
 
   const resolvedType = deletedForEveryone ? "text" : resolveFirestoreMessageType(data);
   const displayText = deletedForEveryone
@@ -403,14 +405,22 @@ export function remapProfileAnonMessagesMine<
   const next = messages.map((message) => {
     // Holding keeps a settled side from flickering, but a side decided before
     // identity settled is not settled — it must stay open to re-resolution.
+    // Also reopen the logged-in-visitor invert: mine=false on the thread's own
+    // anon author is not a settled incoming message, it is a mis-attribution.
+    const from = String(message.fromUid || "");
+    const visitorSelfInvert =
+      message.mine === false &&
+      !isOwnerViewing &&
+      (message.senderRole === "anon" || !message.senderRole) &&
+      from === ctx.threadAnonId;
     if (
       shouldHoldVisualAuthorship(resolved) &&
       typeof message.mine === "boolean" &&
-      message.mineResolved !== false
+      message.mineResolved !== false &&
+      !visitorSelfInvert
     ) {
       return message;
     }
-    const from = String(message.fromUid || "");
     const messageProfileUid = isProfileReplyAuthorId(from)
       ? from.slice("profile_".length)
       : undefined;
@@ -427,6 +437,8 @@ export function remapProfileAnonMessagesMine<
       senderAuthUid: message.senderAuthUid,
       senderRole: message.senderRole,
       identityReady: ctx.identityReady,
+      chatId: ctx.chatId,
+      viewerUsername: ctx.viewerUsername,
     });
 
     const mineResolved = resolved || mine;

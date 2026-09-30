@@ -78,18 +78,42 @@ export function visitorAnonMatches(
 /**
  * The thread anon id is baked into the chatId and profile owners never author
  * with it (owner writes are profile_{uid}/senderRole=profile, enforced by the
- * Firestore rules). A viewer with no profile identity therefore owns that
- * author id outright, with no need to wait for auth to settle.
+ * Firestore rules). Matching that author id is visitor-proof unless this
+ * viewer is the profile being written to.
+ *
+ * Having a Firebase uid is not enough to refuse: a logged-in profile talking
+ * as anon still owns the baked-in visitor id, and refusing it paints their
+ * own messages as incoming until target metadata arrives (often the first
+ * paint on /chat/[chatId], which starts with an empty targetUid).
  */
 function threadAnonProvesVisitor(input: {
   from: string;
   threadAnonId: string;
   viewerProfileUid?: string;
+  profileUid?: string;
+  chatId?: string;
+  viewerUsername?: string;
 }) {
-  if (String(input.viewerProfileUid || "").trim()) return false;
   const thread = String(input.threadAnonId || "").trim();
   if (!thread.startsWith("anon_")) return false;
-  return String(input.from || "").trim() === thread;
+  if (String(input.from || "").trim() !== thread) return false;
+
+  const viewer = String(input.viewerProfileUid || "").trim();
+  const owner = String(input.profileUid || "").trim();
+  if (viewer && owner && viewer === owner) return false;
+
+  if (
+    isProfileThreadOwner({
+      chatId: String(input.chatId || ""),
+      authUid: viewer,
+      profileUid: owner,
+      viewerUsername: input.viewerUsername,
+    })
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 export function resolveAnonRoleMine(input: {
@@ -100,6 +124,9 @@ export function resolveAnonRoleMine(input: {
   identityReady: boolean;
   isOwnerViewing: boolean;
   viewerProfileUid?: string;
+  profileUid?: string;
+  chatId?: string;
+  viewerUsername?: string;
 }) {
   if (input.isOwnerViewing) return false;
   if (!input.identityReady) return threadAnonProvesVisitor(input);
@@ -289,6 +316,9 @@ export function resolveMineFromCanonicalSender(input: {
   liveAnonId?: string;
   knownAnonIds?: string[];
   identityReady: boolean;
+  profileUid?: string;
+  chatId?: string;
+  viewerUsername?: string;
 }): boolean {
   const viewer = String(input.viewerUid || "").trim();
   const senderAuth = String(input.senderAuthUid || "").trim();
@@ -306,6 +336,9 @@ export function resolveMineFromCanonicalSender(input: {
       identityReady: input.identityReady,
       isOwnerViewing: input.isOwnerViewing,
       viewerProfileUid: viewer,
+      profileUid: input.profileUid,
+      chatId: input.chatId,
+      viewerUsername: input.viewerUsername,
     });
   }
   return false;
@@ -324,6 +357,8 @@ export function resolveProfileAnonMessageMine(input: {
   senderAuthUid?: string;
   senderRole?: string;
   identityReady?: boolean;
+  chatId?: string;
+  viewerUsername?: string;
 }) {
   const from = String(input.from || "").trim();
   const authUid = String(input.ownerUid || "").trim();
@@ -349,6 +384,9 @@ export function resolveProfileAnonMessageMine(input: {
       identityReady,
       isOwnerViewing: input.isOwnerViewing,
       viewerProfileUid: authUid,
+      profileUid,
+      chatId: input.chatId,
+      viewerUsername: input.viewerUsername,
     });
   }
 
@@ -377,6 +415,9 @@ export function resolveProfileAnonMessageMine(input: {
       from,
       threadAnonId: input.threadAnonId,
       viewerProfileUid: authUid,
+      profileUid,
+      chatId: input.chatId,
+      viewerUsername: input.viewerUsername,
     });
   }
 

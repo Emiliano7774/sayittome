@@ -347,20 +347,6 @@ function hydrateCachedMessages(
       ? from.slice("profile_".length)
       : undefined;
 
-    // Hold cached side until role identity is ready (auth+profile is not enough).
-    if (
-      (ctx.identityReady !== true || (!ctx.currentUid && !isOwnerViewing)) &&
-      typeof row.mine === "boolean"
-    ) {
-      return {
-        ...base,
-        mine: row.mine,
-        mineResolved: true,
-        senderKind: row.senderKind,
-        fromUid: row.fromUid,
-      };
-    }
-
     const mine = resolveProfileAnonMessageMine({
       senderKind: row.senderKind,
       from,
@@ -374,6 +360,8 @@ function hydrateCachedMessages(
       senderAuthUid: row.senderAuthUid,
       senderRole: row.senderRole,
       identityReady: ctx.identityReady,
+      chatId: ctx.chatId,
+      viewerUsername: ctx.viewerUsername,
     });
 
     return {

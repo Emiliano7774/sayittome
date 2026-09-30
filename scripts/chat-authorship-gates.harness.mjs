@@ -376,6 +376,54 @@ assert.equal(
   "the profile owner never owns the visitor author id",
 );
 
+// Logged-in profile A talking as anon to profile B: having a Firebase uid
+// must not paint A's own bubbles as incoming while target metadata is late.
+assert.equal(
+  gates.resolveProfileAnonMessageMine({
+    from: threadA,
+    threadAnonId: threadA,
+    profileUid: ownerUid,
+    isOwnerViewing: false,
+    senderRole: "anon",
+    ownerUid: visitorUid,
+    identityReady: false,
+    chatId,
+    viewerUsername: "visitorname",
+  }),
+  true,
+  "logged-in visitor still owns the chatId-embedded anon author",
+);
+assert.equal(
+  gates.resolveProfileAnonMessageMine({
+    from: threadA,
+    threadAnonId: threadA,
+    profileUid: "",
+    isOwnerViewing: false,
+    senderRole: "anon",
+    ownerUid: visitorUid,
+    identityReady: false,
+    chatId,
+    viewerUsername: "visitorname",
+  }),
+  true,
+  "logged-in visitor owns the thread anon before target uid arrives",
+);
+assert.equal(
+  gates.resolveProfileAnonMessageMine({
+    from: threadA,
+    threadAnonId: threadA,
+    profileUid: ownerUid,
+    isOwnerViewing: false,
+    senderRole: "anon",
+    ownerUid,
+    identityReady: false,
+    chatId,
+    viewerUsername: "maria",
+  }),
+  false,
+  "unproven owner still cannot claim the visitor author id",
+);
+
 console.log(
   "pass authorship_gates",
   JSON.stringify({
