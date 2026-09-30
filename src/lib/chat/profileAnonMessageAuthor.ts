@@ -88,6 +88,8 @@ export type ProfileAnonUiMessage = {
   clientId?: string;
   text: string;
   mine: boolean;
+  /** False when `mine` was decided before role identity settled. Never cached. */
+  mineResolved?: boolean;
   fromUid?: string;
   senderAuthUid?: string;
   senderRole?: string;
@@ -351,6 +353,7 @@ export function mapFirestoreDocToProfileAnonMessage(
     clientId: data.clientId ? String(data.clientId) : undefined,
     text: displayText,
     mine,
+    mineResolved: ctx.identityReady === true || mine,
     fromUid: from || undefined,
     senderAuthUid: String(data.senderAuthUid || "").trim() || undefined,
     senderRole: String(data.senderRole || "").trim() || undefined,
@@ -388,18 +391,22 @@ export function mapFirestoreDocToProfileAnonMessage(
 export function remapProfileAnonMessagesMine<
   T extends Pick<
     ProfileAnonUiMessage,
-    "fromUid" | "senderKind" | "mine" | "senderAuthUid" | "senderRole"
+    "fromUid" | "senderKind" | "mine" | "mineResolved" | "senderAuthUid" | "senderRole"
   >,
 >(messages: T[], ctx: ProfileAnonViewerContext): T[] {
   let changed = false;
+  const resolved = ctx.identityReady === true;
   const isOwnerViewing =
     ctx.isOwnerViewing ||
     inferOwnerViewingFromAuthors(ctx.currentUid, ctx.profileUid, messages);
 
   const next = messages.map((message) => {
+    // Holding keeps a settled side from flickering, but a side decided before
+    // identity settled is not settled — it must stay open to re-resolution.
     if (
-      shouldHoldVisualAuthorship(ctx.identityReady === true) &&
-      typeof message.mine === "boolean"
+      shouldHoldVisualAuthorship(resolved) &&
+      typeof message.mine === "boolean" &&
+      message.mineResolved !== false
     ) {
       return message;
     }
@@ -422,10 +429,11 @@ export function remapProfileAnonMessagesMine<
       identityReady: ctx.identityReady,
     });
 
-    if (mine === message.mine) return message;
+    const mineResolved = resolved || mine;
+    if (mine === message.mine && mineResolved === message.mineResolved) return message;
 
     changed = true;
-    return { ...message, mine };
+    return { ...message, mine, mineResolved };
   });
 
   return changed ? next : messages;

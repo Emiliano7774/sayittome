@@ -255,6 +255,8 @@ type Message = {
   id: string;
   text: string;
   mine: boolean;
+  /** False when `mine` was decided before role identity settled. Never cached. */
+  mineResolved?: boolean;
   fromUid?: string;
   senderAuthUid?: string;
   senderRole?: string;
@@ -353,6 +355,7 @@ function hydrateCachedMessages(
       return {
         ...base,
         mine: row.mine,
+        mineResolved: true,
         senderKind: row.senderKind,
         fromUid: row.fromUid,
       };
@@ -376,6 +379,7 @@ function hydrateCachedMessages(
     return {
       ...base,
       mine,
+      mineResolved: ctx.identityReady === true || mine,
       senderKind: row.senderKind,
       fromUid: row.fromUid,
     };

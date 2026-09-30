@@ -98,8 +98,11 @@ export function explainMineDecision(input: {
   if (from.startsWith("profile_") || input.senderRole === "profile") {
     return "visitor_sees_profile_as_peer";
   }
+  if (input.threadAnonId && from === input.threadAnonId) {
+    if (input.identityReady) return "threadAnon_match";
+    if (!authUid) return "threadAnon_match_no_profile_identity";
+  }
   if (!input.identityReady) return "identity_not_ready_no_visitor_fallback";
-  if (input.threadAnonId && from === input.threadAnonId) return "threadAnon_match";
   return "default_not_mine";
 }
 

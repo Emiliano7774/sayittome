@@ -332,6 +332,50 @@ assert.equal(
   "signed-out visitor after authReady may use thread anon",
 );
 
+// Cold open before auth settles: the chatId-embedded author is proof enough
+// for a viewer with no profile identity, so old bubbles never jump to the left.
+assert.equal(
+  gates.resolveProfileAnonMessageMine({
+    from: threadA,
+    threadAnonId: threadA,
+    liveAnonId: liveC,
+    profileUid: ownerUid,
+    isOwnerViewing: false,
+    senderRole: "anon",
+    ownerUid: "",
+    identityReady: false,
+  }),
+  true,
+  "thread anon author stays mine while auth is still resolving",
+);
+assert.equal(
+  gates.resolveProfileAnonMessageMine({
+    from: liveB,
+    threadAnonId: threadA,
+    liveAnonId: liveB,
+    profileUid: ownerUid,
+    isOwnerViewing: false,
+    senderRole: "anon",
+    ownerUid: "",
+    identityReady: false,
+  }),
+  false,
+  "a rotated author id still needs settled identity",
+);
+assert.equal(
+  gates.resolveProfileAnonMessageMine({
+    from: threadA,
+    threadAnonId: threadA,
+    profileUid: ownerUid,
+    isOwnerViewing: true,
+    senderRole: "anon",
+    ownerUid: "",
+    identityReady: false,
+  }),
+  false,
+  "the profile owner never owns the visitor author id",
+);
+
 console.log(
   "pass authorship_gates",
   JSON.stringify({

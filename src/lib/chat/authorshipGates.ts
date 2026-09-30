@@ -75,6 +75,23 @@ export function visitorAnonMatches(
   return knownAnonIds.some((id) => id === author);
 }
 
+/**
+ * The thread anon id is baked into the chatId and profile owners never author
+ * with it (owner writes are profile_{uid}/senderRole=profile, enforced by the
+ * Firestore rules). A viewer with no profile identity therefore owns that
+ * author id outright, with no need to wait for auth to settle.
+ */
+function threadAnonProvesVisitor(input: {
+  from: string;
+  threadAnonId: string;
+  viewerProfileUid?: string;
+}) {
+  if (String(input.viewerProfileUid || "").trim()) return false;
+  const thread = String(input.threadAnonId || "").trim();
+  if (!thread.startsWith("anon_")) return false;
+  return String(input.from || "").trim() === thread;
+}
+
 export function resolveAnonRoleMine(input: {
   from: string;
   threadAnonId: string;
@@ -82,9 +99,10 @@ export function resolveAnonRoleMine(input: {
   knownAnonIds?: string[];
   identityReady: boolean;
   isOwnerViewing: boolean;
+  viewerProfileUid?: string;
 }) {
-  if (!input.identityReady) return false;
   if (input.isOwnerViewing) return false;
+  if (!input.identityReady) return threadAnonProvesVisitor(input);
   return visitorAnonMatches(
     input.from,
     input.threadAnonId,
@@ -287,6 +305,7 @@ export function resolveMineFromCanonicalSender(input: {
       knownAnonIds: input.knownAnonIds,
       identityReady: input.identityReady,
       isOwnerViewing: input.isOwnerViewing,
+      viewerProfileUid: viewer,
     });
   }
   return false;
@@ -329,6 +348,7 @@ export function resolveProfileAnonMessageMine(input: {
       knownAnonIds: input.knownAnonIds,
       identityReady,
       isOwnerViewing: input.isOwnerViewing,
+      viewerProfileUid: authUid,
     });
   }
 
@@ -352,7 +372,13 @@ export function resolveProfileAnonMessageMine(input: {
     return false;
   }
 
-  if (!identityReady) return false;
+  if (!identityReady) {
+    return threadAnonProvesVisitor({
+      from,
+      threadAnonId: input.threadAnonId,
+      viewerProfileUid: authUid,
+    });
+  }
 
   return visitorAnonMatches(
     from,

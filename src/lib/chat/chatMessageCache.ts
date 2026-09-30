@@ -9,7 +9,11 @@ export type CachedChatMessage = {
   senderProfileId?: string;
   senderRole?: string;
   senderKind?: "anon" | "profile";
-  /** Last known side for warm paint before auth settles; always recomputed after. */
+  /**
+   * Last known side for warm paint before auth settles; always recomputed
+   * after. Only written once role identity settled, so a cold-open guess can
+   * never become the durable side of a bubble.
+   */
   mine?: boolean;
   reply?: string;
   storyReply?: {
@@ -137,6 +141,7 @@ export function uiMessageToCached(message: {
   senderRole?: string;
   senderKind?: "anon" | "profile";
   mine?: boolean;
+  mineResolved?: boolean;
   reply?: string;
   storyReply?: CachedChatMessage["storyReply"];
   type?: CachedChatMessage["type"];
@@ -160,7 +165,7 @@ export function uiMessageToCached(message: {
     senderProfileId: message.senderProfileId,
     senderRole: message.senderRole,
     senderKind: message.senderKind,
-    mine: message.mine,
+    mine: message.mineResolved === false ? undefined : message.mine,
     reply: message.reply,
     storyReply: message.storyReply,
     type: resolveFirestoreMessageType(message),
