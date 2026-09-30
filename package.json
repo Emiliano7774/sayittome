@@ -62,6 +62,7 @@
     "test:shuffle-online-privacy-notice": "node scripts/shuffle-online-privacy-notice.harness.mjs",
     "test:chat-message-authorship": "node scripts/chat-message-authorship.harness.mjs",
     "test:chat-authorship-lifecycle": "node scripts/chat-authorship-lifecycle.harness.mjs",
+    "test:chat-cold-open-authorship": "node --experimental-strip-types scripts/chat-cold-open-authorship.harness.mjs",
     "audit:authorship-v2": "node scripts/audit-chat-authorship-v2-dry-run.mjs",
     "test:historical-authorship-repair": "node --experimental-strip-types scripts/historical-authorship-repair.harness.mjs",
     "test:historical-repair-safety": "node --experimental-strip-types scripts/historical-repair-safety.harness.mjs",
