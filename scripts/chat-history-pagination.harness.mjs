@@ -61,6 +61,7 @@ const chatSrc = fs.readFileSync(
 assert.match(chatSrc, /mergeLiveWindowIntoHistory/);
 assert.match(chatSrc, /loadOlderMessages/);
 assert.match(chatSrc, /CHAT_MESSAGE_PAGE_SIZE/);
+assert.match(chatSrc, /completeTail/);
 assert.match(chatSrc, /restoreScrollAnchor/);
 
 console.log(JSON.stringify({ gate: "CHAT_HISTORY_PAGINATION", pass: true }, null, 2));

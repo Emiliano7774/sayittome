@@ -42,15 +42,38 @@ export function callerOwnsInboxChat(input: {
 
   const hint = usernameHintFromAnonChatId(input.chatId);
   if (!hint) return false;
-  const names = [
-    input.username,
-    input.usernameLower,
-    input.data.targetUsername,
-    input.data.receptorUsername,
-    input.data.username,
-  ];
-  return names.some((value) => {
+  // Only the caller's username may match the chatId hint. The document's
+  // targetUsername is always that hint for a profile-anon thread, so using it
+  // here let the visitor delete the receptor's chat.
+  return [input.username, input.usernameLower].some((value) => {
     const raw = String(value || "").trim();
     return Boolean(raw) && safeChatPart(raw) === hint;
   });
+}
+
+/** Visitor who started the thread, proven by the private chat lease. */
+export function callerStartedAnonVisitorChat(input: {
+  uid: string;
+  leaseVisitorAuthUid?: string | null;
+}) {
+  const uid = String(input.uid || "").trim();
+  const bound = String(input.leaseVisitorAuthUid || "").trim();
+  return Boolean(uid && bound && uid === bound);
+}
+
+export function callerCanDeleteInboxChat(input: {
+  uid: string;
+  username?: string;
+  usernameLower?: string;
+  chatId: string;
+  data: Record<string, unknown> | null;
+  leaseVisitorAuthUid?: string | null;
+}) {
+  return (
+    callerOwnsInboxChat(input) ||
+    callerStartedAnonVisitorChat({
+      uid: input.uid,
+      leaseVisitorAuthUid: input.leaseVisitorAuthUid,
+    })
+  );
 }

@@ -1,7 +1,9 @@
 import { rememberDeletedInboxChats } from "@/lib/chat/deletedInboxChats";
+import { removeCachedChatMessages } from "@/lib/chat/chatMessageCache";
 import { auth } from "@/lib/firebase";
 import { removeInboxSnapshotChat } from "@/lib/chat/inboxSnapshot";
 import { unregisterSessionChat } from "@/lib/chat/sessionChats";
+import { clearPreparedProfileChat } from "@/lib/chat/profileChatWarmup";
 
 const CHUNK = 25;
 
@@ -9,6 +11,8 @@ function forgetLocalChat(chatId: string) {
   rememberDeletedInboxChats([chatId]);
   unregisterSessionChat(chatId);
   removeInboxSnapshotChat(chatId);
+  removeCachedChatMessages(chatId);
+  clearPreparedProfileChat();
 }
 
 export async function hardDeleteChats(chatIds: string[]) {

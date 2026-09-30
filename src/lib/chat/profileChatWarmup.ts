@@ -1,6 +1,7 @@
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { readCachedChatMessages } from "@/lib/chat/chatMessageCache";
+import { isMessageClearedByInboxDelete } from "@/lib/chat/deletedInboxChats";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 
 export type PreparedProfileChat = {
@@ -28,7 +29,9 @@ export function prepareProfileChat(username: string, { promote = false } = {}) {
   const chatId = buildProfileAnonChatId(senderId, slug);
   const href = `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(slug)}`;
 
-  const existing = readCachedChatMessages(chatId);
+  const existing = (readCachedChatMessages(chatId) || []).filter(
+    (row) => !isMessageClearedByInboxDelete(chatId, row.createdAtMs),
+  );
   const next: PreparedProfileChat = {
     username: slug,
     chatId,

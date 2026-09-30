@@ -123,6 +123,7 @@
     "test:shuffle-active-filter": "node --experimental-strip-types scripts/shuffle-active-filter.harness.mjs",
     "test:chat-notification-unique-ids": "node --experimental-strip-types scripts/chat-notification-unique-ids.harness.mjs",
     "test:chat-history-pagination": "node --experimental-strip-types scripts/chat-history-pagination.harness.mjs",
+    "test:chat-delete-reopen": "node --experimental-strip-types scripts/chat-delete-reopen.harness.mjs",
     "test:chat-swipe-reply": "node --experimental-strip-types scripts/chat-swipe-reply.harness.mjs",
     "test:chat-media-send-no-silent-discard": "node --experimental-strip-types scripts/chat-media-send-no-silent-discard.harness.mjs",
     "test:chat-media-send-persist": "node --experimental-strip-types scripts/chat-media-send-persist.harness.mjs",

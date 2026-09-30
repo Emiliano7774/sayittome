@@ -1,6 +1,7 @@
 import {
   collection,
   getDocs,
+  getDocsFromCache,
   limitToLast,
   orderBy,
   query,
@@ -9,8 +10,10 @@ import {
 import {
   readCachedChatMessages,
   writeCachedChatMessages,
+  removeCachedChatMessages,
   type CachedChatMessage,
 } from "@/lib/chat/chatMessageCache";
+import { isDeletedInboxChatId, isMessageClearedByInboxDelete } from "@/lib/chat/deletedInboxChats";
 import {
   firestoreMessageAuthorId,
   resolveFirestoreMessageType,
@@ -72,7 +75,16 @@ export function prefetchChatThreadAsync(
   if (!chatId || typeof window === "undefined") return Promise.resolve([]);
 
   const existing = readCachedChatMessages(chatId);
-  if (existing?.length && !options?.force) return Promise.resolve(existing);
+  if (existing?.length && !options?.force) {
+    const kept = existing.filter(
+      (row) => !isMessageClearedByInboxDelete(chatId, row.createdAtMs),
+    );
+    if (kept.length !== existing.length) {
+      if (kept.length) writeCachedChatMessages(chatId, kept);
+      else removeCachedChatMessages(chatId);
+    }
+    if (kept.length) return Promise.resolve(kept);
+  }
 
   const pending = inflight.get(chatId);
   if (pending) return pending;
@@ -84,17 +96,37 @@ export function prefetchChatThreadAsync(
         orderBy("createdAt", "asc"),
         limitToLast(50),
       );
+      try {
+        const cachedSnap = await getDocsFromCache(q);
+        const cachedMessages = cachedSnap.docs
+          .map((docSnap) => mapDocToCached(docSnap))
+          .filter((row): row is CachedChatMessage => row !== null)
+          .filter((row) => !isMessageClearedByInboxDelete(chatId, row.createdAtMs));
+        if (cachedMessages.length > 0) {
+          writeCachedChatMessages(chatId, cachedMessages);
+          return cachedMessages;
+        }
+      } catch {
+        // Persistent Firestore cache may be unavailable on first boot/private mode.
+      }
+
       const snap = await getDocs(q);
       const messages = snap.docs
         .map((docSnap) => mapDocToCached(docSnap))
-        .filter((row): row is CachedChatMessage => row !== null);
+        .filter((row): row is CachedChatMessage => row !== null)
+        .filter((row) => !isMessageClearedByInboxDelete(chatId, row.createdAtMs));
       if (messages.length > 0) {
         writeCachedChatMessages(chatId, messages);
         return messages;
       }
-      return readCachedChatMessages(chatId) || [];
+      removeCachedChatMessages(chatId);
+      return [];
     } catch {
-      return readCachedChatMessages(chatId) || [];
+      if (isDeletedInboxChatId(chatId)) return [];
+      const cached = (readCachedChatMessages(chatId) || []).filter(
+        (row) => !isMessageClearedByInboxDelete(chatId, row.createdAtMs),
+      );
+      return cached;
     } finally {
       inflight.delete(chatId);
     }

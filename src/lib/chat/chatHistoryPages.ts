@@ -29,13 +29,21 @@ export type HistoryMessageKey = {
 /**
  * Live listener is a sliding tail window. Older pages must survive upserts:
  * keep ids already in `prev` that fell out of `liveWindow`, then merge pending.
+ *
+ * When the live window is the complete tail (fewer docs than the page size,
+ * from the server), it *is* the thread. Keeping `prev` here is what made a
+ * deleted conversation reappear after opening the profile again.
  */
 export function mergeLiveWindowIntoHistory<T extends HistoryMessageKey>(
   prev: T[],
   liveWindow: T[],
   pending: T[],
   mergePending: (loaded: T[], pendingRows: T[]) => T[],
+  options?: { completeTail?: boolean },
 ): T[] {
+  if (options?.completeTail) {
+    return mergePending(liveWindow, pending);
+  }
   const liveIds = new Set(
     liveWindow.map((row) => String(row.id || "").trim()).filter(Boolean),
   );

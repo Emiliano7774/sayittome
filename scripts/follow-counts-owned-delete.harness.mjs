@@ -34,7 +34,29 @@ assert.equal(
     uid: "stranger",
     username: "otro",
     chatId: "anon_x__anon_to__navbench",
-    data: { receptorUid: "owner" },
+    data: { receptorUid: "owner", targetUsername: "navbench" },
+  }),
+  false,
+  "targetUsername on the doc is not ownership",
+);
+assert.equal(
+  own.callerCanDeleteInboxChat({
+    uid: "visitor",
+    username: "otro",
+    chatId: "anon_x__anon_to__navbench",
+    data: { receptorUid: "owner", targetUsername: "navbench" },
+    leaseVisitorAuthUid: "visitor",
+  }),
+  true,
+  "lease-bound visitor may delete the thread they started",
+);
+assert.equal(
+  own.callerCanDeleteInboxChat({
+    uid: "stranger",
+    username: "otro",
+    chatId: "anon_x__anon_to__navbench",
+    data: { receptorUid: "owner", targetUsername: "navbench" },
+    leaseVisitorAuthUid: "visitor",
   }),
   false,
 );

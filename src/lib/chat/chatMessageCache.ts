@@ -100,7 +100,32 @@ export function writeCachedChatMessages(chatId: string, messages: CachedChatMess
   }
 }
 
-/** Purge all private chat message caches (memory + session). Call on logout. */
+/** Remove one thread's cached bubbles so a deleted chat cannot reopen with history. */
+export function removeCachedChatMessages(chatId: string) {
+  const id = String(chatId || "").trim();
+  if (!id) return;
+  memory.delete(id);
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.removeItem(storageKey(id));
+    const toRemove: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (!key) continue;
+      if (key === `sayittome:chat-msgs:v2:${id}` || key.endsWith(`:${id}`)) {
+        if (LEGACY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+          toRemove.push(key);
+        }
+      }
+    }
+    for (const key of toRemove) {
+      window.sessionStorage.removeItem(key);
+    }
+  } catch {
+    // ignore
+  }
+}
 export function clearCachedChatMessages() {
   memory.clear();
   if (typeof window === "undefined") return;

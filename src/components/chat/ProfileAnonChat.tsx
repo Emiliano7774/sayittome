@@ -179,9 +179,11 @@ import { getCachedProfile, setCachedProfile, getCachedFullProfile } from "@/lib/
 import {
   cachedMessageToUi,
   readCachedChatMessages,
+  removeCachedChatMessages,
   uiMessageToCached,
   writeCachedChatMessages,
 } from "@/lib/chat/chatMessageCache";
+import { isMessageClearedByInboxDelete } from "@/lib/chat/deletedInboxChats";
 import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
 import {
@@ -440,7 +442,10 @@ function mergeLoadedChatMessages(loaded: Message[], pending: Message[]) {
 }
 
 function threadHasPriorActivity(chatId: string) {
-  if (readCachedChatMessages(chatId)?.length) return true;
+  const cached = readCachedChatMessages(chatId) || [];
+  if (cached.some((row) => !isMessageClearedByInboxDelete(chatId, row.createdAtMs))) {
+    return true;
+  }
   return getSessionChatIds().includes(chatId);
 }
 
@@ -503,7 +508,11 @@ export default function ProfileAnonChat({
     if (!chatId) return [];
     const cached = readCachedChatMessages(chatId);
     if (!cached?.length) return [];
-    return hydrateCachedMessages(chatId, cached, {
+    const kept = cached.filter(
+      (row) => !isMessageClearedByInboxDelete(chatId, row.createdAtMs),
+    );
+    if (!kept.length) return [];
+    return hydrateCachedMessages(chatId, kept, {
       chatAnonSessionId: "",
       currentUid: profileAuthUid(auth.currentUser),
       targetUid: String(initialProfile?.uid || ""),
@@ -1598,7 +1607,11 @@ export default function ProfileAnonChat({
             data: docSnap.data() as ProfileAnonFirestoreMessage,
           })),
           { ...baseCtx, hideIdentities },
-        ).filter((row) => !localHidden.has(row.id));
+        ).filter((row) => {
+          if (localHidden.has(row.id)) return false;
+          const createdAtMs = row.createdAt?.toDate?.()?.getTime();
+          return !isMessageClearedByInboxDelete(chatId, createdAtMs);
+        });
         const ctx = {
           ...baseCtx,
           isOwnerViewing:
@@ -1649,16 +1662,20 @@ export default function ProfileAnonChat({
             loaded,
             pending,
             mergeLoadedChatMessages,
+            {
+              completeTail:
+                !snapshot.metadata.fromCache &&
+                snapshot.size < CHAT_MESSAGE_PAGE_SIZE,
+            },
           );
-          writeCachedChatMessages(
-            chatId,
-            merged
-              .filter((row) => {
-                const status = (row as Message).status;
-                return status !== "sending" && status !== "error";
-              })
-              .map((row) => uiMessageToCached(row as Message)),
-          );
+          const durable = merged
+            .filter((row) => {
+              const status = (row as Message).status;
+              return status !== "sending" && status !== "error";
+            })
+            .map((row) => uiMessageToCached(row as Message));
+          if (durable.length) writeCachedChatMessages(chatId, durable);
+          else removeCachedChatMessages(chatId);
           if (chatMessagesSignature(prev) === chatMessagesSignature(merged)) {
             return prev;
           }

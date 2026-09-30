@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { ABUSE_CHAT_LEASE_COLLECTION } from "@/lib/abuse/profileAnonAbuseBlock";
 import { verifyFirebaseIdToken } from "@/lib/admin/verifyAdminRequest";
-import { callerOwnsInboxChat, exactChatId } from "@/lib/chat/ownedChatDelete";
+import { callerCanDeleteInboxChat, exactChatId } from "@/lib/chat/ownedChatDelete";
 import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 
 export const dynamic = "force-dynamic";
@@ -92,7 +92,20 @@ export async function POST(req: Request) {
         continue;
       }
       const data = (snap.data() || {}) as Record<string, unknown>;
-      if (!callerOwnsInboxChat({ uid: actor.uid, username, usernameLower, chatId, data })) {
+      const leaseSnap = await db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(chatId).get();
+      const leaseVisitorAuthUid = String(
+        (leaseSnap.data() as { visitorAuthUid?: string } | undefined)?.visitorAuthUid || "",
+      ).trim();
+      if (
+        !callerCanDeleteInboxChat({
+          uid: actor.uid,
+          username,
+          usernameLower,
+          chatId,
+          data,
+          leaseVisitorAuthUid,
+        })
+      ) {
         denied.push(chatId);
         continue;
       }
