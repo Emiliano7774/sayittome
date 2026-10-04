@@ -1,6 +1,7 @@
 import {
   getCountryByCode,
   normalizeGeoValue,
+  resolveCountryCode,
   resolveProfileCountryCode,
 } from "@/lib/geo/countries";
 
@@ -47,7 +48,7 @@ function uniqueStrings(values: unknown, transform: (value: string) => string) {
  */
 export function normalizeGeoAudience(input: Partial<GeoAudience> | null | undefined): GeoAudience {
   const paises = uniqueStrings(input?.paises, (value) => {
-    const code = value.trim().toUpperCase();
+    const code = resolveCountryCode(value);
     return getCountryByCode(code) ? code : "";
   });
 

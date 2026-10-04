@@ -314,6 +314,11 @@ export function getStoriesIndexMaterializedState() {
   };
 }
 
+/** Last materialized tray — used so /stories remounts do not flash empty. */
+export function peekCachedStoryGroups() {
+  return hasMaterialized && cachedGroups.length > 0 ? cachedGroups : [];
+}
+
 export function getCachedStoryGroups(viewerUidHint = "") {
   const viewer = String(viewerUidHint || viewerUid || "").trim();
   if (!viewer) return [];

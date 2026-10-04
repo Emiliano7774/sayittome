@@ -32,11 +32,13 @@ import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { getStoryViewerKey } from "@/lib/stories/storyAuthor";
 import {
   defaultShuffleFilters,
+  hasDiscoveryCountryFilter,
   loadStoredShuffleFilters,
   profileMatchesShuffleFilters,
   profileMatchesShuffleSearch,
   saveStoredShuffleFilters,
   shuffleFiltersActiveCount,
+  stripDiscoveryCountry,
   type ShuffleFilters,
 } from "@/lib/shuffle/filters";
 import { publishVisibilityAudience } from "@/lib/shuffle/publishVisibility";
@@ -895,7 +897,20 @@ export function useShufflePool() {
 
       const pool = activePoolRef.current;
       if (pool.length === 0 && featuredRef.current.length === 0) {
-        shuffleMark("shuffle-click-end");
+        shuffleMark("shuffle-click-reload");
+        void loadProfilesRef.current({ q: searchRef.current.trim(), force: true }).then(() => {
+          const nextPool = activePoolRef.current;
+          if (nextPool.length === 0 && featuredRef.current.length === 0) {
+            shuffleMark("shuffle-click-end");
+            return;
+          }
+          applyWindowFromPool(refreshPoolPresence(nextPool), {
+            forceReplace: true,
+            resetBatchMemory: true,
+          });
+          scrollShuffleFeedToTop();
+          shuffleMark("shuffle-click-end");
+        });
         return;
       }
 
@@ -1075,6 +1090,10 @@ export function useShufflePool() {
     clearShuffleSessionSnapshot();
     filterActivePool(searchRef.current.trim(), cleared, { forceWindow: true });
   }, [applyPool, filterActivePool]);
+
+  const clearDiscoveryCountry = useCallback(() => {
+    applyFilters(stripDiscoveryCountry(filtersRef.current));
+  }, [applyFilters]);
 
   const handleListClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -1520,6 +1539,11 @@ export function useShufflePool() {
     [filters, search],
   );
 
+  const hasCountryDiscovery = useMemo(
+    () => hasDiscoveryCountryFilter(filters),
+    [filters],
+  );
+
   const visibleCount = filteredCount;
 
   return {
@@ -1535,6 +1559,8 @@ export function useShufflePool() {
     poolSize: poolRef.current.length,
     visibleCount,
     hasActiveDiscovery,
+    hasCountryDiscovery,
+    clearDiscoveryCountry,
     filters,
     filtersOpen,
     filtersActiveCount,

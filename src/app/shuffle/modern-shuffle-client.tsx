@@ -164,7 +164,9 @@ export default function ModernShuffleClient() {
           <ShuffleFiltersEmptyState
             variant="modern"
             soloOnline={pool.filters.soloOnline}
+            countryEmpty={pool.hasCountryDiscovery}
             onClearFilters={pool.clearFilters}
+            onSwitchToGeneralSearch={pool.clearDiscoveryCountry}
             onKeepTrying={pool.handleShuffleClick}
             errorText={pool.errorText}
           />

@@ -14,7 +14,7 @@ import AdminStoryBlurButton from "@/components/stories/AdminStoryBlurButton";
 import { auth, db } from "@/lib/firebase";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
 import { getLikerId } from "@/lib/likes/profileLike";
-import { toggleStoryLike } from "@/lib/likes/storyLike";
+import { persistStoryLike } from "@/lib/likes/storyLike";
 import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/anonStories";
 import {
@@ -696,37 +696,71 @@ export default function StoryViewer({
     }
   }
 
-  async function handleLike() {
-    if (!current || likeBusy) return;
+  function handleLike() {
+    const story = current;
+    if (!story) return;
+    if (likerId && likerId === resolvedOwnerUid) return;
 
-    if (!likerId || likerId === resolvedOwnerUid) return;
+    const storyId = story.id;
+    const optimisticLiker = likerId || auth.currentUser?.uid || "pending";
+    const nextLiked = !Boolean(story.likedBy?.[optimisticLiker]);
+    const nextCount = Math.max(0, Number(story.likeCount || 0) + (nextLiked ? 1 : -1));
+
+    setLocalStories((prev) =>
+      prev.map((row) =>
+        row.id === storyId
+          ? {
+              ...row,
+              likeCount: nextCount,
+              likedBy: {
+                ...(row.likedBy || {}),
+                [optimisticLiker]: nextLiked,
+              },
+            }
+          : row,
+      ),
+    );
 
     setLikeBusy(true);
-
-    try {
-      const result = await toggleStoryLike(current.id);
-      const resolvedLiker = auth.currentUser?.uid || likerId;
-
-      setLocalStories((prev) =>
-        prev.map((story) =>
-          story.id === current.id
-            ? {
-                ...story,
-                likeCount: Math.max(0, Number(result.likeCount || 0)),
-                likedBy: {
-                  ...(story.likedBy || {}),
-                  [resolvedLiker]: result.liked,
-                  ...(likerId && likerId !== resolvedLiker ? { [likerId]: result.liked } : {}),
-                },
-              }
-            : story,
-        ),
-      );
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLikeBusy(false);
-    }
+    void persistStoryLike(storyId)
+      .then((result) => {
+        const resolvedLiker = auth.currentUser?.uid || likerId || optimisticLiker;
+        setLocalStories((prev) =>
+          prev.map((row) =>
+            row.id === storyId
+              ? {
+                  ...row,
+                  likeCount: Math.max(0, Number(result.likeCount || 0)),
+                  likedBy: {
+                    ...(row.likedBy || {}),
+                    [resolvedLiker]: result.liked,
+                    ...(likerId && likerId !== resolvedLiker ? { [likerId]: result.liked } : {}),
+                  },
+                }
+              : row,
+          ),
+        );
+      })
+      .catch((error) => {
+        console.error(error);
+        setLocalStories((prev) =>
+          prev.map((row) =>
+            row.id === storyId
+              ? {
+                  ...row,
+                  likeCount: Math.max(0, Number(story.likeCount || 0)),
+                  likedBy: {
+                    ...(row.likedBy || {}),
+                    [optimisticLiker]: Boolean(story.likedBy?.[optimisticLiker]),
+                  },
+                }
+              : row,
+          ),
+        );
+      })
+      .finally(() => {
+        setLikeBusy(false);
+      });
   }
 
   async function handleDeleteStory() {
@@ -1103,7 +1137,7 @@ export default function StoryViewer({
               <button
                 type="button"
                 onClick={handleLike}
-                disabled={likeBusy || likerId === resolvedOwnerUid}
+                disabled={likerId === resolvedOwnerUid}
                 className={[
                   "flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-black transition",
                   storyLiked

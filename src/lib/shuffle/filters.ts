@@ -50,6 +50,14 @@ export function withDiscoveryAudience(
   return { ...filters, verPaises: next.paises, verProvincias: next.provincias };
 }
 
+export function hasDiscoveryCountryFilter(filters: ShuffleFilters) {
+  return discoveryAudience(filters).paises.length > 0;
+}
+
+export function stripDiscoveryCountry(filters: ShuffleFilters): ShuffleFilters {
+  return withDiscoveryAudience(filters, emptyGeoAudience());
+}
+
 export function withVisibilityAudience(
   filters: ShuffleFilters,
   audience: GeoAudience,

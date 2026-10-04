@@ -7,7 +7,9 @@ import { useT } from "@/contexts/LocaleContext";
 type Props = {
   variant: "modern" | "classic";
   soloOnline: boolean;
+  countryEmpty?: boolean;
   onClearFilters: () => void;
+  onSwitchToGeneralSearch?: () => void;
   onKeepTrying?: () => void;
   errorText?: string | null;
 };
@@ -15,7 +17,9 @@ type Props = {
 export default function ShuffleFiltersEmptyState({
   variant,
   soloOnline,
+  countryEmpty = false,
   onClearFilters,
+  onSwitchToGeneralSearch,
   onKeepTrying,
   errorText,
 }: Props) {
@@ -42,9 +46,17 @@ export default function ShuffleFiltersEmptyState({
         isModern ? "h-[50vh]" : "h-[42vh]",
       ].join(" ")}
     >
-      <p className={titleClass}>{t("shuffle_no_profiles_filters")}</p>
+      <p className={titleClass}>
+        {countryEmpty ? t("shuffle_no_profiles_country") : t("shuffle_no_profiles_filters")}
+      </p>
 
-      {soloOnline && !errorText ? (
+      {countryEmpty && !errorText ? (
+        <p data-shuffle-country-empty-note="1" className={noteClass}>
+          {t("shuffle_filters_empty_country_note")}
+        </p>
+      ) : null}
+
+      {soloOnline && !errorText && !countryEmpty ? (
         <p
           data-shuffle-online-privacy-note="1"
           className={noteClass}
@@ -69,9 +81,20 @@ export default function ShuffleFiltersEmptyState({
         )
       ) : null}
 
-      <button type="button" onClick={onClearFilters} className={clearButtonClass}>
-        {t("shuffle_filters_clear")}
-      </button>
+      {countryEmpty && onSwitchToGeneralSearch ? (
+        <button
+          type="button"
+          data-shuffle-switch-general="1"
+          onClick={onSwitchToGeneralSearch}
+          className={clearButtonClass}
+        >
+          {t("shuffle_filters_switch_general")}
+        </button>
+      ) : (
+        <button type="button" onClick={onClearFilters} className={clearButtonClass}>
+          {t("shuffle_filters_clear")}
+        </button>
+      )}
 
       {errorText ? (
         <p

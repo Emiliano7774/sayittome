@@ -232,7 +232,9 @@ export default function ShuffleClient() {
           <ShuffleFiltersEmptyState
             variant="classic"
             soloOnline={pool.filters.soloOnline}
+            countryEmpty={pool.hasCountryDiscovery}
             onClearFilters={pool.clearFilters}
+            onSwitchToGeneralSearch={pool.clearDiscoveryCountry}
             onKeepTrying={pool.handleShuffleClick}
             errorText={pool.errorText}
           />

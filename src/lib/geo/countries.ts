@@ -250,6 +250,27 @@ export const SHUFFLE_COUNTRIES: readonly GeoCountry[] = [
 
 const countryByCode = new Map(SHUFFLE_COUNTRIES.map((country) => [country.code, country]));
 
+const countryByName = new Map<string, string>();
+for (const country of SHUFFLE_COUNTRIES) {
+  countryByName.set(normalizeGeoValue(country.name), country.code);
+  countryByName.set(normalizeGeoValue(country.code), country.code);
+}
+countryByName.set("usa", "US");
+countryByName.set("united states", "US");
+countryByName.set("estados unidos de america", "US");
+countryByName.set("brasil", "BR");
+countryByName.set("brazil", "BR");
+countryByName.set("espana", "ES");
+countryByName.set("spain", "ES");
+countryByName.set("italy", "IT");
+countryByName.set("germany", "DE");
+countryByName.set("alemanha", "DE");
+countryByName.set("mexico", "MX");
+countryByName.set("uk", "GB");
+countryByName.set("united kingdom", "GB");
+countryByName.set("inglaterra", "GB");
+countryByName.set("great britain", "GB");
+
 const subdivisionIndex = new Map<string, string>();
 
 for (const country of SHUFFLE_COUNTRIES) {
@@ -279,9 +300,17 @@ export function inferCountryCodeFromSubdivision(subdivision: string) {
   return subdivisionIndex.get(normalizeGeoValue(subdivision)) || "";
 }
 
+export function resolveCountryCode(value: string) {
+  return resolveProfileCountryCode({ pais: value });
+}
+
 export function resolveProfileCountryCode(profile: { pais?: string; provincia?: string }) {
-  const explicit = String(profile.pais || "").trim().toUpperCase();
+  const raw = String(profile.pais || "").trim();
+  const explicit = raw.toUpperCase();
   if (explicit && countryByCode.has(explicit)) return explicit;
+
+  const byName = countryByName.get(normalizeGeoValue(raw));
+  if (byName) return byName;
 
   const inferred = inferCountryCodeFromSubdivision(String(profile.provincia || ""));
   if (inferred) return inferred;

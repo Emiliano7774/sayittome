@@ -27,3 +27,21 @@ export async function toggleStoryLike(storyId: string): Promise<ToggleStoryLikeR
   if (!data?.ok) throw new Error("story_like_failed");
   return data;
 }
+
+const pendingLikes = new Map<string, Promise<ToggleStoryLikeResult>>();
+
+/**
+ * Like that survives the story advancing or the viewer unmounting.
+ * The tap captures the id; the callable still runs after the UI is gone.
+ */
+export function persistStoryLike(storyId: string): Promise<ToggleStoryLikeResult> {
+  const id = String(storyId || "").trim();
+  if (!id) return Promise.reject(new Error("missing_story_id"));
+  const existing = pendingLikes.get(id);
+  if (existing) return existing;
+  const next = toggleStoryLike(id).finally(() => {
+    pendingLikes.delete(id);
+  });
+  pendingLikes.set(id, next);
+  return next;
+}

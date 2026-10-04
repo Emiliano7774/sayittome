@@ -15,6 +15,7 @@ const context = read("src/contexts/AnonMatchContext.tsx");
 
 // --- Audiencia geográfica compartida -------------------------------------
 assert.match(audience, /export function geoAudienceIncludes/);
+assert.match(audience, /resolveCountryCode\(value\)/);
 assert.match(audience, /if \(audience\.paises\.length === 0\) return true;/);
 // Provincias sólo tienen sentido bajo un único país.
 assert.match(audience, /if \(paises\.length !== 1\) return \{ paises, provincias: \[\] \};/);

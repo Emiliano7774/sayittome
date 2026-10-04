@@ -24,7 +24,8 @@ assert.match(fnSrc, /FieldValue\.increment/);
 assert.match(indexSrc, /toggleStoryLike/);
 assert.match(clientSrc, /httpsCallable/);
 assert.match(clientSrc, /toggleStoryLike/);
-assert.match(viewerSrc, /toggleStoryLike\(/);
+assert.match(clientSrc, /export function persistStoryLike/);
+assert.match(viewerSrc, /persistStoryLike\(/);
 assert.doesNotMatch(viewerSrc, /likeCount: increment\(/);
 
 const reconcile = await import(

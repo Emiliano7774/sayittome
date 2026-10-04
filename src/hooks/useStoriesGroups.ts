@@ -8,6 +8,7 @@ import { getStoryOwnerKey, resolveStoryViewerId, resolveStoryViewerIdReady } fro
 import {
   clearStoriesIndexCache,
   getCachedStoryGroups,
+  peekCachedStoryGroups,
   refreshStoriesIndex,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
@@ -26,7 +27,7 @@ export function useStoriesGroups() {
     : "";
   const initialGroups = initialViewer
     ? getCachedStoryGroups(initialViewer)
-    : [];
+    : peekCachedStoryGroups();
 
   const [groups, setGroups] = useState<StoryUserGroup[]>(initialGroups);
   const [viewerUid, setViewerUid] = useState(initialViewer);

@@ -64,6 +64,14 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
 
   function openShuffleTab(event?: { preventDefault: () => void }) {
     event?.preventDefault();
+    const livePath =
+      typeof window !== "undefined"
+        ? window.location.pathname.split("?")[0].split("#")[0] || "/"
+        : pathname;
+    if (livePath === "/shuffle") {
+      triggerShuffleClick();
+      return;
+    }
     if (blockMainTabNavigationDuringSlide()) {
       abortMainTabToShuffleTransition("bar-instant-shuffle");
     }

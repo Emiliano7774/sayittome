@@ -209,6 +209,10 @@ const es = {
 
   shuffle_no_profiles: "No hay perfiles para mostrar.",
   shuffle_no_profiles_filters: "Ningún perfil coincide con tus filtros.",
+  shuffle_no_profiles_country: "¡No encontramos a nadie de tu zona!",
+  shuffle_filters_empty_country_note:
+    "Recordá que las personas que decidieron no mostrar su ubicación no aparecen por país, solo en la búsqueda general.",
+  shuffle_filters_switch_general: "Cambiar a búsqueda general",
   shuffle_filters_empty_online_note:
     "Recordá: si alguien desactivó mostrar su última conexión, puede estar online ahora mismo pero no aparece en el filtro «Solo online».",
   shuffle_filters_empty_keep_trying:
@@ -1071,6 +1075,10 @@ const en: Record<keyof typeof es, string> = {
 
   shuffle_no_profiles: "No profiles to show.",
   shuffle_no_profiles_filters: "No profiles match your filters.",
+  shuffle_no_profiles_country: "We couldn't find anyone from your area!",
+  shuffle_filters_empty_country_note:
+    "People who chose not to show their location only appear in general search, not in a country filter.",
+  shuffle_filters_switch_general: "Switch to general search",
   shuffle_filters_empty_online_note:
     "Remember: if someone turned off showing their last connection, they may be online right now but won't appear in the «Online only» filter.",
   shuffle_filters_empty_keep_trying:
