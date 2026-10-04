@@ -35,6 +35,7 @@ import {
   buildChatNotificationOpenHref,
 } from "@/lib/chat/chatNotificationOpen";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
+import { sanitizeStoryNotificationHref } from "@/lib/stories/storyNotificationPolicy";
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
 const INSTALLATION_KEY = "sayittome:fcm-installation-id";
@@ -46,6 +47,7 @@ let bootstrapped = false;
 let registeredToken: string | null = null;
 let registeredUid: string | null = null;
 let pendingChatId: string | null = null;
+let pendingStoryHref: string | null = null;
 let authUnsub: (() => void) | null = null;
 let tokenWaiters: Array<(token: string) => void> = [];
 const enableInFlightByUid = new Map<string, Promise<PushEnableResult>>();
@@ -435,9 +437,55 @@ async function ensurePushChannel() {
       sound: "whip",
       visibility: 1,
     });
+    await LocalNotifications.createChannel({
+      id: "stories-v1",
+      name: "Historias",
+      description: "Likes e historias nuevas",
+      importance: 5,
+      vibration: true,
+      visibility: 1,
+    });
   } catch {
     // Channel creation is best-effort; FCM may fall back to default.
   }
+}
+
+function queuePushStoryHref(href: string) {
+  const clean = sanitizeStoryNotificationHref(href);
+  if (!clean) return;
+  pendingStoryHref = clean;
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem("sayittome:pending-push-story", clean);
+  } catch {
+    // ignore
+  }
+}
+
+function drainQueuedPushStoryHref() {
+  const memory = pendingStoryHref;
+  pendingStoryHref = null;
+  if (memory) return memory;
+  if (typeof window === "undefined") return "";
+  try {
+    const stored = sanitizeStoryNotificationHref(
+      window.sessionStorage.getItem("sayittome:pending-push-story") || "",
+    );
+    if (stored) window.sessionStorage.removeItem("sayittome:pending-push-story");
+    return stored;
+  } catch {
+    return "";
+  }
+}
+
+function openStoryNotificationHref(href: string) {
+  const clean = sanitizeStoryNotificationHref(href);
+  if (!clean || typeof window === "undefined") return;
+  if (!auth.currentUser) {
+    queuePushStoryHref(clean);
+    return;
+  }
+  window.location.assign(clean);
 }
 
 function openChatDeepLink(input: {
@@ -493,13 +541,16 @@ async function attachPushListeners() {
   await PushNotifications.addListener("pushNotificationActionPerformed", (event) => {
     const data = (event.notification?.data || {}) as Record<string, unknown>;
     const chatId = asId(data.chatId);
-    if (!chatId) return;
-    openChatDeepLink({
-      chatId,
-      messageId: asId(data.messageId),
-      body: asId(data.body) || asId(event.notification?.body),
-      title: asId(data.title) || asId(event.notification?.title),
-    });
+    if (chatId) {
+      openChatDeepLink({
+        chatId,
+        messageId: asId(data.messageId),
+        body: asId(data.body) || asId(event.notification?.body),
+        title: asId(data.title) || asId(event.notification?.title),
+      });
+      return;
+    }
+    openStoryNotificationHref(asId(data.href));
   });
 }
 
@@ -680,6 +731,11 @@ export async function initNativePushNotifications(options?: { skipAutoEnable?: b
               window.location.assign(
                 buildChatNotificationOpenHref({ chatId: pendingChat }),
               );
+              return;
+            }
+            const pendingStory = drainQueuedPushStoryHref();
+            if (pendingStory) {
+              window.location.assign(pendingStory);
             }
           });
       });

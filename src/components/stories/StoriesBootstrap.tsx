@@ -8,7 +8,12 @@ import { useDocumentHidden } from "@/hooks/useDocumentHidden";
 import { auth } from "@/lib/firebase";
 import { shouldEnableStoriesRefresh } from "@/lib/chat/inboxListenerRoutes";
 import { resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/storyAuthor";
-import { refreshStoriesIndex } from "@/lib/stories/storiesIndexStore";
+import {
+  reconstructActiveStoriesIndex,
+  refreshStoriesIndex,
+} from "@/lib/stories/storiesIndexStore";
+
+let reconstructedThisSession = false;
 
 const STORIES_REFRESH_MS = 10 * 60_000;
 const STORIES_QUIET_REFRESH_MS = 10_000;
@@ -49,6 +54,11 @@ export default function StoriesBootstrap() {
       if (cancelled) return;
       authSettled = true;
       if (!viewerKey) return;
+      if (!reconstructedThisSession) {
+        reconstructedThisSession = true;
+        reconstructActiveStoriesIndex(viewerKey).catch(() => {});
+        return;
+      }
       refreshStoriesIndex(viewerKey, false).catch(() => {});
     });
 

@@ -10,6 +10,7 @@ import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { auth } from "@/lib/firebase";
 import { parseReportCreatedAtMs } from "@/lib/admin/reportSort";
 import ChatNotificationSetting from "@/components/chat/ChatNotificationSetting";
+import StoryNotificationSettings from "@/components/stories/StoryNotificationSettings";
 import {
   fitAnchoredMenu,
   readBottomUiReserve,
@@ -361,8 +362,9 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
                   </button>
                 </header>
 
-                <div className="flex min-h-0 flex-1 flex-col p-5">
+                <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-5">
                   <ChatNotificationSetting variant="panel" />
+                  <StoryNotificationSettings mode="global" />
                 </div>
               </section>
             </div>,

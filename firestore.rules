@@ -132,6 +132,10 @@ service cloud.firestore {
       allow create: if isOwner(uid) && !createHasModerationTags();
       allow update: if (isOwner(uid) && !touchesModerationTags()) || isAdmin();
       allow delete: if isOwner(uid) || isAdmin();
+
+      match /story_notif_prefs/{peerId} {
+        allow read, write: if isOwner(uid);
+      }
     }
 
     match /usuarios_shuffle_lite/{uid} {
@@ -147,6 +151,12 @@ service cloud.firestore {
     match /historias/{storyId} {
       allow read: if true;
       allow write: if isLoggedIn();
+
+      match /vistas/{viewerId} {
+        allow read: if isLoggedIn();
+        allow create, update: if isLoggedIn();
+        allow delete: if false;
+      }
     }
 
     match /photo_moderation_chats/{docId} {

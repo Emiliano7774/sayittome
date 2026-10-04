@@ -42,6 +42,7 @@ type Props = {
   onFrontReady?: () => void;
   onFrontError?: () => void;
   onFrontVideoMetadata?: (event: MediaSlotEvent) => void;
+  onFrontMedia?: (media: HTMLImageElement | HTMLVideoElement | null) => void;
 };
 
 function mediaClass(needsBlur: boolean, blurLocked: boolean, visible: boolean) {
@@ -64,6 +65,7 @@ export default function StoryMediaBuffers({
   onFrontReady,
   onFrontError,
   onFrontVideoMetadata,
+  onFrontMedia,
 }: Props) {
   const refs = {
     a: useRef<HTMLImageElement | HTMLVideoElement | null>(null),
@@ -166,11 +168,12 @@ export default function StoryMediaBuffers({
     }
     if (front.ready && !front.errored && front.storyId === current.id) {
       onFrontReady?.();
+      onFrontMedia?.(refs[active].current);
       storyBlankFrameEnd();
       if (isNavTraceEnabled()) storyPipelineMark("viewer-dom");
       recordConsumedBytes(front.mediaUrl.length);
     }
-  }, [current.id, front.errored, front.ready, front.storyId, front.mediaUrl, onFrontError, onFrontReady]);
+  }, [active, current.id, front.errored, front.ready, front.storyId, front.mediaUrl, onFrontError, onFrontMedia, onFrontReady]);
 
   useEffect(() => {
     if (current.id === front.storyId && current.mediaUrl === front.mediaUrl) {

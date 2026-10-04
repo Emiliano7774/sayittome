@@ -15,6 +15,7 @@ import {
 } from "@/lib/chat/chatNotificationPrefs";
 import { requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
 import { enableNativeChatPush } from "@/lib/chat/fcmPush";
+import { enableStoryNotificationPack } from "@/lib/stories/storyNotificationPrefs";
 import { isNotificationProfileReady } from "@/lib/chat/notificationProfileReady";
 import { chatNotificationPromptOpen } from "@/lib/chat/chatNotificationPromptOpen";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
@@ -67,6 +68,7 @@ export default function ChatNotificationPrompt() {
     }
 
     setChatNotificationsEnabled(true);
+    void enableStoryNotificationPack();
     const granted = await requestChatNotificationPermission({ force: true });
     if (!granted) {
       setChatNotificationsEnabled(false);

@@ -55,6 +55,7 @@ import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton"
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
+import ProfilePeerOptionsMenu from "@/components/profile/ProfilePeerOptionsMenu";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -311,6 +312,12 @@ export default function ModernPublicProfile({
           )}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {isOwner ? <ProfileClaimHistoryMenu /> : null}
+            {!isOwner ? (
+              <ProfilePeerOptionsMenu
+                peerUid={profile.uid}
+                peerUsername={profile.username}
+              />
+            ) : null}
             {isOwner && isAdminEmail(profile.email) ? (
               <Link
                 href="/admin"

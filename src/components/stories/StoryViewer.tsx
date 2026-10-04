@@ -15,9 +15,22 @@ import { auth, db } from "@/lib/firebase";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
 import { getLikerId } from "@/lib/likes/profileLike";
 import { persistStoryLike } from "@/lib/likes/storyLike";
+import StoryViewersSheet from "@/components/stories/StoryViewersSheet";
+import {
+  sampleStoryCaptionToneFromUrl,
+  sampleStoryMediaCaptionTone,
+  storyCaptionToneClass,
+  type StoryCaptionTone,
+} from "@/lib/stories/storyCaptionTone";
+import { canReplyToStory } from "@/lib/stories/storyViewers";
+import {
+  readViewerGeoHint,
+  upsertStoryViewerRecord,
+} from "@/lib/stories/storyViewerRecords";
 import { deleteStoryById } from "@/lib/stories/deleteStory";
 import { canManageStory, resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/anonStories";
 import {
+  fetchProfileStoryIdentity,
   getStoryOwnerKey,
   isInvalidPublicStoryUsername,
 } from "@/lib/stories/storyAuthor";
@@ -137,6 +150,8 @@ export default function StoryViewer({
   const [replayLocked, setReplayLocked] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
+  const [viewersOpen, setViewersOpen] = useState(false);
+  const [captionTone, setCaptionTone] = useState<StoryCaptionTone>("light");
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replyDragY, setReplyDragY] = useState(0);
@@ -260,6 +275,7 @@ export default function StoryViewer({
     setAppliedFrontId(current?.id || "");
     setFrontReady(false);
     setFrontError(false);
+    setCaptionTone("light");
   }
   const viewerReady = Boolean(viewerUid);
   const resolvedOwnerUid = activeOwnerUid || ownerUid || current?.ownerUid || "";
@@ -334,10 +350,6 @@ export default function StoryViewer({
     !anonymousStory &&
     ((Boolean(stableProfileOwnerUid) && !stableProfileOwnerUid.startsWith("anon_")) ||
       (Boolean(profileUsername) && !isInvalidPublicStoryUsername(profileUsername)));
-  const canReply =
-    !anonymousStory &&
-    Boolean(profileUsername) &&
-    !isInvalidPublicStoryUsername(profileUsername);
   const needsBlur = current ? storyRequiresBlur(current) : false;
   const playbackReady = shouldStartStoryProgress({
     viewerReady,
@@ -358,17 +370,23 @@ export default function StoryViewer({
   const playbackHeld =
     paused ||
     replyOpen ||
+    viewersOpen ||
     reportOpen ||
     dismissDragging ||
     dismissAnimating ||
     (needsBlur && blurLocked);
   const isPaused = playbackHeld || !playbackReady;
   const canDelete = current ? canManageStory(current, ownerKey || getStoryOwnerKey()) : false;
+  const canReply = canReplyToStory({
+    isOwner: canDelete,
+    anonymousStory,
+    hasUsername: Boolean(profileUsername) && !isInvalidPublicStoryUsername(profileUsername),
+  });
   const likerId = getLikerId();
   const storyLiked = Boolean(likerId && current?.likedBy?.[likerId]);
   const storyLikeCount = Number(current?.likeCount || 0);
   const topChromeHidden = paused && !blurLocked;
-  const bottomChromeHidden = topChromeHidden || replyOpen;
+  const bottomChromeHidden = topChromeHidden || replyOpen || viewersOpen;
   const durationMs =
     current?.mediaType === "video" && current.durationMs
       ? current.durationMs
@@ -469,6 +487,7 @@ export default function StoryViewer({
 
   const markViewed = useCallback(async (story: StoryItem) => {
     if (!viewerUid) return;
+    if (canManageStory(story, ownerKey || getStoryOwnerKey())) return;
     const viewerId = viewerUid;
     const seenKey = `${viewerId}:${story.id}`;
     if (viewedRef.current.has(seenKey)) return;
@@ -486,7 +505,7 @@ export default function StoryViewer({
     }
 
     void ackStoryView(story.id, viewerId)
-      .then((result) => {
+      .then(async (result) => {
         if (!result.wrote) return;
         setLocalStories((prev) =>
           prev.map((row) =>
@@ -497,16 +516,30 @@ export default function StoryViewer({
               : row,
           ),
         );
+        const geo = viewerId.startsWith("anon_") ? await readViewerGeoHint() : { pais: "", provincia: "" };
+        const identity = viewerId.startsWith("anon_")
+          ? { username: "", photo: "" }
+          : await fetchProfileStoryIdentity(viewerId).catch(() => ({ username: "", photo: "" }));
+        await upsertStoryViewerRecord({
+          storyId: story.id,
+          viewerId,
+          ownerUid: story.ownerUid,
+          username: identity.username,
+          photo: identity.photo,
+          pais: geo.pais,
+          provincia: geo.provincia,
+        });
       })
       .catch((e) => {
         void scheduleStoryViewAckFlush(viewerId);
         console.error(e);
       });
-  }, [viewerUid]);
+  }, [ownerKey, viewerUid]);
 
   const goNext = useCallback(() => {
     if (!viewerUid) return;
     setReplyOpen(false);
+    setViewersOpen(false);
     setReplyText("");
 
     if (nextTarget.kind === "same-group") {
@@ -613,7 +646,7 @@ export default function StoryViewer({
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("[data-story-chrome]")) return;
-    if (replyOpen || reportOpen || dismissAnimating) return;
+    if (replyOpen || viewersOpen || reportOpen || dismissAnimating) return;
 
     pointerRef.current = {
       x: event.clientX,
@@ -629,7 +662,7 @@ export default function StoryViewer({
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (replyOpen || reportOpen || dismissAnimating) return;
+    if (replyOpen || viewersOpen || reportOpen || dismissAnimating) return;
 
     const deltaX = event.clientX - pointerRef.current.x;
     const deltaDown = event.clientY - pointerRef.current.y;
@@ -651,12 +684,16 @@ export default function StoryViewer({
       return;
     }
 
-    if (!canReply || pointerRef.current.swiped) return;
+    if (pointerRef.current.swiped) return;
 
     const deltaUp = -deltaDown;
     if (deltaUp >= SWIPE_REPLY_PX && deltaUp > absX * 1.1) {
       pointerRef.current.swiped = true;
-      setReplyOpen(true);
+      if (canDelete) {
+        setViewersOpen(true);
+        return;
+      }
+      if (canReply) setReplyOpen(true);
     }
   }
 
@@ -767,6 +804,12 @@ export default function StoryViewer({
               : row,
           ),
         );
+        void upsertStoryViewerRecord({
+          storyId,
+          viewerId: resolvedLiker,
+          ownerUid: story.ownerUid,
+          liked: result.liked,
+        }).catch(() => {});
       })
       .catch((error) => {
         console.error(error);
@@ -908,6 +951,24 @@ export default function StoryViewer({
     }
   }
 
+  function openViewerProfile(username: string) {
+    const name = String(username || "").trim();
+    if (!name || isInvalidPublicStoryUsername(name)) return;
+    fastRouterPush(router, `/u/${encodeURIComponent(name)}`);
+  }
+
+  async function openViewerChat(username: string) {
+    const name = String(username || "").trim();
+    if (!name || isInvalidPublicStoryUsername(name)) return;
+    try {
+      const chat = await resolveProfileChat(name);
+      const query = new URLSearchParams({ u: name });
+      fastRouterPush(router, `/chat/${encodeURIComponent(chat.chatId)}?${query.toString()}`);
+    } catch {
+      fastRouterPush(router, `/u/${encodeURIComponent(name)}`);
+    }
+  }
+
   if (!current) {
     return null;
   }
@@ -923,6 +984,12 @@ export default function StoryViewer({
         willChange: dismissDragging || dismissAnimating ? "transform" : undefined,
       }}
     >
+      <div
+        className={[
+          "absolute inset-0 origin-top transition-transform duration-200 ease-out",
+          viewersOpen ? "scale-[0.34] pointer-events-none" : "scale-100",
+        ].join(" ")}
+      >
       <div
         className={[
           "absolute left-0 right-0 top-0 z-40 flex gap-1 px-3 pb-2 pt-4 transition-opacity duration-150",
@@ -1026,7 +1093,7 @@ export default function StoryViewer({
       <div
         className={[
           "absolute inset-0 z-20 touch-none",
-          replyOpen || reportOpen || dismissAnimating ? "pointer-events-none" : "",
+          replyOpen || viewersOpen || reportOpen || dismissAnimating ? "pointer-events-none" : "",
         ].join(" ")}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -1047,6 +1114,18 @@ export default function StoryViewer({
             onFrontReady={() => {
               setFrontReady(true);
               setFrontError(false);
+            }}
+            onFrontMedia={(media) => {
+              const sampled = sampleStoryMediaCaptionTone(media);
+              if (sampled) {
+                setCaptionTone(sampled);
+                return;
+              }
+              if (current.mediaUrl) {
+                void sampleStoryCaptionToneFromUrl(current.mediaUrl).then((tone) => {
+                  if (tone) setCaptionTone(tone);
+                });
+              }
             }}
             onFrontError={() => {
               setFrontError(true);
@@ -1124,7 +1203,7 @@ export default function StoryViewer({
       >
         {mediaCaption ? (
           <div className="pointer-events-none mb-4 px-1" data-story-caption>
-            <p className="mx-auto line-clamp-3 max-w-[22rem] text-center text-[12.5px] font-extralight leading-[1.45] tracking-[0.08em] text-white [text-shadow:0_0_22px_rgba(255,255,255,0.42),0_0_2px_rgba(255,255,255,0.95),0_2px_12px_rgba(0,0,0,0.9)]">
+            <p className={`mx-auto line-clamp-3 max-w-[22rem] text-center text-[12.5px] font-extralight leading-[1.45] tracking-[0.08em] ${storyCaptionToneClass(captionTone)}`}>
               {mediaCaption}
             </p>
           </div>
@@ -1133,6 +1212,11 @@ export default function StoryViewer({
         {canReply && !replyOpen ? (
           <p className="mb-3 text-center text-xs font-semibold text-white/45">
             {t("story_reply_hint")}
+          </p>
+        ) : null}
+        {canDelete && !viewersOpen ? (
+          <p className="mb-3 text-center text-xs font-semibold text-white/45">
+            {t("story_viewers_hint")}
           </p>
         ) : null}
 
@@ -1187,12 +1271,40 @@ export default function StoryViewer({
                 {storyLiked ? t("stories_liked") : t("settings_likes")} · {storyLikeCount}
               </button>
             ) : null}
-            <span className="text-sm font-bold text-white/50">
-              {current.viewCount || 0} {t("stories_views")}
-            </span>
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setViewersOpen(true)}
+                className="text-sm font-bold text-white/70"
+              >
+                {current.viewCount || 0} {t("stories_views")}
+              </button>
+            ) : (
+              <span className="text-sm font-bold text-white/50">
+                {current.viewCount || 0} {t("stories_views")}
+              </span>
+            )}
           </div>
         </div>
       </div>
+      </div>
+
+      {viewersOpen ? (
+        <button
+          type="button"
+          className="absolute inset-x-0 top-0 z-[75] h-[28dvh]"
+          onClick={() => setViewersOpen(false)}
+          aria-label={t("common_cancel")}
+        />
+      ) : null}
+
+      <StoryViewersSheet
+        open={viewersOpen}
+        story={current}
+        onClose={() => setViewersOpen(false)}
+        onOpenProfile={openViewerProfile}
+        onOpenChat={(username) => void openViewerChat(username)}
+      />
 
       {replySentToast ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-[max(6.5rem,env(safe-area-inset-bottom))] z-[70] flex justify-center">

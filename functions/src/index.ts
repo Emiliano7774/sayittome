@@ -28,6 +28,7 @@ import {
 import { VERIFIED_PROFILE_LINK_MAC_SECRET_NAME } from "./verifiedProfileLinkCore";
 import { handleSetAnonProfileBlock } from "./anonProfileBlock";
 import { handleToggleStoryLike } from "./storyLike";
+import { handleStoryCreated } from "./storyCreated";
 import {
   encodeUnreadLinesForFcm,
   formatCollapsedUnreadBody,
@@ -472,6 +473,13 @@ export const setAnonProfileBlock = onCall(async (request) => {
 
 export const toggleStoryLike = onCall(async (request) => {
   return handleToggleStoryLike(request);
+});
+
+export const onStoryCreated = onDocumentCreated("historias/{storyId}", async (event) => {
+  await handleStoryCreated({
+    storyId: asId(event.params.storyId),
+    data: event.data?.data() || {},
+  });
 });
 
 export const unregisterFcmToken = onCall(async (request) => {

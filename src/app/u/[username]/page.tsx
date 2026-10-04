@@ -33,6 +33,7 @@ import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRolepla
 import AdminProfileSafetyTagButtons from "@/components/profile/AdminProfileSafetyTagButtons";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
 import ProfileClaimHistoryMenu from "@/components/profile/ProfileClaimHistoryMenu";
+import ProfilePeerOptionsMenu from "@/components/profile/ProfilePeerOptionsMenu";
 import ProfileReportButton from "@/components/moderation/ProfileReportButton";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
@@ -677,6 +678,13 @@ export default function PublicProfilePage() {
           {!isOwner ? <FollowButton targetUid={profile.uid} variant="profileClassic" /> : null}
 
           {isOwner ? <ProfileClaimHistoryMenu /> : null}
+
+          {!isOwner ? (
+            <ProfilePeerOptionsMenu
+              peerUid={profile.uid}
+              peerUsername={profile.username}
+            />
+          ) : null}
 
           {!isOwner ? (
             <ProfileReportButton

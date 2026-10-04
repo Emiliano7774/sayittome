@@ -71,6 +71,7 @@ assert.match(fetchSrc, /truncated: snap\.truncated === true/);
 
 const storeSrc = fs.readFileSync(path.join(root, "src/lib/stories/storiesIndexStore.ts"), "utf8");
 assert.match(storeSrc, /mergeActiveStoryGroups/);
+assert.match(storeSrc, /reconstructActiveStoriesIndex/);
 
 const css = fs.readFileSync(path.join(root, "src/app/globals.css"), "utf8");
 assert.match(

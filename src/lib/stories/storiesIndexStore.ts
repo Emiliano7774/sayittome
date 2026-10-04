@@ -178,7 +178,11 @@ export function scheduleSpeculativeStoryPreload(groups: StoryUserGroup[] = cache
   window.setTimeout(run, 0);
 }
 
-export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = false) {
+export async function refreshStoriesIndex(
+  nextViewerUid = viewerUid,
+  force = false,
+  options?: { reconstruct?: boolean },
+) {
   const requestViewer = String(nextViewerUid || "");
   if (!requestViewer) return undefined;
   if (inFlight && requestViewer === requestedViewer) return inFlight;
@@ -233,13 +237,17 @@ export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = fal
       }
 
       const queryStarted = Date.now();
-      const fetched = await fetchActiveStoriesGrouped(requestViewer, { hydrate: false });
+      const fetched = await fetchActiveStoriesGrouped(requestViewer, {
+        hydrate: false,
+        reconstruct: options?.reconstruct === true,
+      });
       const queryMs = Date.now() - queryStarted;
       if (!live()) return;
       viewerUid = requestViewer;
-      const fetchedGroups = fetched.truncated
-        ? mergeActiveStoryGroups(fetched.groups, cachedGroups, Date.now())
-        : fetched.groups;
+      const fetchedGroups =
+        fetched.truncated || options?.reconstruct === true
+          ? mergeActiveStoryGroups(fetched.groups, cachedGroups, Date.now())
+          : fetched.groups;
       const nextGroups = preserveViewerSeenState(fetchedGroups, previousByUid, requestViewer);
       const membershipChanged =
         viewerChanged || storyMembershipKey(nextGroups) !== storyMembershipKey(cachedGroups);
@@ -371,6 +379,12 @@ export function invalidateStoriesIndexAfterMutation() {
   hasMaterialized = false;
   snapshotTruncated = true;
   inFlight = null;
+}
+
+/** Force a full active-stories rebuild so still-valid tiles are not left behind. */
+export async function reconstructActiveStoriesIndex(nextViewerUid = viewerUid) {
+  invalidateStoriesIndexAfterMutation();
+  return refreshStoriesIndex(nextViewerUid, true, { reconstruct: true });
 }
 
 export function getNextStoryGroup(currentOwnerUid: string) {

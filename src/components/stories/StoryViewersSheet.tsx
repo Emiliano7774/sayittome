@@ -1,0 +1,143 @@
+"use client";
+
+import { Heart, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import { useT } from "@/contexts/LocaleContext";
+import { loadStoryViewers } from "@/lib/stories/storyViewerRecords";
+import type { StoryViewerRow } from "@/lib/stories/storyViewers";
+import type { StoryItem } from "@/lib/stories/types";
+
+type Props = {
+  open: boolean;
+  story: StoryItem | null;
+  onClose: () => void;
+  onOpenProfile: (username: string) => void;
+  onOpenChat: (username: string) => void;
+};
+
+export default function StoryViewersSheet({
+  open,
+  story,
+  onClose,
+  onOpenProfile,
+  onOpenChat,
+}: Props) {
+  const t = useT();
+  const [rows, setRows] = useState<StoryViewerRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || !story?.id) {
+      setRows([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void loadStoryViewers(story)
+      .then((next) => {
+        if (!cancelled) setRows(next);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, story]);
+
+  if (!open) return null;
+
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-[80] flex h-[72dvh] flex-col rounded-t-[1.75rem] border-t border-white/10 bg-zinc-950/96 shadow-[0_-18px_40px_rgba(0,0,0,0.45)] backdrop-blur-md">
+      <button
+        type="button"
+        className="flex shrink-0 flex-col items-center px-4 pb-2 pt-2"
+        onClick={onClose}
+        aria-label={t("common_cancel")}
+      >
+        <span className="mb-3 h-1.5 w-12 rounded-full bg-white/30" />
+        <span className="w-full text-left text-sm font-black text-white">
+          {t("story_viewers_title")}
+          <span className="ml-2 text-white/40">{rows.length || story?.viewCount || 0}</span>
+        </span>
+      </button>
+
+      <div
+        data-story-viewers-scroll="1"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
+        {loading && rows.length === 0 ? (
+          <p className="py-10 text-center text-sm font-semibold text-white/45">{t("common_loading")}</p>
+        ) : rows.length === 0 ? (
+          <p className="py-10 text-center text-sm font-semibold text-white/45">{t("story_viewers_empty")}</p>
+        ) : (
+          rows.map((row) => {
+            const profileName = row.username;
+            const label = row.kind === "anon" ? t("stories_anonymous_viewer") : `@${profileName || row.id.slice(0, 8)}`;
+            return (
+              <div
+                key={row.id}
+                data-story-viewer-row={row.kind}
+                data-story-viewer-liked={row.liked ? "1" : "0"}
+                className="flex min-h-12 items-center gap-3 rounded-2xl px-1 py-1.5"
+              >
+                {row.kind === "profile" && profileName ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenProfile(profileName)}
+                    className="shrink-0"
+                    aria-label={t("stories_view_profile", { username: profileName })}
+                  >
+                    {row.photo ? (
+                      <img src={row.photo} alt="" className="h-11 w-11 rounded-full object-cover" />
+                    ) : (
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10">
+                        <UserRound size={20} />
+                      </span>
+                    )}
+                  </button>
+                ) : (
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70">
+                    <UserRound size={20} />
+                  </span>
+                )}
+
+                {row.kind === "profile" && profileName ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenChat(profileName)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span className="block truncate text-sm font-black text-white">{label}</span>
+                    {row.liked ? (
+                      <span className="mt-0.5 block text-[11px] font-semibold text-[#E879F9]">
+                        {t("story_viewers_liked")}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : (
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-black text-white">{label}</p>
+                    {row.liked ? (
+                      <p className="mt-0.5 text-[11px] font-semibold text-[#E879F9]">{t("story_viewers_liked")}</p>
+                    ) : null}
+                  </div>
+                )}
+
+                <div className="flex shrink-0 items-center gap-2 pl-2">
+                  {row.kind === "anon" && row.locationLabel ? (
+                    <span className="max-w-[9.5rem] truncate text-right text-[11px] font-semibold text-white/45">
+                      {row.locationLabel}
+                    </span>
+                  ) : null}
+                  {row.liked ? <Heart size={16} className="text-[#E879F9]" fill="currentColor" /> : null}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}

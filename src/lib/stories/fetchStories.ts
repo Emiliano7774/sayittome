@@ -14,6 +14,7 @@ import {
 import {
   STORIES_QUERY_MAX_DOCS,
   STORIES_QUERY_PAGE_SIZE,
+  reconstructActiveStorySet,
   selectStoriesForIndex,
   shouldFetchNextStoriesPage,
   shouldKeepScanningStoryFallback,
@@ -260,14 +261,89 @@ async function fetchActiveStoryDocs(now: number) {
       ).map((row) => row.id),
     );
     const docs = scannedDocs.filter((docSnap) => selected.has(docSnap.id));
-    return {
-      docs,
-      truncated: false,
-      forEach(callback: (doc: (typeof docs)[number]) => void) {
-        docs.forEach((docSnap) => callback(docSnap));
-      },
-    };
+    return wrapStoryDocs(docs, false);
   }
+}
+
+function wrapStoryDocs(
+  docs: Array<{ id: string; data: () => unknown }>,
+  truncated: boolean,
+) {
+  return {
+    docs,
+    truncated,
+    forEach(callback: (doc: (typeof docs)[number]) => void) {
+      docs.forEach((docSnap) => callback(docSnap));
+    },
+  };
+}
+
+function storyIndexCandidateFromDoc(
+  docSnap: { id: string; data: () => unknown },
+) {
+  const data = (docSnap.data() || {}) as Record<string, unknown>;
+  return {
+    id: docSnap.id,
+    active: data.active !== false,
+    adminDeleted: data.adminDeleted === true,
+    expiresAtMs: tsToMs(data.expiresAt),
+    createdAtMs: tsToMs(data.createdAt),
+  };
+}
+
+/** Recover still-valid stories even if they were left out of `active == true`. */
+async function fetchReconstructStoryDocs(now: number) {
+  const indexed = await fetchActiveStoryDocs(now);
+  const expiresAfter = Timestamp.fromMillis(now);
+  const extra: Array<{ id: string; data: () => unknown }> = [];
+  try {
+    let cursor: Awaited<ReturnType<typeof getDocs>>["docs"][number] | undefined;
+    let lastPageSize = STORIES_QUERY_PAGE_SIZE;
+    do {
+      const page = await getDocs(
+        cursor
+          ? query(
+              collection(db, "historias"),
+              where("expiresAt", ">", expiresAfter),
+              orderBy("expiresAt", "desc"),
+              startAfter(cursor),
+              limit(STORIES_QUERY_PAGE_SIZE),
+            )
+          : query(
+              collection(db, "historias"),
+              where("expiresAt", ">", expiresAfter),
+              orderBy("expiresAt", "desc"),
+              limit(STORIES_QUERY_PAGE_SIZE),
+            ),
+      );
+      extra.push(...page.docs);
+      lastPageSize = page.size;
+      cursor = page.docs[page.docs.length - 1];
+    } while (
+      cursor &&
+      shouldFetchNextStoriesPage({
+        lastPageSize,
+        pageSize: STORIES_QUERY_PAGE_SIZE,
+        collected: extra.length,
+        maxDocs: STORIES_QUERY_MAX_DOCS,
+      })
+    );
+  } catch (error) {
+    console.warn("historias reconstruct query failed", error);
+  }
+
+  const keep = new Set(
+    reconstructActiveStorySet(
+      indexed.docs.map(storyIndexCandidateFromDoc),
+      extra.map(storyIndexCandidateFromDoc),
+      now,
+    ).map((row) => row.id),
+  );
+  const byId = new Map<string, { id: string; data: () => unknown }>();
+  for (const docSnap of [...indexed.docs, ...extra]) {
+    if (keep.has(docSnap.id) && !byId.has(docSnap.id)) byId.set(docSnap.id, docSnap);
+  }
+  return wrapStoryDocs([...byId.values()], false);
 }
 
 export function applyHydratedProfiles(
@@ -323,10 +399,12 @@ export { hydrateRegisteredProfiles };
 
 export async function fetchActiveStoriesGrouped(
   viewerUid = "",
-  options?: { hydrate?: boolean },
+  options?: { hydrate?: boolean; reconstruct?: boolean },
 ) {
   const now = Date.now();
-  const snap = await fetchActiveStoryDocs(now);
+  const snap = options?.reconstruct
+    ? await fetchReconstructStoryDocs(now)
+    : await fetchActiveStoryDocs(now);
 
   const stories: StoryItem[] = [];
   snap.forEach((docSnap) => {

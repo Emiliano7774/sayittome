@@ -1,0 +1,80 @@
+/**
+ * Story notification policy + MAD + copy + hrefs.
+ *   node scripts/story-notifications.harness.mjs
+ */
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const policy = await import(
+  pathToFileURL(path.join(root, "src/lib/stories/storyNotificationPolicy.ts")).href
+);
+
+assert.deepEqual(policy.defaultStoryNotifPrefs(), { likes: true, followingUploads: true });
+assert.equal(
+  policy.pairAllowsStoryNotif("likes", { likes: true, followingUploads: true }, null, null, null),
+  true,
+);
+assert.equal(
+  policy.pairAllowsStoryNotif(
+    "likes",
+    { likes: false, followingUploads: true },
+    { likes: true, followingUploads: true },
+    { likes: true, followingUploads: true },
+    { likes: true, followingUploads: true },
+  ),
+  false,
+  "one side off is mutual assured destruction",
+);
+
+assert.equal(policy.isAnonymousStoryLiker({ signInProvider: "anonymous", username: "x" }), true);
+assert.equal(policy.isAnonymousStoryLiker({ username: "emiliano501" }), false);
+
+const profileLike = policy.storyLikeNotificationCopy({
+  anonymous: false,
+  likerUsername: "Emiliano501",
+});
+assert.equal(profileLike.title, "Emiliano501 te likeó");
+assert.equal(policy.storyLikeOpenHref({ anonymous: false, likerUsername: "Emiliano501" }), "/u/Emiliano501");
+
+const anonLike = policy.storyLikeNotificationCopy({ anonymous: true, likerUsername: "" });
+assert.equal(anonLike.title, "Recibiste un like");
+assert.equal(policy.storyLikeOpenHref({ anonymous: true, likerUsername: "hidden" }), "/stories");
+
+assert.equal(
+  policy.storyUploadOpenHref("owner1", "story9"),
+  "/stories/owner1?story=story9",
+);
+assert.equal(policy.sanitizeStoryNotificationHref("https://evil.test"), "");
+assert.equal(policy.sanitizeStoryNotificationHref("//evil.test"), "");
+assert.ok(policy.isStoryNotificationHref("/stories/abc?story=1"));
+
+const fnSrc = fs.readFileSync(path.join(root, "functions/src/storyLike.ts"), "utf8");
+assert.match(fnSrc, /notifyStoryLike/);
+assert.match(fnSrc, /storyPairAllows/);
+const created = fs.readFileSync(path.join(root, "functions/src/storyCreated.ts"), "utf8");
+assert.match(created, /followingUploads/);
+assert.match(created, /seguidores/);
+const push = fs.readFileSync(path.join(root, "functions/src/storyPush.ts"), "utf8");
+assert.match(push, /STORY_NOTIF_COLOR/);
+assert.match(push, /ic_stat_notify/);
+assert.match(push, /STORY_NOTIF_CHANNEL_ID/);
+const policySrc = fs.readFileSync(
+  path.join(root, "functions/src/storyNotificationPolicy.ts"),
+  "utf8",
+);
+assert.match(policySrc, /#E879F9/);
+assert.match(policySrc, /stories-v1/);
+
+const prompt = fs.readFileSync(
+  path.join(root, "src/components/chat/ChatNotificationPrompt.tsx"),
+  "utf8",
+);
+assert.match(prompt, /enableStoryNotificationPack/);
+const fcm = fs.readFileSync(path.join(root, "src/lib/chat/fcmPush.ts"), "utf8");
+assert.match(fcm, /openStoryNotificationHref/);
+assert.match(fcm, /stories-v1/);
+
+console.log("PASS story-notifications");

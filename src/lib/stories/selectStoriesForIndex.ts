@@ -93,6 +93,27 @@ function storyStillActive(story: MergeableStory, now: number) {
   return !(expires > 0 && expires <= now);
 }
 
+export function shouldKeepStoryInReconstruction(doc: StoryIndexCandidate, now = Date.now()) {
+  if (!String(doc?.id || "").trim()) return false;
+  if (doc.adminDeleted === true || doc.active === false) return false;
+  const expires = Number(doc.expiresAtMs || 0);
+  return !(expires > 0 && expires <= now);
+}
+
+/** Union still-valid indexed + historical rows so hidden-but-live stories come back. */
+export function reconstructActiveStorySet<T extends StoryIndexCandidate>(
+  indexed: T[],
+  historical: T[] = [],
+  now = Date.now(),
+) {
+  const byId = new Map<string, T>();
+  for (const row of [...indexed, ...historical]) {
+    if (!shouldKeepStoryInReconstruction(row, now)) continue;
+    if (!byId.has(row.id)) byId.set(row.id, row);
+  }
+  return [...byId.values()].sort(compareStoriesNewestFirst);
+}
+
 /** Incoming network rows win; still-active previous stories are kept if a page was truncated. */
 export function mergeActiveStoryGroups<TStory extends MergeableStory, TGroup extends MergeableGroup<TStory>>(
   incoming: TGroup[],
