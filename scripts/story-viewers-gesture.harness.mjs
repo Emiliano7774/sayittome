@@ -21,7 +21,7 @@ assert.equal(gesture.shouldOpenStoryViewersGesture({ deltaUp: 30, absX: 40 }), f
 
 assert.equal(
   gesture.shouldCloseStoryViewersGesture({
-    deltaDown: 22,
+    deltaDown: 10,
     absX: 4,
     elapsedMs: 200,
     scrollTop: 0,

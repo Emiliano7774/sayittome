@@ -3,6 +3,7 @@
  * Admin SDK transaction — never trust client increments.
  */
 import { FieldValue } from "firebase-admin/firestore";
+import { logger } from "firebase-functions";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { db, ensureAdminApp } from "./adminApp";
@@ -155,7 +156,9 @@ export async function handleToggleStoryLike(
       ownerUid: result.ownerUid,
       likerUid: authUid,
       signInProvider: String(request.auth?.token?.firebase?.sign_in_provider || ""),
-    }).catch(() => {});
+    }).catch((error) => {
+      logger.error("story like push failed", error);
+    });
   }
 
   return {

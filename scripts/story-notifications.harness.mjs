@@ -60,8 +60,10 @@ assert.match(created, /seguidores/);
 const push = fs.readFileSync(path.join(root, "functions/src/storyPush.ts"), "utf8");
 assert.match(push, /STORY_NOTIF_COLOR/);
 assert.match(push, /ic_stat_story_like/);
+assert.match(push, /ic_stat_notify/);
 assert.match(push, /STORY_NOTIF_CHANNEL_ID/);
-assert.doesNotMatch(push, /android:\s*\{[\s\S]*notification:/);
+assert.match(push, /notification:\s*\{\s*title/);
+assert.match(push, /channelId: STORY_NOTIF_CHANNEL_ID/);
 assert.doesNotMatch(push, /whip/);
 const policySrc = fs.readFileSync(
   path.join(root, "functions/src/storyNotificationPolicy.ts"),

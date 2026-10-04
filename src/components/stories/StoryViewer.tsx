@@ -48,7 +48,10 @@ import {
 import { shouldShowStoryMediaCaption, storyCaptionText } from "@/lib/stories/storyCaption";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import { shouldDismissStoryGesture } from "@/lib/stories/storyDismissGesture";
-import { shouldOpenStoryViewersGesture } from "@/lib/stories/storyViewersGesture";
+import {
+  shouldCloseStoryViewersGesture,
+  shouldOpenStoryViewersGesture,
+} from "@/lib/stories/storyViewersGesture";
 import {
   isOwnerGroupSnapshotComplete,
   isStoryUnseenForViewer,
@@ -175,6 +178,7 @@ export default function StoryViewer({
     swiped: false,
     dismissing: false,
   });
+  const viewersPeekRef = useRef({ x: 0, y: 0, t: 0, active: false });
   const replyPointerRef = useRef({ y: 0, dragging: false });
   const replySentTimerRef = useRef<number | null>(null);
   const dismissTimerRef = useRef<number | null>(null);
@@ -199,10 +203,15 @@ export default function StoryViewer({
     const keptIndex = previousId
       ? stories.findIndex((story) => story.id === previousId)
       : -1;
+    const sameMembership =
+      appliedStoryKey.split("|").slice(0, 4).join("|") ===
+      incomingStoryKey.split("|").slice(0, 4).join("|");
     setAppliedStoryKey(incomingStoryKey);
     const appliedViewer = appliedStoryKey.split("|").pop() || "";
     const viewerChanged = appliedViewer !== (viewerUid || "");
-    if (stillOnRouteOwner && keptIndex >= 0 && !viewerChanged) {
+    if (sameMembership) {
+      if (stories.length) setLocalStories(stories);
+    } else if (stillOnRouteOwner && keptIndex >= 0 && !viewerChanged) {
       setLocalStories(stories);
       if (keptIndex !== index) setIndex(keptIndex);
     } else if (stillOnRouteOwner) {
@@ -1298,8 +1307,42 @@ export default function StoryViewer({
       {viewersOpen ? (
         <button
           type="button"
-          className="absolute inset-x-0 top-0 z-[75] h-[28dvh]"
-          onClick={() => setViewersOpen(false)}
+          className="absolute inset-x-0 top-0 z-[75] h-[32dvh] touch-none"
+          data-story-viewers-peek="1"
+          onPointerDown={(event) => {
+            viewersPeekRef.current = {
+              x: event.clientX,
+              y: event.clientY,
+              t: Date.now(),
+              active: true,
+            };
+          }}
+          onPointerMove={(event) => {
+            if (!viewersPeekRef.current.active) return;
+            const deltaDown = event.clientY - viewersPeekRef.current.y;
+            if (deltaDown > 6) event.currentTarget.setPointerCapture?.(event.pointerId);
+          }}
+          onPointerUp={(event) => {
+            if (!viewersPeekRef.current.active) return;
+            const deltaDown = Math.max(0, event.clientY - viewersPeekRef.current.y);
+            const absX = Math.abs(event.clientX - viewersPeekRef.current.x);
+            const elapsedMs = Math.max(1, Date.now() - viewersPeekRef.current.t);
+            viewersPeekRef.current.active = false;
+            if (
+              shouldCloseStoryViewersGesture({
+                deltaDown,
+                absX,
+                elapsedMs,
+                scrollTop: 0,
+              }) ||
+              (deltaDown < 8 && absX < 8)
+            ) {
+              setViewersOpen(false);
+            }
+          }}
+          onPointerCancel={() => {
+            viewersPeekRef.current.active = false;
+          }}
           aria-label={t("common_cancel")}
         />
       ) : null}

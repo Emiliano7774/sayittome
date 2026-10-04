@@ -15,6 +15,10 @@ function readBrowserChromeBottom() {
 export default function VisualViewportInset() {
   useEffect(() => {
     function sync() {
+      const viewport = window.visualViewport;
+      const visibleHeight = Math.round(viewport?.height || window.innerHeight);
+      document.documentElement.style.setProperty("--sayittome-vvh", `${visibleHeight}px`);
+
       if (document.body.classList.contains("sayittome-chat-open")) {
         document.documentElement.style.setProperty(
           "--sayittome-browser-chrome-bottom",

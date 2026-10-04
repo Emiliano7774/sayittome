@@ -328,10 +328,9 @@ export default function StoryMediaBuffers({
               img.naturalHeight,
             );
           }
+          markReady(img);
           if (typeof img.decode === "function") {
-            void img.decode().then(() => markReady(img)).catch(() => markReady(img));
-          } else {
-            markReady(img);
+            void img.decode().catch(() => undefined);
           }
         }}
         onError={(e) =>

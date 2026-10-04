@@ -99,7 +99,7 @@ function AnonymousEntryLegalModalBody({
 
   return (
     <div
-      className="sayittome-entry-legal-modal fixed inset-0 z-[100500] flex min-h-[100dvh] flex-col bg-[#050508]"
+      className="sayittome-entry-legal-modal fixed inset-x-0 top-0 z-[100500] flex flex-col bg-[#050508]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="anon-legal-title"

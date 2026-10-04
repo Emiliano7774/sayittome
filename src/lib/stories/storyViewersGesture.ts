@@ -1,8 +1,8 @@
 export const STORY_VIEWERS_SWIPE_UP_PX = 18;
-export const STORY_VIEWERS_SWIPE_DOWN_PX = 22;
-export const STORY_VIEWERS_SWIPE_AXIS_RATIO = 0.85;
-export const STORY_VIEWERS_FLICK_PX = 16;
-export const STORY_VIEWERS_FLICK_VELOCITY = 0.35;
+export const STORY_VIEWERS_SWIPE_DOWN_PX = 10;
+export const STORY_VIEWERS_SWIPE_AXIS_RATIO = 1;
+export const STORY_VIEWERS_FLICK_PX = 8;
+export const STORY_VIEWERS_FLICK_VELOCITY = 0.22;
 
 export function shouldOpenStoryViewersGesture(input: {
   deltaUp: number;

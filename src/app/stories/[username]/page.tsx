@@ -121,7 +121,7 @@ function StoryUserPageInner() {
         );
       });
 
-      if (plan.action === "seed") return;
+      if (plan.action === "seed" || group) return;
 
       void refreshStoriesIndex(plan.viewerId).then(() => {
         if (cancelled || gen !== session.generation) return;

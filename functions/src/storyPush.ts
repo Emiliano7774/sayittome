@@ -41,15 +41,11 @@ export async function storyPairAllows(
 }
 
 async function loadTokensForUid(uid: string) {
-  const snap = await db()
-    .collection("usuarios")
-    .doc(uid)
-    .collection("fcmTokens")
-    .where("enabled", "==", true)
-    .limit(MAX_TOKENS_PER_USER)
-    .get();
+  const col = db().collection("usuarios").doc(uid).collection("fcmTokens");
+  const enabled = await col.where("enabled", "==", true).limit(MAX_TOKENS_PER_USER).get();
+  const snaps = enabled.size > 0 ? enabled : await col.limit(MAX_TOKENS_PER_USER).get();
   const out: Array<{ id: string; token: string }> = [];
-  for (const docSnap of snap.docs) {
+  for (const docSnap of snaps.docs) {
     const token = asId(docSnap.data().token);
     if (token) out.push({ id: docSnap.id, token });
   }
@@ -69,16 +65,23 @@ export async function sendStoryPush(input: {
   tag: string;
 }) {
   const recipientUid = asId(input.recipientUid);
-  const href = asId(input.href);
-  if (!recipientUid || !href) return { sent: 0, failed: 0 };
+  const href = asId(input.href) || "/stories";
+  if (!recipientUid) return { sent: 0, failed: 0 };
   const tokens = await loadTokensForUid(recipientUid);
-  if (tokens.length === 0) return { sent: 0, failed: 0 };
+  if (tokens.length === 0) {
+    logger.warn("story push skipped, no tokens", { type: input.type, recipientUid });
+    return { sent: 0, failed: 0 };
+  }
 
   ensureAdminApp();
   const title = String(input.title || "").slice(0, 80);
   const body = String(input.body || "").slice(0, 180);
   const multicast: MulticastMessage = {
     tokens: tokens.map((row) => row.token),
+    notification: {
+      title,
+      body,
+    },
     data: {
       type: input.type,
       href,
@@ -92,6 +95,12 @@ export async function sendStoryPush(input: {
     },
     android: {
       priority: "high",
+      notification: {
+        channelId: STORY_NOTIF_CHANNEL_ID,
+        color: STORY_NOTIF_COLOR,
+        icon: "ic_stat_notify",
+        tag: input.tag,
+      },
     },
     apns: {
       payload: {
