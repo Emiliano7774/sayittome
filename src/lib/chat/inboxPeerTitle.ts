@@ -269,6 +269,7 @@ export function mergeVisibleInboxThreads(
   live: InboxChat[],
   viewerUid = "",
   firestoreSynced = false,
+  liveAnonId = "",
 ) {
   const nextLive = withoutDeletedInboxChats(
     dedupeInboxChats(live, viewerUid).filter(isVisibleInboxChat),
@@ -281,10 +282,19 @@ export function mergeVisibleInboxThreads(
   // older visible visitor thread was deleted. This also applies when the visitor
   // has a registered profile: their outgoing anonymous chats are lease-owned,
   // not discoverable by the profile UID Firestore queries.
+  //
+  // Guest inbox (no profile uid): only the live anon's own threads are safe to
+  // keep. Otherwise the logged-out owner snapshot is treated as "visitor" rows.
+  const liveAnon = String(liveAnonId || "").trim();
   const protectedVisitorThreads = keptPrevious.filter((chat) => {
     const id = chat.canonicalChatId || chat.id;
     if (!isProfileAnonChatId(id)) return false;
-    return !viewerUid || !isIncomingAnonChatForOwner(chat, viewerUid);
+    if (viewerUid && isIncomingAnonChatForOwner(chat, viewerUid)) return false;
+    if (!viewerUid) {
+      if (!liveAnon.startsWith("anon_")) return false;
+      return profileAnonSenderFromChat(chat) === liveAnon;
+    }
+    return true;
   });
 
   const liveWithProtectedVisitors = dedupeInboxChats(

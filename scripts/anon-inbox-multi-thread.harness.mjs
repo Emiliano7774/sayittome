@@ -65,6 +65,7 @@ const preserved = inbox.mergeVisibleInboxThreads(
   liveOnlyNew,
   "",
   false,
+  "anon_sess1",
 );
 assert.equal(preserved.length, 2);
 assert.equal(
@@ -77,6 +78,7 @@ const afterSync = inbox.mergeVisibleInboxThreads(
   liveOnlyNew,
   "",
   true,
+  "anon_sess1",
 );
 assert.equal(afterSync.length, 2);
 assert.equal(
@@ -203,5 +205,18 @@ const preservedAcrossCohort = inbox.mergeVisibleInboxThreads(
   false,
 );
 assert.equal(preservedAcrossCohort.length, 3);
+
+const ownerInboxAfterLogout = inbox.mergeVisibleInboxThreads(
+  [threadA, threadB, threadA2],
+  [],
+  "",
+  true,
+  "anon_fresh_after_logout",
+);
+assert.equal(
+  ownerInboxAfterLogout.length,
+  0,
+  "fresh anon must not inherit the logged-out profile inbox",
+);
 
 console.log(JSON.stringify({ gate: "ANON_INBOX_MULTI_THREAD", pass: true }, null, 2));

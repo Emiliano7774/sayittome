@@ -134,6 +134,9 @@ export function beginFreshAnonSession() {
     typeof window !== "undefined" ? sessionStorage.getItem(ANON_KEY) : null;
 
   resetAnonSession();
+  void import("@/lib/chat/inboxIdentityReset").then((mod) => {
+    mod.resetInboxForIdentityChange();
+  });
 
   if (oldSession) {
     clearLocalChatReadForViewer(oldSession);

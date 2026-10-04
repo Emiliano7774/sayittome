@@ -2,6 +2,7 @@ import { signOut } from "firebase/auth";
 
 import { resetChatNotificationPromptOnLogout } from "@/lib/chat/chatNotificationPrefs";
 import { rotateAnonSessionPreserving } from "@/lib/chat/anonSession";
+import { resetInboxForIdentityChange } from "@/lib/chat/inboxIdentityReset";
 import { deleteCurrentDeviceFcmToken } from "@/lib/chat/fcmPush";
 import { auth } from "@/lib/firebase";
 import { deleteCurrentAnonymousStories } from "@/lib/stories/anonStories";
@@ -15,13 +16,13 @@ import { clearVerifiedProfileLinkTicket } from "@/lib/profile/verifiedProfileLin
 
 /**
  * Explicit logout → next login: rotate live anon identity once.
- * Session chat list may retain old ids, but resolve only reuses when live anon
- * matches — so the receptor sees a new thread after re-login + send.
- * Never wipe message history or delete old chats.
+ * Local inbox snapshot/session rows are dropped so a later anonymous entry
+ * cannot paint this profile's chats. Server history is not deleted.
  */
 export async function logoutAndResetAnon() {
   await deleteCurrentAnonymousStories();
   rotateAnonSessionPreserving();
+  resetInboxForIdentityChange();
   clearStoriesIndexCache();
   clearCachedViewerIdentity();
   clearShuffleChromeCache();

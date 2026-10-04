@@ -42,6 +42,7 @@ import {
   removeInboxSnapshotChat,
   writeInboxSnapshot,
 } from "@/lib/chat/inboxSnapshot";
+import { INBOX_IDENTITY_RESET_EVENT } from "@/lib/chat/inboxIdentityReset";
 import {
   OUTGOING_INBOX_CHAT_EVENT,
 } from "@/lib/chat/publishOutgoingInboxChat";
@@ -160,6 +161,32 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       chatsPipelineMark("auth-unknown");
     }
   }, [loading, uid]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onIdentityReset = () => {
+      inboxCohortRef.current = createInboxQueryCohortState();
+      queryMapsRef.current = {
+        participantes: new Map(),
+        anonOwner: new Map(),
+        receptor: new Map(),
+        target: new Map(),
+        anonRecovery: new Map(),
+      };
+      lastSortedChatsRef.current = [];
+      setChats([]);
+      setSessionChats([]);
+      setSessionChatIds([]);
+      setFirestoreSynced(false);
+      setAnonSessionId(getChatAnonSenderId());
+    };
+
+    window.addEventListener(INBOX_IDENTITY_RESET_EVENT, onIdentityReset);
+    return () => {
+      window.removeEventListener(INBOX_IDENTITY_RESET_EVENT, onIdentityReset);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -686,7 +713,13 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     const sortStart = performance.now();
     const live = dedupeInboxChats([...chats, ...sessionChats], uid).filter(isVisibleInboxChat);
     const previous = lastSortedChatsRef.current;
-    const next = mergeVisibleInboxThreads(previous, live, uid, firestoreSynced);
+    const next = mergeVisibleInboxThreads(
+      previous,
+      live,
+      uid,
+      firestoreSynced,
+      anonSessionId,
+    );
     const sortMs = Math.round(performance.now() - sortStart);
     if (isNavTraceEnabled() && next.length > 0) {
       chatsPipelineMark("inbox-sort-done", { sortMs, inboxCount: next.length });
@@ -701,7 +734,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       rememberInboxChatCount(0);
     }
     return next;
-  }, [chats, sessionChats, uid, firestoreSynced]);
+  }, [chats, sessionChats, uid, firestoreSynced, anonSessionId]);
 
   const displaySortedChats =
     sortedChats.length > 0 || firestoreSynced

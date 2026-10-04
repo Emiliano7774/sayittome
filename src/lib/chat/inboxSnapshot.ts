@@ -1,7 +1,9 @@
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 
 const STORAGE_KEY = "sayittome:inbox-snapshot:v1";
-const MAX_ROWS = 50;
+const NATIVE_STORAGE_KEY = "sayittome:inbox-snapshot-native:v1";
+const MAX_ROWS = 500;
 
 type StoredInboxRow = Omit<InboxChat, "updatedAt"> & {
   updatedAtMs?: number;
@@ -86,6 +88,7 @@ export function clearInboxSnapshotCache() {
   if (typeof window !== "undefined") {
     try {
       window.sessionStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(NATIVE_STORAGE_KEY);
     } catch {
       // ignore
     }
@@ -98,7 +101,7 @@ export function clearInboxMemoryCacheOnly() {
 }
 
 export type InboxSnapshotReadMeta = {
-  source: "memory" | "session" | "none";
+  source: "memory" | "session" | "native" | "none";
   parseMs: number;
   bytes: number;
   count: number;
@@ -135,7 +138,18 @@ export function readInboxSnapshotWithMeta(): {
   }
 
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    let source: InboxSnapshotReadMeta["source"] = "session";
+    let raw = window.sessionStorage.getItem(STORAGE_KEY);
+
+    if (!raw && isNativeAppShell()) {
+      const persisted = window.localStorage.getItem(NATIVE_STORAGE_KEY);
+      if (persisted) {
+        raw = persisted;
+        source = "native";
+        window.sessionStorage.setItem(STORAGE_KEY, persisted);
+      }
+    }
+
     if (!raw) {
       const meta: InboxSnapshotReadMeta = {
         source: "none",
@@ -155,7 +169,7 @@ export function readInboxSnapshotWithMeta(): {
 
     if (!Array.isArray(parsed) || parsed.length === 0) {
       const meta: InboxSnapshotReadMeta = {
-        source: "session",
+        source,
         parseMs,
         bytes,
         count: 0,
@@ -166,8 +180,16 @@ export function readInboxSnapshotWithMeta(): {
     }
 
     memorySnapshot = parsed.map(chatFromRow);
+    if (isNativeAppShell()) {
+      try {
+        if (window.localStorage.getItem(NATIVE_STORAGE_KEY) !== raw) {
+          window.localStorage.setItem(NATIVE_STORAGE_KEY, raw);
+        }
+      } catch {}
+    }
+
     const meta: InboxSnapshotReadMeta = {
-      source: "session",
+      source,
       parseMs,
       bytes,
       count: memorySnapshot.length,
@@ -193,7 +215,10 @@ export function readInboxSnapshot(): InboxChat[] {
 }
 
 export function writeInboxSnapshot(chats: InboxChat[]) {
-  if (chats.length === 0) return;
+  if (chats.length === 0) {
+    clearInboxSnapshotCache();
+    return;
+  }
 
   const trimmed = chats.slice(0, MAX_ROWS);
   memorySnapshot = trimmed;
@@ -201,11 +226,39 @@ export function writeInboxSnapshot(chats: InboxChat[]) {
   if (typeof window === "undefined") return;
 
   try {
-    window.sessionStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(trimmed.map(rowFromChat)),
-    );
+    const encoded = JSON.stringify(trimmed.map(rowFromChat));
+    window.sessionStorage.setItem(STORAGE_KEY, encoded);
+    if (isNativeAppShell()) {
+      window.localStorage.setItem(NATIVE_STORAGE_KEY, encoded);
+    }
   } catch {
-    // sessionStorage full or unavailable
+    // storage full or unavailable
+  }
+}
+
+export function removeInboxSnapshotChat(chatId: string) {
+  const cleanId = String(chatId || "").trim();
+  if (!cleanId) return;
+
+  memorySnapshot = memorySnapshot.filter(
+    (chat) => chat.id !== cleanId && chat.canonicalChatId !== cleanId,
+  );
+
+  if (typeof window === "undefined") return;
+
+  try {
+    if (memorySnapshot.length === 0) {
+      window.sessionStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(NATIVE_STORAGE_KEY);
+      return;
+    }
+
+    const encoded = JSON.stringify(memorySnapshot.slice(0, MAX_ROWS).map(rowFromChat));
+    window.sessionStorage.setItem(STORAGE_KEY, encoded);
+    if (isNativeAppShell()) {
+      window.localStorage.setItem(NATIVE_STORAGE_KEY, encoded);
+    }
+  } catch {
+    // storage full or unavailable
   }
 }
