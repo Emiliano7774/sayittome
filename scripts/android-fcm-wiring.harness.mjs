@@ -31,6 +31,29 @@ const manifest = fs.readFileSync(
 );
 assert.match(manifest, /ChatExpandableMessagingService/);
 assert.match(manifest, /tools:node="remove"/);
+assert.match(manifest, /default_notification_icon/);
+assert.match(manifest, /@drawable\/ic_stat_notify/);
+
+const fcmService = fs.readFileSync(
+  path.join(root, "android/app/src/main/java/com/sayittome/app/ChatExpandableMessagingService.java"),
+  "utf8",
+);
+assert.match(fcmService, /R\.drawable\.ic_stat_notify/);
+assert.match(fcmService, /R\.drawable\.ic_notify_moon/);
+assert.doesNotMatch(fcmService, /setSmallIcon\(R\.mipmap\.ic_launcher\)/);
+assert.ok(
+  fs.existsSync(path.join(root, "android/app/src/main/res/drawable/ic_stat_notify.xml")),
+  "white moon status-bar icon",
+);
+assert.ok(
+  fs.existsSync(path.join(root, "android/app/src/main/res/drawable/ic_notify_moon.png")),
+  "dark moon large icon",
+);
+const leftoverRobot = fs.readFileSync(
+  path.join(root, "android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml"),
+  "utf8",
+);
+assert.doesNotMatch(leftoverRobot, /M66\.94,46\.02/);
 
 const capConfig = JSON.parse(
   fs.readFileSync(path.join(root, "android/app/src/main/assets/capacitor.config.json"), "utf8"),

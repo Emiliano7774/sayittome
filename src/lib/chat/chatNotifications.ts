@@ -12,6 +12,9 @@ import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 const CHAT_CHANNEL_ID = "chat-messages";
 const ANON_MATCH_CHANNEL_ID = "anon-match-requests";
 const ICON_PATH = "/icons/Icon-192.png";
+const NOTIFY_SMALL_ICON = "ic_stat_notify";
+const NOTIFY_LARGE_ICON = "ic_notify_moon";
+const NOTIFY_ICON_COLOR = "#7C3AED";
 
 let bootstrapped = false;
 let permissionRequested = false;
@@ -129,7 +132,9 @@ export async function showRequiredAnonMatchNotification(input: {
             body,
             channelId: ANON_MATCH_CHANNEL_ID,
             sound: "default",
-            smallIcon: "ic_launcher_foreground",
+            smallIcon: NOTIFY_SMALL_ICON,
+            largeIcon: NOTIFY_LARGE_ICON,
+            iconColor: NOTIFY_ICON_COLOR,
             extra: { kind: "anon-match", requestId },
           },
         ],
@@ -356,7 +361,9 @@ export async function showChatNotification(input: {
             channelId: CHAT_CHANNEL_ID,
             // Foreground: in-app whip owns audio — avoid double sound with channel.
             ...(background ? { sound: "default" as const } : {}),
-            smallIcon: "ic_launcher_foreground",
+            smallIcon: NOTIFY_SMALL_ICON,
+            largeIcon: NOTIFY_LARGE_ICON,
+            iconColor: NOTIFY_ICON_COLOR,
             group,
             extra: {
               chatId,

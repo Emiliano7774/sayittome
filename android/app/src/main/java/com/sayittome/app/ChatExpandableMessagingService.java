@@ -116,7 +116,11 @@ public class ChatExpandableMessagingService extends FirebaseMessagingService {
         Uri sound = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.whip);
         NotificationCompat.Builder builder =
             new NotificationCompat.Builder(this, channelId)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_stat_notify)
+                .setColor(0xFF7C3AED)
+                .setLargeIcon(
+                    android.graphics.BitmapFactory.decodeResource(getResources(), R.drawable.ic_notify_moon)
+                )
                 .setContentTitle(title)
                 .setContentText(body.isEmpty() ? "Nuevo mensaje" : body)
                 .setStyle(style)
