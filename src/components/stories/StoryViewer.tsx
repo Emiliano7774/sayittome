@@ -59,6 +59,7 @@ import {
 } from "@/lib/stories/storiesQueryGuard";
 import { preloadNextPlayTarget, preloadStoryMedia } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
+import { pinStoriesHubKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
 import { resolveStoryViewerExitDestination, type StoryViewerExitReason } from "@/lib/navigation/storyReturnNav";
 import { sendStoryReplyMessage } from "@/lib/stories/sendStoryReply";
 import {
@@ -209,6 +210,7 @@ export default function StoryViewer({
   }
 
   useEffect(() => {
+    pinStoriesHubKeepAlive();
     document.body.classList.add("sayittome-story-viewer-open");
     return () => {
       document.body.classList.remove("sayittome-story-viewer-open");
@@ -223,6 +225,10 @@ export default function StoryViewer({
       if (dest === currentPath || dest === currentPath.replace(/\/$/, "")) {
         router.back();
         return;
+      }
+
+      if (dest === "/stories") {
+        pinStoriesHubKeepAlive();
       }
 
       router.replace(dest);

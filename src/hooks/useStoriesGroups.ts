@@ -93,7 +93,10 @@ export function useStoriesGroups() {
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (!authSettled) return;
-      applyViewer(resolveStoryViewerId(user), true);
+      const next = resolveStoryViewerId(user);
+      // Same viewer: reuse the cached mosaic. Force refresh only on identity
+      // change so a remount / swipe-down dismiss does not refetch and repaint.
+      applyViewer(next, next !== lastViewer);
     });
 
     return () => {

@@ -26,9 +26,10 @@ check(
 );
 
 check(
-  "HOST_STILL_MOUNTS_FOR_PROFILE_AND_CHAT",
+  "HOST_STILL_MOUNTS_FOR_PROFILE_CHAT_AND_STORY_VIEWER",
   keepAlive.includes('path.startsWith("/u/")') &&
-    keepAlive.includes('path.startsWith("/chat/")'),
+    keepAlive.includes('path.startsWith("/chat/")') &&
+    keepAlive.includes('path.startsWith("/stories/")'),
 );
 
 check(

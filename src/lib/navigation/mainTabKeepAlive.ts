@@ -63,7 +63,16 @@ export function shouldRenderMainTabKeepAliveHost(pathname: string) {
   if (path === "/shuffle") return true;
   if (path.startsWith("/chat/")) return true;
   if (path.startsWith("/u/")) return true;
+  // Story viewer / compose sit on /stories/* — keep the visited Historias
+  // panel mounted so swipe-down dismiss reveals the cached mosaic.
+  if (path.startsWith("/stories/")) return true;
   return false;
+}
+
+/** Keep the Stories hub tree alive under a viewer so dismiss does not remount it. */
+export function pinStoriesHubKeepAlive() {
+  pinMainTabKeepAlive();
+  markMainTabVisited("/stories");
 }
 
 /** Immediate visual target before router commits (visited tabs only). */
