@@ -42,9 +42,13 @@ const src = fs.readFileSync(path.join(root, "src/components/stories/StoryViewer.
 assert.match(src, /StoryViewersSheet/);
 assert.match(src, /canReplyToStory/);
 assert.match(src, /setViewersOpen\(true\)/);
+assert.match(src, /shouldOpenStoryViewersGesture/);
+assert.match(src, /data-story-gesture-layer/);
 assert.doesNotMatch(src, /canReply = \s*\n\s*!anonymousStory/);
 const sheet = fs.readFileSync(path.join(root, "src/components/stories/StoryViewersSheet.tsx"), "utf8");
 assert.match(sheet, /data-story-viewers-scroll/);
+assert.match(sheet, /data-story-viewers-handle/);
+assert.match(sheet, /shouldCloseStoryViewersGesture/);
 assert.match(sheet, /overflow-y-auto/);
 const likeFn = fs.readFileSync(path.join(root, "functions/src/storyLike.ts"), "utf8");
 assert.match(likeFn, /collection\("vistas"\)/);

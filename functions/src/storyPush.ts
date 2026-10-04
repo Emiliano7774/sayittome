@@ -75,28 +75,30 @@ export async function sendStoryPush(input: {
   if (tokens.length === 0) return { sent: 0, failed: 0 };
 
   ensureAdminApp();
+  const title = String(input.title || "").slice(0, 80);
+  const body = String(input.body || "").slice(0, 180);
   const multicast: MulticastMessage = {
     tokens: tokens.map((row) => row.token),
-    notification: {
-      title: String(input.title || "").slice(0, 80),
-      body: String(input.body || "").slice(0, 180),
-    },
     data: {
       type: input.type,
       href,
       recipientUid,
       tag: input.tag,
       channelId: STORY_NOTIF_CHANNEL_ID,
-      title: String(input.title || "").slice(0, 80),
-      body: String(input.body || "").slice(0, 180),
+      title,
+      body,
+      color: STORY_NOTIF_COLOR,
+      icon: "ic_stat_story_like",
     },
     android: {
       priority: "high",
-      notification: {
-        channelId: STORY_NOTIF_CHANNEL_ID,
-        color: STORY_NOTIF_COLOR,
-        icon: "ic_stat_notify",
-        tag: input.tag,
+    },
+    apns: {
+      payload: {
+        aps: {
+          alert: { title, body },
+          sound: "default",
+        },
       },
     },
   };

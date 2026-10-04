@@ -48,6 +48,7 @@ import {
 import { shouldShowStoryMediaCaption, storyCaptionText } from "@/lib/stories/storyCaption";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import { shouldDismissStoryGesture } from "@/lib/stories/storyDismissGesture";
+import { shouldOpenStoryViewersGesture } from "@/lib/stories/storyViewersGesture";
 import {
   isOwnerGroupSnapshotComplete,
   isStoryUnseenForViewer,
@@ -101,8 +102,7 @@ type Props = {
 };
 
 const DEFAULT_IMAGE_MS = 5500;
-const SWIPE_REPLY_PX = 56;
-const SWIPE_DISMISS_PX = 48;
+const SWIPE_DISMISS_PX = 28;
 const TAP_MAX_MS = 380;
 const STORY_DISMISS_GESTURE_LOCK_PX = 8;
 const STORY_DISMISS_ANIMATION_MS = 190;
@@ -645,7 +645,9 @@ export default function StoryViewer({
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest("[data-story-chrome]")) return;
+    if ((event.target as HTMLElement).closest("button,a,input,textarea,[data-story-chrome-block]")) {
+      return;
+    }
     if (replyOpen || viewersOpen || reportOpen || dismissAnimating) return;
 
     pointerRef.current = {
@@ -687,7 +689,7 @@ export default function StoryViewer({
     if (pointerRef.current.swiped) return;
 
     const deltaUp = -deltaDown;
-    if (deltaUp >= SWIPE_REPLY_PX && deltaUp > absX * 1.1) {
+    if (shouldOpenStoryViewersGesture({ deltaUp, absX })) {
       pointerRef.current.swiped = true;
       if (canDelete) {
         setViewersOpen(true);
@@ -992,8 +994,8 @@ export default function StoryViewer({
       >
       <div
         className={[
-          "absolute left-0 right-0 top-0 z-40 flex gap-1 px-3 pb-2 pt-4 transition-opacity duration-150",
-          topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+          "pointer-events-none absolute left-0 right-0 top-0 z-40 flex gap-1 px-3 pb-2 pt-4 transition-opacity duration-150",
+          topChromeHidden ? "opacity-0" : "opacity-100",
         ].join(" ")}
         data-story-chrome
       >
@@ -1026,10 +1028,10 @@ export default function StoryViewer({
         type="button"
         onClick={() => exitStoryViewer("manual")}
         className={[
-          "absolute right-4 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 transition-opacity duration-150",
+          "pointer-events-auto absolute right-4 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 transition-opacity duration-150",
           topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
         ].join(" ")}
-        data-story-chrome
+        data-story-chrome-block
         aria-label={t("common_cancel")}
       >
         <X size={26} />
@@ -1041,10 +1043,10 @@ export default function StoryViewer({
           onClick={handleDeleteStory}
           disabled={deleting}
           className={[
-            "absolute right-20 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-red-300 transition-opacity duration-150 disabled:opacity-50",
+            "pointer-events-auto absolute right-20 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-red-300 transition-opacity duration-150 disabled:opacity-50",
             topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
           ].join(" ")}
-          data-story-chrome
+          data-story-chrome-block
           aria-label={t("stories_delete")}
         >
           <Trash2 size={22} />
@@ -1056,10 +1058,10 @@ export default function StoryViewer({
           type="button"
           onClick={() => setReportOpen(true)}
           className={[
-            "absolute right-20 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-amber-200 transition-opacity duration-150",
+            "pointer-events-auto absolute right-20 top-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-amber-200 transition-opacity duration-150",
             topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
           ].join(" ")}
-          data-story-chrome
+          data-story-chrome-block
           aria-label={t("report_title")}
         >
           <Flag size={20} />
@@ -1077,8 +1079,8 @@ export default function StoryViewer({
 
       <div
         className={[
-          "absolute left-4 top-14 z-50 max-w-[70%] transition-opacity duration-150",
-          topChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+          "pointer-events-none absolute left-4 top-14 z-50 max-w-[70%] transition-opacity duration-150",
+          topChromeHidden ? "opacity-0" : "opacity-100",
         ].join(" ")}
         data-story-chrome
       >
@@ -1095,6 +1097,7 @@ export default function StoryViewer({
           "absolute inset-0 z-20 touch-none",
           replyOpen || viewersOpen || reportOpen || dismissAnimating ? "pointer-events-none" : "",
         ].join(" ")}
+        data-story-gesture-layer="1"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -1196,8 +1199,8 @@ export default function StoryViewer({
 
       <div
         className={[
-          "absolute bottom-0 left-0 right-0 z-50 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4 transition-opacity duration-150",
-          bottomChromeHidden ? "pointer-events-none opacity-0" : "opacity-100",
+          "pointer-events-none absolute bottom-0 left-0 right-0 z-50 px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-4 transition-opacity duration-150",
+          bottomChromeHidden ? "opacity-0" : "opacity-100",
         ].join(" ")}
         data-story-chrome
       >
@@ -1225,7 +1228,8 @@ export default function StoryViewer({
             <button
               type="button"
               onClick={openProfile}
-              className="shrink-0 rounded-full ring-2 ring-white/90 transition active:scale-95"
+              data-story-chrome-block
+              className="pointer-events-auto shrink-0 rounded-full ring-2 ring-white/90 transition active:scale-95"
               aria-label={t("stories_view_profile", { username: profileUsername })}
             >
               {profilePhoto ? (
@@ -1259,8 +1263,9 @@ export default function StoryViewer({
                 type="button"
                 onClick={handleLike}
                 disabled={likerId === resolvedOwnerUid}
+                data-story-chrome-block
                 className={[
-                  "flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-black transition",
+                  "pointer-events-auto flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-black transition",
                   storyLiked
                     ? "bg-pink-500 text-white shadow-[0_0_30px_rgba(236,72,153,.35)]"
                     : "bg-white/10 text-white",
@@ -1275,7 +1280,8 @@ export default function StoryViewer({
               <button
                 type="button"
                 onClick={() => setViewersOpen(true)}
-                className="text-sm font-bold text-white/70"
+                data-story-chrome-block
+                className="pointer-events-auto text-sm font-bold text-white/70"
               >
                 {current.viewCount || 0} {t("stories_views")}
               </button>

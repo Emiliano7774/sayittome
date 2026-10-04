@@ -754,15 +754,15 @@ const es = {
   story_notifications_label: "Notificaciones de historias",
   story_notifications_menu: "Notificaciones de historias",
   story_notifications_hint:
-    "Avisos de likes y de historias nuevas de gente que seguís. Están prendidas desde el inicio.",
+    "Los avisos de historias arrancan prendidos. Podés apagarlos cuando quieras, para todos o solo con alguien.",
   story_notifications_peer_hint:
-    "Si apagás un aviso con {username}, tampoco le llega el de ese tipo. Destrucción mutua.",
+    "Elegí qué avisos querés con {username}. Si apagás uno, se apaga para los dos: ni vos ni esa persona reciben ese tipo de notificación.",
   story_notifications_likes: "Likes en tus historias",
   story_notifications_likes_hint: "Cuando alguien likea tu historia.",
   story_notifications_uploads: "Historias de gente que seguís",
   story_notifications_uploads_hint: "Cuando alguien que seguís sube una historia.",
   story_notifications_mad:
-    "Si apagás un canal, el otro lado tampoco recibe ese aviso. Es mutuo.",
+    "Regla simple: si apagás un aviso, se apaga para los dos. Ejemplo: si cortás los likes con esta persona, nadie de los dos recibe aviso de like. Lo mismo con las historias nuevas.",
   story_reply_placeholder: "Respondé la historia...",
   story_reply_send: "Enviar",
   story_reply_hint: "Deslizá hacia arriba para responder",
@@ -1636,15 +1636,15 @@ const en: Record<keyof typeof es, string> = {
   story_notifications_label: "Story notifications",
   story_notifications_menu: "Story notifications",
   story_notifications_hint:
-    "Alerts for likes and new stories from people you follow. They start on.",
+    "Story alerts start on. You can turn them off anytime, for everyone or just one person.",
   story_notifications_peer_hint:
-    "If you turn off an alert with {username}, they stop getting that alert too. Mutual.",
+    "Choose which alerts you want with {username}. If you turn one off, it turns off for both of you.",
   story_notifications_likes: "Likes on your stories",
   story_notifications_likes_hint: "When someone likes your story.",
   story_notifications_uploads: "Stories from people you follow",
   story_notifications_uploads_hint: "When someone you follow posts a story.",
   story_notifications_mad:
-    "If you turn a channel off, the other side stops getting that alert too. It is mutual.",
+    "Simple rule: if you turn an alert off, it turns off for both sides. Example: if you cut likes with this person, neither of you gets a like alert. Same for new stories.",
   story_reply_placeholder: "Reply to story...",
   story_reply_send: "Send",
   story_reply_hint: "Swipe up to reply",

@@ -1,5 +1,9 @@
 import { markStoriesHydrated } from "@/hooks/useStoriesReady";
-import { fetchActiveStoriesGrouped, hydrateRegisteredProfiles } from "@/lib/stories/fetchStories";
+import {
+  fetchActiveStoriesGrouped,
+  fetchOwnerStoryGroup,
+  hydrateRegisteredProfiles,
+} from "@/lib/stories/fetchStories";
 import { preloadStoryGroup } from "@/lib/stories/preload";
 import {
   applyViewedMarksBatch,
@@ -244,10 +248,7 @@ export async function refreshStoriesIndex(
       const queryMs = Date.now() - queryStarted;
       if (!live()) return;
       viewerUid = requestViewer;
-      const fetchedGroups =
-        fetched.truncated || options?.reconstruct === true
-          ? mergeActiveStoryGroups(fetched.groups, cachedGroups, Date.now())
-          : fetched.groups;
+      const fetchedGroups = mergeActiveStoryGroups(fetched.groups, cachedGroups, Date.now());
       const nextGroups = preserveViewerSeenState(fetchedGroups, previousByUid, requestViewer);
       const membershipChanged =
         viewerChanged || storyMembershipKey(nextGroups) !== storyMembershipKey(cachedGroups);
@@ -299,7 +300,14 @@ export function getStoryGroup(ownerUid?: string, username?: string) {
     return byUid.get(uid) || null;
   }
 
-  return null;
+  return (
+    cachedGroups.find((group) => {
+      if (uid && group.ownerUid === uid) return true;
+      return Boolean(
+        usernameKey && String(group.ownerUsername || "").trim().toLowerCase() === usernameKey,
+      );
+    }) || null
+  );
 }
 
 export function getStoriesIndexVersion() {
@@ -383,8 +391,27 @@ export function invalidateStoriesIndexAfterMutation() {
 
 /** Force a full active-stories rebuild so still-valid tiles are not left behind. */
 export async function reconstructActiveStoriesIndex(nextViewerUid = viewerUid) {
-  invalidateStoriesIndexAfterMutation();
   return refreshStoriesIndex(nextViewerUid, true, { reconstruct: true });
+}
+
+export function upsertStoryOwnerGroup(group: StoryUserGroup, nextViewerUid = viewerUid) {
+  if (!group?.ownerUid || !group.stories?.length) return;
+  const viewer = String(nextViewerUid || viewerUid || "").trim();
+  const merged = mergeActiveStoryGroups([group], cachedGroups, Date.now());
+  const next = preserveViewerSeenState(merged, new Map(byUid), viewer);
+  viewerUid = viewer || viewerUid;
+  cachedGroups = next;
+  hasMaterialized = true;
+  rebuildLookupMaps(next);
+  if (viewer) writeStoriesSnapshot(viewer, next, { source: "local" });
+  notify();
+}
+
+export async function loadOwnerStoryGroup(ownerKey: string, nextViewerUid = viewerUid) {
+  const cached = getStoryGroup(ownerKey, ownerKey);
+  const group = await fetchOwnerStoryGroup(ownerKey, nextViewerUid);
+  if (group) upsertStoryOwnerGroup(group, nextViewerUid);
+  return group || cached || null;
 }
 
 export function getNextStoryGroup(currentOwnerUid: string) {

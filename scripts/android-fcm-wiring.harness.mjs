@@ -40,6 +40,8 @@ const fcmService = fs.readFileSync(
 );
 assert.match(fcmService, /R\.drawable\.ic_stat_notify/);
 assert.match(fcmService, /R\.drawable\.ic_notify_moon/);
+assert.match(fcmService, /shouldRenderStoryNotification/);
+assert.match(fcmService, /R\.drawable\.ic_stat_story_like/);
 assert.doesNotMatch(fcmService, /setSmallIcon\(R\.mipmap\.ic_launcher\)/);
 assert.ok(
   fs.existsSync(path.join(root, "android/app/src/main/res/drawable/ic_stat_notify.xml")),
@@ -48,6 +50,14 @@ assert.ok(
 assert.ok(
   fs.existsSync(path.join(root, "android/app/src/main/res/drawable/ic_notify_moon.png")),
   "dark moon large icon",
+);
+assert.ok(
+  fs.existsSync(path.join(root, "android/app/src/main/res/drawable/ic_stat_story_like.xml")),
+  "white story-like status-bar icon",
+);
+assert.ok(
+  fs.existsSync(path.join(root, "android/app/src/main/res/drawable/ic_notify_story_like.xml")),
+  "pink story-like large icon",
 );
 const leftoverRobot = fs.readFileSync(
   path.join(root, "android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml"),

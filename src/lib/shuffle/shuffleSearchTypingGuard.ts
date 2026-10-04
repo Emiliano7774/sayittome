@@ -16,6 +16,7 @@ import {
   recordQaCriticalEvent,
   setQaShuffleDiagnosticState,
 } from "@/lib/qa/realDeviceQaDebug";
+import { setShuffleSearchOpen } from "@/lib/shuffle/shuffleSearchViewport";
 
 const SEARCH_TYPING_IDLE_MS = 2500;
 /** Extra sticky suppress after blur so remount mount-effects cannot race. */
@@ -113,6 +114,7 @@ export function markShuffleSearchFocused() {
   if (typeof window === "undefined") return;
   searchFocused = true;
   typingActive = true;
+  setShuffleSearchOpen(true);
   armTypingIdle();
 }
 
@@ -126,6 +128,13 @@ export function markShuffleSearchBlurred() {
   dropDeferredNetwork();
   typingActive = true;
   armTypingIdle();
+  window.setTimeout(() => {
+    if (isShuffleSearchInput(document.activeElement)) {
+      setShuffleSearchOpen(true);
+      return;
+    }
+    setShuffleSearchOpen(false);
+  }, 360);
 }
 
 export function isShuffleSearchTypingActive() {

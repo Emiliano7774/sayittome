@@ -2,18 +2,13 @@
 
 import { useEffect } from "react";
 
+import {
+  readBrowserChromeBottomPx,
+  syncShuffleListClearance,
+} from "@/lib/shuffle/shuffleSearchViewport";
+
 function readBrowserChromeBottom() {
-  if (typeof window === "undefined") {
-    return 0;
-  }
-
-  const viewport = window.visualViewport;
-  if (!viewport) {
-    return 0;
-  }
-
-  const inset = window.innerHeight - viewport.height - viewport.offsetTop;
-  return Math.max(0, Math.round(inset));
+  return readBrowserChromeBottomPx();
 }
 
 /** Keeps fixed bottom UI aligned with the visible viewport on mobile browsers. */
@@ -32,6 +27,7 @@ export default function VisualViewportInset() {
         "--sayittome-browser-chrome-bottom",
         `${readBrowserChromeBottom()}px`,
       );
+      syncShuffleListClearance();
     }
 
     sync();

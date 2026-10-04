@@ -70,8 +70,9 @@ assert.match(fetchSrc, /shouldFetchNextStoriesPage/);
 assert.match(fetchSrc, /truncated: snap\.truncated === true/);
 
 const storeSrc = fs.readFileSync(path.join(root, "src/lib/stories/storiesIndexStore.ts"), "utf8");
-assert.match(storeSrc, /mergeActiveStoryGroups/);
+assert.match(storeSrc, /mergeActiveStoryGroups\(fetched\.groups, cachedGroups/);
 assert.match(storeSrc, /reconstructActiveStoriesIndex/);
+assert.match(storeSrc, /loadOwnerStoryGroup/);
 
 const css = fs.readFileSync(path.join(root, "src/app/globals.css"), "utf8");
 assert.match(

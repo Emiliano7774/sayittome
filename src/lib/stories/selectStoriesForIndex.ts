@@ -38,6 +38,7 @@ export function shouldKeepScanningStoryFallback(input: {
 
 export const STORIES_QUERY_PAGE_SIZE = 120;
 export const STORIES_QUERY_MAX_DOCS = 3000;
+export const STORY_FALLBACK_TTL_MS = 26 * 60 * 60 * 1000;
 
 export function shouldFetchNextStoriesPage(input: {
   lastPageSize: number;
@@ -97,7 +98,10 @@ export function shouldKeepStoryInReconstruction(doc: StoryIndexCandidate, now = 
   if (!String(doc?.id || "").trim()) return false;
   if (doc.adminDeleted === true || doc.active === false) return false;
   const expires = Number(doc.expiresAtMs || 0);
-  return !(expires > 0 && expires <= now);
+  if (expires > 0) return expires > now;
+  const created = Number(doc.createdAtMs || 0);
+  if (created > 0) return created > now - STORY_FALLBACK_TTL_MS;
+  return true;
 }
 
 /** Union still-valid indexed + historical rows so hidden-but-live stories come back. */

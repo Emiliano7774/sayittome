@@ -1,10 +1,13 @@
 "use client";
 
 import { Heart, UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
 import { loadStoryViewers } from "@/lib/stories/storyViewerRecords";
+import {
+  shouldCloseStoryViewersGesture,
+} from "@/lib/stories/storyViewersGesture";
 import type { StoryViewerRow } from "@/lib/stories/storyViewers";
 import type { StoryItem } from "@/lib/stories/types";
 
@@ -26,6 +29,16 @@ export default function StoryViewersSheet({
   const t = useT();
   const [rows, setRows] = useState<StoryViewerRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef({
+    y: 0,
+    x: 0,
+    t: 0,
+    active: false,
+    locked: false,
+  });
 
   useEffect(() => {
     if (!open || !story?.id) {
@@ -46,17 +59,92 @@ export default function StoryViewersSheet({
     };
   }, [open, story]);
 
+  useEffect(() => {
+    if (!open) {
+      setDragY(0);
+      setDragging(false);
+      dragRef.current.active = false;
+    }
+  }, [open]);
+
+  function beginDrag(event: React.PointerEvent) {
+    dragRef.current = {
+      y: event.clientY,
+      x: event.clientX,
+      t: Date.now(),
+      active: true,
+      locked: false,
+    };
+  }
+
+  function moveDrag(event: React.PointerEvent) {
+    if (!dragRef.current.active) return;
+    const deltaDown = event.clientY - dragRef.current.y;
+    const absX = Math.abs(event.clientX - dragRef.current.x);
+    const scrollTop = scrollRef.current?.scrollTop || 0;
+    if (!dragRef.current.locked) {
+      if (deltaDown < 8 || deltaDown <= absX) return;
+      if (scrollTop > 2) {
+        dragRef.current.active = false;
+        return;
+      }
+      dragRef.current.locked = true;
+      setDragging(true);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+    setDragY(Math.max(0, deltaDown));
+  }
+
+  function endDrag(event: React.PointerEvent) {
+    if (!dragRef.current.active && !dragging) return;
+    const deltaDown = Math.max(0, event.clientY - dragRef.current.y);
+    const absX = Math.abs(event.clientX - dragRef.current.x);
+    const elapsedMs = Math.max(1, Date.now() - dragRef.current.t);
+    const scrollTop = scrollRef.current?.scrollTop || 0;
+    dragRef.current.active = false;
+    dragRef.current.locked = false;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (
+      shouldCloseStoryViewersGesture({
+        deltaDown,
+        absX,
+        elapsedMs,
+        scrollTop,
+      })
+    ) {
+      setDragY(0);
+      onClose();
+      return;
+    }
+    setDragY(0);
+  }
+
   if (!open) return null;
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-[80] flex h-[72dvh] flex-col rounded-t-[1.75rem] border-t border-white/10 bg-zinc-950/96 shadow-[0_-18px_40px_rgba(0,0,0,0.45)] backdrop-blur-md">
+    <div
+      className="absolute inset-x-0 bottom-0 z-[80] flex h-[72dvh] flex-col rounded-t-[1.75rem] border-t border-white/10 bg-zinc-950/96 shadow-[0_-18px_40px_rgba(0,0,0,0.45)] backdrop-blur-md"
+      data-story-viewers-sheet="1"
+      style={{
+        transform: `translate3d(0, ${dragY}px, 0)`,
+        transition: dragging ? "none" : "transform 160ms ease-out",
+      }}
+    >
       <button
         type="button"
-        className="flex shrink-0 flex-col items-center px-4 pb-2 pt-2"
+        className="flex min-h-16 shrink-0 flex-col items-center px-4 pb-2 pt-3"
         onClick={onClose}
+        onPointerDown={beginDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
         aria-label={t("common_cancel")}
+        data-story-viewers-handle="1"
       >
-        <span className="mb-3 h-1.5 w-12 rounded-full bg-white/30" />
+        <span className="mb-3 h-1.5 w-16 rounded-full bg-white/40" />
         <span className="w-full text-left text-sm font-black text-white">
           {t("story_viewers_title")}
           <span className="ml-2 text-white/40">{rows.length || story?.viewCount || 0}</span>
@@ -64,8 +152,13 @@ export default function StoryViewersSheet({
       </button>
 
       <div
+        ref={scrollRef}
         data-story-viewers-scroll="1"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        onPointerDown={beginDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         {loading && rows.length === 0 ? (
           <p className="py-10 text-center text-sm font-semibold text-white/45">{t("common_loading")}</p>

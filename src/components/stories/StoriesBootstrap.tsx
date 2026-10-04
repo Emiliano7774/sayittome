@@ -54,12 +54,11 @@ export default function StoriesBootstrap() {
       if (cancelled) return;
       authSettled = true;
       if (!viewerKey) return;
+      refreshStoriesIndex(viewerKey, false).catch(() => {});
       if (!reconstructedThisSession) {
         reconstructedThisSession = true;
         reconstructActiveStoriesIndex(viewerKey).catch(() => {});
-        return;
       }
-      refreshStoriesIndex(viewerKey, false).catch(() => {});
     });
 
     const unsub = onAuthStateChanged(auth, (user) => {

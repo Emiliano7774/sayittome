@@ -152,6 +152,21 @@ body.sayittome-profile-edit-open.sayittome-has-bottom-nav {
   flex-shrink: 0;
   pointer-events: none;
   background: transparent;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+body.sayittome-shuffle-route .sayittome-nav-scroll-spacer {
+  height: calc(
+    var(--sayittome-bottom-ui) + var(--sayittome-shuffle-list-extra, 160px)
+  );
+}
+
+main[data-scroll-root].sayittome-shuffle-scroll,
+main[data-scroll-root].sayittome-shuffle-scroll-classic {
+  scroll-padding-bottom: calc(
+    var(--sayittome-bottom-ui) + var(--sayittome-shuffle-list-extra, 160px)
+  );
 }
 
 .sayittome-bottom-nav {

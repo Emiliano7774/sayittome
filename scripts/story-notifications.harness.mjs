@@ -59,8 +59,10 @@ assert.match(created, /followingUploads/);
 assert.match(created, /seguidores/);
 const push = fs.readFileSync(path.join(root, "functions/src/storyPush.ts"), "utf8");
 assert.match(push, /STORY_NOTIF_COLOR/);
-assert.match(push, /ic_stat_notify/);
+assert.match(push, /ic_stat_story_like/);
 assert.match(push, /STORY_NOTIF_CHANNEL_ID/);
+assert.doesNotMatch(push, /android:\s*\{[\s\S]*notification:/);
+assert.doesNotMatch(push, /whip/);
 const policySrc = fs.readFileSync(
   path.join(root, "functions/src/storyNotificationPolicy.ts"),
   "utf8",
@@ -76,5 +78,19 @@ assert.match(prompt, /enableStoryNotificationPack/);
 const fcm = fs.readFileSync(path.join(root, "src/lib/chat/fcmPush.ts"), "utf8");
 assert.match(fcm, /openStoryNotificationHref/);
 assert.match(fcm, /stories-v1/);
+assert.match(fcm, /presentStoryForegroundNotification/);
+assert.match(fcm, /story_like/);
+const androidFcm = fs.readFileSync(
+  path.join(root, "android/app/src/main/java/com/sayittome/app/ChatExpandableMessagingService.java"),
+  "utf8",
+);
+assert.match(androidFcm, /shouldRenderStoryNotification/);
+assert.match(androidFcm, /renderStoryNotification/);
+assert.match(androidFcm, /ic_stat_story_like/);
+assert.match(androidFcm, /0xFFE879F9/);
+const storyFn =
+  androidFcm.split("private void renderStoryNotification")[1]?.split("private Bitmap")[0] || "";
+assert.match(storyFn, /ic_stat_story_like/);
+assert.doesNotMatch(storyFn, /R\.raw\.whip/);
 
 console.log("PASS story-notifications");

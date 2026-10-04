@@ -36,6 +36,7 @@ import {
 } from "@/lib/chat/chatNotificationOpen";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { sanitizeStoryNotificationHref } from "@/lib/stories/storyNotificationPolicy";
+import { presentStoryForegroundNotification } from "@/lib/stories/storyLocalNotification";
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
 const INSTALLATION_KEY = "sayittome:fcm-installation-id";
@@ -534,8 +535,19 @@ async function attachPushListeners() {
     recordNotificationStage("registration_error", false, "listener");
   });
 
-  await PushNotifications.addListener("pushNotificationReceived", () => {
-    // Foreground: in-app whip owns UX. Avoid double OS sound.
+  await PushNotifications.addListener("pushNotificationReceived", (event) => {
+    const data = (event.notification?.data || {}) as Record<string, unknown>;
+    const type = asId(data.type);
+    if (type === "story_like" || type === "story_upload") {
+      void presentStoryForegroundNotification({
+        title: asId(data.title) || asId(event.notification?.title),
+        body: asId(data.body) || asId(event.notification?.body),
+        href: asId(data.href),
+        tag: asId(data.tag),
+      });
+      return;
+    }
+    // Foreground chat: in-app whip owns UX. Avoid double OS sound.
   });
 
   await PushNotifications.addListener("pushNotificationActionPerformed", (event) => {

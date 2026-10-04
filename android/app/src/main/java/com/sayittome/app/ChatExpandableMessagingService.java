@@ -5,6 +5,10 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
@@ -35,7 +39,9 @@ public class ChatExpandableMessagingService extends FirebaseMessagingService {
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
         try {
             ensureStoriesChannel();
-            if (shouldRenderChatExpandable(remoteMessage)) {
+            if (shouldRenderStoryNotification(remoteMessage)) {
+                renderStoryNotification(remoteMessage);
+            } else if (shouldRenderChatExpandable(remoteMessage)) {
                 renderChatExpandable(remoteMessage);
             }
         } catch (Exception error) {
@@ -58,6 +64,11 @@ public class ChatExpandableMessagingService extends FirebaseMessagingService {
         String type = remoteMessage.getData().get("type");
         String chatId = remoteMessage.getData().get("chatId");
         return "chat_message".equals(type) && chatId != null && !chatId.trim().isEmpty();
+    }
+
+    static boolean shouldRenderStoryNotification(RemoteMessage remoteMessage) {
+        String type = remoteMessage.getData().get("type");
+        return "story_like".equals(type) || "story_upload".equals(type);
     }
 
     private void renderChatExpandable(RemoteMessage remoteMessage) {
@@ -137,6 +148,71 @@ public class ChatExpandableMessagingService extends FirebaseMessagingService {
         if (manager != null) {
             manager.notify(tag, Math.abs(chatId.hashCode()) % 1_900_000_000 + 1, builder.build());
         }
+    }
+
+    private void renderStoryNotification(RemoteMessage remoteMessage) {
+        String title = safe(remoteMessage.getData().get("title"));
+        if (title.isEmpty()) title = "SayItToMe";
+        String body = safe(remoteMessage.getData().get("body"));
+        String href = safe(remoteMessage.getData().get("href"));
+        String tag = safe(remoteMessage.getData().get("tag"));
+        if (tag.isEmpty()) tag = "story-" + title;
+        ensureStoriesChannel();
+
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        String googleId = remoteMessage.getMessageId();
+        if (googleId == null || googleId.isEmpty()) {
+            googleId = tag;
+        }
+        intent.putExtra("google.message_id", googleId);
+        for (String key : remoteMessage.getData().keySet()) {
+            intent.putExtra(key, remoteMessage.getData().get(key));
+        }
+        if (!href.isEmpty()) {
+            intent.putExtra("href", href);
+        }
+
+        PendingIntent pendingIntent =
+            PendingIntent.getActivity(
+                this,
+                Math.abs(tag.hashCode()),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+        NotificationCompat.Builder builder =
+            new NotificationCompat.Builder(this, STORIES_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_story_like)
+                .setColor(0xFFE879F9)
+                .setLargeIcon(drawableBitmap(R.drawable.ic_notify_story_like))
+                .setContentTitle(title)
+                .setContentText(body.isEmpty() ? title : body)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+                .setContentIntent(pendingIntent);
+
+        NotificationManager manager =
+            (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify(tag, Math.abs(tag.hashCode()) % 1_900_000_000 + 1, builder.build());
+        }
+    }
+
+    private Bitmap drawableBitmap(int resId) {
+        Drawable drawable = getResources().getDrawable(resId, getTheme());
+        if (drawable instanceof BitmapDrawable) {
+            Bitmap bitmap = ((BitmapDrawable) drawable).getBitmap();
+            if (bitmap != null) return bitmap;
+        }
+        int width = Math.max(96, drawable.getIntrinsicWidth());
+        int height = Math.max(96, drawable.getIntrinsicHeight());
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+        drawable.draw(canvas);
+        return bitmap;
     }
 
     private void ensureChannel(String channelId) {
