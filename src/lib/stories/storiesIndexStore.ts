@@ -14,6 +14,7 @@ import {
   writeStoriesSnapshot,
 } from "@/lib/stories/storiesSnapshot";
 import { recordStoryIndexTiming } from "@/lib/stories/storyIndexTiming";
+import { mergeActiveStoryGroups } from "@/lib/stories/selectStoriesForIndex";
 import {
   nextUnseenGroupAfter,
   previousSeenStateAllowed,
@@ -232,11 +233,14 @@ export async function refreshStoriesIndex(nextViewerUid = viewerUid, force = fal
       }
 
       const queryStarted = Date.now();
-      const groups = await fetchActiveStoriesGrouped(requestViewer, { hydrate: false });
+      const fetched = await fetchActiveStoriesGrouped(requestViewer, { hydrate: false });
       const queryMs = Date.now() - queryStarted;
       if (!live()) return;
       viewerUid = requestViewer;
-      const nextGroups = preserveViewerSeenState(groups, previousByUid, requestViewer);
+      const fetchedGroups = fetched.truncated
+        ? mergeActiveStoryGroups(fetched.groups, cachedGroups, Date.now())
+        : fetched.groups;
+      const nextGroups = preserveViewerSeenState(fetchedGroups, previousByUid, requestViewer);
       const membershipChanged =
         viewerChanged || storyMembershipKey(nextGroups) !== storyMembershipKey(cachedGroups);
       lastFetch = Date.now();

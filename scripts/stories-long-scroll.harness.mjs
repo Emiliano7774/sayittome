@@ -56,12 +56,13 @@ try {
   await page.evaluate(() =>
     document.documentElement.classList.add("sayittome-main-tab-handoff-pending"),
   );
-  assert.equal(
-    await page.evaluate(() =>
-      getComputedStyle(document.getElementById("sayittome-main-tab-keepalive-stories")).position,
-    ),
-    "fixed",
-  );
+  const handoff = await page.evaluate(() => {
+    const host = document.getElementById("sayittome-main-tab-keepalive-stories");
+    const style = getComputedStyle(host);
+    return { position: style.position, overflowY: style.overflowY };
+  });
+  assert.equal(handoff.position, "fixed");
+  assert.equal(handoff.overflowY, "auto", "fixed cover must still scroll the mosaic");
 
   console.log(JSON.stringify({ gate: "STORIES_LONG_SCROLL", pass: true }, null, 2));
 } finally {

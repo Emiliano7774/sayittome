@@ -1,5 +1,6 @@
 /**
- * 121 active stories: newest expiresAt must always be in the selected 120.
+ * One Firestore page is 120 docs. An explicit page limit may drop the oldest
+ * of 121; the live feed pages past that (see stories-keep-all-active).
  * Usage: node --experimental-strip-types scripts/stories-index-121.harness.mjs
  */
 import assert from "node:assert/strict";

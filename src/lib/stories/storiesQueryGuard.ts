@@ -139,8 +139,8 @@ export function pickLatestStoriesSnapshot<
     .reduce<T | null>((best, row) => selectLatestStoriesSnapshot(best, row), null);
 }
 
-export const STORIES_SNAPSHOT_MAX_GROUPS = 120;
-export const STORIES_SNAPSHOT_MAX_STORIES = 30;
+export const STORIES_SNAPSHOT_MAX_GROUPS = 500;
+export const STORIES_SNAPSHOT_MAX_STORIES = 200;
 
 export function didTruncateStoriesSnapshot(
   groups: Array<{ stories?: unknown[] }>,

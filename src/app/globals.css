@@ -947,6 +947,11 @@ html[data-sayittome-bar-target="settings"] #sayittome-main-tab-keepalive-setting
   inset: 0 !important;
   z-index: 6 !important;
   background: #000;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: auto;
 }
 
 /*

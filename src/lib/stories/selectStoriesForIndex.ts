@@ -36,19 +36,104 @@ export function shouldKeepScanningStoryFallback(input: {
   return true;
 }
 
+export const STORIES_QUERY_PAGE_SIZE = 120;
+export const STORIES_QUERY_MAX_DOCS = 3000;
+
+export function shouldFetchNextStoriesPage(input: {
+  lastPageSize: number;
+  pageSize: number;
+  collected: number;
+  maxDocs?: number;
+}) {
+  const pageSize = Math.max(1, Number(input.pageSize || 0));
+  const lastPageSize = Number(input.lastPageSize || 0);
+  const collected = Number(input.collected || 0);
+  const maxDocs = Math.max(pageSize, Number(input.maxDocs || STORIES_QUERY_MAX_DOCS));
+  if (lastPageSize < pageSize) return false;
+  if (collected >= maxDocs) return false;
+  return true;
+}
+
 export function selectStoriesForIndex(
   docs: StoryIndexCandidate[],
   options?: { limit?: number; now?: number },
 ) {
-  const limit = Math.max(1, Number(options?.limit || 120));
+  const rawLimit = options?.limit;
+  const unlimited = rawLimit == null;
+  const limit = unlimited ? Number.POSITIVE_INFINITY : Math.max(1, Number(rawLimit));
   const now = Number(options?.now ?? Date.now());
-  return [...docs]
+  const selected = [...docs]
     .filter((doc) => {
       if (doc.adminDeleted === true || doc.active === false) return false;
       const expires = Number(doc.expiresAtMs || 0);
       if (expires > 0 && expires <= now) return false;
       return Boolean(String(doc.id || "").trim());
     })
-    .sort(compareStoriesNewestFirst)
-    .slice(0, limit);
+    .sort(compareStoriesNewestFirst);
+  return Number.isFinite(limit) ? selected.slice(0, limit) : selected;
+}
+
+type MergeableStory = {
+  id: string;
+  expiresAtMs?: number;
+  createdAtMs?: number;
+  adminDeleted?: boolean;
+  active?: boolean;
+};
+
+type MergeableGroup<TStory extends MergeableStory> = {
+  ownerUid: string;
+  stories: TStory[];
+};
+
+function storyStillActive(story: MergeableStory, now: number) {
+  if (!String(story?.id || "").trim()) return false;
+  if (story.adminDeleted === true || story.active === false) return false;
+  const expires = Number(story.expiresAtMs || 0);
+  return !(expires > 0 && expires <= now);
+}
+
+/** Incoming network rows win; still-active previous stories are kept if a page was truncated. */
+export function mergeActiveStoryGroups<TStory extends MergeableStory, TGroup extends MergeableGroup<TStory>>(
+  incoming: TGroup[],
+  previous: TGroup[],
+  now = Date.now(),
+): TGroup[] {
+  const storiesById = new Map<string, TStory>();
+  const ownerStories = new Map<string, TStory[]>();
+  const ownerMeta = new Map<string, TGroup>();
+
+  const ingest = (groups: TGroup[]) => {
+    for (const group of groups || []) {
+      const ownerUid = String(group?.ownerUid || "").trim();
+      if (!ownerUid) continue;
+      if (!ownerMeta.has(ownerUid)) ownerMeta.set(ownerUid, group);
+      for (const story of group.stories || []) {
+        if (!storyStillActive(story, now)) continue;
+        if (storiesById.has(story.id)) continue;
+        storiesById.set(story.id, story);
+        const list = ownerStories.get(ownerUid) || [];
+        list.push(story);
+        ownerStories.set(ownerUid, list);
+      }
+    }
+  };
+
+  ingest(incoming);
+  ingest(previous);
+
+  return [...ownerMeta.values()]
+    .map((group) => {
+      const stories = (ownerStories.get(group.ownerUid) || [])
+        .slice()
+        .sort((a, b) => Number(a.createdAtMs || 0) - Number(b.createdAtMs || 0));
+      if (stories.length === 0) return null;
+      return { ...group, stories };
+    })
+    .filter((group): group is TGroup => Boolean(group))
+    .sort((a, b) => {
+      const aMax = a.stories[a.stories.length - 1]?.createdAtMs || 0;
+      const bMax = b.stories[b.stories.length - 1]?.createdAtMs || 0;
+      return Number(bMax) - Number(aMax);
+    });
 }

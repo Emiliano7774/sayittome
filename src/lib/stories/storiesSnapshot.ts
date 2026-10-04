@@ -40,7 +40,10 @@ function sanitizeGroups(groups: StoryUserGroup[]): StoryUserGroup[] {
     ownerPhoto: group.ownerPhoto,
     isAnonymousStory: group.isAnonymousStory,
     hasUnseen: group.hasUnseen === true,
-    stories: (group.stories || []).slice(0, STORIES_SNAPSHOT_MAX_STORIES).map((story) => ({
+    stories: [...(group.stories || [])]
+      .sort((a, b) => Number(a.createdAtMs || 0) - Number(b.createdAtMs || 0))
+      .slice(-STORIES_SNAPSHOT_MAX_STORIES)
+      .map((story) => ({
       id: story.id,
       ownerUid: story.ownerUid,
       ownerUsername: story.ownerUsername,
