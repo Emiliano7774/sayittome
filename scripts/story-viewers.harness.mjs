@@ -52,6 +52,7 @@ assert.match(sheet, /data-story-viewers-scroll/);
 assert.match(sheet, /data-story-viewers-handle/);
 assert.match(sheet, /shouldCloseStoryViewersGesture/);
 assert.match(sheet, /overflow-y-auto/);
+assert.match(sheet, /beginDrag\(event, true\)/);
 const likeFn = fs.readFileSync(path.join(root, "functions/src/storyLike.ts"), "utf8");
 assert.match(likeFn, /collection\("vistas"\)/);
 

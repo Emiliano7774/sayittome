@@ -29,7 +29,15 @@ export default function StoryViewersSheet({
   const [loading, setLoading] = useState(false);
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const dragRef = useRef({ y: 0, x: 0, t: 0, active: false });
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef({
+    y: 0,
+    x: 0,
+    t: 0,
+    active: false,
+    locked: false,
+    fromList: false,
+  });
 
   useEffect(() => {
     if (!open || !story?.id) {
@@ -55,41 +63,71 @@ export default function StoryViewersSheet({
       setDragY(0);
       setDragging(false);
       dragRef.current.active = false;
+      dragRef.current.locked = false;
     }
   }, [open]);
 
-  function beginDrag(event: React.PointerEvent) {
+  function beginDrag(event: React.PointerEvent, fromList = false) {
+    const scrollTop = fromList ? Math.max(0, scrollRef.current?.scrollTop || 0) : 0;
     dragRef.current = {
       y: event.clientY,
       x: event.clientX,
       t: Date.now(),
-      active: true,
+      active: !fromList || scrollTop <= 2,
+      locked: !fromList,
+      fromList,
     };
-    setDragging(true);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    if (!fromList) {
+      setDragging(true);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
   }
 
   function moveDrag(event: React.PointerEvent) {
     if (!dragRef.current.active) return;
-    setDragY(Math.max(0, event.clientY - dragRef.current.y));
+    const deltaDown = event.clientY - dragRef.current.y;
+    const absX = Math.abs(event.clientX - dragRef.current.x);
+    if (dragRef.current.fromList && !dragRef.current.locked) {
+      const scrollTop = Math.max(0, scrollRef.current?.scrollTop || 0);
+      if (scrollTop > 2 || deltaDown < -8) {
+        dragRef.current.active = false;
+        return;
+      }
+      if (deltaDown > 8 && deltaDown > absX) {
+        dragRef.current.locked = true;
+        setDragging(true);
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      } else {
+        return;
+      }
+    }
+    if (dragRef.current.locked) {
+      setDragY(Math.max(0, deltaDown));
+    }
   }
 
   function endDrag(event: React.PointerEvent) {
-    if (!dragRef.current.active) return;
+    if (!dragRef.current.active && !dragRef.current.locked) return;
     const deltaDown = Math.max(0, event.clientY - dragRef.current.y);
     const absX = Math.abs(event.clientX - dragRef.current.x);
     const elapsedMs = Math.max(1, Date.now() - dragRef.current.t);
+    const scrollTop = dragRef.current.fromList
+      ? Math.max(0, scrollRef.current?.scrollTop || 0)
+      : 0;
+    const locked = dragRef.current.locked;
     dragRef.current.active = false;
+    dragRef.current.locked = false;
     setDragging(false);
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     if (
+      locked &&
       shouldCloseStoryViewersGesture({
         deltaDown,
         absX,
         elapsedMs,
-        scrollTop: 0,
+        scrollTop,
       })
     ) {
       setDragY(0);
@@ -112,7 +150,7 @@ export default function StoryViewersSheet({
     >
       <div
         className="flex min-h-[4.75rem] shrink-0 touch-none flex-col items-center px-4 pb-2 pt-3"
-        onPointerDown={beginDrag}
+        onPointerDown={(event) => beginDrag(event)}
         onPointerMove={moveDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
@@ -133,8 +171,13 @@ export default function StoryViewersSheet({
       </div>
 
       <div
+        ref={scrollRef}
         data-story-viewers-scroll="1"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        onPointerDown={(event) => beginDrag(event, true)}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         {loading && rows.length === 0 ? (
           <p className="py-10 text-center text-sm font-semibold text-white/45">{t("common_loading")}</p>
