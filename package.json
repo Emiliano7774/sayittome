@@ -77,6 +77,7 @@
     "test:story-deep-link-auth": "node --experimental-strip-types scripts/story-deep-link-auth.harness.mjs",
     "test:stories-index-121": "node --experimental-strip-types scripts/stories-index-121.harness.mjs",
     "test:stories-next-target": "node --experimental-strip-types scripts/stories-next-target.harness.mjs",
+    "test:story-caption": "node --experimental-strip-types scripts/story-caption.harness.mjs",
     "test:story-viewer-dismiss": "node --experimental-strip-types scripts/story-viewer-dismiss-gesture.harness.mjs",
     "test:stories-snapshot-ttl": "node --experimental-strip-types scripts/stories-snapshot-ttl.harness.mjs",
     "test:chat-media-capture": "node --experimental-strip-types scripts/chat-media-capture.harness.mjs",

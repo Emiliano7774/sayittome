@@ -32,6 +32,7 @@ import {
   isolateStoryViewAckQueue,
   scheduleStoryViewAckFlush,
 } from "@/lib/stories/ackStoryView";
+import { shouldShowStoryMediaCaption, storyCaptionText } from "@/lib/stories/storyCaption";
 import { isAnonymousStory, storyDisplayName } from "@/lib/stories/storyDisplay";
 import { shouldDismissStoryGesture } from "@/lib/stories/storyDismissGesture";
 import {
@@ -353,6 +354,9 @@ export default function StoryViewer({
     current?.mediaType === "video" && current.durationMs
       ? current.durationMs
       : DEFAULT_IMAGE_MS;
+  const mediaCaption = shouldShowStoryMediaCaption(current)
+    ? storyCaptionText(current)
+    : "";
 
   function handleAdminStoryBlurChange(blurred: boolean) {
     if (!current) return;
@@ -1055,7 +1059,9 @@ export default function StoryViewer({
             }}
           />
         ) : (
-          <p className="px-8 text-center text-3xl font-bold">{current.texto}</p>
+          <p className="px-8 text-center text-3xl font-bold" data-story-caption-hero>
+            {storyCaptionText(current)}
+          </p>
         )}
 
         {needsBlur && blurLocked ? (
@@ -1097,6 +1103,14 @@ export default function StoryViewer({
         ].join(" ")}
         data-story-chrome
       >
+        {mediaCaption ? (
+          <div className="pointer-events-none mb-4 px-1" data-story-caption>
+            <p className="mx-auto line-clamp-3 max-w-[22rem] text-center text-[12.5px] font-extralight leading-[1.45] tracking-[0.08em] text-white [text-shadow:0_0_22px_rgba(255,255,255,0.42),0_0_2px_rgba(255,255,255,0.95),0_2px_12px_rgba(0,0,0,0.9)]">
+              {mediaCaption}
+            </p>
+          </div>
+        ) : null}
+
         {canReply && !replyOpen ? (
           <p className="mb-3 text-center text-xs font-semibold text-white/45">
             {t("story_reply_hint")}
