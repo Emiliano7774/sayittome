@@ -14,7 +14,37 @@ function storyNotificationId(tag: string) {
   return (Math.abs(hash) % 1_900_000_000) + 1;
 }
 
-/** Foreground iOS/web banner. Android native already draws the pink like icon. */
+export async function ensureStoryNotificationChannel() {
+  if (!isCapacitorNative()) return false;
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    await LocalNotifications.createChannel({
+      id: STORY_NOTIF_CHANNEL_ID,
+      name: "Historias",
+      description: "Likes e historias nuevas",
+      importance: 5,
+      vibration: true,
+      visibility: 1,
+      sound: "default",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function androidHasNativeStoryBanner() {
+  if (!isCapacitorNative() || !isAndroidDevice()) return false;
+  try {
+    const { App } = await import("@capacitor/app");
+    const info = await App.getInfo();
+    return Number(info.build || 0) >= 150;
+  } catch {
+    return false;
+  }
+}
+
+/** Old APKs have no story renderer — show a local banner. APK 150+ draws it natively. */
 export async function presentStoryForegroundNotification(input: {
   title?: string;
   body?: string;
@@ -22,7 +52,7 @@ export async function presentStoryForegroundNotification(input: {
   tag?: string;
 }) {
   if (typeof window === "undefined") return false;
-  if (isCapacitorNative() && isAndroidDevice()) return false;
+  if (await androidHasNativeStoryBanner()) return false;
   const title = String(input.title || "").trim();
   const body = String(input.body || "").trim();
   if (!title && !body) return false;
@@ -34,6 +64,7 @@ export async function presentStoryForegroundNotification(input: {
       const { LocalNotifications } = await import("@capacitor/local-notifications");
       const permission = await LocalNotifications.checkPermissions();
       if (permission.display !== "granted") return false;
+      await ensureStoryNotificationChannel();
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -42,8 +73,7 @@ export async function presentStoryForegroundNotification(input: {
             body: body || title,
             channelId: STORY_NOTIF_CHANNEL_ID,
             sound: "default",
-            smallIcon: "ic_stat_story_like",
-            largeIcon: "ic_notify_story_like",
+            smallIcon: "ic_stat_notify",
             iconColor: STORY_NOTIF_COLOR,
             extra: { type: "story_like", href, tag },
           },

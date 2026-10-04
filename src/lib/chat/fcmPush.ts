@@ -36,7 +36,10 @@ import {
 } from "@/lib/chat/chatNotificationOpen";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { sanitizeStoryNotificationHref } from "@/lib/stories/storyNotificationPolicy";
-import { presentStoryForegroundNotification } from "@/lib/stories/storyLocalNotification";
+import {
+  ensureStoryNotificationChannel,
+  presentStoryForegroundNotification,
+} from "@/lib/stories/storyLocalNotification";
 
 const FCM_CHANNEL_ID = "chat-messages-v2";
 const INSTALLATION_KEY = "sayittome:fcm-installation-id";
@@ -438,14 +441,7 @@ async function ensurePushChannel() {
       sound: "whip",
       visibility: 1,
     });
-    await LocalNotifications.createChannel({
-      id: "stories-v2",
-      name: "Historias",
-      description: "Likes e historias nuevas",
-      importance: 5,
-      vibration: true,
-      visibility: 1,
-    });
+    await ensureStoryNotificationChannel();
   } catch {
     // Channel creation is best-effort; FCM may fall back to default.
   }

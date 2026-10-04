@@ -8,6 +8,7 @@ import { useDocumentHidden } from "@/hooks/useDocumentHidden";
 import { auth } from "@/lib/firebase";
 import { shouldEnableStoriesRefresh } from "@/lib/chat/inboxListenerRoutes";
 import { resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/storyAuthor";
+import { ensureStoryNotificationChannel } from "@/lib/stories/storyLocalNotification";
 import {
   reconstructActiveStoriesIndex,
   refreshStoriesIndex,
@@ -30,6 +31,10 @@ function quietStoriesRefresh(pathname: string) {
 export default function StoriesBootstrap() {
   const pathname = usePathname();
   const documentHidden = useDocumentHidden();
+
+  useEffect(() => {
+    void ensureStoryNotificationChannel();
+  }, []);
 
   const storiesRouteEnabled = useMemo(
     () => shouldEnableStoriesRefresh(pathname),
