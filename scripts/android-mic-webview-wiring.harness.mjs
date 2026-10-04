@@ -71,7 +71,9 @@ assert.match(policy, /shouldGrantAudioCapture/);
 assert.match(policy, /shouldDenyRequest/);
 assert.match(policy, /audioCaptureOnly/);
 assert.match(policy, /requestsAudioCapture/);
-assert.doesNotMatch(policy, /RESOURCE_VIDEO_CAPTURE/);
+assert.match(policy, /RESOURCE_VIDEO_CAPTURE/);
+assert.match(policy, /videoCaptureOnly/);
+assert.match(policy, /shouldGrantVideoCapture/);
 assert.doesNotMatch(policy, /grant\(resources\)/);
 
 assert.match(policyTest, /evil\.example/);
@@ -151,7 +153,9 @@ assert.match(chromeClient, /grantAudioCaptureOnly/);
 assert.match(chromeClient, /runOnUiThread/);
 assert.match(chromeClient, /launchRecordAudioRequest/);
 assert.match(chromeClient, /Do not hold PermissionRequest/);
-assert.equal(chromeClient.includes("RESOURCE_VIDEO_CAPTURE"), false);
+assert.match(chromeClient, /shouldGrantVideoCapture/);
+assert.match(chromeClient, /grantVideoCaptureOnly/);
+assert.doesNotMatch(chromeClient, /\|\| !wantsAudio/);
 assert.equal(chromeClient.includes("super.onPermissionRequest"), false);
 assert.equal(chromeClient.includes("pendingWebPermissionRequest"), false);
 

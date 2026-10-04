@@ -223,14 +223,14 @@ export default function NewStoryPage() {
     : "bg-white text-black";
 
   return (
-    <main className="min-h-screen bg-black px-4 py-8 text-white">
+    <main className="min-h-screen bg-black px-4 py-8 text-white" data-story-new-page>
       <StoryLiveCamera
         open={cameraOpen}
         onClose={() => setCameraOpen(false)}
         onCapture={handleCameraCapture}
       />
 
-      <section className="mx-auto max-w-2xl">
+      <section className="mx-auto max-w-2xl pb-6">
         <button
           onClick={() => router.back()}
           className={`mb-6 text-sm font-bold ${accentClass}`}
@@ -344,12 +344,14 @@ export default function NewStoryPage() {
           <button
             onClick={publishStory}
             disabled={uploading}
+            data-story-new-publish
             className={`mt-6 w-full rounded-full px-6 py-4 text-sm font-black transition hover:scale-[1.01] disabled:opacity-50 ${primaryBtnClass}`}
           >
             {uploading ? t("story_new_uploading_btn") : t("story_new_publish")}
           </button>
         </div>
       </section>
+      <div aria-hidden className="sayittome-nav-scroll-spacer" data-story-new-nav-spacer />
     </main>
   );
 }

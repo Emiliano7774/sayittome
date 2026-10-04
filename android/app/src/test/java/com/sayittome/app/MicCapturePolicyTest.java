@@ -73,4 +73,30 @@ public class MicCapturePolicyTest {
         assertTrue(MicCapturePolicy.requestsAudioCapture(only));
         assertFalse(MicCapturePolicy.requestsAudioCapture(new String[] { "android.webkit.resource.VIDEO_CAPTURE" }));
     }
+
+    @Test
+    public void trustedOrigin_grantsVideoWhenOsGranted() {
+        Uri trusted = uri(MicCapturePolicy.TRUSTED_ORIGIN);
+        assertTrue(MicCapturePolicy.shouldGrantVideoCapture(trusted, trusted, true));
+        assertFalse(MicCapturePolicy.shouldGrantVideoCapture(trusted, trusted, false));
+        assertTrue(MicCapturePolicy.requestsVideoCapture(MicCapturePolicy.videoCaptureOnly()));
+        assertFalse(MicCapturePolicy.requestsAudioCapture(MicCapturePolicy.videoCaptureOnly()));
+    }
+
+    @Test
+    public void evilOrigin_isDeniedVideoEvenWhenOsGranted() {
+        Uri evil = uri("https://evil.example");
+        Uri trusted = uri(MicCapturePolicy.TRUSTED_ORIGIN);
+        assertFalse(MicCapturePolicy.shouldGrantVideoCapture(evil, trusted, true));
+        assertTrue(MicCapturePolicy.shouldGrantVideoCapture(null, trusted, true));
+        assertFalse(MicCapturePolicy.shouldGrantVideoCapture(null, evil, true));
+    }
+
+    @Test
+    public void videoAndAudioCapture_listsBothResources() {
+        String[] both = MicCapturePolicy.videoAndAudioCapture();
+        assertTrue(both.length == 2);
+        assertTrue(MicCapturePolicy.requestsVideoCapture(both));
+        assertTrue(MicCapturePolicy.requestsAudioCapture(both));
+    }
 }

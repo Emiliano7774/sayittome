@@ -54,6 +54,11 @@ body.sayittome-story-viewer-open .sayittome-bottom-nav {
   display: none !important;
 }
 
+body.sayittome-story-camera-open .sayittome-bottom-nav,
+body.sayittome-story-camera-open .sayittome-shuffle-toolbar {
+  display: none !important;
+}
+
 body.sayittome-story-viewer-open.sayittome-has-bottom-nav {
   padding-bottom: 0 !important;
 }

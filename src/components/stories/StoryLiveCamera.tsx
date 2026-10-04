@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
+import {
+  captureChatPhotoFromCamera,
+  CHAT_FILE_INPUT_CLASS,
+  classifyChatMediaFailure,
+  fileFromChatInput,
+  isNativeChatShell,
+  openChatFileInput,
+  prefersChatCaptureFileInput,
+} from "@/lib/media/chatMediaCapture";
 
 type Props = {
   open: boolean;
@@ -16,13 +25,30 @@ export default function StoryLiveCamera({ open, onClose, onCapture }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const onCloseRef = useRef(onClose);
+  const tRef = useRef(t);
 
   const [mode, setMode] = useState<"photo" | "video">("photo");
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const preferFileInput = prefersChatCaptureFileInput();
+
+  onCloseRef.current = onClose;
+  tRef.current = t;
+
   useEffect(() => {
     if (!open) return;
+    document.body.classList.add("sayittome-story-camera-open");
+    return () => {
+      document.body.classList.remove("sayittome-story-camera-open");
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || preferFileInput) return;
 
     let cancelled = false;
 
@@ -44,9 +70,14 @@ export default function StoryLiveCamera({ open, onClose, onCapture }: Props) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => undefined);
         }
-      } catch {
-        window.alert(t("story_new_camera_fail"));
-        onClose();
+      } catch (error) {
+        if (cancelled) return;
+        if (classifyChatMediaFailure(error) === "cancelled") {
+          onCloseRef.current();
+          return;
+        }
+        window.alert(tRef.current("story_new_camera_fail"));
+        onCloseRef.current();
       }
     })();
 
@@ -58,13 +89,64 @@ export default function StoryLiveCamera({ open, onClose, onCapture }: Props) {
       chunksRef.current = [];
       setRecording(false);
     };
-  }, [mode, onClose, open, t]);
+  }, [mode, open, preferFileInput]);
 
   if (!open) return null;
 
   function stopStream() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+  }
+
+  function deliverCapture(file: File, kind: "image" | "video") {
+    const result = fileFromChatInput(file, "camera", kind);
+    if (!result) return;
+    stopStream();
+    onCapture(result.file, result.type);
+  }
+
+  function handleCaptureInput(
+    event: ChangeEvent<HTMLInputElement>,
+    kind: "image" | "video",
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    deliverCapture(file, kind);
+  }
+
+  async function captureNativeOrInputPhoto() {
+    if (busy) return;
+    if (isNativeChatShell()) {
+      setBusy(true);
+      try {
+        const result = await captureChatPhotoFromCamera();
+        if (result?.file) {
+          deliverCapture(result.file, "image");
+          return;
+        }
+      } catch (error) {
+        if (classifyChatMediaFailure(error) === "cancelled") {
+          onClose();
+          return;
+        }
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    if (!openChatFileInput(photoInputRef.current)) {
+      window.alert(t("story_new_camera_fail"));
+      onClose();
+    }
+  }
+
+  function captureInputVideo() {
+    if (busy) return;
+    if (!openChatFileInput(videoInputRef.current)) {
+      window.alert(t("story_new_camera_fail"));
+      onClose();
+    }
   }
 
   async function capturePhoto() {
@@ -94,8 +176,7 @@ export default function StoryLiveCamera({ open, onClose, onCapture }: Props) {
           type: "image/jpeg",
         });
 
-        stopStream();
-        onCapture(file, "image");
+        deliverCapture(file, "image");
       },
       "image/jpeg",
       0.92,
@@ -120,8 +201,7 @@ export default function StoryLiveCamera({ open, onClose, onCapture }: Props) {
         type: blob.type || "video/webm",
       });
 
-      stopStream();
-      onCapture(file, "video");
+      deliverCapture(file, "video");
       setRecording(false);
       setBusy(false);
     };
@@ -144,14 +224,43 @@ export default function StoryLiveCamera({ open, onClose, onCapture }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex flex-col items-center justify-center bg-black/95 px-4 py-8">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className="max-h-[68vh] w-full max-w-2xl rounded-[2rem] bg-black object-cover"
+    <div
+      className="fixed inset-0 z-[10050] flex flex-col items-center justify-center bg-black/95 px-4 py-8"
+      data-story-camera-path={preferFileInput ? "capture-input" : "live"}
+    >
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className={CHAT_FILE_INPUT_CLASS}
+        data-story-camera-photo-input=""
+        onChange={(event) => handleCaptureInput(event, "image")}
       />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/*"
+        capture="environment"
+        className={CHAT_FILE_INPUT_CLASS}
+        data-story-camera-video-input=""
+        onChange={(event) => handleCaptureInput(event, "video")}
+      />
+
+      {preferFileInput ? (
+        <div className="flex max-w-sm flex-col items-center text-center">
+          <p className="text-lg font-black text-white">{t("story_new_source_camera")}</p>
+          <p className="mt-2 text-sm text-zinc-400">{t("story_new_source_camera_hint")}</p>
+        </div>
+      ) : (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="max-h-[68vh] w-full max-w-2xl rounded-[2rem] bg-black object-cover"
+        />
+      )}
 
       <div className="mt-5 flex items-center gap-2">
         <button
@@ -179,7 +288,24 @@ export default function StoryLiveCamera({ open, onClose, onCapture }: Props) {
       </div>
 
       <div className="mt-5 flex items-center gap-3">
-        {mode === "photo" ? (
+        {preferFileInput ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (mode === "photo") {
+                void captureNativeOrInputPhoto();
+                return;
+              }
+              captureInputVideo();
+            }}
+            disabled={busy}
+            className="rounded-full bg-fuchsia-500 px-6 py-3 text-sm font-black text-white disabled:opacity-50"
+          >
+            {mode === "photo"
+              ? t("story_new_camera_capture")
+              : t("story_new_camera_record")}
+          </button>
+        ) : mode === "photo" ? (
           <button
             type="button"
             onClick={() => void capturePhoto()}

@@ -80,6 +80,7 @@
     "test:story-viewer-dismiss": "node --experimental-strip-types scripts/story-viewer-dismiss-gesture.harness.mjs",
     "test:stories-snapshot-ttl": "node --experimental-strip-types scripts/stories-snapshot-ttl.harness.mjs",
     "test:chat-media-capture": "node --experimental-strip-types scripts/chat-media-capture.harness.mjs",
+    "test:story-camera-capture": "node --experimental-strip-types scripts/story-camera-capture.harness.mjs",
     "test:chat-audio-capture": "node --experimental-strip-types scripts/chat-audio-capture.harness.mjs",
     "test:chat-audio-hold-lock": "node --experimental-strip-types scripts/chat-audio-hold-lock.harness.mjs",
     "test:chat-audio-android-permission": "node --experimental-strip-types scripts/chat-audio-android-permission.harness.mjs",

@@ -33,11 +33,19 @@ public class MainActivity extends BridgeActivity {
     private static final String MIC_PREFS = "sayittome_mic";
     private static final String MIC_ASKED_KEY = "record_audio_asked";
     private static final String MIC_TAG = "SayItToMeMic";
+    private static final String WEB_CACHE_PREFS = "sayittome_web_cache";
+    private static final String WEB_CACHE_SCHEMA_KEY = "schema";
+    private static final int WEB_CACHE_SCHEMA = 2;
 
     private final ActivityResultLauncher<String> recordAudioLauncher =
         registerForActivityResult(
             new ActivityResultContracts.RequestPermission(),
             granted -> completeMicRequest(Boolean.TRUE.equals(granted) ? "granted" : "denied")
+        );
+    private final ActivityResultLauncher<String> cameraLauncher =
+        registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            granted -> Log.i(MIC_TAG, "CAMERA os=" + (Boolean.TRUE.equals(granted) ? "granted" : "denied"))
         );
     private String pendingMicRequestId = "";
     private boolean jsBridgesAttached = false;
@@ -57,6 +65,7 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
+        refreshHostedWebCacheAfterUpgrade();
         attachWebViewInsets();
         attachMicrophoneCapture();
     }
@@ -82,6 +91,44 @@ public class MainActivity extends BridgeActivity {
     private WebView webViewOrNull() {
         Bridge bridge = getBridge();
         return bridge != null ? bridge.getWebView() : null;
+    }
+
+    /**
+     * One-time cache schema bump for installed APKs. Hosted HTML used to ship
+     * with a one-hour freshness window, so an updated WebView could keep HTML
+     * that referenced chunks from a previous deployment and render only black.
+     * Keep normal WebView caching after this one-time purge.
+     */
+    private void refreshHostedWebCacheAfterUpgrade() {
+        WebView webView = webViewOrNull();
+        if (webView == null) return;
+
+        SharedPreferences prefs = getSharedPreferences(WEB_CACHE_PREFS, MODE_PRIVATE);
+        int stored = prefs.getInt(WEB_CACHE_SCHEMA_KEY, 0);
+        if (stored >= WEB_CACHE_SCHEMA) return;
+
+        prefs.edit().putInt(WEB_CACHE_SCHEMA_KEY, WEB_CACHE_SCHEMA).apply();
+        webView.clearCache(true);
+        Log.i("SayItToMeBoot", "Cleared stale hosted-web cache schema=" + WEB_CACHE_SCHEMA);
+
+        webView.post(() -> {
+            try {
+                String current = webView.getUrl();
+                if (current != null && current.startsWith(HOSTED_WEB_URL)) {
+                    Uri uri = Uri.parse(current);
+                    Uri fresh = uri.buildUpon()
+                        .appendQueryParameter("_native_cache", String.valueOf(WEB_CACHE_SCHEMA))
+                        .appendQueryParameter("_native_recover", String.valueOf(System.currentTimeMillis()))
+                        .build();
+                    webView.loadUrl(fresh.toString());
+                } else {
+                    webView.reload();
+                }
+            } catch (Exception e) {
+                Log.w("SayItToMeBoot", "cache refresh reload failed", e);
+                webView.reload();
+            }
+        });
     }
 
     private Uri topLevelWebViewUri() {
@@ -158,6 +205,11 @@ public class MainActivity extends BridgeActivity {
             == PackageManager.PERMISSION_GRANTED;
     }
 
+    private boolean hasCamera() {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED;
+    }
+
     private boolean micWasAsked() {
         return getSharedPreferences(MIC_PREFS, MODE_PRIVATE).getBoolean(MIC_ASKED_KEY, false);
     }
@@ -182,6 +234,11 @@ public class MainActivity extends BridgeActivity {
         recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO);
     }
 
+    private void launchCameraRequest() {
+        if (cameraLauncher == null) return;
+        cameraLauncher.launch(Manifest.permission.CAMERA);
+    }
+
     private void grantAudioCaptureOnly(final PermissionRequest request) {
         if (request == null) return;
         Runnable grant = () -> {
@@ -190,6 +247,40 @@ public class MainActivity extends BridgeActivity {
                 Log.i(MIC_TAG, "granted RESOURCE_AUDIO_CAPTURE only");
             } catch (Exception e) {
                 Log.w(MIC_TAG, "grantAudioCaptureOnly failed: " + e);
+            }
+        };
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            grant.run();
+        } else {
+            runOnUiThread(grant);
+        }
+    }
+
+    private void grantVideoCaptureOnly(final PermissionRequest request) {
+        if (request == null) return;
+        Runnable grant = () -> {
+            try {
+                request.grant(MicCapturePolicy.videoCaptureOnly());
+                Log.i(MIC_TAG, "granted RESOURCE_VIDEO_CAPTURE only");
+            } catch (Exception e) {
+                Log.w(MIC_TAG, "grantVideoCaptureOnly failed: " + e);
+            }
+        };
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            grant.run();
+        } else {
+            runOnUiThread(grant);
+        }
+    }
+
+    private void grantVideoAndAudioCapture(final PermissionRequest request) {
+        if (request == null) return;
+        Runnable grant = () -> {
+            try {
+                request.grant(MicCapturePolicy.videoAndAudioCapture());
+                Log.i(MIC_TAG, "granted RESOURCE_VIDEO_CAPTURE+RESOURCE_AUDIO_CAPTURE");
+            } catch (Exception e) {
+                Log.w(MIC_TAG, "grantVideoAndAudioCapture failed: " + e);
             }
         };
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
@@ -355,22 +446,50 @@ public class MainActivity extends BridgeActivity {
                 Uri topLevel = topLevelWebViewUri();
                 String[] resources = request.getResources();
                 boolean wantsAudio = MicCapturePolicy.requestsAudioCapture(resources);
-                boolean osGranted = hasRecordAudio();
+                boolean wantsVideo = MicCapturePolicy.requestsVideoCapture(resources);
+                boolean osMicGranted = hasRecordAudio();
+                boolean osCameraGranted = hasCamera();
 
                 Log.i(
                     MIC_TAG,
                     "permissionRequest origin=" + requestOrigin
                         + " top=" + topLevel
                         + " audio=" + wantsAudio
-                        + " osRecordAudio=" + osGranted
+                        + " video=" + wantsVideo
+                        + " osRecordAudio=" + osMicGranted
+                        + " osCamera=" + osCameraGranted
                 );
 
-                if (MicCapturePolicy.shouldDenyRequest(requestOrigin, topLevel) || !wantsAudio) {
+                if (MicCapturePolicy.shouldDenyRequest(requestOrigin, topLevel)) {
                     denyPermissionRequest(request);
                     return;
                 }
 
-                if (MicCapturePolicy.shouldGrantAudioCapture(requestOrigin, topLevel, osGranted)) {
+                if (wantsVideo) {
+                    if (MicCapturePolicy.shouldGrantVideoCapture(requestOrigin, topLevel, osCameraGranted)) {
+                        if (wantsAudio && MicCapturePolicy.shouldGrantAudioCapture(requestOrigin, topLevel, osMicGranted)) {
+                            grantVideoAndAudioCapture(request);
+                            return;
+                        }
+                        grantVideoCaptureOnly(request);
+                        if (wantsAudio && !osMicGranted && (pendingMicRequestId == null || pendingMicRequestId.isEmpty())) {
+                            launchRecordAudioRequest();
+                        }
+                        return;
+                    }
+
+                    // Do not hold PermissionRequest across the OS dialog (WebView times it out).
+                    denyPermissionRequest(request);
+                    launchCameraRequest();
+                    return;
+                }
+
+                if (!wantsAudio) {
+                    denyPermissionRequest(request);
+                    return;
+                }
+
+                if (MicCapturePolicy.shouldGrantAudioCapture(requestOrigin, topLevel, osMicGranted)) {
                     grantAudioCaptureOnly(request);
                     return;
                 }

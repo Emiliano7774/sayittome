@@ -4,8 +4,9 @@ import android.net.Uri;
 import android.webkit.PermissionRequest;
 
 /**
- * Trusted-origin + audio-only WebView grant policy.
- * Never grants camera/MIDI/protected-media as a side effect of getUserMedia({audio:true}).
+ * Trusted-origin WebView grant policy.
+ * Audio-only getUserMedia never receives camera/MIDI/protected-media.
+ * Camera is granted only when the request itself asks for VIDEO_CAPTURE.
  */
 public final class MicCapturePolicy {
 
@@ -35,8 +36,29 @@ public final class MicCapturePolicy {
         return false;
     }
 
+    public static boolean requestsVideoCapture(String[] resources) {
+        if (resources == null) return false;
+        for (String resource : resources) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static String[] audioCaptureOnly() {
         return new String[] { PermissionRequest.RESOURCE_AUDIO_CAPTURE };
+    }
+
+    public static String[] videoCaptureOnly() {
+        return new String[] { PermissionRequest.RESOURCE_VIDEO_CAPTURE };
+    }
+
+    public static String[] videoAndAudioCapture() {
+        return new String[] {
+            PermissionRequest.RESOURCE_VIDEO_CAPTURE,
+            PermissionRequest.RESOURCE_AUDIO_CAPTURE
+        };
     }
 
     /**
@@ -46,6 +68,12 @@ public final class MicCapturePolicy {
      */
     public static boolean shouldGrantAudioCapture(Uri requestOrigin, Uri topLevelUrl, boolean osRecordAudioGranted) {
         if (!osRecordAudioGranted) return false;
+        if (isTrustedHttpsOrigin(requestOrigin)) return true;
+        return requestOrigin == null && isTrustedHttpsOrigin(topLevelUrl);
+    }
+
+    public static boolean shouldGrantVideoCapture(Uri requestOrigin, Uri topLevelUrl, boolean osCameraGranted) {
+        if (!osCameraGranted) return false;
         if (isTrustedHttpsOrigin(requestOrigin)) return true;
         return requestOrigin == null && isTrustedHttpsOrigin(topLevelUrl);
     }

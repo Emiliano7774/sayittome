@@ -59,7 +59,10 @@ assert.match(policy, /sayittome-app\.web\.app/);
 assert.match(policy, /RESOURCE_AUDIO_CAPTURE/);
 assert.match(policy, /shouldGrantAudioCapture/);
 assert.match(policy, /shouldDenyRequest/);
-assert.doesNotMatch(policy, /RESOURCE_VIDEO_CAPTURE/);
+assert.match(policy, /RESOURCE_VIDEO_CAPTURE/);
+assert.match(policy, /videoCaptureOnly/);
+assert.match(policy, /shouldGrantVideoCapture/);
+assert.match(policy, /audioCaptureOnly/);
 
 assert.match(mainActivity, /ensureMicAwareChromeClientInstalled/);
 assert.match(mainActivity, /Do not hold PermissionRequest/);
