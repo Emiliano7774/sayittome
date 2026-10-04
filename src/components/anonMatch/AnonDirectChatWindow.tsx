@@ -18,6 +18,7 @@ import { fetchAnonMatch, resolveAnonMatchSessionId } from "@/lib/anonMatch/fetch
 import { isRegisteredProfileCaller } from "@/lib/anonMatch/anonMatchConsumer";
 import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 import { persistAnonDirectMessage } from "@/lib/anonMatch/persistDirectMessage";
+import { shouldWhipAnonDirectIncoming } from "@/lib/anonMatch/anonDirectIncomingWhip";
 import {
   notifyIncomingChatMessage,
   playIncomingWhipSound,
@@ -201,13 +202,16 @@ export default function AnonDirectChatWindow() {
   }, [chatId, openChat?.closedReason, senderId, senderTipo, sending, t, text]);
 
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId || !senderId) return;
 
     const q = query(
       collection(db, "chats_anonimos", chatId, "mensajes"),
       orderBy("createdAt", "asc"),
       limitToLast(50),
     );
+
+    let bootstrapped = false;
+    let lastWhipId: string | null = lastWhipMessageIdRef.current;
 
     const unsub = onSnapshot(q, (snap) => {
       const next = snap.docs.map((item) => {
@@ -216,36 +220,40 @@ export default function AnonDirectChatWindow() {
         return {
           id: item.id,
           text: String(data.texto || data.text || ""),
-          mine: from === senderId,
+          mine: Boolean(senderId) && from === senderId,
         };
       });
       setMessages(next);
 
       const latest = snap.docs[snap.docs.length - 1];
-      if (!latest) return;
-
-      const data = latest.data();
-      const from = String(data.senderId || "");
-      const isIncoming = from !== senderId;
-      const messageId = latest.id;
-      const body = String(data.texto || data.text || "").trim();
-
-      if (!whipBootstrappedRef.current) {
-        whipBootstrappedRef.current = true;
-        lastWhipMessageIdRef.current = messageId;
+      if (!latest) {
+        bootstrapped = true;
         return;
       }
 
-      if (isIncoming && messageId !== lastWhipMessageIdRef.current) {
-        lastWhipMessageIdRef.current = messageId;
-        playIncomingWhipSound();
-        notifyIncomingChatMessage({
-          title: "Chat anónimo",
-          body,
-        });
-      } else if (messageId !== lastWhipMessageIdRef.current) {
-        lastWhipMessageIdRef.current = messageId;
-      }
+      const data = latest.data();
+      const from = String(data.senderId || "");
+      const messageId = latest.id;
+      const body = String(data.texto || data.text || "").trim();
+      const decision = shouldWhipAnonDirectIncoming({
+        senderId,
+        fromId: from,
+        messageId,
+        lastWhipMessageId: lastWhipId,
+        bootstrapped,
+      });
+      bootstrapped = decision.nextBootstrapped;
+      lastWhipId = decision.nextLastId;
+      lastWhipMessageIdRef.current = decision.nextLastId;
+      whipBootstrappedRef.current = true;
+
+      if (!decision.whip) return;
+
+      playIncomingWhipSound();
+      notifyIncomingChatMessage({
+        title: "Chat anónimo",
+        body,
+      });
     });
 
     return () => unsub();

@@ -66,6 +66,7 @@ import {
   loadRecentMatchTargets,
   rememberRecentMatchTarget,
 } from "@/lib/anonMatch/recentMatchTargets";
+import { shouldAlertIncomingAnonMatchRequest } from "@/lib/anonMatch/anonDirectIncomingWhip";
 import {
   alertAnonMatchChatOpened,
   alertIncomingAnonMatchRequest,
@@ -243,6 +244,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     openChatRef.current = openChat;
+    if (openChat?.chatId) {
+      setIncomingRequest(null);
+    }
   }, [openChat]);
 
   useEffect(() => {
@@ -1036,7 +1040,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     }
 
     function publishIncoming() {
-      if (isLocalAnonMatchDndActive()) {
+      if (isLocalAnonMatchDndActive() || openChatRef.current?.chatId) {
         setIncomingRequest(null);
         return;
       }
@@ -1051,14 +1055,20 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       const next = pending[0] || null;
       setIncomingRequest(next);
 
-      if (next && !alertedRequestIds.has(next.solicitudId)) {
+      if (
+        next &&
+        shouldAlertIncomingAnonMatchRequest({
+          requestId: next.solicitudId,
+          alreadyAlerted: alertedRequestIds.has(next.solicitudId),
+          chatOpen: Boolean(openChatRef.current?.chatId),
+        })
+      ) {
         alertedRequestIds.add(next.solicitudId);
         alertIncomingAnonMatchRequest(next.solicitudId);
       }
 
       for (const id of [...alertedRequestIds]) {
         if (!pending.some((row) => row.solicitudId === id)) {
-          alertedRequestIds.delete(id);
           dismissIncomingAnonMatchRequestAlert(id);
         }
       }
