@@ -76,12 +76,11 @@ export async function sendStoryPush(input: {
   ensureAdminApp();
   const title = String(input.title || "").slice(0, 80);
   const body = String(input.body || "").slice(0, 180);
+  // Android is data-only, same as chat: the native service always runs and
+  // draws the pink like banner. A top-level `notification` key makes the OS
+  // swallow the message in background and the like never appears.
   const multicast: MulticastMessage = {
     tokens: tokens.map((row) => row.token),
-    notification: {
-      title,
-      body,
-    },
     data: {
       type: input.type,
       href,
@@ -95,10 +94,11 @@ export async function sendStoryPush(input: {
     },
     android: {
       priority: "high",
+    },
+    webpush: {
       notification: {
-        channelId: STORY_NOTIF_CHANNEL_ID,
-        color: STORY_NOTIF_COLOR,
-        icon: "ic_stat_notify",
+        title,
+        body,
         tag: input.tag,
       },
     },

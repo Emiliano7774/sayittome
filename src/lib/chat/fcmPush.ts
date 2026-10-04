@@ -439,7 +439,7 @@ async function ensurePushChannel() {
       visibility: 1,
     });
     await LocalNotifications.createChannel({
-      id: "stories-v1",
+      id: "stories-v2",
       name: "Historias",
       description: "Likes e historias nuevas",
       importance: 5,

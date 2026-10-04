@@ -16,9 +16,18 @@ import {
 } from "@/lib/perf/storyPipelineTrace";
 
 const preloaded = new Set<string>();
+const preloadedImages = new Map<string, HTMLImageElement>();
 
 export function clearStoryPreloadCache() {
   preloaded.clear();
+  preloadedImages.clear();
+}
+
+export function isStoryMediaPreloaded(url: string) {
+  const src = String(url || "").trim();
+  if (!src) return false;
+  const img = preloadedImages.get(src);
+  return Boolean(img?.complete && img.naturalWidth > 0);
 }
 
 function traceImageReady(img: HTMLImageElement, story: StoryItem) {
@@ -116,7 +125,9 @@ export function preloadStoryMedia(story: StoryItem, options?: { videoPreload?: "
 
   const img = new Image();
   img.decoding = "async";
+  img.setAttribute("fetchpriority", "high");
   img.src = story.mediaUrl;
+  preloadedImages.set(story.mediaUrl, img);
   traceImageReady(img, story);
   img.addEventListener(
     "load",

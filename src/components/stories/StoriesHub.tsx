@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import StoriesMosaic from "@/components/stories/StoriesMosaic";
 import StoriesTray from "@/components/stories/StoriesTray";
 import { useT } from "@/contexts/LocaleContext";
 import { getStoryOwnerKey } from "@/lib/stories/storyAuthor";
+import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
 import { splitMineStoryGroups } from "@/lib/stories/storyOwnerIdentity";
 import type { StoryUserGroup } from "@/lib/stories/types";
 
@@ -32,6 +33,12 @@ export default function StoriesHub({
 
   const trayGroups = mineKey && mine.length ? mine : groups;
   const mosaicGroups = mineKey && mine.length ? [...mine, ...everyone] : groups;
+
+  useEffect(() => {
+    for (const group of mine.slice(0, 2)) {
+      prefetchOwnerStories(group.ownerUid, group.ownerUsername);
+    }
+  }, [mine]);
 
   const isModern = variant === "modern";
 

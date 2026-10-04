@@ -60,17 +60,22 @@ assert.match(created, /seguidores/);
 const push = fs.readFileSync(path.join(root, "functions/src/storyPush.ts"), "utf8");
 assert.match(push, /STORY_NOTIF_COLOR/);
 assert.match(push, /ic_stat_story_like/);
-assert.match(push, /ic_stat_notify/);
 assert.match(push, /STORY_NOTIF_CHANNEL_ID/);
-assert.match(push, /notification:\s*\{\s*title/);
-assert.match(push, /channelId: STORY_NOTIF_CHANNEL_ID/);
+assert.match(push, /priority:\s*"high"/);
+assert.match(push, /data-only/);
+assert.match(push, /android:\s*\{\s*priority:\s*"high",?\s*\}/);
+assert.doesNotMatch(push, /ic_stat_notify/);
 assert.doesNotMatch(push, /whip/);
 const policySrc = fs.readFileSync(
   path.join(root, "functions/src/storyNotificationPolicy.ts"),
   "utf8",
 );
 assert.match(policySrc, /#E879F9/);
-assert.match(policySrc, /stories-v1/);
+assert.match(policySrc, /stories-v2/);
+assert.match(
+  fs.readFileSync(path.join(root, "src/lib/i18n/messages.ts"), "utf8"),
+  /Si apagás las notificaciones de like, los demás no van a ver las tuyas/,
+);
 
 const prompt = fs.readFileSync(
   path.join(root, "src/components/chat/ChatNotificationPrompt.tsx"),
@@ -79,7 +84,7 @@ const prompt = fs.readFileSync(
 assert.match(prompt, /enableStoryNotificationPack/);
 const fcm = fs.readFileSync(path.join(root, "src/lib/chat/fcmPush.ts"), "utf8");
 assert.match(fcm, /openStoryNotificationHref/);
-assert.match(fcm, /stories-v1/);
+assert.match(fcm, /stories-v2/);
 assert.match(fcm, /presentStoryForegroundNotification/);
 assert.match(fcm, /story_like/);
 const androidFcm = fs.readFileSync(

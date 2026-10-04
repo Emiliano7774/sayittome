@@ -754,15 +754,15 @@ const es = {
   story_notifications_label: "Notificaciones de historias",
   story_notifications_menu: "Notificaciones de historias",
   story_notifications_hint:
-    "Los avisos de historias arrancan prendidos. Podés apagarlos cuando quieras, para todos o solo con alguien.",
+    "Si apagás las notificaciones de like, los demás no van a ver las tuyas. Lo mismo con las historias de gente que seguís.",
   story_notifications_peer_hint:
-    "Elegí qué avisos querés con {username}. Si apagás uno, se apaga para los dos: ni vos ni esa persona reciben ese tipo de notificación.",
+    "Si apagás las notificaciones de like con {username}, esa persona tampoco va a ver las tuyas. Lo mismo con las historias que subís y las que sigue.",
   story_notifications_likes: "Likes en tus historias",
-  story_notifications_likes_hint: "Cuando alguien likea tu historia.",
+  story_notifications_likes_hint: "Si lo apagás, nadie de los dos recibe aviso de like.",
   story_notifications_uploads: "Historias de gente que seguís",
-  story_notifications_uploads_hint: "Cuando alguien que seguís sube una historia.",
+  story_notifications_uploads_hint: "Si lo apagás, nadie de los dos recibe aviso de historia nueva.",
   story_notifications_mad:
-    "Regla simple: si apagás un aviso, se apaga para los dos. Ejemplo: si cortás los likes con esta persona, nadie de los dos recibe aviso de like. Lo mismo con las historias nuevas.",
+    "Si apagás las notificaciones de like, los demás no van a ver las tuyas. Lo mismo con las historias de gente que seguís.",
   story_reply_placeholder: "Respondé la historia...",
   story_reply_send: "Enviar",
   story_reply_hint: "Deslizá hacia arriba para responder",
@@ -1636,15 +1636,15 @@ const en: Record<keyof typeof es, string> = {
   story_notifications_label: "Story notifications",
   story_notifications_menu: "Story notifications",
   story_notifications_hint:
-    "Story alerts start on. You can turn them off anytime, for everyone or just one person.",
+    "If you turn off like notifications, other people will not see yours either. Same for stories from people you follow.",
   story_notifications_peer_hint:
-    "Choose which alerts you want with {username}. If you turn one off, it turns off for both of you.",
+    "If you turn off like notifications with {username}, they will not see yours either. Same for stories you post and stories they follow.",
   story_notifications_likes: "Likes on your stories",
-  story_notifications_likes_hint: "When someone likes your story.",
+  story_notifications_likes_hint: "If you turn this off, neither of you gets a like alert.",
   story_notifications_uploads: "Stories from people you follow",
-  story_notifications_uploads_hint: "When someone you follow posts a story.",
+  story_notifications_uploads_hint: "If you turn this off, neither of you gets a new-story alert.",
   story_notifications_mad:
-    "Simple rule: if you turn an alert off, it turns off for both sides. Example: if you cut likes with this person, neither of you gets a like alert. Same for new stories.",
+    "If you turn off like notifications, other people will not see yours either. Same for stories from people you follow.",
   story_reply_placeholder: "Reply to story...",
   story_reply_send: "Send",
   story_reply_hint: "Swipe up to reply",

@@ -13,8 +13,17 @@ export type StoryViewerRow = {
   likedAtMs: number;
 };
 
+const ANON_HANDLE_RE = /^anon[_-]?[a-z0-9]{2,}$/i;
+
+export function looksLikeAnonymousStoryViewer(value: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  if (raw.startsWith("anon_")) return true;
+  return ANON_HANDLE_RE.test(raw);
+}
+
 export function isAnonymousStoryViewerId(id: string) {
-  return String(id || "").trim().startsWith("anon_");
+  return looksLikeAnonymousStoryViewer(id);
 }
 
 export function formatStoryViewerLocation(input: { pais?: string; provincia?: string; countryName?: string }) {
@@ -65,11 +74,17 @@ export function mergeStoryViewerRows(
     const id = String(row.id || "").trim();
     if (!id) continue;
     const prev = byId.get(id);
+    const rawUsername = String(row.username || prev?.username || "").trim();
+    const anonymous =
+      row.kind === "anon" ||
+      prev?.kind === "anon" ||
+      looksLikeAnonymousStoryViewer(id) ||
+      looksLikeAnonymousStoryViewer(rawUsername);
     const next: StoryViewerRow = {
       id,
-      kind: row.kind || prev?.kind || (isAnonymousStoryViewerId(id) ? "anon" : "profile"),
-      username: String(row.username || prev?.username || "").trim(),
-      photo: String(row.photo || prev?.photo || "").trim(),
+      kind: anonymous ? "anon" : row.kind || prev?.kind || "profile",
+      username: anonymous ? "" : rawUsername,
+      photo: anonymous ? "" : String(row.photo || prev?.photo || "").trim(),
       pais: String(row.pais || prev?.pais || "").trim(),
       provincia: String(row.provincia || prev?.provincia || "").trim(),
       locationLabel: String(row.locationLabel || prev?.locationLabel || "").trim(),
@@ -81,7 +96,7 @@ export function mergeStoryViewerRows(
       next.locationLabel = formatStoryViewerLocation(next);
     }
     if (next.kind === "profile" && !next.username) {
-      next.kind = isAnonymousStoryViewerId(id) ? "anon" : next.kind;
+      next.kind = "anon";
     }
     byId.set(id, next);
   }

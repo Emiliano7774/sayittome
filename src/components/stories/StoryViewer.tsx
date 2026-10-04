@@ -74,7 +74,7 @@ import {
   shouldReplayStoryPlayback,
   shouldStartStoryProgress,
 } from "@/lib/stories/storiesQueryGuard";
-import { preloadNextPlayTarget, preloadStoryMedia } from "@/lib/stories/preload";
+import { isStoryMediaPreloaded, preloadNextPlayTarget, preloadStoryMedia } from "@/lib/stories/preload";
 import { resolveProfileChat } from "@/lib/chat/resolveProfileChat";
 import { pinStoriesHubKeepAlive } from "@/lib/navigation/mainTabKeepAlive";
 import { resolveStoryViewerExitDestination, type StoryViewerExitReason } from "@/lib/navigation/storyReturnNav";
@@ -166,7 +166,10 @@ export default function StoryViewer({
   const [dismissAnimating, setDismissAnimating] = useState(false);
   const durationWrittenIdRef = useRef("");
   const viewedRef = useRef<Set<string>>(new Set());
-  const [frontReady, setFrontReady] = useState(false);
+  const [frontReady, setFrontReady] = useState(() => {
+    const first = stories[0];
+    return Boolean(first && (!first.mediaUrl || isStoryMediaPreloaded(first.mediaUrl)));
+  });
   const [frontError, setFrontError] = useState(false);
   const [appliedFrontId, setAppliedFrontId] = useState("");
   const [nextMediaReady, setNextMediaReady] = useState(false);
@@ -228,7 +231,8 @@ export default function StoryViewer({
           }),
       );
       setIndex(viewerUid ? initialStoryIndex(stories, initialStoryId, viewerUid) : 0);
-      setFrontReady(false);
+      const first = stories[index] || stories[0];
+      setFrontReady(Boolean(first && (!first.mediaUrl || isStoryMediaPreloaded(first.mediaUrl))));
       setFrontError(false);
     }
   }
@@ -282,7 +286,7 @@ export default function StoryViewer({
   const current = localStories[index];
   if ((current?.id || "") !== appliedFrontId) {
     setAppliedFrontId(current?.id || "");
-    setFrontReady(false);
+    setFrontReady(Boolean(current && (!current.mediaUrl || isStoryMediaPreloaded(current.mediaUrl))));
     setFrontError(false);
     setCaptionTone("light");
   }

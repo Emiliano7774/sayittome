@@ -12,7 +12,7 @@ import {
   stashStoryReturnTo,
 } from "@/lib/navigation/storyReturnNav";
 import { resolveStoryViewerId, resolveStoryViewerIdReady } from "@/lib/stories/anonStories";
-import { preloadStoryGroup } from "@/lib/stories/preload";
+import { preloadStoryGroup, preloadStoryMedia } from "@/lib/stories/preload";
 import {
   getCachedStoryGroups,
   getStoryGroup,
@@ -41,7 +41,6 @@ function StoryUserPageInner() {
   const [stories, setStories] = useState<StoryItem[]>(() => cachedOnOpen?.stories || []);
   const [ownerUsername, setOwnerUsername] = useState(() => cachedOnOpen?.ownerUsername || "");
   const [loading, setLoading] = useState(() => !cachedOnOpen || cachedOnOpen.stories.length === 0);
-  const [ownerSettled, setOwnerSettled] = useState(() => Boolean(cachedOnOpen?.stories.length));
   const [appliedParam, setAppliedParam] = useState(param);
   if (appliedParam !== param) {
     setAppliedParam(param);
@@ -49,7 +48,6 @@ function StoryUserPageInner() {
     setStories(group?.stories || []);
     setOwnerUsername(group?.ownerUsername || "");
     setLoading(!group || group.stories.length === 0);
-    setOwnerSettled(Boolean(group?.stories.length));
   }
 
   useEffect(() => {
@@ -106,13 +104,11 @@ function StoryUserPageInner() {
 
       const group = applyGroup(plan.viewerId);
       maybeCloseLoading(plan.viewerId, plan.generation, 0, Boolean(group));
-      if (group) setOwnerSettled(true);
 
       const gen = plan.generation;
       void loadOwnerStoryGroup(param, plan.viewerId).then((ownerGroup) => {
         if (cancelled || gen !== session.generation) return;
         const nextGroup = applyGroup(plan.viewerId);
-        setOwnerSettled(true);
         maybeCloseLoading(
           plan.viewerId,
           gen,
@@ -153,13 +149,19 @@ function StoryUserPageInner() {
     };
   }, [param]);
 
+  useEffect(() => {
+    const group = getStoryGroup(param, param);
+    const list = group?.stories?.length ? group.stories : stories;
+    list.slice(0, 3).forEach((story) => preloadStoryMedia(story, { videoPreload: "auto" }));
+  }, [param, stories]);
+
   const cachedOnRender = getStoryGroup(param, param);
   const displayStories =
     cachedOnRender && cachedOnRender.stories.length > 0 ? cachedOnRender.stories : stories;
   const displayOwnerUsername =
     cachedOnRender?.ownerUsername || ownerUsername;
 
-  const showOpenLoading = displayStories.length === 0 && (loading || !ownerSettled);
+  const showOpenLoading = displayStories.length === 0 && loading;
 
   if (showOpenLoading) {
     return (

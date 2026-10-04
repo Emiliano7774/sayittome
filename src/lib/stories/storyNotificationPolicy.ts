@@ -8,7 +8,7 @@ export type StoryNotifPrefs = {
 export const STORY_NOTIF_CHANNELS: StoryNotifChannel[] = ["likes", "followingUploads"];
 export const STORY_NOTIF_GLOBAL_DOC = "_global";
 export const STORY_NOTIF_COLOR = "#E879F9";
-export const STORY_NOTIF_CHANNEL_ID = "stories-v1";
+export const STORY_NOTIF_CHANNEL_ID = "stories-v2";
 
 export function defaultStoryNotifPrefs(): StoryNotifPrefs {
   return { likes: true, followingUploads: true };

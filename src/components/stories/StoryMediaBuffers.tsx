@@ -29,6 +29,7 @@ import {
   type MediaSlotId,
   type MediaSlotState,
 } from "@/lib/stories/storyMediaSlots";
+import { isStoryMediaPreloaded } from "@/lib/stories/preload";
 import type { StoryItem } from "@/lib/stories/types";
 
 type Props = {
@@ -310,12 +311,16 @@ export default function StoryMediaBuffers({
       <img
         ref={(node) => {
           refs[slotId].current = node;
+          if (node && (node.complete || isStoryMediaPreloaded(slot.mediaUrl)) && node.naturalWidth > 0) {
+            markReady(node);
+          }
         }}
         key={mediaSlotDomKey(slotId)}
         src={slot.mediaUrl}
         alt=""
         className={mediaClass(needsBlur, blurLocked, visible)}
-        decoding="async"
+        decoding={visible ? "sync" : "async"}
+        fetchPriority={visible ? "high" : "low"}
         onLoad={(e) => {
           const img = e.currentTarget;
           if (isNavTraceEnabled() && visible) {

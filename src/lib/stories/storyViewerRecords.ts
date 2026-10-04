@@ -104,8 +104,15 @@ export async function loadStoryViewers(story: StoryItem): Promise<StoryViewerRow
       const provincia = String(data.provincia || "").trim();
       fromVistas.set(id, {
         id,
-        kind: data.kind === "anon" || isAnonymousStoryViewerId(id) ? "anon" : "profile",
-        username: String(data.username || "").trim(),
+        kind:
+          data.kind === "anon" ||
+          isAnonymousStoryViewerId(id) ||
+          isAnonymousStoryViewerId(String(data.username || ""))
+            ? "anon"
+            : "profile",
+        username: isAnonymousStoryViewerId(String(data.username || ""))
+          ? ""
+          : String(data.username || "").trim(),
         photo: String(data.photo || "").trim(),
         pais,
         provincia,
@@ -145,12 +152,28 @@ export async function loadStoryViewers(story: StoryItem): Promise<StoryViewerRow
       if (!profile.username) {
         const snap = await getDoc(doc(db, "usuarios", id)).catch(() => null);
         const data = snap?.data() || {};
+        const username = String(data.username || data.usernameLower || "").trim();
+        const anonymous = !username || isAnonymousStoryViewerId(username);
         return {
           id,
-          kind: "profile" as const,
+          kind: anonymous ? ("anon" as const) : ("profile" as const),
           liked,
-          username: String(data.username || data.usernameLower || "").trim(),
-          photo: String(data.fotoPrincipal || data.photoURL || "").trim(),
+          username: anonymous ? "" : username,
+          photo: anonymous ? "" : String(data.fotoPrincipal || data.photoURL || "").trim(),
+          pais: "",
+          provincia: "",
+          locationLabel: "",
+          viewedAtMs: 0,
+          likedAtMs: 0,
+        };
+      }
+      if (isAnonymousStoryViewerId(profile.username)) {
+        return {
+          id,
+          kind: "anon" as const,
+          liked,
+          username: "",
+          photo: "",
           pais: "",
           provincia: "",
           locationLabel: "",

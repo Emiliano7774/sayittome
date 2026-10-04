@@ -33,7 +33,7 @@ public class ChatExpandableMessagingService extends FirebaseMessagingService {
 
     private static final String TAG = "SayItToMeFcm";
     private static final String CHANNEL_ID = "chat-messages-v2";
-    private static final String STORIES_CHANNEL_ID = "stories-v1";
+    private static final String STORIES_CHANNEL_ID = "stories-v2";
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
@@ -245,6 +245,8 @@ public class ChatExpandableMessagingService extends FirebaseMessagingService {
             new NotificationChannel(STORIES_CHANNEL_ID, "Historias", NotificationManager.IMPORTANCE_HIGH);
         channel.enableVibration(true);
         channel.setDescription("Likes e historias nuevas");
+        channel.enableLights(true);
+        channel.setLightColor(0xFFE879F9);
         manager.createNotificationChannel(channel);
     }
 

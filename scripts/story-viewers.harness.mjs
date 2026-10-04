@@ -38,6 +38,15 @@ assert.equal(rows[1].id, "lateLike");
 assert.equal(rows[2].id, "viewer");
 assert.equal(rows[3].id, "olderViewer");
 
+assert.equal(viewers.looksLikeAnonymousStoryViewer("anon_x9k2"), true);
+assert.equal(viewers.looksLikeAnonymousStoryViewer("anonab12"), true);
+assert.equal(viewers.looksLikeAnonymousStoryViewer("Emiliano501"), false);
+const leaked = viewers.mergeStoryViewerRows([
+  { id: "anon_x9k2", kind: "profile", username: "anon_x9k2", liked: true, likedAtMs: 1 },
+]);
+assert.equal(leaked[0].kind, "anon");
+assert.equal(leaked[0].username, "");
+
 const src = fs.readFileSync(path.join(root, "src/components/stories/StoryViewer.tsx"), "utf8");
 assert.match(src, /StoryViewersSheet/);
 assert.match(src, /canReplyToStory/);
@@ -53,6 +62,8 @@ assert.match(sheet, /data-story-viewers-handle/);
 assert.match(sheet, /shouldCloseStoryViewersGesture/);
 assert.match(sheet, /overflow-y-auto/);
 assert.match(sheet, /beginDrag\(event, true\)/);
+assert.match(sheet, /stories_anonymous_viewer/);
+assert.doesNotMatch(sheet, /row\.id\.slice/);
 const likeFn = fs.readFileSync(path.join(root, "functions/src/storyLike.ts"), "utf8");
 assert.match(likeFn, /collection\("vistas"\)/);
 

@@ -321,7 +321,16 @@ export function subscribeStoriesIndex(listener: () => void) {
 
 export function prefetchOwnerStories(ownerUid?: string, username?: string) {
   const group = getStoryGroup(ownerUid, username);
-  if (group) preloadStoryGroup(group, 2, { videoPreload: "auto" });
+  if (group) {
+    preloadStoryGroup(group, 3, { videoPreload: "auto" });
+    return group;
+  }
+  const key = String(ownerUid || username || "").trim();
+  if (key) {
+    void loadOwnerStoryGroup(key).then((next) => {
+      if (next) preloadStoryGroup(next, 3, { videoPreload: "auto" });
+    });
+  }
   return group;
 }
 

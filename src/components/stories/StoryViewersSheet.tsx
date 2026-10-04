@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useT } from "@/contexts/LocaleContext";
 import { loadStoryViewers } from "@/lib/stories/storyViewerRecords";
 import { shouldCloseStoryViewersGesture } from "@/lib/stories/storyViewersGesture";
-import type { StoryViewerRow } from "@/lib/stories/storyViewers";
+import { looksLikeAnonymousStoryViewer, type StoryViewerRow } from "@/lib/stories/storyViewers";
 import type { StoryItem } from "@/lib/stories/types";
 
 type Props = {
@@ -186,7 +186,11 @@ export default function StoryViewersSheet({
         ) : (
           rows.map((row) => {
             const profileName = row.username;
-            const label = row.kind === "anon" ? t("stories_anonymous_viewer") : `@${profileName || row.id.slice(0, 8)}`;
+            const anonymous =
+              row.kind === "anon" ||
+              looksLikeAnonymousStoryViewer(row.id) ||
+              looksLikeAnonymousStoryViewer(profileName);
+            const label = anonymous ? t("stories_anonymous_viewer") : `@${profileName}`;
             return (
               <div
                 key={row.id}
@@ -194,7 +198,7 @@ export default function StoryViewersSheet({
                 data-story-viewer-liked={row.liked ? "1" : "0"}
                 className="flex min-h-12 items-center gap-3 rounded-2xl px-1 py-1.5"
               >
-                {row.kind === "profile" && profileName ? (
+                {!anonymous && profileName ? (
                   <button
                     type="button"
                     onClick={() => onOpenProfile(profileName)}
@@ -215,7 +219,7 @@ export default function StoryViewersSheet({
                   </span>
                 )}
 
-                {row.kind === "profile" && profileName ? (
+                {!anonymous && profileName ? (
                   <button
                     type="button"
                     onClick={() => onOpenChat(profileName)}
@@ -238,11 +242,6 @@ export default function StoryViewersSheet({
                 )}
 
                 <div className="flex shrink-0 items-center gap-2 pl-2">
-                  {row.kind === "anon" && row.locationLabel ? (
-                    <span className="max-w-[9.5rem] truncate text-right text-[11px] font-semibold text-white/45">
-                      {row.locationLabel}
-                    </span>
-                  ) : null}
                   {row.liked ? <Heart size={16} className="text-[#E879F9]" fill="currentColor" /> : null}
                 </div>
               </div>
