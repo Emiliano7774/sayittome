@@ -95,6 +95,8 @@ export type ModernProfileData = {
   adminBlurFotosPerfil?: boolean;
   moderationTag?: string;
   moderationTagNote?: string;
+  groomingTag?: boolean;
+  potentialPedophileTag?: boolean;
   fakeProfileTag?: string;
 };
 
