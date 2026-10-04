@@ -110,6 +110,11 @@ type Props = {
   showShuffleBack?: boolean;
   onModerationTagChange?: (moderationTag: string) => void;
   onFakeProfileTagChange?: (fakeProfileTag: string) => void;
+  onSafetyTagChange?: (patch: {
+    moderationTag?: string;
+    groomingTag?: boolean;
+    potentialPedophileTag?: boolean;
+  }) => void;
 };
 
 export default function ModernPublicProfile({
@@ -121,7 +126,9 @@ export default function ModernPublicProfile({
   showShuffleBack = true,
   onModerationTagChange,
   onFakeProfileTagChange,
+  onSafetyTagChange,
 }: Props) {
+  void onSafetyTagChange;
   const router = useRouter();
   const { locale } = useLocale();
   const t = useT();
