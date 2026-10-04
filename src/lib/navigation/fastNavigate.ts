@@ -82,7 +82,7 @@ function clearStaleMainTabPathnameOverrideForHref(href: string) {
 function commitHistoryPushState(
   href: string,
   reason: string,
-  options?: { allowConcreteMainTab?: boolean },
+  options?: { allowConcreteMainTab?: boolean; replace?: boolean },
 ) {
   installMainTabInternalPathnameStore();
   const dest = normalizePath(href);
@@ -127,18 +127,19 @@ function commitHistoryPushState(
   }
 
   try {
-    window.history.pushState(
-      {
-        __sayittomeMicroSlideHistory: true,
-        stateKey,
-        txId: tx?.transactionId ?? null,
-        sourceTab: tx?.source ?? null,
-        prevPathname,
-        nextPathname: dest,
-      },
-      "",
-      dest,
-    );
+    const historyState = {
+      __sayittomeMicroSlideHistory: true,
+      stateKey,
+      txId: tx?.transactionId ?? null,
+      sourceTab: tx?.source ?? null,
+      prevPathname,
+      nextPathname: dest,
+    };
+    if (options?.replace) {
+      window.history.replaceState(historyState, "", dest);
+    } else {
+      window.history.pushState(historyState, "", dest);
+    }
   } catch (err) {
     emitMicroSlideCommitNavDiag("MICRO_SLIDE_HISTORY_NAVIGATION_FAILED", {
       href: dest,
@@ -223,6 +224,22 @@ export function fastMainTabHistoryPush(
   const dest = normalizePath(href);
   if (!(MAIN_TAB_HREFS as readonly string[]).includes(dest)) return false;
   return commitHistoryPushState(dest, reason, { allowConcreteMainTab: true });
+}
+
+/** Same-document return to a keep-alive tab without an App Router MPA reload. */
+export function fastMainTabHistoryReplace(
+  href: string,
+  reason = "main-tab-history-replace",
+) {
+  const dest = normalizePath(href);
+  if (dest === "/shuffle") {
+    return commitHistoryPushState(dest, reason, { replace: true });
+  }
+  if (!(MAIN_TAB_HREFS as readonly string[]).includes(dest)) return false;
+  return commitHistoryPushState(dest, reason, {
+    allowConcreteMainTab: true,
+    replace: true,
+  });
 }
 
 export function fastRouterPush(

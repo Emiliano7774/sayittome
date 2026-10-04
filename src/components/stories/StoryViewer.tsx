@@ -66,7 +66,7 @@ import {
   applyStoryReplySendAck,
   formatStoryReplyFailure,
 } from "@/lib/stories/storyReplySnapshot";
-import { fastRouterPush } from "@/lib/navigation/fastNavigate";
+import { fastMainTabHistoryReplace, fastRouterPush } from "@/lib/navigation/fastNavigate";
 import StoryMediaBuffers from "@/components/stories/StoryMediaBuffers";
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import ContentReportDialog from "@/components/moderation/ContentReportDialog";
@@ -229,6 +229,19 @@ export default function StoryViewer({
 
       if (dest === "/stories") {
         pinStoriesHubKeepAlive();
+        document.body.classList.remove("sayittome-story-viewer-open");
+        setPaused(true);
+        if (fastMainTabHistoryReplace("/stories", "story-viewer-dismiss")) {
+          return;
+        }
+      }
+
+      if (dest === "/shuffle") {
+        document.body.classList.remove("sayittome-story-viewer-open");
+        setPaused(true);
+        if (fastMainTabHistoryReplace("/shuffle", "story-viewer-dismiss-shuffle")) {
+          return;
+        }
       }
 
       router.replace(dest);

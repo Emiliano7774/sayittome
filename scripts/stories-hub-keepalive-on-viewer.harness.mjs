@@ -14,6 +14,26 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 installHarnessWindow();
 installHarnessAlias(root);
 
+document.documentElement.setAttribute = () => {};
+document.documentElement.removeAttribute = () => {};
+document.documentElement.classList.toggle = () => false;
+document.documentElement.classList.contains = () => false;
+document.body.classList.toggle = () => false;
+
+let historyLength = 1;
+window.history = {
+  get length() {
+    return historyLength;
+  },
+  pushState(_state, _title, url) {
+    historyLength += 1;
+    window.location.pathname = String(url || "/");
+  },
+  replaceState(_state, _title, url) {
+    window.location.pathname = String(url || "/");
+  },
+};
+
 const tabs = await import(
   pathToFileURL(path.join(root, "src/lib/navigation/mainTabKeepAlive.ts")).href
 );
@@ -59,6 +79,37 @@ const viewerSrc = fs.readFileSync(
 );
 assert.match(viewerSrc, /pinStoriesHubKeepAlive\(\)/);
 assert.match(viewerSrc, /if \(dest === "\/stories"\)/);
+assert.match(
+  viewerSrc,
+  /fastMainTabHistoryReplace\("\/stories", "story-viewer-dismiss"\)/,
+);
+assert.match(
+  viewerSrc,
+  /fastMainTabHistoryReplace\("\/shuffle", "story-viewer-dismiss-shuffle"\)/,
+);
+
+const fastNavSrc = fs.readFileSync(
+  path.join(root, "src/lib/navigation/fastNavigate.ts"),
+  "utf8",
+);
+assert.match(fastNavSrc, /export function fastMainTabHistoryReplace/);
+assert.match(fastNavSrc, /options\?\.replace/);
+
+const fastNav = await import(
+  pathToFileURL(path.join(root, "src/lib/navigation/fastNavigate.ts")).href
+);
+const historyBefore = window.history.length;
+window.history.pushState({}, "", "/stories/alice");
+assert.equal(
+  fastNav.fastMainTabHistoryReplace("/stories", "story-viewer-dismiss"),
+  true,
+);
+assert.equal(window.location.pathname, "/stories");
+assert.equal(
+  window.history.length,
+  historyBefore + 1,
+  "replace must not grow the history stack",
+);
 
 const groupsSrc = fs.readFileSync(
   path.join(root, "src/hooks/useStoriesGroups.ts"),
