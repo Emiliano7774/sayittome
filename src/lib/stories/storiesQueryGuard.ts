@@ -139,8 +139,8 @@ export function pickLatestStoriesSnapshot<
     .reduce<T | null>((best, row) => selectLatestStoriesSnapshot(best, row), null);
 }
 
-export const STORIES_SNAPSHOT_MAX_GROUPS = 40;
-export const STORIES_SNAPSHOT_MAX_STORIES = 20;
+export const STORIES_SNAPSHOT_MAX_GROUPS = 120;
+export const STORIES_SNAPSHOT_MAX_STORIES = 30;
 
 export function didTruncateStoriesSnapshot(
   groups: Array<{ stories?: unknown[] }>,
@@ -237,6 +237,16 @@ export function nextUnseenIndexAfter<T extends { id: string }>(
   return -1;
 }
 
+/** Immediate neighbor in the tray — do not skip already-seen packs. */
+export function nextAdjacentGroupAfter<T extends { ownerUid: string; stories: unknown[] }>(
+  groups: T[],
+  currentOwnerUid: string,
+) {
+  const start = groups.findIndex((group) => group.ownerUid === currentOwnerUid);
+  if (start < 0) return groups[0] || null;
+  return groups[start + 1] || null;
+}
+
 export function resolveNextPlayTarget<TStory extends { id: string }, TGroup extends { ownerUid: string; stories: TStory[] }>(input: {
   viewerId: string;
   currentOwnerUid: string;
@@ -247,32 +257,23 @@ export function resolveNextPlayTarget<TStory extends { id: string }, TGroup exte
   isUnseen: (story: TStory, viewerId: string) => boolean;
   groupIsUnseen: (group: TGroup, viewerId: string) => boolean;
 }): NextPlayTarget<TGroup> {
-  const { viewerId, currentIndex, currentStories, replay } = input;
+  const { viewerId, currentIndex, currentStories } = input;
+  void input.replay;
+  void input.groupIsUnseen;
   if (!viewerId) {
     return { kind: "same-group", group: null, storyIndex: currentIndex };
   }
-  if (replay) {
-    if (currentIndex + 1 < currentStories.length) {
-      return { kind: "same-group", group: null, storyIndex: currentIndex + 1 };
-    }
+  if (currentIndex + 1 < currentStories.length) {
+    return { kind: "same-group", group: null, storyIndex: currentIndex + 1 };
+  }
+  const nextGroup = nextAdjacentGroupAfter(input.groups, input.currentOwnerUid);
+  if (!nextGroup?.stories?.length) {
     return { kind: "exit", group: null, storyIndex: -1 };
   }
-  const same = nextUnseenIndexAfter(currentStories, currentIndex, viewerId, input.isUnseen);
-  if (same >= 0) {
-    return { kind: "same-group", group: null, storyIndex: same };
-  }
-  const nextGroup = nextUnseenGroupAfter(
-    input.groups,
-    input.currentOwnerUid,
-    viewerId,
-    input.groupIsUnseen,
-  );
-  if (!nextGroup) return { kind: "exit", group: null, storyIndex: -1 };
-  const nextIndex = firstUnseenStoryIndex(nextGroup.stories, viewerId, input.isUnseen);
   return {
     kind: "next-group",
     group: nextGroup,
-    storyIndex: nextIndex >= 0 ? nextIndex : 0,
+    storyIndex: 0,
   };
 }
 

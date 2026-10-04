@@ -43,6 +43,7 @@ import {
   getPreviousStoryGroup,
   getStoriesIndexVersion,
   markStoryViewedLocally,
+  peekCachedStoryGroups,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
 import {
@@ -243,17 +244,20 @@ export default function StoryViewer({
   const viewerReady = Boolean(viewerUid);
   const resolvedOwnerUid = activeOwnerUid || ownerUid || current?.ownerUid || "";
   const nextTarget = useMemo(
-    () =>
-      resolveNextPlayTarget({
+    () => {
+      const cached = getCachedStoryGroups(viewerUid);
+      const groups = cached.length > 0 ? cached : peekCachedStoryGroups();
+      return resolveNextPlayTarget({
         viewerId: viewerUid,
         currentOwnerUid: resolvedOwnerUid,
         currentIndex: index,
         currentStories: localStories,
-        groups: getCachedStoryGroups(viewerUid),
+        groups,
         replay: replayLocked,
         isUnseen: isStoryUnseenForViewer,
         groupIsUnseen: groupIsUnseenForViewer,
-      }),
+      });
+    },
     [index, localStories, replayLocked, resolvedOwnerUid, storiesIndexVersion, viewerUid],
   );
   const nextStory = useMemo(() => {

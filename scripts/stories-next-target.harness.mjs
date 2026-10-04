@@ -91,7 +91,9 @@ const allSeenLast = resolveNextPlayTarget({
   isUnseen,
   groupIsUnseen,
 });
-assert.equal(allSeenLast.kind, "exit");
+assert.equal(allSeenLast.kind, "next-group");
+assert.equal(allSeenLast.group?.ownerUid, "owner_b");
+assert.equal(allSeenLast.storyIndex, 0);
 
 const mixedNoReplay = resolveNextPlayTarget({
   viewerId: viewer,
@@ -116,8 +118,8 @@ const mixedAfterUnseen = resolveNextPlayTarget({
   isUnseen,
   groupIsUnseen,
 });
-assert.equal(mixedAfterUnseen.kind, "next-group");
-assert.equal(mixedAfterUnseen.group?.ownerUid, "owner_c");
+assert.equal(mixedAfterUnseen.kind, "same-group");
+assert.equal(mixedAfterUnseen.storyIndex, 2);
 
 const mixedReplaySeenInitial = resolveNextPlayTarget({
   viewerId: viewer,
@@ -142,10 +144,24 @@ const mixedReplayEnd = resolveNextPlayTarget({
   isUnseen,
   groupIsUnseen,
 });
-assert.equal(mixedReplayEnd.kind, "exit", "replay does not autoplay the next unseen group");
+assert.equal(mixedReplayEnd.kind, "next-group");
+assert.equal(mixedReplayEnd.group?.ownerUid, "owner_c");
+assert.equal(mixedReplayEnd.storyIndex, 0);
+
+const lastOfFeed = resolveNextPlayTarget({
+  viewerId: viewer,
+  currentOwnerUid: "owner_c",
+  currentIndex: 0,
+  currentStories: unseenGroup.stories,
+  groups,
+  replay: false,
+  isUnseen,
+  groupIsUnseen,
+});
+assert.equal(lastOfFeed.kind, "exit");
 
 console.log(JSON.stringify({
   gate: "STORIES_NEXT_TARGET",
   pass: true,
-  cases: ["all_seen_replay", "mixed_skip_seen", "seen_initial_replay", "replay_no_autoplay"],
+  cases: ["consecutive_same_group", "consecutive_next_neighbor", "exit_only_at_feed_end"],
 }, null, 2));
