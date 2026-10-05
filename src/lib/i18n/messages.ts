@@ -217,6 +217,7 @@ const es = {
     "Quien no muestra su última conexión puede estar conectado ahora, pero no sale en este filtro. Solo se encuentra en Shuffle.",
   shuffle_online_filter_footer:
     "Quien no muestra su última conexión puede estar conectado ahora, pero no sale en este filtro. Solo se encuentra en Shuffle.",
+  shuffle_online_filter_back: "Volver al Shuffle",
   shuffle_filters_empty_keep_trying:
     "¡Seguí intentando! Cada shuffle puede mostrarte gente nueva.",
   anon_match_card_title:
@@ -1102,6 +1103,7 @@ const en: Record<keyof typeof es, string> = {
     "People who hide their last connection may be online right now, but they do not show in this filter. You can only find them in Shuffle.",
   shuffle_online_filter_footer:
     "People who hide their last connection may be online right now, but they do not show in this filter. You can only find them in Shuffle.",
+  shuffle_online_filter_back: "Back to Shuffle",
   shuffle_filters_empty_keep_trying:
     "Keep trying! Each shuffle can surface someone new.",
   anon_match_card_title:

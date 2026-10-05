@@ -39,6 +39,24 @@ assert.equal(nav.resolveStoryAutoExitDestination("/stories"), "/stories");
 nav.stashStoryReturnTo("/shuffle");
 assert.equal(nav.resolveStoryViewerExitDestination("/stories/demo", "auto"), "/stories");
 
+assert.match(hubSrc, /orderStoryTrayGroups/);
+assert.match(hubSrc, /stories_title/);
+assert.doesNotMatch(hubSrc, /stories_yours/);
+assert.match(traySrc, /overflow-x-auto/);
+
+const identity = await import(
+  pathToFileURL(path.join(root, "src/lib/stories/storyOwnerIdentity.ts")).href
+);
+const ordered = identity.orderStoryTrayGroups(
+  [
+    { ownerUid: "old", stories: [{ createdAtMs: 10 }] },
+    { ownerUid: "me", stories: [{ createdAtMs: 50, ownerUid: "me" }] },
+    { ownerUid: "new", stories: [{ createdAtMs: 90 }] },
+  ],
+  "me",
+);
+assert.deepEqual(ordered.map((group) => group.ownerUid), ["me", "new", "old"]);
+
 assert.match(viewerSrc, /exitStoryViewer\("auto"\)/);
 assert.doesNotMatch(
   viewerSrc,

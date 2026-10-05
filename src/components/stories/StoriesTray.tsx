@@ -21,7 +21,7 @@ export default function StoriesTray({ groups, showAdd = true }: Props) {
   const stashStoryReturn = useStoryReturnStash();
 
   return (
-    <div className="flex gap-5 overflow-x-auto pb-2 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex w-full max-w-full gap-5 overflow-x-auto overscroll-x-contain pb-2 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {showAdd ? (
         <Link
           href="/stories/new"

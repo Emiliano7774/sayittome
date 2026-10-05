@@ -25,7 +25,10 @@ import {
 import { normalizeShuffleProfiles } from "@/lib/shuffle/normalize";
 import { applyShuffleAdminTagOverlays } from "@/lib/shuffle/shuffleAdminTagOverlay";
 import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
-import { setShuffleSoloOnlineFilter } from "@/lib/shuffle/shuffleOnlineFilterNotice";
+import {
+  registerClearShuffleSoloOnline,
+  setShuffleSoloOnlineFilter,
+} from "@/lib/shuffle/shuffleOnlineFilterNotice";
 import { isShuffleProfileOnline } from "@/lib/presence";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
@@ -1080,6 +1083,12 @@ export function useShufflePool() {
     },
     [filterActivePool],
   );
+
+  useEffect(() => {
+    return registerClearShuffleSoloOnline(() => {
+      applyFilters({ ...filtersRef.current, soloOnline: false });
+    });
+  }, [applyFilters]);
 
   const clearFilters = useCallback(() => {
     const cleared = defaultShuffleFilters();

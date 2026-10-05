@@ -68,3 +68,31 @@ export function splitMineStoryGroups<T extends {
   const rest = groups.filter((group) => !isMineStoryGroup(group, ownerKey));
   return { mine, everyone: rest.length ? rest : groups };
 }
+
+export function latestStoryGroupMs(group: { stories?: Array<{ createdAtMs?: number }> }) {
+  return (group.stories || []).reduce(
+    (max, story) => Math.max(max, Number(story.createdAtMs || 0)),
+    0,
+  );
+}
+
+/** Own story first. The next ring is whoever uploaded most recently. */
+export function orderStoryTrayGroups<T extends {
+  ownerUid: string;
+  isAnonymousStory?: boolean;
+  stories?: Array<{
+    ownerUid?: string;
+    anonSessionId?: string;
+    isAnonymousStory?: boolean;
+    createdAtMs?: number;
+  }>;
+}>(groups: T[], ownerKey: string) {
+  const mine: T[] = [];
+  const others: T[] = [];
+  for (const group of groups) {
+    if (ownerKey && isMineStoryGroup(group, ownerKey)) mine.push(group);
+    else others.push(group);
+  }
+  others.sort((a, b) => latestStoryGroupMs(b) - latestStoryGroupMs(a));
+  return [...mine, ...others];
+}

@@ -8,7 +8,7 @@ import StoriesTray from "@/components/stories/StoriesTray";
 import { useT } from "@/contexts/LocaleContext";
 import { getStoryOwnerKey } from "@/lib/stories/storyAuthor";
 import { prefetchOwnerStories } from "@/lib/stories/storiesIndexStore";
-import { splitMineStoryGroups } from "@/lib/stories/storyOwnerIdentity";
+import { orderStoryTrayGroups, splitMineStoryGroups } from "@/lib/stories/storyOwnerIdentity";
 import type { StoryUserGroup } from "@/lib/stories/types";
 
 type Props = {
@@ -31,7 +31,7 @@ export default function StoriesHub({
     [groups, mineKey],
   );
 
-  const trayGroups = mineKey && mine.length ? mine : groups;
+  const trayGroups = orderStoryTrayGroups(groups, mineKey);
   const mosaicGroups = mineKey && mine.length ? [...mine, ...everyone] : groups;
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export default function StoriesHub({
                 : "text-3xl font-black tracking-[-0.06em]"
             }
           >
-            {mineKey && mine.length ? t("stories_yours") : t("stories_title")}
+            {t("stories_title")}
           </h2>
           <Link
             href="/stories/new"

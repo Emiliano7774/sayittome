@@ -21,6 +21,7 @@ import {
 } from "@/lib/shuffle/shuffleSlotsStore";
 import {
   getShuffleSoloOnlineFilter,
+  requestClearShuffleSoloOnline,
   subscribeShuffleSoloOnlineFilter,
 } from "@/lib/shuffle/shuffleOnlineFilterNotice";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
@@ -95,17 +96,33 @@ export default function ShuffleFeedWithNativeAds({
         return renderProfile(profile, profileIndex);
       })}
       {soloOnline && profiles.length > 0 ? (
-        <p
+        <div
           data-shuffle-online-filter-footer="1"
           data-shuffle-online-filter-footer-mode={mode}
-          className={
-            mode === "classic"
-              ? "border-t border-white/10 bg-black px-4 py-3 text-left text-[12px] font-normal leading-5 text-white/38"
-              : "col-span-full mt-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-center text-[13px] font-semibold leading-5 text-white/55 [grid-column:1/-1]"
-          }
+          className="col-span-full flex flex-col items-center bg-black px-6 py-10 text-center [grid-column:1/-1]"
         >
-          {t("shuffle_online_filter_footer")}
-        </p>
+          <p
+            className={
+              mode === "classic"
+                ? "max-w-lg text-sm font-normal leading-6 text-white/40"
+                : "max-w-lg text-sm font-bold leading-6 text-white/45"
+            }
+          >
+            {t("shuffle_online_filter_footer")}
+          </p>
+          <button
+            type="button"
+            data-shuffle-online-filter-back="1"
+            onClick={() => requestClearShuffleSoloOnline()}
+            className={
+              mode === "classic"
+                ? "mt-5 rounded-full border border-[#8C84FF]/30 bg-[#8C84FF]/10 px-5 py-2.5 text-sm font-normal text-[#8C84FF]/90"
+                : "mt-5 rounded-full border border-violet-500/30 bg-violet-500/10 px-5 py-2.5 text-sm font-black text-violet-200"
+            }
+          >
+            {t("shuffle_online_filter_back")}
+          </button>
+        </div>
       ) : null}
       <div aria-hidden className="sayittome-nav-scroll-spacer" />
     </div>

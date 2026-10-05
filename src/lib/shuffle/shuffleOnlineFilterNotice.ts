@@ -1,5 +1,17 @@
 let soloOnline = false;
 const listeners = new Set<() => void>();
+let clearSoloOnline: (() => void) | null = null;
+
+export function registerClearShuffleSoloOnline(clear: () => void) {
+  clearSoloOnline = clear;
+  return () => {
+    if (clearSoloOnline === clear) clearSoloOnline = null;
+  };
+}
+
+export function requestClearShuffleSoloOnline() {
+  clearSoloOnline?.();
+}
 
 export function setShuffleSoloOnlineFilter(next: boolean) {
   const value = Boolean(next);
