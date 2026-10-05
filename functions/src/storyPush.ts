@@ -31,13 +31,11 @@ export async function storyPairAllows(
   const actor = asId(actorUid);
   const peer = asId(peerUid);
   if (!actor || !peer || actor === peer) return false;
-  const [selfGlobal, peerGlobal, selfPair, peerPair] = await Promise.all([
+  const [selfGlobal, peerGlobal] = await Promise.all([
     loadPrefs(actor, STORY_NOTIF_GLOBAL_DOC),
     loadPrefs(peer, STORY_NOTIF_GLOBAL_DOC),
-    loadPrefs(actor, peer),
-    loadPrefs(peer, actor),
   ]);
-  return pairAllowsStoryNotif(channel, selfGlobal, peerGlobal, selfPair, peerPair);
+  return pairAllowsStoryNotif(channel, selfGlobal, peerGlobal);
 }
 
 async function loadTokensForUid(uid: string) {

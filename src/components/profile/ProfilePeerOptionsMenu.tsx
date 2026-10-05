@@ -1,11 +1,10 @@
 "use client";
 
-import { Bell, Flag, MoreHorizontal, X } from "lucide-react";
+import { Flag, MoreHorizontal } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import ContentReportDialog, { type ContentReportKind } from "@/components/moderation/ContentReportDialog";
-import StoryNotificationSettings from "@/components/stories/StoryNotificationSettings";
 import { useT } from "@/contexts/LocaleContext";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import {
@@ -35,7 +34,6 @@ export default function ProfilePeerOptionsMenu({
 }: Props) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{
     top: number;
@@ -57,13 +55,6 @@ export default function ProfilePeerOptionsMenu({
     "sayittome-profile-options-open",
     "sayittome:close-profile-options",
   );
-  useOverlayBackClose(
-    notificationsOpen,
-    () => setNotificationsOpen(false),
-    "sayittome-story-notification-settings-open",
-    "sayittome:close-story-notification-settings",
-  );
-
   useEffect(() => {
     const syncSheet = () => setSheetMode(shouldUseProfileOptionsSheet(window));
     syncSheet();
@@ -173,19 +164,6 @@ export default function ProfilePeerOptionsMenu({
                 >
                   <button
                     type="button"
-                    data-profile-option="story-notifications"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setNotificationsOpen(true);
-                    }}
-                    className="gap-3 rounded-xl text-sm font-bold text-white/85 hover:bg-white/5"
-                    style={getProfileOptionsActionStyle()}
-                  >
-                    <Bell size={17} />
-                    {t("story_notifications_menu")}
-                  </button>
-                  <button
-                    type="button"
                     data-profile-option="report"
                     onClick={() => {
                       setMenuOpen(false);
@@ -203,34 +181,6 @@ export default function ProfilePeerOptionsMenu({
             )
           : null}
       </div>
-
-      {notificationsOpen && typeof document !== "undefined"
-        ? createPortal(
-            <div className="pointer-events-auto fixed inset-0 z-[1000002] flex items-center justify-center bg-black/85 px-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:p-4">
-              <section className="pointer-events-auto flex max-h-[min(78dvh,680px)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl">
-                <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
-                  <p className="text-lg font-black text-white">{t("story_notifications_label")}</p>
-                  <button
-                    type="button"
-                    onClick={() => setNotificationsOpen(false)}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
-                    aria-label={t("common_cancel")}
-                  >
-                    <X size={18} />
-                  </button>
-                </header>
-                <div className="flex min-h-0 flex-1 flex-col p-5">
-                  <StoryNotificationSettings
-                    mode="peer"
-                    peerUid={peerUid}
-                    peerUsername={peerUsername}
-                  />
-                </div>
-              </section>
-            </div>,
-            document.body,
-          )
-        : null}
 
       <ContentReportDialog
         open={reportOpen}

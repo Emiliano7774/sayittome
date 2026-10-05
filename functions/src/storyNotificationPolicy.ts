@@ -22,15 +22,14 @@ export function normalizeStoryNotifPrefs(value: unknown): StoryNotifPrefs {
   };
 }
 
+/** Global switches only. Each person sets this on their own profile. */
 export function pairAllowsStoryNotif(
   channel: StoryNotifChannel,
   selfGlobal: StoryNotifPrefs | null | undefined,
   peerGlobal: StoryNotifPrefs | null | undefined,
-  selfPair: StoryNotifPrefs | null | undefined,
-  peerPair: StoryNotifPrefs | null | undefined,
 ) {
   const defaults = defaultStoryNotifPrefs();
-  return [selfGlobal, peerGlobal, selfPair, peerPair].every((prefs) => {
+  return [selfGlobal, peerGlobal].every((prefs) => {
     const next = prefs || defaults;
     return next[channel] !== false;
   });

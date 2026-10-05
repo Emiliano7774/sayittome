@@ -6,19 +6,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useT } from "@/contexts/LocaleContext";
 import {
   getGlobalStoryNotifPrefs,
-  getPairStoryNotifPrefs,
   getStoryNotifPrefsVersion,
   listenStoryNotifPrefs,
   setGlobalStoryNotifChannel,
-  setPairStoryNotifChannel,
   subscribeStoryNotifPrefs,
 } from "@/lib/stories/storyNotificationPrefs";
 import type { StoryNotifChannel } from "@/lib/stories/storyNotificationPolicy";
 
 type Props = {
-  mode: "global" | "peer";
-  peerUid?: string;
-  peerUsername?: string;
+  mode?: "global";
 };
 
 function ToggleRow({
@@ -55,35 +51,28 @@ function ToggleRow({
   );
 }
 
-export default function StoryNotificationSettings({ mode, peerUid = "", peerUsername = "" }: Props) {
+export default function StoryNotificationSettings(_props: Props) {
   const t = useT();
   const { firebaseUser } = useAuth();
   useSyncExternalStore(subscribeStoryNotifPrefs, getStoryNotifPrefsVersion, () => 0);
-  const prefs =
-    mode === "peer" ? getPairStoryNotifPrefs(peerUid) : getGlobalStoryNotifPrefs();
+  const prefs = getGlobalStoryNotifPrefs();
 
   useEffect(() => {
     const uid = firebaseUser?.uid;
     if (!uid) return;
-    return listenStoryNotifPrefs(uid, mode === "peer" ? peerUid : "");
-  }, [firebaseUser?.uid, mode, peerUid]);
+    return listenStoryNotifPrefs(uid);
+  }, [firebaseUser?.uid]);
 
   function setChannel(channel: StoryNotifChannel, enabled: boolean) {
-    if (mode === "peer") {
-      void setPairStoryNotifChannel(peerUid, channel, enabled);
-      return;
-    }
     void setGlobalStoryNotifChannel(channel, enabled);
   }
 
   return (
-    <div className="space-y-3" data-story-notification-settings={mode}>
+    <div className="space-y-3" data-story-notification-settings="global">
       <div>
         <p className="text-sm font-black text-white">{t("story_notifications_label")}</p>
         <p className="mt-1 text-xs font-semibold leading-5 text-white/45">
-          {mode === "peer"
-            ? t("story_notifications_peer_hint", { username: peerUsername || "este perfil" })
-            : t("story_notifications_hint")}
+          {t("story_notifications_hint")}
         </p>
       </div>
       <ToggleRow

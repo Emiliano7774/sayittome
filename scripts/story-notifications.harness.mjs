@@ -22,11 +22,26 @@ assert.equal(
     "likes",
     { likes: false, followingUploads: true },
     { likes: true, followingUploads: true },
-    { likes: true, followingUploads: true },
-    { likes: true, followingUploads: true },
   ),
   false,
   "one side off is mutual assured destruction",
+);
+assert.equal(
+  policy.pairAllowsStoryNotif(
+    "followingUploads",
+    { likes: true, followingUploads: false },
+    { likes: true, followingUploads: true },
+  ),
+  false,
+  "turning off follow-story alerts is mutual",
+);
+assert.equal(
+  policy.pairAllowsStoryNotif(
+    "followingUploads",
+    { likes: true, followingUploads: true },
+    { likes: true, followingUploads: true },
+  ),
+  true,
 );
 
 assert.equal(policy.isAnonymousStoryLiker({ signInProvider: "anonymous", username: "x" }), true);
@@ -57,6 +72,22 @@ assert.match(fnSrc, /storyPairAllows/);
 const created = fs.readFileSync(path.join(root, "functions/src/storyCreated.ts"), "utf8");
 assert.match(created, /followingUploads/);
 assert.match(created, /seguidores/);
+assert.match(created, /siguiendo/);
+const peerMenu = fs.readFileSync(
+  path.join(root, "src/components/profile/ProfilePeerOptionsMenu.tsx"),
+  "utf8",
+);
+assert.doesNotMatch(peerMenu, /StoryNotificationSettings/);
+assert.doesNotMatch(peerMenu, /story-notifications/);
+const ownMenu = fs.readFileSync(
+  path.join(root, "src/components/profile/ProfileClaimHistoryMenu.tsx"),
+  "utf8",
+);
+assert.match(ownMenu, /StoryNotificationSettings mode="global"/);
+assert.match(
+  fs.readFileSync(path.join(root, "src/lib/i18n/messages.ts"), "utf8"),
+  /ellos tampoco se enteran cuando subís/,
+);
 const push = fs.readFileSync(path.join(root, "functions/src/storyPush.ts"), "utf8");
 assert.match(push, /STORY_NOTIF_COLOR/);
 assert.match(push, /ic_stat_story_like/);
@@ -76,10 +107,8 @@ const policySrc = fs.readFileSync(
 );
 assert.match(policySrc, /#E879F9/);
 assert.match(policySrc, /stories-v2/);
-assert.match(
-  fs.readFileSync(path.join(root, "src/lib/i18n/messages.ts"), "utf8"),
-  /Si apagás las notificaciones de like, los demás no van a ver las tuyas/,
-);
+assert.match(push, /loadPrefs\(actor, STORY_NOTIF_GLOBAL_DOC\)/);
+assert.doesNotMatch(push, /loadPrefs\(actor, peer\)/);
 
 const prompt = fs.readFileSync(
   path.join(root, "src/components/chat/ChatNotificationPrompt.tsx"),

@@ -22,16 +22,19 @@ export async function handleStoryCreated(input: {
     input.data.isAnonymousStory === true || ownerUid.startsWith("anon_");
   if (!storyId || !ownerUid || anonymous) return { notified: 0 };
 
-  const followersSnap = await db()
-    .collection("usuarios")
-    .doc(ownerUid)
-    .collection("seguidores")
-    .limit(MAX_FOLLOWERS)
-    .get();
+  const ownerRef = db().collection("usuarios").doc(ownerUid);
+  const [followersSnap, followingSnap] = await Promise.all([
+    ownerRef.collection("seguidores").limit(MAX_FOLLOWERS).get(),
+    ownerRef.collection("siguiendo").limit(MAX_FOLLOWERS).get(),
+  ]);
 
-  const followerUids = followersSnap.docs
-    .map((docSnap) => asId(docSnap.id))
-    .filter((uid) => uid && uid !== ownerUid);
+  const followerUids = [
+    ...new Set(
+      [...followersSnap.docs, ...followingSnap.docs]
+        .map((docSnap) => asId(docSnap.id))
+        .filter((uid) => uid && uid !== ownerUid),
+    ),
+  ];
 
   const copy = storyUploadNotificationCopy(username);
   const href = storyUploadOpenHref(ownerUid, storyId);
