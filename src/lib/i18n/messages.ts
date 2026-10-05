@@ -756,17 +756,16 @@ const es = {
   story_viewers_liked: "Te dio me gusta",
   story_notifications_label: "Notificaciones de historias",
   story_notifications_menu: "Notificaciones de historias",
-  story_notifications_hint:
-    "Solo se controla desde tu perfil. Si apagás las historias de la gente que seguís, ellos tampoco se enteran cuando subís. Si ellos lo apagan, tampoco te enterás vos.",
-  story_notifications_peer_hint:
-    "Solo se controla desde tu perfil.",
+  story_notifications_hint: "Solo se cambia desde tu perfil.",
+  story_notifications_peer_hint: "Solo se cambia desde tu perfil.",
   story_notifications_likes: "Likes en tus historias",
-  story_notifications_likes_hint: "Si lo apagás, nadie de los dos recibe aviso de like.",
+  story_notifications_likes_hint: "Cuando alguien likea tu historia.",
   story_notifications_uploads: "Historias de gente que seguís",
-  story_notifications_uploads_hint:
-    "Si lo apagás, no te avisan cuando suben, y a la gente que seguís o que te sigue no le avisan cuando subís vos.",
+  story_notifications_uploads_hint: "Cuando alguien que seguís sube una historia.",
+  story_notifications_explain: "Qué significa",
+  story_notifications_explain_title: "Cómo funcionan estos avisos",
   story_notifications_mad:
-    "Si apagás las historias de la gente que seguís, ellos tampoco se enteran cuando subís. Vale para quien seguís y para quien te sigue.",
+    "Likes: si lo apagás, no te avisamos cuando likean tu historia, y cuando vos likeás la de otra persona, a esa persona tampoco le llega.\n\nHistorias: si lo apagás, no te avisamos cuando sube alguien que seguís. A la gente que seguís, y a la que te sigue, tampoco le avisamos cuando subís vos. Si ellos lo apagan, ellos tampoco se enteran cuando subís, y vos no te enterás cuando suben.",
   story_reply_placeholder: "Respondé la historia...",
   story_reply_send: "Enviar",
   story_reply_hint: "Deslizá hacia arriba para responder",
@@ -1642,16 +1641,16 @@ const en: Record<keyof typeof es, string> = {
   story_viewers_liked: "Liked your story",
   story_notifications_label: "Story notifications",
   story_notifications_menu: "Story notifications",
-  story_notifications_hint:
-    "You only control this from your own profile. If you turn off stories from people you follow, they are not told when you post either. If they turn it off, you are not told either.",
-  story_notifications_peer_hint: "You only control this from your own profile.",
+  story_notifications_hint: "You only change this from your own profile.",
+  story_notifications_peer_hint: "You only change this from your own profile.",
   story_notifications_likes: "Likes on your stories",
-  story_notifications_likes_hint: "If you turn this off, neither of you gets a like alert.",
+  story_notifications_likes_hint: "When someone likes your story.",
   story_notifications_uploads: "Stories from people you follow",
-  story_notifications_uploads_hint:
-    "If you turn this off, you are not told when they post, and people you follow or who follow you are not told when you post.",
+  story_notifications_uploads_hint: "When someone you follow posts a story.",
+  story_notifications_explain: "What this means",
+  story_notifications_explain_title: "How these alerts work",
   story_notifications_mad:
-    "If you turn off stories from people you follow, they are not told when you post. It applies to people you follow and people who follow you.",
+    "Likes: if you turn this off, you are not told when someone likes your story, and when you like someone else's story they are not told either.\n\nStories: if you turn this off, you are not told when someone you follow posts. People you follow, and people who follow you, are not told when you post. If they turn it off, you are not told when they post either.",
   story_reply_placeholder: "Reply to story...",
   story_reply_send: "Send",
   story_reply_hint: "Swipe up to reply",

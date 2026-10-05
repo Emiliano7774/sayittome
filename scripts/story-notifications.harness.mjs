@@ -85,6 +85,10 @@ const ownMenu = fs.readFileSync(
 );
 assert.match(ownMenu, /StoryNotificationSettings mode="global"/);
 assert.match(
+  fs.readFileSync(path.join(root, "src/components/stories/StoryNotificationSettings.tsx"), "utf8"),
+  /data-story-notif-explain/,
+);
+assert.match(
   fs.readFileSync(path.join(root, "src/lib/i18n/messages.ts"), "utf8"),
   /ellos tampoco se enteran cuando subís/,
 );

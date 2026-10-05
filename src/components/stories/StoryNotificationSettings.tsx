@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { CircleAlert, X } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useT } from "@/contexts/LocaleContext";
@@ -54,6 +55,7 @@ function ToggleRow({
 export default function StoryNotificationSettings(_props: Props) {
   const t = useT();
   const { firebaseUser } = useAuth();
+  const [explainOpen, setExplainOpen] = useState(false);
   useSyncExternalStore(subscribeStoryNotifPrefs, getStoryNotifPrefsVersion, () => 0);
   const prefs = getGlobalStoryNotifPrefs();
 
@@ -87,7 +89,39 @@ export default function StoryNotificationSettings(_props: Props) {
         enabled={prefs.followingUploads}
         onChange={(next) => setChannel("followingUploads", next)}
       />
-      <p className="text-[11px] font-semibold leading-5 text-white/35">{t("story_notifications_mad")}</p>
+      <button
+        type="button"
+        data-story-notif-explain="1"
+        onClick={() => setExplainOpen(true)}
+        className="flex w-full items-center gap-2 rounded-2xl px-1 py-1 text-left text-[12px] font-semibold text-white/55"
+      >
+        <CircleAlert size={16} className="shrink-0 text-amber-200" />
+        <span>{t("story_notifications_explain")}</span>
+      </button>
+      {explainOpen ? (
+        <div className="fixed inset-0 z-[1000003] flex items-center justify-center bg-black/80 px-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-[1.5rem] border border-white/10 bg-zinc-950 p-5 shadow-2xl"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <p className="text-base font-black text-white">{t("story_notifications_explain_title")}</p>
+              <button
+                type="button"
+                onClick={() => setExplainOpen(false)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white"
+                aria-label={t("common_cancel")}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="whitespace-pre-line text-sm font-semibold leading-6 text-white/75">
+              {t("story_notifications_mad")}
+            </p>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

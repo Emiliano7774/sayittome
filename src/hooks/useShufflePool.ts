@@ -367,14 +367,6 @@ export function useShufflePool() {
           false,
         );
       } else if (
-        shouldDealShuffleWindowDespiteSuppression({
-          poolLength: activePoolRef.current.length,
-          featuredLength: featuredRef.current.length,
-          visibleLength: visible.length,
-        })
-      ) {
-        filterActivePool(searchRef.current.trim(), filtersRef.current, { forceWindow: true });
-      } else if (
         visible.length === 0 &&
         windowCountRef.current > 0 &&
         activePoolRef.current.length > 0
@@ -387,6 +379,14 @@ export function useShufflePool() {
           regularCount,
           false,
         );
+      } else if (
+        shouldDealShuffleWindowDespiteSuppression({
+          poolLength: activePoolRef.current.length,
+          featuredLength: featuredRef.current.length,
+          visibleLength: visible.length,
+        })
+      ) {
+        filterActivePool(searchRef.current.trim(), filtersRef.current, { forceWindow: true });
       }
       setLoading(false);
       setListReady(true);
@@ -653,6 +653,14 @@ export function useShufflePool() {
 
       const membership =
         nextFilters.soloOnline || nextFilters.soloConHistorias || nextFilters.soloConFoto;
+
+      // A painted window stays put. Automatic refreshes (stories, pool, profile
+      // return) must not deal a new set, or several land in a burst.
+      if (!forceWindow && getVisibleShuffleProfiles().length > 0) {
+        if (membership) pruneShuffleSlotsToPool(activePoolRef.current);
+        else patchShuffleSlotPresence(activePoolRef.current);
+        return;
+      }
 
       if (shuffleFeedFrozenRef.current && !forceWindow) {
         if (membership) pruneShuffleSlotsToPool(activePoolRef.current);
