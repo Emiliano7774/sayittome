@@ -136,4 +136,16 @@ assert.equal(sanitizeShuffleVisitorChatId("anon_server"), "");
 assert.equal(sanitizeShuffleVisitorChatId("firebaseUid"), "");
 assert.ok(SHUFFLE_FRESH_MS < SHUFFLE_WEEK_MS);
 
+const serverFilters = fs.readFileSync(
+  path.join(root, "src/lib/shuffle/serverFilters.ts"),
+  "utf8",
+);
+assert.match(
+  serverFilters,
+  /if \(profile\.shuffleVisitor === true\) return true;/,
+  "solo online keeps live anonymous sessions",
+);
+const clientFilters = fs.readFileSync(path.join(root, "src/lib/shuffle/filters.ts"), "utf8");
+assert.match(clientFilters, /shuffleVisitor: profile\.shuffleVisitor === true/);
+
 console.log("shuffle-live-visitors: PASS");

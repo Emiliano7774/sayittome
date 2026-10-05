@@ -36,6 +36,8 @@ export type ShuffleFilterProfile = {
   online?: boolean;
   showOnline?: boolean;
   mostrarUltimaVez?: boolean;
+  /** Live anonymous session. Always counts as online while it is in the pool. */
+  shuffleVisitor?: boolean;
   historiasActivasCount?: number;
   hasActiveStories?: boolean;
 };
@@ -97,6 +99,7 @@ function interestKeys(values: string[] | undefined) {
 }
 
 function isProfileOnline(profile: ShuffleFilterProfile, now = Date.now()) {
+  if (profile.shuffleVisitor === true) return true;
   return isPublicShuffleOnline(profile, (p) =>
     isShuffleProfileOnline(p, now, ONLINE_WINDOW_MS),
   );

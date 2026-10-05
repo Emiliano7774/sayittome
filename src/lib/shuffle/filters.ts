@@ -273,6 +273,7 @@ export function profileMatchesShuffleFilters(
       online: profile.online,
       showOnline: profile.showOnline,
       mostrarUltimaVez: profile.mostrarUltimaVez,
+      shuffleVisitor: profile.shuffleVisitor === true,
       historiasActivasCount: profile.historiasActivasCount,
       hasActiveStories: profile.hasActiveStories,
     },

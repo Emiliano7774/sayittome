@@ -663,8 +663,10 @@ export function useShufflePool() {
       activePoolRef.current = dedupeShuffleProfiles(filtered);
       setFilteredCount(activePoolRef.current.length);
       setFilteredOnlineCount(
-        activePoolRef.current.filter((profile) =>
-          isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
+        activePoolRef.current.filter(
+          (profile) =>
+            profile.shuffleVisitor === true ||
+            isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
         ).length,
       );
 
@@ -1514,8 +1516,10 @@ export function useShufflePool() {
       activePoolRef.current = refreshPoolPresence(activePoolRef.current, now);
       featuredRef.current = refreshPoolPresence(featuredRef.current, now);
       setFilteredOnlineCount(
-        activePoolRef.current.filter((profile) =>
-          isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
+        activePoolRef.current.filter(
+          (profile) =>
+            profile.shuffleVisitor === true ||
+            isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
         ).length,
       );
       patchShuffleSlotPresence(activePoolRef.current);
