@@ -67,11 +67,7 @@ import {
   syncLiveShuffleVisitors,
   getVisibleShuffleProfiles,
 } from "@/lib/shuffle/shuffleSlotsStore";
-import {
-  openVisitorChat,
-  requestAnonProfileGate,
-  viewerIsAnonymous,
-} from "@/lib/shuffle/shuffleVisitorNavigation";
+import { openVisitorChat } from "@/lib/shuffle/shuffleVisitorNavigation";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import {
   deferShuffleCountOnlyIfTyping,
@@ -1181,10 +1177,6 @@ export function useShufflePool() {
       } else if (visitor && (action === "chat" || action === "profile")) {
         captureLeave();
         void openVisitorChat(router, visitorChat);
-      } else if (action === "profile" && viewerIsAnonymous()) {
-        stashProfileReturnTo("/shuffle");
-        captureLeave();
-        requestAnonProfileGate({ allowChat: true, username });
       } else if (action === "profile") {
         stashProfileReturnTo("/shuffle");
         captureLeave();

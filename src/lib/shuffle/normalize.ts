@@ -6,6 +6,7 @@ import {
   reconcileShuffleAdminTagOverlayFromServer,
 } from "@/lib/shuffle/shuffleAdminTagOverlay";
 import { resolveShuffleProfileBlurPhoto } from "@/lib/shuffle/resolveShuffleBlur";
+import { forceShuffleVisitorOnline } from "@/lib/shuffle/shuffleVisitorId";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
@@ -116,6 +117,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
           : undefined,
       };
     })
+    .map((profile) => forceShuffleVisitorOnline(profile))
     .filter((p) => p.username && p.username !== "undefined");
 
   const deduped = dedupeShuffleProfiles(mapped);

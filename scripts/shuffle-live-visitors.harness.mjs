@@ -16,7 +16,7 @@ const {
   SHUFFLE_WEEK_MS,
 } = await import(pathToFileURL(path.join(root, "src/lib/shuffle/shuffleRecencyMix.ts")).href);
 
-const { sanitizeShuffleVisitorChatId } = await import(
+const { sanitizeShuffleVisitorChatId, forceShuffleVisitorOnline } = await import(
   pathToFileURL(path.join(root, "src/lib/shuffle/shuffleVisitorId.ts")).href
 );
 
@@ -118,6 +118,18 @@ const injected = planLiveVisitorSlots(
 );
 assert.ok(injected.some((row) => row.uid === "anon_live_1"));
 assert.equal(injected.length, 2);
+
+const forced = forceShuffleVisitorOnline({
+  shuffleVisitor: true,
+  showOnline: false,
+  mostrarUltimaVez: false,
+  online: false,
+});
+assert.equal(forced.showOnline, true);
+assert.equal(forced.mostrarUltimaVez, true);
+assert.equal(forced.online, true);
+const untouched = forceShuffleVisitorOnline({ showOnline: false, username: "ada" });
+assert.equal(untouched.showOnline, false);
 
 assert.equal(sanitizeShuffleVisitorChatId("anon_abc123_def"), "anon_abc123_def");
 assert.equal(sanitizeShuffleVisitorChatId("anon_server"), "");

@@ -17,7 +17,10 @@ import {
   uniqueShuffleWindow,
 } from "@/lib/shuffle/dedupeProfiles";
 import { shuffleProfileMatchesBoostUid } from "@/lib/shuffle/shuffleActionTargets";
-import { sanitizeShuffleVisitorChatId } from "@/lib/shuffle/shuffleVisitorId";
+import {
+  forceShuffleVisitorOnline,
+  sanitizeShuffleVisitorChatId,
+} from "@/lib/shuffle/shuffleVisitorId";
 import {
   parseShuffleFiltersFromSearchParams,
   parseViewerGeoTarget,
@@ -243,6 +246,10 @@ function visitorDocToProfile(doc: any, now = Date.now()): ApiProfile | null {
     visitorChatId: chatSessionId,
     banned: false,
   };
+}
+
+function publishShuffleProfile(profile: ApiProfile) {
+  return profile.shuffleVisitor ? forceShuffleVisitorOnline(profile) : withPresenceBadge(profile);
 }
 
 async function runStructuredQuery(structuredQuery: Record<string, unknown>) {
@@ -742,7 +749,7 @@ export async function GET(req: Request) {
       const visitors = await getLiveShuffleVisitors(false);
       return shuffleJson(req, {
         ok: true,
-        profiles: visitors,
+        profiles: visitors.map((profile) => publishShuffleProfile(profile)),
         featuredProfiles: [],
         profilesCreated: cachedRegisteredCount,
         anonymousOnline: visitors.length,
@@ -829,7 +836,7 @@ export async function GET(req: Request) {
           return keys.length === 0 || !keys.some((key) => featuredKeys.has(key));
         })
         .slice(0, Math.min(responseLimit, filtered.length))
-        .map((profile) => withPresenceBadge(profile)),
+        .map((profile) => publishShuffleProfile(profile)),
     );
 
     const uniqueAll = uniqueShuffleWindow([...featuredProfiles, ...selected]);

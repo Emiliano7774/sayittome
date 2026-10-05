@@ -19,11 +19,7 @@ import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { findShuffleKeepAliveScrollRoot } from "@/lib/navigation/shuffleFeedScroll";
 import { captureShuffleSessionSnapshot } from "@/lib/navigation/shuffleSessionSnapshot";
 import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
-import {
-  openVisitorChat,
-  requestAnonProfileGate,
-  viewerIsAnonymous,
-} from "@/lib/shuffle/shuffleVisitorNavigation";
+import { openVisitorChat } from "@/lib/shuffle/shuffleVisitorNavigation";
 import { useT } from "@/contexts/LocaleContext";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
@@ -39,6 +35,7 @@ function ModernShuffleCard({
   const router = useRouter();
   const t = useT();
   const visitor = profile.shuffleVisitor === true;
+  const live = visitor || profile.showOnline;
   const displayName = visitor ? t("shuffle_visitor_name") : profile.username;
   const story = useStoryStatus(
     storyOwnerUidFromShuffleCard(profile),
@@ -72,10 +69,6 @@ function ModernShuffleCard({
       void openVisitorChat(router, profile.visitorChatId || profile.uid);
       return;
     }
-    if (viewerIsAnonymous() && !(opensStory && story.storyPath)) {
-      requestAnonProfileGate({ allowChat: true, username: profile.username });
-      return;
-    }
     stashProfileReturnTo("/shuffle");
     const cardId = shuffleProfileIdentityKey(profile) || profile.username;
     const root = findShuffleKeepAliveScrollRoot();
@@ -105,7 +98,7 @@ function ModernShuffleCard({
       <div
         className={[
           "pointer-events-auto absolute right-3 z-30 grid shrink-0 grid-flow-col grid-rows-3 gap-1.5",
-          profile.showOnline ? "top-14" : "top-3",
+          live ? "top-14" : "top-3",
         ].join(" ")}
       >
         <AdminProfileRoleplayButton
@@ -164,7 +157,7 @@ function ModernShuffleCard({
             </span>
           ) : null}
 
-          {profile.showOnline ? (
+          {live ? (
             <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-green-400/30 bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-green-300 backdrop-blur-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
               En línea
@@ -192,7 +185,7 @@ function ModernShuffleCard({
                     </span>
                   )}
                 </div>
-                {profile.showOnline ? (
+                {live ? (
                   <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-black bg-green-500 shadow-[0_0_10px_rgba(34,197,94,.85)]" />
                 ) : null}
               </div>

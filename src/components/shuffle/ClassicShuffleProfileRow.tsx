@@ -49,7 +49,7 @@ function ClassicShuffleProfileRow({
           mode="delegate"
           photoLoading={photoLoading}
           blurPhoto={profile.blurPhoto}
-          showOnline={profile.showOnline}
+          showOnline={visitor || profile.showOnline}
           iconSize={tokens.iconSize}
           anonAvatar={visitor}
           anonKey={visitor ? profile.uid : ""}
