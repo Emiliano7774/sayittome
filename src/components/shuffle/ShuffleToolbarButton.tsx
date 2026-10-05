@@ -26,7 +26,7 @@ export default function ShuffleToolbarButton({
     variant === "nav"
       ? tone === "primary"
         ? "text-[#7b5cff]"
-        : "text-[#777]"
+        : "text-[#d4d4d8]"
       : tone === "primary"
         ? "bg-violet-600 text-white"
         : "border border-white/10 bg-white/5 text-white";

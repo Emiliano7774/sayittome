@@ -58,14 +58,14 @@ export default function ModernShuffleGlassToolbar({ pool }: Props) {
         <Link
           href="/settings"
           aria-label={t("nav_profile_label")}
-          className="flex h-10 w-10 shrink-0 items-center justify-center text-[#777] active:scale-95"
+          className="flex h-10 w-10 shrink-0 items-center justify-center text-[#d4d4d8] active:scale-95"
         >
           <UserRound size={22} strokeWidth={2.4} />
         </Link>
         <Link
           href="/boost"
           aria-label={t("boost_nav_label")}
-          className="flex h-10 w-10 shrink-0 items-center justify-center text-[#777] active:scale-95"
+          className="flex h-10 w-10 shrink-0 items-center justify-center text-[#d4d4d8] active:scale-95"
         >
           <Rocket size={22} strokeWidth={2.4} />
         </Link>
