@@ -17,6 +17,10 @@ import { useT } from "@/contexts/LocaleContext";
 import { fetchAnonMatch, resolveAnonMatchSessionId } from "@/lib/anonMatch/fetchAnonMatch";
 import { isRegisteredProfileCaller } from "@/lib/anonMatch/anonMatchConsumer";
 import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
+import {
+  pinAnonChatScroll,
+  readKeyboardOverlapPx,
+} from "@/lib/anonMatch/anonDirectChatScroll";
 import { persistAnonDirectMessage } from "@/lib/anonMatch/persistDirectMessage";
 import { shouldWhipAnonDirectIncoming } from "@/lib/anonMatch/anonDirectIncomingWhip";
 import {
@@ -39,7 +43,7 @@ function ChatPanel({
   sending,
   onTextChange,
   onSend,
-  bottomRef,
+  listRef,
   inputRef,
   expanded,
   modern,
@@ -51,7 +55,7 @@ function ChatPanel({
   sending: boolean;
   onTextChange: (value: string) => void;
   onSend: () => void;
-  bottomRef: React.RefObject<HTMLDivElement | null>;
+  listRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLInputElement | null>;
   expanded: boolean;
   modern: boolean;
@@ -61,7 +65,9 @@ function ChatPanel({
   return (
     <>
       <div
-        className={`overflow-y-auto px-4 py-4 ${expanded ? "min-h-0 flex-1" : "max-h-[44vh]"}`}
+        ref={listRef}
+        data-anon-direct-chat-scroll="1"
+        className={`overflow-y-auto overscroll-contain px-4 py-4 ${expanded ? "min-h-0 flex-1" : "max-h-[44vh]"}`}
       >
         {messages.length === 0 ? (
           <p className="text-center text-sm font-bold text-white/35">{t("anon_match_chat_empty")}</p>
@@ -85,7 +91,6 @@ function ChatPanel({
             </div>
           ))
         )}
-        <div ref={bottomRef} />
       </div>
 
       {notice ? (
@@ -137,7 +142,8 @@ export default function AnonDirectChatWindow() {
   const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [keyboardPx, setKeyboardPx] = useState(0);
   const sendInFlightRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const whipBootstrappedRef = useRef(false);
@@ -260,8 +266,26 @@ export default function AnonDirectChatWindow() {
   }, [chatId, senderId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, chatView]);
+    if (!chatId) return;
+    const sync = () => {
+      setKeyboardPx(readKeyboardOverlapPx());
+      pinAnonChatScroll(listRef.current);
+    };
+    sync();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", sync);
+    viewport?.addEventListener("scroll", sync);
+    return () => {
+      viewport?.removeEventListener("resize", sync);
+      viewport?.removeEventListener("scroll", sync);
+    };
+  }, [chatId, chatView]);
+
+  useEffect(() => {
+    pinAnonChatScroll(listRef.current);
+    const frame = window.requestAnimationFrame(() => pinAnonChatScroll(listRef.current));
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, chatView, keyboardPx, notice]);
 
   useEffect(() => {
     if (!openChat?.closedReason) {
@@ -514,7 +538,7 @@ export default function AnonDirectChatWindow() {
       sending={sending}
       onTextChange={setText}
       onSend={() => void handleSend()}
-      bottomRef={bottomRef}
+      listRef={listRef}
       inputRef={inputRef}
       expanded={chatView === "expanded"}
       modern={modern}
@@ -574,9 +598,8 @@ export default function AnonDirectChatWindow() {
     return (
       <>
       <div
-        className={`fixed inset-0 z-[120] flex flex-col ${
-          modern ? "bg-black" : "bg-black"
-        }`}
+        className="fixed inset-0 z-[120] flex flex-col bg-black"
+        style={{ paddingBottom: keyboardPx > 0 ? keyboardPx : undefined }}
       >
         {header}
         {panel}
@@ -600,11 +623,12 @@ export default function AnonDirectChatWindow() {
   return (
     <>
     <div
-      className={`fixed inset-x-4 bottom-20 z-[110] mx-auto max-w-xl overflow-hidden rounded-[24px] shadow-[0_20px_80px_rgba(0,0,0,0.55)] ${
+      className={`fixed inset-x-4 z-[110] mx-auto max-w-xl overflow-hidden rounded-[24px] shadow-[0_20px_80px_rgba(0,0,0,0.55)] ${
         modern
           ? "border border-violet-500/15 bg-[#080808] shadow-[0_0_60px_rgba(124,58,237,0.12)]"
           : "border border-white/10 bg-[#111]"
       }`}
+      style={{ bottom: keyboardPx > 0 ? keyboardPx + 8 : 80 }}
     >
       {header}
       {panel}
