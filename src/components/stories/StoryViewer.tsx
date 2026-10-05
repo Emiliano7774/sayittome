@@ -180,6 +180,7 @@ export default function StoryViewer({
     t: 0,
     swiped: false,
     dismissing: false,
+    tracking: false,
   });
   const viewersPeekRef = useRef({ x: 0, y: 0, t: 0, active: false });
   const replyPointerRef = useRef({ y: 0, dragging: false });
@@ -669,6 +670,7 @@ export default function StoryViewer({
       t: Date.now(),
       swiped: false,
       dismissing: false,
+      tracking: true,
     };
     setDismissDragging(false);
     setDismissDragY(0);
@@ -677,6 +679,10 @@ export default function StoryViewer({
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    // Desktop fires pointermove on hover, including the moment the viewer
+    // mounts under the cursor. Without a press that looks like a swipe-down.
+    if (!pointerRef.current.tracking) return;
+    if (event.pointerType === "mouse" && event.buttons === 0) return;
     if (replyOpen || viewersOpen || reportOpen || dismissAnimating) return;
 
     const deltaX = event.clientX - pointerRef.current.x;
@@ -714,6 +720,9 @@ export default function StoryViewer({
 
   function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
     releaseStoryPointer(event);
+    const wasTracking = pointerRef.current.tracking;
+    pointerRef.current.tracking = false;
+    if (!wasTracking) return;
 
     if (pointerRef.current.dismissing) {
       const deltaY = Math.max(0, event.clientY - pointerRef.current.y);
@@ -766,6 +775,7 @@ export default function StoryViewer({
 
   function handlePointerCancel(event: React.PointerEvent<HTMLDivElement>) {
     releaseStoryPointer(event);
+    pointerRef.current.tracking = false;
     pointerRef.current.dismissing = false;
     pointerRef.current.swiped = true;
     setDismissDragging(false);

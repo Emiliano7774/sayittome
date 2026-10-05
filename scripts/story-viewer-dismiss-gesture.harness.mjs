@@ -80,8 +80,10 @@ const blurSrc = fs.readFileSync(
 assert.match(viewerSrc, /translate3d\(0, \$\{dismissDragY\}px, 0\)/);
 assert.match(viewerSrc, /setDismissDragY\(Math\.max\(0, deltaDown\)\)/);
 assert.match(viewerSrc, /onPointerCancel=\{handlePointerCancel\}/);
-assert.match(viewerSrc, /replyOpen \|\| reportOpen \|\| dismissAnimating/);
-assert.match(viewerSrc, /deltaUp >= SWIPE_REPLY_PX/);
+assert.match(viewerSrc, /replyOpen \|\| viewersOpen \|\| reportOpen \|\| dismissAnimating/);
+assert.match(viewerSrc, /shouldOpenStoryViewersGesture/);
+assert.match(viewerSrc, /if \(!pointerRef\.current\.tracking\) return/);
+assert.match(viewerSrc, /pointerType === "mouse" && event\.buttons === 0/);
 assert.match(viewerSrc, /deltaDown > absX \* 1\.1/);
 assert.match(viewerSrc, /STORY_DISMISS_ANIMATION_MS/);
 assert.match(viewerSrc, /exitStoryViewer\("manual"\)/);
