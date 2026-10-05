@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -36,6 +36,7 @@ import {
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
+import { PROFILE_PHOTO_HOLD_MS } from "@/lib/profile/profilePhotoHold";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
@@ -206,6 +207,15 @@ export default function ModernPublicProfile({
     }
   }
 
+  function openProfilePhotos() {
+    if (principalIsVideo && profile.fotoPrincipal) {
+      openVideo(profile.fotoPrincipal);
+      return;
+    }
+    const principalIndex = gallery.indexOf(profile.fotoPrincipal);
+    openViewer(principalIndex >= 0 ? principalIndex : 0);
+  }
+
   function openPrimary() {
     if (story.hasActive && story.storyPath) {
       stashStoryReturnTo(window.location.pathname);
@@ -218,6 +228,41 @@ export default function ModernPublicProfile({
     }
     openViewer(heroIndex);
   }
+
+  const photoHoldTimerRef = useRef<number | null>(null);
+  const photoHoldOpenedRef = useRef(false);
+
+  function clearPhotoHold() {
+    if (photoHoldTimerRef.current != null) {
+      window.clearTimeout(photoHoldTimerRef.current);
+      photoHoldTimerRef.current = null;
+    }
+  }
+
+  function startPhotoHold(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    clearPhotoHold();
+    photoHoldOpenedRef.current = false;
+    photoHoldTimerRef.current = window.setTimeout(() => {
+      photoHoldTimerRef.current = null;
+      photoHoldOpenedRef.current = true;
+      openProfilePhotos();
+    }, PROFILE_PHOTO_HOLD_MS);
+  }
+
+  function endPhotoHold() {
+    clearPhotoHold();
+  }
+
+  function handlePrimaryClick() {
+    if (photoHoldOpenedRef.current) {
+      photoHoldOpenedRef.current = false;
+      return;
+    }
+    openPrimary();
+  }
+
+  useEffect(() => clearPhotoHold, []);
 
   function openHero() {
     if (coverVideoUrl) {
@@ -430,9 +475,13 @@ export default function ModernPublicProfile({
               <div className="flex items-start justify-between gap-3">
                 <button
                   type="button"
-                  onClick={openPrimary}
+                  onPointerDown={startPhotoHold}
+                  onPointerUp={endPhotoHold}
+                  onPointerCancel={endPhotoHold}
+                  onContextMenu={(event) => event.preventDefault()}
+                  onClick={handlePrimaryClick}
                   className={[
-                    "h-28 w-28 shrink-0 overflow-hidden rounded-full bg-zinc-800",
+                    "h-28 w-28 shrink-0 select-none overflow-hidden rounded-full bg-zinc-800",
                     story.hasUnseen
                       ? "ring-2 ring-fuchsia-400 ring-offset-0"
                       : story.hasActive
