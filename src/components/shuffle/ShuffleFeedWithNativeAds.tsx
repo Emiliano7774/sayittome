@@ -97,7 +97,12 @@ export default function ShuffleFeedWithNativeAds({
       {soloOnline && profiles.length > 0 ? (
         <p
           data-shuffle-online-filter-footer="1"
-          className="col-span-full mt-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-center text-[13px] font-semibold leading-5 text-white/55 [grid-column:1/-1]"
+          data-shuffle-online-filter-footer-mode={mode}
+          className={
+            mode === "classic"
+              ? "border-t border-white/10 bg-black px-4 py-3 text-left text-[12px] font-normal leading-5 text-white/38"
+              : "col-span-full mt-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-center text-[13px] font-semibold leading-5 text-white/55 [grid-column:1/-1]"
+          }
         >
           {t("shuffle_online_filter_footer")}
         </p>
