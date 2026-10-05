@@ -270,10 +270,11 @@ export function resolveNextPlayTarget<TStory extends { id: string }, TGroup exte
   if (!nextGroup?.stories?.length) {
     return { kind: "exit", group: null, storyIndex: -1 };
   }
+  const unseenIndex = firstUnseenStoryIndex(nextGroup.stories, viewerId, input.isUnseen);
   return {
     kind: "next-group",
     group: nextGroup,
-    storyIndex: 0,
+    storyIndex: unseenIndex >= 0 ? unseenIndex : 0,
   };
 }
 

@@ -3,11 +3,13 @@
  * Usage: node --experimental-strip-types scripts/stories-next-target.harness.mjs
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const {
+  firstUnseenStoryIndex,
   resolveNextPlayTarget,
   shouldReplayStoryPlayback,
 } = await import(
@@ -93,7 +95,7 @@ const allSeenLast = resolveNextPlayTarget({
 });
 assert.equal(allSeenLast.kind, "next-group");
 assert.equal(allSeenLast.group?.ownerUid, "owner_b");
-assert.equal(allSeenLast.storyIndex, 0);
+assert.equal(allSeenLast.storyIndex, 1, "skip the already-seen story and open the new one");
 
 const mixedNoReplay = resolveNextPlayTarget({
   viewerId: viewer,
@@ -159,6 +161,16 @@ const lastOfFeed = resolveNextPlayTarget({
   groupIsUnseen,
 });
 assert.equal(lastOfFeed.kind, "exit");
+const viewerSrc = fs.readFileSync(
+  path.join(root, "src/components/stories/StoryViewer.tsx"),
+  "utf8",
+);
+assert.match(viewerSrc, /viewerChanged && viewerUid && !initialStoryId/);
+assert.match(viewerSrc, /initialStoryIndex\(stories, undefined, viewerUid\)/);
+assert.equal(
+  firstUnseenStoryIndex(mixedGroup.stories, viewer, isUnseen),
+  1,
+);
 
 console.log(JSON.stringify({
   gate: "STORIES_NEXT_TARGET",

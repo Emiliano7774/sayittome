@@ -215,6 +215,10 @@ export default function StoryViewer({
     const viewerChanged = appliedViewer !== (viewerUid || "");
     if (sameMembership) {
       if (stories.length) setLocalStories(stories);
+      if (viewerChanged && viewerUid && !initialStoryId) {
+        const unseenIndex = initialStoryIndex(stories, undefined, viewerUid);
+        if (unseenIndex >= 0) setIndex(unseenIndex);
+      }
     } else if (stillOnRouteOwner && keptIndex >= 0 && !viewerChanged) {
       setLocalStories(stories);
       if (keptIndex !== index) setIndex(keptIndex);
