@@ -79,7 +79,7 @@ const SHUFFLE_RESPONSE_LIMIT = 10_000;
 const SHUFFLE_SEARCH_LIMIT = 200;
 const SHUFFLE_FETCH_PAGE_SIZE = 1000;
 const SHUFFLE_FETCH_MAX_PAGES = 40;
-const ANON_SCAN_LIMIT = 40;
+const ANON_SCAN_LIMIT = 1000;
 const ANON_ACTIVE_MS = 90 * 1000;
 /** Live anonymous sessions are a separate, short-lived slice of the pool. */
 const VISITOR_SCAN_LIMIT = 1000;
@@ -651,7 +651,10 @@ async function getAnonymousOnlineCached(forceFresh = false) {
   }
 
   try {
-    const docs = await runQuery("anonimos_activos", { limit: ANON_SCAN_LIMIT });
+    const docs = await runQuery("anonimos_activos", {
+      limit: ANON_SCAN_LIMIT,
+      orderBy: { field: "lastSeenAt", direction: "DESCENDING" },
+    });
     cachedAnonymousOnline = docs.filter((doc: any) => isAnonymousDocActive(doc, now)).length;
     cachedAnonymousAt = now;
 
@@ -670,7 +673,10 @@ async function getLiveShuffleVisitors(force = false) {
   }
 
   try {
-    const docs = await runQuery("anonimos_activos", { limit: VISITOR_SCAN_LIMIT });
+    const docs = await runQuery("anonimos_activos", {
+      limit: VISITOR_SCAN_LIMIT,
+      orderBy: { field: "lastSeenAt", direction: "DESCENDING" },
+    });
     const visitors = dedupeShuffleProfiles(
       docs
         .map((doc: any) => visitorDocToProfile(doc, now))
