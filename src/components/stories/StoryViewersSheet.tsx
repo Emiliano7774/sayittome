@@ -141,7 +141,7 @@ export default function StoryViewersSheet({
 
   return (
     <div
-      className="absolute inset-x-0 bottom-0 z-[80] flex h-[72dvh] flex-col rounded-t-[1.75rem] border-t border-white/10 bg-zinc-950/96 shadow-[0_-18px_40px_rgba(0,0,0,0.45)] backdrop-blur-md"
+      className="absolute inset-x-0 bottom-0 top-[38dvh] z-[80] flex flex-col rounded-t-[1.75rem] border-t border-white/10 bg-zinc-950/96 shadow-[0_-18px_40px_rgba(0,0,0,0.45)] backdrop-blur-md"
       data-story-viewers-sheet="1"
       style={{
         transform: `translate3d(0, ${dragY}px, 0)`,

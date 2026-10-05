@@ -54,6 +54,8 @@ assert.match(src, /setViewersOpen\(true\)/);
 assert.match(src, /shouldOpenStoryViewersGesture/);
 assert.match(src, /data-story-gesture-layer/);
 assert.match(src, /data-story-viewers-peek/);
+assert.match(src, /h-\[42dvh\]/);
+assert.doesNotMatch(src, /scale-\[0\.34\]/);
 assert.match(src, /shouldCloseStoryViewersGesture/);
 assert.doesNotMatch(src, /canReply = \s*\n\s*!anonymousStory/);
 const sheet = fs.readFileSync(path.join(root, "src/components/stories/StoryViewersSheet.tsx"), "utf8");

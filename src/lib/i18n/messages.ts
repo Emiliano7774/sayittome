@@ -214,7 +214,9 @@ const es = {
     "Recordá que las personas que decidieron no mostrar su ubicación no aparecen por país, solo en la búsqueda general.",
   shuffle_filters_switch_general: "Cambiar a búsqueda general",
   shuffle_filters_empty_online_note:
-    "Recordá: si alguien desactivó mostrar su última conexión, puede estar online ahora mismo pero no aparece en el filtro «Solo online».",
+    "Quien no muestra su última conexión puede estar conectado ahora, pero no sale en este filtro. Solo se encuentra en Shuffle.",
+  shuffle_online_filter_footer:
+    "Quien no muestra su última conexión puede estar conectado ahora, pero no sale en este filtro. Solo se encuentra en Shuffle.",
   shuffle_filters_empty_keep_trying:
     "¡Seguí intentando! Cada shuffle puede mostrarte gente nueva.",
   anon_match_card_title:
@@ -1097,7 +1099,9 @@ const en: Record<keyof typeof es, string> = {
     "People who chose not to show their location only appear in general search, not in a country filter.",
   shuffle_filters_switch_general: "Switch to general search",
   shuffle_filters_empty_online_note:
-    "Remember: if someone turned off showing their last connection, they may be online right now but won't appear in the «Online only» filter.",
+    "People who hide their last connection may be online right now, but they do not show in this filter. You can only find them in Shuffle.",
+  shuffle_online_filter_footer:
+    "People who hide their last connection may be online right now, but they do not show in this filter. You can only find them in Shuffle.",
   shuffle_filters_empty_keep_trying:
     "Keep trying! Each shuffle can surface someone new.",
   anon_match_card_title:

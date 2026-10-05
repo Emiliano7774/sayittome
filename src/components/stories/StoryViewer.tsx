@@ -398,7 +398,7 @@ export default function StoryViewer({
   const likerId = getLikerId();
   const storyLiked = Boolean(likerId && current?.likedBy?.[likerId]);
   const storyLikeCount = Number(current?.likeCount || 0);
-  const topChromeHidden = paused && !blurLocked;
+  const topChromeHidden = viewersOpen || (paused && !blurLocked);
   const bottomChromeHidden = topChromeHidden || replyOpen || viewersOpen;
   const durationMs =
     current?.mediaType === "video" && current.durationMs
@@ -1001,8 +1001,8 @@ export default function StoryViewer({
     >
       <div
         className={[
-          "absolute inset-0 origin-top transition-transform duration-200 ease-out",
-          viewersOpen ? "scale-[0.34] pointer-events-none" : "scale-100",
+          "absolute inset-x-0 top-0 overflow-hidden transition-[height] duration-200 ease-out",
+          viewersOpen ? "h-[42dvh] pointer-events-none" : "bottom-0",
         ].join(" ")}
       >
       <div
@@ -1118,7 +1118,12 @@ export default function StoryViewer({
         aria-hidden
       />
 
-      <div className="relative flex h-full items-center justify-center pt-10">
+      <div
+        className={[
+          "relative flex h-full items-center justify-center",
+          viewersOpen ? "" : "pt-10",
+        ].join(" ")}
+      >
         {current.mediaUrl ? (
           <StoryMediaBuffers
             current={current}
@@ -1311,7 +1316,7 @@ export default function StoryViewer({
       {viewersOpen ? (
         <button
           type="button"
-          className="absolute inset-x-0 top-0 z-[75] h-[32dvh] touch-none"
+          className="absolute inset-x-0 top-0 z-[75] h-[42dvh] touch-none"
           data-story-viewers-peek="1"
           onPointerDown={(event) => {
             viewersPeekRef.current = {

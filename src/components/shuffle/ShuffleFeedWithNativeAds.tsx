@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore, type ReactNode } from "react";
 
+import { useT } from "@/contexts/LocaleContext";
+
 import ShuffleAdSlot from "@/components/monetization/ShuffleAdSlot";
 import {
   getShuffleAdSlotId,
@@ -17,6 +19,10 @@ import {
   getVisibleShuffleProfiles,
   subscribeAllShuffleSlots,
 } from "@/lib/shuffle/shuffleSlotsStore";
+import {
+  getShuffleSoloOnlineFilter,
+  subscribeShuffleSoloOnlineFilter,
+} from "@/lib/shuffle/shuffleOnlineFilterNotice";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { useHydrationReady } from "@/hooks/useHydrationReady";
 
@@ -35,7 +41,13 @@ export default function ShuffleFeedWithNativeAds({
   className,
   renderProfile,
 }: Props) {
+  const t = useT();
   const hydrationReady = useHydrationReady();
+  const soloOnline = useSyncExternalStore(
+    subscribeShuffleSoloOnlineFilter,
+    getShuffleSoloOnlineFilter,
+    () => false,
+  );
   const slotsVersion = useSyncExternalStore(
     subscribeAllShuffleSlots,
     getShuffleSlotsVersion,
@@ -82,6 +94,14 @@ export default function ShuffleFeedWithNativeAds({
 
         return renderProfile(profile, profileIndex);
       })}
+      {soloOnline && profiles.length > 0 ? (
+        <p
+          data-shuffle-online-filter-footer="1"
+          className="col-span-full mt-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-center text-[13px] font-semibold leading-5 text-white/55 [grid-column:1/-1]"
+        >
+          {t("shuffle_online_filter_footer")}
+        </p>
+      ) : null}
       <div aria-hidden className="sayittome-nav-scroll-spacer" />
     </div>
   );
