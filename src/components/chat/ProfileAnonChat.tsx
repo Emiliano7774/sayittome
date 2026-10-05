@@ -1295,6 +1295,27 @@ export default function ProfileAnonChat({
   });
   const isOwnerViewing =
     provenOwner || inferOwnerViewingFromAuthors(viewerUid, profileOwnerUid, messages);
+  const anonPeer = searchParams.get("anonPeer") === "1";
+  useEffect(() => {
+    if (!anonPeer || !isOwnerViewing) return;
+    if (chatDocDataRef.current?.hideProfileFromVisitor === true) return;
+    const id = String(chatId || "").trim();
+    if (!id) return;
+    let cancelled = false;
+    void updateDoc(doc(db, "chats", id), { hideProfileFromVisitor: true })
+      .then(() => {
+        if (cancelled) return;
+        chatDocDataRef.current = {
+          ...chatDocDataRef.current,
+          hideProfileFromVisitor: true,
+        };
+        setChatMetaVersion((version) => version + 1);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [anonPeer, isOwnerViewing, chatId, chatMetaVersion]);
   const identityReady = isRoleIdentityReady({
     liveProfileUid: currentUid,
     chatId,
@@ -1476,18 +1497,25 @@ export default function ProfileAnonChat({
   // Re-read when chat meta snapshot updates so verify uses canonical id.
   const verifiedLinkChatId =
     (chatMetaVersion >= 0 && chatMetaRef.current?.canonicalChatId) || chatId;
-  const displayPeerName = isOwnerViewing
-    ? formatAnonSessionLabel(anonSenderId)
-    : username;
+  const visitorSeesAnonymous =
+    !isOwnerViewing &&
+    (anonPeer || chatDocDataRef.current?.hideProfileFromVisitor === true);
+  const displayPeerName = visitorSeesAnonymous
+    ? "Anónimo"
+    : isOwnerViewing
+      ? formatAnonSessionLabel(anonSenderId)
+      : username;
   const avatarProps = {
-    ownerUid: isOwnerViewing ? "" : profileUid,
+    ownerUid: isOwnerViewing || visitorSeesAnonymous ? "" : profileUid,
     username: displayPeerName,
-    photo: isOwnerViewing ? "" : targetPhoto,
-    anonAvatar: isOwnerViewing,
+    photo: isOwnerViewing || visitorSeesAnonymous ? "" : targetPhoto,
+    anonAvatar: isOwnerViewing || visitorSeesAnonymous,
     anonKey: anonSenderId || chatAnonSessionId || chatId,
-    mode: (isOwnerViewing ? "delegate" : "navigate") as "delegate" | "navigate",
-    preferProfile: !isOwnerViewing,
-    blurPhoto: isOwnerViewing ? false : targetBlurPhoto,
+    mode: (isOwnerViewing || visitorSeesAnonymous ? "delegate" : "navigate") as
+      | "delegate"
+      | "navigate",
+    preferProfile: !isOwnerViewing && !visitorSeesAnonymous,
+    blurPhoto: isOwnerViewing || visitorSeesAnonymous ? false : targetBlurPhoto,
   };
 
   markReadContextRef.current = {
@@ -2457,6 +2485,9 @@ export default function ProfileAnonChat({
           existingChatData: sendChatId === chatId ? chatDocDataRef.current : undefined,
           clientId,
           isOwnerReply: provenOwner,
+          hideProfileFromVisitor:
+            searchParams.get("anonPeer") === "1" ||
+            chatDocDataRef.current?.hideProfileFromVisitor === true,
           viewerUsername,
           autoModerationRequiresBlur: scanResult.requiresBlur,
           moderationRequiresBlur: scanResult.requiresBlur,
@@ -2576,6 +2607,9 @@ export default function ProfileAnonChat({
               reply: input.message.reply,
               existingChatData: chatDocDataRef.current,
               isOwnerReply: input.isOwnerReply,
+              hideProfileFromVisitor:
+                searchParams.get("anonPeer") === "1" ||
+                chatDocDataRef.current?.hideProfileFromVisitor === true,
               viewerUsername,
               clientId,
               visitorLeaseAlreadyBound: !input.isOwnerReply,

@@ -152,6 +152,13 @@ export function isProfilePeerForInbox(
   const chatId = chat.canonicalChatId || chat.id;
   if (!isProfileAnonChatId(chatId)) return true;
 
+  if (
+    chat.hideProfileFromVisitor === true &&
+    !isIncomingAnonChatForOwner(chat, firebaseUid, viewerUsername)
+  ) {
+    return false;
+  }
+
   if (isIncomingAnonChatForOwner(chat, firebaseUid, viewerUsername)) {
     return false;
   }
@@ -173,6 +180,13 @@ export function chatPeerTitle(
 ) {
   const chatId = chat.canonicalChatId || chat.id;
   const username = profileUsername(chat);
+
+  if (
+    chat.hideProfileFromVisitor === true &&
+    !isIncomingAnonChatForOwner(chat, viewerUid, viewerUsername)
+  ) {
+    return "Anónimo";
+  }
 
   if (isProfilePeerForInbox(chat, viewerUid, viewerUsername)) {
     return username || "Chat anónimo";

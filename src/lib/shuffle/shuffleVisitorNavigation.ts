@@ -71,6 +71,6 @@ export async function openVisitorChat(router: AppRouterInstance, visitorChatId: 
   prefetchChatThread(chatId);
   fastRouterPush(
     router,
-    `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}`,
+    `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}&anonPeer=1`,
   );
 }

@@ -87,6 +87,8 @@ export type InboxChat = {
   unreadCounts?: Record<string, number>;
   canonicalChatId?: string;
   createdAtMs?: number;
+  /** Profile messaged a live anonymous session. The anon must not see that profile. */
+  hideProfileFromVisitor?: boolean;
 };
 
 export function resolveChatUsername(chat: InboxChat) {

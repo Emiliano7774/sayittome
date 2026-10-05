@@ -180,6 +180,7 @@ export async function GET(req: Request) {
           receptorUid: String(data.receptorUid || ""),
           anonOwnerUid: String(data.anonOwnerUid || ""),
           anonSessionId: String(data.anonSessionId || ""),
+          hideProfileFromVisitor: data.hideProfileFromVisitor === true,
           participantes: participants,
           targetPhoto: String(data.targetPhoto || ""),
           lastMessage: String(data.lastMessage || ""),

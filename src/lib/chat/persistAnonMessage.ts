@@ -116,6 +116,8 @@ type PersistAnonMessageInput = {
   existingChatData?: Record<string, unknown>;
   /** Explicit owner/profile reply â€” must match UI isOwnerViewing, not only uid==targetUid. */
   isOwnerReply?: boolean;
+  /** Shuffle visitor thread: the anonymous side must not see the profile name. */
+  hideProfileFromVisitor?: boolean;
   /** Logged-in profile username; used to detect owner via chatId slug on cold start. */
   viewerUsername?: string;
   /** Inbox preview line; defaults to messageText. For media, keep messageText empty. */
@@ -651,6 +653,7 @@ export async function persistAnonChatMessage(
                 schemaVersion: 2,
               }
             : {}),
+          ...(input.hideProfileFromVisitor ? { hideProfileFromVisitor: true } : {}),
         }
       : chatMeta;
 
