@@ -8,8 +8,9 @@ import { UserRound } from "lucide-react";
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
 import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
+import AdminProfileSafetyTagButtons from "@/components/profile/AdminProfileSafetyTagButtons";
 import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
-import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
+import ProfileModerationBadges from "@/components/profile/ProfileModerationBadges";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
 import { useProfilePrefetchIntent } from "@/hooks/useProfilePrefetchIntent";
@@ -18,6 +19,12 @@ import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { findShuffleKeepAliveScrollRoot } from "@/lib/navigation/shuffleFeedScroll";
 import { captureShuffleSessionSnapshot } from "@/lib/navigation/shuffleSessionSnapshot";
 import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
+import {
+  openVisitorChat,
+  requestAnonProfileGate,
+  viewerIsAnonymous,
+} from "@/lib/shuffle/shuffleVisitorNavigation";
+import { useT } from "@/contexts/LocaleContext";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
@@ -30,23 +37,45 @@ function ModernShuffleCard({
   feedIndex?: number;
 }) {
   const router = useRouter();
-  const story = useStoryStatus(storyOwnerUidFromShuffleCard(profile), profile.username);
+  const t = useT();
+  const visitor = profile.shuffleVisitor === true;
+  const displayName = visitor ? t("shuffle_visitor_name") : profile.username;
+  const story = useStoryStatus(
+    storyOwnerUidFromShuffleCard(profile),
+    visitor ? "" : profile.username,
+  );
   const opensStory =
     story.hasActive && story.hasUnseen && Boolean(story.storyPath);
   const prefetchIntent = useProfilePrefetchIntent(profile.username, {
-    enabled: !opensStory,
+    enabled: !visitor && !opensStory,
   });
   const href =
-    opensStory && story.storyPath
-      ? story.storyPath
-      : `/u/${encodeURIComponent(profile.username)}`;
+    visitor
+      ? "/shuffle"
+      : opensStory && story.storyPath
+        ? story.storyPath
+        : `/u/${encodeURIComponent(profile.username)}`;
 
-  const subtext = profile.bio?.trim() || "Perfil SayItToMe";
+  const subtext = visitor
+    ? t("shuffle_visitor_bio")
+    : profile.bio?.trim() || "Perfil SayItToMe";
   const photoLoading = feedIndex < 8 ? "eager" : "lazy";
   const photoPriority = feedIndex < 8 ? "high" : "auto";
 
   function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
+    if (visitor) {
+      if (opensStory && story.storyPath) {
+        fastRouterPush(router, story.storyPath);
+        return;
+      }
+      void openVisitorChat(router, profile.visitorChatId || profile.uid);
+      return;
+    }
+    if (viewerIsAnonymous() && !(opensStory && story.storyPath)) {
+      requestAnonProfileGate({ allowChat: true, username: profile.username });
+      return;
+    }
     stashProfileReturnTo("/shuffle");
     const cardId = shuffleProfileIdentityKey(profile) || profile.username;
     const root = findShuffleKeepAliveScrollRoot();
@@ -69,11 +98,13 @@ function ModernShuffleCard({
     <div
       className="relative block w-full"
       data-shuffle-card="1"
+      data-shuffle-visitor={visitor ? "1" : undefined}
+      data-visitor-chat={visitor ? profile.visitorChatId || profile.uid : undefined}
       data-card-id={shuffleProfileIdentityKey(profile) || profile.username}
     >
       <div
         className={[
-          "pointer-events-auto absolute right-3 z-30 flex shrink-0 flex-col gap-1.5",
+          "pointer-events-auto absolute right-3 z-30 grid shrink-0 grid-flow-col grid-rows-3 gap-1.5",
           profile.showOnline ? "top-14" : "top-3",
         ].join(" ")}
       >
@@ -87,6 +118,7 @@ function ModernShuffleCard({
           variant="modern"
           appearance="shuffle"
         />
+        <AdminProfileSafetyTagButtons profile={profile} variant="modern" appearance="shuffle" />
         <AdminProfileBlurPhotosButton
           profile={profile}
           variant="modern"
@@ -102,7 +134,7 @@ function ModernShuffleCard({
       <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
       <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
         <div className="relative aspect-[3/4] w-full overflow-hidden">
-          {profile.photo ? (
+          {!visitor && profile.photo ? (
             <>
               <img
                 src={profile.photo}
@@ -152,12 +184,12 @@ function ModernShuffleCard({
                         : "",
                   ].join(" ")}
                 >
-                  {profile.photo ? (
-                    <span className="text-lg font-black uppercase text-black/55">
-                      {String(profile.username || "?").slice(0, 1)}
-                    </span>
-                  ) : (
+                  {visitor || !profile.photo ? (
                     <UserRound size={28} className="text-black/45" strokeWidth={1.75} />
+                  ) : (
+                    <span className="text-lg font-black uppercase text-black/55">
+                      {String(displayName || "?").slice(0, 1)}
+                    </span>
                   )}
                 </div>
                 {profile.showOnline ? (
@@ -166,17 +198,16 @@ function ModernShuffleCard({
               </div>
 
               <div className="min-w-0 flex-1">
-                <p className="truncate text-lg font-semibold sm:text-xl">@{profile.username}</p>
-                {(profile.moderationTag === "roleplay" || profile.fakeProfileTag === "fake") ? (
-                  <div className="mt-1.5 flex flex-col items-start gap-1">
-                    {profile.moderationTag === "roleplay" ? (
-                      <ProfileModerationTag tag="roleplay" compact />
-                    ) : null}
-                    {profile.fakeProfileTag === "fake" ? (
-                      <ProfileModerationTag tag="fake" compact />
-                    ) : null}
-                  </div>
-                ) : null}
+                <p className="truncate text-lg font-semibold sm:text-xl">
+                  {visitor ? displayName : `@${displayName}`}
+                </p>
+                <ProfileModerationBadges
+                  moderationTag={profile.moderationTag}
+                  fakeProfileTag={profile.fakeProfileTag}
+                  groomingTag={profile.groomingTag}
+                  potentialPedophileTag={profile.potentialPedophileTag}
+                  className="mt-1.5"
+                />
                 <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-white/55 sm:text-sm sm:leading-6">
                   {subtext}
                 </p>
@@ -200,5 +231,9 @@ export default memo(
     a.profile.shuffleFeatured === b.profile.shuffleFeatured &&
     a.profile.moderationTag === b.profile.moderationTag &&
     a.profile.fakeProfileTag === b.profile.fakeProfileTag &&
-    a.profile.blurPhoto === b.profile.blurPhoto,
+    a.profile.groomingTag === b.profile.groomingTag &&
+    a.profile.potentialPedophileTag === b.profile.potentialPedophileTag &&
+    a.profile.blurPhoto === b.profile.blurPhoto &&
+    a.profile.shuffleVisitor === b.profile.shuffleVisitor &&
+    a.profile.visitorChatId === b.profile.visitorChatId,
 );

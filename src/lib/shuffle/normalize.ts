@@ -105,8 +105,15 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
           mediaBlurFlags,
         }),
         moderationTag: String(item?.moderationTag || ""),
+        groomingTag: item?.groomingTag === true || item?.moderationTag === "grooming",
+        potentialPedophileTag:
+          item?.potentialPedophileTag === true || item?.moderationTag === "potential_pedophile",
         fakeProfileTag: String(item?.fakeProfileTag || ""),
         shuffleFeatured: item?.shuffleFeatured === true,
+        shuffleVisitor: item?.shuffleVisitor === true,
+        visitorChatId: item?.shuffleVisitor === true
+          ? String(item?.visitorChatId || docId || firebaseUid || "").trim()
+          : undefined,
       };
     })
     .filter((p) => p.username && p.username !== "undefined");

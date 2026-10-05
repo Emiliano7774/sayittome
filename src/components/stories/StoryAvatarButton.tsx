@@ -66,6 +66,8 @@ type Props = {
   anonKey?: string;
   onOpenProfile?: () => void;
   photoLoading?: "lazy" | "eager";
+  /** Shuffle visitors are not public profiles — skip /u prefetch. */
+  prefetchProfile?: boolean;
   children?: ReactNode;
   avatarOverlay?: ReactNode;
 };
@@ -85,13 +87,14 @@ function StoryAvatarButton({
   anonKey = "",
   onOpenProfile,
   photoLoading = "lazy",
+  prefetchProfile = true,
   children,
   avatarOverlay,
 }: Props) {
   const router = useRouter();
   const status = useStoryStatus(ownerUid, username);
   const prefetchIntent = useProfilePrefetchIntent(username, {
-    enabled: mode === "navigate" || mode === "delegate",
+    enabled: prefetchProfile && (mode === "navigate" || mode === "delegate"),
   });
   const showAnonAvatar = anonAvatar && !photo;
   const resolvedAnonKey = anonKey || username || "anon";

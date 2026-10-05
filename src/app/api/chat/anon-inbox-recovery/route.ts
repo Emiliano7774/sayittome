@@ -97,6 +97,26 @@ export async function GET(req: Request) {
       if (anonId.startsWith("anon_")) authorizedAnonIds.add(anonId);
     }
 
+    try {
+      const presence = await db
+        .collection("anonimos_activos")
+        .where("authUid", "==", principal.uid)
+        .limit(8)
+        .get();
+      for (const row of presence.docs) {
+        const data = (row.data() || {}) as Record<string, unknown>;
+        if (String(data.authUid || "").trim() !== principal.uid) continue;
+        for (const candidate of [data.chatSessionId, data.anonId, row.id]) {
+          const anonId = String(candidate || "").trim();
+          if (anonId.startsWith("anon_") && anonId !== "anon_server") {
+            authorizedAnonIds.add(anonId);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("anon inbox presence session", error);
+    }
+
     if (leaseChatIds.size > 0) {
       const leaseRefs = [...leaseChatIds].map((chatId) => db.collection("chats").doc(chatId));
       for (const snap of await db.getAll(...leaseRefs)) {

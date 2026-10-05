@@ -13,6 +13,7 @@ import { isAnonMatchDoorOpen, ANON_MATCH_DOOR_EVENT } from "@/lib/anonMatch/anon
 import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 import { resolveAnonMatchSessionId } from "@/lib/anonMatch/fetchAnonMatch";
 import { readVisibilityPayload } from "@/lib/shuffle/audiencePayload";
+import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { auth } from "@/lib/firebase";
 
 let started = false;
@@ -101,6 +102,7 @@ async function writeAnonymousPresence(force = false) {
       headers,
       body: JSON.stringify({
         anonId,
+        chatSessionId: getAnonSessionId(),
         ...readVisibilityPayload(),
         ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
       }),

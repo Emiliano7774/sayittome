@@ -86,6 +86,9 @@ const es = {
   profile_gate_register: "Crear perfil con email",
   profile_gate_login: "Ya tengo cuenta",
   profile_gate_back_shuffle: "Volver al shuffle anónimo",
+  shuffle_visitor_name: "Anónimo",
+  shuffle_visitor_bio: "En la app ahora",
+  shuffle_visitor_talk: "Hablar",
 
   auth_login_title: "Iniciar sesión",
   auth_login_subtitle: "Entrá con tu cuenta de SayItToMe.",
@@ -972,6 +975,9 @@ const en: Record<keyof typeof es, string> = {
   profile_gate_register: "Create profile with email",
   profile_gate_login: "I already have an account",
   profile_gate_back_shuffle: "Back to anonymous shuffle",
+  shuffle_visitor_name: "Anonymous",
+  shuffle_visitor_bio: "In the app now",
+  shuffle_visitor_talk: "Message",
 
   auth_login_title: "Log in",
   auth_login_subtitle: "Sign in with your SayItToMe account.",
@@ -1848,6 +1854,9 @@ const it: Record<keyof typeof es, string> = {
   profile_gate_register: "Crea profilo con email",
   profile_gate_login: "Ho già un account",
   profile_gate_back_shuffle: "Torna allo shuffle anonimo",
+  shuffle_visitor_name: "Anonimo",
+  shuffle_visitor_bio: "Nell'app adesso",
+  shuffle_visitor_talk: "Scrivi",
 
   auth_login_title: "Accedi",
   auth_login_subtitle: "Entra con il tuo account SayItToMe.",
@@ -2073,6 +2082,9 @@ const de: Record<keyof typeof es, string> = {
   profile_gate_register: "Profil mit E-Mail erstellen",
   profile_gate_login: "Ich habe bereits ein Konto",
   profile_gate_back_shuffle: "Zurück zum anonymen Shuffle",
+  shuffle_visitor_name: "Anonym",
+  shuffle_visitor_bio: "Gerade in der App",
+  shuffle_visitor_talk: "Schreiben",
 
   auth_login_title: "Anmelden",
   auth_login_subtitle: "Melde dich mit deinem SayItToMe-Konto an.",

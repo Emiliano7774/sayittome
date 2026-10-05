@@ -9,6 +9,7 @@ import ModernStoriesBar from "@/components/modern/ModernStoriesBar";
 import ModernAnonConnectCard from "@/components/anonMatch/ModernAnonConnectCard";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
+import AnonShuffleProfileGate from "@/components/shuffle/AnonShuffleProfileGate";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
 import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptyState";
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
@@ -186,6 +187,7 @@ export default function ModernShuffleClient() {
     </main>
 
     <ModernShuffleGlassToolbar pool={pool} />
+    <AnonShuffleProfileGate />
     </>
   );
 }

@@ -11,6 +11,7 @@ import ClassicUxModeBar from "@/components/classic/ClassicUxModeBar";
 import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptyState";
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ShuffleSlots from "@/components/shuffle/ShuffleSlots";
+import AnonShuffleProfileGate from "@/components/shuffle/AnonShuffleProfileGate";
 import { useFollowingProfiles } from "@/hooks/useFollowingProfiles";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useShufflePool } from "@/hooks/useShufflePool";
@@ -251,6 +252,7 @@ export default function ShuffleClient() {
           </div>
         )}
       </section>
+      <AnonShuffleProfileGate />
     </main>
   );
 }

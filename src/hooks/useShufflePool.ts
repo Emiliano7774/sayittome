@@ -49,10 +49,10 @@ import { publishVisibilityAudience } from "@/lib/shuffle/publishVisibility";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
 import { applyShuffleProfileBlurFlags, mergeShuffleProfileModeration } from "@/lib/shuffle/resolveShuffleBlur";
 import {
-  pickRandomUniqueWindowIndices,
   shuffleBatchMemoryForPool,
   SHUFFLE_WINDOW_SIZE,
 } from "@/lib/shuffle/pickWindow";
+import { mixShuffleWindow } from "@/lib/shuffle/shuffleRecencyMix";
 import {
   attachShuffleProfilerWindow,
   shuffleCount,
@@ -64,8 +64,14 @@ import {
   patchShuffleSlotPresence,
   pruneShuffleSlotsToPool,
   setShuffleSlotsWithFeatured,
+  syncLiveShuffleVisitors,
   getVisibleShuffleProfiles,
 } from "@/lib/shuffle/shuffleSlotsStore";
+import {
+  openVisitorChat,
+  requestAnonProfileGate,
+  viewerIsAnonymous,
+} from "@/lib/shuffle/shuffleVisitorNavigation";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import {
   deferShuffleCountOnlyIfTyping,
@@ -198,7 +204,6 @@ export function useShufflePool() {
   const abortRef = useRef<AbortController | null>(null);
   const searchTimerRef = useRef<number | null>(null);
   const loadLockedRef = useRef(false);
-  const scratchIndicesRef = useRef<number[]>([]);
   const windowIndicesRef = useRef(new Int32Array(SHUFFLE_WINDOW_SIZE));
   const windowCountRef = useRef(0);
   const featuredRef = useRef<ShuffleProfile[]>([]);
@@ -519,17 +524,33 @@ export function useShufflePool() {
       }
 
       const remainingSlots = Math.max(0, SHUFFLE_WINDOW_SIZE - featuredCount);
-      const regularCount =
+      const mixedWindow =
         len > 0
-          ? pickRandomUniqueWindowIndices(
-              eligiblePool,
-              scratchIndicesRef.current,
-              windowIndicesRef.current,
-              remainingSlots,
-              excludeSet,
-              { strictExclude: excludeRecentBatches },
-            )
-          : 0;
+          ? mixShuffleWindow(eligiblePool, {
+              now: Date.now(),
+              windowSize: remainingSlots,
+              excludeKeys: excludeSet,
+              isExcluded: excludeSet
+                ? (profile) => profileMatchesExcludeKeys(profile, excludeSet)
+                : undefined,
+              strictExclude: excludeRecentBatches,
+            })
+          : [];
+      const indexByIdentity = new Map<string, number>();
+      for (let index = 0; index < eligiblePool.length; index++) {
+        const profile = eligiblePool[index];
+        const key = shuffleProfileIdentityKey(profile) || profile.uid;
+        if (key && !indexByIdentity.has(key)) indexByIdentity.set(key, index);
+      }
+      let regularCount = 0;
+      for (const profile of mixedWindow) {
+        if (regularCount >= remainingSlots) break;
+        const key = shuffleProfileIdentityKey(profile) || profile.uid;
+        const index = key ? indexByIdentity.get(key) : undefined;
+        if (index == null) continue;
+        windowIndicesRef.current[regularCount] = index;
+        regularCount += 1;
+      }
 
       windowCountRef.current = featuredCount + regularCount;
 
@@ -835,6 +856,11 @@ export function useShufflePool() {
           } else if (getVisibleShuffleProfiles().length > 0) {
             patchShuffleSlotPresence(nextProfiles);
           }
+          if (!q && getVisibleShuffleProfiles().length > 0) {
+            syncLiveShuffleVisitors(
+              activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
+            );
+          }
           if (
             getVisibleShuffleProfiles().length === 0 &&
             shouldDealShuffleWindowDespiteSuppression({
@@ -1124,6 +1150,9 @@ export function useShufflePool() {
       const action = target.getAttribute("data-action");
       const username = target.getAttribute("data-username");
       if (!username) return;
+      const card = target.closest<HTMLElement>("[data-shuffle-card]");
+      const visitor = card?.getAttribute("data-shuffle-visitor") === "1";
+      const visitorChat = card?.getAttribute("data-visitor-chat") || "";
 
       const captureLeave = () => {
         const root = findShuffleKeepAliveScrollRoot();
@@ -1149,6 +1178,13 @@ export function useShufflePool() {
         stashProfileReturnTo("/shuffle");
         captureLeave();
         fastRouterPush(router, `/stories/${encodeURIComponent(ownerUid || username)}`);
+      } else if (visitor && (action === "chat" || action === "profile")) {
+        captureLeave();
+        void openVisitorChat(router, visitorChat);
+      } else if (action === "profile" && viewerIsAnonymous()) {
+        stashProfileReturnTo("/shuffle");
+        captureLeave();
+        requestAnonProfileGate({ allowChat: true, username });
       } else if (action === "profile") {
         stashProfileReturnTo("/shuffle");
         captureLeave();
@@ -1430,7 +1466,46 @@ export function useShufflePool() {
     }
     window.addEventListener("sayittome:shuffle-pool-warmed", onPoolWarmed);
 
+    const refreshLiveVisitors = async () => {
+      if (document.hidden) return;
+      if (searchRef.current.trim()) return;
+      if (shouldSuppressShuffleNetworkAtFireTime()) return;
+      try {
+        const res = await fetchShuffleApi("/api/shuffle?visitors=1", { cache: "no-store" });
+        const json = await res.json();
+        if (!mountedRef.current) return;
+        const visitors = normalizeShuffleProfiles(json?.profiles).filter(
+          (profile) => profile.shuffleVisitor === true,
+        );
+        const base = poolRef.current.filter((profile) => profile.shuffleVisitor !== true);
+        poolRef.current = dedupeShuffleProfiles([...base, ...visitors]);
+        const now = Date.now();
+        const filters = filtersRef.current;
+        const storyOwnerUids = storyOwnerUidsRef.current;
+        const filtered = refreshPoolPresence(
+          poolRef.current.filter((profile) => {
+            if (!profileMatchesShuffleSearch(profile, "")) return false;
+            return profileMatchesShuffleFilters(profile, filters, { storyOwnerUids, now });
+          }),
+          now,
+        );
+        activePoolRef.current = dedupeShuffleProfiles(filtered);
+        setFilteredCount(activePoolRef.current.length);
+        if (getVisibleShuffleProfiles().length > 0) {
+          syncLiveShuffleVisitors(
+            activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
+            now,
+          );
+        }
+      } catch {
+        // The next tick retries. A failed visitor poll must not reshuffle.
+      }
+    };
+
+    void refreshLiveVisitors();
+
     const presenceTimer = window.setInterval(() => {
+      void refreshLiveVisitors();
       if (poolRef.current.length === 0) return;
 
       const now = Date.now();

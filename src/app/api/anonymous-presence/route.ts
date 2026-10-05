@@ -18,6 +18,7 @@ import {
 import { invalidateAnonMatchAvailabilityCache } from "@/lib/anonMatch/matchPool";
 import { normalizeGeoAudience } from "@/lib/geo/audience";
 import { verifyAnonMatchCaller } from "@/lib/anonMatch/verifyAnonMatchCaller";
+import { sanitizeShuffleVisitorChatId } from "@/lib/shuffle/shuffleVisitorId";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,6 +37,7 @@ async function writePresenceDoc(
     provincia: string;
     visibilidad: { paises: string[]; provincias: string[] };
   },
+  chatSessionId = "",
 ) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ANON_PRESENCE_ACTIVE_MS);
@@ -58,6 +60,7 @@ async function writePresenceDoc(
     visibilidadPaises: geo.visibilidad.paises,
     visibilidadProvincias: geo.visibilidad.provincias,
     source: "anon_match_presence",
+    ...(chatSessionId ? { chatSessionId } : {}),
   });
 }
 
@@ -111,14 +114,19 @@ export async function POST(req: Request) {
       req.headers.get("cf-ipcountry") || req.headers.get("x-country-code") || "",
     ).trim().toUpperCase();
 
-    await writePresenceDoc(decision.anonId, caller.uid, {
-      pais: String(body?.pais || headerCountry || "").trim().toUpperCase(),
-      provincia: String(body?.provincia || "").trim(),
-      visibilidad: normalizeGeoAudience({
-        paises: body?.visibilidadPaises as string[],
-        provincias: body?.visibilidadProvincias as string[],
-      }),
-    });
+    await writePresenceDoc(
+      decision.anonId,
+      caller.uid,
+      {
+        pais: String(body?.pais || headerCountry || "").trim().toUpperCase(),
+        provincia: String(body?.provincia || "").trim(),
+        visibilidad: normalizeGeoAudience({
+          paises: body?.visibilidadPaises as string[],
+          provincias: body?.visibilidadProvincias as string[],
+        }),
+      },
+      sanitizeShuffleVisitorChatId(body?.chatSessionId),
+    );
     invalidateAnonMatchAvailabilityCache();
 
     const legacyLocal = String(body?.legacyLocalAnonId || "").trim();

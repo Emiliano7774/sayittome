@@ -616,20 +616,42 @@ export async function persistAnonChatMessage(
   // warming), the chat exists by the time we commit this batch. Never replay
   // identity/binding fields from chatMeta here: strict production rules lock
   // those fields and would reject the whole atomic message write.
+  const creatingOwnerThread =
+    isOwnerReply &&
+    isProfileAnonChatId(effectiveChatId) &&
+    !String(existingData.receptorUid || existingData.targetUid || "").trim() &&
+    Boolean(resolvedTargetUid);
+
   const chatWritePayload =
     isProfileAnonChatId(effectiveChatId)
-      ? buildProfileAnonChatWritePayload({
-          senderAuthorId: writeMessageAuthorId,
-          receiptSenderId: isOwnerReply ? resolvedTargetUid || persistAuthUid : undefined,
-          unreadRecipients,
-          lastMessage: lastMessagePreview,
-          latestMessageId: messageRef.id,
-          latestSenderKind: senderKind,
-          latestSenderAnonSessionId:
-            senderKind === "anon" ? writeSenderAnon || writeAnonSessionId : "",
-          senderIsAnonymous: !isOwnerReply,
-          targetPhoto: targetPhoto || null,
-        })
+      ? {
+          ...buildProfileAnonChatWritePayload({
+            senderAuthorId: writeMessageAuthorId,
+            receiptSenderId: isOwnerReply ? resolvedTargetUid || persistAuthUid : undefined,
+            unreadRecipients,
+            lastMessage: lastMessagePreview,
+            latestMessageId: messageRef.id,
+            latestSenderKind: senderKind,
+            latestSenderAnonSessionId:
+              senderKind === "anon" ? writeSenderAnon || writeAnonSessionId : "",
+            senderIsAnonymous: !isOwnerReply,
+            targetPhoto: targetPhoto || null,
+          }),
+          ...(creatingOwnerThread
+            ? {
+                receptorUid: resolvedTargetUid,
+                targetUid: resolvedTargetUid,
+                anonOwnerUid: resolvedTargetUid,
+                targetUsername: username,
+                receptorUsername: username,
+                anonSessionId: writeAnonSessionId,
+                participantes: writeParticipantes,
+                canonicalChatId: effectiveChatId,
+                anon: true,
+                schemaVersion: 2,
+              }
+            : {}),
+        }
       : chatMeta;
 
   const storyReply = storyReplyPersist.storyReply;

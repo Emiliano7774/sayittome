@@ -13,6 +13,7 @@ import {
 } from "@/lib/shuffle/resolveShuffleBlur";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { SHUFFLE_WINDOW_SIZE } from "@/lib/shuffle/pickWindow";
+import { planLiveVisitorSlots } from "@/lib/shuffle/shuffleRecencyMix";
 import { shuffleCount, shuffleMark, shuffleMeasure } from "@/lib/shuffle/shuffleProfiler";
 
 const slots: (ShuffleProfile | null)[] = Array(SHUFFLE_WINDOW_SIZE).fill(null);
@@ -101,6 +102,8 @@ export function setShuffleSlots(
             blurPhoto: next.blurPhoto,
             moderationTag: next.moderationTag,
             fakeProfileTag: next.fakeProfileTag,
+            groomingTag: next.groomingTag,
+            potentialPedophileTag: next.potentialPedophileTag,
             mediaBlurFlags: next.mediaBlurFlags,
             adminBlurProfilePhoto: next.adminBlurProfilePhoto,
             adminBlurFotosPerfil: next.adminBlurFotosPerfil,
@@ -114,6 +117,8 @@ export function setShuffleSlots(
         prev.blurPhoto !== updated.blurPhoto ||
         prev.moderationTag !== updated.moderationTag ||
         prev.fakeProfileTag !== updated.fakeProfileTag ||
+        prev.groomingTag !== updated.groomingTag ||
+        prev.potentialPedophileTag !== updated.potentialPedophileTag ||
         prev.mediaBlurFlags !== updated.mediaBlurFlags
       ) {
         slots[slot] = updated;
@@ -162,15 +167,35 @@ export function patchShuffleProfileFakeTag(uid: string, fakeProfileTag: string) 
   scheduleFlush();
 }
 
+export function patchShuffleProfileSafetyTag(
+  uid: string,
+  kind: "grooming" | "potential_pedophile",
+  active: boolean,
+) {
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = slots[slot];
+    if (!profile || profile.uid !== uid) continue;
+    slots[slot] = kind === "grooming"
+      ? { ...profile, groomingTag: active }
+      : { ...profile, potentialPedophileTag: active };
+    dirtySlots.add(slot);
+  }
+  scheduleFlush();
+}
+
 export function patchShuffleProfileBlurFlags(
   uid: string,
   mediaBlurFlags: Record<string, boolean>,
+  adminBlurAt = "",
 ) {
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
     if (!profile || profile.uid !== uid) continue;
 
-    slots[slot] = applyShuffleProfileBlurFlags(profile, mediaBlurFlags);
+    slots[slot] = {
+      ...applyShuffleProfileBlurFlags(profile, mediaBlurFlags),
+      ...(adminBlurAt ? { adminBlurAt } : {}),
+    };
     dirtySlots.add(slot);
   }
 
@@ -348,6 +373,32 @@ export function patchShuffleSlotPresence(pool: ShuffleProfile[]) {
     changed = true;
   }
 
+  if (changed) scheduleFlush();
+}
+
+/**
+ * Anonymous sessions enter and leave without dealing a new window.
+ * Departed visitors disappear. Empty visitor seats fill with people who
+ * just connected. A window that has none yet swaps its stalest profiles
+ * up to the visitor cap.
+ */
+export function syncLiveShuffleVisitors(visitors: ShuffleProfile[], now = Date.now()) {
+  const visible: ShuffleProfile[] = [];
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = slots[slot];
+    if (profile) visible.push(profile);
+  }
+  if (visible.length === 0 && visitors.length === 0) return;
+
+  const next = planLiveVisitorSlots(visible, visitors, SHUFFLE_WINDOW_SIZE, now);
+  let changed = false;
+  for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
+    const profile = next[slot] ?? null;
+    if (slots[slot] === profile) continue;
+    slots[slot] = profile;
+    dirtySlots.add(slot);
+    changed = true;
+  }
   if (changed) scheduleFlush();
 }
 

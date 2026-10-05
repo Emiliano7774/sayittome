@@ -17,6 +17,7 @@ import {
   uniqueShuffleWindow,
 } from "@/lib/shuffle/dedupeProfiles";
 import { shuffleProfileMatchesBoostUid } from "@/lib/shuffle/shuffleActionTargets";
+import { sanitizeShuffleVisitorChatId } from "@/lib/shuffle/shuffleVisitorId";
 import {
   parseShuffleFiltersFromSearchParams,
   parseViewerGeoTarget,
@@ -80,6 +81,9 @@ const SHUFFLE_FETCH_PAGE_SIZE = 1000;
 const SHUFFLE_FETCH_MAX_PAGES = 40;
 const ANON_SCAN_LIMIT = 40;
 const ANON_ACTIVE_MS = 90 * 1000;
+/** Live anonymous sessions are a separate, short-lived slice of the pool. */
+const VISITOR_SCAN_LIMIT = 1000;
+const VISITOR_CACHE_MS = 20_000;
 
 type ApiProfile = {
   uid: string;
@@ -126,12 +130,16 @@ type ApiProfile = {
   potentialPedophileTag?: boolean;
   fakeProfileTag?: string;
   shuffleFeatured?: boolean;
+  shuffleVisitor?: boolean;
+  visitorChatId?: string;
 };
 
 let cachedProfiles: ApiProfile[] = [];
 let cachedProfilesAt = 0;
 let cachedAnonymousOnline = 0;
 let cachedAnonymousAt = 0;
+let cachedVisitors: ApiProfile[] = [];
+let cachedVisitorsAt = 0;
 let cachedRegisteredCount = 0;
 let cachedRegisteredAt = 0;
 
@@ -143,8 +151,10 @@ function fieldBool(fields: any, key: string) {
   return fields?.[key]?.booleanValue === true;
 }
 
-function fieldTimestamp(fields: any, key: string) {
-  return fields?.[key]?.timestampValue || "";
+function fieldInstant(fields: any, key: string) {
+  const raw = fields?.[key]?.timestampValue || fields?.[key]?.stringValue || "";
+  const ms = Date.parse(String(raw || ""));
+  return Number.isFinite(ms) ? ms : 0;
 }
 
 function fieldArrayStrings(fields: any, key: string) {
@@ -188,23 +198,51 @@ function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
 
 function isAnonymousDocActive(doc: any, now = Date.now()) {
   const fields = doc?.fields || {};
-  const expiresAt = fieldTimestamp(fields, "expiresAt");
-  const lastSeenAt =
-    fieldTimestamp(fields, "lastSeenAt") || fieldTimestamp(fields, "updatedAt");
+  const expiresMs = fieldInstant(fields, "expiresAt");
+  if (expiresMs) return expiresMs > now;
 
-  if (expiresAt) {
-    const expiresDate = new Date(expiresAt);
-    if (!Number.isNaN(expiresDate.getTime())) {
-      return expiresDate.getTime() > now;
-    }
-  }
+  const seenMs = fieldInstant(fields, "lastSeenAt") || fieldInstant(fields, "updatedAt");
+  if (!seenMs) return false;
+  return now - seenMs <= ANON_ACTIVE_MS;
+}
 
-  if (!lastSeenAt) return false;
+function visitorDocToProfile(doc: any, now = Date.now()): ApiProfile | null {
+  if (!isAnonymousDocActive(doc, now)) return null;
+  const fields = doc?.fields || {};
+  const source = fieldString(fields, "source");
+  if (source && source !== "anon_match_presence") return null;
 
-  const seenDate = new Date(lastSeenAt);
-  if (Number.isNaN(seenDate.getTime())) return false;
+  const presenceId = String(doc?.name || "").split("/").pop() || fieldString(fields, "anonId");
+  const chatSessionId =
+    sanitizeShuffleVisitorChatId(fieldString(fields, "chatSessionId")) ||
+    sanitizeShuffleVisitorChatId(presenceId);
+  if (!chatSessionId) return null;
 
-  return now - seenDate.getTime() <= ANON_ACTIVE_MS;
+  const seenMs = fieldInstant(fields, "lastSeenAt") || fieldInstant(fields, "updatedAt") || now;
+  const lastActive = new Date(seenMs).toISOString();
+
+  return {
+    uid: chatSessionId,
+    authUid: chatSessionId,
+    aliasIds: [chatSessionId],
+    username: "Anónimo",
+    usernameLower: "",
+    bio: "En la app ahora",
+    photo: "",
+    fotos: [],
+    lastActive,
+    presenceAt: lastActive,
+    online: true,
+    showOnline: true,
+    mostrarUltimaVez: true,
+    pais: fieldString(fields, "pais"),
+    provincia: fieldString(fields, "provincia"),
+    visibilidadPaises: fieldArrayStrings(fields, "visibilidadPaises"),
+    visibilidadProvincias: fieldArrayStrings(fields, "visibilidadProvincias"),
+    shuffleVisitor: true,
+    visitorChatId: chatSessionId,
+    banned: false,
+  };
 }
 
 async function runStructuredQuery(structuredQuery: Record<string, unknown>) {
@@ -625,6 +663,28 @@ async function getAnonymousOnlineCached(forceFresh = false) {
   }
 }
 
+async function getLiveShuffleVisitors(force = false) {
+  const now = Date.now();
+  if (!force && cachedVisitorsAt > 0 && now - cachedVisitorsAt < VISITOR_CACHE_MS) {
+    return cachedVisitors;
+  }
+
+  try {
+    const docs = await runQuery("anonimos_activos", { limit: VISITOR_SCAN_LIMIT });
+    const visitors = dedupeShuffleProfiles(
+      docs
+        .map((doc: any) => visitorDocToProfile(doc, now))
+        .filter((profile): profile is ApiProfile => Boolean(profile)),
+    );
+    cachedVisitors = visitors;
+    cachedVisitorsAt = now;
+    return visitors;
+  } catch {
+    cachedVisitorsAt = now;
+    return cachedVisitors;
+  }
+}
+
 async function resolveLiveCounts(countOnly: boolean) {
   const stats = await readPublicStats();
   const now = Date.now();
@@ -660,6 +720,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
 
     const q = String(searchParams.get("q") || "").trim().toLowerCase();
+    const visitorsOnly = searchParams.get("visitors") === "1";
     const poolFull = searchParams.get("pool") === "full";
     const requestedLimit = Number(searchParams.get("limit") || 0);
     const shouldShuffle = searchParams.get("shuffle") === "1";
@@ -670,6 +731,22 @@ export async function GET(req: Request) {
       searchParams,
       req.headers.get("cf-ipcountry") || req.headers.get("x-country-code"),
     );
+
+    if (visitorsOnly) {
+      const visitors = await getLiveShuffleVisitors(false);
+      return shuffleJson(req, {
+        ok: true,
+        profiles: visitors,
+        featuredProfiles: [],
+        profilesCreated: cachedRegisteredCount,
+        anonymousOnline: visitors.length,
+        totalLive: cachedRegisteredCount + visitors.length,
+        filteredCount: visitors.length,
+        returned: visitors.length,
+        dedupeVersion: SHUFFLE_DEDUPE_VERSION,
+        ts: Date.now(),
+      });
+    }
 
     const { profilesCreated, anonymousOnline, totalLive } = await resolveLiveCounts(countOnly);
 
@@ -697,7 +774,15 @@ export async function GET(req: Request) {
         profileMatchesShuffleServerFilters(profile, filters),
     );
 
-    const filtered = filteredByDiscovery;
+    const liveVisitors = q
+      ? []
+      : (await getLiveShuffleVisitors(false)).filter(
+          (profile) =>
+            profileIsVisibleToViewer(profile, viewer) &&
+            profileMatchesShuffleServerFilters(profile, filters),
+        );
+
+    const filtered = dedupeShuffleProfiles([...filteredByDiscovery, ...liveVisitors]);
 
     const ordered = shouldShuffle && !q ? shuffleArray(filtered) : filtered;
 
@@ -752,7 +837,7 @@ export async function GET(req: Request) {
       profilesCreated,
       anonymousOnline,
       totalLive,
-      filteredCount: filteredByDiscovery.length,
+      filteredCount: filtered.length,
       returned: uniqueSelected.length,
       dedupeVersion: SHUFFLE_DEDUPE_VERSION,
       ts: Date.now(),
