@@ -13,11 +13,13 @@ import HeaderControls from "@/components/HeaderControls";
 import { logoutAndResetAnon } from "@/lib/auth/logout";
 import { resolvePostAuthPath } from "@/lib/auth/postAuthRedirect";
 import { auth } from "@/lib/firebase";
-import { useT } from "@/contexts/LocaleContext";
+import { applyAuthEmailLanguage } from "@/lib/auth/authEmailLanguage";
+import { useLocale, useT } from "@/contexts/LocaleContext";
 
 export default function VerifyEmailPage() {
   const router = useRouter();
   const t = useT();
+  const { locale } = useLocale();
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -78,6 +80,7 @@ export default function VerifyEmailPage() {
     setMessage("");
 
     try {
+      applyAuthEmailLanguage(locale);
       await sendEmailVerification(user, {
         url: `${window.location.origin}/register/verify-email`,
         handleCodeInApp: false,

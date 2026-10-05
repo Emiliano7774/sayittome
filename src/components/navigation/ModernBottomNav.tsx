@@ -134,7 +134,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
                 <Icon
                   size={31}
                   strokeWidth={2.4}
-                  className={active ? "text-[#f59e0b]" : "text-[#777]"}
+                  className={active ? "text-[#f59e0b]" : "text-[#d4d4d8]"}
                 />
               </BottomNavLink>
             );
@@ -155,7 +155,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
                 <Icon
                   size={34}
                   strokeWidth={2.35}
-                  className="block shrink-0 translate-x-px -translate-y-px text-[#777]"
+                  className="block shrink-0 translate-x-px -translate-y-px text-[#d4d4d8]"
                 />
               </a>
             );
@@ -183,7 +183,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
                 <Icon
                   size={34}
                   strokeWidth={2.35}
-                  className="block shrink-0 translate-x-px -translate-y-px text-[#777]"
+                  className="block shrink-0 translate-x-px -translate-y-px text-[#d4d4d8]"
                 />
               </a>
             );
@@ -220,7 +220,7 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
               <Icon
                 size={item.kind === "shuffle" ? 38 : 31}
                 strokeWidth={2.4}
-                className={active ? "text-[#7b5cff]" : "text-[#777]"}
+                className={active ? "text-[#7b5cff]" : "text-[#d4d4d8]"}
               />
               {unreadCount > 0 && item.id === "chats" ? (
                 <ChatPendingIndicator className="right-[calc(50%-18px)] top-[11px]" />

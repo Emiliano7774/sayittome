@@ -30,6 +30,8 @@ import {
   normalizeProfileMediaSources,
   type ProfileMediaSource,
 } from "@/lib/profile/mediaSource";
+import { mapWithConcurrency } from "@/lib/media/mapWithConcurrency";
+import { persistUploadedProfileMedia } from "@/lib/profile/persistUploadedProfileMedia";
 import { useT } from "@/contexts/LocaleContext";
 import { previousUsernameToRemember } from "@/lib/profile/usernameHistory";
 import { isUsernameAvailable, isValidUsername, normalizeUsername } from "@/lib/profile/username";
@@ -42,6 +44,7 @@ export default function ModernEditProfilePage() {
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const pendingUploadSourceRef = useRef<ProfileMediaSource>("gallery");
+  const hydratedUidRef = useRef("");
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,9 +82,12 @@ export default function ModernEditProfilePage() {
     return onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (!u || u.isAnonymous) {
+        hydratedUidRef.current = "";
         router.replace("/login");
         return;
       }
+      if (hydratedUidRef.current === u.uid) return;
+      hydratedUidRef.current = u.uid;
 
       const snap = await getDoc(doc(db, "usuarios", u.uid));
       const data = snap.exists() ? snap.data() : {};
@@ -251,16 +257,13 @@ export default function ModernEditProfilePage() {
     setUploading(true);
     setUploadError("");
 
+    let finished = 0;
     const uploaded: EditMediaItem[] = [];
 
     try {
-      for (let i = 0; i < batch.length; i++) {
-        const file = batch[i];
+      const results = await mapWithConcurrency(batch, 3, async (file) => {
         const kind = guessMediaFileKind(file);
-        if (!kind) continue;
-
-        setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
-
+        if (!kind) return null;
         const folder =
           target === "principal"
             ? "avatar"
@@ -269,8 +272,12 @@ export default function ModernEditProfilePage() {
                 ? "cover-video"
                 : "cover"
               : "gallery";
-
         const item = await uploadSingleFile(file, folder, source);
+        finished += 1;
+        setUploadText(t("edit_uploading", { current: String(finished), total: String(batch.length) }));
+        return item;
+      });
+      for (const item of results) {
         if (item) uploaded.push(item);
       }
 
@@ -299,6 +306,11 @@ export default function ModernEditProfilePage() {
 
       if (target === "cover" && uploaded[0]) {
         setCover(uploaded[0], false);
+      }
+      try {
+        await persistUploadedProfileMedia(user.uid, uploaded);
+      } catch (error) {
+        console.error("profile_media_persist_failed", error);
       }
     } catch (error) {
       console.error(error);

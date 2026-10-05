@@ -13,11 +13,13 @@ import { useRegisteredAuthPersistence } from "@/lib/auth/authPersistence";
 import { auth } from "@/lib/firebase";
 import { beginFreshAnonSession } from "@/lib/chat/anonSession";
 import { mapRegisterErrorCode } from "@/lib/auth/registerErrors";
-import { useT } from "@/contexts/LocaleContext";
+import { applyAuthEmailLanguage } from "@/lib/auth/authEmailLanguage";
+import { useLocale, useT } from "@/contexts/LocaleContext";
 
 export default function ClassicRegisterPage() {
   const router = useRouter();
   const t = useT();
+  const { locale } = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -56,6 +58,7 @@ export default function ClassicRegisterPage() {
       await useRegisteredAuthPersistence();
       const cred = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
 
+      applyAuthEmailLanguage(locale);
       await sendEmailVerification(cred.user, {
         url: `${window.location.origin}/register/verify-email`,
         handleCodeInApp: false,

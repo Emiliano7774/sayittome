@@ -112,7 +112,7 @@ const es = {
 
   auth_verify_title: "Revisá tu mail",
   auth_verify_body:
-    "Enviamos un enlace de verificación a {email}. Tocá el botón del mail y después volvé acá para continuar.",
+    "Enviamos un enlace de verificación a {email}, en el idioma de la app. Si no aparece, revisá spam y promociones. Tocá el botón del mail y después volvé acá.",
   auth_verify_check: "Ya verifiqué mi email",
   auth_verify_checking: "Comprobando...",
   auth_verify_resend: "Reenviar email",
@@ -998,7 +998,7 @@ const en: Record<keyof typeof es, string> = {
 
   auth_verify_title: "Check your email",
   auth_verify_body:
-    "We sent a verification link to {email}. Tap the button in the email and then come back here to continue.",
+    "We sent a verification link to {email}, in the app language. If you do not see it, check spam and promotions. Tap the button in the email and then come back here.",
   auth_verify_check: "I already verified my email",
   auth_verify_checking: "Checking...",
   auth_verify_resend: "Resend email",
@@ -1874,7 +1874,7 @@ const it: Record<keyof typeof es, string> = {
 
   auth_verify_title: "Controlla la mail",
   auth_verify_body:
-    "Abbiamo inviato un link di verifica a {email}. Tocca il pulsante nella mail e poi torna qui per continuare.",
+    "Abbiamo inviato un link di verifica a {email}, nella lingua dell'app. Se non lo vedi, controlla spam e promozioni. Tocca il pulsante nella mail e poi torna qui.",
   auth_verify_check: "Ho già verificato la mail",
   auth_verify_checking: "Verifica...",
   auth_verify_resend: "Reinvia email",
@@ -2099,7 +2099,7 @@ const de: Record<keyof typeof es, string> = {
 
   auth_verify_title: "Prüfe deine E-Mail",
   auth_verify_body:
-    "Wir haben einen Verifizierungslink an {email} gesendet. Tippe auf die Schaltfläche in der E-Mail und kehre dann hierher zurück.",
+    "Wir haben einen Verifizierungslink an {email} gesendet, in der Sprache der App. Wenn er nicht ankommt, prüfe Spam und Werbung. Tippe auf die Schaltfläche und kehre dann hierher zurück.",
   auth_verify_check: "Ich habe meine E-Mail bereits verifiziert",
   auth_verify_checking: "Prüfen...",
   auth_verify_resend: "E-Mail erneut senden",

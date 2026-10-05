@@ -36,6 +36,8 @@ import { isUsernameAvailable, isValidUsername, normalizeUsername } from "@/lib/p
 import StoryMediaSourceBadge from "@/components/stories/StoryMediaSourceBadge";
 import ProfileModerationTag from "@/components/profile/ProfileModerationTag";
 import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagButton";
+import { mapWithConcurrency } from "@/lib/media/mapWithConcurrency";
+import { persistUploadedProfileMedia } from "@/lib/profile/persistUploadedProfileMedia";
 import { useT } from "@/contexts/LocaleContext";
 
 type BadgeKey = "superMessages" | "likes" | "conversations" | "followers";
@@ -87,6 +89,7 @@ export default function ClassicEditProfilePage() {
   const pendingUploadSourceRef = useRef<ProfileMediaSource>("gallery");
 
   const [uid, setUid] = useState("");
+  const hydratedUidRef = useRef("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -142,9 +145,12 @@ export default function ClassicEditProfilePage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user || user.isAnonymous) {
+        hydratedUidRef.current = "";
         router.replace("/login");
         return;
       }
+      if (hydratedUidRef.current === user.uid) return;
+      hydratedUidRef.current = user.uid;
 
       setUid(user.uid);
 
@@ -256,37 +262,32 @@ export default function ClassicEditProfilePage() {
     setUploading(true);
     setUploadError("");
 
+    let finished = 0;
     const uploaded: MediaItem[] = [];
 
     try {
-      for (let i = 0; i < batch.length; i++) {
-        const file = batch[i];
+      const { compressImageForUpload } = await import("@/lib/media/compressImageForUpload");
+      const results = await mapWithConcurrency(batch, 3, async (file) => {
         const kind = guessMediaFileKind(file);
-        if (!kind) continue;
-
+        if (!kind) return null;
         const ext = file.name.split(".").pop() || (kind === "video" ? "mp4" : "jpg");
         const path = `usuarios/${uid}/fotos/${Date.now()}_${Math.random()
           .toString(36)
           .slice(2)}.${ext}`;
-
-        setUploadText(t("edit_uploading", { current: String(i + 1), total: String(batch.length) }));
-
-        const { compressImageForUpload } = await import("@/lib/media/compressImageForUpload");
         const uploadFile =
           kind === "image" ? await compressImageForUpload(file, { maxEdge: 1600, quality: 0.82 }) : file;
-
         const url = await uploadFileToStorage({
           path,
           file: uploadFile,
           kind,
           requireRegisteredUser: true,
         });
-        uploaded.push({
-          url,
-          type: kind,
-          path,
-          source,
-        });
+        finished += 1;
+        setUploadText(t("edit_uploading", { current: String(finished), total: String(batch.length) }));
+        return { url, type: kind, path, source } satisfies MediaItem;
+      });
+      for (const item of results) {
+        if (item) uploaded.push(item);
       }
 
       setMedia((prev) => {
@@ -305,6 +306,11 @@ export default function ClassicEditProfilePage() {
 
         return next;
       });
+      try {
+        await persistUploadedProfileMedia(uid, uploaded);
+      } catch (error) {
+        console.error("profile_media_persist_failed", error);
+      }
     } catch (error) {
       console.error(error);
       setUploadError(t(profileUploadErrorKey(error)));
