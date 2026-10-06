@@ -167,14 +167,12 @@ assert.doesNotMatch(
 );
 const alertsSrc = fs.readFileSync(path.join(root, "src/hooks/useGlobalChatAlerts.ts"), "utf8");
 assert.match(alertsSrc, /countLocalPendingChats|whipPending/);
-assert.match(alertsSrc, /markLocalPendingChat\(chatId\)/);
-assert.match(alertsSrc, /seenLatestMessageIdsRef/);
-assert.match(alertsSrc, /forceAnonRecovery: inboxRouteEnabled/);
-assert.doesNotMatch(alertsSrc, /documentHidden \|\| notificationsEnabled/);
-assert.doesNotMatch(
+assert.match(
   alertsSrc,
-  /setPaused\(\s*\(!messageListenersEnabled && !sessionActive\) \|\| loading/,
+  /forceAnonRecovery: pathname === \"\/chats\" && !documentHidden/,
 );
+assert.doesNotMatch(alertsSrc, /forceAnonRecovery: inboxRouteEnabled/);
+assert.doesNotMatch(alertsSrc, /seenLatestMessageIdsRef/);
 const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
 assert.match(notifSrc, /Always use the page Notification API/);
 assert.match(

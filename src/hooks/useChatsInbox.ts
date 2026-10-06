@@ -561,13 +561,12 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
 
     const recoveryKey = `${firebaseUser.uid}|${sessionChatIds.join(",")}`;
 
-    // Latch only after a successful response. Setting it before the fetch meant
-    // a cancelled Shuffle attempt never retried, so unread/tick stayed empty
-    // until the user opened /chats (that path uses the other latch).
     if (forceAnonRecovery) {
       if (forcedAnonRecoveryKeyRef.current === recoveryKey) return;
-    } else if (fallbackAnonRecoveryKeyRef.current === recoveryKey) {
-      return;
+      forcedAnonRecoveryKeyRef.current = recoveryKey;
+    } else {
+      if (fallbackAnonRecoveryKeyRef.current === recoveryKey) return;
+      fallbackAnonRecoveryKeyRef.current = recoveryKey;
     }
 
     let cancelled = false;
@@ -606,8 +605,6 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       .then((rows) => {
         if (!rows) return;
         if (cancelled) return;
-        if (forceAnonRecovery) forcedAnonRecoveryKeyRef.current = recoveryKey;
-        else fallbackAnonRecoveryKeyRef.current = recoveryKey;
         const map = new Map<string, InboxChat>();
         for (const row of rows) {
           const normalized = normalizeInboxChat(
@@ -642,8 +639,9 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
         // live happy path. A failed recovery is NOT an authoritative empty
         // snapshot, so keep firestoreSynced false and preserve visible rows.
         console.error("anon inbox recovery", error);
-        if (forceAnonRecovery) forcedAnonRecoveryKeyRef.current = "";
-        else fallbackAnonRecoveryKeyRef.current = "";
+        if (forceAnonRecovery) {
+          forcedAnonRecoveryKeyRef.current = "";
+        }
       });
 
     return () => {
