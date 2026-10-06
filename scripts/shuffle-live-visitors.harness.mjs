@@ -16,7 +16,7 @@ const {
   SHUFFLE_WEEK_MS,
 } = await import(pathToFileURL(path.join(root, "src/lib/shuffle/shuffleRecencyMix.ts")).href);
 
-const { sanitizeShuffleVisitorChatId, forceShuffleVisitorOnline } = await import(
+const { sanitizeShuffleVisitorChatId, forceShuffleVisitorOnline, collapseRowsByOwner } = await import(
   pathToFileURL(path.join(root, "src/lib/shuffle/shuffleVisitorId.ts")).href
 );
 
@@ -130,6 +130,17 @@ assert.equal(forced.mostrarUltimaVez, true);
 assert.equal(forced.online, true);
 const untouched = forceShuffleVisitorOnline({ showOnline: false, username: "ada" });
 assert.equal(untouched.showOnline, false);
+
+const collapsed = collapseRowsByOwner(
+  [
+    { id: "a", owner: "person-1", seen: 10 },
+    { id: "b", owner: "person-1", seen: 50 },
+    { id: "c", owner: "person-2", seen: 20 },
+  ],
+  (row) => row.owner,
+  (row) => row.seen,
+);
+assert.deepEqual(collapsed.map((row) => row.id), ["b", "c"]);
 
 assert.equal(sanitizeShuffleVisitorChatId("anon_abc123_def"), "anon_abc123_def");
 assert.equal(sanitizeShuffleVisitorChatId("anon_server"), "");

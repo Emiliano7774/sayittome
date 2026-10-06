@@ -196,6 +196,7 @@ export function useShufflePool() {
   );
   const activePoolRef = useRef<ShuffleProfile[]>(poolRef.current);
   const totalLiveRef = useRef(initialShuffle.cachedStats?.totalLive ?? 0);
+  const registeredCountRef = useRef(initialShuffle.cachedStats?.profilesCreated ?? 0);
   const requestSeqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const searchTimerRef = useRef<number | null>(null);
@@ -838,6 +839,7 @@ export function useShufflePool() {
             : profilesCreated + anonymousOnline || nextProfiles.length;
 
         setProfilesCreated(profilesCreated);
+        if (profilesCreated > 0) registeredCountRef.current = profilesCreated;
         setAnonymousOnline(anonymousOnline);
         setLivePeopleCount(total > 0 ? total : profilesCreated + anonymousOnline);
 
@@ -1321,6 +1323,9 @@ export function useShufflePool() {
 
     if (cachedStats) {
       setProfilesCreated(cachedStats.profilesCreated);
+      if (cachedStats.profilesCreated > 0) {
+        registeredCountRef.current = cachedStats.profilesCreated;
+      }
       setAnonymousOnline(cachedStats.anonymousOnline);
       setLivePeopleCount(cachedStats.totalLive);
       setTotalLive(cachedStats.totalLive);
@@ -1462,7 +1467,6 @@ export function useShufflePool() {
 
     const refreshLiveVisitors = async () => {
       if (document.hidden) return;
-      if (searchRef.current.trim()) return;
       if (shouldSuppressShuffleNetworkAtFireTime()) return;
       try {
         const res = await fetchShuffleApi("/api/shuffle?visitors=1", { cache: "no-store" });
@@ -1471,6 +1475,24 @@ export function useShufflePool() {
         const visitors = normalizeShuffleProfiles(json?.profiles).filter(
           (profile) => profile.shuffleVisitor === true,
         );
+        const reportedRegistered = Number(json?.profilesCreated || 0);
+        if (reportedRegistered > 0) registeredCountRef.current = reportedRegistered;
+        const anon = visitors.length;
+        const total = registeredCountRef.current + anon;
+        setAnonymousOnline(anon);
+        setLivePeopleCount(total);
+        if (total > 0) {
+          setTotalLive(total);
+          totalLiveRef.current = total;
+        }
+        if (registeredCountRef.current > 0) {
+          writeCachedShuffleStats({
+            profilesCreated: registeredCountRef.current,
+            anonymousOnline: anon,
+            totalLive: total,
+          });
+        }
+        if (searchRef.current.trim()) return;
         const base = poolRef.current.filter((profile) => profile.shuffleVisitor !== true);
         poolRef.current = dedupeShuffleProfiles([...base, ...visitors]);
         const now = Date.now();
@@ -1583,6 +1605,7 @@ export function useShufflePool() {
         const total = Number(json?.totalLive ?? created + anon);
 
         setProfilesCreated(created);
+        if (created > 0) registeredCountRef.current = created;
         setAnonymousOnline(anon);
         setLivePeopleCount(total);
         if (total > 0) {

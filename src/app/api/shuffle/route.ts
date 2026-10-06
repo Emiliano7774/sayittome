@@ -18,6 +18,7 @@ import {
 } from "@/lib/shuffle/dedupeProfiles";
 import { shuffleProfileMatchesBoostUid } from "@/lib/shuffle/shuffleActionTargets";
 import {
+  collapseRowsByOwner,
   forceShuffleVisitorOnline,
   sanitizeShuffleVisitorChatId,
 } from "@/lib/shuffle/shuffleVisitorId";
@@ -640,37 +641,10 @@ async function getProfilesCached(force = false) {
 }
 
 async function getAnonymousOnlineCached(forceFresh = false) {
-  const now = Date.now();
-
-  if (!forceFresh && now - cachedAnonymousAt < ANON_CACHE_MS) {
-    return cachedAnonymousOnline;
-  }
-
-  const stats = await readPublicStats();
-  if (
-    !forceFresh &&
-    stats?.anonymousOnlineCount != null &&
-    now - stats.updatedAt < ANON_CACHE_MS
-  ) {
-    cachedAnonymousOnline = stats.anonymousOnlineCount;
-    cachedAnonymousAt = now;
-    return cachedAnonymousOnline;
-  }
-
-  try {
-    const docs = await runQuery("anonimos_activos", {
-      limit: ANON_SCAN_LIMIT,
-      orderBy: { field: "lastSeenAt", direction: "DESCENDING" },
-    });
-    cachedAnonymousOnline = docs.filter((doc: any) => isAnonymousDocActive(doc, now)).length;
-    cachedAnonymousAt = now;
-
-    void writePublicStats({ anonymousOnlineCount: cachedAnonymousOnline }).catch(() => {});
-    return cachedAnonymousOnline;
-  } catch {
-    cachedAnonymousAt = now;
-    return cachedAnonymousOnline;
-  }
+  const visitors = await getLiveShuffleVisitors(forceFresh);
+  cachedAnonymousOnline = visitors.length;
+  cachedAnonymousAt = Date.now();
+  return cachedAnonymousOnline;
 }
 
 async function getLiveShuffleVisitors(force = false) {
@@ -684,8 +658,19 @@ async function getLiveShuffleVisitors(force = false) {
       limit: VISITOR_SCAN_LIMIT,
       orderBy: { field: "lastSeenAt", direction: "DESCENDING" },
     });
+    const uniqueDocs = collapseRowsByOwner(
+      docs.filter((doc: any) => isAnonymousDocActive(doc, now)),
+      (doc: any) =>
+        fieldString(doc?.fields, "authUid") ||
+        String(doc?.name || "").split("/").pop() ||
+        "",
+      (doc: any) =>
+        fieldInstant(doc?.fields, "lastSeenAt") ||
+        fieldInstant(doc?.fields, "updatedAt") ||
+        0,
+    );
     const visitors = dedupeShuffleProfiles(
-      docs
+      uniqueDocs
         .map((doc: any) => visitorDocToProfile(doc, now))
         .filter((profile): profile is ApiProfile => Boolean(profile)),
     );
@@ -704,10 +689,12 @@ async function resolveLiveCounts(countOnly: boolean) {
   const statsFresh = stats && now - stats.updatedAt < STATS_REFRESH_MS;
 
   if (countOnly && statsFresh) {
+    const anonymousOnline = await getAnonymousOnlineCached(false);
+    const registered = stats!.registeredUsersCount;
     return {
-      profilesCreated: stats!.registeredUsersCount,
-      anonymousOnline: stats!.anonymousOnlineCount,
-      totalLive: stats!.registeredUsersCount + stats!.anonymousOnlineCount,
+      profilesCreated: registered,
+      anonymousOnline,
+      totalLive: registered + anonymousOnline,
     };
   }
 

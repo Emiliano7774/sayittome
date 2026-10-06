@@ -13,6 +13,7 @@ import {
 import {
   deleteAnonMatchAdminDoc,
   getAnonMatchAdminDoc,
+  listAnonMatchAdminDocs,
   setAnonMatchAdminDoc,
 } from "@/lib/anonMatch/anonMatchAdminStore";
 import { invalidateAnonMatchAvailabilityCache } from "@/lib/anonMatch/matchPool";
@@ -127,6 +128,20 @@ export async function POST(req: Request) {
       },
       sanitizeShuffleVisitorChatId(body?.chatSessionId),
     );
+    try {
+      const siblings = await listAnonMatchAdminDocs("anonimos_activos", {
+        where: { field: "authUid", value: caller.uid },
+        limit: 8,
+      });
+      await Promise.all(
+        siblings
+          .map((row) => String(row.id || "").trim())
+          .filter((id) => id && id !== decision.anonId)
+          .map((id) => deletePresenceDoc(id)),
+      );
+    } catch {
+      // The live alias is already published. A leftover sibling expires on its own.
+    }
     invalidateAnonMatchAvailabilityCache();
 
     const legacyLocal = String(body?.legacyLocalAnonId || "").trim();
