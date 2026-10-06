@@ -521,17 +521,25 @@ export function useShufflePool() {
       }
 
       const remainingSlots = Math.max(0, SHUFFLE_WINDOW_SIZE - featuredCount);
+      const soloOnlineWindow = filtersRef.current.soloOnline === true;
       const mixedWindow =
         len > 0
-          ? mixShuffleWindow(eligiblePool, {
-              now: Date.now(),
-              windowSize: remainingSlots,
-              excludeKeys: excludeSet,
-              isExcluded: excludeSet
-                ? (profile) => profileMatchesExcludeKeys(profile, excludeSet)
-                : undefined,
-              strictExclude: excludeRecentBatches,
-            })
+          ? soloOnlineWindow
+            ? (() => {
+                // Solo-online: show every live anon first, then online profiles.
+                const visitors = eligiblePool.filter((profile) => profile.shuffleVisitor);
+                const others = eligiblePool.filter((profile) => !profile.shuffleVisitor);
+                return [...visitors, ...others].slice(0, remainingSlots);
+              })()
+            : mixShuffleWindow(eligiblePool, {
+                now: Date.now(),
+                windowSize: remainingSlots,
+                excludeKeys: excludeSet,
+                isExcluded: excludeSet
+                  ? (profile) => profileMatchesExcludeKeys(profile, excludeSet)
+                  : undefined,
+                strictExclude: excludeRecentBatches,
+              })
           : [];
       const indexByIdentity = new Map<string, number>();
       for (let index = 0; index < eligiblePool.length; index++) {
@@ -875,6 +883,8 @@ export function useShufflePool() {
             // still inject live anons (same path as the 45s presence poll).
             syncLiveShuffleVisitors(
               activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
+              Date.now(),
+              { preferVisitors: filtersRef.current.soloOnline },
             );
           }
           if (
@@ -1119,6 +1129,32 @@ export function useShufflePool() {
       };
 
       runFilter();
+
+      // Cached pool strips visitors. Solo-online must fetch live anons now —
+      // waiting for the 45s poll leaves Android "en línea" empty.
+      if (nextFilters.soloOnline && !searchRef.current.trim()) {
+        void (async () => {
+          try {
+            if (shouldSuppressShuffleNetworkAtFireTime()) return;
+            const res = await fetchShuffleApi("/api/shuffle?visitors=1", {
+              cache: "no-store",
+            });
+            const json = await res.json();
+            if (!mountedRef.current) return;
+            const visitors = normalizeShuffleProfiles(json?.profiles).filter(
+              (profile) => profile.shuffleVisitor === true,
+            );
+            const base = poolRef.current.filter((profile) => profile.shuffleVisitor !== true);
+            poolRef.current = dedupeShuffleProfiles([...base, ...visitors]);
+            filterActivePool(searchRef.current.trim(), filtersRef.current, {
+              forceWindow: true,
+            });
+            syncLiveShuffleVisitors(visitors, Date.now(), { preferVisitors: true });
+          } catch {
+            // Next presence tick retries.
+          }
+        })();
+      }
 
       if (nextFilters.soloConHistorias) {
         void refreshStoriesIndex(getStoryViewerKey(), false)
@@ -1528,6 +1564,7 @@ export function useShufflePool() {
         syncLiveShuffleVisitors(
           activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
           now,
+          { preferVisitors: filters.soloOnline },
         );
         if (
           filters.soloOnline &&

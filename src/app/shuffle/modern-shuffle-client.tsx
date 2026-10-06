@@ -11,6 +11,7 @@ import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 import ShuffleAdsBootstrap from "@/components/shuffle/ShuffleAdsBootstrap";
 import AnonShuffleProfileGate from "@/components/shuffle/AnonShuffleProfileGate";
 import { useChatAlerts } from "@/contexts/ChatAlertsContext";
+import { useHeldUnreadBadge } from "@/hooks/useHeldUnreadBadge";
 import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptyState";
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ModernShuffleGlassToolbar from "@/components/shuffle/ModernShuffleGlassToolbar";
@@ -48,6 +49,7 @@ export default function ModernShuffleClient() {
   const pool = useShufflePool();
   const hydrationReady = useHydrationReady();
   const { totalUnread } = useChatAlerts();
+  const badgeUnread = useHeldUnreadBadge(totalUnread);
 
   useEffect(() => {
     if (!shuffleActive) return;
@@ -126,7 +128,7 @@ export default function ModernShuffleClient() {
                 className="relative rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-black"
               >
                 {t("chats_title")}
-                {totalUnread > 0 ? (
+                {badgeUnread > 0 ? (
                   <ChatPendingIndicator className="-right-0.5 -top-0.5" />
                 ) : null}
               </NativeAwareLink>

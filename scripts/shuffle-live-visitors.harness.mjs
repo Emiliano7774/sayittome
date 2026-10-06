@@ -131,12 +131,35 @@ const seededEmpty = planLiveVisitorSlots(
 assert.equal(seededEmpty.length, 2, "empty solo-online window still receives live anons");
 assert.ok(seededEmpty.every((row) => row.shuffleVisitor));
 
+const preferSolo = planLiveVisitorSlots(
+  [
+    profile("online-1", 60_000),
+    profile("online-2", 90_000),
+    profile("online-3", 120_000),
+  ],
+  Array.from({ length: 8 }, (_, i) =>
+    profile(`anon_pref_${i}`, 1000, { shuffleVisitor: true, username: "Anónimo" }),
+  ),
+  10,
+  NOW,
+  { preferVisitors: true },
+);
+assert.ok(
+  preferSolo.filter((row) => row.shuffleVisitor).length >= 7,
+  "solo-online preferVisitors fills beyond the mixed-feed 45% cap",
+);
+
 const poolSrc = fs.readFileSync(path.join(root, "src/hooks/useShufflePool.ts"), "utf8");
-assert.match(poolSrc, /Always sync visitors/);
+assert.match(poolSrc, /Always sync visitors|preferVisitors: filters\.soloOnline|visitors=1/);
+assert.match(poolSrc, /soloOnlineWindow/);
 const alertsSrc = fs.readFileSync(path.join(root, "src/hooks/useGlobalChatAlerts.ts"), "utf8");
-assert.match(alertsSrc, /sortedChats\.length > 0/);
+assert.match(alertsSrc, /countLocalPendingChats|whipPending/);
 const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
 assert.match(notifSrc, /getRegistration|showNotification/);
+assert.match(
+  fs.readFileSync(path.join(root, "src/lib/chat/chatNotificationPrefs.ts"), "utf8"),
+  /Notification\.permission === \"granted\"/,
+);
 
 const forced = forceShuffleVisitorOnline({
   shuffleVisitor: true,

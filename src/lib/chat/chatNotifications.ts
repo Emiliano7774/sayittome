@@ -1,7 +1,10 @@
 "use client";
 
 import { isCapacitorNative, isNativeAppActive } from "@/lib/app/nativeShell";
-import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
+import {
+  areChatNotificationsEnabled,
+  syncChatNotificationPrefsFromBrowserPermission,
+} from "@/lib/chat/chatNotificationPrefs";
 import { recordNotificationStage } from "@/lib/chat/notificationIncident";
 import {
   buildChatNotificationOpenHref,
@@ -218,6 +221,7 @@ async function attachNativeActionListener() {
 export async function initChatNotifications() {
   if (bootstrapped || typeof window === "undefined") return;
   bootstrapped = true;
+  syncChatNotificationPrefsFromBrowserPermission();
   await ensureNativeChannel();
   await attachNativeActionListener();
 

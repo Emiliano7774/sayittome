@@ -26,6 +26,12 @@ import {
   subscribeChatNotificationPrefs,
 } from "@/lib/chat/chatNotificationPrefs";
 import { initChatNotifications, requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
+import {
+  clearLocalPendingChat,
+  countLocalPendingChats,
+  getLocalPendingChatsVersion,
+  subscribeLocalPendingChats,
+} from "@/lib/chat/localPendingChats";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 
@@ -84,11 +90,16 @@ export function useGlobalChatAlerts() {
   const firebaseUid = firebaseUser?.uid || uid || "";
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
   useSyncExternalStore(subscribeSessionChatIds, getSessionChatIdsVersion, () => "");
+  useSyncExternalStore(subscribeLocalPendingChats, getLocalPendingChatsVersion, () => "0");
 
   const activeChatId = (() => {
     const match = pathname.match(/\/chat\/([^/?#]+)/);
     return match ? decodeURIComponent(match[1]) : "";
   })();
+
+  useEffect(() => {
+    if (activeChatId) clearLocalPendingChat(activeChatId);
+  }, [activeChatId]);
 
   // Prefer the rows the UI already trusts (snapshot fallback included). Waiting
   // only on live sortedChats hid the orange tick until the user opened /chats.
@@ -98,9 +109,12 @@ export function useGlobalChatAlerts() {
     !inboxRouteEnabled ||
     firestoreSynced ||
     unreadSource.length > 0;
-  const totalUnread = unreadHydrated
+  const inboxUnread = unreadHydrated
     ? totalUnreadCount(unreadSource, firebaseUid, { excludeChatId: activeChatId })
     : 0;
+  // Whip marks pending immediately — inbox unreadCounts can lag one snapshot.
+  const whipPending = countLocalPendingChats(activeChatId);
+  const totalUnread = Math.max(inboxUnread, whipPending);
 
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);

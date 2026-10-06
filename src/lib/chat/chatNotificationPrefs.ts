@@ -41,7 +41,27 @@ export function getChatNotificationPrefs(): ChatNotificationPrefs {
 }
 
 export function areChatNotificationsEnabled(): boolean {
-  return readPrefs().enabled;
+  if (readPrefs().enabled) return true;
+  // Browser already granted the OS permission (Chrome settings / earlier Yes).
+  // Prefs can stay false after logout reset or a dismissed prompt while the
+  // site still has Notification.permission === "granted" — that killed banners.
+  if (
+    typeof window !== "undefined" &&
+    typeof Notification !== "undefined" &&
+    Notification.permission === "granted"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Keep prefs in sync when the browser already granted notification permission. */
+export function syncChatNotificationPrefsFromBrowserPermission() {
+  if (typeof window === "undefined" || typeof Notification === "undefined") return;
+  if (Notification.permission !== "granted") return;
+  const current = readPrefs();
+  if (current.enabled) return;
+  writePrefs({ ...current, enabled: true });
 }
 
 export function setChatNotificationsEnabled(enabled: boolean) {

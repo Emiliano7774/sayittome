@@ -206,9 +206,11 @@ export function planLiveVisitorSlots<T extends ShuffleRecencyProfile>(
   visitors: T[],
   windowSize: number,
   now: number,
+  options?: { preferVisitors?: boolean },
 ): T[] {
   const size = Math.max(0, Math.floor(windowSize) || 0);
   if (size === 0) return [];
+  const preferVisitors = options?.preferVisitors === true;
   const live = new Map<string, T>();
   for (const visitor of visitors) {
     const uid = String(visitor.uid || "").trim();
@@ -238,12 +240,45 @@ export function planLiveVisitorSlots<T extends ShuffleRecencyProfile>(
   });
   const previousVisitors = visible.filter((row) => row.shuffleVisitor).length;
   const keptVisitors = kept.filter((row) => row.shuffleVisitor).length;
-  const cap = Math.max(1, Math.round(size * SHUFFLE_VISITOR_WINDOW_SHARE));
+  // Solo-online: fill with every live anon, not the mixed-feed 45% cap.
+  const cap = preferVisitors
+    ? size
+    : Math.max(1, Math.round(size * SHUFFLE_VISITOR_WINDOW_SHARE));
 
   // Empty painted window (common with solo-online after prune): seed live anons.
   // Previously holes=0 blocked every newcomer when previousVisitors was also 0.
   if (kept.length === 0 && newcomers.length > 0) {
     return newcomers.slice(0, size);
+  }
+
+  // Solo-online: visitors first (all of them), then remaining online profiles.
+  if (preferVisitors && (newcomers.length > 0 || keptVisitors > 0)) {
+    const next: T[] = [];
+    const used = new Set<string>();
+    for (const row of kept) {
+      if (!row.shuffleVisitor) continue;
+      const uid = String(row.uid || "").trim();
+      if (!uid || used.has(uid)) continue;
+      used.add(uid);
+      next.push(row);
+      if (next.length >= size) return next.slice(0, size);
+    }
+    for (const visitor of newcomers) {
+      const uid = String(visitor.uid || "").trim();
+      if (!uid || used.has(uid)) continue;
+      used.add(uid);
+      next.push(visitor);
+      if (next.length >= size) return next.slice(0, size);
+    }
+    for (const row of kept) {
+      if (row.shuffleVisitor) continue;
+      const uid = String(row.uid || "").trim();
+      if (uid && used.has(uid)) continue;
+      if (uid) used.add(uid);
+      next.push(row);
+      if (next.length >= size) break;
+    }
+    return next.slice(0, size);
   }
 
   if (keptVisitors === 0 && newcomers.length > 0 && kept.length > 0) {

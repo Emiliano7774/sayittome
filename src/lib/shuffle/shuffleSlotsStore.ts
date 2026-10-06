@@ -382,7 +382,11 @@ export function patchShuffleSlotPresence(pool: ShuffleProfile[]) {
  * just connected. A window that has none yet swaps its stalest profiles
  * up to the visitor cap.
  */
-export function syncLiveShuffleVisitors(visitors: ShuffleProfile[], now = Date.now()) {
+export function syncLiveShuffleVisitors(
+  visitors: ShuffleProfile[],
+  now = Date.now(),
+  options?: { preferVisitors?: boolean },
+) {
   const visible: ShuffleProfile[] = [];
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
@@ -390,7 +394,9 @@ export function syncLiveShuffleVisitors(visitors: ShuffleProfile[], now = Date.n
   }
   if (visible.length === 0 && visitors.length === 0) return;
 
-  const next = planLiveVisitorSlots(visible, visitors, SHUFFLE_WINDOW_SIZE, now);
+  const next = planLiveVisitorSlots(visible, visitors, SHUFFLE_WINDOW_SIZE, now, {
+    preferVisitors: options?.preferVisitors === true,
+  });
   let changed = false;
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = next[slot] ?? null;
