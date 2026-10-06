@@ -677,8 +677,22 @@ export function useShufflePool() {
       // A painted window stays put. Automatic refreshes (stories, pool, profile
       // return) must not deal a new set, or several land in a burst.
       if (!forceWindow && getVisibleShuffleProfiles().length > 0) {
-        if (membership) pruneShuffleSlotsToPool(activePoolRef.current);
-        else patchShuffleSlotPresence(activePoolRef.current);
+        if (membership) {
+          pruneShuffleSlotsToPool(activePoolRef.current);
+          // Solo-online can wipe the window when profiles go stale while live
+          // anons sit in the pool — refill instead of staying blank.
+          if (
+            getVisibleShuffleProfiles().length === 0 &&
+            activePoolRef.current.length > 0
+          ) {
+            applyWindowFromPool(activePoolRef.current, {
+              forceReplace: true,
+              resetBatchMemory: false,
+            });
+          }
+        } else {
+          patchShuffleSlotPresence(activePoolRef.current);
+        }
         return;
       }
 
@@ -1507,11 +1521,18 @@ export function useShufflePool() {
         );
         activePoolRef.current = dedupeShuffleProfiles(filtered);
         setFilteredCount(activePoolRef.current.length);
-        if (getVisibleShuffleProfiles().length > 0) {
-          syncLiveShuffleVisitors(
-            activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
-            now,
-          );
+        // Always sync visitors — an empty painted window must still receive live anons
+        // (solo-online prune → empty slots was skipping this and hiding online anons).
+        syncLiveShuffleVisitors(
+          activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
+          now,
+        );
+        if (
+          filters.soloOnline &&
+          getVisibleShuffleProfiles().length === 0 &&
+          activePoolRef.current.length > 0
+        ) {
+          filterActivePool(searchRef.current, filters, { forceWindow: true });
         }
       } catch {
         // The next tick retries. A failed visitor poll must not reshuffle.

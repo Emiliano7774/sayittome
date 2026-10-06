@@ -119,6 +119,25 @@ const injected = planLiveVisitorSlots(
 assert.ok(injected.some((row) => row.uid === "anon_live_1"));
 assert.equal(injected.length, 2);
 
+const seededEmpty = planLiveVisitorSlots(
+  [],
+  [
+    profile("anon_seed_1", 1000, { shuffleVisitor: true, username: "Anónimo" }),
+    profile("anon_seed_2", 1000, { shuffleVisitor: true, username: "Anónimo" }),
+  ],
+  10,
+  NOW,
+);
+assert.equal(seededEmpty.length, 2, "empty solo-online window still receives live anons");
+assert.ok(seededEmpty.every((row) => row.shuffleVisitor));
+
+const poolSrc = fs.readFileSync(path.join(root, "src/hooks/useShufflePool.ts"), "utf8");
+assert.match(poolSrc, /Always sync visitors/);
+const alertsSrc = fs.readFileSync(path.join(root, "src/hooks/useGlobalChatAlerts.ts"), "utf8");
+assert.match(alertsSrc, /sortedChats\.length > 0/);
+const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
+assert.match(notifSrc, /getRegistration|showNotification/);
+
 const forced = forceShuffleVisitorOnline({
   shuffleVisitor: true,
   showOnline: false,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 /** Rising unread on the nav waits briefly so a one-snapshot false badge never paints. */
-const HOLD_MS = 900;
+const HOLD_MS = 350;
 
 export function useHeldUnreadBadge(count: number) {
   const [held, setHeld] = useState(0);

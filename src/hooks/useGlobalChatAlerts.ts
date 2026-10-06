@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { usePathname } from "next/navigation";
+import { useEffectivePathname } from "@/contexts/MainTabShellContext";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useDocumentHidden } from "@/hooks/useDocumentHidden";
@@ -41,7 +41,7 @@ function getSessionChatIdsVersion() {
 }
 
 export function useGlobalChatAlerts() {
-  const pathname = usePathname();
+  const pathname = useEffectivePathname();
   const documentHidden = useDocumentHidden();
   const { firebaseUser } = useAuth();
   const notificationsEnabled = useSyncExternalStore(
@@ -58,9 +58,11 @@ export function useGlobalChatAlerts() {
     () => shouldEnableChatNotificationListeners(pathname, notificationsEnabled),
     [pathname, notificationsEnabled],
   );
-  const liveFirestoreEnabled = inboxRouteEnabled && !documentHidden;
+  // Keep inbox queries on main tabs even when the tab is briefly hidden so the
+  // orange chats tick updates without requiring a visit to /chats.
+  const liveFirestoreEnabled = inboxRouteEnabled;
   const notificationInboxEnabled =
-    notificationsEnabled && chatAlertsRouteEnabled && !documentHidden;
+    notificationsEnabled && chatAlertsRouteEnabled;
   const backgroundNotificationInboxEnabled =
     notificationsEnabled && chatAlertsRouteEnabled;
   const messageListenersEnabled =
@@ -75,6 +77,7 @@ export function useGlobalChatAlerts() {
       liveFirestoreEnabled ||
       backgroundNotificationInboxEnabled ||
       messageListenersEnabled,
+    forceAnonRecovery: pathname === "/chats" && !documentHidden,
   });
 
   const viewerId = resolveInboxViewerId(uid);
@@ -87,9 +90,13 @@ export function useGlobalChatAlerts() {
     return match ? decodeURIComponent(match[1]) : "";
   })();
 
-  const totalUnread = totalUnreadCount(sortedChats, firebaseUid, {
-    excludeChatId: activeChatId,
-  });
+  // Don't hide the orange tick forever while sync is slow — session/inbox rows
+  // already carry enough meta to compute pending.
+  const unreadHydrated =
+    !inboxRouteEnabled || firestoreSynced || sortedChats.length > 0;
+  const totalUnread = unreadHydrated
+    ? totalUnreadCount(sortedChats, firebaseUid, { excludeChatId: activeChatId })
+    : 0;
 
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);

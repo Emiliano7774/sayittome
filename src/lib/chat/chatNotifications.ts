@@ -318,7 +318,10 @@ export function shouldShowChatNotification(input?: { viewingActiveChat?: boolean
   if (input?.viewingActiveChat) return false;
   if (shouldShowBackgroundChatNotification()) return true;
   // Native shell: also notify when the app is open on another screen.
-  return isCapacitorNative() && isNativeAppActive();
+  if (isCapacitorNative() && isNativeAppActive()) return true;
+  // Web: OS banner when the tab is open but the user is not inside that chat
+  // (Shuffle / Stories / another thread). Background tabs use document.hidden above.
+  return !isCapacitorNative();
 }
 
 export async function showChatNotification(input: {
@@ -382,7 +385,23 @@ export async function showChatNotification(input: {
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
 
-  try {
+  const onClick = () => {
+    if (chatId) {
+      openChatFromNotification({
+        chatId,
+        messageId,
+        body,
+        title,
+      });
+    }
+    try {
+      window.focus();
+    } catch {
+      // ignore
+    }
+  };
+
+  const showPageNotification = () => {
     const notification = new Notification(title, {
       body,
       tag,
@@ -390,21 +409,37 @@ export async function showChatNotification(input: {
       silent: false,
       data: { chatId, messageId, group },
     });
-    notification.onclick = () => {
-      if (chatId) {
-        openChatFromNotification({
-          chatId,
-          messageId,
-          body,
-          title,
+    notification.onclick = onClick;
+  };
+
+  try {
+    // Prefer an already-active service worker when present (background tabs).
+    // Never await serviceWorker.ready — it hangs forever with no SW registered.
+    const getRegistration = navigator.serviceWorker?.getRegistration?.bind(
+      navigator.serviceWorker,
+    );
+    if (getRegistration) {
+      void getRegistration()
+        .then((registration) => {
+          if (!registration?.active || typeof registration.showNotification !== "function") {
+            showPageNotification();
+            return;
+          }
+          return registration.showNotification(title, {
+            body,
+            tag,
+            icon: ICON_PATH,
+            silent: false,
+            data: { chatId, messageId, group },
+          });
+        })
+        .catch(() => {
+          showPageNotification();
         });
-      }
-      try {
-        window.focus();
-      } catch {
-        // ignore
-      }
-    };
+      return;
+    }
+
+    showPageNotification();
   } catch {
     // Permission revoked or blocked.
   }

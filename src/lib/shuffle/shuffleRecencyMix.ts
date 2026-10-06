@@ -240,6 +240,12 @@ export function planLiveVisitorSlots<T extends ShuffleRecencyProfile>(
   const keptVisitors = kept.filter((row) => row.shuffleVisitor).length;
   const cap = Math.max(1, Math.round(size * SHUFFLE_VISITOR_WINDOW_SHARE));
 
+  // Empty painted window (common with solo-online after prune): seed live anons.
+  // Previously holes=0 blocked every newcomer when previousVisitors was also 0.
+  if (kept.length === 0 && newcomers.length > 0) {
+    return newcomers.slice(0, size);
+  }
+
   if (keptVisitors === 0 && newcomers.length > 0 && kept.length > 0) {
     const stale = kept
       .map((row, index) => ({ index, ms: Math.min(shuffleActivityMs(row), now) }))
@@ -260,9 +266,12 @@ export function planLiveVisitorSlots<T extends ShuffleRecencyProfile>(
   }
 
   const holes = Math.max(0, previousVisitors - keptVisitors);
+  // Also fill free seats (solo-online often has room after profiles drop out).
+  const freeSeats = Math.max(0, size - kept.length);
+  const budget = Math.max(holes, Math.min(freeSeats, cap - keptVisitors));
   let placed = 0;
   for (const visitor of newcomers) {
-    if (placed >= holes || kept.length >= size) break;
+    if (placed >= budget || kept.length >= size) break;
     const uid = String(visitor.uid || "").trim();
     if (!uid || seen.has(uid)) continue;
     seen.add(uid);
