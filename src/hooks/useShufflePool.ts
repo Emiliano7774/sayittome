@@ -682,6 +682,22 @@ export function useShufflePool() {
       const membership =
         nextFilters.soloOnline || nextFilters.soloConHistorias || nextFilters.soloConFoto;
 
+      if (nextFilters.soloOnline) {
+        const poolVisitors = activePoolRef.current.filter((profile) => profile.shuffleVisitor);
+        const visibleVisitors = getVisibleShuffleProfiles().filter(
+          (profile) => profile.shuffleVisitor,
+        );
+        // Android kept a window of online profiles and never swapped in anons
+        // that arrived after the first paint.
+        if (poolVisitors.length > 0 && visibleVisitors.length === 0) {
+          applyWindowFromPool(activePoolRef.current, {
+            forceReplace: true,
+            resetBatchMemory: false,
+          });
+          return;
+        }
+      }
+
       // A painted window stays put. Automatic refreshes (stories, pool, profile
       // return) must not deal a new set, or several land in a burst.
       if (!forceWindow && getVisibleShuffleProfiles().length > 0) {
@@ -1581,6 +1597,13 @@ export function useShufflePool() {
 
     void refreshLiveVisitors();
 
+    const onVisible = () => {
+      if (document.hidden) return;
+      void refreshLiveVisitors();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+
     const presenceTimer = window.setInterval(() => {
       void refreshLiveVisitors();
       if (poolRef.current.length === 0) return;
@@ -1606,7 +1629,7 @@ export function useShufflePool() {
         ).length,
       );
       patchShuffleSlotPresence(activePoolRef.current);
-    }, 45_000);
+    }, 12_000);
 
     // Paint cache can outlive network freshness. Keep moderation/discovery
     // refresh at the original 8m cadence while preserving instant durable paint.
@@ -1620,6 +1643,8 @@ export function useShufflePool() {
       window.clearTimeout(loadingSafety);
       window.clearInterval(presenceTimer);
       window.clearInterval(poolSyncTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
       window.removeEventListener("sayittome:shuffle-profile-moderation", onProfileModeration);
       window.removeEventListener("sayittome:shuffle-profile-fake", onProfileFake);
       window.removeEventListener("sayittome:shuffle-profile-safety", onProfileSafety);

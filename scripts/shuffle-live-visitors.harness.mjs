@@ -152,6 +152,11 @@ assert.ok(
 const poolSrc = fs.readFileSync(path.join(root, "src/hooks/useShufflePool.ts"), "utf8");
 assert.match(poolSrc, /Always sync visitors|preferVisitors: filters\.soloOnline|visitors=1/);
 assert.match(poolSrc, /soloOnlineWindow/);
+assert.match(poolSrc, /visibleVisitors\.length === 0/);
+assert.match(
+  fs.readFileSync(path.join(root, "src/app/api/shuffle/route.ts"), "utf8"),
+  /A failed read must not freeze an empty list/,
+);
 assert.match(
   poolSrc,
   /Cached pool strips visitors\. Solo-online must fetch live anons BEFORE/,
@@ -163,6 +168,9 @@ assert.doesNotMatch(
 const alertsSrc = fs.readFileSync(path.join(root, "src/hooks/useGlobalChatAlerts.ts"), "utf8");
 assert.match(alertsSrc, /countLocalPendingChats|whipPending/);
 assert.match(alertsSrc, /markLocalPendingChat\(chatId\)/);
+assert.match(alertsSrc, /seenLatestMessageIdsRef/);
+assert.match(alertsSrc, /forceAnonRecovery: inboxRouteEnabled/);
+assert.doesNotMatch(alertsSrc, /documentHidden \|\| notificationsEnabled/);
 assert.doesNotMatch(
   alertsSrc,
   /setPaused\(\s*\(!messageListenersEnabled && !sessionActive\) \|\| loading/,

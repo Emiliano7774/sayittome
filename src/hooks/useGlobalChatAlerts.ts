@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useEffectivePathname } from "@/contexts/MainTabShellContext";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { useDocumentHidden } from "@/hooks/useDocumentHidden";
 import { useChatsInbox } from "@/hooks/useChatsInbox";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { chatPeerTitle } from "@/lib/chat/inboxPeerTitle";
@@ -25,7 +24,10 @@ import {
   areChatNotificationsEnabled,
   subscribeChatNotificationPrefs,
 } from "@/lib/chat/chatNotificationPrefs";
-import { initChatNotifications, requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
+import { initChatNotifications, requestChatNotificationPermission, showChatNotification } from "@/lib/chat/chatNotifications";
+import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
+import { playIncomingWhipSound, bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 import {
   clearLocalPendingChat,
   countLocalPendingChats,
@@ -35,7 +37,6 @@ import {
 } from "@/lib/chat/localPendingChats";
 import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
-import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 
 function subscribeSessionChatIds(onStoreChange: () => void) {
   if (typeof window === "undefined") return () => undefined;
@@ -50,7 +51,6 @@ function getSessionChatIdsVersion() {
 
 export function useGlobalChatAlerts() {
   const pathname = useEffectivePathname();
-  const documentHidden = useDocumentHidden();
   const { firebaseUser } = useAuth();
   const notificationsEnabled = useSyncExternalStore(
     subscribeChatNotificationPrefs,
@@ -73,8 +73,10 @@ export function useGlobalChatAlerts() {
     notificationsEnabled && chatAlertsRouteEnabled;
   const backgroundNotificationInboxEnabled =
     notificationsEnabled && chatAlertsRouteEnabled;
-  const messageListenersEnabled =
-    chatAlertsRouteEnabled && (!documentHidden || notificationsEnabled);
+  // Hidden tabs are when the browser banner has to fire. Pausing listeners
+  // on document.hidden dropped both the notification and the orange tick
+  // until the user opened /chats (visible, so listeners attached again).
+  const messageListenersEnabled = chatAlertsRouteEnabled;
 
   const { sortedChats, displaySortedChats, uid, loading, isAnonymousSession, firestoreSynced } = useChatsInbox({
     enableInboxQueries:
@@ -85,7 +87,7 @@ export function useGlobalChatAlerts() {
       liveFirestoreEnabled ||
       backgroundNotificationInboxEnabled ||
       messageListenersEnabled,
-    forceAnonRecovery: pathname === "/chats" && !documentHidden,
+    forceAnonRecovery: inboxRouteEnabled,
   });
 
   const viewerId = resolveInboxViewerId(uid);
@@ -130,6 +132,57 @@ export function useGlobalChatAlerts() {
       }
     }
   }, [unreadHydrated, inboxRouteEnabled, unreadSource, firebaseUid, activeChatId]);
+
+  const seenLatestMessageIdsRef = useRef<Map<string, string> | null>(null);
+  const inboxAlertSignature = unreadSource
+    .map((chat) => `${chat.canonicalChatId || chat.id}:${chat.latestMessageId || ""}`)
+    .join("|");
+
+  // Whip only watches 25 threads and misses the first snapshot. The inbox
+  // doc itself changing latestMessageId is enough to paint the tick and
+  // raise the browser banner without opening /chats.
+  useEffect(() => {
+    if (!firestoreSynced) return;
+    const previous = seenLatestMessageIdsRef.current;
+    const next = new Map<string, string>();
+    for (const chat of unreadSource) {
+      const chatId = chat.canonicalChatId || chat.id;
+      if (!chatId) continue;
+      next.set(chatId, String(chat.latestMessageId || ""));
+    }
+    seenLatestMessageIdsRef.current = next;
+    if (!previous) return;
+
+    for (const chat of unreadSource) {
+      const chatId = chat.canonicalChatId || chat.id;
+      if (!chatId || chatId === activeChatId) continue;
+      const latest = String(chat.latestMessageId || "");
+      const prior = previous.get(chatId);
+      if (!latest || prior === latest) continue;
+      const sender = String(chat.lastMessageSender || "");
+      if (sender && isOwnChatSender(sender, viewerId, firebaseUid, chat)) continue;
+      markLocalPendingChat(chatId);
+      const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
+      if (prior === undefined && arrivedAt > 0 && Date.now() - arrivedAt > 2 * 60_000) {
+        continue;
+      }
+      tryAlertIncomingMessage({
+        chatId,
+        messageId: latest,
+        incoming: true,
+        suppress: false,
+        onAlert: () => {
+          playIncomingWhipSound();
+          void showChatNotification({
+            title: chatPeerTitle(chat, firebaseUid) || "Nuevo mensaje",
+            body: String(chat.lastMessage || "Nuevo mensaje"),
+            chatId,
+            messageId: latest,
+          });
+        },
+      });
+    }
+  }, [firestoreSynced, inboxAlertSignature, unreadSource, activeChatId, viewerId, firebaseUid]);
 
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);

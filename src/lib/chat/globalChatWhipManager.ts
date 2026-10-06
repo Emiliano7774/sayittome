@@ -40,7 +40,7 @@ function sameIdSet(a: Set<string>, b: Set<string>) {
 }
 
 const MAX_WHIP_CHAT_LISTENERS = 25;
-const LIVE_ATTACH_WINDOW_MS = 8_000;
+const LIVE_ATTACH_WINDOW_MS = 120_000;
 
 function messageCreatedAtMs(data: {
   createdAt?: { toMillis?: () => number; seconds?: number };

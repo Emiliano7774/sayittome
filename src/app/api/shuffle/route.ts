@@ -681,7 +681,8 @@ async function getLiveShuffleVisitors(force = false) {
     cachedVisitorsAt = now;
     return visitors;
   } catch {
-    cachedVisitorsAt = now;
+    // A failed read must not freeze an empty list for the cache window.
+    // That hid live anons on solo-online until the next cold instance.
     return cachedVisitors;
   }
 }
