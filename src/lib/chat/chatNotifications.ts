@@ -417,23 +417,20 @@ export async function showChatNotification(input: {
   };
 
   try {
-    // Focused tabs: page Notification is reliable. Some Chromium builds swallow
-    // serviceWorker.showNotification while the document is visible.
-    if (!document.hidden) {
-      showPageNotification();
-      return;
-    }
-
-    // Background tabs: prefer an already-active service worker when present.
-    // Never await serviceWorker.ready — it hangs forever with no SW registered.
-    const getRegistration = navigator.serviceWorker?.getRegistration?.bind(
-      navigator.serviceWorker,
-    );
-    if (getRegistration) {
+    // Always use the page Notification API for web chat banners. Relying on an
+    // optional service worker left Chrome tabs silent when getRegistration()
+    // returned a non-active or non-showing registration (common on this host).
+    showPageNotification();
+  } catch {
+    // Permission revoked or blocked — last chance via SW if one is active.
+    try {
+      const getRegistration = navigator.serviceWorker?.getRegistration?.bind(
+        navigator.serviceWorker,
+      );
+      if (!getRegistration) return;
       void getRegistration()
         .then((registration) => {
           if (!registration?.active || typeof registration.showNotification !== "function") {
-            showPageNotification();
             return;
           }
           return registration.showNotification(title, {
@@ -444,14 +441,9 @@ export async function showChatNotification(input: {
             data: { chatId, messageId, group },
           });
         })
-        .catch(() => {
-          showPageNotification();
-        });
-      return;
+        .catch(() => undefined);
+    } catch {
+      // ignore
     }
-
-    showPageNotification();
-  } catch {
-    // Permission revoked or blocked.
   }
 }

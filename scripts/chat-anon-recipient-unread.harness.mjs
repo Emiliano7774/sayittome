@@ -116,9 +116,10 @@ check(
 );
 
 check(
-  "WHIP_LIVE_INBOUND_ON_ATTACH",
-  whipSrc.includes("liveInboundOnAttach") &&
-    whipSrc.includes("listenerAttachedAt"),
+  "WHIP_LIVE_INBOUND_ON_FRESH_WATCH",
+  whipSrc.includes("liveInboundOnFreshWatch") &&
+    whipSrc.includes("listenerAttachedAt") &&
+    whipSrc.includes("freshWatchChatIds"),
 );
 
 const failed = checks.filter((c) => !c.pass);

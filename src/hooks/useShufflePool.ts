@@ -1128,14 +1128,12 @@ export function useShufflePool() {
         filterActivePool(searchRef.current.trim(), nextFilters, { forceWindow: true });
       };
 
-      runFilter();
-
-      // Cached pool strips visitors. Solo-online must fetch live anons now —
-      // waiting for the 45s poll leaves Android "en línea" empty.
+      // Cached pool strips visitors. Solo-online must fetch live anons BEFORE
+      // painting the filtered window — typing-guard / document.hidden used to
+      // skip the fetch on Android and leave "en línea" without Anónimos.
       if (nextFilters.soloOnline && !searchRef.current.trim()) {
         void (async () => {
           try {
-            if (shouldSuppressShuffleNetworkAtFireTime()) return;
             const res = await fetchShuffleApi("/api/shuffle?visitors=1", {
               cache: "no-store",
             });
@@ -1151,9 +1149,12 @@ export function useShufflePool() {
             });
             syncLiveShuffleVisitors(visitors, Date.now(), { preferVisitors: true });
           } catch {
-            // Next presence tick retries.
+            // Still apply the filter so online profiles appear; next poll retries anons.
+            runFilter();
           }
         })();
+      } else {
+        runFilter();
       }
 
       if (nextFilters.soloConHistorias) {
@@ -1518,8 +1519,8 @@ export function useShufflePool() {
     window.addEventListener("sayittome:shuffle-pool-warmed", onPoolWarmed);
 
     const refreshLiveVisitors = async () => {
-      if (document.hidden) return;
-      if (shouldSuppressShuffleNetworkAtFireTime()) return;
+      // visitors=1 is tiny. Never skip for typing-guard or WebView hidden quirks —
+      // solo-online on Android depended on this poll when the toggle fetch raced.
       try {
         const res = await fetchShuffleApi("/api/shuffle?visitors=1", { cache: "no-store" });
         const json = await res.json();

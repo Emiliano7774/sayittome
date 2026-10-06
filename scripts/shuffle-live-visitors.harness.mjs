@@ -152,10 +152,23 @@ assert.ok(
 const poolSrc = fs.readFileSync(path.join(root, "src/hooks/useShufflePool.ts"), "utf8");
 assert.match(poolSrc, /Always sync visitors|preferVisitors: filters\.soloOnline|visitors=1/);
 assert.match(poolSrc, /soloOnlineWindow/);
+assert.match(
+  poolSrc,
+  /Cached pool strips visitors\. Solo-online must fetch live anons BEFORE/,
+);
+assert.doesNotMatch(
+  poolSrc,
+  /if \(shouldSuppressShuffleNetworkAtFireTime\(\)\) return;\s*\n\s*const res = await fetchShuffleApi\("\/api\/shuffle\?visitors=1"/,
+);
 const alertsSrc = fs.readFileSync(path.join(root, "src/hooks/useGlobalChatAlerts.ts"), "utf8");
 assert.match(alertsSrc, /countLocalPendingChats|whipPending/);
+assert.match(alertsSrc, /markLocalPendingChat\(chatId\)/);
+assert.doesNotMatch(
+  alertsSrc,
+  /setPaused\(\s*\(!messageListenersEnabled && !sessionActive\) \|\| loading/,
+);
 const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
-assert.match(notifSrc, /getRegistration|showNotification/);
+assert.match(notifSrc, /Always use the page Notification API/);
 assert.match(
   fs.readFileSync(path.join(root, "src/lib/chat/chatNotificationPrefs.ts"), "utf8"),
   /Notification\.permission === \"granted\"/,

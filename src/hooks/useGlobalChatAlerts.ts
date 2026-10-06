@@ -30,8 +30,10 @@ import {
   clearLocalPendingChat,
   countLocalPendingChats,
   getLocalPendingChatsVersion,
+  markLocalPendingChat,
   subscribeLocalPendingChats,
 } from "@/lib/chat/localPendingChats";
+import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
 
@@ -116,6 +118,19 @@ export function useGlobalChatAlerts() {
   const whipPending = countLocalPendingChats(activeChatId);
   const totalUnread = Math.max(inboxUnread, whipPending);
 
+  // Inbox unread alone must paint the orange tick on Shuffle/Stories — do not
+  // wait for a whip id transition (new threads often arrive as first snapshot).
+  useEffect(() => {
+    if (!unreadHydrated || !inboxRouteEnabled) return;
+    for (const chat of unreadSource) {
+      const chatId = chat.canonicalChatId || chat.id;
+      if (!chatId || chatId === activeChatId) continue;
+      if (chatUnreadCountForViewer(chat, firebaseUid, { excludeChatId: activeChatId }) > 0) {
+        markLocalPendingChat(chatId);
+      }
+    }
+  }, [unreadHydrated, inboxRouteEnabled, unreadSource, firebaseUid, activeChatId]);
+
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);
 
@@ -156,12 +171,12 @@ export function useGlobalChatAlerts() {
 
   useEffect(() => {
     const sessionActive = getSessionChatIds().length > 0;
-    globalChatWhipManager.setPaused(
-      (!messageListenersEnabled && !sessionActive) || loading,
-    );
+    // Never pause/clear whip on auth or inbox `loading` — that reattached
+    // listeners, baselined the live inbound, and killed browser notif + tick
+    // until the user opened /chats.
+    globalChatWhipManager.setPaused(!messageListenersEnabled && !sessionActive);
 
-    if (loading || !chatAlertsRouteEnabled) {
-      globalChatWhipManager.syncInboxChatIds([]);
+    if (!chatAlertsRouteEnabled) {
       return;
     }
 
@@ -178,7 +193,6 @@ export function useGlobalChatAlerts() {
   }, [
     chatAlertsRouteEnabled,
     messageListenersEnabled,
-    loading,
     sortedChats,
     displaySortedChats,
   ]);
