@@ -498,9 +498,11 @@ export default function ProfileAnonChat({
   const shell = useMainTabShell();
   const chatViewportLockActive =
     isChatThreadRoute(pathname) && !shell.childrenHidden;
-  const { profile: authProfile } = useAuth();
+  const { profile: authProfile, firebaseUser } = useAuth();
   const formatLastSeen = useFormatLastSeen();
   const initialProfile = readInitialTargetProfile(username);
+  const initialHidePeerPhoto =
+    Boolean(firebaseUser?.isAnonymous) && isProfileAnonChatId(chatId);
   useNavUsefulPaint(Boolean(chatId) && Boolean(username));
   const initialThreadActive =
     threadHasPriorActivity(chatId) || openedFromNotificationRef.current;
@@ -558,7 +560,12 @@ export default function ProfileAnonChat({
   const [authReady, setAuthReady] = useState(() => Boolean(auth.currentUser));
   const [currentUid, setCurrentUid] = useState(() => profileAuthUid(auth.currentUser));
   const [targetUid, setTargetUid] = useState(initialProfile?.uid || "");
-  const [targetPhoto, setTargetPhoto] = useState(initialProfile?.photo || "");
+  // Anonymous viewers on profile-anon threads fail closed (no peer photo) until
+  // chat meta proves this is not a hideProfileFromVisitor approach thread.
+  const [targetPhoto, setTargetPhoto] = useState(
+    initialHidePeerPhoto ? "" : initialProfile?.photo || "",
+  );
+  const chatMetaHydratedRef = useRef(false);
   const [targetBlurPhoto, setTargetBlurPhoto] = useState(initialProfile?.blurPhoto || false);
   const [targetLastActive, setTargetLastActive] = useState(initialProfile?.lastActive || "");
   const [targetOnline, setTargetOnline] = useState(initialProfile?.online || false);
@@ -1165,12 +1172,19 @@ export default function ProfileAnonChat({
 
       const data = snap.data() as Record<string, unknown> | undefined;
       chatDocDataRef.current = data || {};
+      chatMetaHydratedRef.current = true;
       setChatAnonSessionId(String(data?.anonSessionId || ""));
       setChatOwnerUid(
         String(data?.receptorUid || data?.targetUid || data?.anonOwnerUid || ""),
       );
+      const hidePeerPhoto =
+        Boolean(firebaseUser?.isAnonymous) &&
+        (data?.hideProfileFromVisitor === true ||
+          searchParams.get("anonPeer") === "1");
       const chatPhoto = String(data?.targetPhoto || "").trim();
-      if (chatPhoto) {
+      if (hidePeerPhoto) {
+        setTargetPhoto("");
+      } else if (chatPhoto) {
         setTargetPhoto((prev) => prev || chatPhoto);
       }
       chatMetaRef.current = inboxChatFromFirestore(chatId, data, username);
@@ -1186,28 +1200,46 @@ export default function ProfileAnonChat({
       // look like it cleared unread. Detail snapshots already mark while open.
       unsub();
     };
-  }, [chatId, username]);
+  }, [chatId, username, firebaseUser?.isAnonymous, searchParams]);
 
   useEffect(() => {
     let cancelled = false;
+
+    function shouldHidePeerPhoto() {
+      if (!firebaseUser?.isAnonymous || !isProfileAnonChatId(chatId)) return false;
+      if (searchParams.get("anonPeer") === "1") return true;
+      if (!chatMetaHydratedRef.current) return true;
+      return chatDocDataRef.current?.hideProfileFromVisitor === true;
+    }
 
     async function loadTargetProfile() {
       const cachedLite = getCachedProfile(username);
       const cachedFull = getCachedFullProfile(username) as Record<string, unknown> | null;
       const hasCachedProfile = Boolean(cachedLite || cachedFull);
+      const hidePeer = shouldHidePeerPhoto();
 
       if (cachedLite) {
         setTargetUid(cachedLite.uid);
-        setTargetPhoto(cachedLite.photo);
-        setTargetBlurPhoto(cachedLite.blurPhoto);
+        if (!hidePeer) {
+          setTargetPhoto(cachedLite.photo);
+          setTargetBlurPhoto(cachedLite.blurPhoto);
+        } else {
+          setTargetPhoto("");
+          setTargetBlurPhoto(false);
+        }
         setTargetLastActive(cachedLite.lastActive);
         setTargetOnline(cachedLite.online);
       } else if (cachedFull) {
         const photo = resolveProfilePhoto(cachedFull);
         const uid = String(cachedFull.uid || "");
         setTargetUid(uid);
-        setTargetPhoto(photo);
-        setTargetBlurPhoto(cachedFull.adminBlurProfilePhoto === true);
+        if (!hidePeer) {
+          setTargetPhoto(photo);
+          setTargetBlurPhoto(cachedFull.adminBlurProfilePhoto === true);
+        } else {
+          setTargetPhoto("");
+          setTargetBlurPhoto(false);
+        }
         setTargetLastActive(String(cachedFull.lastActive || ""));
         setTargetOnline(cachedFull.online === true);
       }
@@ -1223,10 +1255,16 @@ export default function ProfileAnonChat({
           const profile = json?.profile;
           const photo = resolveProfilePhoto(profile);
           const uid = String(profile?.uid || "");
+          const hidePeerNow = shouldHidePeerPhoto();
 
           setTargetUid(uid);
-          setTargetPhoto(photo);
-          setTargetBlurPhoto(profile?.adminBlurProfilePhoto === true);
+          if (!hidePeerNow) {
+            setTargetPhoto(photo);
+            setTargetBlurPhoto(profile?.adminBlurProfilePhoto === true);
+          } else {
+            setTargetPhoto("");
+            setTargetBlurPhoto(false);
+          }
           setTargetLastActive(String(profile?.lastActive || ""));
           setTargetOnline(profile?.online === true);
           setTargetShowsLastSeen(profile?.mostrarUltimaVez !== false);
@@ -1242,7 +1280,9 @@ export default function ProfileAnonChat({
             online: profile?.online === true,
           });
 
-          if (photo && chatId) {
+          // Never let an anonymous viewer publish the profile photo onto the chat
+          // doc — that flashes identity to other anonymous clients.
+          if (photo && chatId && !hidePeerNow && !firebaseUser?.isAnonymous) {
             void updateDoc(doc(db, "chats", chatId), {
               targetPhoto: photo,
               ...(uid ? { targetUid: uid, receptorUid: uid } : {}),
@@ -1266,7 +1306,7 @@ export default function ProfileAnonChat({
     return () => {
       cancelled = true;
     };
-  }, [username, chatId]);
+  }, [username, chatId, firebaseUser?.isAnonymous, searchParams, chatMetaVersion]);
 
   const isClassic = uxMode === "classic";
   const docOwnerUid = String(
@@ -1497,9 +1537,15 @@ export default function ProfileAnonChat({
   // Re-read when chat meta snapshot updates so verify uses canonical id.
   const verifiedLinkChatId =
     (chatMetaVersion >= 0 && chatMetaRef.current?.canonicalChatId) || chatId;
+  // Fail closed for anonymous Firebase viewers until chat meta loads: never flash
+  // the registered profile photo on a profile→visitor approach thread.
   const visitorSeesAnonymous =
     !isOwnerViewing &&
-    (anonPeer || chatDocDataRef.current?.hideProfileFromVisitor === true);
+    (anonPeer ||
+      chatDocDataRef.current?.hideProfileFromVisitor === true ||
+      (Boolean(firebaseUser?.isAnonymous) &&
+        isProfileAnonChatId(chatId) &&
+        !chatMetaHydratedRef.current));
   const displayPeerName = visitorSeesAnonymous
     ? "Anónimo"
     : isOwnerViewing

@@ -157,6 +157,23 @@ const refresh = block.decideVisitorLeaseBind({
 });
 assert.equal(refresh.action, "refresh");
 
+// Profile-first thread: real visitor may claim lease when presence proves ownership.
+const claimExisting = block.decideVisitorLeaseBind({
+  visitorAuthUid: "visitor_a",
+  chatExists: true,
+  leaseVisitorAuthUid: null,
+  sessionOwnershipVerified: true,
+});
+assert.equal(claimExisting.action, "claim_existing");
+assert.equal(claimExisting.visitorAuthUid, "visitor_a");
+
+const leaseWriteSrc = fs.readFileSync(
+  path.join(root, "src/lib/abuse/profileAnonAbuseBlockWrite.ts"),
+  "utf8",
+);
+assert.match(leaseWriteSrc, /visitorOwnsAnonSession/);
+assert.match(leaseWriteSrc, /claim_existing/);
+
 // --- A/B/C IP scope (same receptor) + other receptor ---
 const nowMs = 1_700_000_000_000;
 const hashA = ip.hashAbuseClientIp("203.0.113.10");

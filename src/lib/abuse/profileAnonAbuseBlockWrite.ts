@@ -1,7 +1,8 @@
 /**
  * Admin-SDK abuse writer.
- * Lease is created ONLY via bindVisitorChatLease (atomic chat+lease when chat missing).
- * Never first-claim an existing chat. Legacy unbound → require_new_epoch (no write).
+ * Lease via bindVisitorChatLease: atomic chat+lease when missing, or claim_existing
+ * when the visitor proves ownership of the anon session on a profile-first thread.
+ * Unverified legacy unbound → require_new_epoch (no write).
  * Production send path requires trusted direct-GCF IP — never Hosting PENDING fallback.
  * IP hashes never land on readable chat docs.
  */
@@ -299,9 +300,53 @@ export async function findActiveProfileAnonAbuseForRequest(input: {
 }
 
 /**
+ * Prove the Firebase anonymous auth owns this anon_* session (shuffle presence
+ * or match-alias binding). Used to claim a profile-first chat without rotating.
+ */
+export async function visitorOwnsAnonSession(
+  db: Awaited<ReturnType<typeof getAdminDb>>,
+  visitorAuthUid: string,
+  anonSessionId: string,
+): Promise<boolean> {
+  const uid = String(visitorAuthUid || "").trim();
+  const anonId = String(anonSessionId || "").trim();
+  if (!uid || !anonId.startsWith("anon_")) return false;
+
+  try {
+    const byId = await db.collection("anonimos_activos").doc(anonId).get();
+    if (byId.exists && String((byId.data() || {}).authUid || "").trim() === uid) {
+      return true;
+    }
+
+    // Single-field query (no composite index). Filter authUid in memory.
+    const byChatSession = await db
+      .collection("anonimos_activos")
+      .where("chatSessionId", "==", anonId)
+      .limit(5)
+      .get();
+    for (const row of byChatSession.docs) {
+      if (String((row.data() || {}).authUid || "").trim() === uid) return true;
+    }
+
+    const aliasSnap = await db.collection(ABUSE_ANON_ALIAS_COLLECTION).doc(anonId).get();
+    if (
+      aliasSnap.exists &&
+      String((aliasSnap.data() || {}).visitorAuthUid || "").trim() === uid
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+/**
  * Server-issued session binding BEFORE client may create/send.
- * Creates chat+lease atomically only when chat is missing.
- * Existing chat without lease → require_new_epoch, write nothing.
+ * Creates chat+lease atomically when chat is missing.
+ * Profile-first chat without lease: claim_existing when presence/alias proves
+ * ownership; otherwise require_new_epoch (no write).
  * Resolves receptor from username server-side; requires trusted IP.
  */
 export async function bindVisitorChatLease(input: {
@@ -352,6 +397,12 @@ export async function bindVisitorChatLease(input: {
     const leaseRef = db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(chatId);
     const aliasRef = db.collection(ABUSE_ANON_ALIAS_COLLECTION).doc(blockedAnonId);
 
+    const [chatPre, leasePre] = await Promise.all([chatRef.get(), leaseRef.get()]);
+    const sessionOwnershipVerified =
+      chatPre.exists &&
+      !leasePre.exists &&
+      (await visitorOwnsAnonSession(db, visitorAuthUid, blockedAnonId));
+
     const outcome = await db.runTransaction(async (tx: AbuseAdminTx) => {
       const [chatSnap, leaseSnap, aliasSnap] = await Promise.all([
         tx.get(chatRef),
@@ -368,6 +419,10 @@ export async function bindVisitorChatLease(input: {
         leaseVisitorAuthUid: leaseData
           ? String(leaseData.visitorAuthUid || "").trim()
           : null,
+        // Re-check emptiness inside the tx; only honor pre-verified ownership
+        // when the lease is still absent.
+        sessionOwnershipVerified:
+          sessionOwnershipVerified && !leaseSnap.exists && chatSnap.exists,
       });
 
       if (decision.action === "deny") {
@@ -390,14 +445,24 @@ export async function bindVisitorChatLease(input: {
         }
       }
 
-      if (decision.action === "refresh") {
+      if (decision.action === "refresh" || decision.action === "claim_existing") {
         const prevHashes = readIpHashes(leaseData || {});
+        const epochId =
+          String((leaseData || {}).epochId || "").trim() || newAbuseEpochId();
         tx.set(
           leaseRef,
           omitUndefinedFields({
+            chatId,
+            receptorUid,
+            blockedAnonId,
             visitorAuthUid,
+            epochId,
             ...leaseIpStampFields(ipHash, prevHashes),
             updatedAtMs: nowMs,
+            ...(leaseSnap.exists ? {} : { createdAtMs: nowMs, schemaVersion: 1 }),
+            ...(decision.action === "claim_existing"
+              ? { claimedExistingAtMs: nowMs, source: "visitor_claim_existing" }
+              : {}),
           }),
           { merge: true },
         );
@@ -408,6 +473,7 @@ export async function bindVisitorChatLease(input: {
             blockedAnonId,
             updatedAtMs: nowMs,
             schemaVersion: 1,
+            ...(aliasSnap.exists ? {} : { createdAtMs: nowMs }),
           },
           { merge: true },
         );

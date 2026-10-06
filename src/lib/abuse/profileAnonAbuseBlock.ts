@@ -39,6 +39,7 @@ export type ProfileAnonAbuseBlockRecord = {
 export type VisitorLeaseBindDecision =
   | { action: "refresh"; visitorAuthUid: string }
   | { action: "create_atomic"; reason: "chat_missing" }
+  | { action: "claim_existing"; visitorAuthUid: string }
   | {
       action: "require_new_epoch";
       reason: "legacy_unbound" | "foreign_lease";
@@ -48,12 +49,16 @@ export type VisitorLeaseBindDecision =
 
 /**
  * Pure bind decision — third party cannot claim first lease on an existing chat.
- * Legacy without lease → require_new_epoch (no write). Missing chat → create_atomic.
+ * Profile-first threads (no lease yet) may be claimed when session ownership is
+ * verified via presence/alias — otherwise legacy_unbound → require_new_epoch.
+ * Missing chat → create_atomic.
  */
 export function decideVisitorLeaseBind(input: {
   visitorAuthUid: string;
   chatExists: boolean;
   leaseVisitorAuthUid: string | null | undefined;
+  /** True when presence/alias proves this auth owns the chat's anon session. */
+  sessionOwnershipVerified?: boolean;
 }): VisitorLeaseBindDecision {
   const visitorAuthUid = String(input.visitorAuthUid || "").trim();
   if (!visitorAuthUid) {
@@ -69,6 +74,9 @@ export function decideVisitorLeaseBind(input: {
   }
 
   if (input.chatExists) {
+    if (input.sessionOwnershipVerified === true) {
+      return { action: "claim_existing", visitorAuthUid };
+    }
     return { action: "require_new_epoch", reason: "legacy_unbound", writeLease: false };
   }
 
