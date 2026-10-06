@@ -119,6 +119,37 @@ assert.equal(
 );
 
 assert.equal(
+  notificationTitleForRecipient(
+    { fromUid: `profile_${OWNER}`, senderKind: "profile", profileUid: OWNER, texto: "hola" },
+    {
+      targetUid: OWNER,
+      targetUsername: "emiliano",
+      anon: true,
+      anonSessionId: ANON,
+      hideProfileFromVisitor: true,
+    },
+    VISITOR_AUTH,
+  ),
+  "Anónimo",
+  "profile→visitor push must not reveal the profile username",
+);
+
+assert.equal(
+  notificationTitleForRecipient(
+    { fromUid: `profile_${OWNER}`, senderKind: "profile", profileUid: OWNER, texto: "hola" },
+    {
+      targetUid: OWNER,
+      targetUsername: "emiliano",
+      anon: true,
+      anonSessionId: ANON,
+    },
+    OWNER,
+  ),
+  "emiliano",
+  "profile owner still sees their own thread title when applicable",
+);
+
+assert.equal(
   notificationBodyFromMessage({ texto: "", mediaUrl: "x" }),
   "Nuevo mensaje",
 );

@@ -81,6 +81,8 @@ type ChatDoc = {
   receptorUsername?: string | null;
   anon?: boolean;
   anonBlocksProfile?: boolean;
+  /** Profile approached a live visitor — never reveal the profile name to them. */
+  hideProfileFromVisitor?: boolean;
 };
 
 type MessageDoc = {
@@ -252,6 +254,11 @@ export function notificationTitleForRecipient(
   const profileUid = asId(
     message.profileUid || chat.targetUid || chat.receptorUid || chat.anonOwnerUid,
   );
+  const recipient = asId(recipientUid);
+  const anonThread =
+    chat.anon === true ||
+    asId(chat.anonSessionId).startsWith("anon_") ||
+    chat.hideProfileFromVisitor === true;
 
   // Immutable senderRole wins over historical fromUid shape.
   // Legacy role=anon must never surface a raw Firebase fromUid.
@@ -263,17 +270,29 @@ export function notificationTitleForRecipient(
     });
   }
 
-  if (role === "profile" || isOwnerReply(message, chat, from) || from.startsWith("profile_")) {
-    return profileName || "Nuevo mensaje";
+  const fromProfile =
+    role === "profile" ||
+    isOwnerReply(message, chat, from) ||
+    from.startsWith("profile_") ||
+    Boolean(profileUid && from === profileUid);
+
+  // Profile→visitor: the OS banner must not out the registered username.
+  if (
+    fromProfile &&
+    anonThread &&
+    profileUid &&
+    recipient &&
+    recipient !== profileUid
+  ) {
+    return "Anónimo";
   }
 
-  // Same-profile author (legacy bare Firebase fromUid).
-  if (profileUid && from === profileUid) {
+  if (fromProfile) {
     return profileName || "Nuevo mensaje";
   }
 
   // Never attribute another peer's message to this chat's profile username.
-  if (profileName && from && from !== profileUid && from !== asId(recipientUid)) {
+  if (profileName && from && from !== profileUid && from !== recipient) {
     return "Nuevo mensaje";
   }
 
