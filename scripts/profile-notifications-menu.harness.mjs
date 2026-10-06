@@ -78,9 +78,14 @@ assert.match(prompt, /enableNativeChatPush/);
 assert.match(prompt, /reason !== "not_native"/);
 assert.match(prompt, /resetChatNotificationPromptOnLogout/);
 assert.match(prompt, /chatNotificationPromptOpen/);
+assert.match(prompt, /anonDoorOpen|isAnonMatchDoorOpen/);
 assert.doesNotMatch(prompt, /registerNativePushIfEnabled/);
 assert.match(prompt, /z-\[1000000\]/);
 assert.match(prompt, /completeChatNotificationPrompt\(false\)/);
+
+const readySrc = read("src/lib/chat/notificationProfileReady.ts");
+assert.match(readySrc, /anonDoorOpen/);
+assert.match(readySrc, /isAnonymous/);
 
 const fcmSrc = read("src/lib/chat/fcmPush.ts");
 assert.match(fcmSrc, /enableInFlightByUid/);

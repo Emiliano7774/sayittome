@@ -242,6 +242,26 @@ assert.equal(
   }),
   true,
 );
+assert.equal(
+  ready.isNotificationProfileReady({
+    loading: false,
+    isAnonymous: true,
+    uid: "anonFirebaseUid1",
+    anonDoorOpen: false,
+  }),
+  false,
+  "anonymous before shuffle door must not get the notification prompt",
+);
+assert.equal(
+  ready.isNotificationProfileReady({
+    loading: false,
+    isAnonymous: true,
+    uid: "anonFirebaseUid1",
+    anonDoorOpen: true,
+  }),
+  true,
+  "anonymous after shuffle enter gets the same notification rights",
+);
 assert.equal(store.setFcmRegistrationState("", { status: "active" }).uid, "");
 const emptyUnsub = store.subscribeFcmRegistration("", () => undefined);
 emptyUnsub();

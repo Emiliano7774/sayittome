@@ -15,13 +15,19 @@ const require = createRequire(import.meta.url);
 let resolvePushRecipientUids;
 let notificationTitleForRecipient;
 let notificationBodyFromMessage;
+let mergeVisitorPushRecipient;
+let anonSessionFromProfileAnonChatId;
+/** @type {Record<string, unknown> | null} */
+let compiledMod = null;
 
 const compiled = path.join(root, "functions/lib/index.js");
 if (fs.existsSync(compiled)) {
-  const mod = require(compiled);
-  resolvePushRecipientUids = mod.resolvePushRecipientUids;
-  notificationTitleForRecipient = mod.notificationTitleForRecipient;
-  notificationBodyFromMessage = mod.notificationBodyFromMessage;
+  compiledMod = require(compiled);
+  resolvePushRecipientUids = compiledMod.resolvePushRecipientUids;
+  notificationTitleForRecipient = compiledMod.notificationTitleForRecipient;
+  notificationBodyFromMessage = compiledMod.notificationBodyFromMessage;
+  mergeVisitorPushRecipient = compiledMod.mergeVisitorPushRecipient;
+  anonSessionFromProfileAnonChatId = compiledMod.anonSessionFromProfileAnonChatId;
 } else {
   resolvePushRecipientUids = (message, chat) => {
     const from = String(message.fromUid || message.ownerId || "").trim();
@@ -72,7 +78,26 @@ assert.deepEqual(
     { targetUid: OWNER, initiatorUid: "", participantes: [ANON, OWNER] },
   ),
   [],
-  "profile→anon without firebase initiator skips FCM",
+  "profile→anon without firebase initiator needs private visitor lookup",
+);
+
+const VISITOR_AUTH = "visitorFirebaseUid99";
+if (typeof mergeVisitorPushRecipient === "function") {
+  assert.deepEqual(
+    mergeVisitorPushRecipient([], VISITOR_AUTH, `profile_${OWNER}`),
+    [VISITOR_AUTH],
+    "private visitor auth uid becomes the FCM recipient",
+  );
+}
+if (typeof anonSessionFromProfileAnonChatId === "function") {
+  assert.equal(
+    anonSessionFromProfileAnonChatId(`${ANON}__anon_to__alice`),
+    ANON,
+  );
+}
+assert.match(
+  fs.readFileSync(path.join(root, "functions/src/index.ts"), "utf8"),
+  /lookupPrivateVisitorAuthUid/,
 );
 
 assert.equal(

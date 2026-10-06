@@ -163,6 +163,84 @@ export function resolvePushRecipientUids(message: MessageDoc, chat: ChatDoc): st
   return [...recipients].filter(isFirebaseUid);
 }
 
+const ABUSE_CHAT_LEASE_COLLECTION = "anon_abuse_chat_leases";
+const ANON_ALIAS_COLLECTION = "anon_abuse_anon_aliases";
+
+/** Visitor session id embedded in profile↔anon chat ids (not a Firebase uid). */
+export function anonSessionFromProfileAnonChatId(chatId: string): string {
+  const marker = "__anon_to__";
+  const id = asId(chatId);
+  if (!id.includes(marker)) return "";
+  const sender = id.split(marker)[0] || "";
+  return sender.startsWith("anon_") ? sender : "";
+}
+
+/** Merge a private visitor Firebase uid into the push recipient set. */
+export function mergeVisitorPushRecipient(
+  base: string[],
+  visitorAuthUid: string,
+  fromUid: string,
+): string[] {
+  const visitor = asId(visitorAuthUid);
+  const from = asId(fromUid);
+  if (!isFirebaseUid(visitor) || visitor === from) return [...base].filter(isFirebaseUid);
+  const next = new Set(base.filter(isFirebaseUid));
+  next.add(visitor);
+  next.delete(from);
+  return [...next];
+}
+
+/**
+ * Anonymous visitors intentionally omit their Firebase uid from chat docs.
+ * Resolve it from the private lease, live presence, or match-alias binding.
+ */
+export async function lookupPrivateVisitorAuthUid(
+  chatId: string,
+  chat: ChatDoc,
+): Promise<string> {
+  const initiator = asId(chat.initiatorUid);
+  if (isFirebaseUid(initiator)) return initiator;
+
+  try {
+    const leaseSnap = await db().collection(ABUSE_CHAT_LEASE_COLLECTION).doc(chatId).get();
+    const fromLease = asId((leaseSnap.data() || {}).visitorAuthUid);
+    if (isFirebaseUid(fromLease)) return fromLease;
+  } catch (error) {
+    logger.warn("push lease lookup failed", { chatId, error });
+  }
+
+  const anonSession =
+    asId((chat as { anonSessionId?: string }).anonSessionId) ||
+    anonSessionFromProfileAnonChatId(chatId);
+  if (!anonSession.startsWith("anon_")) return "";
+
+  try {
+    const presenceQuery = await db()
+      .collection("anonimos_activos")
+      .where("chatSessionId", "==", anonSession)
+      .limit(3)
+      .get();
+    for (const row of presenceQuery.docs) {
+      const uid = asId((row.data() || {}).authUid);
+      if (isFirebaseUid(uid)) return uid;
+    }
+
+    const presenceDoc = await db().collection("anonimos_activos").doc(anonSession).get();
+    if (presenceDoc.exists) {
+      const uid = asId((presenceDoc.data() || {}).authUid);
+      if (isFirebaseUid(uid)) return uid;
+    }
+
+    const aliasSnap = await db().collection(ANON_ALIAS_COLLECTION).doc(anonSession).get();
+    const fromAlias = asId((aliasSnap.data() || {}).visitorAuthUid);
+    if (isFirebaseUid(fromAlias)) return fromAlias;
+  } catch (error) {
+    logger.warn("push visitor presence lookup failed", { chatId, anonSession, error });
+  }
+
+  return "";
+}
+
 export function notificationTitleForRecipient(
   message: MessageDoc,
   chat: ChatDoc,
@@ -579,7 +657,20 @@ export const onChatMessageCreated = onDocumentCreated(
       logger.warn("anon_profile_block check failed", { chatId, messageId, error });
     }
 
-    const recipients = resolvePushRecipientUids(message, chat);
+    let recipients = resolvePushRecipientUids(message, chat);
+    const fromForRecipients = messageAuthorId(message);
+    // Profile→anon: visitor Firebase uid is private (lease/presence), not on chat docs.
+    if (
+      recipients.length === 0 &&
+      isOwnerReply(message, chat, fromForRecipients)
+    ) {
+      const visitorUid = await lookupPrivateVisitorAuthUid(chatId, chat);
+      recipients = mergeVisitorPushRecipient(
+        recipients,
+        visitorUid,
+        fromForRecipients,
+      );
+    }
 
     if (recipients.length === 0) {
       await markDelivery(chatId, messageId, {

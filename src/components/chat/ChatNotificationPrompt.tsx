@@ -19,8 +19,22 @@ import { enableStoryNotificationPack } from "@/lib/stories/storyNotificationPref
 import { isNotificationProfileReady } from "@/lib/chat/notificationProfileReady";
 import { chatNotificationPromptOpen } from "@/lib/chat/chatNotificationPromptOpen";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
+import {
+  ANON_MATCH_DOOR_EVENT,
+  isAnonMatchDoorOpen,
+} from "@/lib/anonMatch/anonMatchDoor";
 
 export { chatNotificationPromptOpen } from "@/lib/chat/chatNotificationPromptOpen";
+
+function subscribeAnonMatchDoor(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(ANON_MATCH_DOOR_EVENT, onStoreChange);
+  return () => window.removeEventListener(ANON_MATCH_DOOR_EVENT, onStoreChange);
+}
+
+function getAnonMatchDoorVersion(uid?: string, isAnonymous?: boolean) {
+  return `${uid || ""}:${isAnonymous ? 1 : 0}:${isAnonMatchDoorOpen() ? 1 : 0}`;
+}
 
 export default function ChatNotificationPrompt() {
   const t = useT();
@@ -31,7 +45,17 @@ export default function ChatNotificationPrompt() {
     () => "0-0",
   );
   void prefsVersion;
+  const doorVersion = useSyncExternalStore(
+    subscribeAnonMatchDoor,
+    () => getAnonMatchDoorVersion(firebaseUser?.uid, firebaseUser?.isAnonymous),
+    () => "0:0:0",
+  );
+  void doorVersion;
   const prefs = getChatNotificationPrefs();
+  const anonDoorOpen = Boolean(
+    firebaseUser &&
+      (!firebaseUser.isAnonymous || isAnonMatchDoorOpen(firebaseUser)),
+  );
   const profileReady = Boolean(
     firebaseUser &&
       isNotificationProfileReady({
@@ -42,6 +66,7 @@ export default function ChatNotificationPrompt() {
         profileSetupComplete: profile?.profileSetupComplete,
         email: profile?.email || firebaseUser.email || "",
         emailVerified: firebaseUser.emailVerified,
+        anonDoorOpen,
       }),
   );
   const notificationApiReady =
