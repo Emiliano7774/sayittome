@@ -54,7 +54,6 @@ function readLegacyLocalId(): string {
 
 async function writeAnonymousPresence(force = false) {
   if (typeof window === "undefined") return;
-  if (document.hidden) return;
 
   const user = auth.currentUser;
   const kind = resolveAnonPresencePublisherKind({
@@ -208,7 +207,7 @@ export function startAnonymousPresenceSystem() {
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) return;
+    // A tab that is still open, even behind another window, stays in the pool.
     void writeAnonymousPresence(true);
   });
 
@@ -220,8 +219,9 @@ export function startAnonymousPresenceSystem() {
     void writeAnonymousPresence(true);
   });
 
-  window.addEventListener("pagehide", () => {
-    // Use cached alias only — do not await bind on unload.
+  window.addEventListener("pagehide", (event) => {
+    // bfcache keeps the tab alive. Only a real close leaves the pool.
+    if (event.persisted) return;
     void removeAnonymousPresence();
   });
 }
