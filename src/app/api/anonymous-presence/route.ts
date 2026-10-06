@@ -95,10 +95,12 @@ export async function POST(req: Request) {
     const bound =
       (await lookupActiveAnonMatchAliasForAuth(caller.uid)) ||
       "";
+    // Heartbeats must target the auth-bound alias. A stale body claim (rotated
+    // alias still in sessionStorage) must not reject the write — that dropped
+    // open anonymous tabs from Shuffle / "en línea".
     const decision = decideAnonymousPresenceWrite({
       callerIsAnonymous: true,
       boundServerAlias: bound,
-      claimedAnonId: String(body?.anonId || "").trim() || undefined,
     });
     if (!decision.ok) {
       const status =

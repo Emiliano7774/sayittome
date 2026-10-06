@@ -241,6 +241,24 @@ assert.equal(identity.ANON_PRESENCE_ACTIVE_MS, 15 * 60 * 1000);
 assert.equal(identity.ANON_PRESENCE_HEARTBEAT_MS, 90_000);
 covers.push("active_window_15m");
 
+// Open tabs must stay online: pagehide discard must not DELETE presence.
+assert.doesNotMatch(
+  presenceSrc,
+  /addEventListener\(\s*["']pagehide["'][\s\S]{0,200}removeAnonymousPresence/,
+);
+assert.match(presenceSrc, /alias_spoof|missing_server_alias/);
+assert.match(presenceSrc, /AbortSignal\.timeout/);
+assert.match(routeSrc, /stale body claim|auth-bound alias/);
+covers.push("open_tab_presence_survives_pagehide");
+
+const shuffleSrc = fs.readFileSync(
+  path.join(root, "src/app/api/shuffle/route.ts"),
+  "utf8",
+);
+assert.match(shuffleSrc, /ANON_PRESENCE_ACTIVE_MS/);
+assert.doesNotMatch(shuffleSrc, /const ANON_ACTIVE_MS = 90 \* 1000/);
+covers.push("shuffle_visitor_ttl_matches_presence");
+
 console.log(
   JSON.stringify({
     gate: "ANON_MATCH_PRESENCE_ALIAS",

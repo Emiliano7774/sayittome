@@ -28,6 +28,7 @@ import {
   profileIsVisibleToViewer,
   profileMatchesShuffleServerFilters,
 } from "@/lib/shuffle/serverFilters";
+import { ANON_PRESENCE_ACTIVE_MS } from "@/lib/anonMatch/anonymousPresenceIdentity";
 
 const SHUFFLE_JSON_HEADERS = {
   "Cache-Control": "private, no-store, no-cache, must-revalidate",
@@ -84,7 +85,6 @@ const SHUFFLE_SEARCH_LIMIT = 200;
 const SHUFFLE_FETCH_PAGE_SIZE = 1000;
 const SHUFFLE_FETCH_MAX_PAGES = 40;
 const ANON_SCAN_LIMIT = 1000;
-const ANON_ACTIVE_MS = 90 * 1000;
 /** Live anonymous sessions are a separate, short-lived slice of the pool. */
 const VISITOR_SCAN_LIMIT = 1000;
 const VISITOR_CACHE_MS = 20_000;
@@ -203,11 +203,13 @@ function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
 function isAnonymousDocActive(doc: any, now = Date.now()) {
   const fields = doc?.fields || {};
   const expiresMs = fieldInstant(fields, "expiresAt");
-  if (expiresMs) return expiresMs > now;
+  if (expiresMs && expiresMs > now) return true;
 
   const seenMs = fieldInstant(fields, "lastSeenAt") || fieldInstant(fields, "updatedAt");
   if (!seenMs) return false;
-  return now - seenMs <= ANON_ACTIVE_MS;
+  // Same TTL as presence heartbeats. A missing/stale expiresAt field must not
+  // drop an open session after only 90s of background-tab timer throttling.
+  return now - seenMs <= ANON_PRESENCE_ACTIVE_MS;
 }
 
 function visitorDocToProfile(doc: any, now = Date.now()): ApiProfile | null {
@@ -225,10 +227,11 @@ function visitorDocToProfile(doc: any, now = Date.now()): ApiProfile | null {
   const seenMs = fieldInstant(fields, "lastSeenAt") || fieldInstant(fields, "updatedAt") || now;
   const lastActive = new Date(seenMs).toISOString();
 
+  const firebaseAuthUid = fieldString(fields, "authUid");
   return {
     uid: chatSessionId,
-    authUid: chatSessionId,
-    aliasIds: [chatSessionId],
+    authUid: firebaseAuthUid || chatSessionId,
+    aliasIds: [...new Set([chatSessionId, presenceId, firebaseAuthUid].filter(Boolean))],
     username: "Anónimo",
     usernameLower: "",
     bio: "En la app ahora",

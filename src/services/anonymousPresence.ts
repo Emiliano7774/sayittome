@@ -10,7 +10,11 @@ import {
   shouldPublishAnonMatchPresence,
 } from "@/lib/anonMatch/anonymousPresenceIdentity";
 import { isAnonMatchDoorOpen, ANON_MATCH_DOOR_EVENT } from "@/lib/anonMatch/anonMatchDoor";
-import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
+import {
+  clearAnonMatchServerAlias,
+  getStoredAnonMatchAlias,
+  storeAnonMatchAlias,
+} from "@/lib/anonMatch/anonMatchSession";
 import { resolveAnonMatchSessionId } from "@/lib/anonMatch/fetchAnonMatch";
 import { readVisibilityPayload } from "@/lib/shuffle/audiencePayload";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
@@ -21,11 +25,12 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let authUnsub: (() => void) | null = null;
 let inFlight = false;
 let lastWriteAt = 0;
-/** Cached server alias for pagehide — never block unload waiting for bind. */
+/** Cached server alias for explicit leave (door close / logout). */
 let cachedPresenceAlias = "";
 let currentUser: User | null = null;
 
 const MIN_WRITE_GAP_MS = 60_000;
+const PRESENCE_FETCH_TIMEOUT_MS = 12_000;
 
 async function authHeaders(): Promise<Record<string, string> | null> {
   const user = auth.currentUser;
@@ -50,6 +55,42 @@ function readLegacyLocalId(): string {
   } catch {
     return "";
   }
+}
+
+async function postPresenceHeartbeat(anonId: string, headers: Record<string, string>) {
+  const legacyLocalAnonId = resolveLegacyAnonPresenceCleanupId({
+    serverAnonAlias: anonId,
+    // Never mint a new local chat session id just for presence cleanup.
+    localAnonSessionId: readLegacyLocalId(),
+  });
+
+  // No keepalive here: keepalive + AbortSignal is rejected in some browsers,
+  // and heartbeats are not unload beacons (leave uses TTL / door-close DELETE).
+  const res = await fetch("/api/anonymous-presence", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      anonId,
+      chatSessionId: getAnonSessionId(),
+      ...readVisibilityPayload(),
+      ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(PRESENCE_FETCH_TIMEOUT_MS),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    anonId?: string;
+    error?: string;
+  };
+  return { res, json };
+}
+
+function adoptServerPresenceAlias(anonId: string, ownerUid?: string) {
+  const id = String(anonId || "").trim();
+  if (!id) return;
+  cachedPresenceAlias = id;
+  storeAnonMatchAlias(id, ownerUid);
 }
 
 async function writeAnonymousPresence(force = false) {
@@ -83,33 +124,33 @@ async function writeAnonymousPresence(force = false) {
     if (!alias) {
       alias = await resolveAnonMatchSessionId().catch(() => "");
     }
-    const anonId = resolveAnonPresenceDocId({ serverAnonAlias: alias });
+    let anonId = resolveAnonPresenceDocId({ serverAnonAlias: alias });
     if (!anonId) return;
 
     cachedPresenceAlias = anonId;
     const headers = await authHeaders();
     if (!headers) return;
 
-    const legacyLocalAnonId = resolveLegacyAnonPresenceCleanupId({
-      serverAnonAlias: anonId,
-      // Never mint a new local chat session id just for presence cleanup.
-      localAnonSessionId: readLegacyLocalId(),
-    });
+    let { res, json } = await postPresenceHeartbeat(anonId, headers);
 
-    const res = await fetch("/api/anonymous-presence", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        anonId,
-        chatSessionId: getAnonSessionId(),
-        ...readVisibilityPayload(),
-        ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
-      }),
-      cache: "no-store",
-      keepalive: true,
-    });
+    // Rotated / stale client alias must not leave an open tab offline.
+    const err = String(json?.error || "");
+    if (
+      !res.ok &&
+      (err === "alias_spoof" || err === "missing_server_alias" || err === "unbound_alias")
+    ) {
+      clearAnonMatchServerAlias();
+      cachedPresenceAlias = "";
+      const rebound = await resolveAnonMatchSessionId().catch(() => "");
+      anonId = resolveAnonPresenceDocId({ serverAnonAlias: rebound });
+      if (!anonId) return;
+      cachedPresenceAlias = anonId;
+      ({ res, json } = await postPresenceHeartbeat(anonId, headers));
+    }
+
     if (res.ok) {
       lastWriteAt = Date.now();
+      adoptServerPresenceAlias(String(json?.anonId || anonId), user?.uid);
     }
   } catch {
     // Presence is best-effort — match delivery still depends on alias identity.
@@ -219,11 +260,10 @@ export function startAnonymousPresenceSystem() {
     void writeAnonymousPresence(true);
   });
 
-  window.addEventListener("pagehide", (event) => {
-    // bfcache keeps the tab alive. Only a real close leaves the pool.
-    if (event.persisted) return;
-    void removeAnonymousPresence();
-  });
+  // Do NOT DELETE on pagehide. Chrome discards/freezes background tabs and
+  // fires pagehide while the tab strip still shows the session — that was
+  // yanking open anonymous visitors out of "en línea". Leaving the pool is
+  // TTL (expiresAt) + explicit door close / auth change only.
 }
 
 /** Force a presence heartbeat before match search so peers can find this session. */
