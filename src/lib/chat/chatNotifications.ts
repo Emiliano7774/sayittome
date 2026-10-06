@@ -413,7 +413,14 @@ export async function showChatNotification(input: {
   };
 
   try {
-    // Prefer an already-active service worker when present (background tabs).
+    // Focused tabs: page Notification is reliable. Some Chromium builds swallow
+    // serviceWorker.showNotification while the document is visible.
+    if (!document.hidden) {
+      showPageNotification();
+      return;
+    }
+
+    // Background tabs: prefer an already-active service worker when present.
     // Never await serviceWorker.ready — it hangs forever with no SW registered.
     const getRegistration = navigator.serviceWorker?.getRegistration?.bind(
       navigator.serviceWorker,

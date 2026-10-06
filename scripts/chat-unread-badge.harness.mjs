@@ -281,7 +281,8 @@ check(
 check(
   "BOTTOM_NAV_CHAT_BADGE_APPEARS_ON_INBOUND_UNREAD",
   unreadCount(inboundForOwner, ownerUid, ownerUid) === 1 &&
-    appNav.includes("unreadCount={totalUnread}"),
+    appNav.includes("useHeldUnreadBadge") &&
+    appNav.includes("unreadCount={badgeUnread}"),
 );
 
 check(

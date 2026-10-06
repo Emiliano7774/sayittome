@@ -870,7 +870,9 @@ export function useShufflePool() {
           } else if (getVisibleShuffleProfiles().length > 0) {
             patchShuffleSlotPresence(nextProfiles);
           }
-          if (!q && getVisibleShuffleProfiles().length > 0) {
+          if (!q) {
+            // Solo-online often empties the painted window before visitors land —
+            // still inject live anons (same path as the 45s presence poll).
             syncLiveShuffleVisitors(
               activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
             );

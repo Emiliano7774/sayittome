@@ -111,7 +111,8 @@ assert.equal(
     ["participantes", "receptor", "target"],
     { uid: true, anon: true },
   ),
-  false,
+  true,
+  "uid family alone completes sync; anonRecovery must not block the orange tick",
 );
 assert.equal(
   inbox.areInboxQuerySnapshotsComplete(

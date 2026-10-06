@@ -172,7 +172,12 @@ const serverFilters = fs.readFileSync(
 );
 assert.match(
   serverFilters,
-  /if \(profile\.shuffleVisitor === true\) return true;/,
+  /if \(profile\.shuffleVisitor === true\) \{/,
+  "live anonymous sessions bypass demographic filters",
+);
+assert.match(
+  serverFilters,
+  /if \(filters\.soloOnline\) return isProfileOnline/,
   "solo online keeps live anonymous sessions",
 );
 const clientFilters = fs.readFileSync(path.join(root, "src/lib/shuffle/filters.ts"), "utf8");

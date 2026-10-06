@@ -112,6 +112,15 @@ export function profileMatchesShuffleServerFilters(
 ) {
   if (!shuffleFiltersHasAny(filters)) return true;
 
+  // Live anonymous sessions are presence cards, not demographics. Solo-online
+  // (and mixed feeds) must keep them even when country/sex/age filters are on.
+  // Photo/stories filters still exclude them — they have neither.
+  if (profile.shuffleVisitor === true) {
+    if (filters.soloConFoto || filters.soloConHistorias) return false;
+    if (filters.soloOnline) return isProfileOnline(profile, now);
+    return true;
+  }
+
   if (!geoAudienceIncludes(discoveryAudience(filters), profile)) return false;
 
   if (filters.ciudad) {

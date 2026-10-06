@@ -345,9 +345,13 @@ export function areInboxQuerySnapshotsComplete(
   const received = new Set(
     [...receivedKeys].map((key) => String(key || "").trim()).filter(Boolean),
   );
+  // Registered users must not wait on one-shot anonRecovery before the orange
+  // tick / whip listeners can use UID inbox rows. Anon recovery still merges
+  // when it arrives; it only gates sync for pure anonymous sessions.
+  const requireAnon = Boolean(activeFamilies.anon) && !activeFamilies.uid;
   const required = [
     ...(activeFamilies.uid ? UID_INBOX_QUERY_KEYS : []),
-    ...(activeFamilies.anon ? ANON_INBOX_QUERY_KEYS : []),
+    ...(requireAnon ? ANON_INBOX_QUERY_KEYS : []),
   ];
   return required.length > 0 && required.every((key) => received.has(key));
 }
@@ -377,12 +381,23 @@ export function shouldShowAnonPeerInbox(
 }
 
 export function resolveChatViewerId(chat: InboxChat, firebaseUid = "") {
-  if (firebaseUid && isIncomingAnonChatForOwner(chat, firebaseUid)) {
-    return firebaseUid;
+  const uid = String(firebaseUid || "").trim();
+  if (uid && !uid.startsWith("anon_") && isIncomingAnonChatForOwner(chat, uid)) {
+    return uid;
   }
 
   const threadAnonId = profileAnonSenderFromChat(chat);
-  if (threadAnonId) return threadAnonId;
+  const liveAnonId = getChatAnonSenderId();
 
-  return firebaseUid || getChatAnonSenderId();
+  // Only treat the viewer as the thread anon when this browser owns that session.
+  // Returning threadAnon for a registered profile owner made inbound visitor
+  // messages look "own" — orange tick + whip/notification never fired until
+  // /chats hydrated owner fields and flipped the role.
+  if (threadAnonId.startsWith("anon_")) {
+    if (isAnonVisitorProfileChat(chat, uid)) return threadAnonId;
+    if (!uid && liveAnonId.startsWith("anon_")) return threadAnonId;
+    if (liveAnonId && liveAnonId === threadAnonId) return threadAnonId;
+  }
+
+  return uid || liveAnonId || threadAnonId;
 }

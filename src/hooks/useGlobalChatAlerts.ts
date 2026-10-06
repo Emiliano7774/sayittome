@@ -90,19 +90,24 @@ export function useGlobalChatAlerts() {
     return match ? decodeURIComponent(match[1]) : "";
   })();
 
-  // Don't hide the orange tick forever while sync is slow — session/inbox rows
-  // already carry enough meta to compute pending.
+  // Prefer the rows the UI already trusts (snapshot fallback included). Waiting
+  // only on live sortedChats hid the orange tick until the user opened /chats.
+  const unreadSource =
+    sortedChats.length > 0 ? sortedChats : displaySortedChats;
   const unreadHydrated =
-    !inboxRouteEnabled || firestoreSynced || sortedChats.length > 0;
+    !inboxRouteEnabled ||
+    firestoreSynced ||
+    unreadSource.length > 0;
   const totalUnread = unreadHydrated
-    ? totalUnreadCount(sortedChats, firebaseUid, { excludeChatId: activeChatId })
+    ? totalUnreadCount(unreadSource, firebaseUid, { excludeChatId: activeChatId })
     : 0;
 
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);
 
   pathnameRef.current = pathname;
-  sortedChatsRef.current = sortedChats;
+  sortedChatsRef.current =
+    sortedChats.length > 0 ? sortedChats : displaySortedChats;
 
   useEffect(() => {
     void initChatNotifications();
@@ -133,7 +138,7 @@ export function useGlobalChatAlerts() {
           (row) => row.id === chatId || row.canonicalChatId === chatId,
         ),
     });
-  }, [viewerId, firebaseUid]);
+  }, [viewerId, firebaseUid, sortedChats]);
 
   useEffect(() => {
     const sessionActive = getSessionChatIds().length > 0;
@@ -151,11 +156,18 @@ export function useGlobalChatAlerts() {
     }
 
     globalChatWhipManager.start();
-    const inboxIds = sortedChats.map((chat) => chat.canonicalChatId || chat.id);
+    const inboxRows = sortedChats.length > 0 ? sortedChats : displaySortedChats;
+    const inboxIds = inboxRows.map((chat) => chat.canonicalChatId || chat.id);
     globalChatWhipManager.syncInboxChatIds(
       Array.from(new Set([...inboxIds, ...getSessionChatIds()])),
     );
-  }, [chatAlertsRouteEnabled, messageListenersEnabled, loading, sortedChats]);
+  }, [
+    chatAlertsRouteEnabled,
+    messageListenersEnabled,
+    loading,
+    sortedChats,
+    displaySortedChats,
+  ]);
 
   return useMemo(
     () => ({
