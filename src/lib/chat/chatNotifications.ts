@@ -24,6 +24,8 @@ let permissionRequested = false;
 let nativePermissionGranted = false;
 let actionListenerAttached = false;
 const webAnonMatchNotifications = new Map<string, Notification>();
+/** Retain page Notification instances — Chrome can GC unreferenced banners instantly. */
+const webChatNotifications = new Map<string, Notification>();
 
 /** Stable numeric id from an opaque key (prefer messageId so banners do not replace). */
 export function stableNotificationId(key: string) {
@@ -405,45 +407,61 @@ export async function showChatNotification(input: {
     }
   };
 
+  const notificationOptions: NotificationOptions = {
+    body,
+    tag,
+    icon: ICON_PATH,
+    silent: false,
+    renotify: true,
+    data: { chatId, messageId, group },
+  };
+
   const showPageNotification = () => {
-    const notification = new Notification(title, {
-      body,
-      tag,
-      icon: ICON_PATH,
-      silent: false,
-      data: { chatId, messageId, group },
-    });
-    notification.onclick = onClick;
+    webChatNotifications.get(tag)?.close();
+    const notification = new Notification(title, notificationOptions);
+    webChatNotifications.set(tag, notification);
+    notification.onclose = () => {
+      if (webChatNotifications.get(tag) === notification) {
+        webChatNotifications.delete(tag);
+      }
+    };
+    notification.onclick = () => {
+      onClick();
+      notification.close();
+    };
+  };
+
+  const showViaServiceWorker = async () => {
+    const getRegistration = navigator.serviceWorker?.getRegistration?.bind(
+      navigator.serviceWorker,
+    );
+    if (!getRegistration) return false;
+    const registration = await getRegistration();
+    if (!registration?.active || typeof registration.showNotification !== "function") {
+      return false;
+    }
+    await registration.showNotification(title, notificationOptions);
+    return true;
   };
 
   try {
-    // Always use the page Notification API for web chat banners. Relying on an
-    // optional service worker left Chrome tabs silent when getRegistration()
-    // returned a non-active or non-showing registration (common on this host).
-    showPageNotification();
+    // Focused Chrome tabs: page Notification + retained reference. Monetag's
+    // /sw.js often owns getRegistration(); relying on it alone left banners
+    // silent while the Shuffle/Stories tab was visible.
+    if (!document.hidden) {
+      showPageNotification();
+      return;
+    }
+
+    // Background tab: prefer the active SW (persistent), fall back to page.
+    const shown = await showViaServiceWorker().catch(() => false);
+    if (!shown) showPageNotification();
   } catch {
-    // Permission revoked or blocked — last chance via SW if one is active.
     try {
-      const getRegistration = navigator.serviceWorker?.getRegistration?.bind(
-        navigator.serviceWorker,
-      );
-      if (!getRegistration) return;
-      void getRegistration()
-        .then((registration) => {
-          if (!registration?.active || typeof registration.showNotification !== "function") {
-            return;
-          }
-          return registration.showNotification(title, {
-            body,
-            tag,
-            icon: ICON_PATH,
-            silent: false,
-            data: { chatId, messageId, group },
-          });
-        })
-        .catch(() => undefined);
+      const shown = await showViaServiceWorker().catch(() => false);
+      if (!shown) showPageNotification();
     } catch {
-      // ignore
+      // Permission revoked or blocked.
     }
   }
 }

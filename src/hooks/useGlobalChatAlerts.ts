@@ -25,7 +25,8 @@ import {
   areChatNotificationsEnabled,
   subscribeChatNotificationPrefs,
 } from "@/lib/chat/chatNotificationPrefs";
-import { initChatNotifications, requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
+import { initChatNotifications, requestChatNotificationPermission, showChatNotification } from "@/lib/chat/chatNotifications";
+import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
 import {
   clearLocalPendingChat,
   countLocalPendingChats,
@@ -35,7 +36,8 @@ import {
 } from "@/lib/chat/localPendingChats";
 import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
-import { bindWhipSoundUnlock } from "@/lib/chat/whipSound";
+import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import { bindWhipSoundUnlock, playIncomingWhipSound } from "@/lib/chat/whipSound";
 
 function subscribeSessionChatIds(onStoreChange: () => void) {
   if (typeof window === "undefined") return () => undefined;
@@ -132,6 +134,66 @@ export function useGlobalChatAlerts() {
       }
     }
   }, [unreadHydrated, inboxRouteEnabled, unreadSource, firebaseUid, activeChatId]);
+
+  const seenLatestMessageIdsRef = useRef<Map<string, string> | null>(null);
+  const inboxAlertSignature = unreadSource
+    .map((chat) => `${chat.canonicalChatId || chat.id}:${chat.latestMessageId || ""}`)
+    .join("|");
+
+  // Whip only watches 25 threads and can miss the first live snapshot. Inbox
+  // latestMessageId transitions still raise the browser banner on Shuffle /
+  // Stories without opening /chats. Deduped with the whip path via message id.
+  useEffect(() => {
+    if (!unreadHydrated || !inboxRouteEnabled || !notificationsEnabled) return;
+    const previous = seenLatestMessageIdsRef.current;
+    const next = new Map<string, string>();
+    for (const chat of unreadSource) {
+      const chatId = chat.canonicalChatId || chat.id;
+      if (!chatId) continue;
+      next.set(chatId, String(chat.latestMessageId || ""));
+    }
+    seenLatestMessageIdsRef.current = next;
+    if (!previous) return;
+
+    for (const chat of unreadSource) {
+      const chatId = chat.canonicalChatId || chat.id;
+      if (!chatId || chatId === activeChatId) continue;
+      const latest = String(chat.latestMessageId || "");
+      const prior = previous.get(chatId);
+      if (!latest || prior === latest) continue;
+      const sender = String(chat.lastMessageSender || "");
+      if (sender && isOwnChatSender(sender, viewerId, firebaseUid, chat)) continue;
+      const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
+      if (prior === undefined && arrivedAt > 0 && Date.now() - arrivedAt > 2 * 60_000) {
+        continue;
+      }
+      tryAlertIncomingMessage({
+        chatId,
+        messageId: latest,
+        incoming: true,
+        suppress: false,
+        onAlert: () => {
+          playIncomingWhipSound();
+          void showChatNotification({
+            title: chatPeerTitle(chat, firebaseUid) || "Nuevo mensaje",
+            body: String(chat.lastMessage || "Nuevo mensaje"),
+            chatId,
+            messageId: latest,
+            viewingActiveChat: false,
+          });
+        },
+      });
+    }
+  }, [
+    unreadHydrated,
+    inboxRouteEnabled,
+    notificationsEnabled,
+    inboxAlertSignature,
+    unreadSource,
+    activeChatId,
+    viewerId,
+    firebaseUid,
+  ]);
 
   const pathnameRef = useRef(pathname);
   const sortedChatsRef = useRef(sortedChats);

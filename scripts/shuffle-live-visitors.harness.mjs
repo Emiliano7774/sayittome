@@ -200,7 +200,8 @@ assert.match(
   /forceAnonRecovery: pathname === \"\/chats\" && !documentHidden/,
 );
 assert.doesNotMatch(alertsSrc, /forceAnonRecovery: inboxRouteEnabled/);
-assert.doesNotMatch(alertsSrc, /seenLatestMessageIdsRef/);
+assert.match(alertsSrc, /seenLatestMessageIdsRef/);
+assert.match(alertsSrc, /showChatNotification/);
 const inboxSrc = fs.readFileSync(path.join(root, "src/hooks/useChatsInbox.ts"), "utf8");
 assert.match(
   inboxSrc,
@@ -233,7 +234,8 @@ assert.equal(
   "registerSessionChat only once (/chats force path)",
 );
 const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
-assert.match(notifSrc, /Always use the page Notification API/);
+assert.match(notifSrc, /webChatNotifications/);
+assert.match(notifSrc, /Focused Chrome tabs: page Notification/);
 assert.match(
   fs.readFileSync(path.join(root, "src/lib/chat/chatNotificationPrefs.ts"), "utf8"),
   /Notification\.permission === \"granted\"/,
