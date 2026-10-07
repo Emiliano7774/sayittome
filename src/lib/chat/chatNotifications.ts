@@ -103,7 +103,7 @@ async function findChatNotifyRegistration(): Promise<ServiceWorkerRegistration |
     const byScope = await navigator.serviceWorker.getRegistration(
       CHAT_NOTIFY_SW_SCOPE,
     );
-    if (isChatNotifyRegistration(byScope)) return byScope;
+    if (isChatNotifyRegistration(byScope)) return byScope ?? null;
   } catch {
     // ignore
   }
