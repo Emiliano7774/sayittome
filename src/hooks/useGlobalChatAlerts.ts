@@ -28,10 +28,11 @@ import {
 import { initChatNotifications, requestChatNotificationPermission, showChatNotification } from "@/lib/chat/chatNotifications";
 import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
 import {
-  clearLocalPendingChat,
+  clearLocalPendingChatsForThread,
   countLocalPendingChats,
   getLocalPendingChatsVersion,
   markLocalPendingChat,
+  reconcileLocalPendingChats,
   subscribeLocalPendingChats,
 } from "@/lib/chat/localPendingChats";
 import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
@@ -103,10 +104,6 @@ export function useGlobalChatAlerts() {
     return match ? decodeURIComponent(match[1]) : "";
   })();
 
-  useEffect(() => {
-    if (activeChatId) clearLocalPendingChat(activeChatId);
-  }, [activeChatId]);
-
   // Prefer the rows the UI already trusts (snapshot fallback included). Waiting
   // only on live sortedChats hid the orange tick until the user opened /chats.
   const unreadSource =
@@ -115,15 +112,35 @@ export function useGlobalChatAlerts() {
     !inboxRouteEnabled ||
     firestoreSynced ||
     unreadSource.length > 0;
+  const activeInboxRow = activeChatId
+    ? unreadSource.find(
+        (row) =>
+          row.id === activeChatId || row.canonicalChatId === activeChatId,
+      )
+    : undefined;
   const inboxUnread = unreadHydrated
     ? totalUnreadCount(unreadSource, firebaseUid, { excludeChatId: activeChatId })
     : 0;
   // Whip marks pending immediately — inbox unreadCounts can lag one snapshot.
-  const whipPending = countLocalPendingChats(activeChatId);
+  const whipPending = countLocalPendingChats(
+    activeChatId,
+    activeInboxRow?.id,
+    activeInboxRow?.canonicalChatId,
+  );
   const totalUnread = Math.max(inboxUnread, whipPending);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    clearLocalPendingChatsForThread(
+      activeChatId,
+      activeInboxRow?.id,
+      activeInboxRow?.canonicalChatId,
+    );
+  }, [activeChatId, activeInboxRow?.id, activeInboxRow?.canonicalChatId]);
 
   // Inbox unread alone must paint the orange tick on Shuffle/Stories — do not
   // wait for a whip id transition (new threads often arrive as first snapshot).
+  // Also drop latched ids once the inbox says they are read (after grace).
   useEffect(() => {
     if (!unreadHydrated || !inboxRouteEnabled) return;
     for (const chat of unreadSource) {
@@ -133,7 +150,36 @@ export function useGlobalChatAlerts() {
         markLocalPendingChat(chatId);
       }
     }
-  }, [unreadHydrated, inboxRouteEnabled, unreadSource, firebaseUid, activeChatId]);
+    const byId = new Map<string, (typeof unreadSource)[number]>();
+    for (const chat of unreadSource) {
+      byId.set(chat.id, chat);
+      if (chat.canonicalChatId) byId.set(chat.canonicalChatId, chat);
+    }
+    reconcileLocalPendingChats((chatId) => {
+      if (
+        chatId === activeChatId ||
+        (activeChatId &&
+          (byId.get(chatId)?.id === activeChatId ||
+            byId.get(chatId)?.canonicalChatId === activeChatId))
+      ) {
+        return false;
+      }
+      const chat = byId.get(chatId);
+      if (!chat) return firestoreSynced ? false : null;
+      return (
+        chatUnreadCountForViewer(chat, firebaseUid, {
+          excludeChatId: activeChatId,
+        }) > 0
+      );
+    });
+  }, [
+    unreadHydrated,
+    inboxRouteEnabled,
+    unreadSource,
+    firebaseUid,
+    activeChatId,
+    firestoreSynced,
+  ]);
 
   const seenLatestMessageIdsRef = useRef<Map<string, string> | null>(null);
   const inboxAlertSignature = unreadSource

@@ -11,6 +11,10 @@ import { collectViewerSenderIds } from "@/lib/chat/incomingChatActivity";
 import { isAnonVisitorProfileChat } from "@/lib/chat/inboxPeerTitle";
 import { computeThreadPendingForViewer } from "@/lib/chat/threadPending";
 import { markChatReadLocally } from "@/lib/chat/localChatRead";
+import {
+  clearAllLocalPendingChats,
+  clearLocalPendingChatsForThread,
+} from "@/lib/chat/localPendingChats";
 import { db } from "@/lib/firebase";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 
@@ -100,6 +104,15 @@ export async function markChatAsRead(
   if (chatForLocal) {
     markChatReadLocally(chatForLocal, viewerId, firebaseUid);
   }
+  // Orange Shuffle tick latches via localPendingChats — clear on explicit read
+  // (open thread / mark-all-seen), not only when the URL matches one id alias.
+  clearLocalPendingChatsForThread(
+    chatId,
+    chat?.id,
+    chat?.canonicalChatId,
+    chatForLocal?.id,
+    chatForLocal?.canonicalChatId,
+  );
 
   const readTimestamp = serverTimestamp();
   const patch: Record<string, boolean | number | string | FieldValue> = {
@@ -187,6 +200,10 @@ export async function markAllPendingChatsAsRead(
       computeThreadPendingForViewer(chat, firebaseUid, "").computedPending,
   );
 
+  // Optimistic: wipe the whip latch immediately so Shuffle's orange circle
+  // clears even while Firestore writes are still in flight.
+  clearAllLocalPendingChats();
+
   let cleared = 0;
   let failed = 0;
 
@@ -213,6 +230,9 @@ export async function markAllPendingChatsAsRead(
       }),
     );
   }
+
+  // Re-clear in case a late whip inbound re-latched during the writes.
+  if (failed === 0) clearAllLocalPendingChats();
 
   return { attempted: pending.length, cleared, failed };
 }
