@@ -50,7 +50,7 @@ function registrationScriptURL(registration: ServiceWorkerRegistration) {
  */
 function isChatNotifyRegistration(
   registration: ServiceWorkerRegistration | null | undefined,
-): registration is ServiceWorkerRegistration {
+): boolean {
   if (!registration) return false;
   const script = registrationScriptURL(registration);
   if (script.includes(CHAT_NOTIFY_SW_SCRIPT_MARKER)) return true;
