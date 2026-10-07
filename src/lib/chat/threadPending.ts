@@ -156,14 +156,23 @@ export function computeThreadPendingForViewer(
   } else if (serverUnreadSignal) {
     computedPending = true;
     reason = "server-unread-signal";
+  } else if (
+    // Honor explicit server read before latest-after-read. Recovery / snapshot
+    // rewrites often omit readAt while keeping readBy=true + unreadCounts=0;
+    // treating missing readAt as "never read" re-bolded opened rows on tab return.
+    candidateViewerIds.some(
+      (id) =>
+        chat.readBy?.[id] === true &&
+        !(typeof chat.unreadCounts?.[id] === "number" && chat.unreadCounts[id] > 0),
+    )
+  ) {
+    reason = "server-read-current";
   } else if (latestAt > 0 && latestAt > readAt) {
     computedPending = true;
     reason = "latest-after-read";
   } else if (latestMessageId && readAt === 0) {
     computedPending = true;
     reason = "new-message-id-no-read-marker";
-  } else if (chat.readBy?.[viewerId] === true) {
-    reason = "server-read-current";
   } else {
     // Any unresolved incoming last message must stay pending — never hide
     // inbound activity because of late/missing unreadCounts (cache→live).

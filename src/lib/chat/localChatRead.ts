@@ -5,7 +5,6 @@ import {
 import type { InboxChat } from "@/hooks/useChatsInbox";
 
 const READ_KEY = "sayittome_chat_read_local";
-
 let localReadVersion = 0;
 
 export function getLocalChatReadVersion() {
@@ -16,7 +15,6 @@ type ReadMap = Record<string, string>;
 
 function readMap(): ReadMap {
   if (typeof window === "undefined") return {};
-
   try {
     const raw = window.localStorage.getItem(READ_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
@@ -28,7 +26,6 @@ function readMap(): ReadMap {
 
 function writeMap(map: ReadMap) {
   if (typeof window === "undefined") return;
-
   try {
     window.localStorage.setItem(READ_KEY, JSON.stringify(map));
     localReadVersion += 1;
@@ -42,29 +39,39 @@ function readCacheKey(chatId: string, viewerId: string) {
   return `${chatId}:${viewerId}`;
 }
 
+function readMessageCacheKey(messageId: string, viewerId: string) {
+  return `message:${messageId}:${viewerId}`;
+}
+
+function readTextCacheKey(chatId: string, viewerId: string) {
+  return `text:${chatId}:${viewerId}`;
+}
+
+function textActivityKey(chat: InboxChat) {
+  return [chat.lastMessage || "", chat.lastMessageSender || ""].join("|");
+}
+
 export function markChatReadLocally(
   chat: InboxChat,
   viewerId: string,
   firebaseUid = "",
 ) {
   if (!viewerId && !firebaseUid) return;
-
   const chatId = chat.canonicalChatId || chat.id;
   const activityKey = chatActivityKey(chat);
+  const textKey = textActivityKey(chat);
   const map = readMap();
-  const viewerIds = collectViewerSenderIds(
-    chat,
-    viewerId || firebaseUid,
-    firebaseUid,
-  );
-
+  const viewerIds = collectViewerSenderIds(chat, viewerId || firebaseUid, firebaseUid);
+  const latestMessageId = String(chat.latestMessageId || "").trim();
   for (const id of viewerIds) {
     map[readCacheKey(chatId, id)] = activityKey;
-    if (chat.id !== chatId) {
-      map[readCacheKey(chat.id, id)] = activityKey;
+    if (chat.id !== chatId) map[readCacheKey(chat.id, id)] = activityKey;
+    if (textKey !== "|") {
+      map[readTextCacheKey(chatId, id)] = textKey;
+      if (chat.id !== chatId) map[readTextCacheKey(chat.id, id)] = textKey;
     }
+    if (latestMessageId) map[readMessageCacheKey(latestMessageId, id)] = "1";
   }
-
   writeMap(map);
 }
 
@@ -75,22 +82,37 @@ export function wasChatReadLocally(
 ) {
   const chatId = chat.canonicalChatId || chat.id;
   const activityKey = chatActivityKey(chat);
+  const textKey = textActivityKey(chat);
   const map = readMap();
-  const viewerIds = collectViewerSenderIds(
-    chat,
-    viewerId || firebaseUid,
-    firebaseUid,
-  );
+  const viewerIds = collectViewerSenderIds(chat, viewerId || firebaseUid, firebaseUid);
+  const latestMessageId = String(chat.latestMessageId || "").trim();
 
   for (const id of viewerIds) {
+    const stored =
+      map[readCacheKey(chatId, id)] || map[readCacheKey(chat.id, id)] || "";
+    if (stored && stored === activityKey) return true;
+
+    // Message-id marker survives inbox rows that drop latestMessageId later
+    // (forceAnonRecovery / preferInboxChat rewrite on tab return).
+    if (latestMessageId && map[readMessageCacheKey(latestMessageId, id)]) {
+      return true;
+    }
+
+    // Text fallback: same preview identity as when the chat was opened/read.
+    // A new inbound message changes lastMessage or sender and misses this.
     if (
-      map[readCacheKey(chatId, id)] === activityKey ||
-      map[readCacheKey(chat.id, id)] === activityKey
+      textKey !== "|" &&
+      (map[readTextCacheKey(chatId, id)] === textKey ||
+        map[readTextCacheKey(chat.id, id)] === textKey)
     ) {
       return true;
     }
-  }
 
+    // Marked with id:msg while the row later only has text activityKey.
+    if (stored.startsWith("id:") && textKey !== "|" && activityKey === textKey) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -102,17 +124,14 @@ export function subscribeLocalChatRead(callback: () => void) {
 
 export function clearLocalChatReadForViewer(viewerId: string) {
   if (!viewerId || typeof window === "undefined") return;
-
   const map = readMap();
   const suffix = `:${viewerId}`;
   let changed = false;
-
   for (const key of Object.keys(map)) {
     if (key.endsWith(suffix)) {
       delete map[key];
       changed = true;
     }
   }
-
   if (changed) writeMap(map);
 }

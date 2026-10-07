@@ -189,6 +189,12 @@ export async function GET(req: Request) {
           latestSenderKind: String(data.latestSenderKind || ""),
           latestSenderAnonSessionId: String(data.latestSenderAnonSessionId || ""),
           readBy: data.readBy && typeof data.readBy === "object" ? data.readBy : undefined,
+          readAt: data.readAt && typeof data.readAt === "object" ? data.readAt : undefined,
+          latestReadMessageId: String(data.latestReadMessageId || ""),
+          latestReadMessageIds:
+            data.latestReadMessageIds && typeof data.latestReadMessageIds === "object"
+              ? data.latestReadMessageIds
+              : undefined,
           unreadCounts:
             data.unreadCounts && typeof data.unreadCounts === "object"
               ? data.unreadCounts

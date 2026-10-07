@@ -226,8 +226,13 @@ export function inboxPeerDedupeKey(chat: InboxChat, viewerUid?: string) {
 function inboxActivityMatches(a: InboxChat, b: InboxChat) {
   const aid = String(a.latestMessageId || "").trim();
   const bid = String(b.latestMessageId || "").trim();
-  if (aid || bid) return Boolean(aid && bid && aid === bid);
-  return String(a.lastMessage || "") === String(b.lastMessage || "") && String(a.lastMessageSender || "") === String(b.lastMessageSender || "");
+  if (aid && bid) return aid === bid;
+  // One side may drop latestMessageId after forceAnonRecovery / prefer rewrite.
+  // Fall through to preview identity so readBy/readAt merge still applies.
+  return (
+    String(a.lastMessage || "") === String(b.lastMessage || "") &&
+    String(a.lastMessageSender || "") === String(b.lastMessageSender || "")
+  );
 }
 
 function mapTimestampMs(value: unknown) {

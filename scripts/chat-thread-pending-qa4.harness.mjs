@@ -145,7 +145,10 @@ check(
 check(
   "PENDING_FALLBACK_USES_LATEST_AFTER_READ",
   pendingSrc.includes("latestAt > 0 && latestAt > readAt") &&
-    pendingSrc.includes("profile-inbound-fallback"),
+    pendingSrc.includes('reason = "latest-after-read"') &&
+    pendingSrc.includes('reason = "server-read-current"') &&
+    pendingSrc.indexOf('reason = "server-read-current"') <
+      pendingSrc.indexOf('reason = "latest-after-read"'),
 );
 
 const report = {
