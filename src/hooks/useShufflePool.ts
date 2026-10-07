@@ -74,6 +74,7 @@ import {
   deferShufflePoolLoadIfTyping,
   ensureShuffleSearchTypingGuardInstalled,
   fetchShuffleApi,
+  fetchShuffleVisitorsApi,
   markShuffleSearchBlurred,
   markShuffleSearchFocused,
   markShuffleSearchTypingActive,
@@ -623,12 +624,23 @@ export function useShufflePool() {
     (profiles: ShuffleProfile[], total: number) => {
       if (profiles.length === 0) return;
 
-      poolRef.current = enrichShuffleIdentitiesFromBridges(
+      // Registered-pool overlays drop identities absent from the live snapshot.
+      // Keep existing live anons so loadProfiles cannot wipe solo-online visitors.
+      const previousVisitors = poolRef.current.filter(
+        (profile) => profile.shuffleVisitor === true,
+      );
+
+      const overlaid = enrichShuffleIdentitiesFromBridges(
         applyShuffleAdminTagOverlays(
           overlayShuffleProfileSnapshots(poolRef.current, profiles),
         ),
         [...featuredRef.current, ...getShuffleExcludeProfiles()],
       );
+
+      poolRef.current =
+        previousVisitors.length > 0
+          ? dedupeShuffleProfiles([...overlaid, ...previousVisitors])
+          : overlaid;
 
       if (total > 0) totalLiveRef.current = total;
 
@@ -902,6 +914,39 @@ export function useShufflePool() {
               Date.now(),
               { preferVisitors: filtersRef.current.soloOnline },
             );
+            // Rehydrate visitors after registered-pool load when solo-online —
+            // applyPool preserves prior anons, but cold cache may have none yet.
+            if (filtersRef.current.soloOnline) {
+              void (async () => {
+                try {
+                  const res = await fetchShuffleVisitorsApi();
+                  const json = await res.json();
+                  if (!mountedRef.current) return;
+                  const visitors = normalizeShuffleProfiles(json?.profiles).filter(
+                    (profile) => profile.shuffleVisitor === true,
+                  );
+                  if (visitors.length === 0) return;
+                  const base = poolRef.current.filter(
+                    (profile) => profile.shuffleVisitor !== true,
+                  );
+                  poolRef.current = dedupeShuffleProfiles([...base, ...visitors]);
+                  filterActivePool(searchRef.current.trim(), filtersRef.current);
+                  syncLiveShuffleVisitors(visitors, Date.now(), { preferVisitors: true });
+                  if (
+                    getVisibleShuffleProfiles().every(
+                      (profile) => !profile.shuffleVisitor,
+                    )
+                  ) {
+                    applyWindowFromPool(activePoolRef.current, {
+                      forceReplace: true,
+                      resetBatchMemory: false,
+                    });
+                  }
+                } catch {
+                  // Presence poll retries.
+                }
+              })();
+            }
           }
           if (
             getVisibleShuffleProfiles().length === 0 &&
@@ -1145,15 +1190,12 @@ export function useShufflePool() {
       };
 
       // Cached pool strips visitors. Solo-online must fetch live anons BEFORE
-      // painting the filtered window — typing-guard / document.hidden used to
-      // skip the fetch on Android and leave "en línea" without Anónimos.
+      // painting the filtered window — visitors bypass typing-guard so Android
+      // search-focus cannot leave "en línea" without Anónimos.
       if (nextFilters.soloOnline && !searchRef.current.trim()) {
         void (async () => {
           try {
-            const res = await fetchShuffleApi(
-              `/api/shuffle?visitors=1&_=${Date.now()}`,
-              { cache: "no-store" },
-            );
+            const res = await fetchShuffleVisitorsApi();
             const json = await res.json();
             if (!mountedRef.current) return;
             const visitors = normalizeShuffleProfiles(json?.profiles).filter(
@@ -1550,9 +1592,7 @@ export function useShufflePool() {
       // visitors=1 is tiny. Never skip for typing-guard or WebView hidden quirks —
       // solo-online on Android depended on this poll when the toggle fetch raced.
       try {
-        const res = await fetchShuffleApi(`/api/shuffle?visitors=1&_=${Date.now()}`, {
-          cache: "no-store",
-        });
+        const res = await fetchShuffleVisitorsApi();
         const json = await res.json();
         if (!mountedRef.current) return;
         const visitors = normalizeShuffleProfiles(json?.profiles).filter(

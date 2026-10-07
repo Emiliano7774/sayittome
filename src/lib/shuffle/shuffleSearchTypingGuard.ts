@@ -255,20 +255,10 @@ export function deferShuffleCountOnlyIfTyping() {
   return true;
 }
 
-/**
- * Central /api/shuffle fetch wrapper — checks suppression synchronously at
- * fire time (including warmup / mount / TTL / countOnly). Throws AbortError
- * when suppressed so callers treat it like a cancelled request.
- */
-export async function fetchShuffleApi(
+async function fetchShuffleNetwork(
   input: string,
   init?: RequestInit,
 ): Promise<Response> {
-  ensureShuffleSearchTypingGuardInstalled();
-  if (shouldSuppressShuffleNetworkAtFireTime()) {
-    const err = new DOMException("Shuffle network suppressed during search typing", "AbortError");
-    throw err;
-  }
   setQaShuffleDiagnosticState({
     shufflePoolStatus: "loading",
     shuffleLastApiUrl: input,
@@ -305,6 +295,33 @@ export async function fetchShuffleApi(
     });
     throw error;
   }
+}
+
+/**
+ * Central /api/shuffle fetch wrapper — checks suppression synchronously at
+ * fire time (including warmup / mount / TTL / countOnly). Throws AbortError
+ * when suppressed so callers treat it like a cancelled request.
+ */
+export async function fetchShuffleApi(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  ensureShuffleSearchTypingGuardInstalled();
+  if (shouldSuppressShuffleNetworkAtFireTime()) {
+    const err = new DOMException("Shuffle network suppressed during search typing", "AbortError");
+    throw err;
+  }
+  return fetchShuffleNetwork(input, init);
+}
+
+/**
+ * Live anonymous visitors poll — never blocked by search typing-guard.
+ * Solo-online on Android depends on this while search is focused/sticky.
+ */
+export async function fetchShuffleVisitorsApi(
+  init?: RequestInit,
+): Promise<Response> {
+  return fetchShuffleNetwork(`/api/shuffle?visitors=1&_=${Date.now()}`, init);
 }
 
 export function getShuffleSearchTypingDebug() {

@@ -120,6 +120,9 @@ export function chatHref(chat: InboxChat) {
 
 export { dedupeInboxChats as dedupeChats, mergeVisibleInboxThreads };
 
+/** Shuffle/Stories fallback re-polls recovered anon threads on this TTL (no session seeding). */
+export const FALLBACK_ANON_RECOVERY_TTL_MS = 25_000;
+
 export type UseChatsInboxOptions = {
   /** Logged-in user: four Firestore inbox queries. */
   enableInboxQueries?: boolean;
@@ -147,9 +150,11 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   const [sessionChatIds, setSessionChatIds] = useState<string[]>([]);
   const [anonSessionId, setAnonSessionId] = useState("");
   const [firestoreSynced, setFirestoreSynced] = useState(false);
+  const [fallbackAnonRecoveryEpoch, setFallbackAnonRecoveryEpoch] = useState(0);
   const inboxCohortRef = useRef(createInboxQueryCohortState());
   const forcedAnonRecoveryKeyRef = useRef("");
   const fallbackAnonRecoveryKeyRef = useRef("");
+  const fallbackAnonRecoveryAtRef = useRef(0);
   const missingPreviewAttemptsRef = useRef(new Map<string, number>());
   const missingPreviewTimersRef = useRef(new Map<string, number>());
 
@@ -562,6 +567,8 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     // /chats force recovery may re-run when session chats grow. Fallback
     // (Shuffle/Stories) keys only by principal — registering session chats
     // into the key caused a recovery loop that starved anon delivery.
+    // Fallback still re-polls on FALLBACK_ANON_RECOVERY_TTL_MS so new threads
+    // reach whip ids / orange tick without registerSessionChat.
     const recoveryKey = forceAnonRecovery
       ? `${firebaseUser.uid}|${sessionChatIds.join(",")}`
       : firebaseUser.uid;
@@ -569,7 +576,10 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     if (forceAnonRecovery) {
       if (forcedAnonRecoveryKeyRef.current === recoveryKey) return;
       forcedAnonRecoveryKeyRef.current = recoveryKey;
-    } else if (fallbackAnonRecoveryKeyRef.current === recoveryKey) {
+    } else if (
+      fallbackAnonRecoveryKeyRef.current === recoveryKey &&
+      Date.now() - fallbackAnonRecoveryAtRef.current < FALLBACK_ANON_RECOVERY_TTL_MS
+    ) {
       return;
     }
 
@@ -612,6 +622,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
         // Latch fallback only after success so a cancelled Shuffle attempt retries.
         if (!forceAnonRecovery) {
           fallbackAnonRecoveryKeyRef.current = recoveryKey;
+          fallbackAnonRecoveryAtRef.current = Date.now();
         }
         const map = new Map<string, InboxChat>();
         for (const row of rows) {
@@ -653,6 +664,7 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
           forcedAnonRecoveryKeyRef.current = "";
         } else {
           fallbackAnonRecoveryKeyRef.current = "";
+          fallbackAnonRecoveryAtRef.current = 0;
         }
       });
 
@@ -662,12 +674,27 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
   }, [
     enableAnonInboxQuery,
     enableInboxQueries,
+    fallbackAnonRecoveryEpoch,
     firebaseUser,
     forceAnonRecovery,
     loading,
     sessionChatIds,
     uid,
   ]);
+
+  // TTL wake for Shuffle/Stories fallback: clear the latch so recovery re-runs
+  // without registerSessionChat (keep session seeding /chats-only).
+  useEffect(() => {
+    if (loading || !enableAnonInboxQuery || forceAnonRecovery || !firebaseUser) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      fallbackAnonRecoveryKeyRef.current = "";
+      fallbackAnonRecoveryAtRef.current = 0;
+      setFallbackAnonRecoveryEpoch((epoch) => epoch + 1);
+    }, FALLBACK_ANON_RECOVERY_TTL_MS);
+    return () => window.clearInterval(timer);
+  }, [enableAnonInboxQuery, firebaseUser, forceAnonRecovery, loading]);
 
   useEffect(() => {
     if (loading) return;

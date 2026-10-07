@@ -153,6 +153,16 @@ const poolSrc = fs.readFileSync(path.join(root, "src/hooks/useShufflePool.ts"), 
 assert.match(poolSrc, /Always sync visitors|preferVisitors: filters\.soloOnline|visitors=1/);
 assert.match(poolSrc, /soloOnlineWindow/);
 assert.match(poolSrc, /visibleVisitors\.length === 0/);
+assert.match(poolSrc, /fetchShuffleVisitorsApi/);
+assert.match(
+  poolSrc,
+  /previousVisitors|Keep existing live anons|cannot wipe solo-online visitors/,
+  "applyPool preserves visitors across registered-pool overlays",
+);
+assert.match(
+  poolSrc,
+  /Rehydrate visitors after registered-pool load when solo-online/,
+);
 assert.match(
   fs.readFileSync(path.join(root, "src/app/api/shuffle/route.ts"), "utf8"),
   /A failed read must not freeze an empty list/,
@@ -164,6 +174,24 @@ assert.match(
 assert.doesNotMatch(
   poolSrc,
   /if \(shouldSuppressShuffleNetworkAtFireTime\(\)\) return;\s*\n\s*const res = await fetchShuffleApi\("\/api\/shuffle\?visitors=1"/,
+);
+assert.doesNotMatch(
+  poolSrc,
+  /await fetchShuffleApi\(\s*`\/api\/shuffle\?visitors=1/,
+  "visitor polls must use fetchShuffleVisitorsApi (no typing-guard)",
+);
+const guardSrc = fs.readFileSync(
+  path.join(root, "src/lib/shuffle/shuffleSearchTypingGuard.ts"),
+  "utf8",
+);
+assert.match(
+  guardSrc,
+  /export async function fetchShuffleVisitorsApi/,
+  "visitors fetch bypasses typing-guard",
+);
+assert.match(
+  guardSrc,
+  /never blocked by search typing-guard/,
 );
 const alertsSrc = fs.readFileSync(path.join(root, "src/hooks/useGlobalChatAlerts.ts"), "utf8");
 assert.match(alertsSrc, /countLocalPendingChats|whipPending/);
@@ -180,6 +208,30 @@ assert.match(
 );
 assert.match(inboxSrc, /if \(forceAnonRecovery\) \{\s*registerSessionChat/);
 assert.match(inboxSrc, /Latch fallback only after success/);
+assert.match(
+  inboxSrc,
+  /FALLBACK_ANON_RECOVERY_TTL_MS\s*=\s*25_000/,
+  "fallback anon recovery re-polls on TTL",
+);
+assert.match(
+  inboxSrc,
+  /fallbackAnonRecoveryAtRef|fallbackAnonRecoveryEpoch/,
+  "TTL latch allows Shuffle/Stories re-hydrate",
+);
+assert.match(
+  inboxSrc,
+  /without registerSessionChat \(keep session seeding \/chats-only\)/,
+);
+assert.doesNotMatch(
+  inboxSrc,
+  /if \(!forceAnonRecovery\) \{\s*registerSessionChat/,
+  "fallback must not seed session chats",
+);
+assert.equal(
+  (inboxSrc.match(/registerSessionChat\(/g) || []).length,
+  1,
+  "registerSessionChat only once (/chats force path)",
+);
 const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
 assert.match(notifSrc, /Always use the page Notification API/);
 assert.match(
