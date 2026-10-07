@@ -1150,9 +1150,10 @@ export function useShufflePool() {
       if (nextFilters.soloOnline && !searchRef.current.trim()) {
         void (async () => {
           try {
-            const res = await fetchShuffleApi("/api/shuffle?visitors=1", {
-              cache: "no-store",
-            });
+            const res = await fetchShuffleApi(
+              `/api/shuffle?visitors=1&_=${Date.now()}`,
+              { cache: "no-store" },
+            );
             const json = await res.json();
             if (!mountedRef.current) return;
             const visitors = normalizeShuffleProfiles(json?.profiles).filter(
@@ -1164,6 +1165,17 @@ export function useShufflePool() {
               forceWindow: true,
             });
             syncLiveShuffleVisitors(visitors, Date.now(), { preferVisitors: true });
+            // Android WebView sometimes painted profiles-only before visitors
+            // landed; force one more deal when anons are in the pool but not visible.
+            if (
+              visitors.length > 0 &&
+              getVisibleShuffleProfiles().every((profile) => !profile.shuffleVisitor)
+            ) {
+              applyWindowFromPool(activePoolRef.current, {
+                forceReplace: true,
+                resetBatchMemory: false,
+              });
+            }
           } catch {
             // Still apply the filter so online profiles appear; next poll retries anons.
             runFilter();
@@ -1184,7 +1196,7 @@ export function useShufflePool() {
           .catch(() => undefined);
       }
     },
-    [filterActivePool],
+    [applyWindowFromPool, filterActivePool],
   );
 
   useEffect(() => {
@@ -1538,7 +1550,9 @@ export function useShufflePool() {
       // visitors=1 is tiny. Never skip for typing-guard or WebView hidden quirks —
       // solo-online on Android depended on this poll when the toggle fetch raced.
       try {
-        const res = await fetchShuffleApi("/api/shuffle?visitors=1", { cache: "no-store" });
+        const res = await fetchShuffleApi(`/api/shuffle?visitors=1&_=${Date.now()}`, {
+          cache: "no-store",
+        });
         const json = await res.json();
         if (!mountedRef.current) return;
         const visitors = normalizeShuffleProfiles(json?.profiles).filter(

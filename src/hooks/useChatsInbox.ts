@@ -559,14 +559,18 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       return;
     }
 
-    const recoveryKey = `${firebaseUser.uid}|${sessionChatIds.join(",")}`;
+    // /chats force recovery may re-run when session chats grow. Fallback
+    // (Shuffle/Stories) keys only by principal — registering session chats
+    // into the key caused a recovery loop that starved anon delivery.
+    const recoveryKey = forceAnonRecovery
+      ? `${firebaseUser.uid}|${sessionChatIds.join(",")}`
+      : firebaseUser.uid;
 
     if (forceAnonRecovery) {
       if (forcedAnonRecoveryKeyRef.current === recoveryKey) return;
       forcedAnonRecoveryKeyRef.current = recoveryKey;
-    } else {
-      if (fallbackAnonRecoveryKeyRef.current === recoveryKey) return;
-      fallbackAnonRecoveryKeyRef.current = recoveryKey;
+    } else if (fallbackAnonRecoveryKeyRef.current === recoveryKey) {
+      return;
     }
 
     let cancelled = false;
@@ -605,6 +609,10 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
       .then((rows) => {
         if (!rows) return;
         if (cancelled) return;
+        // Latch fallback only after success so a cancelled Shuffle attempt retries.
+        if (!forceAnonRecovery) {
+          fallbackAnonRecoveryKeyRef.current = recoveryKey;
+        }
         const map = new Map<string, InboxChat>();
         for (const row of rows) {
           const normalized = normalizeInboxChat(
@@ -612,9 +620,11 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
           );
           if (!normalized) continue;
           map.set(normalized.id, normalized);
-          // Re-seed volatile per-thread listeners after Android/WebView process
-          // recreation. This is intentionally session-only after recovery.
-          registerSessionChat(normalized.canonicalChatId || normalized.id);
+          // Session registry seeding is /chats-only. Doing it on Shuffle
+          // fallback re-fired this effect and broke anon message delivery.
+          if (forceAnonRecovery) {
+            registerSessionChat(normalized.canonicalChatId || normalized.id);
+          }
           if (!hasInboxActivity(normalized)) {
             void hydrateMissingPreview(normalized.id, normalized, "anonRecovery");
           }
@@ -641,6 +651,8 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
         console.error("anon inbox recovery", error);
         if (forceAnonRecovery) {
           forcedAnonRecoveryKeyRef.current = "";
+        } else {
+          fallbackAnonRecoveryKeyRef.current = "";
         }
       });
 

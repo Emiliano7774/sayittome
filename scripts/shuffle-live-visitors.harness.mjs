@@ -173,6 +173,13 @@ assert.match(
 );
 assert.doesNotMatch(alertsSrc, /forceAnonRecovery: inboxRouteEnabled/);
 assert.doesNotMatch(alertsSrc, /seenLatestMessageIdsRef/);
+const inboxSrc = fs.readFileSync(path.join(root, "src/hooks/useChatsInbox.ts"), "utf8");
+assert.match(
+  inboxSrc,
+  /Session registry seeding is \/chats-only/,
+);
+assert.match(inboxSrc, /if \(forceAnonRecovery\) \{\s*registerSessionChat/);
+assert.match(inboxSrc, /Latch fallback only after success/);
 const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
 assert.match(notifSrc, /Always use the page Notification API/);
 assert.match(

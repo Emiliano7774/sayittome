@@ -73,8 +73,10 @@ export function useGlobalChatAlerts() {
     notificationsEnabled && chatAlertsRouteEnabled;
   const backgroundNotificationInboxEnabled =
     notificationsEnabled && chatAlertsRouteEnabled;
-  const messageListenersEnabled =
-    chatAlertsRouteEnabled && (!documentHidden || notificationsEnabled);
+  // Keep message listeners on main tabs even when the document is hidden so
+  // browser banners + orange tick can fire without opening /chats. Do NOT tie
+  // this to forceAnonRecovery — that path must stay /chats-only.
+  const messageListenersEnabled = chatAlertsRouteEnabled;
 
   const { sortedChats, displaySortedChats, uid, loading, isAnonymousSession, firestoreSynced } = useChatsInbox({
     enableInboxQueries:
