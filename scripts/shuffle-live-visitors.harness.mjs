@@ -235,7 +235,13 @@ assert.equal(
 );
 const notifSrc = fs.readFileSync(path.join(root, "src/lib/chat/chatNotifications.ts"), "utf8");
 assert.match(notifSrc, /webChatNotifications/);
-assert.match(notifSrc, /Focused Chrome tabs: page Notification/);
+assert.match(notifSrc, /ensureChatNotifyServiceWorker/);
+assert.match(notifSrc, /chat-notify\/sw\.js/);
+assert.match(notifSrc, /pageNotificationConstructorSupported/);
+assert.ok(
+  fs.existsSync(path.join(root, "public/chat-notify/sw.js")),
+  "chat-notify service worker must ship for Android Chrome/Brave banners",
+);
 assert.match(
   fs.readFileSync(path.join(root, "src/lib/chat/chatNotificationPrefs.ts"), "utf8"),
   /Notification\.permission === \"granted\"/,

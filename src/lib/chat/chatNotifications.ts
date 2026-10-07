@@ -18,14 +18,105 @@ const ICON_PATH = "/icons/Icon-192.png";
 const NOTIFY_SMALL_ICON = "ic_stat_notify";
 const NOTIFY_LARGE_ICON = "ic_notify_moon";
 const NOTIFY_ICON_COLOR = "#7C3AED";
+/** Nested scope — must not steal control of `/` from Monetag's public/sw.js. */
+const CHAT_NOTIFY_SW_URL = "/chat-notify/sw.js";
+const CHAT_NOTIFY_SW_SCOPE = "/chat-notify/";
 
 let bootstrapped = false;
 let permissionRequested = false;
 let nativePermissionGranted = false;
 let actionListenerAttached = false;
+let chatNotifyRegistration: ServiceWorkerRegistration | null = null;
+let chatNotifyRegisterPromise: Promise<ServiceWorkerRegistration | null> | null =
+  null;
 const webAnonMatchNotifications = new Map<string, Notification>();
-/** Retain page Notification instances — Chrome can GC unreferenced banners instantly. */
+/** Retain page Notification instances — desktop Chrome can GC unreferenced banners. */
 const webChatNotifications = new Map<string, Notification>();
+
+async function waitForServiceWorkerActive(
+  registration: ServiceWorkerRegistration,
+): Promise<ServiceWorkerRegistration | null> {
+  if (registration.active) return registration;
+  const worker = registration.installing || registration.waiting;
+  if (!worker) return registration.active ? registration : null;
+  await new Promise<void>((resolve) => {
+    const onState = () => {
+      if (worker.state === "activated" || worker.state === "redundant") {
+        worker.removeEventListener("statechange", onState);
+        resolve();
+      }
+    };
+    worker.addEventListener("statechange", onState);
+    if (worker.state === "activated" || worker.state === "redundant") {
+      worker.removeEventListener("statechange", onState);
+      resolve();
+    }
+  });
+  return registration.active ? registration : null;
+}
+
+/**
+ * Own SW for OS banners. Chrome/Brave Android reject `new Notification()`
+ * ("Illegal constructor") — only ServiceWorkerRegistration.showNotification works.
+ * Do not use navigator.serviceWorker.ready (that is Monetag's controller).
+ */
+export async function ensureChatNotifyServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+    return null;
+  }
+  if (chatNotifyRegistration?.active) return chatNotifyRegistration;
+  if (chatNotifyRegisterPromise) return chatNotifyRegisterPromise;
+
+  chatNotifyRegisterPromise = (async () => {
+    try {
+      const existing = await navigator.serviceWorker.getRegistration(
+        CHAT_NOTIFY_SW_SCOPE,
+      );
+      if (existing) {
+        const active = await waitForServiceWorkerActive(existing);
+        if (active?.active) {
+          chatNotifyRegistration = active;
+          recordNotificationStage("chat_notify_sw", true, "existing");
+          return active;
+        }
+      }
+
+      const registered = await navigator.serviceWorker.register(
+        CHAT_NOTIFY_SW_URL,
+        { scope: CHAT_NOTIFY_SW_SCOPE },
+      );
+      const active = await waitForServiceWorkerActive(registered);
+      chatNotifyRegistration = active;
+      recordNotificationStage(
+        "chat_notify_sw",
+        Boolean(active?.active),
+        active?.active ? "registered" : "inactive",
+      );
+      return active;
+    } catch (error) {
+      recordNotificationStage(
+        "chat_notify_sw",
+        false,
+        String((error as Error)?.name || "err"),
+      );
+      return null;
+    } finally {
+      chatNotifyRegisterPromise = null;
+    }
+  })();
+
+  return chatNotifyRegisterPromise;
+}
+
+function pageNotificationConstructorSupported() {
+  if (typeof window === "undefined" || typeof Notification !== "function") {
+    return false;
+  }
+  // Chrome/Brave/Edge on Android: constructor throws Illegal constructor.
+  const ua = navigator.userAgent || "";
+  if (/Android/i.test(ua)) return false;
+  return true;
+}
 
 /** Stable numeric id from an opaque key (prefer messageId so banners do not replace). */
 export function stableNotificationId(key: string) {
@@ -220,12 +311,45 @@ async function attachNativeActionListener() {
   }
 }
 
+function attachChatNotifySwMessageListener() {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const data = (event.data || {}) as {
+      type?: string;
+      url?: string;
+      chatId?: string;
+      messageId?: string;
+    };
+    if (data.type !== "sayittome:chat-notification-open") return;
+    const chatId = String(data.chatId || "").trim();
+    const href = String(data.url || "").trim();
+    if (chatId) {
+      openChatFromNotification({
+        chatId,
+        messageId: String(data.messageId || "").trim(),
+      });
+      return;
+    }
+    if (href) {
+      try {
+        window.location.assign(href);
+      } catch {
+        // ignore
+      }
+    }
+  });
+}
+
 export async function initChatNotifications() {
   if (bootstrapped || typeof window === "undefined") return;
   bootstrapped = true;
   syncChatNotificationPrefsFromBrowserPermission();
   await ensureNativeChannel();
   await attachNativeActionListener();
+  if (!isCapacitorNative()) {
+    attachChatNotifySwMessageListener();
+    void ensureChatNotifyServiceWorker();
+  }
 
   if (isCapacitorNative() && areChatNotificationsEnabled()) {
     try {
@@ -388,8 +512,14 @@ export async function showChatNotification(input: {
     }
   }
 
-  if (!("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
+  if (!("Notification" in window)) {
+    recordNotificationStage("web_notification_api", false, "missing");
+    return;
+  }
+  if (Notification.permission !== "granted") {
+    recordNotificationStage("web_permission", false, String(Notification.permission));
+    return;
+  }
 
   const onClick = () => {
     if (chatId) {
@@ -416,6 +546,9 @@ export async function showChatNotification(input: {
   };
 
   const showPageNotification = () => {
+    if (!pageNotificationConstructorSupported()) {
+      throw new Error("page_notification_unsupported");
+    }
     webChatNotifications.get(tag)?.close();
     const notification = new Notification(title, notificationOptions);
     webChatNotifications.set(tag, notification);
@@ -431,36 +564,43 @@ export async function showChatNotification(input: {
   };
 
   const showViaServiceWorker = async () => {
+    // Prefer our scoped chat SW — Monetag /sw.js was silent/unreliable for chat.
+    const own = await ensureChatNotifyServiceWorker();
+    if (own?.active && typeof own.showNotification === "function") {
+      await own.showNotification(title, notificationOptions);
+      recordNotificationStage("web_show", true, "chat-notify-sw");
+      return true;
+    }
+
+    // Last resort: any other active registration (e.g. Monetag).
     const getRegistration = navigator.serviceWorker?.getRegistration?.bind(
       navigator.serviceWorker,
     );
     if (!getRegistration) return false;
-    const registration = await getRegistration();
-    if (!registration?.active || typeof registration.showNotification !== "function") {
+    const fallback = await getRegistration();
+    if (!fallback?.active || typeof fallback.showNotification !== "function") {
       return false;
     }
-    await registration.showNotification(title, notificationOptions);
+    await fallback.showNotification(title, notificationOptions);
+    recordNotificationStage("web_show", true, "fallback-sw");
     return true;
   };
 
   try {
-    // Focused Chrome tabs: page Notification + retained reference. Monetag's
-    // /sw.js often owns getRegistration(); relying on it alone left banners
-    // silent while the Shuffle/Stories tab was visible.
-    if (!document.hidden) {
-      showPageNotification();
-      return;
-    }
-
-    // Background tab: prefer the active SW (persistent), fall back to page.
+    // Android Chrome/Brave: only SW showNotification works. Desktop: SW first
+    // too (focused + background). Page Notification is desktop-only fallback.
     const shown = await showViaServiceWorker().catch(() => false);
-    if (!shown) showPageNotification();
+    if (shown) return;
+    showPageNotification();
+    recordNotificationStage("web_show", true, "page");
   } catch {
     try {
       const shown = await showViaServiceWorker().catch(() => false);
-      if (!shown) showPageNotification();
+      if (!shown) {
+        recordNotificationStage("web_show", false, "all_paths");
+      }
     } catch {
-      // Permission revoked or blocked.
+      recordNotificationStage("web_show", false, "blocked");
     }
   }
 }
