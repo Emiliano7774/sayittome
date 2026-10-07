@@ -33,11 +33,17 @@ const modern = fs.readFileSync(
 const css = fs.readFileSync(path.join(root, "src/app/globals.css"), "utf8");
 
 assert.match(keep, /presentExistingShuffleSnapshot\(\{ reason: "profile-back" \}\)/);
-assert.match(boot, /prepareInstantShuffleReturn/);
+assert.match(boot, /prepareInstantKeepAliveReturn/);
 assert.match(classic, /prepareInstantShuffleReturn/);
 assert.match(classic, /data-profile-back/);
 assert.match(modern, /prepareInstantShuffleReturn/);
 assert.match(css, /sayittome-shuffle-return-pending:has\(/);
+const instantReturn = fs.readFileSync(
+  path.join(root, "src/lib/navigation/instantKeepAliveReturn.ts"),
+  "utf8",
+);
+assert.match(instantReturn, /prepareInstantShuffleReturn/);
+assert.match(instantReturn, /presentNativeBarSectionNow/);
 
 const back = await import(
   pathToFileURL(path.join(root, "src/lib/navigation/shuffleProfileBackRestore.ts")).href

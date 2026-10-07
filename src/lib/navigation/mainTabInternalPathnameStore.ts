@@ -20,6 +20,8 @@ import { MAIN_TAB_HREFS } from "@/lib/navigation/mainTabs";
 import { isNonMainRoute } from "@/lib/navigation/routeKind";
 
 export const MAIN_TAB_HISTORY_COMMIT_EVENT = "sayittome:main-tab-history-commit";
+const MAIN_TAB_HISTORY_FROM_NONMAIN_ATTR =
+  "data-sayittome-main-tab-history-from-nonmain";
 
 type PathnameListener = () => void;
 
@@ -99,10 +101,27 @@ export function hasMainTabHistoryPathnameOverride() {
 
 export function commitMainTabPathnameForHistoryNavigation(
   nextPath: string,
-  extras?: { txId?: string | null; reason?: string },
+  extras?: {
+    txId?: string | null;
+    reason?: string;
+    fromPathname?: string | null;
+  },
 ) {
   const prev = getCurrentMainTabPathname();
   const next = normalizePath(nextPath);
+  const from = normalizePath(extras?.fromPathname || prev);
+  const nextIsMainTab =
+    (MAIN_TAB_HREFS as readonly string[]).includes(next) && next !== "/shuffle";
+  const fromIsMainTabOrShuffle =
+    from === "/shuffle" || (MAIN_TAB_HREFS as readonly string[]).includes(from);
+
+  if (typeof document !== "undefined" && nextIsMainTab && !fromIsMainTabOrShuffle) {
+    document.documentElement.setAttribute(
+      MAIN_TAB_HISTORY_FROM_NONMAIN_ATTR,
+      "1",
+    );
+  }
+
   overridePathname = next;
   notify();
   emitMicroSlideCommitNavDiag("MAIN_TAB_HISTORY_PATHNAME_STORE_UPDATED", {
@@ -129,6 +148,11 @@ export function commitMainTabPathnameForHistoryNavigation(
 }
 
 export function resetMainTabHistoryPathnameStore(reason: string) {
+  if (typeof document !== "undefined") {
+    document.documentElement.removeAttribute(
+      MAIN_TAB_HISTORY_FROM_NONMAIN_ATTR,
+    );
+  }
   if (overridePathname === null) return;
   const prev = overridePathname;
   overridePathname = null;
@@ -147,10 +171,27 @@ export function resetMainTabHistoryPathnameStore(reason: string) {
 function onPopState() {
   const path = locationPathname();
   const prev = overridePathname;
+  const pathIsMainTab =
+    (MAIN_TAB_HREFS as readonly string[]).includes(path) && path !== "/shuffle";
+  if (typeof document !== "undefined" && !pathIsMainTab) {
+    document.documentElement.removeAttribute(
+      MAIN_TAB_HISTORY_FROM_NONMAIN_ATTR,
+    );
+  }
   // Always sync override to real location after browser back/forward.
   overridePathname = path;
   markHistoryPopstateRestoreInProgress({ pathname: path, prevPathname: prev });
   notify();
+  // Reveal the already-painted keep-alive panel immediately on history back
+  // so React effects cannot flash a loading shell while pathname catches up.
+  if (
+    path === "/shuffle" ||
+    ((MAIN_TAB_HREFS as readonly string[]).includes(path) && path !== "/shuffle")
+  ) {
+    void import("@/lib/navigation/instantKeepAliveReturn").then((mod) => {
+      mod.prepareInstantKeepAliveReturn(path);
+    });
+  }
   emitMicroSlideCommitNavDiag("MAIN_TAB_HISTORY_PATHNAME_STORE_POPSTATE", {
     href: path,
     reason: "popstate",

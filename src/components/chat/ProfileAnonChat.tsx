@@ -214,13 +214,13 @@ import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import { prepareInstantKeepAliveReturn } from "@/lib/navigation/instantKeepAliveReturn";
 import { setSecureBombScreen } from "@/lib/security/secureBombScreen";
 import {
-  isInstantShuffleReturnDestination,
   isShuffleKeepAliveActive,
   pinShuffleWindowWhileAway,
-  prepareInstantShuffleReturn,
 } from "@/lib/navigation/shuffleKeepAlive";
+import { isMainTabHref } from "@/lib/navigation/mainTabs";
 import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
 import {
   isChatImeDismissLatched,
@@ -738,9 +738,11 @@ export default function ProfileAnonChat({
     flushSeenThreadReadOnLeave();
 
     const dest = resolveChatBackDestination(pathname);
-    if (isInstantShuffleReturnDestination(dest)) {
-      prepareInstantShuffleReturn();
-      router.replace(dest);
+    // Keep-alive of Shuffle/Chats/etc. when leaving chat via back — paint the
+    // frozen previous surface before soft-nav (never hard-reload the document).
+    if (isMainTabHref(dest)) {
+      prepareInstantKeepAliveReturn(dest);
+      fastRouterReplace(router, dest);
       return;
     }
     if (isShuffleKeepAliveActive() && dest.startsWith("/u/")) {

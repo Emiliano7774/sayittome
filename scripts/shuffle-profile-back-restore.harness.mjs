@@ -42,6 +42,32 @@ assert.equal(
     href: "/chats",
     keepAliveActive: true,
   }),
+  true,
+  "chat/profile back onto keep-alive /chats must skip hard document reload",
+);
+assert.equal(
+  scroll.shouldSkipHardNavigateForWarmShuffle({
+    href: "/chats",
+    keepAliveActive: false,
+    mainTabKeepAliveActive: true,
+  }),
+  true,
+);
+assert.equal(
+  scroll.shouldSkipHardNavigateForWarmShuffle({
+    href: "/stories",
+    keepAliveActive: false,
+    mainTabVisited: true,
+  }),
+  true,
+);
+assert.equal(
+  scroll.shouldSkipHardNavigateForWarmShuffle({
+    href: "/chats",
+    keepAliveActive: false,
+    mainTabKeepAliveActive: false,
+    mainTabVisited: false,
+  }),
   false,
 );
 
@@ -148,10 +174,22 @@ const keepSrc = fs.readFileSync(
   "utf8",
 );
 
-assert.match(nativeBoot, /prepareInstantShuffleReturn/);
+assert.match(nativeBoot, /prepareInstantKeepAliveReturn/);
 assert.match(nativeBoot, /recoverShuffleOnForeground/);
 assert.match(nativeBoot, /appStateChange/);
 assert.match(profileUi, /prepareInstantShuffleReturn/);
+const keepAliveReturn = fs.readFileSync(
+  path.join(root, "src/lib/navigation/instantKeepAliveReturn.ts"),
+  "utf8",
+);
+assert.match(keepAliveReturn, /prepareInstantKeepAliveReturn/);
+assert.match(keepAliveReturn, /shouldSkipHardNavigateForKeepAliveReturn/);
+const fastNav = fs.readFileSync(
+  path.join(root, "src/lib/navigation/fastNavigate.ts"),
+  "utf8",
+);
+assert.match(fastNav, /prepareInstantKeepAliveReturn/);
+assert.match(fastNav, /mainTabKeepAliveActive/);
 const classicProfile = fs.readFileSync(
   path.join(root, "src/app/u/[username]/page.tsx"),
   "utf8",

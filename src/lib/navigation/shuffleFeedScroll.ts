@@ -113,10 +113,33 @@ export function installShuffleFeedScrollHistoryRestore() {
   window.addEventListener("pageshow", restoreIfShuffle);
 }
 
+/**
+ * Skip native hard document loads when returning onto a keep-alive surface.
+ * Previously only /shuffle was covered — chat→/chats and profile→main-tab back
+ * still did window.location.assign and flashed a full reload.
+ */
 export function shouldSkipHardNavigateForWarmShuffle(input: {
   href: string;
   keepAliveActive: boolean;
+  mainTabKeepAliveActive?: boolean;
+  mainTabVisited?: boolean;
 }) {
   const path = String(input.href || "/").split("?")[0].split("#")[0] || "/";
-  return input.keepAliveActive && path === "/shuffle";
+  if (path === "/shuffle") {
+    return Boolean(input.keepAliveActive || input.mainTabKeepAliveActive);
+  }
+  if (
+    path === "/stories" ||
+    path === "/chats" ||
+    path === "/boost" ||
+    path === "/settings"
+  ) {
+    return Boolean(
+      input.mainTabKeepAliveActive ||
+        input.mainTabVisited ||
+        // Shuffle pin means the stay-alive shell contract is already armed.
+        input.keepAliveActive,
+    );
+  }
+  return false;
 }

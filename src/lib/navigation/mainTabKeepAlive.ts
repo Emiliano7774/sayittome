@@ -2,6 +2,9 @@ import { MAIN_TAB_HREFS, type MainTabHref } from "@/lib/navigation/mainTabs";
 import { isVisualFirstTabsEnabled } from "@/lib/perf/instantaneityFlags";
 import { isNavTraceEnabled, navTraceMarkDetail } from "@/lib/perf/navTrace";
 
+const PIN_SESSION_KEY = "sayittome:main-tab-keepalive-pin";
+const VISITED_SESSION_KEY = "sayittome:main-tab-keepalive-visited";
+
 function normalizePath(pathname: string) {
   const path = String(pathname || "/").split("?")[0].split("#")[0];
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
@@ -15,6 +18,51 @@ let pendingVisualTab: MainTabHref | null = null;
 let incomingBarTab: MainTabHref | null = null;
 const visitedTabs = new Set<MainTabHref>();
 const listeners = new Set<() => void>();
+let sessionHydrated = false;
+
+function persistKeepAliveSession() {
+  if (typeof window === "undefined") return;
+  try {
+    if (keepAliveActive) {
+      window.sessionStorage.setItem(PIN_SESSION_KEY, "1");
+    }
+    if (visitedTabs.size > 0) {
+      window.sessionStorage.setItem(
+        VISITED_SESSION_KEY,
+        JSON.stringify([...visitedTabs]),
+      );
+    }
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+/** SoftNavigate remounts wipe module locals — restore pin + visited tabs. */
+function hydrateKeepAliveSession() {
+  if (sessionHydrated || typeof window === "undefined") return;
+  sessionHydrated = true;
+  try {
+    if (window.sessionStorage.getItem(PIN_SESSION_KEY) === "1") {
+      keepAliveActive = true;
+    }
+    const raw = window.sessionStorage.getItem(VISITED_SESSION_KEY);
+    if (!raw) return;
+    const list = JSON.parse(raw) as unknown;
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      const href = normalizePath(String(item || ""));
+      if ((MAIN_TAB_HREFS as readonly string[]).includes(href)) {
+        visitedTabs.add(href as MainTabHref);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+if (typeof window !== "undefined") {
+  hydrateKeepAliveSession();
+}
 
 function notifyListeners() {
   keepAliveVersion += 1;
@@ -31,28 +79,35 @@ export function getMainTabKeepAliveVersion() {
 }
 
 export function isMainTabKeepAliveActive() {
+  hydrateKeepAliveSession();
   return keepAliveActive;
 }
 
 export function hasMainTabBeenVisited(href: MainTabHref) {
+  hydrateKeepAliveSession();
   return visitedTabs.has(href);
 }
 
 /** Mark a tab panel as visited so its keep-alive tree mounts once. */
 export function markMainTabVisited(href: MainTabHref) {
+  hydrateKeepAliveSession();
   if (visitedTabs.has(href)) return;
   visitedTabs.add(href);
+  persistKeepAliveSession();
   notifyListeners();
 }
 
 /** Pin main-tab panels after the first in-app tab visit so switches stay mounted. */
 export function pinMainTabKeepAlive() {
+  hydrateKeepAliveSession();
   if (keepAliveActive) return;
   keepAliveActive = true;
+  persistKeepAliveSession();
   notifyListeners();
 }
 
 export function shouldRenderMainTabKeepAliveHost(pathname: string) {
+  hydrateKeepAliveSession();
   const path = normalizePath(pathname);
 
   if (!keepAliveActive) {

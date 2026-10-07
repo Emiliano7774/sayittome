@@ -103,11 +103,42 @@ function normalizePath(pathname: string) {
   return path || "/";
 }
 
+const PIN_SESSION_KEY = "sayittome:shuffle-keepalive-pin";
+
 let keepAliveActive = false;
 let keepAliveVersion = 0;
 let instantReturnPending = false;
 let suppressShuffleWindowRefresh = false;
 const listeners = new Set<() => void>();
+let sessionHydrated = false;
+
+function persistShuffleKeepAliveSession() {
+  if (typeof window === "undefined") return;
+  try {
+    if (keepAliveActive) {
+      window.sessionStorage.setItem(PIN_SESSION_KEY, "1");
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/** SoftNavigate remounts wipe module locals — restore the pin latch. */
+function hydrateShuffleKeepAliveSession() {
+  if (sessionHydrated || typeof window === "undefined") return;
+  sessionHydrated = true;
+  try {
+    if (window.sessionStorage.getItem(PIN_SESSION_KEY) === "1") {
+      keepAliveActive = true;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+if (typeof window !== "undefined") {
+  hydrateShuffleKeepAliveSession();
+}
 
 function notifyKeepAliveListeners() {
   keepAliveVersion += 1;
@@ -124,6 +155,7 @@ export function getShuffleKeepAliveVersion() {
 }
 
 export function isShuffleKeepAliveActive() {
+  hydrateShuffleKeepAliveSession();
   return keepAliveActive;
 }
 
@@ -180,9 +212,11 @@ function reconcileShuffleRouteEntry() {
 
 /** Pin the shuffle tree before leaving /shuffle so it stays mounted under chat/profile. */
 export function pinShuffleKeepAlive() {
+  hydrateShuffleKeepAliveSession();
   const wasActive = keepAliveActive;
   if (!keepAliveActive) {
     keepAliveActive = true;
+    persistShuffleKeepAliveSession();
     pinMainTabKeepAlive();
     notifyKeepAliveListeners();
   }
@@ -197,6 +231,7 @@ export function maybePinShuffleKeepAliveFromPath(pathname: string) {
 }
 
 export function shouldRenderShuffleKeepAliveHost(pathname: string) {
+  hydrateShuffleKeepAliveSession();
   const path = normalizePath(pathname);
   if (path === "/shuffle") return true;
   if (!keepAliveActive) return false;
