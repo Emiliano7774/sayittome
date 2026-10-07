@@ -1,4 +1,5 @@
-/* Chat OS banners — scoped SW so Monetag /sw.js does not own showNotification. */
+/* Chat OS banners — nested scope only. Page must identify this SW by scriptURL
+ * (Monetag scope `/` also matches getRegistration("/chat-notify/")). */
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });

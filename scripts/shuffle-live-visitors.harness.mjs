@@ -238,6 +238,16 @@ assert.match(notifSrc, /webChatNotifications/);
 assert.match(notifSrc, /ensureChatNotifyServiceWorker/);
 assert.match(notifSrc, /chat-notify\/sw\.js/);
 assert.match(notifSrc, /pageNotificationConstructorSupported/);
+assert.match(
+  notifSrc,
+  /isChatNotifyRegistration/,
+  "must reject Monetag scope-/ registration from getRegistration(/chat-notify/)",
+);
+assert.match(
+  notifSrc,
+  /getRegistrations\(\)/,
+  "must find chat-notify SW by scriptURL among all registrations",
+);
 assert.ok(
   fs.existsSync(path.join(root, "public/chat-notify/sw.js")),
   "chat-notify service worker must ship for Android Chrome/Brave banners",

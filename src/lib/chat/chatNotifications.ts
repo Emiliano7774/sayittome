@@ -21,6 +21,7 @@ const NOTIFY_ICON_COLOR = "#7C3AED";
 /** Nested scope — must not steal control of `/` from Monetag's public/sw.js. */
 const CHAT_NOTIFY_SW_URL = "/chat-notify/sw.js";
 const CHAT_NOTIFY_SW_SCOPE = "/chat-notify/";
+const CHAT_NOTIFY_SW_SCRIPT_MARKER = "/chat-notify/sw.js";
 
 let bootstrapped = false;
 let permissionRequested = false;
@@ -32,6 +33,37 @@ let chatNotifyRegisterPromise: Promise<ServiceWorkerRegistration | null> | null 
 const webAnonMatchNotifications = new Map<string, Notification>();
 /** Retain page Notification instances — desktop Chrome can GC unreferenced banners. */
 const webChatNotifications = new Map<string, Notification>();
+
+function registrationScriptURL(registration: ServiceWorkerRegistration) {
+  return (
+    registration.active?.scriptURL ||
+    registration.waiting?.scriptURL ||
+    registration.installing?.scriptURL ||
+    ""
+  );
+}
+
+/**
+ * Monetag owns scope `/`. `getRegistration("/chat-notify/")` still returns that
+ * root registration when our nested SW is missing — longest-prefix match. Never
+ * treat Monetag as the chat-notify worker.
+ */
+function isChatNotifyRegistration(
+  registration: ServiceWorkerRegistration | null | undefined,
+): registration is ServiceWorkerRegistration {
+  if (!registration) return false;
+  const script = registrationScriptURL(registration);
+  if (script.includes(CHAT_NOTIFY_SW_SCRIPT_MARKER)) return true;
+  try {
+    const scopePath = new URL(registration.scope, window.location.origin).pathname;
+    return (
+      scopePath === CHAT_NOTIFY_SW_SCOPE ||
+      scopePath === "/chat-notify"
+    );
+  } catch {
+    return false;
+  }
+}
 
 async function waitForServiceWorkerActive(
   registration: ServiceWorkerRegistration,
@@ -55,26 +87,56 @@ async function waitForServiceWorkerActive(
   return registration.active ? registration : null;
 }
 
+async function findChatNotifyRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return null;
+  }
+  try {
+    const all = await navigator.serviceWorker.getRegistrations();
+    for (const registration of all) {
+      if (isChatNotifyRegistration(registration)) return registration;
+    }
+  } catch {
+    // ignore — fall through to getRegistration
+  }
+  try {
+    const byScope = await navigator.serviceWorker.getRegistration(
+      CHAT_NOTIFY_SW_SCOPE,
+    );
+    if (isChatNotifyRegistration(byScope)) return byScope;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 /**
  * Own SW for OS banners. Chrome/Brave Android reject `new Notification()`
  * ("Illegal constructor") — only ServiceWorkerRegistration.showNotification works.
  * Do not use navigator.serviceWorker.ready (that is Monetag's controller).
+ * Do not trust getRegistration("/chat-notify/") alone — Monetag scope `/` matches.
  */
 export async function ensureChatNotifyServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
     return null;
   }
-  if (chatNotifyRegistration?.active) return chatNotifyRegistration;
+  if (
+    chatNotifyRegistration?.active &&
+    isChatNotifyRegistration(chatNotifyRegistration)
+  ) {
+    return chatNotifyRegistration;
+  }
+  if (chatNotifyRegistration && !isChatNotifyRegistration(chatNotifyRegistration)) {
+    chatNotifyRegistration = null;
+  }
   if (chatNotifyRegisterPromise) return chatNotifyRegisterPromise;
 
   chatNotifyRegisterPromise = (async () => {
     try {
-      const existing = await navigator.serviceWorker.getRegistration(
-        CHAT_NOTIFY_SW_SCOPE,
-      );
+      const existing = await findChatNotifyRegistration();
       if (existing) {
         const active = await waitForServiceWorkerActive(existing);
-        if (active?.active) {
+        if (active?.active && isChatNotifyRegistration(active)) {
           chatNotifyRegistration = active;
           recordNotificationStage("chat_notify_sw", true, "existing");
           return active;
@@ -83,16 +145,21 @@ export async function ensureChatNotifyServiceWorker(): Promise<ServiceWorkerRegi
 
       const registered = await navigator.serviceWorker.register(
         CHAT_NOTIFY_SW_URL,
-        { scope: CHAT_NOTIFY_SW_SCOPE },
+        { scope: CHAT_NOTIFY_SW_SCOPE, updateViaCache: "none" },
       );
+      if (!isChatNotifyRegistration(registered)) {
+        recordNotificationStage("chat_notify_sw", false, "wrong_script");
+        return null;
+      }
       const active = await waitForServiceWorkerActive(registered);
-      chatNotifyRegistration = active;
+      chatNotifyRegistration =
+        active?.active && isChatNotifyRegistration(active) ? active : null;
       recordNotificationStage(
         "chat_notify_sw",
-        Boolean(active?.active),
-        active?.active ? "registered" : "inactive",
+        Boolean(chatNotifyRegistration?.active),
+        chatNotifyRegistration?.active ? "registered" : "inactive",
       );
-      return active;
+      return chatNotifyRegistration;
     } catch (error) {
       recordNotificationStage(
         "chat_notify_sw",
@@ -566,19 +633,28 @@ export async function showChatNotification(input: {
   const showViaServiceWorker = async () => {
     // Prefer our scoped chat SW — Monetag /sw.js was silent/unreliable for chat.
     const own = await ensureChatNotifyServiceWorker();
-    if (own?.active && typeof own.showNotification === "function") {
+    if (
+      own?.active &&
+      isChatNotifyRegistration(own) &&
+      typeof own.showNotification === "function"
+    ) {
       await own.showNotification(title, notificationOptions);
       recordNotificationStage("web_show", true, "chat-notify-sw");
       return true;
     }
 
-    // Last resort: any other active registration (e.g. Monetag).
+    // Last resort: any other active registration (e.g. Monetag). Never prefer
+    // it when our SW exists — getRegistration() without URL returns Monetag.
     const getRegistration = navigator.serviceWorker?.getRegistration?.bind(
       navigator.serviceWorker,
     );
     if (!getRegistration) return false;
     const fallback = await getRegistration();
-    if (!fallback?.active || typeof fallback.showNotification !== "function") {
+    if (
+      !fallback?.active ||
+      isChatNotifyRegistration(fallback) ||
+      typeof fallback.showNotification !== "function"
+    ) {
       return false;
     }
     await fallback.showNotification(title, notificationOptions);
@@ -589,7 +665,14 @@ export async function showChatNotification(input: {
   try {
     // Android Chrome/Brave: only SW showNotification works. Desktop: SW first
     // too (focused + background). Page Notification is desktop-only fallback.
-    const shown = await showViaServiceWorker().catch(() => false);
+    const shown = await showViaServiceWorker().catch((error) => {
+      recordNotificationStage(
+        "web_show",
+        false,
+        `sw:${String((error as Error)?.message || (error as Error)?.name || "err").slice(0, 80)}`,
+      );
+      return false;
+    });
     if (shown) return;
     showPageNotification();
     recordNotificationStage("web_show", true, "page");
