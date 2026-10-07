@@ -38,6 +38,7 @@ import {
   isAnonMatchDoorOpen,
 } from "@/lib/anonMatch/anonMatchDoor";
 import { fetchAnonMatch, resolveAnonMatchSessionId, resolveLiveAnonMatchCaller } from "@/lib/anonMatch/fetchAnonMatch";
+import { withTimeout } from "@/lib/async/withTimeout";
 import {
   buildAnonMatchCloseBody,
   buildAnonMatchRequestBody,
@@ -1260,25 +1261,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       const solicitudId = incomingRequest.solicitudId;
       const receiverRole =
         incomingRequest.destinatarioTipo === "perfil" ? "perfil" : "anonimo";
-      const live = await resolveLiveAnonMatchCaller();
-      const responderUid = live.isRegisteredProfile ? live.registeredUid : "";
-      let responderAnonId = "";
-      if (receiverRole !== "perfil") {
-        responderAnonId = await resolveAnonMatchSessionId().catch(() => "");
-        if (!responderAnonId) return;
-      }
-
-      const buildRespondBody = (accepted: boolean) =>
-        buildAnonMatchRespondBody({
-          solicitudId,
-          accept: accepted,
-          receiverRole,
-          registeredUid: responderUid,
-          serverAnonAlias: responderAnonId,
-        });
-
+      respondingIncomingRef.current = true;
       if (!accept) {
-        respondingIncomingRef.current = true;
         dismissIncomingAnonMatchRequestAlert(solicitudId);
         rememberDismissedRequestId(solicitudId);
         rememberRejectedSolicitanteKey(
@@ -1288,63 +1272,99 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           }),
         );
         setIncomingRequest(null);
-
-        try {
-          await fetchAnonMatch("/api/anon-match/respond", {
-            method: "POST",
-            body: JSON.stringify(buildRespondBody(false)),
-          });
-        } catch {
-          // Keep dismissed locally even if the network call fails.
-        } finally {
-          respondingIncomingRef.current = false;
-        }
-        return;
+      } else {
+        dismissIncomingAnonMatchRequestAlert(solicitudId);
       }
 
-      respondingIncomingRef.current = true;
-      dismissIncomingAnonMatchRequestAlert(solicitudId);
-
-      const openAcceptedChat = (chatId: string) => {
-        openDirectChat(chatId, receiverRole);
-        setIncomingRequest(null);
-      };
-
-      const readAcceptedChatId = async () => {
-        const snap = await getDoc(doc(db, "solicitudes_chat_anonimo", solicitudId));
-        if (!snap.exists()) return "";
-        const data = snap.data();
-        if (String(data.estado || "") !== "aceptado") return "";
-        return String(data.chatId || "");
-      };
-
       try {
-        const res = await fetchAnonMatch("/api/anon-match/respond", {
-          method: "POST",
-          body: JSON.stringify(buildRespondBody(true)),
-        });
-        const json = await res.json();
+        const live = await withTimeout(
+          resolveLiveAnonMatchCaller(),
+          8_000,
+          "anon_match_identity_timeout",
+        );
+        const responderUid = live.isRegisteredProfile ? live.registeredUid : "";
+        let responderAnonId = "";
+        if (receiverRole !== "perfil") {
+          responderAnonId = await withTimeout(
+            resolveAnonMatchSessionId(),
+            8_000,
+            "anon_match_alias_timeout",
+          ).catch(() => "");
+          if (!responderAnonId) return;
+        }
 
-        if (json?.ok && json?.chatId) {
-          openAcceptedChat(String(json.chatId));
+        const buildRespondBody = (accepted: boolean) =>
+          buildAnonMatchRespondBody({
+            solicitudId,
+            accept: accepted,
+            receiverRole,
+            registeredUid: responderUid,
+            serverAnonAlias: responderAnonId,
+          });
+
+        if (!accept) {
+          await withTimeout(
+            fetchAnonMatch("/api/anon-match/respond", {
+              method: "POST",
+              body: JSON.stringify(buildRespondBody(false)),
+            }),
+            10_000,
+            "anon_match_reject_timeout",
+          ).catch(() => null);
           return;
         }
 
-        const chatId = await readAcceptedChatId();
-        if (chatId) {
-          openAcceptedChat(chatId);
-          return;
-        }
-      } catch {
+        const openAcceptedChat = (chatId: string) => {
+          openDirectChat(chatId, receiverRole);
+          setIncomingRequest(null);
+        };
+
+        const readAcceptedChatId = async () => {
+          const snap = await withTimeout(
+            getDoc(doc(db, "solicitudes_chat_anonimo", solicitudId)),
+            8_000,
+            "anon_match_read_timeout",
+          );
+          if (!snap.exists()) return "";
+          const data = snap.data();
+          if (String(data.estado || "") !== "aceptado") return "";
+          return String(data.chatId || "");
+        };
+
         try {
+          const res = await withTimeout(
+            fetchAnonMatch("/api/anon-match/respond", {
+              method: "POST",
+              body: JSON.stringify(buildRespondBody(true)),
+            }),
+            10_000,
+            "anon_match_accept_timeout",
+          );
+          const json = await res.json();
+
+          if (json?.ok && json?.chatId) {
+            openAcceptedChat(String(json.chatId));
+            return;
+          }
+
           const chatId = await readAcceptedChatId();
           if (chatId) {
             openAcceptedChat(chatId);
             return;
           }
         } catch {
-          // Keep modal open so the user can retry.
+          try {
+            const chatId = await readAcceptedChatId();
+            if (chatId) {
+              openAcceptedChat(chatId);
+              return;
+            }
+          } catch {
+            // Keep modal open and interactive so the user can retry.
+          }
         }
+      } catch {
+        // Reject stays dismissed; accept stays visible and becomes retryable.
       } finally {
         respondingIncomingRef.current = false;
       }
@@ -1355,10 +1375,14 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const enableDoNotDisturb = useCallback(
     async (minutes: number) => {
       try {
-        const res = await fetchAnonMatch("/api/anon-match/dnd", {
-          method: "POST",
-          body: JSON.stringify({ minutes }),
-        });
+        const res = await withTimeout(
+          fetchAnonMatch("/api/anon-match/dnd", {
+            method: "POST",
+            body: JSON.stringify({ minutes }),
+          }),
+          10_000,
+          "anon_match_dnd_timeout",
+        );
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json?.ok) return false;
         const until = String(json.doNotDisturbUntil || "").trim();

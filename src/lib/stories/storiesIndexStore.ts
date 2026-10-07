@@ -465,6 +465,44 @@ export function markStoryViewedLocally(
   markStoriesViewedLocallyBatch(ownerUid, storyId ? [storyId] : [], viewerId);
 }
 
+/** Keep a story like visible across viewer close/reopen while the server settles. */
+export function patchStoryLikeLocally(input: {
+  storyId: string;
+  viewerId: string;
+  liked: boolean;
+  likeCount?: number;
+}) {
+  const storyId = String(input.storyId || "").trim();
+  const viewerId = String(input.viewerId || "").trim();
+  if (!storyId || !viewerId) return;
+
+  let changed = false;
+  cachedGroups = cachedGroups.map((group) => {
+    let groupChanged = false;
+    const stories = group.stories.map((story) => {
+      if (story.id !== storyId) return story;
+      const wasLiked = story.likedBy?.[viewerId] === true;
+      const nextCount =
+        typeof input.likeCount === "number"
+          ? Math.max(0, input.likeCount)
+          : Math.max(0, Number(story.likeCount || 0) + (input.liked === wasLiked ? 0 : input.liked ? 1 : -1));
+      groupChanged = true;
+      changed = true;
+      return {
+        ...story,
+        likeCount: nextCount,
+        likedBy: { ...(story.likedBy || {}), [viewerId]: input.liked },
+      };
+    });
+    return groupChanged ? { ...group, stories } : group;
+  });
+
+  if (!changed) return;
+  rebuildLookupMaps(cachedGroups);
+  if (viewerUid) writeStoriesSnapshot(viewerUid, cachedGroups, { source: "local" });
+  notify();
+}
+
 export function markStoriesViewedLocallyBatch(
   ownerUid: string,
   storyIds: string[],

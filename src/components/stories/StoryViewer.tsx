@@ -61,6 +61,7 @@ import {
   getPreviousStoryGroup,
   getStoriesIndexVersion,
   markStoryViewedLocally,
+  patchStoryLikeLocally,
   peekCachedStoryGroups,
   subscribeStoriesIndex,
 } from "@/lib/stories/storiesIndexStore";
@@ -147,7 +148,6 @@ export default function StoryViewer({
   const [paused, setPaused] = useState(false);
   const [blurLocked, setBlurLocked] = useState(false);
   const [appliedBlurId, setAppliedBlurId] = useState("");
-  const [likeBusy, setLikeBusy] = useState(false);
   const [viewerUid, setViewerUid] = useState("");
   const [ownerKey, setOwnerKey] = useState("");
   const [replayLocked, setReplayLocked] = useState(false);
@@ -789,7 +789,8 @@ export default function StoryViewer({
     }
   }
 
-  function handleLike() {
+  function handleLike(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
     const story = current;
     if (!story) return;
     if (likerId && likerId === resolvedOwnerUid) return;
@@ -814,8 +815,14 @@ export default function StoryViewer({
       ),
     );
 
-    setLikeBusy(true);
-    void persistStoryLike(storyId)
+    patchStoryLikeLocally({
+      storyId,
+      viewerId: optimisticLiker,
+      liked: nextLiked,
+      likeCount: nextCount,
+    });
+
+    void persistStoryLike(storyId, nextLiked)
       .then((result) => {
         const resolvedLiker = auth.currentUser?.uid || likerId || optimisticLiker;
         setLocalStories((prev) =>
@@ -833,6 +840,12 @@ export default function StoryViewer({
               : row,
           ),
         );
+        patchStoryLikeLocally({
+          storyId,
+          viewerId: resolvedLiker,
+          liked: result.liked,
+          likeCount: result.likeCount,
+        });
         void upsertStoryViewerRecord({
           storyId,
           viewerId: resolvedLiker,
@@ -856,9 +869,12 @@ export default function StoryViewer({
               : row,
           ),
         );
-      })
-      .finally(() => {
-        setLikeBusy(false);
+        patchStoryLikeLocally({
+          storyId,
+          viewerId: optimisticLiker,
+          liked: Boolean(story.likedBy?.[optimisticLiker]),
+          likeCount: Math.max(0, Number(story.likeCount || 0)),
+        });
       });
   }
 
@@ -1301,7 +1317,6 @@ export default function StoryViewer({
                   storyLiked
                     ? "bg-pink-500 text-white shadow-[0_0_30px_rgba(236,72,153,.35)]"
                     : "bg-white/10 text-white",
-                  likeBusy ? "opacity-60" : "",
                 ].join(" ")}
               >
                 <Heart size={18} fill={storyLiked ? "currentColor" : "none"} />

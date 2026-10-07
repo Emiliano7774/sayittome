@@ -1,5 +1,6 @@
 "use client";
 
+import AdminEvidenceImage from "@/components/admin/AdminEvidenceImage";
 import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useT } from "@/contexts/LocaleContext";
 
@@ -47,13 +48,12 @@ export default function AdminEvidenceMedia({
   }
 
   return (
-    <a href={url} target="_blank" rel="noreferrer" className={className}>
-      <img
-        key={url}
-        src={url}
-        alt={t("admin_appeal_photo")}
-        className={`w-full object-cover ${maxHeightClass}`}
-      />
-    </a>
+    <AdminEvidenceImage
+      key={url}
+      url={url}
+      alt={t("admin_appeal_photo")}
+      className={className}
+      maxHeightClass={maxHeightClass}
+    />
   );
 }

@@ -16,6 +16,7 @@ import { sendStoryPush, storyPairAllows } from "./storyPush";
 
 export type ToggleStoryLikeInput = {
   storyId?: string;
+  desiredLiked?: boolean;
 };
 
 export type ToggleStoryLikeResult = {
@@ -65,9 +66,17 @@ export async function handleToggleStoryLike(
         ? ({ ...(story.likedBy as Record<string, unknown>) } as Record<string, boolean>)
         : ({} as Record<string, boolean>);
     const wasLiked = likedBy[authUid] === true;
-    const nextLiked = !wasLiked;
+    // New clients send the final state they want. Keeping this mutation
+    // idempotent makes a retry safe when the viewer closes while the request is
+    // still in flight. Older clients without desiredLiked retain toggle
+    // semantics until they are upgraded.
+    const nextLiked =
+      typeof request.data?.desiredLiked === "boolean"
+        ? request.data.desiredLiked
+        : !wasLiked;
+    const likeDelta = nextLiked === wasLiked ? 0 : nextLiked ? 1 : -1;
     const prevCount = Math.max(0, Number(story.likeCount || 0) || 0);
-    const nextCount = Math.max(0, prevCount + (nextLiked ? 1 : -1));
+    const nextCount = Math.max(0, prevCount + likeDelta);
 
     likedBy[authUid] = nextLiked;
 
@@ -107,7 +116,7 @@ export async function handleToggleStoryLike(
 
     // Each story like contributes ±1 to the owner's profile "me gusta".
     // Idempotency is per (storyId, likerUid) via likedBy — no double/negative.
-    const profileDelta = nextLiked ? 1 : wasLiked ? -1 : 0;
+    const profileDelta = likeDelta;
     if (profileDelta !== 0) {
       const userRef = firestore.collection("usuarios").doc(ownerUid);
       tx.set(
