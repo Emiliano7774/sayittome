@@ -412,7 +412,6 @@ export async function showChatNotification(input: {
     tag,
     icon: ICON_PATH,
     silent: false,
-    renotify: true,
     data: { chatId, messageId, group },
   };
 
