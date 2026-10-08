@@ -514,6 +514,10 @@ const globalAlertsSrc = fs.readFileSync(
   path.join(root, "src/hooks/useGlobalChatAlerts.ts"),
   "utf8",
 );
+const chatNotificationsSrc = fs.readFileSync(
+  path.join(root, "src/lib/chat/chatNotifications.ts"),
+  "utf8",
+);
 const pipelineSrc = fs.readFileSync(path.join(root, "src/lib/chat/fcmEnablePipeline.ts"), "utf8");
 assert.match(fcmSrc, /reconcilePendingForEnable/);
 assert.match(fcmSrc, /PushNotifications.unregister/);
@@ -528,12 +532,38 @@ assert.match(
   /Notification\.permission !== "granted"[\s\S]*?void enableWebChatPush\(firebaseUser\);/,
   "granted web push must register without waiting for inbox hydration",
 );
+const notificationEffectStart = globalAlertsSrc.indexOf(
+  "if (!unreadHydrated || !inboxRouteEnabled || !notificationsEnabled) return;",
+);
+const baselineStart = globalAlertsSrc.indexOf("if (!previous) {", notificationEffectStart);
+const liveUpdateMarker = globalAlertsSrc.indexOf(
+  "// Inbox can discover a new thread before unreadCounts catch up",
+  baselineStart,
+);
+const liveUpdateStart = globalAlertsSrc.lastIndexOf(
+  "for (const chat of unreadSource)",
+  liveUpdateMarker,
+);
+assert.ok(liveUpdateStart >= 0, "live message update loop must exist");
+const liveUpdateEnd = globalAlertsSrc.indexOf("\n  }, [", liveUpdateStart);
+assert.ok(liveUpdateEnd > liveUpdateStart, "live message update effect must close");
+assert.doesNotMatch(
+  globalAlertsSrc.slice(liveUpdateStart, liveUpdateEnd),
+  /chatId === activeChatId/,
+  "a newly received message in the open web thread must notify",
+);
 const eagerWebRegistration = globalAlertsSrc.slice(
   globalAlertsSrc.indexOf("A previously granted browser permission"),
   globalAlertsSrc.indexOf("Keep the first-time permission prompt"),
 );
 assert.doesNotMatch(eagerWebRegistration, /\bloading\b/);
 assert.doesNotMatch(eagerWebRegistration, /chatAlertsRouteEnabled/);
+assert.doesNotMatch(eagerWebRegistration, /isAnonymous/);
+assert.match(
+  chatNotificationsSrc,
+  /if \(input\?\.viewingActiveChat && isCapacitorNative\(\)\) return false;/,
+  "web must notify for a message received in the open thread",
+);
 assert.match(fcmSrc, /if \(options\?\.skipAutoEnable\) return;/);
 assert.match(
   fcmSrc,

@@ -250,7 +250,7 @@ export function useGlobalChatAlerts() {
 
     for (const chat of unreadSource) {
       const chatId = chat.canonicalChatId || chat.id;
-      if (!chatId || chatId === activeChatId) continue;
+      if (!chatId) continue;
       const latest = String(chat.latestMessageId || "");
       const prior = previous.get(chatId);
       if (!latest || prior === latest) continue;

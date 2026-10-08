@@ -517,12 +517,16 @@ export function shouldShowBackgroundChatNotification() {
 
 export function shouldShowChatNotification(input?: { viewingActiveChat?: boolean }) {
   if (!areChatNotificationsEnabled()) return false;
-  if (input?.viewingActiveChat) return false;
+  // Web users asked for an OS notification for every received message,
+  // including a message that arrives in the thread currently on screen.
+  // Native keeps its existing active-thread suppression to avoid a duplicate
+  // local alert while FCM owns delivery.
+  if (input?.viewingActiveChat && isCapacitorNative()) return false;
   if (shouldShowBackgroundChatNotification()) return true;
   // Native shell: also notify when the app is open on another screen.
   if (isCapacitorNative() && isNativeAppActive()) return true;
-  // Web: OS banner when the tab is open but the user is not inside that chat
-  // (Shuffle / Stories / another thread). Background tabs use document.hidden above.
+  // Web: show the OS banner on every incoming message, including while viewing
+  // the same thread. Background tabs use document.hidden above.
   return !isCapacitorNative();
 }
 
