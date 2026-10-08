@@ -1,0 +1,50 @@
+{
+  "verifiedAt": "2026-10-08T19:44:33.935Z",
+  "origin": "https://sayittome-app.web.app",
+  "sourceSha": "d1afeb3",
+  "deploy": {
+    "builtAt": "2026-10-08T19:36:28.937Z",
+    "elapsedSec": 455,
+    "exitCode": 0,
+    "complete": true
+  },
+  "api": { "sha": "d1afeb3", "builtAt": "" },
+  "release": {
+    "sha": "d1afeb3",
+    "builtAt": "2026-10-08T19:36:28.937Z",
+    "source": "deploy:hosting"
+  },
+  "checks": {
+    "apiSha": true,
+    "staticSha": true,
+    "workerExact": true,
+    "workerFeatures": true,
+    "rootExact": true,
+    "adsExact": true,
+    "adminDenied": true,
+    "adminPrivate": true,
+    "incomingDenied": true,
+    "allRootAssets": true
+  },
+  "workerSha256": "e32717d7ab924a45499fa9d9b5126ff8ceeeda80ee92876b5dd35ce781e1ad6a",
+  "rootSha256": "3107f3aa6caa4e15d7d608eaae81b2061be8fc976103bf8b686428990576eb8e",
+  "assetsVerified": 30,
+  "assetFailures": [],
+  "securitySmoke": [
+    { "path": "/api/admin/p0-abuse-config", "status": 401, "cache": "private, no-store, max-age=0" },
+    { "path": "/api/anon-match/incoming", "status": 401, "cache": null }
+  ],
+  "focusedHarnesses": {
+    "web-notification-delivery": "PASS",
+    "fcm-registration": "PASS",
+    "fcm-push-pipeline": "PASS",
+    "chat-notification-unique-ids": "PASS",
+    "anon-inbox-multi-thread": "PASS",
+    "chat-bidirectional-unread-sound": "PASS"
+  },
+  "windowsChromeEnabled": 0,
+  "windowsGlobalToastEnabled": 1,
+  "systemSettingsChanged": false,
+  "productionMessagesSent": false,
+  "physicalUserPass": false
+}

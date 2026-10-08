@@ -1,5 +1,25 @@
 # Web notifications: bounded release
 
+## Published and independently fetched from production
+
+Source `d1afeb3` deployed successfully in 455 seconds (exit 0), built at
+`2026-10-08T19:36:28.937Z`. At `2026-10-08T19:44:33.935Z`, independent HTTP
+fetches verified both `/api/build-sha` and `/build-release.json` report `d1afeb3`.
+The static marker contains the expected build timestamp; the API's optional
+`builtAt` is empty and is not used as timestamp evidence.
+
+Live root HTML, all 30 referenced JS/CSS assets, custom notification worker and
+ads.txt match the packaged/local release byte-for-byte. The worker includes the
+new shared delivery/deduplication and renotify path. Unauthenticated read-only
+requests to admin P0 configuration and anonymous-match incoming endpoints return
+401; admin response is private/no-store. These are bounded smoke checks, not a
+complete security audit. Evidence: `scripts/notification-production-proof-20261008.json`.
+
+All six notification-focused harnesses passed again on the reconciled source.
+No synthetic production messages were sent. Windows Chrome `Enabled=0` was
+rechecked before completion; the system setting remains untouched. User physical
+PASS is still pending after enabling Chrome in Windows notification settings.
+
 ## Later live release reconciled before final publication
 
 The first notification deploy `58123bd` completed (608 seconds, exit 0), then a
