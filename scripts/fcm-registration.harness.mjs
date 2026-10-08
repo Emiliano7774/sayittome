@@ -529,7 +529,7 @@ assert.match(fcmSrc, /generateInstallationSecret/);
 assert.match(fcmSrc, /reason: "stale"|reason: upserted.reason/);
 assert.match(
   globalAlertsSrc,
-  /Notification\.permission !== "granted"[\s\S]*?void enableWebChatPush\(firebaseUser\);/,
+  /startWebPushRegistrationRecovery\(\{[\s\S]*?Notification\.permission === "granted"[\s\S]*?register: \(\) => enableWebChatPush\(firebaseUser\)/,
   "granted web push must register without waiting for inbox hydration",
 );
 assert.match(
@@ -543,7 +543,7 @@ assert.match(
   "foregrounding the web app must re-check notification permission",
 );
 const notificationEffectStart = globalAlertsSrc.indexOf(
-  "if (!unreadHydrated || !inboxRouteEnabled || !notificationsEnabled) return;",
+  "if (!unreadHydrated || !chatAlertsRouteEnabled || !notificationsEnabled) return;",
 );
 const baselineStart = globalAlertsSrc.indexOf("if (!previous) {", notificationEffectStart);
 const liveUpdateMarker = globalAlertsSrc.indexOf(

@@ -49,6 +49,9 @@ export function shouldEnableChatNotificationListeners(
   notificationsEnabled: boolean,
 ) {
   if (!pathname) return false;
+  // Notification opt-in is independent of which screen is being viewed.
+  // These listeners still query only the signed-in user's own inbox.
+  if (notificationsEnabled) return true;
   if (isBlockedRoute(pathname)) return false;
   if (pathname === "/" && !notificationsEnabled) return false;
   return true;

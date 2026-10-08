@@ -109,6 +109,7 @@ export function notifyIncomingChatMessage(input: {
   title: string;
   body: string;
   chatId?: string;
+  messageId?: string;
 }) {
   void import("@/lib/chat/chatNotifications")
     .then(({ showChatNotification }) => showChatNotification(input))

@@ -73,6 +73,7 @@ export function useIncomingMessageWhip(
             title: "Nuevo mensaje",
             body: String(last.text || "").trim() || "Nuevo mensaje",
             chatId,
+            messageId: last.id,
           });
         },
       });

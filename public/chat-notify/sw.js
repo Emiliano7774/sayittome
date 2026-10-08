@@ -14,6 +14,50 @@ function pushData(payload) {
   return nested && typeof nested === "object" ? nested : payload;
 }
 
+// Push and Firestore can report the same arrival concurrently, or from several
+// open tabs. Serialize display and dedupe by message id, never by message text.
+let displayQueue = Promise.resolve();
+const displayedMessages = new Set();
+
+function displayChatNotification(title, options) {
+  const job = displayQueue.then(async () => {
+    const data = options.data || {};
+    const key = data.chatId && data.messageId
+      ? `${data.chatId}:${data.messageId}` : "";
+    if (key && displayedMessages.has(key)) return;
+    if (key && typeof self.registration.getNotifications === "function") {
+      const existing = await self.registration.getNotifications({ tag: options.tag })
+        .catch(() => []);
+      if (existing.some((item) => item.data?.messageId === data.messageId &&
+        item.data?.chatId === data.chatId)) return;
+    }
+    await self.registration.showNotification(title, {
+      ...options,
+      silent: false,
+      renotify: Boolean(options.tag),
+    });
+    // Only consume the id after successful presentation; failed delivery retries.
+    if (key) {
+      displayedMessages.add(key);
+      if (displayedMessages.size > 600) {
+        displayedMessages.delete(displayedMessages.values().next().value);
+      }
+    }
+  });
+  displayQueue = job.catch(() => undefined);
+  return job;
+}
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "sayittome:show-chat-notification") return;
+  const port = event.ports?.[0];
+  event.waitUntil(
+    displayChatNotification(String(event.data.title || "SayItToMe"), event.data.options || {})
+      .then(() => port?.postMessage({ ok: true }))
+      .catch(() => port?.postMessage({ ok: false })),
+  );
+});
+
 self.addEventListener("push", (event) => {
   let payload = {};
   try {
@@ -36,7 +80,7 @@ self.addEventListener("push", (event) => {
   ).trim();
 
   event.waitUntil(
-    self.registration.showNotification(title || "SayItToMe", {
+    displayChatNotification(title || "SayItToMe", {
       body,
       tag,
       icon: "/icons/Icon-192.png",

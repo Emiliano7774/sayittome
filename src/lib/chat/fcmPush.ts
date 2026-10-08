@@ -194,8 +194,8 @@ function clearPersistedDeviceToken() {
   }
 }
 
-export function hasActiveFcmRegistration() {
-  return Boolean(registeredToken && registeredUid);
+export function hasActiveFcmRegistration(uid = liveAuthUid()) {
+  return Boolean(registeredToken && registeredUid && registeredUid === uid);
 }
 
 export function consumePendingPushChatId() {

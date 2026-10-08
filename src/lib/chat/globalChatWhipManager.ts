@@ -22,6 +22,7 @@ import { markLocalPendingChat } from "@/lib/chat/localPendingChats";
 import { playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { db } from "@/lib/firebase";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
+import { isCapacitorNative } from "@/lib/app/nativeShell";
 
 type WhipContext = {
   viewerId: string;
@@ -259,18 +260,18 @@ class GlobalChatWhipManager {
           chatId,
           messageId,
           incoming,
-          suppress: viewingActiveChat,
+          suppress: viewingActiveChat && isCapacitorNative(),
           onAlert: () => {
             if (!viewingActiveChat) {
               markLocalPendingChat(chatId);
-              recordQaCriticalEvent("chat", "CHAT_INBOUND_WHIP_TRIGGERED", {
-                threadId: chatId,
-                messageId,
-                soundTriggeredAt: Date.now(),
-                owner: "global-listener",
-              });
-              playIncomingWhipSound();
             }
+            recordQaCriticalEvent("chat", "CHAT_INBOUND_WHIP_TRIGGERED", {
+              threadId: chatId,
+              messageId,
+              soundTriggeredAt: Date.now(),
+              owner: "global-listener",
+            });
+            playIncomingWhipSound();
             void showChatNotification({
               title: ctx.getChatLabel(chatId) || "Nuevo mensaje",
               body,

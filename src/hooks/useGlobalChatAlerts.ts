@@ -41,6 +41,7 @@ import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessi
 import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
 import { bindWhipSoundUnlock, playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
+import { startWebPushRegistrationRecovery } from "@/lib/chat/webPushRegistrationRecovery";
 import {
   enableWebChatPush,
   hasActiveFcmRegistration,
@@ -196,7 +197,7 @@ export function useGlobalChatAlerts() {
   // latestMessageId transitions still raise the browser banner on Shuffle /
   // Stories without opening /chats. Deduped with the whip path via message id.
   useEffect(() => {
-    if (!unreadHydrated || !inboxRouteEnabled || !notificationsEnabled) return;
+    if (!unreadHydrated || !chatAlertsRouteEnabled || !notificationsEnabled) return;
     const previous = seenLatestMessageIdsRef.current;
     const next = new Map<string, string>();
     for (const chat of unreadSource) {
@@ -283,7 +284,7 @@ export function useGlobalChatAlerts() {
     }
   }, [
     unreadHydrated,
-    inboxRouteEnabled,
+    chatAlertsRouteEnabled,
     notificationsEnabled,
     inboxAlertSignature,
     unreadSource,
@@ -328,17 +329,17 @@ export function useGlobalChatAlerts() {
   // start; waiting for it leaves a real window where backend delivery sees no
   // token and permanently skips the incoming message.
   useEffect(() => {
-    if (
-      !notificationsEnabled ||
-      !firebaseUser ||
-      isCapacitorNative() ||
-      typeof Notification === "undefined" ||
-      Notification.permission !== "granted" ||
-      hasActiveFcmRegistration()
-    ) {
-      return;
-    }
-    void enableWebChatPush(firebaseUser);
+    if (!firebaseUser || isCapacitorNative()) return;
+    return startWebPushRegistrationRecovery({
+      events: window,
+      visibility: document,
+      ready: () =>
+        areChatNotificationsEnabled() &&
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted",
+      registered: () => hasActiveFcmRegistration(firebaseUser.uid),
+      register: () => enableWebChatPush(firebaseUser),
+    });
   }, [firebaseUser, notificationsEnabled]);
 
   // Keep the first-time permission prompt on the established in-app/loading

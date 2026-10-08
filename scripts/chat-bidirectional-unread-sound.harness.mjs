@@ -36,8 +36,8 @@ check("REATTACH_RESETS_BASELINE",
   whipMgr.includes("this.lastMessageId.delete(chatId);") &&
   whipMgr.includes("this.lastMessageId.clear();") &&
   whipMgr.includes("this.freshWatchChatIds.clear();"));
-check("ACTIVE_CHAT_HANDS_SOUND_TO_DETAIL_WITHOUT_PREBURN",
-  whipMgr.includes("suppress: viewingActiveChat") &&
+check("NATIVE_ACTIVE_CHAT_HANDS_SOUND_TO_DETAIL_WITHOUT_PREBURN",
+  whipMgr.includes("suppress: viewingActiveChat && isCapacitorNative()") &&
   dedupe.includes("if (incoming && suppress) return false") &&
   !profileDetail.includes("markChatMessagesWhipAlerted(") &&
   detailWhip.includes("CHAT_INBOUND_WHIP_TRIGGERED"));
