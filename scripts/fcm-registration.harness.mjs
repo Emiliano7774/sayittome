@@ -532,6 +532,16 @@ assert.match(
   /Notification\.permission !== "granted"[\s\S]*?void enableWebChatPush\(firebaseUser\);/,
   "granted web push must register without waiting for inbox hydration",
 );
+assert.match(
+  globalAlertsSrc,
+  /syncChatNotificationPrefsFromBrowserPermission\(\)[\s\S]*?addEventListener\("focus", syncGrantedPermission\)/,
+  "returning from browser site settings must reconcile granted notification permission",
+);
+assert.match(
+  globalAlertsSrc,
+  /addEventListener\("visibilitychange", syncGrantedPermission\)/,
+  "foregrounding the web app must re-check notification permission",
+);
 const notificationEffectStart = globalAlertsSrc.indexOf(
   "if (!unreadHydrated || !inboxRouteEnabled || !notificationsEnabled) return;",
 );

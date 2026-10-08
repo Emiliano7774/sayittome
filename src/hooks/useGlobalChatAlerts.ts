@@ -23,6 +23,7 @@ import {
 } from "@/lib/chat/inboxUnread";
 import {
   areChatNotificationsEnabled,
+  syncChatNotificationPrefsFromBrowserPermission,
   subscribeChatNotificationPrefs,
 } from "@/lib/chat/chatNotificationPrefs";
 import { initChatNotifications, requestChatNotificationPermission, showChatNotification } from "@/lib/chat/chatNotifications";
@@ -301,6 +302,25 @@ export function useGlobalChatAlerts() {
   useEffect(() => {
     void initChatNotifications();
     return bindWhipSoundUnlock();
+  }, []);
+
+  // Chrome permission changes made in site settings do not emit our app's
+  // preference event. Reconcile on return so the existing eager-registration
+  // effect can create the FCM token without requiring a full reload.
+  useEffect(() => {
+    const syncGrantedPermission = () => {
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+        return;
+      }
+      syncChatNotificationPrefsFromBrowserPermission();
+    };
+    window.addEventListener("focus", syncGrantedPermission);
+    document.addEventListener("visibilitychange", syncGrantedPermission);
+    syncGrantedPermission();
+    return () => {
+      window.removeEventListener("focus", syncGrantedPermission);
+      document.removeEventListener("visibilitychange", syncGrantedPermission);
+    };
   }, []);
 
   // A previously granted browser permission must restore the web push token as
