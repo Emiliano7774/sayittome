@@ -303,6 +303,26 @@ export function useGlobalChatAlerts() {
     return bindWhipSoundUnlock();
   }, []);
 
+  // A previously granted browser permission must restore the web push token as
+  // soon as auth is ready. Inbox hydration can take several seconds on a cold
+  // start; waiting for it leaves a real window where backend delivery sees no
+  // token and permanently skips the incoming message.
+  useEffect(() => {
+    if (
+      !notificationsEnabled ||
+      !firebaseUser ||
+      isCapacitorNative() ||
+      typeof Notification === "undefined" ||
+      Notification.permission !== "granted" ||
+      hasActiveFcmRegistration()
+    ) {
+      return;
+    }
+    void enableWebChatPush(firebaseUser);
+  }, [firebaseUser, notificationsEnabled]);
+
+  // Keep the first-time permission prompt on the established in-app/loading
+  // path. The eager effect above only runs for permission already granted.
   useEffect(() => {
     if (!chatAlertsRouteEnabled || loading || !notificationsEnabled) return;
     void requestChatNotificationPermission().then((granted) => {

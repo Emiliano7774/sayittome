@@ -510,6 +510,10 @@ function memoryTx(store) {
 }
 
 const fcmSrc = fs.readFileSync(path.join(root, "src/lib/chat/fcmPush.ts"), "utf8");
+const globalAlertsSrc = fs.readFileSync(
+  path.join(root, "src/hooks/useGlobalChatAlerts.ts"),
+  "utf8",
+);
 const pipelineSrc = fs.readFileSync(path.join(root, "src/lib/chat/fcmEnablePipeline.ts"), "utf8");
 assert.match(fcmSrc, /reconcilePendingForEnable/);
 assert.match(fcmSrc, /PushNotifications.unregister/);
@@ -519,6 +523,17 @@ assert.match(fcmSrc, /reconcileThenRegisterUnlocked/);
 assert.match(fcmSrc, /isValidInstallationProof/);
 assert.match(fcmSrc, /generateInstallationSecret/);
 assert.match(fcmSrc, /reason: "stale"|reason: upserted.reason/);
+assert.match(
+  globalAlertsSrc,
+  /Notification\.permission !== "granted"[\s\S]*?void enableWebChatPush\(firebaseUser\);/,
+  "granted web push must register without waiting for inbox hydration",
+);
+const eagerWebRegistration = globalAlertsSrc.slice(
+  globalAlertsSrc.indexOf("A previously granted browser permission"),
+  globalAlertsSrc.indexOf("Keep the first-time permission prompt"),
+);
+assert.doesNotMatch(eagerWebRegistration, /\bloading\b/);
+assert.doesNotMatch(eagerWebRegistration, /chatAlertsRouteEnabled/);
 assert.match(fcmSrc, /if \(options\?\.skipAutoEnable\) return;/);
 assert.match(
   fcmSrc,
