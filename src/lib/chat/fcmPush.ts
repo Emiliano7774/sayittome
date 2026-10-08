@@ -28,7 +28,7 @@ import {
   type FcmPipelineDeps,
   type FcmUpsertResult,
 } from "@/lib/chat/fcmEnablePipeline";
-import { auth, functions } from "@/lib/firebase";
+import app, { auth, functions } from "@/lib/firebase";
 import {
   markChatOpenedFromNotification,
   resolvePushChatOpenPlan,
@@ -46,6 +46,9 @@ const INSTALLATION_KEY = "sayittome:fcm-installation-id";
 const INSTALLATION_SECRET_KEY = "sayittome:fcm-installation-secret";
 const PERSISTED_TOKEN_KEY = "sayittome:fcm-device-token";
 const PERSISTED_UID_KEY = "sayittome:fcm-device-uid";
+const FIREBASE_WEB_PUSH_VAPID_KEY =
+  process.env.NEXT_PUBLIC_FIREBASE_WEB_PUSH_VAPID_KEY ||
+  "BGT2P9fWO90OjLssppgUi7-Pi6e-8wz-tf7JCxSySFJFYgwMZ9mBy8pN4vt3vwweb_0WiSWWwA_6514CYzY3pOs";
 
 let bootstrapped = false;
 let registeredToken: string | null = null;
@@ -262,6 +265,17 @@ async function invalidateLocalNativeRegistration() {
   }
 }
 
+async function invalidateLocalWebRegistration() {
+  if (isCapacitorNative() || typeof window === "undefined") return;
+  try {
+    const { deleteToken, getMessaging, isSupported } = await import("firebase/messaging");
+    if (!(await isSupported())) return;
+    await deleteToken(getMessaging(app));
+  } catch {
+    // Backend unregister is authoritative; clearing the local SDK cache is best-effort.
+  }
+}
+
 function pipelineDeps(proof: string): FcmPipelineDeps {
   return {
     liveUid: liveAuthUid,
@@ -282,7 +296,7 @@ function pipelineDeps(proof: string): FcmPipelineDeps {
         installationId: input.installationId,
         proof,
         tokenHash: hashFcmToken(input.token),
-        platform: "android",
+        platform: isCapacitorNative() ? "android" : "web",
       });
     },
   };
@@ -408,7 +422,10 @@ export async function deleteCurrentDeviceFcmToken(
       createdAtMs: Date.now(),
     });
 
-    await invalidateLocalNativeRegistration();
+    await Promise.all([
+      invalidateLocalNativeRegistration(),
+      invalidateLocalWebRegistration(),
+    ]);
 
     try {
       if (liveAuthUid() && liveAuthUid() !== cleanUid) return;
@@ -574,6 +591,7 @@ export type PushEnableResult =
         | "callable"
         | "prefs"
         | "not_native"
+        | "not_web"
         | "stale"
         | "cancelled";
       message: string;
@@ -582,6 +600,92 @@ export type PushEnableResult =
 export async function registerNativePushIfEnabled(user?: User | null) {
   const result = await enableNativeChatPush(user);
   return result.ok;
+}
+
+export async function registerWebPushIfEnabled(user?: User | null) {
+  const result = await enableWebChatPush(user);
+  return result.ok;
+}
+
+export async function enableWebChatPush(user?: User | null): Promise<PushEnableResult> {
+  if (isCapacitorNative() || typeof window === "undefined") {
+    return { ok: false, reason: "not_web", message: "not_web" };
+  }
+  if (!areChatNotificationsEnabled()) {
+    await flushPendingFcmUnregister();
+    return { ok: false, reason: "prefs", message: "prefs_off" };
+  }
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return { ok: false, reason: "denied", message: "permission_denied" };
+  }
+
+  const uid = asId(user?.uid || auth.currentUser?.uid);
+  if (!uid) return { ok: false, reason: "no_auth", message: "missing_uid" };
+  const inFlightKey = `web:${uid}`;
+  const existing = enableInFlightByUid.get(inFlightKey);
+  if (existing) return existing;
+
+  const next = (async (): Promise<PushEnableResult> => {
+    try {
+      const { getMessaging, getToken, isSupported } = await import("firebase/messaging");
+      if (!(await isSupported())) {
+        recordNotificationStage("web_fcm_supported", false, "unsupported");
+        return { ok: false, reason: "not_web", message: "unsupported" };
+      }
+      const { ensureChatNotifyServiceWorker } = await import("@/lib/chat/chatNotifications");
+      const registration = await ensureChatNotifyServiceWorker();
+      if (!registration?.active) {
+        recordNotificationStage("web_fcm_sw", false, "inactive");
+        return { ok: false, reason: "register", message: "service_worker_inactive" };
+      }
+
+      const vapidKey = String(FIREBASE_WEB_PUSH_VAPID_KEY).trim();
+      const token = asId(
+        await getToken(getMessaging(app), {
+          serviceWorkerRegistration: registration,
+          ...(vapidKey ? { vapidKey } : {}),
+        }),
+      );
+      if (!token) {
+        recordNotificationStage("web_fcm_token", false, "empty");
+        return { ok: false, reason: "token", message: "empty_token" };
+      }
+
+      const upserted = await upsertFcmTokenForUser(uid, token);
+      if (!upserted.ok) {
+        recordNotificationStage("web_fcm_register", false, upserted.reason);
+        return {
+          ok: false,
+          reason:
+            upserted.reason === "stale" || upserted.reason === "cancelled"
+              ? upserted.reason
+              : "callable",
+          message: upserted.reason,
+        };
+      }
+      recordNotificationStage(
+        "web_fcm_register",
+        true,
+        vapidKey ? "custom_vapid" : "default_vapid",
+      );
+      return { ok: true, token };
+    } catch (error) {
+      recordNotificationStage(
+        "web_fcm_register",
+        false,
+        String((error as Error)?.message || (error as Error)?.name || "failed").slice(0, 120),
+      );
+      return {
+        ok: false,
+        reason: "register",
+        message: String((error as Error)?.message || "web_fcm_register_failed"),
+      };
+    }
+  })().finally(() => {
+    enableInFlightByUid.delete(inFlightKey);
+  });
+  enableInFlightByUid.set(inFlightKey, next);
+  return next;
 }
 
 export async function enableNativeChatPush(user?: User | null): Promise<PushEnableResult> {

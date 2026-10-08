@@ -248,9 +248,21 @@ assert.equal(
     isAnonymous: true,
     uid: "anonFirebaseUid1",
     anonDoorOpen: false,
+    anonChatOpen: false,
   }),
   false,
-  "anonymous before shuffle door must not get the notification prompt",
+  "anon, no shuffle, no chat => not ready",
+);
+assert.equal(
+  ready.isNotificationProfileReady({
+    loading: false,
+    isAnonymous: true,
+    uid: "anonFirebaseUid1",
+    anonDoorOpen: false,
+    anonChatOpen: true,
+  }),
+  true,
+  "anon, no shuffle, chat => ready",
 );
 assert.equal(
   ready.isNotificationProfileReady({
@@ -258,9 +270,32 @@ assert.equal(
     isAnonymous: true,
     uid: "anonFirebaseUid1",
     anonDoorOpen: true,
+    anonChatOpen: false,
   }),
   true,
-  "anonymous after shuffle enter gets the same notification rights",
+  "anon, shuffle => ready",
+);
+assert.equal(
+  ready.isNotificationProfileReady({
+    loading: true,
+    isAnonymous: true,
+    uid: "anonFirebaseUid1",
+    anonDoorOpen: true,
+    anonChatOpen: true,
+  }),
+  false,
+  "anonymous loading guard still blocks",
+);
+assert.equal(
+  ready.isNotificationProfileReady({
+    loading: false,
+    isAnonymous: true,
+    uid: "",
+    anonDoorOpen: true,
+    anonChatOpen: true,
+  }),
+  false,
+  "anonymous uid guard still blocks",
 );
 assert.equal(store.setFcmRegistrationState("", { status: "active" }).uid, "");
 const emptyUnsub = store.subscribeFcmRegistration("", () => undefined);

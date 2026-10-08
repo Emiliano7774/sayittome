@@ -18,6 +18,7 @@ import {
 import {
   deleteCurrentDeviceFcmToken,
   enableNativeChatPush,
+  enableWebChatPush,
   hasActiveFcmRegistration,
   openNativeNotificationSettings,
 } from "@/lib/chat/fcmPush";
@@ -193,6 +194,13 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
         return;
       }
 
+      const result = await enableWebChatPush();
+      if (!result.ok) {
+        setChatNotificationsEnabled(false);
+        setTokenForUid({ uid, active: false });
+        setError(`${t("chat_notifications_error")} (${result.reason})`);
+        return;
+      }
       setTokenForUid({ uid, active: true });
     } catch {
       setChatNotificationsEnabled(false);

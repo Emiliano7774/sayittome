@@ -64,6 +64,7 @@ assert.match(panel, /variant === "panel"/);
 assert.match(panel, /chat_notifications_disable_cta/);
 assert.match(panel, /deleteCurrentDeviceFcmToken/);
 assert.match(panel, /enableNativeChatPush/);
+assert.match(panel, /enableWebChatPush/);
 assert.match(panel, /onPointerUp/);
 assert.match(panel, /chat_notifications_disable_cta/);
 assert.match(panel, /openNativeNotificationSettings/);
@@ -75,22 +76,32 @@ assert.match(panel, /completeChatNotificationPrompt\(false\)/);
 const prompt = read("src/components/chat/ChatNotificationPrompt.tsx");
 assert.match(prompt, /isNotificationProfileReady/);
 assert.match(prompt, /enableNativeChatPush/);
+assert.match(prompt, /enableWebChatPush/);
 assert.match(prompt, /reason !== "not_native"/);
 assert.match(prompt, /resetChatNotificationPromptOnLogout/);
 assert.match(prompt, /chatNotificationPromptOpen/);
 assert.match(prompt, /anonDoorOpen|isAnonMatchDoorOpen/);
+assert.match(prompt, /anonChatOpen/);
+assert.match(prompt, /usePathname/);
+assert.match(prompt, /isProfileChatRoute|isChatThreadRoute/);
 assert.doesNotMatch(prompt, /registerNativePushIfEnabled/);
 assert.match(prompt, /z-\[1000000\]/);
 assert.match(prompt, /completeChatNotificationPrompt\(false\)/);
 
 const readySrc = read("src/lib/chat/notificationProfileReady.ts");
 assert.match(readySrc, /anonDoorOpen/);
+assert.match(readySrc, /anonChatOpen/);
 assert.match(readySrc, /isAnonymous/);
+assert.match(readySrc, /anonDoorOpen === true \|\| input\.anonChatOpen === true/);
 
 const fcmSrc = read("src/lib/chat/fcmPush.ts");
 assert.match(fcmSrc, /enableInFlightByUid/);
 assert.match(fcmSrc, /skipAutoEnable/);
 assert.match(fcmSrc, /reconcilePendingForEnable/);
+assert.match(fcmSrc, /getToken/);
+assert.match(fcmSrc, /firebase\/messaging/);
+assert.match(fcmSrc, /platform: isCapacitorNative\(\) \? "android" : "web"/);
+assert.match(fcmSrc, /NEXT_PUBLIC_FIREBASE_WEB_PUSH_VAPID_KEY/);
 assert.doesNotMatch(fcmSrc, /export function shouldFlushPendingUnregister/);
 
 const install = await import(
@@ -172,6 +183,16 @@ assert.doesNotMatch(fcmSrc, /void upsertFcmTokenForUser\(uid, token\)/);
 const perms = read("src/lib/chat/chatNotifications.ts");
 assert.match(perms, /PushNotifications/);
 assert.match(perms, /requestPermissions/);
+assert.match(perms, /existing\.update\(\)/);
+
+const webWorker = read("public/chat-notify/sw.js");
+assert.match(webWorker, /addEventListener\("push"/);
+assert.match(webWorker, /registration\.showNotification/);
+assert.match(webWorker, /data: \{ chatId, messageId, href/);
+
+const functionIndex = read("functions/src/index.ts");
+assert.match(functionIndex, /webpush:\s*\{/);
+assert.match(functionIndex, /Urgency: "high"/);
 
 const fcm = read("src/lib/chat/fcmPush.ts");
 assert.match(fcm, /upsertFcmTokenForUser/);

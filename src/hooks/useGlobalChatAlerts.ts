@@ -39,6 +39,11 @@ import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
 import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
 import { bindWhipSoundUnlock, playIncomingWhipSound } from "@/lib/chat/whipSound";
+import { isCapacitorNative } from "@/lib/app/nativeShell";
+import {
+  enableWebChatPush,
+  hasActiveFcmRegistration,
+} from "@/lib/chat/fcmPush";
 
 function subscribeSessionChatIds(onStoreChange: () => void) {
   if (typeof window === "undefined") return () => undefined;
@@ -199,7 +204,49 @@ export function useGlobalChatAlerts() {
       next.set(chatId, String(chat.latestMessageId || ""));
     }
     seenLatestMessageIdsRef.current = next;
-    if (!previous) return;
+    if (!previous) {
+      // First hydration: no indiscriminate historical alerts. Recover only rows
+      // that already look like a live unread inbound (whip may have skipped an
+      // ambiguous first snapshot without burning the id).
+      for (const chat of unreadSource) {
+        const chatId = chat.canonicalChatId || chat.id;
+        if (!chatId || chatId === activeChatId) continue;
+        const latest = String(chat.latestMessageId || "");
+        if (!latest) continue;
+        if (
+          chatUnreadCountForViewer(chat, firebaseUid, {
+            excludeChatId: activeChatId,
+          }) <= 0
+        ) {
+          continue;
+        }
+        const sender = String(chat.lastMessageSender || "");
+        if (sender && isOwnChatSender(sender, viewerId, firebaseUid, chat)) {
+          continue;
+        }
+        const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
+        const ageMs = Date.now() - arrivedAt;
+        if (!arrivedAt || ageMs < 0 || ageMs > 2 * 60_000) continue;
+        tryAlertIncomingMessage({
+          chatId,
+          messageId: latest,
+          incoming: true,
+          suppress: false,
+          onAlert: () => {
+            markLocalPendingChat(chatId);
+            playIncomingWhipSound();
+            void showChatNotification({
+              title: chatPeerTitle(chat, firebaseUid) || "Nuevo mensaje",
+              body: String(chat.lastMessage || "Nuevo mensaje"),
+              chatId,
+              messageId: latest,
+              viewingActiveChat: false,
+            });
+          },
+        });
+      }
+      return;
+    }
 
     for (const chat of unreadSource) {
       const chatId = chat.canonicalChatId || chat.id;
@@ -219,6 +266,9 @@ export function useGlobalChatAlerts() {
         incoming: true,
         suppress: false,
         onAlert: () => {
+          // Inbox can discover a new thread before unreadCounts catch up; latch
+          // orange pending here so Shuffle/Stories do not wait for /chats.
+          markLocalPendingChat(chatId);
           playIncomingWhipSound();
           void showChatNotification({
             title: chatPeerTitle(chat, firebaseUid) || "Nuevo mensaje",
@@ -255,8 +305,17 @@ export function useGlobalChatAlerts() {
 
   useEffect(() => {
     if (!chatAlertsRouteEnabled || loading || !notificationsEnabled) return;
-    void requestChatNotificationPermission();
-  }, [chatAlertsRouteEnabled, loading, notificationsEnabled]);
+    void requestChatNotificationPermission().then((granted) => {
+      if (
+        granted &&
+        firebaseUser &&
+        !isCapacitorNative() &&
+        !hasActiveFcmRegistration()
+      ) {
+        void enableWebChatPush(firebaseUser);
+      }
+    });
+  }, [chatAlertsRouteEnabled, firebaseUser, loading, notificationsEnabled]);
 
   useEffect(() => {
     globalChatWhipManager.setContext({

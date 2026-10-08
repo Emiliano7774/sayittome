@@ -751,6 +751,12 @@ export const onChatMessageCreated = onDocumentCreated(
           priority: "high",
           collapseKey: `chat-${chatId}`,
         },
+        webpush: {
+          headers: {
+            Urgency: "high",
+            TTL: "86400",
+          },
+        },
       };
 
       const response = await messaging().sendEachForMulticast(multicast);

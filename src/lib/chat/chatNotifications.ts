@@ -135,6 +135,11 @@ export async function ensureChatNotifyServiceWorker(): Promise<ServiceWorkerRegi
     try {
       const existing = await findChatNotifyRegistration();
       if (existing) {
+        try {
+          await existing.update();
+        } catch {
+          // Existing active worker is still usable; update retries on next boot.
+        }
         const active = await waitForServiceWorkerActive(existing);
         if (active?.active && isChatNotifyRegistration(active)) {
           chatNotifyRegistration = active;

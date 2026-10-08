@@ -1,6 +1,7 @@
 "use client";
 
 import { Bell } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
@@ -14,7 +15,7 @@ import {
   subscribeChatNotificationPrefs,
 } from "@/lib/chat/chatNotificationPrefs";
 import { requestChatNotificationPermission } from "@/lib/chat/chatNotifications";
-import { enableNativeChatPush } from "@/lib/chat/fcmPush";
+import { enableNativeChatPush, enableWebChatPush } from "@/lib/chat/fcmPush";
 import { enableStoryNotificationPack } from "@/lib/stories/storyNotificationPrefs";
 import { isNotificationProfileReady } from "@/lib/chat/notificationProfileReady";
 import { chatNotificationPromptOpen } from "@/lib/chat/chatNotificationPromptOpen";
@@ -23,6 +24,7 @@ import {
   ANON_MATCH_DOOR_EVENT,
   isAnonMatchDoorOpen,
 } from "@/lib/anonMatch/anonMatchDoor";
+import { isChatThreadRoute, isProfileChatRoute } from "@/lib/navigation/routeKind";
 
 export { chatNotificationPromptOpen } from "@/lib/chat/chatNotificationPromptOpen";
 
@@ -38,6 +40,7 @@ function getAnonMatchDoorVersion(uid?: string, isAnonymous?: boolean) {
 
 export default function ChatNotificationPrompt() {
   const t = useT();
+  const pathname = usePathname() || "/";
   const { firebaseUser, profile, loading } = useAuth();
   const prefsVersion = useSyncExternalStore(
     subscribeChatNotificationPrefs,
@@ -56,6 +59,10 @@ export default function ChatNotificationPrompt() {
     firebaseUser &&
       (!firebaseUser.isAnonymous || isAnonMatchDoorOpen(firebaseUser)),
   );
+  const anonChatOpen = Boolean(
+    firebaseUser?.isAnonymous &&
+      (isProfileChatRoute(pathname) || isChatThreadRoute(pathname)),
+  );
   const profileReady = Boolean(
     firebaseUser &&
       isNotificationProfileReady({
@@ -67,6 +74,7 @@ export default function ChatNotificationPrompt() {
         email: profile?.email || firebaseUser.email || "",
         emailVerified: firebaseUser.emailVerified,
         anonDoorOpen,
+        anonChatOpen,
       }),
   );
   const notificationApiReady =
@@ -106,6 +114,12 @@ export default function ChatNotificationPrompt() {
       if (!result.ok && result.reason !== "not_native") {
         setChatNotificationsEnabled(false);
         if (result.reason === "denied") completeChatNotificationPrompt(false);
+        return;
+      }
+    } else {
+      const result = await enableWebChatPush(firebaseUser);
+      if (!result.ok && result.reason !== "not_web") {
+        setChatNotificationsEnabled(false);
         return;
       }
     }

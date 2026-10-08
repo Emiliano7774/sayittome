@@ -8,16 +8,18 @@ export function isNotificationProfileReady(input: {
   profileSetupComplete?: boolean;
   email?: string;
   emailVerified?: boolean;
-  /** Anonymous visitors: only after shuffle enter (legal / door open). */
+  /** Anonymous visitors: after shuffle enter (legal / door open). */
   anonDoorOpen?: boolean;
+  /** Anonymous visitors: on a chat surface (thread / profile-chat). */
+  anonChatOpen?: boolean;
 }) {
   if (input.loading) return false;
   if (!String(input.uid || "").trim()) return false;
 
-  // Anonymous sessions get the same chat notification rights as registered
-  // users (OS push / web banners / badge) once they enter Shuffle.
+  // Anonymous sessions get chat notification rights once they enter Shuffle
+  // or once they are already on a chat surface (anonChatOpen).
   if (input.isAnonymous) {
-    return input.anonDoorOpen === true;
+    return input.anonDoorOpen === true || input.anonChatOpen === true;
   }
 
   if (input.profileSetupComplete !== true) return false;
