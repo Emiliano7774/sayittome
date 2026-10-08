@@ -24,8 +24,25 @@ const result = spawnSync(process.execPath, [realNext, ...args], {
 
 const code = result.status == null ? 1 : result.status;
 if (code === 0 && args[0] === "build") {
-  const { collectHashedRefsFromDir } = require("../materialize-next-hashed-externals.cjs");
+  // Next 16 can let a late worker flush middleware-manifest.json a few seconds
+  // after the main build process exits. Firebase Frameworks reads it immediately,
+  // which creates an ENOENT race. Wait briefly for the manifest before handing
+  // control back to Firebase. This is deploy-only and does not affect runtime.
   const serverDir = join(process.cwd(), ".next", "server");
+  const middlewareManifest = join(serverDir, "middleware-manifest.json");
+  const manifestDeadline = Date.now() + 12_000;
+  while (!existsSync(middlewareManifest) && Date.now() < manifestDeadline) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  }
+  if (!existsSync(middlewareManifest)) {
+    console.error(
+      "[next-ssr-bin] FAIL: middleware-manifest.json was not materialized within 12s",
+    );
+    process.exit(1);
+  }
+  console.log("[next-ssr-bin] middleware-manifest ready");
+
+  const { collectHashedRefsFromDir } = require("../materialize-next-hashed-externals.cjs");
   const refs = [...collectHashedRefsFromDir(serverDir)];
   const FIREBASE_ADMIN_HASHED = /firebase-admin-[a-f0-9]+/gi;
   const raw = new Set();

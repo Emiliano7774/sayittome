@@ -3,11 +3,11 @@ import { NextResponse } from "next/server";
 import { verifyFirebaseIdTokenAllowingAnonymous } from "@/lib/admin/verifyAdminRequest";
 import {
   USAGE_COLLECTION,
+  advanceUsageDaySummary,
   applyUsagePing,
+  readUsageDaySummary,
   readUsageVisit,
-  summarizeUsageVisits,
   usageDayKey,
-  type UsageVisitRecord,
 } from "@/lib/usage/appUsage";
 
 export const dynamic = "force-dynamic";
@@ -39,14 +39,14 @@ export async function POST(req: Request) {
     await db.runTransaction(async (tx: {
       get: (target: unknown) => Promise<{
         exists: boolean;
-        id?: string;
-        size?: number;
-        docs?: Array<{ id: string; data: () => Record<string, unknown> }>;
         data: () => Record<string, unknown>;
       }>;
       set: (target: unknown, data: Record<string, unknown>, options: { merge: boolean }) => void;
     }) => {
+      // Only two document reads per ping, regardless of the number of visitors.
+      // Read all documents before any writes (Firestore transaction contract).
       const snap = await tx.get(ref);
+      const daySnap = await tx.get(dayRef);
       const existing = snap.exists ? readUsageVisit(snap.data()) : null;
       let username = existing?.username || "";
       if (!actor.isAnonymous && !username) {
@@ -65,23 +65,10 @@ export async function POST(req: Request) {
         uid: actor.uid,
         anonymous: actor.isAnonymous,
       });
-      const siblings = await tx.get(dayRef.collection("visits").limit(500));
-      const visits: UsageVisitRecord[] = [];
-      const siblingDocs = siblings.docs || [];
-      if (siblingDocs.length > 0 && siblingDocs.length < 500) {
-        for (const doc of siblingDocs) {
-          if (doc.id === (actor.isAnonymous ? `anon_${actor.uid}` : actor.uid)) continue;
-          const visit = readUsageVisit(doc.data());
-          if (visit) visits.push(visit);
-        }
-        visits.push(next);
-      } else if (siblingDocs.length === 0) {
-        visits.push(next);
-      }
+      const current = daySnap.exists ? readUsageDaySummary(daySnap.data()) : null;
+      const summary = advanceUsageDaySummary(current, existing, next);
       tx.set(ref, next, { merge: true });
-      if (visits.length > 0) {
-        tx.set(dayRef, { day, updatedAt: nowIso, ...summarizeUsageVisits(visits) }, { merge: true });
-      }
+      tx.set(dayRef, { day, updatedAt: nowIso, ...summary }, { merge: true });
     });
 
     return NextResponse.json({ ok: true, day });

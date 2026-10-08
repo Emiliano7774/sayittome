@@ -8,6 +8,8 @@ import AppNavigation from "@/components/navigation/AppNavigation";
 import { MainTabShellProvider } from "@/contexts/MainTabShellContext";
 import { CHATS_PREPAINT_BOOTSTRAP_SCRIPT } from "@/lib/chats/chatsPrepaintBootstrapInline";
 import { BOOST_PREPAINT_BOOTSTRAP_SCRIPT } from "@/lib/boost/boostPrepaintBootstrapInline";
+import { NATIVE_BOOT_RECOVERY_SCRIPT } from "@/lib/app/nativeBootRecoveryInline";
+import { MAIN_TAB_PREHYDRATE_GUARD_SCRIPT } from "@/lib/navigation/mainTabPrehydrateInline";
 
 export const metadata: Metadata = {
   title: "SayItToMe",
@@ -40,6 +42,15 @@ export default function RootLayout({
   return (
     <html lang="es">
       <head>
+        {/* Native failsafe must run before any React/Next chunks or handoff CSS. */}
+        <script
+          dangerouslySetInnerHTML={{ __html: NATIVE_BOOT_RECOVERY_SCRIPT }}
+        />
+        {/* Capture bottom-nav taps before React hydration so raw anchors can never
+            fall through to a full Firebase document navigation. */}
+        <script
+          dangerouslySetInnerHTML={{ __html: MAIN_TAB_PREHYDRATE_GUARD_SCRIPT }}
+        />
         {/* Pre-paint: SoftNavigate remount may paint Chats skeleton / BoostAccessGate
             loading before React hydrates suppress. Inline bootstraps read session
             markers / until and install CSS datasets before first visible paint.

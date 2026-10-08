@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { auth } from "@/lib/firebase";
 
@@ -72,8 +72,11 @@ export default function AdminAnonMatchChatsPanel() {
   const [error, setError] = useState("");
   const [detailError, setDetailError] = useState("");
   const [selectedChat, setSelectedChat] = useState<AnonMatchChat | null>(null);
+  const listInFlight = useRef(false);
 
   async function loadChats(silent = false) {
+    if (listInFlight.current) return;
+    listInFlight.current = true;
     if (!silent) {
       setLoading(true);
       setError("");
@@ -86,17 +89,21 @@ export default function AdminAnonMatchChatsPanel() {
     } catch (e) {
       if (!silent) setError(String((e as Error)?.message || "load_failed"));
     } finally {
+      listInFlight.current = false;
       if (!silent) setLoading(false);
     }
   }
 
   useEffect(() => {
     void loadChats();
-    const refresh = () => void loadChats(true);
+    const refresh = () => {
+      if (document.hidden) return;
+      void loadChats(true);
+    };
     const onVisibility = () => {
       if (document.visibilityState === "visible") refresh();
     };
-    const timer = window.setInterval(refresh, 10_000);
+    const timer = window.setInterval(refresh, 60_000);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -116,7 +123,7 @@ export default function AdminAnonMatchChatsPanel() {
     let cancelled = false;
     let inFlight = false;
     async function loadDetail(silent = false) {
-      if (inFlight) return;
+      if (inFlight || document.hidden) return;
       inFlight = true;
       if (!silent) {
         setDetailLoading(true);
@@ -140,7 +147,7 @@ export default function AdminAnonMatchChatsPanel() {
       }
     }
     void loadDetail();
-    const timer = window.setInterval(() => void loadDetail(true), 5_000);
+    const timer = window.setInterval(() => void loadDetail(true), 15_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);

@@ -104,6 +104,17 @@ function reservePatch(fieldDelete: unknown, reservationId: string) {
   };
 }
 
+function retainForAdminPatch(fieldDelete: unknown, mediaUrl: string) {
+  return {
+    mediaUrl: String(mediaUrl || "").trim(),
+    deliveryUid: fieldDelete,
+    deliveryExpiresAtMs: fieldDelete,
+    deliveryConsumeSecret: fieldDelete,
+    deliveryReservationId: fieldDelete,
+    adminRetained: true,
+  };
+}
+
 /**
  * Atomically authorize + consume the short-lived delivery grant.
  * Stamps deliveryReservationId so restore/finalize never touch a later claim grant.
@@ -236,18 +247,14 @@ export async function restoreViewOnceMediaGrant(input: {
         return { restored: false as const, reason: "superseded" as const, cleaned: false };
       }
 
-      if (input.reserved.consumeSecret) {
-        tx.delete(secretRef);
-      } else {
-        tx.set(
-          secretRef,
-          {
-            mediaUrl: String(existing.mediaUrl || input.reserved.grant.mediaUrl || "").trim(),
-            deliveryReservationId: fieldDelete,
-          },
-          { merge: true },
-        );
-      }
+      tx.set(
+        secretRef,
+        retainForAdminPatch(
+          fieldDelete,
+          String(existing.mediaUrl || input.reserved.grant.mediaUrl || "").trim(),
+        ),
+        { merge: true },
+      );
       return { restored: false as const, reason: "expired" as const, cleaned: true };
     });
   }
@@ -286,8 +293,8 @@ export async function restoreViewOnceMediaGrant(input: {
 }
 
 /**
- * After bytes are safely buffered: delete secret when exhausted — only if reservation still owns it.
- * Never delete a later claim B grant/secret.
+ * After bytes are safely buffered: consume the user delivery grant while retaining
+ * the private media reference for authorized moderation. Never touch a later claim B grant.
  */
 export async function finalizeViewOnceMediaGrant(input: {
   db: ViewOnceDeliverDb;
@@ -339,7 +346,14 @@ export async function finalizeViewOnceMediaGrant(input: {
     ) {
       return { finalized: false as const, reason: "superseded" as const };
     }
-    tx.delete(secretRef);
+    tx.set(
+      secretRef,
+      retainForAdminPatch(
+        fieldDelete,
+        String(existing.mediaUrl || input.reserved.grant.mediaUrl || "").trim(),
+      ),
+      { merge: true },
+    );
     return { finalized: true as const };
   });
 }

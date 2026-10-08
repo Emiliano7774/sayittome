@@ -1,5 +1,26 @@
 # Web notifications: bounded release
 
+## Later live release reconciled before final publication
+
+The first notification deploy `58123bd` completed (608 seconds, exit 0), then a
+later deployment replaced it with effective MAIN `1b5447b`, built at
+`2026-10-08T09:05:41.087Z`. Do not redeploy the older snapshot over that release.
+Read-only independent inspection confirmed live HTML and 30 JS/CSS assets match
+the latest MAIN generated package; 710 src files match its embedded sourcemaps
+(704 exact, 6 differing only by compiler-stripped BOM). All 33 public assets match
+live as well. Current effective runtime sources/configuration are preserved in
+this isolated checkout, including recentUnreadHint/no-premature-burn chat fixes,
+cost reductions, navigation recovery, privacy/cache headers and manifest wait.
+The three already-live AAB downloads are preserved byte-identically as existing
+release assets, not rebuilt Android releases. See
+`scripts/notification-live-reconcile-20261008.json` for hashes and bounded delta.
+The final effective runtime delta against that live release remains notification
+code only. Main checkout, Rules, business Functions and historical data are untouched.
+
+Reconciled build/TypeScript and web-notification-delivery/fcm-registration PASS.
+The older P0 assertion below is historical evidence of the earlier baseline, not
+a new certification or regression claim about this reconciled release.
+
 ## Source provenance
 
 The previous live release is `8e28ce2`, built at `2026-10-08T03:12:51.966Z`.

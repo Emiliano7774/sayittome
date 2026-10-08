@@ -1,68 +1,302 @@
 {
-  "hosting": {
-    "source": ".",
-    "predeploy": [
-      "node scripts/ssr-firebase-admin-zero-hash-predeploy.mjs"
-    ],
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**",
-      "android/**",
-      "scripts/**",
-      "**/firebase-debug.log",
-      "**/firebase-debug.*.log"
-    ],
-    "headers": [
-      {
-        "source": "/api/view-once/media",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "private, no-store, max-age=0, must-revalidate"
-          },
-          {
-            "key": "Pragma",
-            "value": "no-cache"
-          },
-          {
-            "key": "Surrogate-Control",
-            "value": "no-store"
-          }
-        ]
-      }
-    ]
-  },
-  "functions": [
-    {
-      "source": "functions",
-      "codebase": "chat-push",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run build"
-      ]
-    }
-  ],
-  "storage": {
-    "rules": "storage.rules"
-  },
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
-  "emulators": {
-    "firestore": {
-      "port": 8080,
-      "host": "127.0.0.1"
-    },
-    "ui": {
-      "enabled": false
-    }
-  }
+    "hosting":  {
+                    "source":  ".",
+                    "predeploy":  [
+                                      "node scripts/ssr-firebase-admin-zero-hash-predeploy.mjs"
+                                  ],
+                    "ignore":  [
+                                   "firebase.json",
+                                   "**/.*",
+                                   "**/node_modules/**",
+                                   "android/**",
+                                   "scripts/**",
+                                   "**/firebase-debug.log",
+                                   "**/firebase-debug.*.log"
+                               ],
+                    "headers":  [
+                                    {
+                                        "source":  "/_next/static/**",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=31536000, immutable"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/api/view-once/media",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "private, no-store, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        },
+                                                        {
+                                                            "key":  "Surrogate-Control",
+                                                            "value":  "no-store"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/admin/**",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/app",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/boost",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/boost/**",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/chat/new",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/chats",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/chat-notify/**",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        },
+                                                        {
+                                                            "key":  "Service-Worker-Allowed",
+                                                            "value":  "/chat-notify/"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/login",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/privacy",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/register",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/register/**",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/settings",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/settings/**",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/shuffle",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/stories",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    },
+                                    {
+                                        "source":  "/stories/**",
+                                        "headers":  [
+                                                        {
+                                                            "key":  "Cache-Control",
+                                                            "value":  "public, max-age=0, must-revalidate"
+                                                        },
+                                                        {
+                                                            "key":  "Pragma",
+                                                            "value":  "no-cache"
+                                                        }
+                                                    ]
+                                    }
+                                ]
+                },
+    "functions":  [
+                      {
+                          "source":  "functions",
+                          "codebase":  "chat-push",
+                          "ignore":  [
+                                         "node_modules",
+                                         ".git",
+                                         "firebase-debug.log",
+                                         "firebase-debug.*.log",
+                                         "*.local"
+                                     ],
+                          "predeploy":  [
+                                            "npm --prefix \"$RESOURCE_DIR\" run build"
+                                        ]
+                      }
+                  ],
+    "storage":  {
+                    "rules":  "storage.rules"
+                },
+    "firestore":  {
+                      "rules":  "firestore.rules",
+                      "indexes":  "firestore.indexes.json"
+                  },
+    "emulators":  {
+                      "firestore":  {
+                                        "port":  8080,
+                                        "host":  "127.0.0.1"
+                                    },
+                      "ui":  {
+                                 "enabled":  false
+                             }
+                  }
 }

@@ -2,6 +2,10 @@ import { doc, getDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 
 import { getAnonSessionId } from "@/lib/chat/anonSession";
+import {
+  readDurableClientCache,
+  writeDurableClientCache,
+} from "@/lib/cache/clientCache";
 import { auth, db } from "@/lib/firebase";
 import { isValidUsername, normalizeUsername } from "@/lib/profile/username";
 import { resolveStoryOwnerKeyFromState } from "@/lib/stories/storyOwnerIdentity";
@@ -39,22 +43,44 @@ export function usernameFromProfileData(data: Record<string, unknown> | undefine
   return "";
 }
 
-export async function fetchProfileStoryIdentity(uid: string) {
-  const snap = await getDoc(doc(db, "usuarios", uid));
+const STORY_PROFILE_IDENTITY_TTL_MS = 2 * 60 * 60_000;
+const STORY_PROFILE_IDENTITY_PREFIX = "sayittome:story-profile-identity:v1:";
+
+export async function fetchProfileStoryIdentity(
+  uid: string,
+  options?: { force?: boolean },
+) {
+  const cleanUid = String(uid || "").trim();
+  if (!cleanUid) return { username: "", photo: "" };
+
+  const cacheKey = STORY_PROFILE_IDENTITY_PREFIX + cleanUid;
+  if (!options?.force) {
+    const cached = readDurableClientCache<{ username: string; photo: string }>(
+      cacheKey,
+      STORY_PROFILE_IDENTITY_TTL_MS,
+    );
+    if (cached?.username) return cached;
+  }
+
+  const snap = await getDoc(doc(db, "usuarios", cleanUid));
   if (!snap.exists()) {
     return { username: "", photo: "" };
   }
 
   const data = snap.data() as Record<string, unknown>;
-  return {
+  const identity = {
     username: usernameFromProfileData(data),
     photo: String(data.fotoPrincipal || data.photoURL || ""),
   };
+  if (identity.username) {
+    writeDurableClientCache(cacheKey, identity);
+  }
+  return identity;
 }
 
 export async function resolveStoryAuthor(user: User | null): Promise<StoryAuthor> {
   if (user && !user.isAnonymous) {
-    const profile = await fetchProfileStoryIdentity(user.uid);
+    const profile = await fetchProfileStoryIdentity(user.uid, { force: true });
     const ownerUsername = profile.username;
 
     if (!ownerUsername) {

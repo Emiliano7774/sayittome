@@ -12,6 +12,7 @@ import {
   readMediaBlurFlags,
 } from "@/lib/profile/profilePhotoUrls";
 import { patchShuffleProfileBlurFlags } from "@/lib/shuffle/shuffleSlotsStore";
+import { patchCachedFullProfileAdminBlur } from "@/lib/profile/profileCache";
 import { useT } from "@/contexts/LocaleContext";
 
 type ProfileRef = {
@@ -28,11 +29,12 @@ type Props = {
   className?: string;
 };
 
-export function dispatchProfileBlurFlags(uid: string, mediaBlurFlags: Record<string, boolean>) {
-  patchShuffleProfileBlurFlags(uid, mediaBlurFlags);
+export function dispatchProfileBlurFlags(uid: string, mediaBlurFlags: Record<string, boolean>, adminBlurAt = new Date().toISOString(), username = "") {
+  patchShuffleProfileBlurFlags(uid, mediaBlurFlags, adminBlurAt);
+  if (username) patchCachedFullProfileAdminBlur(username, { mediaBlurFlags, adminBlurAt });
   window.dispatchEvent(
     new CustomEvent("sayittome:shuffle-profile-blur", {
-      detail: { uid, mediaBlurFlags },
+      detail: { uid, mediaBlurFlags, adminBlurAt },
     }),
   );
 }
@@ -139,7 +141,7 @@ export default function AdminProfileBlurPhotosButton({
       else delete nextFlags[url];
 
       setFlags(nextFlags);
-      dispatchProfileBlurFlags(profile.uid, nextFlags);
+      dispatchProfileBlurFlags(profile.uid, nextFlags, new Date().toISOString(), profile.username);
     } finally {
       setBusyUrl("");
     }

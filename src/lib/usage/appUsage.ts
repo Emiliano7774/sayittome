@@ -231,3 +231,33 @@ export function formatUsageDuration(ms: number) {
   if (minutes === 0) return `${hours} h`;
   return `${hours} h ${minutes} min`;
 }
+
+/**
+ * Incremental daily rollup. Updating a single visit must never scan the entire
+ * day's visits collection (previously up to 500 reads per 20-second ping).
+ */
+export function advanceUsageDaySummary(
+  current: UsageDaySummary | null,
+  previous: UsageVisitRecord | null,
+  next: UsageVisitRecord,
+): UsageDaySummary {
+  const base = current || emptyUsageDaySummary();
+  const newlyEntered = previous === null;
+  const priorMs = previous?.visibleMs || 0;
+  const nextMs = next.visibleMs;
+  const priorMeasured = Boolean(previous && (previous.measured || priorMs > 0));
+  const nextMeasured = next.measured || nextMs > 0;
+  const timedEntries = base.timedEntries + (priorMs <= 0 && nextMs > 0 ? 1 : 0);
+  const totalVisibleMs = Math.max(0, base.totalVisibleMs + nextMs - priorMs);
+
+  return {
+    entries: base.entries + (newlyEntered ? 1 : 0),
+    registered: base.registered + (newlyEntered && next.kind === "registered" ? 1 : 0),
+    anonymous: base.anonymous + (newlyEntered && next.kind === "anonymous" ? 1 : 0),
+    sessions: Math.max(0, base.sessions + next.sessions - (previous?.sessions || 0)),
+    totalVisibleMs,
+    averageVisibleMs: timedEntries ? Math.round(totalVisibleMs / timedEntries) : 0,
+    measuredEntries: base.measuredEntries + (!priorMeasured && nextMeasured ? 1 : 0),
+    timedEntries,
+  };
+}

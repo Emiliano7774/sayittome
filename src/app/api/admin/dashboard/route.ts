@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 
 import { assertAdminEmail, getAdminEmailFromRequest } from "@/lib/admin/isAdmin";
+import {
+  runCollectionQuery,
+  runCollectionQueryAllByDocumentId,
+} from "@/lib/firestore/rest";
 import { isLiveByConnection, ONLINE_WINDOW_MS } from "@/lib/presence";
-import { runCollectionQuery } from "@/lib/firestore/rest";
 
 export const dynamic = "force-dynamic";
 
 const ANON_ACTIVE_MS = 2 * 60 * 1000;
+
+type AdminDocumentSnapshot = {
+  id: string;
+  data: () => Record<string, unknown>;
+  createTime?: { toDate?: () => Date };
+};
 
 function isAnonActive(doc: Record<string, unknown>, now: number) {
   const expiresAt = String(doc.expiresAt || "");
@@ -32,14 +41,66 @@ export async function GET(req: Request) {
     const now = Date.now();
     const dayAgo = now - 24 * 60 * 60 * 1000;
 
-    const [users, stories, chats, reports, anonDocs, logs] = await Promise.all([
-      runCollectionQuery("usuarios", 500),
-      runCollectionQuery("historias", 500, "createdAt"),
-      runCollectionQuery("chats", 500, "updatedAt"),
-      runCollectionQuery("reportes", 200, "createdAt"),
-      runCollectionQuery("anonimos_activos", 250),
-      runCollectionQuery("admin_logs", 120, "timestamp"),
-    ]);
+    let adminDb: ReturnType<
+      (typeof import("@/lib/chat/historicalAuthorshipRepairAdmin"))["getRepairAdminDb"]
+    > | null = null;
+
+    try {
+      const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+      adminDb = getRepairAdminDb();
+    } catch (error) {
+      if ((error as Error)?.message !== "admin_sdk_unavailable") throw error;
+    }
+
+    const readAdminCollection = async (name: string, limit?: number) => {
+      if (!adminDb) return null;
+      let query = adminDb.collection(name);
+      if (limit) query = query.limit(limit);
+      const snap = await query.get();
+      return snap.docs.map((doc: AdminDocumentSnapshot) => ({
+        ...doc.data(),
+        id: doc.id,
+        _firestoreCreateTime: doc.createTime?.toDate?.()?.toISOString?.() || "",
+      })) as Record<string, unknown>[];
+    };
+
+    const adminCollections = adminDb
+      ? await Promise.all([
+          readAdminCollection("usuarios"),
+          readAdminCollection("historias", 500),
+          readAdminCollection("chats", 500),
+          readAdminCollection("reportes", 200),
+          readAdminCollection("anonimos_activos", 250),
+          readAdminCollection("admin_logs", 120),
+        ])
+      : null;
+
+    const safeFallbackQuery = async (
+      load: () => Promise<Record<string, unknown>[]>,
+    ) => {
+      try {
+        return await load();
+      } catch {
+        return [];
+      }
+    };
+
+    const [users, stories, chats, reports, anonDocs, logs] = adminCollections
+      ? (adminCollections as Record<string, unknown>[][])
+      : await Promise.all([
+          runCollectionQueryAllByDocumentId("usuarios"),
+          safeFallbackQuery(() => runCollectionQuery("historias", 500, "createdAt")),
+          safeFallbackQuery(() => runCollectionQuery("chats", 500, "updatedAt")),
+          safeFallbackQuery(() => runCollectionQuery("reportes", 200, "createdAt")),
+          safeFallbackQuery(() => runCollectionQuery("anonimos_activos", 250)),
+          safeFallbackQuery(() => runCollectionQuery("admin_logs", 120, "timestamp")),
+        ]);
+
+    const usersTotal = new Set(
+      users
+        .map((user) => String(user.uid || user.id || "").trim())
+        .filter(Boolean),
+    ).size;
 
     const usersOnline = users.filter((user) =>
       isLiveByConnection(
@@ -93,7 +154,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       stats: {
-        usersTotal: users.length,
+        usersTotal,
         usersOnline,
         anonymousOnline: anonDocs.filter((doc) => isAnonActive(doc, now)).length,
         storiesActive,

@@ -173,26 +173,23 @@ function executeShuffleRouteCommit(
     nativeShellHardNavWouldApply: nativeHard,
     microSlideEnabled: isMainTabToShuffleMicroSlideEnabled(),
   });
-  const pushOptions = plan.forceHistoryNavigation
-    ? {
-        forceHistoryNavigation: true as const,
-        reason: "instant-shuffle-entry-history",
-      }
-    : {
-        forceSoftNavigation: true as const,
-        reason: "instant-shuffle-entry-soft",
-      };
+  // Firebase Hosting currently serves HTML for App Router RSC requests on
+  // these prerendered main-tab routes. Any router.push soft commit can therefore
+  // fall back to a full document navigation. MainTab → Shuffle already has a
+  // keep-alive surface, so always commit the pathname through history.
+  const pushOptions = {
+    forceHistoryNavigation: true as const,
+    reason: "instant-shuffle-entry-history",
+  };
   emitMicroSlideCommitNavDiag(
-    plan.forceHistoryNavigation
-      ? "MICRO_SLIDE_HISTORY_NAVIGATION_REQUIRED"
-      : "MICRO_SLIDE_SOFT_NAVIGATION_REQUIRED",
+    "MICRO_SLIDE_HISTORY_NAVIGATION_REQUIRED",
     {
       href: "/shuffle",
       reason: pushOptions.reason,
-      forcedSoft: plan.forceSoftNavigation,
-      forcedHistory: plan.forceHistoryNavigation,
+      forcedSoft: false,
+      forcedHistory: true,
       caller: "commitPreparedMainTabToShuffleNavigation",
-      commitMode: plan.forceHistoryNavigation ? "history" : "soft",
+      commitMode: "history",
     },
   );
 

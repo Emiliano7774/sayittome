@@ -17,13 +17,6 @@ export type RegistrationDayRow = {
   users: RegistrationUser[];
 };
 
-function parseCreatedAt(raw: unknown): Date | null {
-  const value = String(raw || "").trim();
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 function pickBestProfileRow(rows: Record<string, unknown>[]) {
   return [...rows].sort((a, b) => {
     const aPublic = isPublicProfile(a) ? 1 : 0;
@@ -88,7 +81,6 @@ export function buildUserRegistrationsByDay(
 
   for (const group of byUid.values()) {
     const user = pickBestProfileRow(group);
-    if (!isPublicProfile(user)) continue;
 
     const createdAt = resolveProfileCreatedAt(user);
     if (!createdAt) continue;

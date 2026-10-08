@@ -44,12 +44,41 @@ export type ProfileLookupResult = {
   currentUsername: string;
 };
 
+export type LookupProfileByUsernameOptions =
+  | boolean
+  | {
+      /**
+       * Skip client cache and bypass server `/api/profile` route cache (`?ts=`).
+       * Use only when callers genuinely need authoritative freshness (e.g. presence).
+       */
+      force?: boolean;
+      /**
+       * Skip client cache but honor server route cache (no `?ts=` / fresh bypass).
+       * Used by idle revalidate on `/u/[username]`.
+       */
+      refresh?: boolean;
+    };
+
+function normalizeLookupProfileOptions(
+  opts: LookupProfileByUsernameOptions = false,
+): { skipClient: boolean; bypassRouteCache: boolean } {
+  if (opts === true) return { skipClient: true, bypassRouteCache: true };
+  if (opts === false) return { skipClient: false, bypassRouteCache: false };
+  const force = opts.force === true;
+  const refresh = opts.refresh === true;
+  return {
+    skipClient: force || refresh,
+    bypassRouteCache: force,
+  };
+}
+
 export async function lookupProfileByUsername(
   username: string,
-  force = false,
+  opts: LookupProfileByUsernameOptions = false,
 ): Promise<ProfileLookupResult> {
+  const { skipClient, bypassRouteCache } = normalizeLookupProfileOptions(opts);
   const key = username.trim().toLowerCase();
-  if (!force) {
+  if (!skipClient) {
     const cached = getCachedFullProfile(key);
     if (cached) {
       if (isNavTraceEnabled()) {
@@ -70,10 +99,10 @@ export async function lookupProfileByUsername(
     profilePipelineMark("fetch-emitted");
   }
 
+  const path = `/api/profile/${encodeURIComponent(username)}`;
+  const url = bypassRouteCache ? `${path}?ts=${Date.now()}` : path;
   const res = await withTimeout(
-    fetch(`/api/profile/${encodeURIComponent(username)}?ts=${Date.now()}`, {
-      cache: "no-store",
-    }),
+    fetch(url, bypassRouteCache ? { cache: "no-store" } : undefined),
     12000,
     "profile_lookup_timeout",
   );
@@ -116,8 +145,11 @@ export async function lookupProfileByUsername(
   };
 }
 
-export async function fetchProfileByUsername(username: string, force = false) {
-  const result = await lookupProfileByUsername(username, force);
+export async function fetchProfileByUsername(
+  username: string,
+  opts: LookupProfileByUsernameOptions = false,
+) {
+  const result = await lookupProfileByUsername(username, opts);
   if (result.usernameChanged) {
     throw new ProfileUsernameChangedError(
       result.requestedUsername,

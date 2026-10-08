@@ -318,6 +318,12 @@ export default function AdminUsersPage() {
                     >
                       Marcar rol
                     </button>
+                    <button type="button" disabled={busyUid === user.uid} onClick={() => runAction(user.uid, "tag_grooming")} className="rounded-lg bg-orange-500/20 px-3 py-2 text-xs font-black text-orange-100">
+                      Grooming
+                    </button>
+                    <button type="button" disabled={busyUid === user.uid} onClick={() => runAction(user.uid, "tag_potential_pedophile")} className="rounded-lg bg-[#4a0715] px-3 py-2 text-xs font-black text-red-100">
+                      Pot. pedófilo
+                    </button>
                     {user.moderationTag ? (
                       <AdminUndoButton
                         uid={user.uid}

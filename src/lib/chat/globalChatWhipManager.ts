@@ -16,7 +16,10 @@ import {
   getSessionChatIds,
   SESSION_CHATS_CHANGED_EVENT,
 } from "@/lib/chat/sessionChats";
-import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import {
+  markMessageWhipAlerted,
+  tryAlertIncomingMessage,
+} from "@/lib/chat/whipAlertDedupe";
 import { showChatNotification } from "@/lib/chat/chatNotifications";
 import { markLocalPendingChat } from "@/lib/chat/localPendingChats";
 import { playIncomingWhipSound } from "@/lib/chat/whipSound";
@@ -229,6 +232,10 @@ class GlobalChatWhipManager {
         const pendingServerTimestamp = createdAtMs === 0;
         const createdNearAttach =
           createdAtMs > 0 && createdAtMs >= attachedAt - LIVE_ATTACH_WINDOW_MS;
+        const unreadHintAgeMs =
+          createdAtMs > 0 ? Date.now() - createdAtMs : Number.POSITIVE_INFINITY;
+        const recentUnreadHint =
+          unreadHint && unreadHintAgeMs >= 0 && unreadHintAgeMs <= 2 * 60_000;
         const freshWatch = this.freshWatchChatIds.has(chatId);
         this.freshWatchChatIds.delete(chatId);
         const liveInboundOnFreshWatch =
@@ -236,22 +243,18 @@ class GlobalChatWhipManager {
           freshWatch &&
           incoming &&
           !viewingActiveChat &&
-          (createdNearAttach || pendingServerTimestamp || unreadHint);
+          (createdNearAttach || pendingServerTimestamp || recentUnreadHint);
 
         this.lastMessageId.set(chatId, messageId);
 
         if (!isNewMessage && !liveInboundOnFreshWatch) {
           // Burn clearly-old hydration so detail listeners own that id later.
+          // Ambiguous/fresh incoming=false must NOT consume the id; inbox recovery
+          // still needs a chance when classification lacked full context.
           const clearlyOldHydration =
             createdAtMs > 0 && createdAtMs < attachedAt - LIVE_ATTACH_WINDOW_MS;
-          if (clearlyOldHydration || !incoming) {
-            tryAlertIncomingMessage({
-              chatId,
-              messageId,
-              incoming: false,
-              suppress: true,
-              onAlert: () => undefined,
-            });
+          if (clearlyOldHydration) {
+            markMessageWhipAlerted(chatId, messageId);
           }
           return;
         }

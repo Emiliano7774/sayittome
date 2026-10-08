@@ -67,7 +67,8 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
       await Promise.all(
         missing.map(async (username) => {
           try {
-            const profile = await fetchProfileByUsername(username, true);
+            // Reuse client + server /api/profile route cache; do not force-bypass.
+            const profile = await fetchProfileByUsername(username);
             const photo = resolveProfilePhoto(profile);
             if (!photo) return;
 

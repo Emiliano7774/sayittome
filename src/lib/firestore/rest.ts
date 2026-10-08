@@ -1,4 +1,5 @@
 import {
+  buildDocumentReferenceValue,
   buildPaginatedCollectionStructuredQuery,
   mergePaginatedQueryDocs,
 } from "@/lib/firestore/deterministicPagination";
@@ -138,6 +139,69 @@ type FirestoreRunQueryRow = {
     fields?: Record<string, unknown>;
   };
 };
+
+export async function runCollectionQueryAllByDocumentId(
+  collectionId: string,
+  direction: "ASCENDING" | "DESCENDING" = "ASCENDING",
+  pageSize = 500,
+  maxPages = 40,
+) {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIRESTORE_API_KEY}`;
+  const all: Record<string, unknown>[] = [];
+  let cursorId = "";
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const structuredQuery: Record<string, unknown> = {
+      from: [{ collectionId }],
+      limit: pageSize,
+      orderBy: [{ field: { fieldPath: "__name__" }, direction }],
+    };
+
+    if (cursorId) {
+      structuredQuery.startAt = {
+        values: [
+          {
+            referenceValue: buildDocumentReferenceValue(
+              FIRESTORE_PROJECT_ID,
+              collectionId,
+              cursorId,
+            ),
+          },
+        ],
+        before: false,
+      };
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ structuredQuery }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Firestore runQueryAllByDocumentId ${collectionId} ${res.status}`);
+    }
+
+    const json = (await res.json()) as FirestoreRunQueryRow[];
+    if (!Array.isArray(json)) break;
+
+    const docs = json
+      .map((row) => row.document)
+      .filter(Boolean)
+      .map(parseFirestoreDoc);
+
+    if (docs.length === 0) break;
+
+    mergePaginatedQueryDocs(all, docs, Boolean(cursorId));
+
+    if (docs.length < pageSize) break;
+    cursorId = String(docs[docs.length - 1]?.id || "");
+    if (!cursorId) break;
+  }
+
+  return all;
+}
 
 export async function runCollectionQueryAll(
   collectionId: string,

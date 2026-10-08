@@ -17,7 +17,7 @@ export type BoostStatus = {
   referralsPending: number;
 };
 
-const CACHE_TTL_MS = 45_000;
+const CACHE_TTL_MS = 2 * 60_000;
 
 export function useBoostStatus(enabled = true) {
   const { firebaseUser } = useAuth();

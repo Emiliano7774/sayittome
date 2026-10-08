@@ -45,7 +45,7 @@ export default function PrivacyPage() {
           <h1 className="mt-5 text-3xl font-black tracking-tight md:text-4xl">
             Privacy Policy for SayItToMe
           </h1>
-          <p className="mt-3 text-sm text-white/45">Last updated: May 29, 2026</p>
+          <p className="mt-3 text-sm text-white/45">Last updated: September 12, 2026</p>
           <p className="mt-5 text-base leading-7 text-white/65 md:text-[17px] md:leading-8">
             SayItToMe is an anonymous social interaction platform that allows users to create
             profiles, share content, view stories, and communicate through anonymous or direct
@@ -185,7 +185,18 @@ export default function PrivacyPage() {
 
           <Section title="9. Account and Data Deletion">
             <p>
-              Users may request deletion of their account or associated data by contacting:{" "}
+              Registered accounts are automatically scheduled for deletion once six calendar
+              months have elapsed since the most recent recorded account activity. Activity such
+              as returning to and using SayItToMe restarts the six-month inactivity period.
+            </p>
+            <p>
+              Automatic deletion removes the Firebase Authentication account and associated
+              profile data, uploaded profile media, stories, chats, messaging media, notification
+              tokens, social connections, and other account-linked content where technically
+              applicable.
+            </p>
+            <p>
+              Users may also request deletion of their account or associated data by contacting:{" "}
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 className="font-semibold text-violet-300 hover:text-violet-200"
@@ -195,11 +206,8 @@ export default function PrivacyPage() {
             </p>
             <p>
               Please include the email address associated with the account and the username, if
-              available.
-            </p>
-            <p>
-              Some information may be retained when necessary for legal, security, fraud
-              prevention, or abuse-prevention purposes.
+              available. Some limited information may be retained when necessary for legal,
+              security, fraud-prevention, or abuse-prevention purposes.
             </p>
           </Section>
 
