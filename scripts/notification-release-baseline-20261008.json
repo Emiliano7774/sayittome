@@ -1,0 +1,20 @@
+{
+  "source": "sayittome-web-push-deploy2-139dc43",
+  "deployedSha": "8e28ce2",
+  "deployedBuiltAt": "2026-10-08T03:12:51.966Z",
+  "normalization": "CRLF to LF before SHA-256",
+  "files": {
+    "src/lib/cache/clientCache.ts": "3e16db890c0c6ec4f75d9a441214d710fb833087c11cc84aae4388142ac05ca0",
+    "src/lib/moderation/spectator.ts": "2a575602f27b45a93369013a78114a894722f3068d8db29ca3f203145aa53c84",
+    "src/components/profile/AdminProfileSafetyTagButtons.tsx": "4a6440484b13ab8f3a78da932044dc0bb78c1767a0cb32e40ddae4d8bd99a765",
+    "src/components/profile/ProfileModerationBadges.tsx": "580f0a43b7c169207d86d18babacc43444cd7c153a432af99e828235b9992c16",
+    "src/lib/abuse/abuseAdminTypes.ts": "51c0ae9b20b33b6ae0a27b8993f06d8fd6d5ef1babf04bee65243910c483dcf9",
+    "src/lib/abuse/abuseCors.ts": "08cbc230a07c3da81e2ddc86b1f1e0aea98394661f77f23f65650d82491da4c7",
+    "src/lib/abuse/abuseIpHash.ts": "d6ba603818a547281d77b47517e239bba2fa591d81600f99f92724c70fd22515",
+    "src/lib/abuse/bindProfileAnonVisitorSession.ts": "c691a2c7b9a16a48bedb9854d471037450a837ad535452e6daca8f6329f12b3c",
+    "src/lib/abuse/checkProfileAnonAbuseGate.ts": "5de5e3e0385742397211475634029c71d4bae8db1e7bf3d657bbe677af895e82",
+    "src/lib/abuse/issueProfileAnonAbuseSendPermit.ts": "1f53ce8985ebb38186ce1d28cd12ba3c292516612236e957e5f10630200d5c27",
+    "src/lib/abuse/profileAnonAbuseBlockIds.ts": "44dfa2bf6beb9440cef377a75541cda23af921257ab369a47db484319b63a4da",
+    "src/lib/chat/anonInboxRecovery.ts": "9369c02bc9ccf7c536f06d01a4c4c15f5d9b3b4e79e11659fc2f099f22994528"
+  }
+}
