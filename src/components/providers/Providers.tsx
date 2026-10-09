@@ -6,6 +6,7 @@ import { ChatAlertsProvider } from "@/contexts/ChatAlertsContext";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { UxModeProvider } from "@/contexts/UxModeContext";
 import AnonymousPresenceBootstrap from "@/components/AnonymousPresenceBootstrap";
+import AnonArrivalToast from "@/components/anonMatch/AnonArrivalToast";
 import AnonSessionLifecycle from "@/components/AnonSessionLifecycle";
 import BoostBootstrap from "@/components/boost/BoostBootstrap";
 import NativeAppBootstrap from "@/components/app/NativeAppBootstrap";
@@ -39,6 +40,7 @@ export default function Providers({
           <ChatAlertsProvider>
           <PresenceBootstrap />
           <AnonymousPresenceBootstrap />
+          <AnonArrivalToast />
           <AnonSessionLifecycle />
           <NativeAppBootstrap />
           <RouteRecoveryBootstrap />

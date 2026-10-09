@@ -20,6 +20,7 @@ import { invalidateAnonMatchAvailabilityCache } from "@/lib/anonMatch/matchPool"
 import { normalizeGeoAudience } from "@/lib/geo/audience";
 import { verifyAnonMatchCaller } from "@/lib/anonMatch/verifyAnonMatchCaller";
 import { sanitizeShuffleVisitorChatId } from "@/lib/shuffle/shuffleVisitorId";
+import { isAnonArrivalGloballyVisible, isNewAnonymousArrival } from "@/lib/anonMatch/anonArrival";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -48,11 +49,25 @@ async function writePresenceDoc(
   const existing = await getAnonMatchAdminDoc("anonimos_activos", anonId);
   const dndUntil = String((existing || {}).doNotDisturbUntil || "");
   const dndActive = isAnonMatchDoNotDisturbActive(dndUntil, now.getTime());
+  const isEntrance = isNewAnonymousArrival({
+    priorLastSeenAt: existing?.lastSeenAt,
+    priorEnteredAt: existing?.enteredAt,
+    priorAnnouncedAt: existing?.lastAnnouncementAt,
+    priorSessionClosed: existing?.sessionClosed,
+    nowMs: now.getTime(),
+  });
+  const mayAnnounce = isEntrance && isAnonArrivalGloballyVisible({
+    paises: geo.visibilidad.paises,
+    provincias: geo.visibilidad.provincias,
+    doNotDisturb: dndActive,
+  });
 
   await setAnonMatchAdminDoc("anonimos_activos", anonId, {
     anonId,
     authUid,
     lastSeenAt: now.toISOString(),
+    ...(isEntrance ? { enteredAt: now.toISOString() } : {}),
+    ...(mayAnnounce ? { lastAnnouncementAt: now.toISOString() } : {}),
     updatedAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
     sessionClosed: false,
@@ -68,6 +83,7 @@ async function writePresenceDoc(
     backgrounded,
     ...(chatSessionId ? { chatSessionId } : {}),
   });
+  return { mayAnnounce, enteredAt: isEntrance ? now.toISOString() : String(existing?.enteredAt || "") };
 }
 
 async function deletePresenceDoc(anonId: string) {
@@ -122,7 +138,7 @@ export async function POST(req: Request) {
       req.headers.get("cf-ipcountry") || req.headers.get("x-country-code") || "",
     ).trim().toUpperCase();
 
-    await writePresenceDoc(
+    const arrival = await writePresenceDoc(
       decision.anonId,
       caller.uid,
       {
@@ -151,6 +167,19 @@ export async function POST(req: Request) {
       // The live alias is already published. A leftover sibling expires on its own.
     }
     invalidateAnonMatchAvailabilityCache();
+    if (arrival.mayAnnounce) {
+      // A fixed one-document announcement avoids an unbounded event log.
+      try {
+        await setAnonMatchAdminDoc("anon_arrival_announcements", "latest", {
+          anonId: decision.anonId,
+          enteredAt: arrival.enteredAt,
+          updatedAt: new Date().toISOString(),
+          audience: "public",
+        });
+      } catch (error) {
+        console.warn("[anon-arrival] optional announcement failed", error);
+      }
+    }
 
     const legacyLocal = String(body?.legacyLocalAnonId || "").trim();
     let legacyCleaned: string | null = null;

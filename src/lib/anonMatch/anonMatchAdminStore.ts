@@ -3,6 +3,7 @@ import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 export type AnonMatchAdminCollection =
   | "usuarios"
   | "anonimos_activos"
+  | "anon_arrival_announcements"
   | "solicitudes_chat_anonimo"
   | "chats_anonimos"
   | "reportes";

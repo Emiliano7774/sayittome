@@ -903,6 +903,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       shuffleDirectOpenInFlightRef.current = true;
 
       void (async () => {
+        const caller = await resolveLiveAnonMatchCaller();
+        if (caller.isRegisteredProfile) {
+          // A registered viewer can target the arriving anon through the
+          // existing consent/acceptance flow, without forging an anon alias.
+          targetAnonIdRef.current = wanted;
+          router.push("/shuffle");
+          await startSearchSession();
+          return;
+        }
         if (searchSessionActiveRef.current) {
           // Cancel the earlier discovery before starting the explicit request.
           // An accepted chat takes priority over a new card click.
@@ -958,7 +967,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("sayittome:anon-direct-target-request", onTarget);
     return () => window.removeEventListener("sayittome:anon-direct-target-request", onTarget);
-  }, [clearRetryTimer, openDirectChat, router]);
+  }, [clearRetryTimer, openDirectChat, router, startSearchSession]);
 
   useEffect(() => {
     if (!solicitudId || phase !== "waiting") return;

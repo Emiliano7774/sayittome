@@ -10,6 +10,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { db, ensureAdminApp, messaging } from "./adminApp";
 export { onAnonDirectMessageCreated, resolveAnonDirectPushDelivery, anonDirectPushPreview, anonDirectPushRecipientAlias, anonDirectPushPresenceFresh } from "./anonDirectPush";
+export { onAnonArrivalAnnounced, setAnonArrivalPush } from "./anonArrivalPush";
 
 import { isValidFcmInstallationId, isValidInstallationProof } from "./fcmInstallation";
 import {
@@ -599,7 +600,7 @@ export const unregisterFcmToken = onCall(async (request) => {
 
   const tokenId = tokenDocId(token);
   const firestore = db();
-  await firestore.runTransaction(async (tx) => {
+  const deletedToken = await firestore.runTransaction(async (tx) => {
     const result = await unregisterFcmTokenInTransaction(firestoreFcmTx(tx, firestore), {
       uid,
       tokenId,
@@ -609,9 +610,18 @@ export const unregisterFcmToken = onCall(async (request) => {
       validInstallationId: true,
     });
     if (result.error === "ownership_mismatch") {
-      return;
+      return false;
     }
+    return result.deletedToken;
   });
+  if (deletedToken) {
+    // A logged-out installation must never keep receiving arrival broadcasts.
+    try {
+      await messaging().unsubscribeFromTopic([token], "anon-presence-optin-v1");
+    } catch (error) {
+      logger.warn("anon-arrival topic logout unsubscribe failed", {error:String(error)});
+    }
+  }
 
   return { ok: true };
 });

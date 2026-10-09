@@ -133,6 +133,13 @@ export function wasChatReadLocally(
       return true;
     }
 
+    // An exact newer message ID overrides a coincidentally identical preview.
+    // Two successive replies can say the same thing; text-only fallback must
+    // never suppress the second one merely because their text/sender match.
+    if (latestMessageId && stored.startsWith("id:") && stored !== `id:${latestMessageId}`) {
+      continue;
+    }
+
     // Text fallback: same preview identity as when the chat was opened/read.
     // A new inbound message changes lastMessage or sender and misses this.
     if (

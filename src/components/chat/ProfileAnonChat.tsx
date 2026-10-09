@@ -609,6 +609,11 @@ export default function ProfileAnonChat({
   const pendingReadMarkRef = useRef<{ chatId: string; viewerId: string } | null>(null);
   const lastReadRenderedKeyRef = useRef("");
   const inboundReadIdsRef = useRef<string[]>([]);
+  const inboundReadPreviewRef = useRef<{
+    messageId: string;
+    preview: string;
+    senderId: string;
+  } | null>(null);
   const chatSeenVisibleRef = useRef(false);
   const lastRenderedQaKeyRef = useRef("");
   const lastAuthorshipProbeKeyRef = useRef("");
@@ -839,6 +844,20 @@ export default function ProfileAnonChat({
         [messageViewerId]: true,
       },
     };
+
+    // The shell may still contain the PREVIOUS message while the detail has
+    // already rendered a profile reply. Pass the truly displayed preview to
+    // the same mark-read call, or its local marker would be overwritten with
+    // stale text and rebound to bold on a late recovery snapshot.
+    const rendered = inboundReadPreviewRef.current;
+    if (rendered?.messageId === renderedMessageId && rendered.preview && rendered.senderId) {
+      chatMetaRef.current = {
+        ...chatMetaRef.current,
+        lastMessage: rendered.preview,
+        lastMessageSender: rendered.senderId,
+        latestMessageId: renderedMessageId,
+      };
+    }
 
     void markThreadReadExact(
       canonicalThreadId,
@@ -1591,6 +1610,14 @@ export default function ProfileAnonChat({
     .map((row) => String(row.id));
   inboundReadIdsRef.current = inboundRenderedIds;
   const latestInboundMessageId = inboundRenderedIds[inboundRenderedIds.length - 1] || "";
+  const latestInboundPreview = [...displayMessages].reverse().find((row) => !row.mine && row.id);
+  const inboundPreviewText = String(latestInboundPreview?.text || "").trim() ||
+    (latestInboundPreview?.type === "image" ? "Foto" :
+      latestInboundPreview?.type === "video" ? "Video" :
+        latestInboundPreview?.type === "audio" ? "Audio" : "Mensaje");
+  inboundReadPreviewRef.current = latestInboundPreview
+    ? { messageId: latestInboundMessageId, preview: inboundPreviewText.slice(0, 240), senderId: String(latestInboundPreview.fromUid || "") }
+    : null;
   const latestRenderedMessageId = messages[messages.length - 1]?.id || "";
   useEffect(() => {
     function flushRead() {

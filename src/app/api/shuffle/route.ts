@@ -145,6 +145,11 @@ type ApiProfile = {
   visitorChatId?: string;
   /** Bound server alias for a targeted anon-to-anon connection. */
   visitorMatchAnonId?: string;
+  /** Server-set at the actual new presence entrance, never on heartbeat. */
+  enteredAt?: string;
+  /** Discovery card can remain visible after a real chat session ends. */
+  visitorSessionClosed?: boolean;
+  visitorAvailable?: boolean;
 };
 
 let cachedProfiles: ApiProfile[] = [];
@@ -260,6 +265,9 @@ function visitorDocToProfile(doc: any, now = Date.now()): ApiProfile | null {
     shuffleVisitor: true,
     visitorChatId: chatSessionId,
     visitorMatchAnonId: sanitizeShuffleVisitorChatId(presenceId),
+    enteredAt: fieldString(fields, "enteredAt") || undefined,
+    visitorSessionClosed: fields?.sessionClosed?.booleanValue === true,
+    visitorAvailable: fields?.disponibleParaChat?.booleanValue !== false,
     banned: false,
   };
 }

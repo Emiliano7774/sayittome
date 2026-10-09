@@ -28,6 +28,7 @@ import {
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
 import ProfileEntryGate from "@/components/profile/ProfileEntryGate";
+import AnonArrivalPushSettings from "@/components/anonMatch/AnonArrivalPushSettings";
 import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
@@ -439,7 +440,7 @@ export function SettingsRouteContent() {
   }
 
   if (showAnonGate) {
-    return <ProfileEntryGate />;
+    return <><ProfileEntryGate /><AnonArrivalPushSettings /></>;
   }
 
   if (uxMode === "modern" && profile) {

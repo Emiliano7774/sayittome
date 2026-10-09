@@ -4,6 +4,7 @@ import { httpsCallable } from "firebase/functions";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { isCapacitorNative } from "@/lib/app/nativeShell";
+import { getAnonArrivalPushPreference } from "@/lib/chat/anonArrivalPrefs";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
 import { recordNotificationStage } from "@/lib/chat/notificationIncident";
 import {
@@ -65,6 +66,28 @@ function notifyTokenWaiters(token: string) {
   const waiters = tokenWaiters;
   tokenWaiters = [];
   for (const waiter of waiters) waiter(token);
+}
+
+export async function setAnonArrivalPushEnabled(enabled: boolean): Promise<boolean> {
+  const current = auth.currentUser;
+  if (!current) return false;
+  let persisted = readPersistedDeviceToken();
+  if (enabled && (persisted.uid !== current.uid || !persisted.token)) {
+    const result = isCapacitorNative()
+      ? await enableNativeChatPush(current)
+      : await enableWebChatPush(current);
+    if (!result.ok) return false;
+    persisted = readPersistedDeviceToken();
+  }
+  if (persisted.uid !== current.uid || !persisted.token) return !enabled;
+  try {
+    const fn = httpsCallable(functions, "setAnonArrivalPush");
+    const response = await fn({ token: persisted.token, enabled });
+    return (response.data as { ok?: boolean })?.ok === true;
+  } catch (error) {
+    console.warn("[anon-arrival] push preference failed", String(error));
+    return false;
+  }
 }
 
 export function waitForRegisteredFcmToken(timeoutMs = 12000): Promise<string> {
@@ -358,6 +381,10 @@ export async function upsertFcmTokenForUser(
     registeredToken = cleanToken;
     registeredUid = cleanUid;
     persistDeviceToken(cleanUid, cleanToken);
+    if (getAnonArrivalPushPreference(cleanUid)) {
+      // Rejoin the opt-in topic when Firebase rotates an installation token.
+      void setAnonArrivalPushEnabled(true);
+    }
     setFcmRegistrationState(cleanUid, {
       status: "active",
       tokenHash: hashFcmToken(cleanToken),
@@ -565,6 +592,13 @@ async function attachPushListeners() {
 
   await PushNotifications.addListener("pushNotificationActionPerformed", (event) => {
     const data = (event.notification?.data || {}) as Record<string, unknown>;
+    if (asId(data.type) === "anon_arrival") {
+      const alias = asId(data.anonId);
+      if (/^anon_[a-z0-9_]{6,80}$/i.test(alias)) {
+        window.location.assign(`/shuffle?anonArrival=${encodeURIComponent(alias)}`);
+      }
+      return;
+    }
     const chatId = asId(data.chatId);
     if (chatId) {
       openChatDeepLink({

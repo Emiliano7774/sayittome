@@ -39,6 +39,7 @@ import RoleplayAppealFlagButton from "@/components/profile/RoleplayAppealFlagBut
 import { mapWithConcurrency } from "@/lib/media/mapWithConcurrency";
 import { persistUploadedProfileMedia } from "@/lib/profile/persistUploadedProfileMedia";
 import { useT } from "@/contexts/LocaleContext";
+import AnonArrivalPushSettings from "@/components/anonMatch/AnonArrivalPushSettings";
 
 type BadgeKey = "superMessages" | "likes" | "conversations" | "followers";
 
@@ -863,6 +864,7 @@ export default function ClassicEditProfilePage() {
           )}
         </div>
       </section>
+      <AnonArrivalPushSettings />
     </main>
   );
 }

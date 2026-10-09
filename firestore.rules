@@ -309,6 +309,8 @@ service cloud.firestore {
         && collection != 'chat_inbox_lite'
         && collection != 'anon_profile_blocks'
         && collection != 'chats_anonimos'
+        && collection != 'anon_arrival_announcements'
+        && collection != 'system'
         && collection != 'chats';
     }
   }

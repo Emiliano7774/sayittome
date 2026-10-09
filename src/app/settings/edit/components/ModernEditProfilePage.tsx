@@ -33,6 +33,7 @@ import {
 import { mapWithConcurrency } from "@/lib/media/mapWithConcurrency";
 import { persistUploadedProfileMedia } from "@/lib/profile/persistUploadedProfileMedia";
 import { useT } from "@/contexts/LocaleContext";
+import AnonArrivalPushSettings from "@/components/anonMatch/AnonArrivalPushSettings";
 import { previousUsernameToRemember } from "@/lib/profile/usernameHistory";
 import { isUsernameAvailable, isValidUsername, normalizeUsername } from "@/lib/profile/username";
 
@@ -626,6 +627,7 @@ export default function ModernEditProfilePage() {
         onMove={move}
         onRemove={remove}
       />
+      <AnonArrivalPushSettings />
     </main>
   );
 }
