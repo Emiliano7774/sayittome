@@ -28,7 +28,7 @@ import {
   profileIsVisibleToViewer,
   profileMatchesShuffleServerFilters,
 } from "@/lib/shuffle/serverFilters";
-import { ANON_PRESENCE_ACTIVE_MS } from "@/lib/anonMatch/anonymousPresenceIdentity";
+import { ANON_MATCH_PRESENCE_FRESH_MS } from "@/lib/anonMatch/types";
 
 const SHUFFLE_JSON_HEADERS = {
   "Cache-Control": "private, no-store, no-cache, must-revalidate",
@@ -204,14 +204,17 @@ function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
 
 function isAnonymousDocActive(doc: any, now = Date.now()) {
   const fields = doc?.fields || {};
-  const expiresMs = fieldInstant(fields, "expiresAt");
-  if (expiresMs && expiresMs > now) return true;
-
   const seenMs = fieldInstant(fields, "lastSeenAt") || fieldInstant(fields, "updatedAt");
-  if (!seenMs) return false;
-  // Same TTL as presence heartbeats. A missing/stale expiresAt field must not
-  // drop an open session after only 90s of background-tab timer throttling.
-  return now - seenMs <= ANON_PRESENCE_ACTIVE_MS;
+  if (!seenMs || seenMs > now + 30_000) return false;
+
+  // A background lease can last an hour. That lease is for cleanup/recovery,
+  // NOT a promise that the visitor can accept a new conversation. Only show
+  // someone as available if the match API would consider the same heartbeat
+  // fresh. Otherwise Shuffle showed ghosts that every click rejected.
+  if (now - seenMs > ANON_MATCH_PRESENCE_FRESH_MS) return false;
+  const expiresMs = fieldInstant(fields, "expiresAt");
+  if (expiresMs && expiresMs <= now) return false;
+  return true;
 }
 
 function visitorDocToProfile(doc: any, now = Date.now()): ApiProfile | null {

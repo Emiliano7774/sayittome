@@ -14,6 +14,7 @@ import {
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { SHUFFLE_WINDOW_SIZE } from "@/lib/shuffle/pickWindow";
 import { planLiveVisitorSlots } from "@/lib/shuffle/shuffleRecencyMix";
+import { isShuffleVisitorFresh } from "@/lib/shuffle/shuffleVisitorFresh";
 import { shuffleCount, shuffleMark, shuffleMeasure } from "@/lib/shuffle/shuffleProfiler";
 
 const slots: (ShuffleProfile | null)[] = Array(SHUFFLE_WINDOW_SIZE).fill(null);
@@ -93,7 +94,8 @@ export function setShuffleSlots(
   const n = Math.min(count, SHUFFLE_WINDOW_SIZE);
 
   for (let slot = 0; slot < n; slot++) {
-    const next = pool[indices[slot]] ?? null;
+    const rawNext = pool[indices[slot]] ?? null;
+    const next = rawNext && isShuffleVisitorFresh(rawNext) ? rawNext : null;
     const prev = slots[slot];
 
     if (prev && next && shuffleProfileIdentityKey(prev) === shuffleProfileIdentityKey(next) && shuffleProfileIdentityKey(prev)) {
@@ -322,7 +324,7 @@ export function getVisibleShuffleProfiles() {
 
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
-    if (profile) visible.push(profile);
+    if (profile && isShuffleVisitorFresh(profile)) visible.push(profile);
   }
 
   return uniqueShuffleWindow(visible);
@@ -392,13 +394,14 @@ export function syncLiveShuffleVisitors(
   const visible: ShuffleProfile[] = [];
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
-    if (profile) visible.push(profile);
+    if (profile && isShuffleVisitorFresh(profile, now)) visible.push(profile);
   }
+  visitors = visitors.filter((row) => isShuffleVisitorFresh(row, now));
   const ids = new Set(visitors.map((row) => String(row.uid || "").trim()).filter(Boolean));
   const newVisitorIds = new Set([...ids].filter((id) => !observedLiveVisitorIds.has(id)));
   observedLiveVisitorIds = ids;
-  if (visible.length === 0 && visitors.length === 0) return;
-
+  // Even when the live feed becomes empty, clear stale visitor slots rather
+  // than retaining disconnected ghosts that still accept clicks.
   const next = planLiveVisitorSlots(visible, visitors, SHUFFLE_WINDOW_SIZE, now, {
     preferVisitors: options?.preferVisitors === true,
     newVisitorIds,

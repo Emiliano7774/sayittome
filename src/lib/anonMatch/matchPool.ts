@@ -1,6 +1,6 @@
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
-import { listAnonMatchAdminDocs } from "@/lib/anonMatch/anonMatchAdminStore";
+import { getAnonMatchAdminDoc, listAnonMatchAdminDocs } from "@/lib/anonMatch/anonMatchAdminStore";
 import { isVerifiedAnonMatchPresence } from "@/lib/anonMatch/anonymousPresenceIdentity";
 import { isAnonMatchDoNotDisturbActive } from "@/lib/anonMatch/doNotDisturb";
 import { ANON_MATCH_PRESENCE_FRESH_MS } from "@/lib/anonMatch/types";
@@ -331,6 +331,30 @@ export async function pickAvailableMatchTarget(input: {
   const recentOrder = (input.recentTargetIds || [])
     .map((id) => String(id || "").trim())
     .filter(Boolean);
+
+  // Explicit Shuffle card selections must resolve by exact presence doc ID.
+  // The generic pool's first-1000 snapshot and its cached ordering are not an
+  // authoritative membership test for a selected live visitor.
+  if (input.preferredAnonId) {
+    const targetId = String(input.preferredAnonId || "").trim();
+    if (!/^anon_[a-z0-9_]{6,80}$/i.test(targetId) || excludeAnonIds.has(targetId)) return null;
+    const target = (await getAnonMatchAdminDoc("anonimos_activos", targetId)) as AnonPresenceRow | null;
+    if (!target || !isAnonAvailable(target, now)) return null;
+    if (!rowAcceptsViewer(target, viewer) || !geoAudienceIncludes(discovery, target)) return null;
+    const { pendingAnonIds } = await listPendingMatchTargets(now);
+    const { busyAnonIds } = await listBusyDirectChatParticipants(now);
+    if (pendingAnonIds.has(targetId) || busyAnonIds.has(targetId)) return null;
+    const lastSeen = parseDate(target.lastSeenAt || target.updatedAt);
+    return {
+      tipo: "anonimo",
+      id: targetId,
+      pais: String(target.pais || ""),
+      provincia: String(target.provincia || ""),
+      idioma: String(target.idioma || "es"),
+      lastSeenMs: lastSeen?.getTime() || 0,
+    };
+  }
+
   const { pendingAnonIds, pendingUids } = await listPendingMatchTargets(now);
   const { busyAnonIds, busyUids } = await listBusyDirectChatParticipants(now);
   const { anonRows, profileRows } = await getMatchPoolRows(now);
@@ -373,11 +397,6 @@ export async function pickAvailableMatchTarget(input: {
     })
     .filter(Boolean) as MatchCandidate[];
 
-  // Explicit card-click must still satisfy online, block, privacy and geo gates.
-  // Do not fall back to a random stranger if that particular visitor left.
-  if (input.preferredAnonId) {
-    return anonCandidates.find((row) => row.id === input.preferredAnonId) || null;
-  }
   const eligible = [...profileCandidates, ...anonCandidates];
   if (eligible.length === 0) return null;
 

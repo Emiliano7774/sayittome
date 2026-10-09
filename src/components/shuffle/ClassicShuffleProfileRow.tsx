@@ -15,6 +15,7 @@ import { getClassicShuffleDensityTokens } from "@/lib/shuffle/classicDensity";
 import { isShuffleProfileModerated } from "@/lib/shuffle/resolveShuffleBlur";
 import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
 import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
+import { isShuffleVisitorFresh } from "@/lib/shuffle/shuffleVisitorFresh";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 
 function ClassicShuffleProfileRow({
@@ -31,6 +32,8 @@ function ClassicShuffleProfileRow({
   const username = visitor ? t("shuffle_visitor_name") : profile.username;
   const bio = visitor ? t("shuffle_visitor_bio") : profile.bio || "Sin descripcion.";
   const photoLoading = feedIndex < 15 ? "eager" : "lazy";
+
+  if (!isShuffleVisitorFresh(profile)) return null;
 
   return (
     <div

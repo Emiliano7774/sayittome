@@ -20,6 +20,7 @@ import { findShuffleKeepAliveScrollRoot } from "@/lib/navigation/shuffleFeedScro
 import { captureShuffleSessionSnapshot } from "@/lib/navigation/shuffleSessionSnapshot";
 import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
 import { openVisitorChat } from "@/lib/shuffle/shuffleVisitorNavigation";
+import { isShuffleVisitorFresh } from "@/lib/shuffle/shuffleVisitorFresh";
 import { useT } from "@/contexts/LocaleContext";
 import { getVisibleShuffleProfiles } from "@/lib/shuffle/shuffleSlotsStore";
 import { storyOwnerUidFromShuffleCard } from "@/lib/shuffle/shuffleActionTargets";
@@ -62,6 +63,7 @@ function ModernShuffleCard({
   function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
     if (visitor) {
+      if (!isShuffleVisitorFresh(profile)) return;
       if (opensStory && story.storyPath) {
         fastRouterPush(router, story.storyPath);
         return;
@@ -86,6 +88,8 @@ function ModernShuffleCard({
     });
     fastRouterPush(router, href);
   }
+
+  if (!isShuffleVisitorFresh(profile)) return null;
 
   return (
     <div
