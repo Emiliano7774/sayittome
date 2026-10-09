@@ -54,7 +54,8 @@ export function anonDirectPushPresenceFresh(
   chatId: string,
   now = Date.now(),
 ): boolean {
-  if (!row || String(row.authUid || "") !== uid ||
+  if (!row || row.sessionClosed === true ||
+      String(row.authUid || "") !== uid ||
       String(row.source || "") !== "anon_match_presence") return false;
   if (String(row.chatActualId || "") && row.chatActualId !== chatId) return false;
   const seen = Date.parse(String(row.lastSeenAt || row.updatedAt || ""));

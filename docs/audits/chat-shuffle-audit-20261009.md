@@ -15,6 +15,12 @@
 - La moderación de todos los chats anónimos tiene acceso visible desde el panel admin. El detalle usa AdminSpectatorMessageContent, el lector con autorización de admin para imágenes, audios, videos y bombitas, sin consumir vistas.
 - Para no disparar costos, la actualización automática del catálogo admin se espacia a cinco minutos (con refresh en foco/visibilidad).
 
+## Actualización 2026-10-09: visibilidad de 3h y notificaciones
+- Publicado en Firebase Hosting y GitHub (commit `9487033`): una tarjeta de anónimo permanece hasta 3 horas desde el último latido. No es presencia en tiempo real: las sesiones antiguas o cerradas no pueden recibir solicitudes nuevas aunque sigan figurando con punto verde.
+- La identidad anónima es temporal y usa persistencia de sesión de navegador; al cerrar y volver a entrar genera una identidad nueva. El cierre marca el registro previo como `sessionClosed` sin borrar prematuramente la tarjeta.
+- La función de push anónimo comprueba `sessionClosed` antes de notificar; se valida con `scripts/anon-direct-closed-session-push.harness.cjs`, sin lecturas adicionales de Firestore.
+- **Límite conocido:** un mensaje escrito en una conversación ya existente puede persistir en el historial de la identidad antigua, dado que el cliente escribe directamente en Firestore. Esto no supone entrega a una nueva sesión anónima, pero no equivale a bloquear toda persistencia a un destinatario desconectado; no declararlo garantizado sin una restricción de escritura validada.
+
 ## Lo que NO debe declararse solucionado sin más pruebas
 - Borrado de conversaciones anónimas desde Chats: la ruta actual de borrado exige cuenta registrada en ciertos flujos. La modificación para ocultar un chat solo a uno de los participantes fue bloqueada por el control de seguridad de las herramientas, por lo que NO está implementada ni en este commit.
 - No se puede afirmar que los gastos facturados en Google Cloud estén normalizados sin examinar el informe real de Billing.
