@@ -3,6 +3,7 @@ import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
 import { anonDirectInboxUnreadCount } from "@/lib/anonMatch/anonDirectInboxUnread";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { computeThreadPendingForViewer } from "@/lib/chat/threadPending";
+import { wasAnonDirectReadLocally } from "@/lib/chat/localChatRead";
 
 export function resolveInboxViewerId(uid: string) {
   return uid || getChatAnonSenderId();
@@ -31,6 +32,11 @@ export function chatUnreadCount(
   if (isAnonDirectInboxChat(chat)) {
     if (isExcludedChat(chat, options.excludeChatId)) return 0;
     const authUid = String(options.firebaseUid || viewerId || "").trim();
+    // Exact-message local read wins over delayed/stale Firestore metadata.
+    // A different latestMessageId is still unread, so new arrivals re-bold.
+    if (wasAnonDirectReadLocally(chat.canonicalChatId || chat.id, authUid, chat.latestMessageId || "")) {
+      return 0;
+    }
     return anonDirectInboxUnreadCount({
       viewerAuthUid: authUid,
       lastMessageSender: chat.lastMessageSender,

@@ -47,6 +47,41 @@ function readTextCacheKey(chatId: string, viewerId: string) {
   return `text:${chatId}:${viewerId}`;
 }
 
+// Anon-direct chats live in chats_anonimos and use Firebase Auth UID only.
+// Keep their exact-message read markers separate from profile-anon identity
+// aliases so a delayed Firestore snapshot cannot re-bold an opened row.
+function anonDirectReadKey(chatId: string, viewerAuthUid: string) {
+  return `anon-direct:${encodeURIComponent(viewerAuthUid)}:${encodeURIComponent(chatId)}`;
+}
+
+export function markAnonDirectReadLocally(
+  chatId: string,
+  viewerAuthUid: string,
+  latestMessageId: string,
+) {
+  const id = String(chatId || "").trim();
+  const uid = String(viewerAuthUid || "").trim();
+  const messageId = String(latestMessageId || "").trim();
+  if (!id || !uid || !messageId) return;
+  const map = readMap();
+  const key = anonDirectReadKey(id, uid);
+  if (map[key] === messageId) return;
+  map[key] = messageId;
+  writeMap(map);
+}
+
+export function wasAnonDirectReadLocally(
+  chatId: string,
+  viewerAuthUid: string,
+  latestMessageId: string,
+) {
+  const id = String(chatId || "").trim();
+  const uid = String(viewerAuthUid || "").trim();
+  const messageId = String(latestMessageId || "").trim();
+  if (!id || !uid || !messageId) return false;
+  return readMap()[anonDirectReadKey(id, uid)] === messageId;
+}
+
 function textActivityKey(chat: InboxChat) {
   return [chat.lastMessage || "", chat.lastMessageSender || ""].join("|");
 }

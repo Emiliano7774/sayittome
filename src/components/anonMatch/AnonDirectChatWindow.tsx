@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   collection,
-  doc,
-  updateDoc,
   limitToLast,
   onSnapshot,
   orderBy,
@@ -37,6 +35,7 @@ import {
 } from "@/lib/anonMatch/anonDirectMessageModel";
 import { getAnonDirectViewOnceCapability } from "@/lib/anonMatch/anonDirectViewOnceCapability";
 import { persistAnonDirectMessage } from "@/lib/anonMatch/persistDirectMessage";
+import { markAnonDirectChatRead } from "@/lib/anonMatch/markAnonDirectChatRead";
 import { shouldWhipAnonDirectIncoming } from "@/lib/anonMatch/anonDirectIncomingWhip";
 import { replyQuoteText } from "@/lib/chat/replyQuote";
 import {
@@ -530,10 +529,10 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
       const messageId = latest.id;
       // Mark only the viewer's own read receipt, without extra Firestore reads.
       if (from && from !== senderId && firebaseUser?.uid && chatView !== "minimized") {
-        void updateDoc(doc(db, "chats_anonimos", chatId), {
-          [`readBy.${firebaseUser.uid}`]: true,
-          [`latestReadMessageIds.${firebaseUser.uid}`]: messageId,
-          [`unreadCounts.${firebaseUser.uid}`]: 0,
+        void markAnonDirectChatRead({
+          chatId,
+          viewerAuthUid: firebaseUser.uid,
+          latestMessageId: messageId,
         }).catch(() => undefined);
       }
       const body = anonDirectIncomingNotifyBody({
