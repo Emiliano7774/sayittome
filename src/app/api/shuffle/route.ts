@@ -288,6 +288,7 @@ async function runQuery(
   options?: {
     limit?: number;
     orderBy?: { field: string; direction?: "ASCENDING" | "DESCENDING" };
+    minLastSeenAt?: string;
   },
 ) {
   const url =
@@ -297,6 +298,18 @@ async function runQuery(
     from: [{ collectionId }],
     limit: options?.limit || 500,
   };
+
+  if (options?.minLastSeenAt) {
+    // Server-side cutoff: never bill reads for stale anonymous presence rows.
+    // Live presence heartbeats always write lastSeenAt as an ISO UTC string.
+    structuredQuery.where = {
+      fieldFilter: {
+        field: { fieldPath: "lastSeenAt" },
+        op: "GREATER_THAN_OR_EQUAL",
+        value: { stringValue: options.minLastSeenAt },
+      },
+    };
+  }
 
   if (options?.orderBy) {
     structuredQuery.orderBy = [
@@ -683,6 +696,7 @@ async function fetchLiveShuffleVisitorsUncached(force = false) {
     const docs = await runQuery("anonimos_activos", {
       limit: VISITOR_SCAN_LIMIT,
       orderBy: { field: "lastSeenAt", direction: "DESCENDING" },
+      minLastSeenAt: new Date(now - ANON_MATCH_PRESENCE_FRESH_MS).toISOString(),
     });
     const uniqueDocs = collapseRowsByOwner(
       docs.filter((doc: any) => isAnonymousDocActive(doc, now)),
@@ -745,7 +759,8 @@ async function resolveLiveCounts(countOnly: boolean) {
 
   const [profilesCreated, anonymousOnline] = await Promise.all([
     countOnly ? getRegisteredCountCached(false) : getRegisteredCountCached(false),
-    getAnonymousOnlineCached(!statsFresh),
+    // Let the shared 20s visitor cache expire naturally, even if stats are stale.
+    getAnonymousOnlineCached(false),
   ]);
 
   const totalLive = profilesCreated + anonymousOnline;
