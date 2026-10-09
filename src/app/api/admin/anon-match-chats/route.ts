@@ -27,6 +27,7 @@ function safeChat(row: { id: string; data: () => Record<string, unknown> }) {
     id: interactionId,
     sourceDocIds: [row.id],
     sourceCount: 1,
+    source: String(data.source || ""),
     tipo: String(data.tipo || ""),
     estado: String(data.estado || ""),
     solicitanteUid: String(data.solicitanteUid || ""),
@@ -140,7 +141,10 @@ export async function GET(req: Request) {
               const data = row.data() || {};
               return {
                 id: `${sourceDoc.id}:${row.id}`,
+                sourceChatId: sourceDoc.id,
+                rawMessageId: row.id,
                 collectionName: name,
+                viewOnce: data.viewOnce === true,
                 text: anonMatchMessageText(data),
                 senderId: String(data.senderId || data.fromUid || data.ownerId || ""),
                 senderTipo: String(data.senderTipo || data.senderKind || ""),

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { auth } from "@/lib/firebase";
+import AdminSpectatorMessageContent from "@/components/admin/review/AdminSpectatorMessageContent";
 
 type AnonMatchChat = {
   id: string;
@@ -23,6 +24,9 @@ type AnonMatchChat = {
 type AnonMatchMessage = {
   id: string;
   collectionName: string;
+  sourceChatId?: string;
+  rawMessageId?: string;
+  viewOnce?: boolean;
   text: string;
   senderId: string;
   senderTipo: string;
@@ -63,7 +67,7 @@ function conversationKind(chat: AnonMatchChat) {
   }
 }
 
-export default function AdminAnonMatchChatsPanel() {
+export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all" | "match" }) {
   const [chats, setChats] = useState<AnonMatchChat[]>([]);
   const [selected, setSelected] = useState("");
   const [messages, setMessages] = useState<AnonMatchMessage[]>([]);
@@ -84,8 +88,9 @@ export default function AdminAnonMatchChatsPanel() {
     try {
       const json = await adminGet("/api/admin/anon-match-chats");
       const rows = Array.isArray(json.chats) ? json.chats : [];
-      setChats(rows);
-      setSelected((current) => current || String(rows[0]?.id || ""));
+      const visible = rows as AnonMatchChat[];
+      setChats(visible);
+      setSelected((current) => visible.some((row: AnonMatchChat) => row.id === current) ? current : String(visible[0]?.id || ""));
     } catch (e) {
       if (!silent) setError(String((e as Error)?.message || "load_failed"));
     } finally {
@@ -103,7 +108,9 @@ export default function AdminAnonMatchChatsPanel() {
     const onVisibility = () => {
       if (document.visibilityState === "visible") refresh();
     };
-    const timer = window.setInterval(refresh, 60_000);
+    // A full historical admin catalog scan is expensive; refresh on focus,
+    // visibility, and periodically at a lower rate instead of every minute.
+    const timer = window.setInterval(refresh, 5 * 60_000);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -111,7 +118,7 @@ export default function AdminAnonMatchChatsPanel() {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     if (!selected) {
@@ -174,8 +181,8 @@ export default function AdminAnonMatchChatsPanel() {
       <div className="grid h-[min(76dvh,760px)] min-h-[520px] min-w-[760px] grid-cols-[minmax(280px,0.8fr)_minmax(380px,1.2fr)] gap-4">
       <section className="min-h-0 overflow-y-auto rounded-2xl border border-white/10 bg-[#080808] p-3">
         <div className="mb-3 px-2">
-          <p className="text-sm font-black">No encontraste a nadie interesante</p>
-          <p className="text-xs font-bold text-white/40">{chats.length} chats de anon-match recuperados</p>
+          <p className="text-sm font-black">{mode === "all" ? "Revisión de todos los chats anónimos" : "No encontraste a nadie interesante"}</p>
+          <p className="text-xs font-bold text-white/40">{chats.length} conversaciones para revisar</p>
         </div>
         <div className="space-y-2">
           {chats.map((chat) => (
@@ -245,9 +252,18 @@ export default function AdminAnonMatchChatsPanel() {
                   <p className="text-[10px] font-black uppercase tracking-wide text-white/35">
                     {profileSide ? "perfil" : "anónimo"} · {msg.senderId || "sin id"}
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm font-semibold">
-                    {msg.text || `[${msg.type || "mensaje"}]`}
-                  </p>
+                  <AdminSpectatorMessageContent
+                    chatId={msg.sourceChatId || selected}
+                    msg={{
+                      id: msg.rawMessageId || msg.id,
+                      collectionName: msg.collectionName === "messages" ? "messages" : "mensajes",
+                      text: msg.text,
+                      type: msg.type,
+                      viewOnce: msg.viewOnce,
+                      senderId: msg.senderId,
+                    }}
+                    compact
+                  />
                   <p className="mt-1 text-[10px] text-white/25">{when(msg.createdAtMs)}</p>
                 </div>
               );

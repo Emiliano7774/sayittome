@@ -192,6 +192,7 @@ function ChatPanel({
                       <button
                         type="button"
                         onClick={() => onOpenMedia(message.mediaUrl || "", "image")}
+                        aria-label="Abrir imagen a pantalla completa"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -210,13 +211,21 @@ function ChatPanel({
                       enableRuntimeScan
                       className="inline-block"
                     >
-                      <video
-                        src={message.mediaUrl}
-                        controls
-                        playsInline
-                        className="max-h-[280px] rounded-xl"
-                        onDoubleClick={() => onOpenMedia(message.mediaUrl || "", "video")}
-                      />
+                      <button
+                        type="button"
+                        aria-label="Abrir video a pantalla completa"
+                        onClick={() => onOpenMedia(message.mediaUrl || "", "video")}
+                        className="relative block overflow-hidden rounded-xl"
+                      >
+                        <video
+                          src={message.mediaUrl}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="max-h-[280px] rounded-xl"
+                        />
+                        <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white">Ampliar video</span>
+                      </button>
                     </SensitiveMediaShell>
                   ) : (
                     <div className={pageMode ? chatBubbleTextClass(!modern) : undefined}>{message.text}</div>

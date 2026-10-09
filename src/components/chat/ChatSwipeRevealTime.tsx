@@ -44,7 +44,8 @@ export default function ChatSwipeRevealTime({
     startXRef.current = event.clientX;
     startYRef.current = event.clientY;
     startOffsetRef.current = offsetX;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // Keep native click ownership on nested media/photo/video/bomb buttons.
+    // Pointer capture here retargeted taps to this wrapper, preventing media opening.
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
@@ -56,6 +57,10 @@ export default function ChatSwipeRevealTime({
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       axisRef.current = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
       if (axisRef.current === "y") return;
+      // Capture only after a horizontal swipe is established, never on taps.
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
     }
     if (axisRef.current !== "x") return;
 

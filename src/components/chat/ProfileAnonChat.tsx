@@ -3431,6 +3431,8 @@ export default function ProfileAnonChat({
                       className="inline-block"
                     >
                       <button
+                        type="button"
+                        aria-label="Abrir foto a pantalla completa"
                         onClick={() => {
                           if (secureBombOpenRef.current) leaveSecureBombMode();
                           setFullscreenSecureBomb(false);
@@ -3453,11 +3455,26 @@ export default function ProfileAnonChat({
                       enableRuntimeScan={!message.viewOnce}
                       className="inline-block"
                     >
-                      <video
-                        src={message.mediaUrl || ""}
-                        controls
-                        className="max-h-[420px] rounded-[24px]"
-                      />
+                      <button
+                        type="button"
+                        aria-label="Abrir video a pantalla completa"
+                        onClick={() => {
+                          if (secureBombOpenRef.current) leaveSecureBombMode();
+                          setFullscreenSecureBomb(false);
+                          setFullscreenMediaType("video");
+                          setFullscreenUrl(message.mediaUrl || "");
+                        }}
+                        className="relative block overflow-hidden rounded-[24px]"
+                      >
+                        <video
+                          src={message.mediaUrl || ""}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="max-h-[420px] rounded-[24px]"
+                        />
+                        <span className="absolute bottom-3 right-3 rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white">Ampliar video</span>
+                      </button>
                     </SensitiveMediaShell>
                   ) : (
                     <ChatMessageText

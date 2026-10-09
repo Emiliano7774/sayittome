@@ -16,7 +16,7 @@ export default function SpectatorModerationHub() {
   const { feed, loading, errorText, authoritativeTotal, refreshAuthoritative } =
     useClassicModerationFeed(recentLiveLimit);
   const [selectedEntry, setSelectedEntry] = useState<ModerationUserFeedEntry | null>(null);
-  const [scope, setScope] = useState<"profiles" | "anon_match">("profiles");
+  const [scope, setScope] = useState<"profiles" | "all_anon" | "anon_match">("profiles");
   const username = selectedEntry?.username || "";
 
   const scopeBar = (
@@ -30,6 +30,13 @@ export default function SpectatorModerationHub() {
       </button>
       <button
         type="button"
+        onClick={() => setScope("all_anon")}
+        className={scope === "all_anon" ? "rounded-full bg-violet-600 px-4 py-2 text-sm font-black" : "rounded-full border border-white/15 px-4 py-2 text-sm font-black text-white/55"}
+      >
+        Revisar chats anónimos
+      </button>
+      <button
+        type="button"
         onClick={() => setScope("anon_match")}
         className={scope === "anon_match" ? "rounded-full bg-violet-600 px-4 py-2 text-sm font-black" : "rounded-full border border-white/15 px-4 py-2 text-sm font-black text-white/55"}
       >
@@ -38,11 +45,11 @@ export default function SpectatorModerationHub() {
     </div>
   );
 
-  if (scope === "anon_match") {
+  if (scope === "all_anon" || scope === "anon_match") {
     return (
       <div className="space-y-4">
         {scopeBar}
-        <AdminAnonMatchChatsPanel />
+        <AdminAnonMatchChatsPanel mode={scope === "all_anon" ? "all" : "match"} />
       </div>
     );
   }
