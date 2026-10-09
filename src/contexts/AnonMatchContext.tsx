@@ -277,6 +277,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         existing.latestMessageId === shell.latestMessageId &&
         existing.lastMessageAtMs === shell.lastMessageAtMs &&
         existing.updatedAtMs === shell.updatedAtMs &&
+        JSON.stringify(existing.hiddenAtMessageByUid || {}) ===
+          JSON.stringify(shell.hiddenAtMessageByUid || {}) &&
         JSON.stringify(existing.readBy || {}) === JSON.stringify(shell.readBy || {}) &&
         JSON.stringify(existing.latestReadMessageIds || {}) ===
           JSON.stringify(shell.latestReadMessageIds || {})

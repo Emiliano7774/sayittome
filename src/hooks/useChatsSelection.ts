@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { hardDeleteChats } from "@/lib/chat/deleteChats";
+import { hideAnonDirectInboxChats } from "@/lib/chat/hideAnonDirectChats";
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
 
@@ -12,7 +13,7 @@ export function useChatsSelection(chats: InboxChat[]) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const visibleIds = useMemo(() => chats.filter((chat) => !isAnonDirectInboxChat(chat)).map((chat) => chat.id), [chats]);
+  const visibleIds = useMemo(() => chats.map((chat) => chat.id), [chats]);
 
   const allSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
@@ -86,13 +87,18 @@ export function useChatsSelection(chats: InboxChat[]) {
   const confirmDeleteSelected = useCallback(async () => {
     if (selectedIds.size === 0 || deleting) return;
 
-    const ids = [...selectedIds].flatMap((id) => {
-      const chat = chats.find((row) => row.id === id || row.canonicalChatId === id);
-      return [chat?.canonicalChatId, id].filter((value): value is string => Boolean(value));
-    });
+    const selected = chats.filter((row) => selectedIds.has(row.id));
+    const anonDirectIds = selected
+      .filter(isAnonDirectInboxChat)
+      .map((row) => row.canonicalChatId || row.id);
+    const regularIds = selected
+      .filter((row) => !isAnonDirectInboxChat(row))
+      .flatMap((row) => [row.canonicalChatId, row.id])
+      .filter((id): id is string => Boolean(id));
     setDeleting(true);
     try {
-      await hardDeleteChats(ids);
+      if (anonDirectIds.length) await hideAnonDirectInboxChats(anonDirectIds);
+      if (regularIds.length) await hardDeleteChats(regularIds);
       exitSelectionMode();
     } catch (error) {
       console.error(error);

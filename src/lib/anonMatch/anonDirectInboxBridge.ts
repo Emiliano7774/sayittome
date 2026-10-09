@@ -28,6 +28,17 @@ export function bridgeAnonDirectShellToInboxChat(
   if (!chatId) return null;
   if (shell.estado !== "activo") return null;
 
+  // A per-participant soft hide lasts only until a new message arrives.
+  // Never delete the shared conversation or suppress the other party.
+  const latestMarker = shell.latestMessageId
+    ? `m:${shell.latestMessageId}`
+    : shell.lastMessageAtMs
+      ? `t:${shell.lastMessageAtMs}`
+      : "__empty__";
+  if (viewerAuthUid && shell.hiddenAtMessageByUid?.[viewerAuthUid] === latestMarker) {
+    return null;
+  }
+
   const role = resolveAnonDirectViewerRole(shell, viewerAuthUid);
   const preview = String(shell.lastMessage || shell.ultimoMensaje || "").trim();
   const atMs = shell.lastMessageAtMs || shell.updatedAtMs || 0;

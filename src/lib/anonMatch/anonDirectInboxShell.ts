@@ -18,6 +18,7 @@ export type AnonDirectInboxShell = {
   anonId?: string;
   readBy?: Record<string, boolean>;
   latestReadMessageIds?: Record<string, string>;
+  hiddenAtMessageByUid?: Record<string, string>;
   unreadCounts?: Record<string, number>;
 };
 
@@ -100,6 +101,7 @@ export function parseAnonDirectInboxShell(
     anonId: String(data.anonId || "").trim() || undefined,
     readBy: boolMap(data.readBy),
     latestReadMessageIds: stringMap(data.latestReadMessageIds),
+    hiddenAtMessageByUid: stringMap(data.hiddenAtMessageByUid),
     unreadCounts: numberMap(data.unreadCounts),
   };
 }
