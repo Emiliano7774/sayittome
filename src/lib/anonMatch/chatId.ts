@@ -13,6 +13,19 @@ export function buildAnonToAnonDirectChatId(solicitanteAnonId: string, anonId: s
   return `aad_${safePart(solicitanteAnonId)}_${safePart(anonId)}`;
 }
 
+/** Stable pair ID for chats opened from Shuffle cards, like normal profile DMs. */
+export function buildShuffleAnonDirectChatId(anonA: string, anonB: string) {
+  const a = safePart(anonA);
+  const b = safePart(anonB);
+  if (!a || !b || a === b) throw new Error("invalid_anon_direct_pair");
+  const sorted = [a, b].sort();
+  return `asd_${sorted[0]}_${sorted[1]}`;
+}
+
+export function isShuffleAnonDirectChatId(chatId: string) {
+  return /^asd_anon_[a-zA-Z0-9_]+_anon_[a-zA-Z0-9_]+$/.test(String(chatId || ""));
+}
+
 export function buildProfileToProfileDirectChatId(uidA: string, uidB: string) {
   const parts = [safePart(uidA), safePart(uidB)].sort();
   return `ppd_${parts[0]}_${parts[1]}`;

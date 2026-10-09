@@ -378,6 +378,7 @@ async function closeActiveChatsForParticipantPair(
 
   for (const row of rows) {
     if (String(row.estado || "") !== "activo") continue;
+    if (row.source === "shuffle_direct") continue;
     if (chatParticipantFingerprint(row) !== target) continue;
 
     const chatId = String(row.chatId || row.id || "");
@@ -431,6 +432,7 @@ async function hasActiveDirectChatForParticipant(uid: string, anonId: string) {
   return rows.some(
     (row) =>
       String(row.estado || "") === "activo" &&
+      row.source !== "shuffle_direct" &&
       userIsChatParticipant(row, uid, anonId),
   );
 }

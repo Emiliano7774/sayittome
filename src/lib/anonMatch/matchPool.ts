@@ -281,6 +281,8 @@ export async function listBusyDirectChatParticipants(now = Date.now()) {
 
   for (const row of rows) {
     if (String(row.estado || "") !== "activo") continue;
+    // Persistent profile-style Shuffle DMs are not exclusive random matches.
+    if (row.source === "shuffle_direct") continue;
 
     for (const uid of [
       String(row.solicitanteUid || ""),
@@ -304,6 +306,8 @@ export async function listBusyDirectChatParticipants(now = Date.now()) {
 export async function pickAvailableMatchTarget(input: {
   /** Explicit Shuffle visitor: never silently connect to another person. */
   preferredAnonId?: string;
+  /** A deliberate Shuffle chat is not constrained by random-match busy state. */
+  allowExistingChatsForDirectOpen?: boolean;
   excludeAnonIds?: string[];
   excludeUids?: string[];
   /** Oldest → newest contacted ids; never-tried stay ahead of this queue. */
@@ -339,11 +343,22 @@ export async function pickAvailableMatchTarget(input: {
     const targetId = String(input.preferredAnonId || "").trim();
     if (!/^anon_[a-z0-9_]{6,80}$/i.test(targetId) || excludeAnonIds.has(targetId)) return null;
     const target = (await getAnonMatchAdminDoc("anonimos_activos", targetId)) as AnonPresenceRow | null;
-    if (!target || !isAnonAvailable(target, now)) return null;
+    if (!target) return null;
+    const directOpen = input.allowExistingChatsForDirectOpen === true;
+    // A profile-like conversation from a visible card must be allowed even if
+    // the peer is already chatting with someone else. Never override DND,
+    // identity validation, expired sessions or manually disabled availability.
+    if (directOpen) {
+      if (!isVerifiedAnonMatchPresence(target) || !isAnonOnline(target, now)) return null;
+      if (isAnonMatchDoNotDisturbActive(target.doNotDisturbUntil, now)) return null;
+      if (target.disponibleParaChat === false && !target.enChat && !target.chatActualId) return null;
+    } else if (!isAnonAvailable(target, now)) return null;
     if (!rowAcceptsViewer(target, viewer) || !geoAudienceIncludes(discovery, target)) return null;
-    const { pendingAnonIds } = await listPendingMatchTargets(now);
-    const { busyAnonIds } = await listBusyDirectChatParticipants(now);
-    if (pendingAnonIds.has(targetId) || busyAnonIds.has(targetId)) return null;
+    if (!directOpen) {
+      const { pendingAnonIds } = await listPendingMatchTargets(now);
+      const { busyAnonIds } = await listBusyDirectChatParticipants(now);
+      if (pendingAnonIds.has(targetId) || busyAnonIds.has(targetId)) return null;
+    }
     const lastSeen = parseDate(target.lastSeenAt || target.updatedAt);
     return {
       tipo: "anonimo",

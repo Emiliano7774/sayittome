@@ -242,6 +242,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const connectInFlightRef = useRef(false);
   /** A visitor selected explicitly in Shuffle; never fall back to another user. */
   const targetAnonIdRef = useRef("");
+  const shuffleDirectOpenInFlightRef = useRef(false);
   const skipServerDiscoveryRef = useRef(false);
   /** Chat dismissed here — never let a listener auto-open it (inbox reopen is explicit). */
   const lastClosedChatIdRef = useRef("");
@@ -607,7 +608,10 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   const openDirectChat = useCallback(async (chatId: string, role: "perfil" | "anonimo") => {
     const previous = openChatRef.current;
-    if (previous?.chatId && previous.chatId !== chatId && !previous.closedReason) {
+    // Shuffle-card DMs are persistent like registered profile chats. Switching
+    // windows must never close these threads in Firestore.
+    if (previous?.chatId && previous.chatId !== chatId && !previous.closedReason &&
+      !previous.chatId.startsWith("asd_") && !chatId.startsWith("asd_")) {
       const live = await resolveLiveAnonMatchCaller();
       if (previous.role !== "perfil") {
         await resolveAnonMatchSessionId().catch(() => "");
@@ -883,14 +887,16 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     await attemptConnect();
   }, [attemptConnect]);
 
-  // Selecting an anonymous Shuffle card must initiate a consent-bound direct
-  // request for that exact visitor, not show the registration gate or a profile.
+  // Selecting an anonymous Shuffle card opens a persistent one-to-one chat
+  // immediately. Only the separate random discovery uses invitations.
   useEffect(() => {
     const onTarget = (event: Event) => {
       const wanted = String(
         (event as CustomEvent<{ targetAnonId?: string }>).detail?.targetAnonId || "",
       ).trim();
       if (!/^anon_[a-z0-9_]{6,80}$/i.test(wanted)) return;
+      if (shuffleDirectOpenInFlightRef.current) return;
+      shuffleDirectOpenInFlightRef.current = true;
 
       void (async () => {
         if (searchSessionActiveRef.current) {
@@ -923,16 +929,29 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           solicitudRef.current = "";
           phaseRef.current = "idle";
         }
-        targetAnonIdRef.current = wanted;
-        await startSearchSession();
-      })().catch(() => {
-        targetAnonIdRef.current = "";
-        window.alert("No pudimos iniciar el chat anónimo. Intentá de nuevo.");
-      });
+        const ownAlias = await resolveAnonMatchSessionId();
+        if (!ownAlias) throw new Error("missing_anon_session");
+        const res = await fetchAnonMatch("/api/anon-match/shuffle-direct", {
+          method: "POST",
+          body: JSON.stringify({
+            targetAnonId: wanted,
+            solicitanteAnonId: ownAlias,
+            ...readDiscoveryPayload(),
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.ok || !json?.chatId) {
+          throw new Error(String(json?.error || "direct_chat_unavailable"));
+        }
+        await openDirectChat(String(json.chatId), "anonimo");
+      })().catch((err) => {
+        console.warn("[anon-shuffle-direct] open failed", String(err?.message || err));
+        window.alert("No se pudo abrir este chat. Si el anónimo sigue conectado, actualizá Shuffle e intentá otra vez.");
+      }).finally(() => { shuffleDirectOpenInFlightRef.current = false; });
     };
     window.addEventListener("sayittome:anon-direct-target-request", onTarget);
     return () => window.removeEventListener("sayittome:anon-direct-target-request", onTarget);
-  }, [clearRetryTimer, startSearchSession]);
+  }, [clearRetryTimer, openDirectChat]);
 
   useEffect(() => {
     if (!solicitudId || phase !== "waiting") return;
@@ -1076,7 +1095,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           chatQuery,
           (snap) => {
             if (cancelled || snap.empty) return;
-            const chatId = snap.docs[0].id;
+            const match = snap.docs.find((row) =>
+              String((row.data() as Record<string, unknown>).source || "") !== "shuffle_direct",
+            );
+            if (!match) return;
+            // Profile-like Shuffle DMs stay in Chats; they do not force a
+            // fullscreen overlay or interrupt another live conversation.
+            const chatId = match.id;
             if (chatId === lastClosedChatIdRef.current) return;
             openDirectChat(chatId, role);
           },
