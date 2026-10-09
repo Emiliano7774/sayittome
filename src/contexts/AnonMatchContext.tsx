@@ -659,8 +659,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     setChatViewState("compact");
     setPhase("accepted");
     persistOpenChat(next, "compact", "accepted");
-    // Floating tab + OS banner (when notifications are granted) on both sides.
-    if (isNewChat) {
+    // The 'Se encontró un chat' notification belongs ONLY to automatic
+    // matching. Opening a normal direct Shuffle DM must never generate it.
+    if (isNewChat && !chatId.startsWith("asd_")) {
       alertAnonMatchChatOpened(chatId);
     }
   }, [clearRetryTimer, upsertInboxShell]);

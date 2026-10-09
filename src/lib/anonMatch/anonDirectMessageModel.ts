@@ -17,6 +17,8 @@ export type AnonDirectChatMessage = {
   autoModerationRequiresBlur?: boolean;
   moderationRequiresBlur?: boolean;
   clientId?: string;
+  /** Firestore server creation time for the usual swipe-to-reveal clock. */
+  createdAtMs?: number;
   status?: "sending" | "failed";
 };
 
@@ -68,5 +70,15 @@ export function mapAnonDirectMessageDoc(input: {
     autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
     moderationRequiresBlur: data.moderationRequiresBlur === true,
     clientId: data.clientId ? String(data.clientId) : undefined,
+    createdAtMs: (() => {
+      const value = data.createdAt as { toDate?: () => Date; seconds?: number } | Date | string | number | undefined;
+      if (!value) return undefined;
+      const ms = typeof value === "object" && "toDate" in value && typeof value.toDate === "function"
+        ? value.toDate().getTime()
+        : typeof value === "object" && "seconds" in value && typeof value.seconds === "number"
+          ? value.seconds * 1000
+          : new Date(value as string | number).getTime();
+      return Number.isFinite(ms) ? ms : undefined;
+    })(),
   };
 }

@@ -1,0 +1,33 @@
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const vm=require("node:vm");
+const ts=require("typescript");
+const win=fs.readFileSync("src/components/anonMatch/AnonDirectChatWindow.tsx","utf8");
+const context=fs.readFileSync("src/contexts/AnonMatchContext.tsx","utf8");
+const model=fs.readFileSync("src/lib/anonMatch/anonDirectMessageModel.ts","utf8");
+const standard=fs.readFileSync("src/components/chat/ProfileAnonChat.tsx","utf8");
+assert.match(standard,/ChatSwipeRevealTime/);
+assert.match(standard,/chatBubbleShellClass\(/);
+assert.match(win,/import ChatSwipeRevealTime from "@\/components\/chat\/ChatSwipeRevealTime"/);
+assert.match(win,/import \{ chatBubbleShellClass, chatBubbleTextClass \} from "@\/lib\/chat\/chatBubbleStyles"/);
+assert.match(win,/pageMode\s*\? chatBubbleShellClass\(!modern, message\.mine\)/);
+assert.match(win,/!pageMode && !closed && !message\.viewOnce/);
+assert.match(win,/onSwipeLeftReply=\{!closed && !message\.viewOnce \? \(\) => onReply\(message\)/);
+assert.match(win,/onDoubleClick=\{pageMode && !closed && !message\.viewOnce/);
+assert.match(win,/message\.createdAtMs \? new Date\(message\.createdAtMs\)\.toLocaleTimeString/);
+assert.match(win,/pageMode\s*\? "mb-2 rounded-md bg-black\/30/);
+assert.match(context,/if \(isNewChat && !chatId\.startsWith\("asd_"\)\)/);
+assert.match(context,/alertAnonMatchChatOpened\(chatId\)/);
+const cjs={exports:{}};
+vm.runInNewContext(ts.transpileModule(model,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{module:cjs,exports:cjs.exports,Date,Number,String,Math});
+const map=cjs.exports.mapAnonDirectMessageDoc;
+const ms=Date.parse("2026-10-09T12:34:00Z");
+for(const inputTime of [{toDate:()=>new Date(ms)},{seconds:ms/1000},"2026-10-09T12:34:00Z"]){
+  const message=map({id:"msg1",senderId:"anonA",data:{senderId:"anonB",texto:"Hola",createdAt:inputTime}});
+  assert.equal(message.createdAtMs,ms,"valid server creation time");
+  assert.equal(message.reply,undefined);
+}
+const unknown=map({id:"msg2",senderId:"anonA",data:{senderId:"anonA",text:"Sí",reply:"Hola"}});
+assert.equal(unknown.createdAtMs,undefined);
+assert.equal(unknown.reply,"Hola");
+console.log("PASS original chat styling: classic/modern bubble, hidden permanent Reply, swipe quote, swipe timestamp, quoted text, no matchmaking banner for direct Shuffle, 3 Firestore timestamp formats.");

@@ -15,6 +15,8 @@ import {
 
 import AnonDirectMediaComposer from "@/components/anonMatch/AnonDirectMediaComposer";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
+import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
+import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
@@ -135,16 +137,19 @@ function ChatPanel({
               message.viewOnce === true &&
               (message.viewOnceExhausted === true || viewOnceRemaining(message) === 0);
 
-            return (
-              <div
-                key={message.id}
-                className={`mb-2 flex ${message.mine ? "justify-end" : "justify-start"}`}
-              >
-                <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm font-bold ${bubbleClass}`}>
+            const bubble = (
+                <div
+                  onDoubleClick={pageMode && !closed && !message.viewOnce ? () => onReply(message) : undefined}
+                  className={pageMode
+                    ? chatBubbleShellClass(!modern, message.mine)
+                    : `max-w-[80%] rounded-2xl px-3 py-2 text-sm font-bold ${bubbleClass}`}
+                >
                   {message.reply ? (
-                    <p className="mb-1 border-l-2 border-white/30 pl-2 text-[11px] font-semibold opacity-70">
+                    <div className={pageMode
+                      ? "mb-2 rounded-md bg-black/30 px-3 py-2 text-sm text-zinc-300"
+                      : "mb-1 border-l-2 border-white/30 pl-2 text-[11px] font-semibold opacity-70"}>
                       {message.reply}
-                    </p>
+                    </div>
                   ) : null}
 
                   {message.viewOnce ? (
@@ -214,10 +219,10 @@ function ChatPanel({
                       />
                     </SensitiveMediaShell>
                   ) : (
-                    <div>{message.text}</div>
+                    <div className={pageMode ? chatBubbleTextClass(!modern) : undefined}>{message.text}</div>
                   )}
 
-                  {!closed && !message.viewOnce ? (
+                  {!pageMode && !closed && !message.viewOnce ? (
                     <button
                       type="button"
                       onClick={() => onReply(message)}
@@ -228,6 +233,18 @@ function ChatPanel({
                     </button>
                   ) : null}
                 </div>
+            );
+            return (
+              <div key={message.id} className={`mb-2 flex ${message.mine ? "justify-end" : "justify-start"}`}>
+                {pageMode ? (
+                  <ChatSwipeRevealTime
+                    timeLabel={message.createdAtMs ? new Date(message.createdAtMs).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : ""}
+                    align={message.mine ? "right" : "left"}
+                    onSwipeLeftReply={!closed && !message.viewOnce ? () => onReply(message) : undefined}
+                  >
+                    {bubble}
+                  </ChatSwipeRevealTime>
+                ) : bubble}
               </div>
             );
           })
