@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 import {
   decideAnonymousPresenceWrite,
   decideLegacyAnonPresenceCleanup,
-  ANON_PRESENCE_ACTIVE_MS,
-  ANON_PRESENCE_BACKGROUND_GRACE_MS,
+  ANON_SHUFFLE_VISIBILITY_MS,
 } from "@/lib/anonMatch/anonymousPresenceIdentity";
 import { isAnonMatchDoNotDisturbActive } from "@/lib/anonMatch/doNotDisturb";
 import {
@@ -43,9 +42,9 @@ async function writePresenceDoc(
   backgrounded = false,
 ) {
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + (
-    backgrounded ? ANON_PRESENCE_BACKGROUND_GRACE_MS : ANON_PRESENCE_ACTIVE_MS
-  ));
+  // Retention is three hours for the Shuffle card; background/foreground
+  // freshness for actual contactability is checked separately by matchPool.
+  const expiresAt = new Date(now.getTime() + ANON_SHUFFLE_VISIBILITY_MS);
   const existing = await getAnonMatchAdminDoc("anonimos_activos", anonId);
   const dndUntil = String((existing || {}).doNotDisturbUntil || "");
   const dndActive = isAnonMatchDoNotDisturbActive(dndUntil, now.getTime());
@@ -56,6 +55,7 @@ async function writePresenceDoc(
     lastSeenAt: now.toISOString(),
     updatedAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
+    sessionClosed: false,
     // Keep DND closed until the timer expires — heartbeats must not reopen the door.
     disponibleParaChat: dndActive ? false : true,
     enChat: false,
@@ -185,8 +185,25 @@ export async function POST(req: Request) {
   }
 }
 
+/** Closing the old tab ends CONTACTABILITY, not its three-hour Shuffle card. */
+async function endAnonymousPresenceSession(anonId: string) {
+  const existing = await getAnonMatchAdminDoc("anonimos_activos", anonId);
+  if (!existing) return;
+  const seenMs = Date.parse(String(existing.lastSeenAt || existing.updatedAt || ""));
+  const expiryMs = (Number.isFinite(seenMs) ? seenMs : Date.now()) + ANON_SHUFFLE_VISIBILITY_MS;
+  await setAnonMatchAdminDoc("anonimos_activos", anonId, {
+    sessionClosed: true,
+    disponibleParaChat: false,
+    backgrounded: true,
+    expiresAt: new Date(expiryMs).toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 /**
- * Remove presence for the caller's bound server alias (and optional legacy local id).
+ * End the caller's old session without deleting their visible Shuffle card.
+ * The card expires three hours after its LAST heartbeat; messages require a
+ * separate short-lived active session.
  * pagehide uses cached alias — do not require a fresh bind here.
  */
 export async function DELETE(req: Request) {
@@ -225,7 +242,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ ok: false, error: "missing_server_alias" }, { status: 400 });
     }
 
-    await deletePresenceDoc(anonId);
+    await endAnonymousPresenceSession(anonId);
     invalidateAnonMatchAvailabilityCache();
 
     const legacyLocal = String(body?.legacyLocalAnonId || "").trim();

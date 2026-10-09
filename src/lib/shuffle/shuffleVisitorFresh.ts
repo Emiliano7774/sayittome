@@ -1,4 +1,4 @@
-import { ANON_MATCH_PRESENCE_FRESH_MS } from "@/lib/anonMatch/types";
+import { anonShuffleVisible } from "@/lib/anonMatch/anonymousPresenceIdentity";
 
 type VisitorStamp = {
   shuffleVisitor?: boolean;
@@ -6,11 +6,11 @@ type VisitorStamp = {
   lastActive?: string;
 };
 
-/** Do not display a visitor after matching has stopped accepting their lease.
- * The presence document may retain a longer background recovery lease. */
+/** Display an anon card for three hours after the LAST connection.
+ * A card with a green indicator is historical discovery presence, not a
+ * guarantee the old closed tab can still accept a DM. */
 export function isShuffleVisitorFresh(profile: VisitorStamp, now = Date.now()) {
   if (profile.shuffleVisitor !== true) return true;
   const seen = Date.parse(String(profile.presenceAt || profile.lastActive || ""));
-  return Number.isFinite(seen) && seen <= now + 30_000 &&
-    now - seen <= ANON_MATCH_PRESENCE_FRESH_MS;
+  return anonShuffleVisible(seen, now);
 }

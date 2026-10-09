@@ -28,7 +28,7 @@ import {
   profileIsVisibleToViewer,
   profileMatchesShuffleServerFilters,
 } from "@/lib/shuffle/serverFilters";
-import { ANON_MATCH_PRESENCE_FRESH_MS } from "@/lib/anonMatch/types";
+import { ANON_SHUFFLE_VISIBILITY_MS, anonShuffleVisible } from "@/lib/anonMatch/anonymousPresenceIdentity";
 
 const SHUFFLE_JSON_HEADERS = {
   "Cache-Control": "private, no-store, no-cache, must-revalidate",
@@ -207,11 +207,10 @@ function isAnonymousDocActive(doc: any, now = Date.now()) {
   const seenMs = fieldInstant(fields, "lastSeenAt") || fieldInstant(fields, "updatedAt");
   if (!seenMs || seenMs > now + 30_000) return false;
 
-  // A background lease can last an hour. That lease is for cleanup/recovery,
-  // NOT a promise that the visitor can accept a new conversation. Only show
-  // someone as available if the match API would consider the same heartbeat
-  // fresh. Otherwise Shuffle showed ghosts that every click rejected.
-  if (now - seenMs > ANON_MATCH_PRESENCE_FRESH_MS) return false;
+  // Product rule: keep the visitor card (and green indicator) for three hours
+  // after their last connection. Match / DM authorization remains short-lived;
+  // stale sessions must not receive messages even while the card is visible.
+  if (!anonShuffleVisible(seenMs, now)) return false;
   const expiresMs = fieldInstant(fields, "expiresAt");
   if (expiresMs && expiresMs <= now) return false;
   return true;
@@ -696,7 +695,7 @@ async function fetchLiveShuffleVisitorsUncached(force = false) {
     const docs = await runQuery("anonimos_activos", {
       limit: VISITOR_SCAN_LIMIT,
       orderBy: { field: "lastSeenAt", direction: "DESCENDING" },
-      minLastSeenAt: new Date(now - ANON_MATCH_PRESENCE_FRESH_MS).toISOString(),
+      minLastSeenAt: new Date(now - ANON_SHUFFLE_VISIBILITY_MS).toISOString(),
     });
     const uniqueDocs = collapseRowsByOwner(
       docs.filter((doc: any) => isAnonymousDocActive(doc, now)),

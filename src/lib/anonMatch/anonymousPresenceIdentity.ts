@@ -11,6 +11,13 @@ export const ANON_PRESENCE_ACTIVE_MS = 15 * 60 * 1000;
  * expire, rather than appearing online indefinitely. */
 export const ANON_PRESENCE_BACKGROUND_GRACE_MS = 60 * 60 * 1000;
 export const ANON_PRESENCE_HEARTBEAT_MS = 90_000;
+/** Anonymous cards stay displayed for 3h after their last successful connection.
+ * This is DISCOVERY visibility, never proof that an old session can receive. */
+export const ANON_SHUFFLE_VISIBILITY_MS = 3 * 60 * 60 * 1000;
+export function anonShuffleVisible(lastSeenAtMs: number, now = Date.now()) {
+  return Number.isFinite(lastSeenAtMs) && lastSeenAtMs > 0 &&
+    lastSeenAtMs <= now + 30_000 && now - lastSeenAtMs <= ANON_SHUFFLE_VISIBILITY_MS;
+}
 
 export type AnonPresencePublisherKind =
   | "anonymous_firebase"

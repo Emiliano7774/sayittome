@@ -32,6 +32,7 @@ type AnonPresenceRow = {
   lastSeenAt?: string;
   updatedAt?: string;
   expiresAt?: string;
+  sessionClosed?: boolean;
   doNotDisturbUntil?: string;
   disponibleParaChat?: boolean;
   enChat?: boolean;
@@ -103,6 +104,7 @@ function parseDate(value?: string | null) {
 }
 
 function isAnonOnline(row: AnonPresenceRow, now = Date.now()) {
+  if (row.sessionClosed === true) return false;
   const lastSeen = parseDate(row.lastSeenAt || row.updatedAt);
   if (!lastSeen) return false;
   // Match pool uses a tight freshness window so closed-tab ghosts do not
