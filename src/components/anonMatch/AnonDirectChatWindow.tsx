@@ -1,6 +1,7 @@
 "use client";
 
-import { Flag, Maximize2, Minimize2, Minus, Reply, X } from "lucide-react";
+import { ArrowLeft, Flag, Maximize2, Minimize2, Minus, Reply, UserRound, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   collection,
@@ -69,6 +70,7 @@ function ChatPanel({
   inputRef,
   expanded,
   modern,
+  pageMode = false,
 }: {
   messages: AnonDirectChatMessage[];
   notice: string;
@@ -92,6 +94,7 @@ function ChatPanel({
   inputRef: React.RefObject<HTMLInputElement | null>;
   expanded: boolean;
   modern: boolean;
+  pageMode?: boolean;
 }) {
   const t = useT();
   const bombCap = getAnonDirectViewOnceCapability();
@@ -101,10 +104,22 @@ function ChatPanel({
       <div
         ref={listRef}
         data-anon-direct-chat-scroll="1"
-        className={`overflow-y-auto overscroll-contain px-4 py-4 ${expanded ? "min-h-0 flex-1" : "max-h-[44vh]"}`}
+        className={`overflow-y-auto overscroll-contain px-4 py-4 ${expanded ? "min-h-0 flex-1" : "max-h-[44vh]"} ${pageMode ? "sayittome-chat-thread-scroller" : ""}`}
       >
         {messages.length === 0 ? (
-          <p className="text-center text-sm font-bold text-white/35">{t("anon_match_chat_empty")}</p>
+          pageMode ? (
+            <div data-chat-standard-intro="1" className="flex flex-col items-center px-5 pt-[min(10vh,5rem)]">
+              <div className="flex h-40 w-40 items-center justify-center rounded-full bg-[#367a5c] text-white">
+                <UserRound size={86} strokeWidth={1.6} />
+              </div>
+              <div className="mt-10 max-w-[312px] rounded-2xl border border-white/10 bg-[#070707] px-5 py-5 text-left text-sm text-white/90">
+                <div className="text-[10px] font-bold uppercase tracking-[0.27em] text-[#9287d9]">Modo anónimo</div>
+                <div className="mt-3 text-lg font-bold text-white">Estás invisible</div>
+                <p className="mt-2 leading-relaxed">Hablás sin mostrar tu identidad. La otra persona no sabe quién sos; este chat vive solo en esta sesión.</p>
+                <p className="mt-3 leading-relaxed">Tu mensaje le llega directamente y el chat queda disponible en Chats mientras tu sesión esté activa.</p>
+              </div>
+            </div>
+          ) : <p className="text-center text-sm font-bold text-white/35">{t("anon_match_chat_empty")}</p>
         ) : (
           messages.map((message) => {
             if (message.status === "failed") return null;
@@ -245,11 +260,12 @@ function ChatPanel({
   );
 }
 
-export default function AnonDirectChatWindow() {
+export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: { pageMode?: boolean; pageChatId?: string } = {}) {
   const match = useAnonMatchOptional();
   const { firebaseUser } = useAuth();
   const { uxMode } = useUxMode();
   const t = useT();
+  const router = useRouter();
   const modern = uxMode === "modern";
   const [messages, setMessages] = useState<AnonDirectChatMessage[]>([]);
   const [text, setText] = useState("");
@@ -272,7 +288,7 @@ export default function AnonDirectChatWindow() {
   const secureBombObjectUrlRef = useRef("");
   const secureBombOpenRef = useRef(false);
 
-  const openChat = match?.openChat;
+  const openChat = pageMode && match?.openChat?.chatId !== pageChatId ? null : match?.openChat;
   const chatId = openChat?.chatId || "";
   const role = openChat?.role || "anonimo";
   const chatView = match?.chatView || "compact";
@@ -818,8 +834,9 @@ export default function AnonDirectChatWindow() {
       senderTipo={senderTipo}
       listRef={listRef}
       inputRef={inputRef}
-      expanded={chatView === "expanded"}
+      expanded={pageMode || chatView === "expanded"}
       modern={modern}
+      pageMode={pageMode}
     />
   );
 
@@ -862,6 +879,31 @@ export default function AnonDirectChatWindow() {
       ) : null}
     </>
   );
+
+  if (pageMode) {
+    return (
+      <>
+        <main id="sayittome-chat-page-root" data-anon-shuffle-standard-chat="1" className="sayittome-chat-shell h-dvh min-h-0 bg-black text-white">
+          <section className="sayittome-chat-thread flex h-full min-h-0 flex-col bg-black" style={{ paddingBottom: keyboardPx > 0 ? keyboardPx : undefined }}>
+            <header data-chat-thread-header="1" className="sayittome-chat-thread-header flex shrink-0 items-center gap-4 bg-black px-5 py-4">
+              <button type="button" aria-label="Volver a Chats" onClick={() => { matchApi.closeChatWindow(); router.push("/chats"); }} className="text-white/70">
+                <ArrowLeft size={27} />
+              </button>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#367a5c]">
+                <UserRound size={27} strokeWidth={1.8} />
+              </div>
+              <h1 className="min-w-0 flex-1 truncate text-xl font-bold tracking-tight">Anónimo</h1>
+              <button type="button" className="rounded-full border border-white/15 px-4 py-2 text-xs text-white/85" onClick={() => setReportConfirmOpen(true)}>
+                Denunciar
+              </button>
+            </header>
+            {panel}
+          </section>
+        </main>
+        {confirmModals}
+      </>
+    );
+  }
 
   if (chatView === "minimized") {
     return (

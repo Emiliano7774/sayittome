@@ -11,7 +11,7 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   collection,
   doc,
@@ -221,6 +221,7 @@ function stopSearchSessionState(input: {
 
 export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { firebaseUser } = useAuth();
   const [phase, setPhase] = useState<AnonMatchConnectPhase>("idle");
   const [searchSessionActive, setSearchSessionActive] = useState(false);
@@ -944,6 +945,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
           throw new Error(String(json?.error || "direct_chat_unavailable"));
         }
         await openDirectChat(String(json.chatId), "anonimo");
+        // Direct cards navigate to the ordinary full-page chat route, not
+        // the floating modal reserved for random matching.
+        router.push(`/chat/${encodeURIComponent(String(json.chatId))}`);
       })().catch((err) => {
         console.warn("[anon-shuffle-direct] open failed", String(err?.message || err));
         window.alert("No se pudo abrir este chat. Si el anónimo sigue conectado, actualizá Shuffle e intentá otra vez.");
@@ -951,7 +955,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("sayittome:anon-direct-target-request", onTarget);
     return () => window.removeEventListener("sayittome:anon-direct-target-request", onTarget);
-  }, [clearRetryTimer, openDirectChat]);
+  }, [clearRetryTimer, openDirectChat, router]);
 
   useEffect(() => {
     if (!solicitudId || phase !== "waiting") return;

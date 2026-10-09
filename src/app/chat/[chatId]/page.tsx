@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 import ProfileAnonChat from "@/components/chat/ProfileAnonChat";
+import AnonShuffleDirectPage from "@/components/anonMatch/AnonShuffleDirectPage";
 import { ChatErrorScreen, ChatLoadingScreen } from "@/components/chat/ChatScreens";
 import { isProfileAnonChatId, usernameHintFromAnonChatId, chatPageComposer } from "@/lib/chat/anonChatId";
 import { resolveProfileChat, isOwnerProfileInboxRedirect } from "@/lib/chat/resolveProfileChat";
@@ -204,6 +205,10 @@ function ProfileAnonChatRoute() {
 function ChatEntryPage() {
   const params = useParams();
   const chatId = decodeURIComponent(String(params.chatId || ""));
+
+  if (/^asd_anon_[a-zA-Z0-9_]+_anon_[a-zA-Z0-9_]+$/.test(chatId)) {
+    return <AnonShuffleDirectPage chatId={chatId} />;
+  }
 
   if (chatPageComposer(chatId) === "profile-anon") {
     return (
