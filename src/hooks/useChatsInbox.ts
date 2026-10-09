@@ -89,6 +89,10 @@ export type InboxChat = {
   createdAtMs?: number;
   /** Profile messaged a live anonymous session. The anon must not see that profile. */
   hideProfileFromVisitor?: boolean;
+  /** Bridge row from chats_anonimos via AnonMatchContext — never a `chats` doc. */
+  inboxKind?: "anon_direct";
+  sourceCollection?: "chats" | "chats_anonimos";
+  anonDirectRole?: "perfil" | "anonimo";
 };
 
 export function resolveChatUsername(chat: InboxChat) {
@@ -108,6 +112,11 @@ export function chatTitle(chat: InboxChat) {
 }
 
 export function chatHref(chat: InboxChat) {
+  // Anon-direct bridge rows open via openDirectChat — never /chat/{id}.
+  if (chat.inboxKind === "anon_direct" || chat.sourceCollection === "chats_anonimos") {
+    return "";
+  }
+
   const id = chat.canonicalChatId || chat.id;
   const username = resolveChatUsername(chat);
 

@@ -11,6 +11,7 @@ import { useChatsSelection } from "@/hooks/useChatsSelection";
 import { shouldShowChatsInboxSkeleton } from "@/hooks/useChatsInboxReady";
 import { useChatsTabPaint } from "@/hooks/useChatsTabPaint";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
+import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
 import { useT } from "@/contexts/LocaleContext";
 
 function ChatsPageSkeleton() {
@@ -38,6 +39,9 @@ export default function ChatsInboxPage() {
   });
 
   const warmIds = inbox.sortedChats
+    // Direct matches live in chats_anonimos, not the regular chats collection.
+    // Prefetching their IDs as regular chats wastes Firestore reads.
+    .filter((chat) => !isAnonDirectInboxChat(chat))
     .slice(0, 8)
     .map((chat) => chat.canonicalChatId || chat.id)
     .join("|");

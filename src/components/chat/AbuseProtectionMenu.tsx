@@ -3,76 +3,51 @@
 import { ShieldAlert } from "lucide-react";
 import { useState } from "react";
 
-import {
-  DEFAULT_ABUSE_BLOCK_MINUTES,
-} from "@/lib/abuse/anonAbuseBlocks";
-import { buildVisitorBlockKey, getVisitorId } from "@/lib/abuse/fingerprint";
+import { PROFILE_ANON_ABUSE_BLOCK_MINUTES } from "@/lib/abuse/profileAnonAbuseBlock";
+import { auth } from "@/lib/firebase";
 import { useT } from "@/contexts/LocaleContext";
 
 export default function AbuseProtectionMenu({
-  receptorUid,
-  targetUsername,
   chatId,
-  blockedAnonId,
-  blockedBy,
   onBlocked,
 }: {
-  receptorUid: string;
-  targetUsername: string;
+  /** @deprecated unused — owner derived server-side */
+  receptorUid?: string;
+  targetUsername?: string;
   chatId: string;
-  blockedAnonId: string;
-  blockedBy: string;
+  blockedAnonId?: string;
+  blockedBy?: string;
   onBlocked?: () => void;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  async function reportAbuse(motivo: string, durationMinutes = DEFAULT_ABUSE_BLOCK_MINUTES) {
-    if (!receptorUid || busy) return;
-
+  async function blockThirtyMinutes() {
+    if (!chatId || busy) return;
     setBusy(true);
-
     try {
-      const visitorId = getVisitorId();
-      const fingerprint = buildVisitorBlockKey(visitorId);
+      const user = auth.currentUser;
+      if (!user) throw new Error("unauthenticated");
+      const idToken = await user.getIdToken();
 
       const blockRes = await fetch("/api/abuse/block", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
-          receptorUid,
-          blockedAnonId,
-          blockedVisitorId: visitorId,
           chatId,
-          motivo,
-          blockedBy,
-          durationMinutes,
+          motivo: "bloqueo_30m",
         }),
       });
 
-      const blockJson = await blockRes.json();
+      const blockJson = (await blockRes.json()) as { ok?: boolean; error?: string };
       if (!blockRes.ok || !blockJson?.ok) {
         throw new Error(String(blockJson?.error || "block_failed"));
       }
 
-      await fetch("/api/abuse/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipo: "acoso",
-          motivo,
-          detalle: `Bloqueo ${durationMinutes}m en chat con ${targetUsername}`,
-          targetUid: receptorUid,
-          targetUsername,
-          reporterUid: blockedBy,
-          chatId,
-          blockedFingerprint: fingerprint,
-        }),
-      });
-
       onBlocked?.();
-      setOpen(false);
       alert(t("abuse_block_success"));
     } catch (e) {
       console.error(e);
@@ -82,48 +57,24 @@ export default function AbuseProtectionMenu({
     }
   }
 
-  if (!receptorUid) return null;
+  if (!chatId) return null;
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white/80 flex items-center gap-2"
+        disabled={busy}
+        onClick={() => void blockThirtyMinutes()}
+        className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-black text-white/80 flex items-center gap-2 disabled:opacity-50"
         aria-label={t("abuse_menu_label")}
+        title={t("abuse_block_30m")}
       >
         <ShieldAlert size={16} />
-        {t("abuse_menu_short")}
+        {t("abuse_block_30m")}
       </button>
-
-      {open ? (
-        <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-white/15 bg-[#111] p-2 z-50 shadow-2xl">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => reportAbuse("denuncia_acoso", DEFAULT_ABUSE_BLOCK_MINUTES)}
-            className="w-full text-left rounded-xl px-4 py-3 font-black hover:bg-white/5 disabled:opacity-50"
-          >
-            {t("abuse_report")}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => reportAbuse("bloqueo_30m", 30)}
-            className="w-full text-left rounded-xl px-4 py-3 font-black hover:bg-white/5 disabled:opacity-50"
-          >
-            {t("abuse_block_30m")}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => reportAbuse("bloqueo_anon", 24 * 60)}
-            className="w-full text-left rounded-xl px-4 py-3 font-black hover:bg-white/5 disabled:opacity-50"
-          >
-            {t("abuse_block_anon")}
-          </button>
-        </div>
-      ) : null}
+      <span className="sr-only">
+        {PROFILE_ANON_ABUSE_BLOCK_MINUTES}m
+      </span>
     </div>
   );
 }

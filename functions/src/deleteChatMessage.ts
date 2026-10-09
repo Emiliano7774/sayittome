@@ -28,8 +28,14 @@ type LocatedChatMessage = ResolvedChatMessageLocation & {
   message: ChatMessageDeleteMessage;
 };
 
+const ABUSE_CHAT_LEASE_COLLECTION = "anon_abuse_chat_leases";
+
 function asId(value: unknown) {
   return String(value || "").trim();
+}
+
+function privateVisitorAuthUidFromLease(data: unknown) {
+  return asId((data as { visitorAuthUid?: string } | null)?.visitorAuthUid);
 }
 
 export async function resolveChatMessageLocation(
@@ -108,6 +114,11 @@ export async function handleDeleteChatMessage(
       throw new HttpsError("not-found", located.target === "message" ? "Message not found" : "Chat not found");
     }
 
+    const leaseSnap = await tx.get(db.collection(ABUSE_CHAT_LEASE_COLLECTION).doc(chatId));
+    const privateVisitorAuthUid = leaseSnap.exists
+      ? privateVisitorAuthUidFromLease(leaseSnap.data())
+      : "";
+
     const decision = decideChatMessageDelete({
       uid,
       mode,
@@ -115,6 +126,7 @@ export async function handleDeleteChatMessage(
       messageId,
       chat: located.chat,
       message: located.message,
+      privateVisitorAuthUid,
     });
     if (!decision.ok) {
       if (decision.error === "permission-denied") {

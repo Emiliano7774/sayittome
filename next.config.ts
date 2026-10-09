@@ -51,7 +51,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/((?!_next/static|_next/image|downloads/|icons/|favicon).*)",
+        // Navigation HTML only. API routes own their cache/privacy headers.
+        source: "/((?!api/|_next/static|_next/image|downloads/|icons/|favicon).*)",
         headers: [
           {
             key: "Cache-Control",

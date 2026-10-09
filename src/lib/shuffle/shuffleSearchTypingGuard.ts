@@ -317,11 +317,41 @@ export async function fetchShuffleApi(
 /**
  * Live anonymous visitors poll — never blocked by search typing-guard.
  * Solo-online on Android depends on this while search is focused/sticky.
+ * Concurrent identical polls share one network request (clone per waiter).
  */
+let visitorsInFlight: Promise<Response> | null = null;
+
+function visitorsRequestHasCustomInit(init?: RequestInit) {
+  if (!init) return false;
+  return Boolean(
+    init.signal ||
+      init.headers ||
+      init.method ||
+      init.body ||
+      init.cache ||
+      init.credentials ||
+      init.mode ||
+      init.redirect ||
+      init.referrer ||
+      init.integrity ||
+      init.keepalive,
+  );
+}
+
 export async function fetchShuffleVisitorsApi(
   init?: RequestInit,
 ): Promise<Response> {
-  return fetchShuffleNetwork(`/api/shuffle?visitors=1&_=${Date.now()}`, init);
+  const url = `/api/shuffle?visitors=1&_=${Date.now()}`;
+  if (visitorsRequestHasCustomInit(init)) {
+    return fetchShuffleNetwork(url, init);
+  }
+  if (!visitorsInFlight) {
+    const pending = fetchShuffleNetwork(url, init).finally(() => {
+      if (visitorsInFlight === pending) visitorsInFlight = null;
+    });
+    visitorsInFlight = pending;
+  }
+  return visitorsInFlight.then((res) => res.clone());
 }
 
 export function getShuffleSearchTypingDebug() {

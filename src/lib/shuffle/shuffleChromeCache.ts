@@ -1,11 +1,17 @@
-import { readClientCache, writeClientCache } from "@/lib/cache/clientCache";
+import {
+  readClientCache,
+  readDurableClientCache,
+  removeDurableClientCache,
+  writeClientCache,
+  writeDurableClientCache,
+} from "@/lib/cache/clientCache";
 import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 import type { FollowingProfile } from "@/lib/shuffle/followingTypes";
 
 export const SHUFFLE_CHROME_CACHE_VERSION = 3;
 export const SHUFFLE_FOLLOWING_CACHE_KEY = "sayittome:shuffle:following:v3";
 export const SHUFFLE_ANON_CARD_CACHE_KEY = "sayittome:shuffle:anon-card:v3";
-export const SHUFFLE_CHROME_TTL_MS = 30 * 60_000;
+export const SHUFFLE_CHROME_TTL_MS = 60 * 60_000;
 
 export type FollowingSnapshot = {
   version: number;
@@ -65,13 +71,13 @@ function persistFollowing(snapshot: FollowingSnapshot | null) {
   if (!snapshot) {
     if (typeof window === "undefined") return;
     try {
-      window.sessionStorage.removeItem(SHUFFLE_FOLLOWING_CACHE_KEY);
+      removeDurableClientCache(SHUFFLE_FOLLOWING_CACHE_KEY);
     } catch {
       // ignore
     }
     return;
   }
-  writeClientCache(SHUFFLE_FOLLOWING_CACHE_KEY, cloneFollowing(snapshot));
+  writeDurableClientCache(SHUFFLE_FOLLOWING_CACHE_KEY, cloneFollowing(snapshot));
 }
 
 function persistAnon(snapshot: AnonCardSnapshot | null) {
@@ -79,12 +85,15 @@ function persistAnon(snapshot: AnonCardSnapshot | null) {
   if (!snapshot) {
     if (typeof window === "undefined") return;
     try {
-      window.sessionStorage.removeItem(SHUFFLE_ANON_CARD_CACHE_KEY);
+      // Also clears any legacy localStorage durable copy.
+      removeDurableClientCache(SHUFFLE_ANON_CARD_CACHE_KEY);
     } catch {
       // ignore
     }
     return;
   }
+  // Session-only live state: strip durable legacy first, then write session.
+  removeDurableClientCache(SHUFFLE_ANON_CARD_CACHE_KEY);
   writeClientCache(SHUFFLE_ANON_CARD_CACHE_KEY, cloneAnon(snapshot));
 }
 
@@ -101,7 +110,7 @@ export function readCachedFollowingSnapshot(uid: string) {
     return null;
   }
 
-  const stored = readClientCache<FollowingSnapshot>(
+  const stored = readDurableClientCache<FollowingSnapshot>(
     SHUFFLE_FOLLOWING_CACHE_KEY,
     SHUFFLE_CHROME_TTL_MS,
   );
@@ -137,6 +146,7 @@ export function readCachedAnonCardSnapshot(uid?: string) {
     return null;
   }
 
+  // Session-only — never hydrate live anon-card state from durable localStorage.
   const stored = readClientCache<AnonCardSnapshot>(
     SHUFFLE_ANON_CARD_CACHE_KEY,
     SHUFFLE_CHROME_TTL_MS,

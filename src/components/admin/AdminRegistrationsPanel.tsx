@@ -12,6 +12,7 @@ import {
 type Summary = {
   todayCount: number;
   todayDelta: number | null;
+  registeredTotal?: number;
   totalWithDate: number;
   daysTracked: number;
 };
@@ -99,7 +100,9 @@ export default function AdminRegistrationsPanel({
           </div>
           {!loading && summary ? (
             <p className="mt-1 text-xs font-bold text-white/40">
-              {summary.totalWithDate} usuarios con fecha · {summary.daysTracked} días registrados
+              {summary.registeredTotal ?? summary.totalWithDate} usuarios registrados ·{" "}
+              {summary.totalWithDate} con fecha ·{" "}
+              {summary.daysTracked} días registrados
             </p>
           ) : null}
         </div>

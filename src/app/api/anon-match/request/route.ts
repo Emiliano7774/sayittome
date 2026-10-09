@@ -93,7 +93,14 @@ export async function POST(req: Request) {
           .map((id: string) => id.trim())
           .filter(Boolean);
 
+    // A deliberate visitor click may target that live anon, but cannot bypass
+    // the server's authenticated alias, presence, block or availability checks.
+    const targetAnonId = String(body?.targetAnonId || "").trim();
+    if (targetAnonId && !/^anon_[a-z0-9_]{6,80}$/i.test(targetAnonId)) {
+      return NextResponse.json({ ok: false, error: "invalid_target_anon" }, { status: 400 });
+    }
     const result = await createAnonMatchRequest({
+      targetAnonId: targetAnonId || undefined,
       solicitanteUid,
       solicitanteAnonId: solicitanteAnonId || undefined,
       solicitanteAuthUid: caller.uid,

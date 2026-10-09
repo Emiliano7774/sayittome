@@ -24,10 +24,13 @@ let started = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let authUnsub: (() => void) | null = null;
 let inFlight = false;
+let pendingForcedHeartbeat = false;
 let lastWriteAt = 0;
 /** Cached server alias for explicit leave (door close / logout). */
 let cachedPresenceAlias = "";
 let currentUser: User | null = null;
+/** Last usable auth headers for the browser's best-effort unload request. */
+let leaveHeaders: Record<string, string> | null = null;
 
 const MIN_WRITE_GAP_MS = 60_000;
 const PRESENCE_FETCH_TIMEOUT_MS = 12_000;
@@ -72,6 +75,7 @@ async function postPresenceHeartbeat(anonId: string, headers: Record<string, str
     body: JSON.stringify({
       anonId,
       chatSessionId: getAnonSessionId(),
+      backgrounded: document.hidden,
       ...readVisibilityPayload(),
       ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
     }),
@@ -113,7 +117,12 @@ async function writeAnonymousPresence(force = false) {
 
   const now = Date.now();
   if (!force && now - lastWriteAt < MIN_WRITE_GAP_MS) return;
-  if (inFlight) return;
+  if (inFlight) {
+    // Hidden/visible events racing with a heartbeat still need the correct
+    // lease duration (1h hidden vs 15m foreground).
+    if (force) pendingForcedHeartbeat = true;
+    return;
+  }
 
   inFlight = true;
 
@@ -130,6 +139,7 @@ async function writeAnonymousPresence(force = false) {
     cachedPresenceAlias = anonId;
     const headers = await authHeaders();
     if (!headers) return;
+    leaveHeaders = headers;
 
     let { res, json } = await postPresenceHeartbeat(anonId, headers);
 
@@ -156,6 +166,10 @@ async function writeAnonymousPresence(force = false) {
     // Presence is best-effort — match delivery still depends on alias identity.
   } finally {
     inFlight = false;
+    if (pendingForcedHeartbeat) {
+      pendingForcedHeartbeat = false;
+      void writeAnonymousPresence(true);
+    }
   }
 }
 
@@ -208,6 +222,7 @@ function onUserChanged(user: User | null) {
   // server reject presence writes as foreign.
   if ((user?.uid || "") !== (currentUser?.uid || "")) {
     cachedPresenceAlias = "";
+    leaveHeaders = null;
   }
   currentUser = user;
   lastWriteAt = 0;
@@ -260,10 +275,25 @@ export function startAnonymousPresenceSystem() {
     void writeAnonymousPresence(true);
   });
 
-  // Do NOT DELETE on pagehide. Chrome discards/freezes background tabs and
-  // fires pagehide while the tab strip still shows the session — that was
-  // yanking open anonymous visitors out of "en línea". Leaving the pool is
-  // TTL (expiresAt) + explicit door close / auth change only.
+  // beforeunload covers ordinary desktop tab/window close without waiting
+  // for background timers. Do NOT use pagehide/visibilitychange as a leave:
+  // Android and bfcache fire those for open-but-suspended sessions.
+  window.addEventListener("beforeunload", () => {
+    const alias = cachedPresenceAlias || getStoredAnonMatchAlias();
+    if (!alias || !leaveHeaders || !isAnonMatchDoorOpen(auth.currentUser)) return;
+    try {
+      // Only a cached token: async getIdToken cannot reliably finish on unload.
+      void fetch("/api/anonymous-presence", {
+        method: "DELETE",
+        headers: leaveHeaders,
+        body: JSON.stringify({ anonId: alias }),
+        cache: "no-store",
+        keepalive: true,
+      }).catch(() => undefined);
+    } catch {
+      // Crash / OS kill cannot be observed reliably; server expiry is fallback.
+    }
+  });
 }
 
 /** Force a presence heartbeat before match search so peers can find this session. */

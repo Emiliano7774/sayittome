@@ -39,6 +39,7 @@ function ClassicShuffleProfileRow({
       data-card-id={shuffleProfileIdentityKey(profile) || profile.username}
       data-shuffle-visitor={visitor ? "1" : undefined}
       data-visitor-chat={visitor ? profile.visitorChatId || profile.uid : undefined}
+      data-visitor-match={visitor ? profile.visitorMatchAnonId : undefined}
     >
       <div className={`flex w-full items-center ${tokens.gapClass} ${tokens.rowPadding}`}>
         <StoryAvatarButton

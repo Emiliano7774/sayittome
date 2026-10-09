@@ -44,7 +44,9 @@ export async function GET(req: Request) {
             user.adminBlurFotosPerfil === true,
           banned: user.banned === true || user.suspendido === true,
           shadowban: user.shadowban === true,
-          moderationTag: String(user.moderationTag || ""),
+          moderationTag: String(user.moderationTag || "") === "roleplay" ? "roleplay" : "",
+          groomingTag: user.groomingTag === true || String(user.moderationTag || "") === "grooming",
+          potentialPedophileTag: user.potentialPedophileTag === true || String(user.moderationTag || "") === "potential_pedophile",
           activeStories: storiesByOwner.get(uid) || 0,
           abuseProtectionEnabled: user.abuseProtectionEnabled === true,
         };

@@ -1,11 +1,28 @@
 import { increment, serverTimestamp, type FieldValue } from "firebase/firestore";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
-import { expandReadByIdentityKeys } from "@/lib/chat/messageReceipt";
+import {
+  collectSenderReadByKeys,
+  expandReadByIdentityKeys,
+} from "@/lib/chat/messageReceipt";
 
 type ChatMetaSource = Partial<Pick<InboxChat, "participantes" | "targetUid" | "receptorUid">> & {
   participants?: string[];
 };
+
+function outgoingSenderIdentityKeys(senderUid: string, receiptSenderId = "") {
+  const receipt = String(receiptSenderId || "").trim();
+  const receiptFirebaseUid =
+    receipt && !receipt.startsWith("anon_") && !receipt.startsWith("profile_")
+      ? receipt
+      : "";
+  const keys = new Set<string>([
+    ...collectSenderReadByKeys(senderUid, receiptFirebaseUid),
+  ]);
+  for (const key of expandReadByIdentityKeys(senderUid)) keys.add(key);
+  for (const key of expandReadByIdentityKeys(receipt)) keys.add(key);
+  return keys;
+}
 
 export function resolveChatRecipientIds(
   senderUid: string,
@@ -14,14 +31,17 @@ export function resolveChatRecipientIds(
   if (!chat || !senderUid) return [];
 
   const ids = new Set<string>();
+  const senderKeys = outgoingSenderIdentityKeys(senderUid);
   const members = chat.participantes || chat.participants || [];
 
   for (const uid of members) {
-    if (uid && uid !== senderUid) ids.add(uid);
+    if (uid && !senderKeys.has(uid)) ids.add(uid);
   }
 
-  if (chat.targetUid && chat.targetUid !== senderUid) ids.add(chat.targetUid);
-  if (chat.receptorUid && chat.receptorUid !== senderUid) ids.add(chat.receptorUid);
+  if (chat.targetUid && !senderKeys.has(chat.targetUid)) ids.add(chat.targetUid);
+  if (chat.receptorUid && !senderKeys.has(chat.receptorUid)) {
+    ids.add(chat.receptorUid);
+  }
 
   return [...ids];
 }
@@ -45,10 +65,11 @@ export function buildOutgoingChatMetaPatch(
      */
     receiptSenderId?: string;
   },
-): Record<string, string | boolean | FieldValue> {
+): Record<string, string | boolean | number | FieldValue> {
   const activityAt = serverTimestamp();
   const receiptSender = String(options?.receiptSenderId || "").trim() || senderUid;
-  const patch: Record<string, string | boolean | FieldValue> = {
+  const senderKeys = outgoingSenderIdentityKeys(senderUid, receiptSender);
+  const patch: Record<string, string | boolean | number | FieldValue> = {
     lastMessage: meta.lastMessage,
     lastMessageSender: meta.lastMessageSender,
     updatedAt: activityAt,
@@ -60,18 +81,21 @@ export function buildOutgoingChatMetaPatch(
       ? { latestSenderKind: meta.latestSenderKind }
       : {}),
     latestSenderAnonSessionId: meta.latestSenderAnonSessionId || "",
-    [`readBy.${receiptSender}`]: true,
     // Typing stays on the canonical identity only: rules allow exactly one key.
     [`typing.${receiptSender}`]: false,
   };
 
-  // Mirror the author alias so alias-based read checks also see it as read.
-  if (receiptSender !== senderUid) {
-    patch[`readBy.${senderUid}`] = true;
+  // Own send must never leave the sender's receipt keys unread/dirty — alias
+  // expansion (profile_* ↔ raw uid) used to increment the sender and re-bold
+  // the row after markChatAsRead when lastMessageSender lagged.
+  for (const key of senderKeys) {
+    patch[`readBy.${key}`] = true;
+    patch[`unreadCounts.${key}`] = 0;
   }
 
   for (const recipientUid of recipients) {
     for (const readByKey of expandReadByIdentityKeys(recipientUid)) {
+      if (senderKeys.has(readByKey)) continue;
       patch[`readBy.${readByKey}`] = false;
       // Mirror unread onto every identity alias so wasChatReadOnServer cannot
       // stay "explicitlyRead" on profile_* / firebase uid after markChatAsRead
@@ -89,7 +113,7 @@ export function buildOutgoingChatMetaPatch(
  * callers so read/unread state remains a real nested map.
  */
 export function expandOutgoingChatMetaPatchForSet(
-  patch: Record<string, string | boolean | FieldValue>,
+  patch: Record<string, string | boolean | number | FieldValue>,
 ): Record<string, unknown> {
   const expanded: Record<string, unknown> = {};
 

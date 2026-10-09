@@ -185,6 +185,119 @@ service cloud.firestore {
       allow update, delete: if openWindow();
     }
 
+    // Direct anonymous match chats are private to the two authenticated members.
+    // Server-only creation, participant-only metadata; never pass through catch-all.
+    function anonDirectChatDoc(chatId) {
+      return get(/databases/$(database)/documents/chats_anonimos/$(chatId));
+    }
+
+    function anonDirectMember(data) {
+      return isLoggedIn() &&
+        (data.get('solicitanteAuthUid', '') == request.auth.uid ||
+         data.get('destinatarioAuthUid', '') == request.auth.uid);
+    }
+
+    function anonDirectActiveMember(chatId) {
+      return isLoggedIn() &&
+        exists(/databases/$(database)/documents/chats_anonimos/$(chatId)) &&
+        anonDirectChatDoc(chatId).data.get('estado', '') == 'activo' &&
+        anonDirectMember(anonDirectChatDoc(chatId).data);
+    }
+
+    function anonDirectAuthor(chatId) {
+      let data = anonDirectChatDoc(chatId).data;
+      let sender = request.resource.data.get('senderId', '');
+      let tipo = request.resource.data.get('senderTipo', '');
+      return
+        (request.auth.uid == data.get('solicitanteAuthUid', '') &&
+          ((tipo == 'anonimo' && sender == data.get('solicitanteAnonId', '') && sender != '') ||
+           (tipo == 'perfil' && (sender == request.auth.uid || sender == data.get('solicitanteUid', ''))))) ||
+        (request.auth.uid == data.get('destinatarioAuthUid', '') &&
+          ((tipo == 'anonimo' && sender == data.get('anonId', '') && sender != '') ||
+           (tipo == 'perfil' && (sender == request.auth.uid || sender == data.get('destinatarioUid', '')))));
+    }
+
+    function anonDirectOwnReceiptUpdate() {
+      return isLoggedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'readBy', 'unreadCounts', 'latestReadMessageIds'
+        ]) &&
+        request.resource.data.get('readBy', {}).diff(
+          resource.data.get('readBy', {})
+        ).affectedKeys().hasOnly([request.auth.uid]) &&
+        request.resource.data.get('unreadCounts', {}).diff(
+          resource.data.get('unreadCounts', {})
+        ).affectedKeys().hasOnly([request.auth.uid]) &&
+        request.resource.data.get('latestReadMessageIds', {}).diff(
+          resource.data.get('latestReadMessageIds', {})
+        ).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    match /chats_anonimos/{chatId} {
+      allow get, list: if isAdmin() || anonDirectMember(resource.data);
+      allow create, delete: if false;
+      allow update: if isAdmin() || (
+        anonDirectMember(resource.data) &&
+        resource.data.get('estado', '') == 'activo' &&
+        (
+          anonDirectOwnReceiptUpdate() ||
+          (
+            request.resource.data.get('lastMessageSender', '') == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'ultimoMensaje', 'lastMessage', 'lastMessageSender',
+              'latestMessageId', 'updatedAt', 'lastMessageAt',
+              'readBy', 'unreadCounts', 'latestReadMessageIds'
+            ]) &&
+            request.resource.data.get('readBy', {}).diff(
+              resource.data.get('readBy', {})
+            ).affectedKeys().hasOnly([request.auth.uid]) &&
+            request.resource.data.get('unreadCounts', {}).diff(
+              resource.data.get('unreadCounts', {})
+            ).affectedKeys().hasOnly([request.auth.uid]) &&
+            request.resource.data.get('latestReadMessageIds', {}).diff(
+              resource.data.get('latestReadMessageIds', {})
+            ).affectedKeys().hasOnly([request.auth.uid])
+          )
+        )
+      );
+
+      match /mensajes/{messageId} {
+        allow read: if isAdmin() || anonDirectActiveMember(chatId);
+        allow create: if anonDirectActiveMember(chatId) &&
+          anonDirectAuthor(chatId) &&
+          request.resource.data.keys().hasOnly([
+            'senderId', 'senderTipo', 'texto', 'text', 'createdAt', 'type',
+            'mediaUrl', 'source', 'reply', 'clientId', 'viewOnce',
+            'viewOnceLimit', 'viewOnceViews', 'viewOnceClaimedBy',
+            'viewOnceOpenedCount', 'viewOnceExhausted',
+            'viewOnceExhaustedAt', 'viewOnceSealed', 'viewOnceStatus',
+            'autoModerationRequiresBlur', 'moderationRequiresBlur'
+          ]) &&
+          request.resource.data.get('type', 'text') in ['text', 'image', 'video', 'audio'] &&
+          !(request.resource.data.get('viewOnce', false) == true &&
+            request.resource.data.keys().hasAny(['mediaUrl']));
+        allow update: if false;
+        allow delete: if isAdmin() || (
+          anonDirectActiveMember(chatId) &&
+          resource.data.get('senderId', '') != '' &&
+          (
+            (resource.data.get('senderTipo', '') == 'perfil' &&
+             resource.data.get('senderId', '') == request.auth.uid)
+            ||
+            (resource.data.get('senderTipo', '') == 'anonimo' &&
+              (
+                (request.auth.uid == anonDirectChatDoc(chatId).data.get('solicitanteAuthUid', '') &&
+                 resource.data.get('senderId', '') == anonDirectChatDoc(chatId).data.get('solicitanteAnonId', ''))
+                ||
+                (request.auth.uid == anonDirectChatDoc(chatId).data.get('destinatarioAuthUid', '') &&
+                 resource.data.get('senderId', '') == anonDirectChatDoc(chatId).data.get('anonId', ''))
+              )
+            )
+          )
+        );
+      }
+    }
+
     // Preserved productive catch-all. Exclude secrets + usuarios (+ lite mirrors)
     // and server-owned block/chat paths via collection segment
     // (never Path→string conversion — that can fail-closed and deny chats/**).
@@ -195,6 +308,7 @@ service cloud.firestore {
         && collection != 'usuarios_shuffle_lite'
         && collection != 'chat_inbox_lite'
         && collection != 'anon_profile_blocks'
+        && collection != 'chats_anonimos'
         && collection != 'chats';
     }
   }

@@ -17,7 +17,8 @@ import {
 let reconstructedThisSession = false;
 
 const STORIES_REFRESH_MS = 10 * 60_000;
-const STORIES_QUIET_REFRESH_MS = 10_000;
+const STORIES_QUIET_REFRESH_MS = 60_000;
+const STORIES_CHAT_REFRESH_MS = 3 * 60_000;
 
 function quietStoriesRefresh(pathname: string) {
   return (
@@ -42,6 +43,12 @@ export default function StoriesBootstrap() {
   );
   const quietRefresh = useMemo(() => quietStoriesRefresh(pathname), [pathname]);
   const pollingActive = storiesRouteEnabled && !documentHidden;
+  // Story viewer stays responsive; chat screens do not need full story scans every 10s.
+  const refreshIntervalMs = quietRefresh
+    ? pathname === "/chats" || pathname.startsWith("/chat/")
+      ? STORIES_CHAT_REFRESH_MS
+      : STORIES_QUIET_REFRESH_MS
+    : STORIES_REFRESH_MS;
 
   useEffect(() => {
     if (!pollingActive) return;
@@ -77,14 +84,14 @@ export default function StoriesBootstrap() {
         if (cancelled || !viewerKey) return;
         refreshStoriesIndex(viewerKey, quietRefresh).catch(() => {});
       });
-    }, quietRefresh ? STORIES_QUIET_REFRESH_MS : STORIES_REFRESH_MS);
+    }, refreshIntervalMs);
 
     return () => {
       cancelled = true;
       unsub();
       window.clearInterval(timer);
     };
-  }, [pollingActive, quietRefresh]);
+  }, [pollingActive, quietRefresh, refreshIntervalMs]);
 
   return null;
 }

@@ -41,7 +41,7 @@ self.addEventListener("push", (event) => {
       tag,
       icon: "/icons/Icon-192.png",
       badge: "/icons/Icon-192.png",
-      data: { chatId, messageId, href, type: String(data.type || "") },
+      data: { chatId, messageId, href, type: String(data.type || ""), inboxKind: String(data.inboxKind || "") },
     }),
   );
 });
@@ -53,7 +53,7 @@ self.addEventListener("notificationclick", (event) => {
   const messageId = String(data.messageId || "").trim();
   const href = String(data.href || "").trim();
   let url = href.startsWith("/") ? href : "/chats";
-  if (chatId) {
+  if (chatId && data.type !== "anon_direct_message" && data.inboxKind !== "anon_direct") {
     const params = new URLSearchParams({ from: "push" });
     if (messageId) params.set("mid", messageId);
     url = `/chat/${encodeURIComponent(chatId)}?${params.toString()}`;

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { hardDeleteChats } from "@/lib/chat/deleteChats";
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
 
 export function useChatsSelection(chats: InboxChat[]) {
   const [selectionMode, setSelectionMode] = useState(false);
@@ -11,7 +12,7 @@ export function useChatsSelection(chats: InboxChat[]) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const visibleIds = useMemo(() => chats.map((chat) => chat.id), [chats]);
+  const visibleIds = useMemo(() => chats.filter((chat) => !isAnonDirectInboxChat(chat)).map((chat) => chat.id), [chats]);
 
   const allSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
@@ -41,6 +42,7 @@ export function useChatsSelection(chats: InboxChat[]) {
   }, [visibleIds]);
 
   const toggleChat = useCallback((chatId: string) => {
+    if (!visibleIds.includes(chatId)) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(chatId)) next.delete(chatId);
@@ -48,7 +50,7 @@ export function useChatsSelection(chats: InboxChat[]) {
       return next;
     });
     setSelectionMode(true);
-  }, []);
+  }, [visibleIds]);
 
   const requestDeleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;

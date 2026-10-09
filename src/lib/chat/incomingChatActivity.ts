@@ -2,6 +2,7 @@ import type { InboxChat } from "@/hooks/useChatsInbox";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { profileReplyAuthorId } from "@/lib/chat/profileAnonMessageAuthor";
 import {
+  isAnonVisitorProfileChat,
   isIncomingAnonChatForOwner,
   profileAnonSenderFromChat,
 } from "@/lib/chat/inboxPeerTitle";
@@ -128,6 +129,21 @@ export function collectViewerSenderIds(
     if (threadAnon.startsWith("anon_")) add(threadAnon);
     if (liveAnonId.startsWith("anon_")) add(liveAnonId);
     for (const id of viewerKnownAnonIds(chat, firebaseUid)) add(id);
+  } else if (
+    !role.provenOwner &&
+    role.viewerKind !== "owner" &&
+    isAnonVisitorProfileChat(chat, firebaseUid)
+  ) {
+    // An unknown Firebase identity may still be a *proven* visitor after a
+    // session rotation. Do not inherit the peer anon id without ownership
+    // evidence: that would suppress legitimate incoming messages.
+    if (liveAnonId.startsWith("anon_")) add(liveAnonId);
+    if (threadAnon.startsWith("anon_")) add(threadAnon);
+    for (const id of listThreadAnonIds(
+      chat.canonicalChatId || chat.id,
+      [liveAnonId],
+      continuityScopeForViewer(firebaseUid),
+    )) add(id);
   }
 
   return ids;
@@ -317,9 +333,32 @@ export function isIncomingChatActivity(
   const preview = String(chat.lastMessage || "").trim();
   const sender = String(chat.lastMessageSender || "").trim();
   if (!preview || !viewerId) return false;
-  // Late/missing lastMessageSender: fail open as incoming so unread/bold stays
-  // deterministic across cache→live and delayed outbound meta.
-  if (!sender) return true;
+  // Late/missing lastMessageSender: prefer stable kind/session attribution
+  // before fail-open, so own sends do not bold while outbound meta catches up.
+  if (!sender) {
+    const latestAnon = String(chat.latestSenderAnonSessionId || "").trim();
+    if (
+      latestAnon &&
+      isOwnChatSender(latestAnon, viewerId, firebaseUid, chat, roleInput)
+    ) {
+      return false;
+    }
+    const role = resolveChatViewerRole({
+      viewerId,
+      firebaseUid,
+      chat,
+      viewerKind: roleInput?.viewerKind,
+      provenOwner: roleInput?.provenOwner,
+    });
+    const kind = String(chat.latestSenderKind || "").trim();
+    if (
+      kind === "profile" &&
+      (role.provenOwner || role.viewerKind === "owner")
+    ) {
+      return false;
+    }
+    return true;
+  }
   if (isIncomingProfileReplyForAnonVisitor(sender, viewerId, firebaseUid, chat, roleInput)) {
     return true;
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Copy, Sparkles } from "lucide-react";
 
 import BoostAccessGate from "@/components/boost/BoostAccessGate";
@@ -7,6 +8,7 @@ import BoostMinutesPicker from "@/components/boost/BoostMinutesPicker";
 import BoostReferralPromoCard from "@/components/boost/BoostReferralPromoCard";
 import BoostRocketHero from "@/components/boost/BoostRocketHero";
 import ModernPageHeader from "@/components/modern/ModernPageHeader";
+import { useMainTabRouteActive } from "@/contexts/MainTabShellContext";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useBoostActions, formatBoostRemaining } from "@/hooks/useBoostActions";
 import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
@@ -14,6 +16,7 @@ import { BOOST_MIN_MINUTES } from "@/lib/boost/constants";
 import { getReferralRewardLabel } from "@/lib/boost/format";
 
 export default function ModernBoostPage() {
+  const boostActive = useMainTabRouteActive("/boost");
   const { t, locale } = useLocale();
   const referralReward = getReferralRewardLabel(locale);
   const {
@@ -41,6 +44,14 @@ export default function ModernBoostPage() {
     selectedMinutes <= credits &&
     !isActive &&
     !activating;
+
+  useEffect(() => {
+    if (!boostActive) return;
+    document.body.classList.add("sayittome-boost-route");
+    return () => {
+      document.body.classList.remove("sayittome-boost-route");
+    };
+  }, [boostActive]);
 
   return (
     <main data-nav-primary-content data-scroll-root className="sayittome-boost-page min-h-screen bg-black text-white">

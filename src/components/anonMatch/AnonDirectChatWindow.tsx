@@ -1,15 +1,21 @@
 "use client";
 
-import { Flag, Maximize2, Minimize2, Minus, Send, X } from "lucide-react";
+import { Flag, Maximize2, Minimize2, Minus, Reply, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   collection,
+  doc,
+  updateDoc,
   limitToLast,
   onSnapshot,
   orderBy,
   query,
 } from "firebase/firestore";
 
+import AnonDirectMediaComposer from "@/components/anonMatch/AnonDirectMediaComposer";
+import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
+import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
+import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUxMode } from "@/contexts/UxModeContext";
@@ -21,19 +27,24 @@ import {
   pinAnonChatScroll,
   readKeyboardOverlapPx,
 } from "@/lib/anonMatch/anonDirectChatScroll";
+import { anonDirectIncomingNotifyBody } from "@/lib/anonMatch/anonDirectMediaLabels";
+import {
+  mapAnonDirectMessageDoc,
+  type AnonDirectChatMessage,
+} from "@/lib/anonMatch/anonDirectMessageModel";
+import { getAnonDirectViewOnceCapability } from "@/lib/anonMatch/anonDirectViewOnceCapability";
 import { persistAnonDirectMessage } from "@/lib/anonMatch/persistDirectMessage";
 import { shouldWhipAnonDirectIncoming } from "@/lib/anonMatch/anonDirectIncomingWhip";
+import { replyQuoteText } from "@/lib/chat/replyQuote";
 import {
   notifyIncomingChatMessage,
   playIncomingWhipSound,
 } from "@/lib/chat/whipSound";
-import { db } from "@/lib/firebase";
-
-type ChatMessage = {
-  id: string;
-  text: string;
-  mine: boolean;
-};
+import { auth, db } from "@/lib/firebase";
+import { beginViewOnceClaim, endViewOnceClaim } from "@/lib/media/viewOnce";
+import { claimViewOnceMedia } from "@/lib/media/viewOnceClaim";
+import { viewOnceRemaining } from "@/lib/media/viewOncePolicy";
+import { setSecureBombScreen } from "@/lib/security/secureBombScreen";
 
 function ChatPanel({
   messages,
@@ -41,26 +52,49 @@ function ChatPanel({
   closed,
   text,
   sending,
+  replyingTo,
   onTextChange,
   onSend,
+  onReply,
+  onClearReply,
+  onMediaSent,
+  onNotice,
+  onOpenMedia,
+  onOpenBomb,
+  claimingBombId,
+  chatId,
+  senderId,
+  senderTipo,
   listRef,
   inputRef,
   expanded,
   modern,
 }: {
-  messages: ChatMessage[];
+  messages: AnonDirectChatMessage[];
   notice: string;
   closed: boolean;
   text: string;
   sending: boolean;
+  replyingTo: AnonDirectChatMessage | null;
   onTextChange: (value: string) => void;
   onSend: () => void;
+  onReply: (message: AnonDirectChatMessage) => void;
+  onClearReply: () => void;
+  onMediaSent: (message: AnonDirectChatMessage) => void;
+  onNotice: (notice: string) => void;
+  onOpenMedia: (url: string, mediaType: "image" | "video") => void;
+  onOpenBomb: (message: AnonDirectChatMessage) => void;
+  claimingBombId: string | null;
+  chatId: string;
+  senderId: string;
+  senderTipo: "perfil" | "anonimo";
   listRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLInputElement | null>;
   expanded: boolean;
   modern: boolean;
 }) {
   const t = useT();
+  const bombCap = getAnonDirectViewOnceCapability();
 
   return (
     <>
@@ -72,24 +106,116 @@ function ChatPanel({
         {messages.length === 0 ? (
           <p className="text-center text-sm font-bold text-white/35">{t("anon_match_chat_empty")}</p>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`mb-2 flex ${message.mine ? "justify-end" : "justify-start"}`}
-            >
+          messages.map((message) => {
+            if (message.status === "failed") return null;
+            const bubbleClass = message.mine
+              ? modern
+                ? "bg-violet-600 text-white"
+                : "bg-[#8C84FF] text-black"
+              : "bg-white/10 text-white";
+            const requiresBlur =
+              message.autoModerationRequiresBlur === true ||
+              message.moderationRequiresBlur === true;
+            const bombExhausted =
+              message.viewOnce === true &&
+              (message.viewOnceExhausted === true || viewOnceRemaining(message) === 0);
+
+            return (
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm font-bold ${
-                  message.mine
-                    ? modern
-                      ? "bg-violet-600 text-white"
-                      : "bg-[#8C84FF] text-black"
-                    : "bg-white/10 text-white"
-                }`}
+                key={message.id}
+                className={`mb-2 flex ${message.mine ? "justify-end" : "justify-start"}`}
               >
-                {message.text}
+                <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm font-bold ${bubbleClass}`}>
+                  {message.reply ? (
+                    <p className="mb-1 border-l-2 border-white/30 pl-2 text-[11px] font-semibold opacity-70">
+                      {message.reply}
+                    </p>
+                  ) : null}
+
+                  {message.viewOnce ? (
+                    message.mine || bombExhausted || !bombCap.mayClaimViewOnce ? (
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-white/55">
+                        {message.mine
+                          ? "💣 Bomba enviada"
+                          : bombExhausted
+                            ? "Bomba abierta"
+                            : "Bomba no disponible"}
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={claimingBombId === message.id}
+                        onClick={() => onOpenBomb(message)}
+                        className="rounded-xl border border-amber-400/40 bg-amber-400/15 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-amber-100 disabled:opacity-40"
+                        data-anon-direct-bomb-open="1"
+                      >
+                        {claimingBombId === message.id
+                          ? "Abriendo…"
+                          : message.type === "video"
+                            ? "Ver bomba video"
+                            : "Ver bomba foto"}
+                      </button>
+                    )
+                  ) : message.type === "audio" && message.mediaUrl ? (
+                    <ChatAudioPlayer
+                      src={message.mediaUrl}
+                      failLabel={t("chat_audio_preview_fail")}
+                    />
+                  ) : message.type === "image" && message.mediaUrl ? (
+                    <SensitiveMediaShell
+                      url={message.mediaUrl}
+                      staticRequiresBlur={requiresBlur}
+                      message={message}
+                      enableRuntimeScan
+                      className="inline-block"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onOpenMedia(message.mediaUrl || "", "image")}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={message.mediaUrl}
+                          alt=""
+                          className="max-h-[280px] rounded-xl object-cover"
+                        />
+                      </button>
+                    </SensitiveMediaShell>
+                  ) : message.type === "video" && message.mediaUrl ? (
+                    <SensitiveMediaShell
+                      url={message.mediaUrl}
+                      mediaType="video"
+                      staticRequiresBlur={requiresBlur}
+                      message={message}
+                      enableRuntimeScan
+                      className="inline-block"
+                    >
+                      <video
+                        src={message.mediaUrl}
+                        controls
+                        playsInline
+                        className="max-h-[280px] rounded-xl"
+                        onDoubleClick={() => onOpenMedia(message.mediaUrl || "", "video")}
+                      />
+                    </SensitiveMediaShell>
+                  ) : (
+                    <div>{message.text}</div>
+                  )}
+
+                  {!closed && !message.viewOnce ? (
+                    <button
+                      type="button"
+                      onClick={() => onReply(message)}
+                      className="mt-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.12em] opacity-55"
+                    >
+                      <Reply size={10} />
+                      Responder
+                    </button>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -99,32 +225,22 @@ function ChatPanel({
         </div>
       ) : null}
 
-      {!closed ? (
-        <div className="flex items-center gap-2 border-t border-white/10 px-3 py-3">
-          <input
-            ref={inputRef}
-            value={text}
-            onChange={(e) => onTextChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter" || e.shiftKey) return;
-              e.preventDefault();
-              if (!sending && text.trim()) onSend();
-            }}
-            placeholder={t("anon_match_chat_placeholder")}
-            className="min-w-0 flex-1 rounded-2xl bg-white/5 px-4 py-3 text-sm font-bold outline-none placeholder:text-white/30"
-          />
-          <button
-            type="button"
-            disabled={sending || !text.trim()}
-            onClick={onSend}
-            className={`flex h-11 w-11 items-center justify-center rounded-2xl disabled:opacity-40 ${
-              modern ? "bg-violet-600 text-white" : "bg-[#8C84FF] text-black"
-            }`}
-          >
-            <Send size={18} />
-          </button>
-        </div>
-      ) : null}
+      <AnonDirectMediaComposer
+        closed={closed}
+        modern={modern}
+        chatId={chatId}
+        senderId={senderId}
+        senderTipo={senderTipo}
+        text={text}
+        sending={sending}
+        replyingTo={replyingTo}
+        onTextChange={onTextChange}
+        onSendText={onSend}
+        onClearReply={onClearReply}
+        onMediaSent={onMediaSent}
+        onNotice={onNotice}
+        inputRef={inputRef}
+      />
     </>
   );
 }
@@ -135,10 +251,15 @@ export default function AnonDirectChatWindow() {
   const { uxMode } = useUxMode();
   const t = useT();
   const modern = uxMode === "modern";
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<AnonDirectChatMessage[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
+  const [replyingTo, setReplyingTo] = useState<AnonDirectChatMessage | null>(null);
+  const [fullscreenUrl, setFullscreenUrl] = useState("");
+  const [fullscreenType, setFullscreenType] = useState<"image" | "video">("image");
+  const [fullscreenSecureBomb, setFullscreenSecureBomb] = useState(false);
+  const [claimingBombId, setClaimingBombId] = useState<string | null>(null);
   const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
@@ -148,6 +269,8 @@ export default function AnonDirectChatWindow() {
   const inputRef = useRef<HTMLInputElement>(null);
   const whipBootstrappedRef = useRef(false);
   const lastWhipMessageIdRef = useRef<string | null>(null);
+  const secureBombObjectUrlRef = useRef("");
+  const secureBombOpenRef = useRef(false);
 
   const openChat = match?.openChat;
   const chatId = openChat?.chatId || "";
@@ -178,9 +301,118 @@ export default function AnonDirectChatWindow() {
     setSending(false);
     sendInFlightRef.current = false;
     setMessages([]);
+    setReplyingTo(null);
+    setFullscreenUrl("");
+    setFullscreenSecureBomb(false);
+    setClaimingBombId(null);
+    secureBombOpenRef.current = false;
+    setSecureBombScreen(false);
+    if (secureBombObjectUrlRef.current) {
+      URL.revokeObjectURL(secureBombObjectUrlRef.current);
+      secureBombObjectUrlRef.current = "";
+    }
     whipBootstrappedRef.current = false;
     lastWhipMessageIdRef.current = null;
   }, [chatId]);
+
+  function revokeSecureBombObjectUrl() {
+    if (!secureBombObjectUrlRef.current) return;
+    URL.revokeObjectURL(secureBombObjectUrlRef.current);
+    secureBombObjectUrlRef.current = "";
+  }
+
+  function leaveSecureBombMode() {
+    secureBombOpenRef.current = false;
+    setFullscreenSecureBomb(false);
+    setSecureBombScreen(false);
+    revokeSecureBombObjectUrl();
+  }
+
+  const openBombMessage = useCallback(
+    async (message: AnonDirectChatMessage) => {
+      if (!message.viewOnce || message.mine || !chatId) return;
+      if (message.viewOnceExhausted || viewOnceRemaining(message) === 0) return;
+      if (!getAnonDirectViewOnceCapability().mayClaimViewOnce) return;
+      if (!beginViewOnceClaim(message.id)) return;
+
+      setClaimingBombId(message.id);
+      try {
+        const claimed = await claimViewOnceMedia({ chatId, messageId: message.id });
+        setMessages((old) =>
+          old.map((row) =>
+            row.id === message.id
+              ? {
+                  ...row,
+                  viewOnceOpenedCount: claimed.openedCount,
+                  viewOnceLimit: claimed.limit,
+                  viewOnceExhausted: claimed.exhausted,
+                  mediaUrl: undefined,
+                }
+              : row,
+          ),
+        );
+        if (!claimed.ok) {
+          setNotice(claimed.exhausted ? "Esta bomba ya se agotó" : t("chat_load_fail"));
+          return;
+        }
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("bomb_media_unauthenticated");
+
+        secureBombOpenRef.current = true;
+        setFullscreenSecureBomb(true);
+        setSecureBombScreen(true);
+
+        const response = await fetch("/api/view-once/media", {
+          method: "POST",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ chatId, messageId: message.id }),
+        });
+        if (!response.ok) throw new Error("bomb_media_fetch_failed");
+        const mediaBlob = await response.blob();
+        const objectUrl = URL.createObjectURL(mediaBlob);
+        revokeSecureBombObjectUrl();
+        secureBombObjectUrlRef.current = objectUrl;
+        setFullscreenType(message.type === "video" ? "video" : "image");
+        setFullscreenUrl(objectUrl);
+      } catch {
+        setFullscreenUrl("");
+        leaveSecureBombMode();
+        setNotice(t("chat_load_fail"));
+      } finally {
+        endViewOnceClaim(message.id);
+        setClaimingBombId(null);
+      }
+    },
+    [chatId, t],
+  );
+
+  const mergeOptimistic = useCallback((message: AnonDirectChatMessage) => {
+    setMessages((old) => {
+      if (message.status === "failed" && message.clientId) {
+        return old.filter((row) => row.clientId !== message.clientId && row.id !== message.clientId);
+      }
+      const clientId = message.clientId || "";
+      if (clientId) {
+        const idx = old.findIndex(
+          (row) => row.clientId === clientId || row.id === clientId,
+        );
+        if (idx >= 0) {
+          const next = old.slice();
+          next[idx] = { ...next[idx], ...message, status: message.status };
+          return next;
+        }
+      }
+      if (old.some((row) => row.id === message.id)) {
+        return old.map((row) => (row.id === message.id ? { ...row, ...message } : row));
+      }
+      return [...old, message];
+    });
+  }, []);
 
   const handleSend = useCallback(async () => {
     const value = text.trim();
@@ -188,15 +420,19 @@ export default function AnonDirectChatWindow() {
     if (sendInFlightRef.current || sending) return;
 
     sendInFlightRef.current = true;
+    const replyText = replyQuoteText(replyingTo);
     setText("");
+    setReplyingTo(null);
     setSending(true);
 
     try {
       await persistAnonDirectMessage({
         chatId,
         senderId,
+        senderAuthUid: firebaseUser?.uid || "",
         senderTipo,
         messageText: value,
+        reply: replyText || undefined,
       });
       inputRef.current?.focus();
     } catch {
@@ -205,7 +441,7 @@ export default function AnonDirectChatWindow() {
       sendInFlightRef.current = false;
       setSending(false);
     }
-  }, [chatId, openChat?.closedReason, senderId, senderTipo, sending, t, text]);
+  }, [chatId, firebaseUser?.uid, openChat?.closedReason, replyingTo, senderId, senderTipo, sending, t, text]);
 
   useEffect(() => {
     if (!chatId || !senderId) return;
@@ -220,16 +456,26 @@ export default function AnonDirectChatWindow() {
     let lastWhipId: string | null = lastWhipMessageIdRef.current;
 
     const unsub = onSnapshot(q, (snap) => {
-      const next = snap.docs.map((item) => {
-        const data = item.data();
-        const from = String(data.senderId || "");
-        return {
+      const next = snap.docs.map((item) =>
+        mapAnonDirectMessageDoc({
           id: item.id,
-          text: String(data.texto || data.text || ""),
-          mine: Boolean(senderId) && from === senderId,
-        };
+          data: item.data() as Record<string, unknown>,
+          senderId,
+        }),
+      );
+      setMessages((old) => {
+        const optimistic = old.filter(
+          (row) =>
+            row.status === "sending" &&
+            row.clientId &&
+            !next.some(
+              (server) =>
+                server.id === row.clientId ||
+                (server.clientId && server.clientId === row.clientId),
+            ),
+        );
+        return [...next, ...optimistic];
       });
-      setMessages(next);
 
       const latest = snap.docs[snap.docs.length - 1];
       if (!latest) {
@@ -237,10 +483,22 @@ export default function AnonDirectChatWindow() {
         return;
       }
 
-      const data = latest.data();
+      const data = latest.data() as Record<string, unknown>;
       const from = String(data.senderId || "");
       const messageId = latest.id;
-      const body = String(data.texto || data.text || "").trim();
+      // Mark only the viewer's own read receipt, without extra Firestore reads.
+      if (from && from !== senderId && firebaseUser?.uid && chatView !== "minimized") {
+        void updateDoc(doc(db, "chats_anonimos", chatId), {
+          [`readBy.${firebaseUser.uid}`]: true,
+          [`latestReadMessageIds.${firebaseUser.uid}`]: messageId,
+          [`unreadCounts.${firebaseUser.uid}`]: 0,
+        }).catch(() => undefined);
+      }
+      const body = anonDirectIncomingNotifyBody({
+        text: String(data.texto || data.text || ""),
+        type: String(data.type || "text"),
+        source: String(data.source || ""),
+      });
       const decision = shouldWhipAnonDirectIncoming({
         senderId,
         fromId: from,
@@ -258,12 +516,12 @@ export default function AnonDirectChatWindow() {
       playIncomingWhipSound();
       notifyIncomingChatMessage({
         title: "Chat anónimo",
-        body,
+        body: body || "Nuevo mensaje",
       });
     });
 
     return () => unsub();
-  }, [chatId, senderId]);
+  }, [chatId, chatView, firebaseUser?.uid, senderId]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -285,7 +543,7 @@ export default function AnonDirectChatWindow() {
     pinAnonChatScroll(listRef.current);
     const frame = window.requestAnimationFrame(() => pinAnonChatScroll(listRef.current));
     return () => window.cancelAnimationFrame(frame);
-  }, [messages, chatView, keyboardPx, notice]);
+  }, [messages, chatView, keyboardPx, notice, replyingTo]);
 
   useEffect(() => {
     if (!openChat?.closedReason) {
@@ -328,6 +586,10 @@ export default function AnonDirectChatWindow() {
         setCloseConfirmOpen(false);
         return;
       }
+      if (fullscreenUrl) {
+        setFullscreenUrl("");
+        return;
+      }
       if (chatView === "expanded") {
         match.minimizeChat();
         return;
@@ -337,7 +599,7 @@ export default function AnonDirectChatWindow() {
 
     window.addEventListener("sayittome:close-anon-chat", onBack);
     return () => window.removeEventListener("sayittome:close-anon-chat", onBack);
-  }, [chatView, closeConfirmOpen, chatId, match, openChat, reportConfirmOpen]);
+  }, [chatView, closeConfirmOpen, chatId, fullscreenUrl, match, openChat, reportConfirmOpen]);
 
   if (!match || !openChat || !chatId) return null;
 
@@ -536,8 +798,24 @@ export default function AnonDirectChatWindow() {
       closed={closed}
       text={text}
       sending={sending}
+      replyingTo={replyingTo}
       onTextChange={setText}
       onSend={() => void handleSend()}
+      onReply={setReplyingTo}
+      onClearReply={() => setReplyingTo(null)}
+      onMediaSent={mergeOptimistic}
+      onNotice={setNotice}
+      onOpenMedia={(url, mediaType) => {
+        leaveSecureBombMode();
+        setFullscreenSecureBomb(false);
+        setFullscreenType(mediaType);
+        setFullscreenUrl(url);
+      }}
+      onOpenBomb={(message) => void openBombMessage(message)}
+      claimingBombId={claimingBombId}
+      chatId={chatId}
+      senderId={senderId}
+      senderTipo={senderTipo}
       listRef={listRef}
       inputRef={inputRef}
       expanded={chatView === "expanded"}
@@ -571,6 +849,17 @@ export default function AnonDirectChatWindow() {
         cancelKey: "anon_match_chat_close_confirm_cancel",
         confirmTone: "neutral",
       })}
+      {fullscreenUrl ? (
+        <FullscreenMedia
+          url={fullscreenUrl}
+          mediaType={fullscreenType}
+          secure={fullscreenSecureBomb}
+          onClose={() => {
+            setFullscreenUrl("");
+            if (fullscreenSecureBomb || secureBombOpenRef.current) leaveSecureBombMode();
+          }}
+        />
+      ) : null}
     </>
   );
 

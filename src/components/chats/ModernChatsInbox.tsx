@@ -5,6 +5,8 @@ import { Check, CheckCheck, MessageSquare } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
 
 import ChatInboxLink from "@/components/chats/ChatInboxLink";
+import AnonDirectInboxButton from "@/components/chats/AnonDirectInboxButton";
+import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
 import ChatsMarkAllSeenButton from "@/components/chats/ChatsMarkAllSeenButton";
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
@@ -41,7 +43,7 @@ export default function ModernChatsInbox({
   selection,
 }: Props) {
   const t = useT();
-  const { profile } = useAuth();
+  const { profile, firebaseUser } = useAuth();
   const viewerUsername = String(profile?.username || "");
   const viewerPhoto = String(profile?.fotoPrincipal || "");
   const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
@@ -121,8 +123,11 @@ export default function ModernChatsInbox({
         ) : (
           <div className="space-y-3" data-nav-chats-primary>
             {sortedChats.map((chat) => {
-              const chatViewerId = resolveChatViewerId(chat, uid);
-              const unread = firestoreSynced ? chatUnreadCountForViewer(chat, uid) : 0;
+              const rowViewerUid = isAnonDirectInboxChat(chat)
+                ? String(firebaseUser?.uid || uid)
+                : uid;
+              const chatViewerId = resolveChatViewerId(chat, rowViewerUid);
+              const unread = firestoreSynced ? chatUnreadCountForViewer(chat, rowViewerUid) : 0;
               const title = chatPeerTitle(chat, uid, viewerUsername);
               const selected = selection.selectedIds.has(chat.id);
               const photo = shouldHidePeerProfilePhoto(chat, uid, viewerUsername, viewerPhoto)
@@ -132,10 +137,10 @@ export default function ModernChatsInbox({
               const blurPhoto = inboxChatBlur(chat, blurPhotos);
               const lastSender = String(chat.lastMessageSender || "").trim();
               const timeLabel = formatClassicInboxTime(chat, chatViewerId, t, uid);
-              const mine = isOwnInboxLastSender(chat, chatViewerId, uid);
+              const mine = isOwnInboxLastSender(chat, chatViewerId, rowViewerUid);
               const readByOther =
                 mine &&
-                isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, uid, chat);
+                isMessageSeenByOther(chat.readBy, lastSender || chatViewerId, rowViewerUid, chat);
               const cardClass =
                 "group relative z-10 flex w-full items-center gap-4 rounded-2xl border p-4 shadow-[0_0_30px_rgba(0,0,0,.35)] transition active:scale-[0.99] " +
                 (selected
@@ -215,6 +220,13 @@ export default function ModernChatsInbox({
                 );
               }
 
+              if (isAnonDirectInboxChat(chat)) {
+                return (
+                  <AnonDirectInboxButton key={chat.id} chat={chat} className={cardClass}>
+                    {inner}
+                  </AnonDirectInboxButton>
+                );
+              }
               return (
                 <ChatInboxLink key={chat.id} href={chatHref(chat)} className={cardClass} data-nav-chat-row>
                   {inner}

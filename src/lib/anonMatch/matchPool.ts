@@ -302,6 +302,8 @@ export async function listBusyDirectChatParticipants(now = Date.now()) {
 }
 
 export async function pickAvailableMatchTarget(input: {
+  /** Explicit Shuffle visitor: never silently connect to another person. */
+  preferredAnonId?: string;
   excludeAnonIds?: string[];
   excludeUids?: string[];
   /** Oldest → newest contacted ids; never-tried stay ahead of this queue. */
@@ -371,6 +373,11 @@ export async function pickAvailableMatchTarget(input: {
     })
     .filter(Boolean) as MatchCandidate[];
 
+  // Explicit card-click must still satisfy online, block, privacy and geo gates.
+  // Do not fall back to a random stranger if that particular visitor left.
+  if (input.preferredAnonId) {
+    return anonCandidates.find((row) => row.id === input.preferredAnonId) || null;
+  }
   const eligible = [...profileCandidates, ...anonCandidates];
   if (eligible.length === 0) return null;
 

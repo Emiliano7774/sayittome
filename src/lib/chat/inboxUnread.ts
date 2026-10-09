@@ -1,4 +1,6 @@
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
+import { anonDirectInboxUnreadCount } from "@/lib/anonMatch/anonDirectInboxUnread";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { computeThreadPendingForViewer } from "@/lib/chat/threadPending";
 
@@ -24,6 +26,20 @@ export function chatUnreadCount(
   options: UnreadCountOptions = {},
 ) {
   if (!viewerId) return 0;
+
+  // Anon↔anon direct: auth-UID meta only — never profile-anon incomingChatActivity.
+  if (isAnonDirectInboxChat(chat)) {
+    if (isExcludedChat(chat, options.excludeChatId)) return 0;
+    const authUid = String(options.firebaseUid || viewerId || "").trim();
+    return anonDirectInboxUnreadCount({
+      viewerAuthUid: authUid,
+      lastMessageSender: chat.lastMessageSender,
+      latestMessageId: chat.latestMessageId,
+      latestReadMessageIds: chat.latestReadMessageIds,
+      readBy: chat.readBy,
+    });
+  }
+
   const firebaseUid = options.firebaseUid || "";
   const activeDetailThreadId = isExcludedChat(chat, options.excludeChatId)
     ? options.excludeChatId || ""

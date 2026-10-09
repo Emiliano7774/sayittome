@@ -136,6 +136,8 @@ type ApiProfile = {
   shuffleFeatured?: boolean;
   shuffleVisitor?: boolean;
   visitorChatId?: string;
+  /** Bound server alias for a targeted anon-to-anon connection. */
+  visitorMatchAnonId?: string;
 };
 
 let cachedProfiles: ApiProfile[] = [];
@@ -248,6 +250,7 @@ function visitorDocToProfile(doc: any, now = Date.now()): ApiProfile | null {
     visibilidadProvincias: fieldArrayStrings(fields, "visibilidadProvincias"),
     shuffleVisitor: true,
     visitorChatId: chatSessionId,
+    visitorMatchAnonId: sanitizeShuffleVisitorChatId(presenceId),
     banned: false,
   };
 }
@@ -615,7 +618,7 @@ function isShuffleEligibleProfile(profile: ApiProfile) {
   return !profile.banned && !!profile.username && profile.username.toLowerCase() !== "usuario";
 }
 
-async function getProfilesCached(force = false) {
+async function fetchProfilesUncached(force = false) {
   const now = Date.now();
 
   if (!force && cachedProfiles.length > 0 && now - cachedProfilesAt < PROFILE_CACHE_MS) {
@@ -643,6 +646,23 @@ async function getProfilesCached(force = false) {
   return profiles;
 }
 
+let profileScanInFlight: Promise<ApiProfile[]> | null = null;
+
+async function getProfilesCached(force = false): Promise<ApiProfile[]> {
+  const now = Date.now();
+  if (!force && cachedProfiles.length > 0 && now - cachedProfilesAt < PROFILE_CACHE_MS) {
+    return cachedProfiles;
+  }
+  if (profileScanInFlight) return profileScanInFlight;
+  const pending = fetchProfilesUncached(force);
+  profileScanInFlight = pending;
+  try {
+    return await pending;
+  } finally {
+    if (profileScanInFlight === pending) profileScanInFlight = null;
+  }
+}
+
 async function getAnonymousOnlineCached(forceFresh = false) {
   const visitors = await getLiveShuffleVisitors(forceFresh);
   cachedAnonymousOnline = visitors.length;
@@ -650,7 +670,7 @@ async function getAnonymousOnlineCached(forceFresh = false) {
   return cachedAnonymousOnline;
 }
 
-async function getLiveShuffleVisitors(force = false) {
+async function fetchLiveShuffleVisitorsUncached(force = false) {
   const now = Date.now();
   if (!force && cachedVisitorsAt > 0 && now - cachedVisitorsAt < VISITOR_CACHE_MS) {
     return cachedVisitors;
@@ -684,6 +704,24 @@ async function getLiveShuffleVisitors(force = false) {
     // A failed read must not freeze an empty list for the cache window.
     // That hid live anons on solo-online until the next cold instance.
     return cachedVisitors;
+  }
+}
+
+let visitorScanInFlight: Promise<ApiProfile[]> | null = null;
+
+async function getLiveShuffleVisitors(force = false): Promise<ApiProfile[]> {
+  const now = Date.now();
+  if (!force && cachedVisitorsAt > 0 && now - cachedVisitorsAt < VISITOR_CACHE_MS) {
+    return cachedVisitors;
+  }
+  // One Firestore scan per warm SSR instance, even under simultaneous client polls.
+  if (visitorScanInFlight) return visitorScanInFlight;
+  const pending = fetchLiveShuffleVisitorsUncached(force);
+  visitorScanInFlight = pending;
+  try {
+    return await pending;
+  } finally {
+    if (visitorScanInFlight === pending) visitorScanInFlight = null;
   }
 }
 

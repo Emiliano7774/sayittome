@@ -501,8 +501,8 @@ export default function ProfileAnonChat({
   const { profile: authProfile, firebaseUser } = useAuth();
   const formatLastSeen = useFormatLastSeen();
   const initialProfile = readInitialTargetProfile(username);
-  const initialHidePeerPhoto =
-    Boolean(firebaseUser?.isAnonymous) && isProfileAnonChatId(chatId);
+  // Privacy-first paint: no cached profile image may flash before Auth/Firestore resolve.
+  const initialHidePeerPhoto = isProfileAnonChatId(chatId);
   useNavUsefulPaint(Boolean(chatId) && Boolean(username));
   const initialThreadActive =
     threadHasPriorActivity(chatId) || openedFromNotificationRef.current;
@@ -1208,7 +1208,10 @@ export default function ProfileAnonChat({
     let cancelled = false;
 
     function shouldHidePeerPhoto() {
-      if (!firebaseUser?.isAnonymous || !isProfileAnonChatId(chatId)) return false;
+      if (!isProfileAnonChatId(chatId)) return false;
+      // Unknown auth, anonymous viewers, and explicitly hidden profile threads
+      // must never get a cached or network profile image, even for one frame.
+      if (!authReady || !firebaseUser || firebaseUser.isAnonymous) return true;
       if (searchParams.get("anonPeer") === "1") return true;
       if (!chatMetaHydratedRef.current) return true;
       return chatDocDataRef.current?.hideProfileFromVisitor === true;
@@ -1335,8 +1338,11 @@ export default function ProfileAnonChat({
     profileUid: profileOwnerUid,
     viewerUsername: String(authProfile?.username || "").trim(),
   });
+  // A cached message can never promote an anonymous session to profile owner.
+  // Require current registered Firebase auth before showing privileged identity.
   const isOwnerViewing =
-    provenOwner || inferOwnerViewingFromAuthors(viewerUid, profileOwnerUid, messages);
+    authReady && Boolean(firebaseUser?.uid && !firebaseUser.isAnonymous) &&
+    (provenOwner || inferOwnerViewingFromAuthors(viewerUid, profileOwnerUid, messages));
   const anonPeer = searchParams.get("anonPeer") === "1";
   useEffect(() => {
     if (!anonPeer || !isOwnerViewing) return;
@@ -1541,13 +1547,16 @@ export default function ProfileAnonChat({
     (chatMetaVersion >= 0 && chatMetaRef.current?.canonicalChatId) || chatId;
   // Fail closed for anonymous Firebase viewers until chat meta loads: never flash
   // the registered profile photo on a profile→visitor approach thread.
+  // Resolve identity before allowing ANY registered profile UI in this thread.
+  // Incoming anonymous visitors see a generic peer from frame zero, even when
+  // old metadata omits hideProfileFromVisitor or arrives after a cached paint.
   const visitorSeesAnonymous =
     !isOwnerViewing &&
     (anonPeer ||
       chatDocDataRef.current?.hideProfileFromVisitor === true ||
-      (Boolean(firebaseUser?.isAnonymous) &&
-        isProfileAnonChatId(chatId) &&
-        !chatMetaHydratedRef.current));
+      (isProfileAnonChatId(chatId) &&
+        (!authReady || !firebaseUser || firebaseUser.isAnonymous ||
+          !chatMetaHydratedRef.current)));
   const displayPeerName = visitorSeesAnonymous
     ? "Anónimo"
     : isOwnerViewing

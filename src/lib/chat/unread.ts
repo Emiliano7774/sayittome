@@ -7,6 +7,9 @@ import {
 } from "firebase/firestore";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
+import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
+import { anonDirectInboxUnreadCount } from "@/lib/anonMatch/anonDirectInboxUnread";
+import { markAnonDirectChatRead } from "@/lib/anonMatch/markAnonDirectChatRead";
 import { collectViewerSenderIds } from "@/lib/chat/incomingChatActivity";
 import { isAnonVisitorProfileChat } from "@/lib/chat/inboxPeerTitle";
 import { computeThreadPendingForViewer } from "@/lib/chat/threadPending";
@@ -15,7 +18,7 @@ import {
   clearAllLocalPendingChats,
   clearLocalPendingChatsForThread,
 } from "@/lib/chat/localPendingChats";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 
 export type MarkChatAsReadOptions = {
@@ -195,10 +198,21 @@ export async function markAllPendingChatsAsRead(
   firebaseUid = "",
   chunkSize = 25,
 ): Promise<MarkAllSeenResult> {
-  const pending = chats.filter(
-    (chat) =>
-      computeThreadPendingForViewer(chat, firebaseUid, "").computedPending,
-  );
+  const directViewerUid = String(auth.currentUser?.uid || firebaseUid || "").trim();
+  const pending = chats.filter((chat) => {
+    if (isAnonDirectInboxChat(chat)) {
+      return (
+        anonDirectInboxUnreadCount({
+          viewerAuthUid: directViewerUid,
+          lastMessageSender: chat.lastMessageSender,
+          latestMessageId: chat.latestMessageId,
+          latestReadMessageIds: chat.latestReadMessageIds,
+          readBy: chat.readBy,
+        }) > 0
+      );
+    }
+    return computeThreadPendingForViewer(chat, firebaseUid, "").computedPending;
+  });
 
   // Optimistic: wipe the whip latch immediately so Shuffle's orange circle
   // clears even while Firestore writes are still in flight.
@@ -212,6 +226,23 @@ export async function markAllPendingChatsAsRead(
     await Promise.all(
       chunk.map(async (chat) => {
         const threadId = chat.canonicalChatId || chat.id;
+        if (isAnonDirectInboxChat(chat)) {
+          if (!threadId || !directViewerUid) {
+            failed += 1;
+            return;
+          }
+          try {
+            await markAnonDirectChatRead({
+              chatId: threadId,
+              viewerAuthUid: directViewerUid,
+              latestMessageId: chat.latestMessageId,
+            });
+            cleared += 1;
+          } catch {
+            failed += 1;
+          }
+          return;
+        }
         const viewerId =
           computeThreadPendingForViewer(chat, firebaseUid, "").viewerId;
         if (!threadId || !viewerId) {

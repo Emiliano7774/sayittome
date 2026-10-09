@@ -115,6 +115,9 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         visitorChatId: item?.shuffleVisitor === true
           ? String(item?.visitorChatId || docId || firebaseUid || "").trim()
           : undefined,
+        visitorMatchAnonId: item?.shuffleVisitor === true
+          ? String(item?.visitorMatchAnonId || "").trim()
+          : undefined,
       };
     })
     .map((profile) => forceShuffleVisitorOnline(profile))

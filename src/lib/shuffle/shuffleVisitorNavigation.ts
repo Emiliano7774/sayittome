@@ -7,6 +7,7 @@ import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { auth, db } from "@/lib/firebase";
+import { ensureStorageAuth } from "@/lib/auth/ensureStorageAuth";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { sanitizeShuffleVisitorChatId } from "@/lib/shuffle/shuffleVisitorId";
 
@@ -52,12 +53,30 @@ async function readOwnUsername(uid: string) {
   return username;
 }
 
-/** Registered profile messages a live anonymous session. Anons get the account gate. */
-export async function openVisitorChat(router: AppRouterInstance, visitorChatId: string) {
+/** Select a live Shuffle visitor. Registered users use profile-anon chat;
+ * anonymous visitors use consent-bound direct matching, never a registration gate. */
+export async function openVisitorChat(
+  router: AppRouterInstance,
+  visitorChatId: string,
+  visitorMatchAnonId?: string,
+) {
   const visitorId = sanitizeShuffleVisitorChatId(visitorChatId);
-  const user = auth.currentUser;
-  if (!visitorId || !user || user.isAnonymous) {
-    requestAnonProfileGate({ allowChat: false, username: "" });
+  const matchAlias = sanitizeShuffleVisitorChatId(visitorMatchAnonId);
+  if (!visitorId) return;
+  const user = auth.currentUser || await ensureStorageAuth({ allowAnonymous: true }).catch(() => null);
+  if (!user) return;
+  if (user.isAnonymous) {
+    // Profile-anon local session IDs are NOT bound match aliases. Only a
+    // verified server alias may be used for targeted anon-to-anon routing.
+    if (!matchAlias) {
+      window.alert("La sesión anónima ya no está disponible. Actualizá Shuffle.");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("sayittome:anon-direct-target-request", {
+        detail: { targetAnonId: matchAlias },
+      }));
+    }
     return;
   }
 

@@ -62,6 +62,25 @@ export type FirebaseAdminFirestoreModule = {
   };
 };
 
+export type FirebaseAdminStorageFile = {
+  name: string;
+  download: () => Promise<[Buffer]>;
+  getMetadata: () => Promise<[Record<string, unknown>]>;
+};
+
+export type FirebaseAdminStorageModule = {
+  getStorage: (app?: unknown) => {
+    bucket: (name?: string) => {
+      file: (path: string) => FirebaseAdminStorageFile;
+      getFiles: (options: {
+        prefix: string;
+        maxResults?: number;
+        autoPaginate?: boolean;
+      }) => Promise<[FirebaseAdminStorageFile[]]>;
+    };
+  };
+};
+
 export function loadFirebaseAdminApp(): FirebaseAdminAppModule {
   return loadAdminSubpath("app") as FirebaseAdminAppModule;
 }
@@ -72,4 +91,8 @@ export function loadFirebaseAdminAuth(): FirebaseAdminAuthModule {
 
 export function loadFirebaseAdminFirestore(): FirebaseAdminFirestoreModule {
   return loadAdminSubpath("firestore") as FirebaseAdminFirestoreModule;
+}
+
+export function loadFirebaseAdminStorage(): FirebaseAdminStorageModule {
+  return loadAdminSubpath("storage") as FirebaseAdminStorageModule;
 }

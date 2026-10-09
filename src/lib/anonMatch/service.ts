@@ -59,6 +59,8 @@ export async function createAnonMatchRequest(input: {
   /** Firebase Auth uid of the caller (anonymous or registered). Required for client listeners. */
   solicitanteAuthUid?: string;
   localAnonId?: string;
+  /** Explicit anonymous target selected from Shuffle; not random discovery. */
+  targetAnonId?: string;
   excludeAnonIds?: string[];
   excludeUids?: string[];
   recentTargetIds?: string[];
@@ -90,6 +92,7 @@ export async function createAnonMatchRequest(input: {
   if (solicitanteUid) excludeUids.add(solicitanteUid);
 
   const picked = await pickAvailableMatchTarget({
+    preferredAnonId: input.targetAnonId,
     excludeAnonIds: Array.from(excludeAnonIds),
     excludeUids: Array.from(excludeUids),
     recentTargetIds: input.recentTargetIds,
@@ -242,7 +245,9 @@ export async function listIncomingAnonMatchRequests(input: {
       where: { field: "destinatarioAuthUid", value: authUid },
     });
     rows.push(...byAuth);
-    if (callerAnonId) {
+    // Modern solicitudes are bound to destinatarioAuthUid; a second alias
+    // query only helps historical rows and must not run on every healthy poll.
+    if (callerAnonId && byAuth.length === 0) {
       const byAnon = await listAnonMatchAdminDocs("solicitudes_chat_anonimo", {
         limit: 25,
         where: { field: "anonId", value: callerAnonId },

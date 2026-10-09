@@ -64,6 +64,22 @@ assert.ok(freshCount > 0, "someone active today is included");
 assert.ok(ancientCount > 0 && ancientCount < 20, `older profiles are a minority (${ancientCount})`);
 assert.ok(visitorCount + freshCount < 35, "the window is not only people who just arrived");
 
+// In a normal-size pool all live anons must be shown, randomly interleaved.
+let seed = 123456789;
+const rng = () => {
+  seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+  return seed / 4294967296;
+};
+const tenLive = visitors.slice(0, 10);
+const mixedEveryAnon = mixShuffleWindow([...ancient, ...tenLive], {
+  now: NOW, windowSize: 35, random: rng,
+});
+assert.equal(mixedEveryAnon.length, 35);
+assert.equal(count(mixedEveryAnon, (row) => row.shuffleVisitor), 10, "all live visitors fit");
+const anonPositions = mixedEveryAnon.map((row, i) => row.shuffleVisitor ? i : -1).filter((i) => i >= 0);
+assert.ok(anonPositions.some((i) => i > 0 && i < 34), "visitors are spread among registered cards");
+assert.ok(anonPositions[0] > 0 || anonPositions.at(-1) < 34, "not an anonymous-only prefix");
+
 const onlyAncient = mixShuffleWindow(ancient, { now: NOW, windowSize: 10, random: () => 0.3 });
 assert.equal(onlyAncient.length, 10, "shuffle does not go empty when only older profiles exist");
 
@@ -106,8 +122,9 @@ const planned = planLiveVisitorSlots(
   NOW,
 );
 assert.deepEqual(
-  planned.map((row) => row.uid),
-  ["keep-me", "anon_stay_2", "anon_new_3"],
+  planned.map((row) => row.uid).sort(),
+  ["keep-me", "anon_stay_2", "anon_new_3"].sort(),
+  "visitor insertion is randomized, membership is exact",
 );
 
 const injected = planLiveVisitorSlots(
@@ -117,7 +134,62 @@ const injected = planLiveVisitorSlots(
   NOW,
 );
 assert.ok(injected.some((row) => row.uid === "anon_live_1"));
-assert.equal(injected.length, 2);
+assert.equal(injected.length, 3, "free seats keep both registered profiles while adding the anon");
+
+// Regression: a full painted window with one existing anon must admit other
+// actual live visitors without a manual reshuffle or waiting for a departure.
+const packedWindow = [
+  profile("anon_packed_stay", 1000, { shuffleVisitor: true }),
+  ...Array.from({ length: 34 }, (_, i) => profile(`packed-registered-${i}`, 90 * 24 * 60 * 60 * 1000)),
+];
+const packedVisitors = [
+  profile("anon_packed_stay", 1000, { shuffleVisitor: true }),
+  ...Array.from({ length: 5 }, (_, i) => profile(`anon_new_arrival_${i}`, 1000, { shuffleVisitor: true })),
+];
+const packedPlanned = planLiveVisitorSlots(packedWindow, packedVisitors, 35, NOW);
+assert.equal(packedPlanned.length, 35, "full window keeps its size");
+assert.equal(count(packedPlanned, (row) => row.shuffleVisitor), 6, "all six live anons receive cards");
+assert.equal(new Set(packedPlanned.map((row) => row.uid)).size, 35, "no duplicate cards");
+assert.ok(packedPlanned.some((row) => row.uid === "packed-registered-33") || packedPlanned.some((row) => row.uid === "packed-registered-0"), "registered discovery remains");
+assert.deepEqual(planLiveVisitorSlots(packedPlanned, packedVisitors, 35, NOW).map((row) => row.uid), packedPlanned.map((row) => row.uid), "stable on next poll");
+
+// 40 visitors cannot occupy 35 seats at once. Only truly new arrivals
+// rotate in; polling the same pool a second time must not change the window.
+const fortyLive = visitors.slice(0, 40);
+const fullAnonSeats = fortyLive.slice(0, 35);
+const newArrival = fortyLive[39];
+const overflowPlan = planLiveVisitorSlots(fullAnonSeats, fortyLive, 35, NOW, {
+  newVisitorIds: new Set([newArrival.uid]),
+  random: () => 0.4,
+});
+assert.equal(overflowPlan.length, 35);
+assert.ok(overflowPlan.some((row) => row.uid === newArrival.uid), "new anon gets a seat when >35");
+const crowdedMixed = [
+  ...fortyLive.slice(0, 16),
+  ...Array.from({ length: 19 }, (_, i) => profile(`crowd_reg_${i}`, 60000)),
+];
+const crowdedUpdate = planLiveVisitorSlots(crowdedMixed, fortyLive, 35, NOW, {
+  newVisitorIds: new Set(fortyLive.slice(16).map((row) => row.uid)),
+  random: rng,
+});
+assert.equal(crowdedUpdate.length, 35);
+assert.ok(count(crowdedUpdate, (row) => !row.shuffleVisitor) >= 10, "overcrowding preserves registered mix");
+assert.ok(count(crowdedUpdate, (row) => row.shuffleVisitor) >= 16, "anon live entrants get priority");
+
+const overflowStable = planLiveVisitorSlots(overflowPlan, fortyLive, 35, NOW, {
+  newVisitorIds: new Set(),
+  random: () => 0.9,
+});
+assert.deepEqual(overflowStable.map((p) => p.uid), overflowPlan.map((p) => p.uid), "poll cannot churn seats");
+
+const refilled = planLiveVisitorSlots(
+  [profile("anon_departed", 0, { shuffleVisitor: true }), profile("online_registered", 0)],
+  [],
+  3,
+  NOW,
+  { fillers: [profile("online_registered", 0), profile("replacement_registered", 0)] },
+);
+assert.deepEqual(refilled.map((p) => p.uid).sort(), ["online_registered", "replacement_registered"].sort(), "departure auto-fills vacancy");
 
 const seededEmpty = planLiveVisitorSlots(
   [],

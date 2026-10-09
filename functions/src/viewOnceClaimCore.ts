@@ -1,6 +1,8 @@
 import {
+  isAnonMatchBoundMessageAuthor,
   isPrivateAnonVisitorAuthor,
   isProfileOwnerMessageAuthor,
+  type ChatMessageDeleteChat,
   type ProfileAnonPrivateAuthChat,
 } from "./deleteChatMessageCore";
 
@@ -41,6 +43,8 @@ export type ViewOnceMessageFields = {
   fromUid?: string;
   ownerId?: string;
   senderUid?: string;
+  /** chats_anonimos mensajes use senderId (anon_* or Auth uid). */
+  senderId?: string;
   senderAuthUid?: string;
   createdByAuthUid?: string;
   senderRole?: string;
@@ -67,6 +71,7 @@ export function resolveViewOnceAuthorIds(message: ViewOnceMessageFields): Set<st
     message.fromUid,
     message.ownerId,
     message.senderUid,
+    message.senderId,
     message.senderAuthUid,
     message.createdByAuthUid,
     message.profileUid,
@@ -85,7 +90,7 @@ export function isViewOnceAuthor(
   uid: string,
   message: ViewOnceMessageFields,
   context?: {
-    chat?: ProfileAnonPrivateAuthChat | null;
+    chat?: (ProfileAnonPrivateAuthChat & ChatMessageDeleteChat) | ChatMessageDeleteChat | null;
     privateVisitorAuthUid?: string;
   },
 ) {
@@ -94,6 +99,15 @@ export function isViewOnceAuthor(
   const authors = resolveViewOnceAuthorIds(message);
   if (authors.has(clean) || authors.has(`profile_${clean}`)) return true;
   if (isProfileOwnerMessageAuthor({ uid: clean, message })) return true;
+  if (
+    isAnonMatchBoundMessageAuthor({
+      uid: clean,
+      message,
+      chat: context?.chat || null,
+    })
+  ) {
+    return true;
+  }
   return isPrivateAnonVisitorAuthor({
     uid: clean,
     message,

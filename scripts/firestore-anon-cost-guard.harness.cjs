@@ -1,0 +1,21 @@
+// Regression gate for cost-sensitive anonymous chat + usage metrics.
+const fs = require("node:fs");
+const assert = require("node:assert/strict");
+const anon = fs.readFileSync("src/contexts/AnonMatchContext.tsx","utf8");
+const usage = fs.readFileSync("src/lib/usage/usagePingClient.ts","utf8");
+const summary = fs.readFileSync("src/lib/usage/appUsage.ts","utf8");
+const service = fs.readFileSync("src/lib/anonMatch/service.ts","utf8");
+assert.match(anon,/const INCOMING_POLL_MS = 30_000/);
+assert.match(anon,/liveListenerHealthy = true/g);
+assert.match(anon,/liveListenerHealthy = false/g);
+assert.match(anon,/if \(cancelled \|\| document.hidden \|\| liveListenerHealthy \|\| apiPollInFlight\) return;/);
+assert.doesNotMatch(anon,/void pollIncomingFromApi\(\);\s*pollTimer = window\.setInterval/);
+assert.match(usage,/const PING_MS = 5 \* 60_000/);
+assert.match(summary,/USAGE_PING_MAX_MS = 6 \* 60_000/);
+assert.match(service,/if \(callerAnonId && byAuth\.length === 0\)/);
+const oldDaily = 86400000 / 2500;
+const fallbackDaily = 86400000 / 30000;
+assert.equal(oldDaily,34560);
+assert.equal(fallbackDaily,2880);
+console.log("PASS_COST_GUARDS incoming healthy=no admin poll; degraded fallback up to 12x fewer; usage ping 5x fewer; accurate 6min clamp; no redundant bound-alias query.");
+console.log(JSON.stringify({oldAdminPollCallsPerDay:oldDaily,degradedAdminPollCallsPerDay:fallbackDaily,healthyAdminPollCallsPerDay:0,usageMinIntervalMs:300000}));

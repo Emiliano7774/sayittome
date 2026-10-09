@@ -28,6 +28,8 @@ let slotsVersion = 0;
 let windowGeneration = 0;
 const dirtySlots = new Set<number>();
 const globalListeners = new Set<() => void>();
+/** Tracks genuinely arriving visitor IDs; prevents repeated rotation when >35 are online. */
+let observedLiveVisitorIds = new Set<string>();
 
 /** Deterministic SSR/hydration snapshot; browser slots become visible after hydration. */
 export function getServerShuffleSlotsVersion() {
@@ -385,17 +387,22 @@ export function patchShuffleSlotPresence(pool: ShuffleProfile[]) {
 export function syncLiveShuffleVisitors(
   visitors: ShuffleProfile[],
   now = Date.now(),
-  options?: { preferVisitors?: boolean },
+  options?: { preferVisitors?: boolean; fillers?: ShuffleProfile[] },
 ) {
   const visible: ShuffleProfile[] = [];
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {
     const profile = slots[slot];
     if (profile) visible.push(profile);
   }
+  const ids = new Set(visitors.map((row) => String(row.uid || "").trim()).filter(Boolean));
+  const newVisitorIds = new Set([...ids].filter((id) => !observedLiveVisitorIds.has(id)));
+  observedLiveVisitorIds = ids;
   if (visible.length === 0 && visitors.length === 0) return;
 
   const next = planLiveVisitorSlots(visible, visitors, SHUFFLE_WINDOW_SIZE, now, {
     preferVisitors: options?.preferVisitors === true,
+    newVisitorIds,
+    fillers: options?.fillers,
   });
   let changed = false;
   for (let slot = 0; slot < SHUFFLE_WINDOW_SIZE; slot++) {

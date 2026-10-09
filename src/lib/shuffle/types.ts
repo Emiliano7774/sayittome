@@ -49,4 +49,6 @@ export type ShuffleProfile = {
   shuffleVisitor?: boolean;
   /** Browser anon session that receives profile-anon chats for this card. */
   visitorChatId?: string;
+  /** Server-bound presence alias used for explicit anonymous match requests. */
+  visitorMatchAnonId?: string;
 };

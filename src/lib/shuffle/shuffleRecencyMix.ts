@@ -134,24 +134,24 @@ export function mixShuffleWindow<T extends ShuffleRecencyProfile>(
     if (target === 0) return [] as T[];
 
     const registered = fresh.length + week.length + older.length;
-    let olderN = Math.min(older.length, Math.round(target * (1 - SHUFFLE_FRESH_WINDOW_SHARE - SHUFFLE_WEEK_WINDOW_SHARE)));
-    let weekN = Math.min(week.length, Math.round(target * SHUFFLE_WEEK_WINDOW_SHARE));
-    let freshN = Math.max(0, target - olderN - weekN);
-
-    let visitorN = Math.min(
+    // Every live visitor fits in the initial 35-card window when there are
+    // <=35. Only when anons exceed physical capacity keep the original
+    // registered-discovery share; later arrivals rotate through live seats.
+    const visitorN = Math.min(
       visitors.length,
-      freshN,
-      Math.round(target * SHUFFLE_VISITOR_WINDOW_SHARE),
+      visitors.length <= target
+        ? target
+        : registered === 0
+          ? target
+          : Math.max(1, Math.round(target * SHUFFLE_VISITOR_WINDOW_SHARE)),
     );
-    if (registered === 0) {
-      visitorN = Math.min(visitors.length, target);
-      freshN = visitorN;
-      weekN = 0;
-      olderN = 0;
-    }
+    const registeredSeats = target - visitorN;
+    const olderN = Math.min(older.length, Math.round(registeredSeats * (1 - SHUFFLE_FRESH_WINDOW_SHARE - SHUFFLE_WEEK_WINDOW_SHARE)));
+    const weekN = Math.min(week.length, Math.round(registeredSeats * SHUFFLE_WEEK_WINDOW_SHARE));
+    const freshN = Math.max(0, registeredSeats - olderN - weekN);
 
     const pickedVisitors = takeSample(visitors, visitorN, random);
-    const pickedFresh = takeSample(fresh, Math.max(0, freshN - pickedVisitors.length), random);
+    const pickedFresh = takeSample(fresh, freshN, random);
     const pickedWeek = takeSample(week, weekN, random);
     const pickedOlder = takeSample(older, olderN, random);
     const picked = [...pickedVisitors, ...pickedFresh, ...pickedWeek, ...pickedOlder];
@@ -178,6 +178,12 @@ export function mixShuffleWindow<T extends ShuffleRecencyProfile>(
         picked.push(profile);
       }
     }
+    // Live anons are interleaved randomly with registered people, never
+    // shown as a contiguous list at the start of the window.
+    for (let i = picked.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [picked[i], picked[j]] = [picked[j], picked[i]];
+    }
     return picked;
   };
 
@@ -197,121 +203,113 @@ export function mixShuffleWindow<T extends ShuffleRecencyProfile>(
 }
 
 /**
- * Keep the painted window. Drop anonymous sessions that left, refill those
- * seats with people who just connected, and on a window that has no live
- * visitors yet replace the stalest profiles up to the visitor cap.
+ * Update the 35 cards in place while keeping each eligible anonymous
+ * visitor visible whenever the set fits in the window. No 45% anon cap:
+ * that cap silently hid legitimate new users even while the API returned them.
+ * New arrivals replace randomly scattered registered cards rather than form
+ * a block at the front/end. Identical polls never reshuffle existing cards.
+ * When there are >35 anons (physically impossible to display simultaneously),
+ * new arrivals rotate an existing anon seat; do not duplicate identities.
  */
 export function planLiveVisitorSlots<T extends ShuffleRecencyProfile>(
   visible: T[],
   visitors: T[],
   windowSize: number,
   now: number,
-  options?: { preferVisitors?: boolean },
+  options?: {
+    preferVisitors?: boolean;
+    random?: () => number;
+    newVisitorIds?: ReadonlySet<string>;
+    fillers?: T[];
+  },
 ): T[] {
+  void now;
+  void options?.preferVisitors;
   const size = Math.max(0, Math.floor(windowSize) || 0);
-  if (size === 0) return [];
-  const preferVisitors = options?.preferVisitors === true;
+  if (!size) return [];
+  const random = options?.random || Math.random;
   const live = new Map<string, T>();
   for (const visitor of visitors) {
     const uid = String(visitor.uid || "").trim();
-    if (!uid || !visitor.shuffleVisitor) continue;
-    live.set(uid, visitor);
+    if (uid && visitor.shuffleVisitor) live.set(uid, visitor);
   }
 
   const kept: T[] = [];
-  const seen = new Set<string>();
+  const present = new Set<string>();
   for (const row of visible) {
     if (kept.length >= size) break;
     const uid = String(row.uid || "").trim();
+    if (!uid || present.has(uid)) continue;
     if (row.shuffleVisitor) {
-      if (!uid || !live.has(uid) || seen.has(uid)) continue;
-      seen.add(uid);
+      if (!live.has(uid)) continue;
       kept.push(live.get(uid) as T);
-      continue;
+    } else {
+      kept.push(row);
     }
-    if (uid && seen.has(uid)) continue;
-    if (uid) seen.add(uid);
-    kept.push(row);
+    present.add(uid);
   }
 
-  const newcomers = [...live.values()].filter((visitor) => {
-    const uid = String(visitor.uid || "").trim();
-    return uid && !seen.has(uid);
+  const fillVacantSeats = () => {
+    if (kept.length >= size || !options?.fillers?.length) return kept;
+    const candidates = options.fillers.filter((row) => {
+      const uid = String(row.uid || "").trim();
+      return uid && !row.shuffleVisitor && !present.has(uid);
+    });
+    while (kept.length < size && candidates.length > 0) {
+      const pick = Math.floor(random() * candidates.length);
+      const [candidate] = candidates.splice(pick, 1);
+      const uid = String(candidate.uid || "").trim();
+      if (!uid || present.has(uid)) continue;
+      kept.splice(Math.floor(random() * (kept.length + 1)), 0, candidate);
+      present.add(uid);
+    }
+    return kept;
+  };
+
+  // When >35 anons exist, only the newly arrived may rotate a seat.
+  // Repeating the same poll must NOT rotate the 10 currently offscreen users
+  // every 12 seconds (visible churn / unnecessary DOM updates).
+  const newcomers = [...live.values()].filter((row) => {
+    const uid = String(row.uid || "").trim();
+    return !present.has(uid) && (
+      live.size <= size || !options?.newVisitorIds || options.newVisitorIds.has(uid)
+    );
   });
-  const previousVisitors = visible.filter((row) => row.shuffleVisitor).length;
-  const keptVisitors = kept.filter((row) => row.shuffleVisitor).length;
-  // Solo-online: fill with every live anon, not the mixed-feed 45% cap.
-  const cap = preferVisitors
-    ? size
-    : Math.max(1, Math.round(size * SHUFFLE_VISITOR_WINDOW_SHARE));
+  if (!newcomers.length) return fillVacantSeats();
 
-  // Empty painted window (common with solo-online after prune): seed live anons.
-  // Previously holes=0 blocked every newcomer when previousVisitors was also 0.
-  if (kept.length === 0 && newcomers.length > 0) {
-    return newcomers.slice(0, size);
-  }
-
-  // Solo-online: visitors first (all of them), then remaining online profiles.
-  if (preferVisitors && (newcomers.length > 0 || keptVisitors > 0)) {
-    const next: T[] = [];
-    const used = new Set<string>();
-    for (const row of kept) {
-      if (!row.shuffleVisitor) continue;
-      const uid = String(row.uid || "").trim();
-      if (!uid || used.has(uid)) continue;
-      used.add(uid);
-      next.push(row);
-      if (next.length >= size) return next.slice(0, size);
-    }
-    for (const visitor of newcomers) {
-      const uid = String(visitor.uid || "").trim();
-      if (!uid || used.has(uid)) continue;
-      used.add(uid);
-      next.push(visitor);
-      if (next.length >= size) return next.slice(0, size);
-    }
-    for (const row of kept) {
-      if (row.shuffleVisitor) continue;
-      const uid = String(row.uid || "").trim();
-      if (uid && used.has(uid)) continue;
-      if (uid) used.add(uid);
-      next.push(row);
-      if (next.length >= size) break;
-    }
-    return next.slice(0, size);
-  }
-
-  if (keptVisitors === 0 && newcomers.length > 0 && kept.length > 0) {
-    const stale = kept
-      .map((row, index) => ({ index, ms: Math.min(shuffleActivityMs(row), now) }))
-      .filter((item) => !kept[item.index]?.shuffleVisitor)
-      .sort((a, b) => a.ms - b.ms);
-    let placed = 0;
-    const next = kept.slice();
-    for (const item of stale) {
-      if (placed >= cap || placed >= newcomers.length) break;
-      const visitor = newcomers[placed];
-      const uid = String(visitor.uid || "").trim();
-      if (!uid || seen.has(uid)) continue;
-      seen.add(uid);
-      next[item.index] = visitor;
-      placed += 1;
-    }
-    return next.slice(0, size);
-  }
-
-  const holes = Math.max(0, previousVisitors - keptVisitors);
-  // Also fill free seats (solo-online often has room after profiles drop out).
-  const freeSeats = Math.max(0, size - kept.length);
-  const budget = Math.max(holes, Math.min(freeSeats, cap - keptVisitors));
-  let placed = 0;
   for (const visitor of newcomers) {
-    if (placed >= budget || kept.length >= size) break;
     const uid = String(visitor.uid || "").trim();
-    if (!uid || seen.has(uid)) continue;
-    seen.add(uid);
-    kept.push(visitor);
-    placed += 1;
+    if (!uid || present.has(uid)) continue;
+    if (kept.length < size) {
+      // Place into a random gap in the displayed sequence, not an anon list.
+      const at = Math.floor(random() * (kept.length + 1));
+      kept.splice(at, 0, visitor);
+    } else {
+      const registeredSeats: number[] = [];
+      for (let i = 0; i < kept.length; i++) {
+        if (!kept[i].shuffleVisitor) registeredSeats.push(i);
+      }
+      // Crowded (>35) pools cannot display everyone simultaneously. Keep
+      // some registered cards interleaved instead of filling all seats with
+      // anonymous visitors; newcomers rotate anonymous seats past this point.
+      const overcrowded = live.size > size;
+      const anonCount = kept.filter((row) => row.shuffleVisitor).length;
+      const mixedAnonCeiling = Math.max(1, Math.round(size * 0.7));
+      const canReplaceRegistered =
+        !overcrowded || anonCount < mixedAnonCeiling;
+      const anonSeats = kept.flatMap((row, i) => row.shuffleVisitor ? [i] : []);
+      const choices = canReplaceRegistered && registeredSeats.length
+        ? registeredSeats
+        : overcrowded
+          ? anonSeats
+          : [];
+      if (!choices.length) continue;
+      const at = choices[Math.floor(random() * choices.length)];
+      const evictedId = String(kept[at].uid || "").trim();
+      if (evictedId) present.delete(evictedId);
+      kept[at] = visitor;
+    }
+    present.add(uid);
   }
-  return kept.slice(0, size);
+  return fillVacantSeats().slice(0, size);
 }

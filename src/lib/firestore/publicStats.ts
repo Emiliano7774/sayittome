@@ -10,7 +10,7 @@ export type PublicStats = {
 
 let memoryCache: PublicStats | null = null;
 let memoryCacheAt = 0;
-const MEMORY_TTL_MS = 60_000;
+const MEMORY_TTL_MS = 5 * 60_000;
 
 function statsDocUrl() {
   return `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${STATS_DOC}?key=${API_KEY}`;

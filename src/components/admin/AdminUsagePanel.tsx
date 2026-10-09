@@ -99,7 +99,7 @@ export default function AdminUsagePanel() {
     const timer = window.setInterval(() => {
       if (document.hidden) return;
       void load();
-    }, 5_000);
+    }, 30_000);
     const onVisible = () => {
       if (!document.hidden) void load();
     };

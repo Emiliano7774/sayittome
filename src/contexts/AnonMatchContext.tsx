@@ -86,11 +86,26 @@ import {
   loadAnonDirectSearchSession,
   saveAnonDirectSearchSession,
 } from "@/lib/anonMatch/directSearchSession";
+import {
+  bridgeAnonDirectShellsToInboxChats,
+  type AnonDirectInboxChat,
+} from "@/lib/anonMatch/anonDirectInboxBridge";
+import {
+  forgetAnonDirectInboxShell,
+  loadAnonDirectInboxMemory,
+  rememberAnonDirectInboxShell,
+} from "@/lib/anonMatch/anonDirectInboxMemory";
+import {
+  parseAnonDirectInboxShell,
+  type AnonDirectInboxShell,
+} from "@/lib/anonMatch/anonDirectInboxShell";
 import { ANON_MATCH_REQUEST_MS } from "@/lib/anonMatch/types";
 import { auth, db } from "@/lib/firebase";
 import type { AnonMatchRequestState } from "@/lib/anonMatch/types";
 
-const INCOMING_POLL_MS = 2_500;
+// Firestore listeners are realtime. Admin API polling is only a low-rate
+// recovery path when the relevant listener is not healthy; it costs reads.
+const INCOMING_POLL_MS = 30_000;
 const WAITING_POLL_MS = 3_000;
 
 export type AnonMatchConnectPhase =
@@ -112,6 +127,8 @@ type AnonMatchContextValue = {
   openChat: OpenChat | null;
   chatView: AnonDirectChatView;
   incomingRequest: IncomingRequest | null;
+  /** GENERAL Chats bridge rows from known chats_anonimos shells (not `chats`). */
+  anonDirectInboxRows: AnonDirectInboxChat[];
   startSearchSession: () => Promise<void>;
   respondIncoming: (accept: boolean) => Promise<void>;
   /** Reject current request and pause incoming targeting for N minutes (server + local). */
@@ -213,6 +230,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const [incomingRequest, setIncomingRequest] = useState<IncomingRequest | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [matchDoorOpen, setMatchDoorOpen] = useState(false);
+  const [inboxShells, setInboxShells] = useState<Record<string, AnonDirectInboxShell>>(
+    {},
+  );
 
   const phaseRef = useRef(phase);
   const solicitudRef = useRef(solicitudId);
@@ -220,13 +240,50 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   const attemptConnectRef = useRef<(() => Promise<void>) | null>(null);
   const retryTimerRef = useRef<number | null>(null);
   const connectInFlightRef = useRef(false);
+  /** A visitor selected explicitly in Shuffle; never fall back to another user. */
+  const targetAnonIdRef = useRef("");
   const skipServerDiscoveryRef = useRef(false);
-  /** Chat dismissed here — never let a listener pull it back up. */
+  /** Chat dismissed here — never let a listener auto-open it (inbox reopen is explicit). */
   const lastClosedChatIdRef = useRef("");
   const lastPathRef = useRef(pathname);
   const openChatRef = useRef(openChat);
   const chatViewRef = useRef(chatView);
   const respondingIncomingRef = useRef(false);
+  const watchedShellIdsRef = useRef<Set<string>>(new Set());
+
+  const upsertInboxShell = useCallback((shell: AnonDirectInboxShell) => {
+    const chatId = String(shell.chatId || "").trim();
+    if (!chatId) return;
+    if (shell.estado !== "activo") {
+      forgetAnonDirectInboxShell(chatId);
+      setInboxShells((prev) => {
+        if (!(chatId in prev)) return prev;
+        const next = { ...prev };
+        delete next[chatId];
+        return next;
+      });
+      return;
+    }
+    rememberAnonDirectInboxShell(chatId, shell.role);
+    setInboxShells((prev) => {
+      const existing = prev[chatId];
+      if (
+        existing &&
+        existing.estado === shell.estado &&
+        existing.ultimoMensaje === shell.ultimoMensaje &&
+        existing.lastMessageSender === shell.lastMessageSender &&
+        existing.latestMessageId === shell.latestMessageId &&
+        existing.lastMessageAtMs === shell.lastMessageAtMs &&
+        existing.updatedAtMs === shell.updatedAtMs &&
+        JSON.stringify(existing.readBy || {}) === JSON.stringify(shell.readBy || {}) &&
+        JSON.stringify(existing.latestReadMessageIds || {}) ===
+          JSON.stringify(shell.latestReadMessageIds || {})
+      ) {
+        return prev;
+      }
+      return { ...prev, [chatId]: { ...existing, ...shell, chatId } };
+    });
+  }, []);
   /** Soft excludes for one connect attempt (e.g. previous waiting target when retargeting). */
   const softExcludeAnonIdsRef = useRef<string[]>([]);
   const waitingMetaRef = useRef<{
@@ -262,6 +319,46 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => bindWhipSoundUnlock(), []);
+
+  // GENERAL inbox: one bounded, identity-constrained listener for each member
+  // side. Never scan the whole chats_anonimos collection or poll every message.
+  useEffect(() => {
+    const uid = String(firebaseUser?.uid || "").trim();
+    if (!uid) {
+      setInboxShells({});
+      return;
+    }
+    let cancelled = false;
+    const watchers = (["solicitanteAuthUid", "destinatarioAuthUid"] as const)
+      .map((field) => onSnapshot(
+        query(collection(db, "chats_anonimos"), where(field, "==", uid), limit(35)),
+        (snapshot) => {
+          if (cancelled) return;
+          for (const change of snapshot.docChanges()) {
+            const docSnap = change.doc;
+            if (change.type === "removed") {
+              // A capped query can evict an active row; retain it in session
+              // memory until the authoritative shell reports a closed state.
+              continue;
+            }
+            const data = docSnap.data();
+            if (
+              data.solicitanteAuthUid !== uid &&
+              data.destinatarioAuthUid !== uid
+            ) continue;
+            const role = firebaseUser?.isAnonymous ? "anonimo" : "perfil";
+            upsertInboxShell(parseAnonDirectInboxShell(docSnap.id, data, role));
+          }
+        },
+        (error) => {
+          if (!cancelled) console.warn("[anon-direct-inbox] listener", error.code);
+        },
+      ));
+    return () => {
+      cancelled = true;
+      watchers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [firebaseUser?.uid, firebaseUser?.isAnonymous, upsertInboxShell]);
 
   useEffect(() => {
     const syncDoor = () => {
@@ -460,7 +557,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       searchSessionActiveRef,
     });
     skipServerDiscoveryRef.current = true;
-    lastClosedChatIdRef.current = openChatRef.current?.chatId || "";
+    const closedId = openChatRef.current?.chatId || "";
+    lastClosedChatIdRef.current = closedId;
+    // Keep shell in GENERAL inbox memory; only hide the floating window.
+    if (closedId && openChatRef.current) {
+      rememberAnonDirectInboxShell(closedId, openChatRef.current.role);
+    }
     setOpenChat(null);
     setChatViewState("compact");
     clearAnonDirectChatSession();
@@ -530,6 +632,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
     clearRetryTimer();
     waitingMetaRef.current = null;
+    targetAnonIdRef.current = "";
     stopSearchSessionState({
       setSearchSessionActive,
       setPhase,
@@ -537,8 +640,16 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       searchSessionActiveRef,
     });
     skipServerDiscoveryRef.current = false;
+    // Explicit reopen from GENERAL inbox must defeat the local dismiss filter.
+    if (lastClosedChatIdRef.current === chatId) {
+      lastClosedChatIdRef.current = "";
+    }
     const next = { chatId, role };
     const isNewChat = previous?.chatId !== chatId;
+    rememberAnonDirectInboxShell(chatId, role);
+    upsertInboxShell(
+      parseAnonDirectInboxShell(chatId, { estado: "activo" }, role),
+    );
     setOpenChat(next);
     setChatViewState("compact");
     setPhase("accepted");
@@ -547,7 +658,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     if (isNewChat) {
       alertAnonMatchChatOpened(chatId);
     }
-  }, [clearRetryTimer]);
+  }, [clearRetryTimer, upsertInboxShell]);
 
   const attemptConnect = useCallback(async () => {
     if (!searchSessionActiveRef.current) return;
@@ -597,6 +708,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       body.excludeUids = Array.from(new Set(excludeUids.filter(Boolean)));
       body.recentTargetIds = loadRecentMatchTargets();
       Object.assign(body, readDiscoveryPayload());
+      if (targetAnonIdRef.current) {
+        // A deliberate click must not accidentally pick a different visitor.
+        body.targetAnonId = targetAnonIdRef.current;
+        body.excludeAnonIds = ((body.excludeAnonIds as string[]) || [])
+          .filter((id) => id !== targetAnonIdRef.current);
+      }
 
       const res = await fetchAnonMatch("/api/anon-match/request", {
         method: "POST",
@@ -608,7 +725,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
       if (!json?.ok) {
         waitingMetaRef.current = null;
-        scheduleRetry();
+        if (targetAnonIdRef.current) {
+          targetAnonIdRef.current = "";
+          stopSearchSessionState({ setSearchSessionActive, setPhase, setSolicitudId, searchSessionActiveRef });
+          window.alert("Este anónimo ya no está disponible para chatear. Probá con otro perfil del Shuffle.");
+        } else {
+          scheduleRetry();
+        }
         return;
       }
 
@@ -628,7 +751,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     } catch {
       if (searchSessionActiveRef.current) {
         waitingMetaRef.current = null;
-        scheduleRetry();
+        if (targetAnonIdRef.current) {
+          targetAnonIdRef.current = "";
+          stopSearchSessionState({ setSearchSessionActive, setPhase, setSolicitudId, searchSessionActiveRef });
+          window.alert("No se pudo conectar con este anónimo. Intentá nuevamente.");
+        } else {
+          scheduleRetry();
+        }
       }
     } finally {
       connectInFlightRef.current = false;
@@ -652,7 +781,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     let inFlight = false;
 
     const reconsider = async () => {
-      if (cancelled || inFlight) return;
+      if (cancelled || inFlight || targetAnonIdRef.current) return;
       if (!searchSessionActiveRef.current) return;
       if (phaseRef.current !== "waiting") return;
       if (typeof document !== "undefined" && document.hidden) return;
@@ -732,7 +861,13 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   const startSearchSession = useCallback(async () => {
     const live = await resolveLiveAnonMatchCaller();
-    if (!isAnonMatchDoorOpen(live.user)) return;
+    if (!isAnonMatchDoorOpen(live.user)) {
+      if (targetAnonIdRef.current) {
+        targetAnonIdRef.current = "";
+        window.alert("Para hablar como anónimo, aceptá las condiciones de Shuffle.");
+      }
+      return;
+    }
     if (!live.isRegisteredProfile) {
       const issued = await resolveAnonMatchSessionId().catch(() => "");
       if (!issued) return;
@@ -748,6 +883,57 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     await attemptConnect();
   }, [attemptConnect]);
 
+  // Selecting an anonymous Shuffle card must initiate a consent-bound direct
+  // request for that exact visitor, not show the registration gate or a profile.
+  useEffect(() => {
+    const onTarget = (event: Event) => {
+      const wanted = String(
+        (event as CustomEvent<{ targetAnonId?: string }>).detail?.targetAnonId || "",
+      ).trim();
+      if (!/^anon_[a-z0-9_]{6,80}$/i.test(wanted)) return;
+
+      void (async () => {
+        if (searchSessionActiveRef.current) {
+          // Cancel the earlier discovery before starting the explicit request.
+          // An accepted chat takes priority over a new card click.
+          const oldSolicitud = solicitudRef.current;
+          if (oldSolicitud) {
+            try {
+              const response = await fetchAnonMatch("/api/anon-match/request", {
+                method: "PATCH",
+                body: JSON.stringify({ solicitudId: oldSolicitud, cancel: true }),
+              });
+              const state = await response.json().catch(() => ({}));
+              if (state?.estado === "aceptado") return;
+            } catch {
+              window.alert("No se pudo cancelar la búsqueda anterior. Intentá de nuevo.");
+              return;
+            }
+          } else if (connectInFlightRef.current) {
+            window.alert("Ya estás iniciando una conversación. Intentá de nuevo.");
+            return;
+          }
+          clearRetryTimer();
+          searchSessionActiveRef.current = false;
+          setSearchSessionActive(false);
+          waitingMetaRef.current = null;
+          setSolicitudId("");
+          setPhase("idle");
+          // Refs guard attemptConnect synchronously, before React rerenders.
+          solicitudRef.current = "";
+          phaseRef.current = "idle";
+        }
+        targetAnonIdRef.current = wanted;
+        await startSearchSession();
+      })().catch(() => {
+        targetAnonIdRef.current = "";
+        window.alert("No pudimos iniciar el chat anónimo. Intentá de nuevo.");
+      });
+    };
+    window.addEventListener("sayittome:anon-direct-target-request", onTarget);
+    return () => window.removeEventListener("sayittome:anon-direct-target-request", onTarget);
+  }, [clearRetryTimer, startSearchSession]);
+
   useEffect(() => {
     if (!solicitudId || phase !== "waiting") return;
 
@@ -755,6 +941,11 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
     const handleFailure = () => {
       waitingMetaRef.current = null;
+      if (targetAnonIdRef.current) {
+        targetAnonIdRef.current = "";
+        stopSearchSessionState({ setSearchSessionActive, setPhase, setSolicitudId, searchSessionActiveRef });
+        return;
+      }
       if (!searchSessionActiveRef.current) {
         setPhase("idle");
         setSolicitudId("");
@@ -1001,6 +1192,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     let apiDocs: IncomingRequest[] = [];
     const unsubs: Array<() => void> = [];
     let pollTimer: number | null = null;
+    let liveListenerHealthy = false;
+    let apiPollInFlight = false;
 
     function normalizeIncoming(
       item: { id: string; data: () => Record<string, unknown> },
@@ -1083,7 +1276,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
     }
 
     async function pollIncomingFromApi() {
-      if (cancelled) return;
+      if (cancelled || document.hidden || liveListenerHealthy || apiPollInFlight) return;
+      apiPollInFlight = true;
       try {
         const live = await resolveLiveAnonMatchCaller();
         let alias = "";
@@ -1126,6 +1320,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         publishIncoming();
       } catch {
         // Poll is best-effort; Firestore listener may still deliver.
+      } finally {
+        apiPollInFlight = false;
       }
     }
 
@@ -1156,6 +1352,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
               limit(10),
             ),
             (snap) => {
+              liveListenerHealthy = true;
+              apiDocs = [];
               profileDocs = snap.docs
                 .map((item) => normalizeIncoming(item, "perfil"))
                 .filter(Boolean) as IncomingRequest[];
@@ -1163,6 +1361,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
             },
             (error) => {
               if (cancelled) return;
+              liveListenerHealthy = false;
+              void pollIncomingFromApi();
               console.warn(
                 "[anon-match] profile incoming listener error",
                 error?.code || error,
@@ -1184,6 +1384,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
               limit(10),
             ),
             (snap) => {
+              liveListenerHealthy = true;
+              apiDocs = [];
               anonDocs = snap.docs
                 .map((item) => {
                   const data = item.data();
@@ -1196,6 +1398,8 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
             },
             (error) => {
               if (cancelled) return;
+              liveListenerHealthy = false;
+              void pollIncomingFromApi();
               console.warn(
                 "[anon-match] anon incoming listener error",
                 error?.code || error,
@@ -1205,8 +1409,9 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      // Admin API poll — works even when Firestore list rules deny legacy queries.
-      void pollIncomingFromApi();
+      // The onSnapshot listener is primary and instantaneous. The Admin API
+      // fallback is only queried when Firestore cannot supply a snapshot.
+      // Avoid reading Firestore again on every heartbeat for every session.
       pollTimer = window.setInterval(() => {
         void pollIncomingFromApi();
       }, INCOMING_POLL_MS);
@@ -1420,6 +1625,14 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => clearRetryTimer(), [clearRetryTimer]);
 
+  const anonDirectInboxRows = useMemo(
+    () => bridgeAnonDirectShellsToInboxChats(
+      Object.values(inboxShells),
+      firebaseUser?.uid || "",
+    ),
+    [firebaseUser?.uid, inboxShells],
+  );
+
   const value = useMemo<AnonMatchContextValue>(
     () => ({
       phase,
@@ -1428,6 +1641,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       openChat,
       chatView,
       incomingRequest,
+      anonDirectInboxRows,
       startSearchSession,
       respondIncoming,
       enableDoNotDisturb,
@@ -1445,6 +1659,7 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       openChat,
       chatView,
       incomingRequest,
+      anonDirectInboxRows,
       startSearchSession,
       respondIncoming,
       enableDoNotDisturb,

@@ -3,6 +3,8 @@
 import { Check, CheckCheck } from "lucide-react";
 
 import ChatInboxLink from "@/components/chats/ChatInboxLink";
+import AnonDirectInboxButton from "@/components/chats/AnonDirectInboxButton";
+import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
 import ChatsSelectionToolbar, {
   ChatSelectionCheckbox,
 } from "@/components/chats/ChatsSelectionToolbar";
@@ -140,6 +142,13 @@ function ClassicChatRow({
     );
   }
 
+  if (isAnonDirectInboxChat(chat)) {
+    return (
+      <AnonDirectInboxButton chat={chat} className={rowClass}>
+        {content}
+      </AnonDirectInboxButton>
+    );
+  }
   return (
     <ChatInboxLink href={chatHref(chat)} className={rowClass} data-nav-chat-row>
       {content}
@@ -155,7 +164,7 @@ export default function ClassicChatsInbox({
   selection,
 }: Props) {
   const t = useT();
-  const { profile } = useAuth();
+  const { profile, firebaseUser } = useAuth();
   const viewerUsername = String(profile?.username || "");
   const { photos, blurPhotos } = useInboxProfilePhotos(sortedChats);
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
@@ -201,17 +210,22 @@ export default function ClassicChatsInbox({
         ) : (
           <div data-nav-chats-primary>
           {sortedChats.map((chat) => {
-            const isAnonPeer = shouldShowAnonPeerInbox(chat, uid, viewerUsername);
+            // Regular profile-anon uses alias identity; direct anon matches
+            // persist lastMessageSender as Firebase Auth UID, not that alias.
+            const rowViewerUid = isAnonDirectInboxChat(chat)
+              ? String(firebaseUser?.uid || uid)
+              : uid;
+            const isAnonPeer = shouldShowAnonPeerInbox(chat, rowViewerUid, viewerUsername);
 
             return (
             <ClassicChatRow
               key={chat.id}
               chat={chat}
-              uid={uid}
+              uid={rowViewerUid}
               t={t}
               photo={inboxChatPhoto(chat, photos)}
               blurPhoto={inboxChatBlur(chat, blurPhotos)}
-              unread={firestoreSynced ? chatUnreadCountForViewer(chat, uid) : 0}
+              unread={firestoreSynced ? chatUnreadCountForViewer(chat, rowViewerUid) : 0}
               selectionMode={selection.selectionMode}
               selected={selection.selectedIds.has(chat.id)}
               onToggle={() => selection.toggleChat(chat.id)}

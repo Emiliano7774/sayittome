@@ -44,18 +44,15 @@ function startHeartbeat(uid: string) {
   stopHeartbeat();
 
   heartbeatTimer = setInterval(() => {
-    if (!document.hidden) {
-      writePresence(uid, true);
-    }
+    // Background tab timers keep presence alive whenever the OS permits.
+    // Minimize/blur is NOT a logout or an offline signal.
+    void writePresence(uid, true);
   }, HEARTBEAT_MS);
 }
 
 function markCurrentUserOnline(force = false) {
   if (!currentUid) return;
-
-  if (!document.hidden) {
-    writePresence(currentUid, true, force);
-  }
+  void writePresence(currentUid, true, force);
 }
 
 function markCurrentUserOffline(force = false) {
@@ -86,11 +83,8 @@ export function startPresenceSystem() {
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      markCurrentUserOffline(true);
-    } else {
-      markCurrentUserOnline(true);
-    }
+    // Switching apps is not going offline. Renew before timers may suspend.
+    markCurrentUserOnline(true);
   });
 
   window.addEventListener("beforeunload", () => {
@@ -101,7 +95,6 @@ export function startPresenceSystem() {
     markCurrentUserOnline(true);
   });
 
-  window.addEventListener("blur", () => {
-    markCurrentUserOffline(true);
-  });
+  // No blur→offline: web and Android minimize both emit blur while the
+  // user remains signed in and can still receive OS push notifications.
 }

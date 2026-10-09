@@ -6,6 +6,8 @@ import { useEffectivePathname } from "@/contexts/MainTabShellContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDocumentHidden } from "@/hooks/useDocumentHidden";
 import { useChatsInbox } from "@/hooks/useChatsInbox";
+import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
+import { isAnonDirectInboxChat, mergeInboxWithAnonDirectBridge } from "@/lib/anonMatch/anonDirectInboxBridge";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { chatPeerTitle } from "@/lib/chat/inboxPeerTitle";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
@@ -61,6 +63,7 @@ export function useGlobalChatAlerts() {
   const pathname = useEffectivePathname();
   const documentHidden = useDocumentHidden();
   const { firebaseUser } = useAuth();
+  const anonMatch = useAnonMatchOptional();
   const notificationsEnabled = useSyncExternalStore(
     subscribeChatNotificationPrefs,
     areChatNotificationsEnabled,
@@ -99,6 +102,13 @@ export function useGlobalChatAlerts() {
     forceAnonRecovery: pathname === "/chats" && !documentHidden,
   });
 
+  const mergedChats = useMemo(
+    () => mergeInboxWithAnonDirectBridge(
+      sortedChats.length > 0 ? sortedChats : displaySortedChats,
+      anonMatch?.anonDirectInboxRows || [],
+    ),
+    [sortedChats, displaySortedChats, anonMatch?.anonDirectInboxRows],
+  );
   const viewerId = resolveInboxViewerId(uid);
   const firebaseUid = firebaseUser?.uid || uid || "";
   useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
@@ -112,8 +122,7 @@ export function useGlobalChatAlerts() {
 
   // Prefer the rows the UI already trusts (snapshot fallback included). Waiting
   // only on live sortedChats hid the orange tick until the user opened /chats.
-  const unreadSource =
-    sortedChats.length > 0 ? sortedChats : displaySortedChats;
+  const unreadSource = mergedChats;
   const unreadHydrated =
     !inboxRouteEnabled ||
     firestoreSynced ||
@@ -296,8 +305,7 @@ export function useGlobalChatAlerts() {
   const sortedChatsRef = useRef(sortedChats);
 
   pathnameRef.current = pathname;
-  sortedChatsRef.current =
-    sortedChats.length > 0 ? sortedChats : displaySortedChats;
+  sortedChatsRef.current = mergedChats;
 
   useEffect(() => {
     void initChatNotifications();
@@ -394,23 +402,26 @@ export function useGlobalChatAlerts() {
     }
 
     globalChatWhipManager.start();
-    const inboxRows = sortedChats.length > 0 ? sortedChats : displaySortedChats;
-    const inboxIds = inboxRows.map((chat) => chat.canonicalChatId || chat.id);
+    // Existing global whip subscribes to chats/{id}/mensajes, not
+    // chats_anonimos. The direct-shell listeners already supply incoming
+    // activity; never misroute those IDs into the regular-chat manager.
+    const inboxIds = mergedChats
+      .filter((chat) => !isAnonDirectInboxChat(chat))
+      .map((chat) => chat.canonicalChatId || chat.id);
     globalChatWhipManager.syncInboxChatIds(
       Array.from(new Set([...inboxIds, ...getSessionChatIds()])),
     );
   }, [
     chatAlertsRouteEnabled,
     messageListenersEnabled,
-    sortedChats,
-    displaySortedChats,
+    mergedChats,
   ]);
 
   return useMemo(
     () => ({
       totalUnread,
       viewerId,
-      sortedChats: displaySortedChats,
+      sortedChats: mergedChats,
       uid,
       loading,
       isAnonymousSession,
@@ -420,7 +431,7 @@ export function useGlobalChatAlerts() {
     [
       totalUnread,
       viewerId,
-      displaySortedChats,
+      mergedChats,
       uid,
       loading,
       isAnonymousSession,

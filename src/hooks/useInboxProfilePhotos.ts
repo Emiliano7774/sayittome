@@ -8,6 +8,7 @@ import {
   type InboxChat,
 } from "@/hooks/useChatsInbox";
 import { resolveProfilePhoto } from "@/lib/profile/resolveProfilePhoto";
+import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
 import { fetchProfileByUsername } from "@/lib/chat/resolveProfileChat";
 import { getCachedProfile, setCachedProfile } from "@/lib/profile/profileCache";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
@@ -20,7 +21,8 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
   const [blurPhotos, setBlurPhotos] = useState<Record<string, boolean>>(() => ({ ...blurCache }));
 
   const usernames = useMemo(() => {
-    return [...new Set(chats.map((chat) => resolveChatUsername(chat)).filter(Boolean))].sort();
+    // Never resolve an anonymous direct match as a public profile/photo.
+    return [...new Set(chats.filter((chat) => !isAnonDirectInboxChat(chat)).map((chat) => resolveChatUsername(chat)).filter(Boolean))].sort();
   }, [chats]);
 
   useEffect(() => {
@@ -67,7 +69,8 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
       await Promise.all(
         missing.map(async (username) => {
           try {
-            const profile = await fetchProfileByUsername(username, true);
+            // Reuse client + server /api/profile route cache; do not force-bypass.
+            const profile = await fetchProfileByUsername(username);
             const photo = resolveProfilePhoto(profile);
             if (!photo) return;
 

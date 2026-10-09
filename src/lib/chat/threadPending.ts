@@ -108,7 +108,11 @@ export function computeThreadPendingForViewer(
   const isOwnLatestMessage =
     isOwnChatSender(latestSenderUid, viewerId, firebaseUid, chat, role) ||
     (latestSenderAnonSessionId.startsWith("anon_") &&
-      isOwnChatSender(latestSenderAnonSessionId, viewerId, firebaseUid, chat, role));
+      isOwnChatSender(latestSenderAnonSessionId, viewerId, firebaseUid, chat, role)) ||
+    // Profile-owner reply with lagged lastMessageSender still carries kind=profile.
+    (!latestSenderUid &&
+      latestSenderKind === "profile" &&
+      (role.provenOwner || role.viewerKind === "owner"));
   const incoming =
     Boolean(String(chat.lastMessage || "").trim()) &&
     isIncomingChatActivity(chat, viewerId, firebaseUid, role);

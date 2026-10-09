@@ -16,7 +16,7 @@ type PopoverCoords = {
   left: number;
 };
 
-type TagKind = "roleplay" | "fake";
+type TagKind = "roleplay" | "fake" | "grooming" | "potential_pedophile";
 
 function canUseHover() {
   if (typeof window === "undefined") return false;
@@ -27,6 +27,8 @@ function resolveTagKind(tag?: string): TagKind | null {
   const value = String(tag || "").trim().toLowerCase();
   if (value === "roleplay") return "roleplay";
   if (value === "fake") return "fake";
+  if (value === "grooming") return "grooming";
+  if (value === "potential_pedophile") return "potential_pedophile";
   return null;
 }
 
@@ -37,8 +39,8 @@ function subscribeNever() {
 export default function ProfileModerationTag({ tag, className = "", compact = false }: Props) {
   const t = useT();
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
-  const openGuardUntilRef = useRef(0);
   const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -88,7 +90,6 @@ export default function ProfileModerationTag({ tag, className = "", compact = fa
 
   function openPinned() {
     updateCoords();
-    openGuardUntilRef.current = Date.now() + 450;
     setPinned(true);
     setHovered(false);
   }
@@ -101,10 +102,6 @@ export default function ProfileModerationTag({ tag, className = "", compact = fa
     openPinned();
   }
 
-  function handleBackdropClose() {
-    if (Date.now() < openGuardUntilRef.current) return;
-    closeAll();
-  }
 
   useEffect(() => {
     if (!open) return;
@@ -121,44 +118,50 @@ export default function ProfileModerationTag({ tag, className = "", compact = fa
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!pinned) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (buttonRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
+      closeAll();
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [pinned]);
+
   useEffect(() => () => clearHideTimer(), []);
 
   if (!kind) return null;
 
   const isFake = kind === "fake";
-  const title = isFake
-    ? t("profile_moderation_fake_title")
-    : t("profile_moderation_roleplay_title");
-  const hint = isFake
-    ? t("profile_moderation_fake_hint")
-    : t("profile_moderation_roleplay_hint");
-  const shellClass = isFake
-    ? "border-rose-400/40 bg-black/50 text-rose-100"
-    : "border-amber-400/35 bg-black/50 text-amber-100";
-  const popoverClass = isFake
-    ? "border-rose-400/30 bg-zinc-950/95 text-rose-100/90"
-    : "border-amber-400/25 bg-zinc-950/95 text-amber-100/85";
+  const isGrooming = kind === "grooming";
+  const isPotentialPedophile = kind === "potential_pedophile";
+  const title = isPotentialPedophile ? t("profile_moderation_potential_pedophile_title") : isGrooming ? t("profile_moderation_grooming_title") : isFake ? t("profile_moderation_fake_title") : t("profile_moderation_roleplay_title");
+  const hint = isPotentialPedophile ? t("profile_moderation_potential_pedophile_hint") : isGrooming ? t("profile_moderation_grooming_hint") : isFake ? t("profile_moderation_fake_hint") : t("profile_moderation_roleplay_hint");
+  const shellClass = isPotentialPedophile
+    ? "border-red-800 bg-[#4a0715]/95 text-red-50 shadow-[0_0_18px_rgba(127,29,29,0.32)]"
+    : isGrooming
+      ? "border-orange-400/50 bg-[#3a1805]/90 text-orange-100"
+      : isFake
+        ? "border-rose-400/40 bg-black/50 text-rose-100"
+        : "border-amber-400/35 bg-black/50 text-amber-100";
+  const popoverClass = isPotentialPedophile
+    ? "border-red-800/80 bg-[#25040b]/[0.98] text-red-50"
+    : isGrooming
+      ? "border-orange-400/35 bg-zinc-950/95 text-orange-100/95"
+      : isFake
+        ? "border-rose-400/30 bg-zinc-950/95 text-rose-100/90"
+        : "border-amber-400/25 bg-zinc-950/95 text-amber-100/85";
 
   const popover =
     open && mounted
       ? createPortal(
           <>
-            {pinned ? (
-              <button
-                type="button"
-                className="fixed inset-0 z-[999998] cursor-default touch-manipulation bg-black/20"
-                aria-label="Cerrar"
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  handleBackdropClose();
-                }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  handleBackdropClose();
-                }}
-              />
-            ) : null}
             <div
+              ref={popoverRef}
               role="tooltip"
               className={[
                 "fixed z-[999999] max-w-[min(18rem,calc(100vw-1.5rem))] rounded-2xl border px-4 py-3 text-left shadow-2xl backdrop-blur-sm",
@@ -182,11 +185,6 @@ export default function ProfileModerationTag({ tag, className = "", compact = fa
         <button
           ref={buttonRef}
           type="button"
-          onTouchEnd={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            togglePinned();
-          }}
           onClick={(event) => {
             event.stopPropagation();
             togglePinned();

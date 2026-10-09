@@ -4,6 +4,7 @@ import {
   decideAnonymousPresenceWrite,
   decideLegacyAnonPresenceCleanup,
   ANON_PRESENCE_ACTIVE_MS,
+  ANON_PRESENCE_BACKGROUND_GRACE_MS,
 } from "@/lib/anonMatch/anonymousPresenceIdentity";
 import { isAnonMatchDoNotDisturbActive } from "@/lib/anonMatch/doNotDisturb";
 import {
@@ -39,9 +40,12 @@ async function writePresenceDoc(
     visibilidad: { paises: string[]; provincias: string[] };
   },
   chatSessionId = "",
+  backgrounded = false,
 ) {
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + ANON_PRESENCE_ACTIVE_MS);
+  const expiresAt = new Date(now.getTime() + (
+    backgrounded ? ANON_PRESENCE_BACKGROUND_GRACE_MS : ANON_PRESENCE_ACTIVE_MS
+  ));
   const existing = await getAnonMatchAdminDoc("anonimos_activos", anonId);
   const dndUntil = String((existing || {}).doNotDisturbUntil || "");
   const dndActive = isAnonMatchDoNotDisturbActive(dndUntil, now.getTime());
@@ -61,6 +65,7 @@ async function writePresenceDoc(
     visibilidadPaises: geo.visibilidad.paises,
     visibilidadProvincias: geo.visibilidad.provincias,
     source: "anon_match_presence",
+    backgrounded,
     ...(chatSessionId ? { chatSessionId } : {}),
   });
 }
@@ -129,6 +134,7 @@ export async function POST(req: Request) {
         }),
       },
       sanitizeShuffleVisitorChatId(body?.chatSessionId),
+      body?.backgrounded === true,
     );
     try {
       const siblings = await listAnonMatchAdminDocs("anonimos_activos", {

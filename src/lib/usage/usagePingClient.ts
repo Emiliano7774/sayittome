@@ -4,7 +4,9 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
 
-const PING_MS = 20_000;
+// Aggregate foreground time client-side; upload one rollup every five minutes.
+// A pagehide still flushes pending time, so short visits are not lost.
+const PING_MS = 5 * 60_000;
 
 let started = false;
 let timer: ReturnType<typeof setInterval> | null = null;

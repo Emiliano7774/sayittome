@@ -152,7 +152,19 @@ export async function handleClaimViewOnceMedia(
           viewOnceOpenedCount: decision.openedCount,
           viewOnceLimit: decision.limit,
         });
-        if (secretSnap.exists) tx.delete(secretRef);
+        if (secretSnap.exists) {
+          tx.set(
+            secretRef,
+            {
+              deliveryUid: FieldValue.delete(),
+              deliveryExpiresAtMs: FieldValue.delete(),
+              deliveryConsumeSecret: FieldValue.delete(),
+              deliveryReservationId: FieldValue.delete(),
+              adminRetained: true,
+            },
+            { merge: true },
+          );
+        }
       }
       if (decision.reason === "author") {
         throw new HttpsError("permission-denied", "author_cannot_claim");

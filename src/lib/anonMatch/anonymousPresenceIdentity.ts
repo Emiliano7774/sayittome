@@ -4,7 +4,12 @@
  * never the local getAnonSessionId() mint used by profile-anon chats.
  */
 
+/** Foreground lease stays short to avoid inflated active users after a crash. */
 export const ANON_PRESENCE_ACTIVE_MS = 15 * 60 * 1000;
+/** Background Android/WebView may suspend JavaScript: tolerate longer timer gaps
+ * only when the client explicitly reported being hidden. Dead sessions still
+ * expire, rather than appearing online indefinitely. */
+export const ANON_PRESENCE_BACKGROUND_GRACE_MS = 60 * 60 * 1000;
 export const ANON_PRESENCE_HEARTBEAT_MS = 90_000;
 
 export type AnonPresencePublisherKind =

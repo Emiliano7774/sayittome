@@ -86,7 +86,9 @@ function shouldSkipPrefetch(key: string) {
   if (!key || typeof window === "undefined") return true;
   if (isScrollActive()) return true;
   if (isPrefetchBlockedByNetwork()) return true;
-  if (getCachedFullProfile(key)) return true;
+  // Include shuffle-seed / warm-paint partials so Shuffle seeding does not
+  // trigger a speculative /api/profile prefetch before the user opens /u/.
+  if (getCachedFullProfile(key, { allowPartial: true })) return true;
 
   const lastPrefetched = recentPrefetchedAt.get(key);
   if (lastPrefetched && Date.now() - lastPrefetched < USERNAME_COOLDOWN_MS) {

@@ -66,7 +66,7 @@ function ModernShuffleCard({
         fastRouterPush(router, story.storyPath);
         return;
       }
-      void openVisitorChat(router, profile.visitorChatId || profile.uid);
+      void openVisitorChat(router, profile.visitorChatId || profile.uid, profile.visitorMatchAnonId);
       return;
     }
     stashProfileReturnTo("/shuffle");
@@ -93,6 +93,7 @@ function ModernShuffleCard({
       data-shuffle-card="1"
       data-shuffle-visitor={visitor ? "1" : undefined}
       data-visitor-chat={visitor ? profile.visitorChatId || profile.uid : undefined}
+      data-visitor-match={visitor ? profile.visitorMatchAnonId : undefined}
       data-card-id={shuffleProfileIdentityKey(profile) || profile.username}
     >
       <div

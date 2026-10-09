@@ -157,6 +157,11 @@ export type ChatMessageDeleteChat = {
   solicitanteAnonId?: string | null;
   destinatarioAnonId?: string | null;
   anonId?: string | null;
+  /** Firebase Auth uid bound at match accept (chats_anonimos). */
+  solicitanteAuthUid?: string | null;
+  destinatarioAuthUid?: string | null;
+  /** chats_anonimos session: activo | cerrado | denunciado */
+  estado?: string | null;
 };
 
 export type ChatMessageDeleteMessage = {
@@ -234,6 +239,78 @@ export function isHiddenForAnyKey(
   return keys.some((key) => hiddenFor[key] === true);
 }
 
+/**
+ * chats_anonimos docs stamp Firebase Auth uids at accept time.
+ * Presence of either Auth uid marks the doc as anon-match (not a normal chat).
+ */
+export function isAnonMatchChatDoc(chat: ChatMessageDeleteChat | null | undefined) {
+  if (!chat) return false;
+  return Boolean(
+    asTrimmedId(chat.solicitanteAuthUid) || asTrimmedId(chat.destinatarioAuthUid),
+  );
+}
+
+export function isActiveAnonMatchSession(chat: ChatMessageDeleteChat | null | undefined) {
+  return asTrimmedId(chat?.estado) === "activo";
+}
+
+/** Auth uid is one of the two bound identities on an active anon-match session. */
+export function isActiveAnonMatchAuthMember(input: {
+  uid: string;
+  chat: ChatMessageDeleteChat;
+}) {
+  const uid = asTrimmedId(input.uid);
+  if (!uid || !isAnonMatchChatDoc(input.chat) || !isActiveAnonMatchSession(input.chat)) {
+    return false;
+  }
+  const solicitanteAuthUid = asTrimmedId(input.chat.solicitanteAuthUid);
+  const destinatarioAuthUid = asTrimmedId(input.chat.destinatarioAuthUid);
+  return (
+    (Boolean(solicitanteAuthUid) && uid === solicitanteAuthUid) ||
+    (Boolean(destinatarioAuthUid) && uid === destinatarioAuthUid)
+  );
+}
+
+/**
+ * Reliable author binding for anon-match: Firebase Auth uid ↔ anon_* alias
+ * (or direct Auth uid as senderId for profile-side participants).
+ * Closed / expired / missing estado → not author (no forge via alias alone).
+ */
+export function isAnonMatchBoundMessageAuthor(input: {
+  uid: string;
+  message: ChatMessageDeleteMessage | ProfileAnonPrivateAuthMessage;
+  chat?: ChatMessageDeleteChat | null;
+}) {
+  const uid = asTrimmedId(input.uid);
+  const chat = input.chat;
+  if (!uid || !chat || !isActiveAnonMatchAuthMember({ uid, chat })) return false;
+
+  const from = messageAuthorId(input.message as ChatMessageDeleteMessage);
+  if (!from) return false;
+  if (from === uid || from === `profile_${uid}`) return true;
+
+  const solicitanteAuthUid = asTrimmedId(chat.solicitanteAuthUid);
+  const destinatarioAuthUid = asTrimmedId(chat.destinatarioAuthUid);
+  const solicitanteAnonId = asTrimmedId(chat.solicitanteAnonId);
+  const destinatarioAnonId = asTrimmedId(chat.destinatarioAnonId || chat.anonId);
+
+  if (
+    uid === solicitanteAuthUid &&
+    solicitanteAnonId &&
+    from === solicitanteAnonId
+  ) {
+    return true;
+  }
+  if (
+    uid === destinatarioAuthUid &&
+    destinatarioAnonId &&
+    from === destinatarioAnonId
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function isCanonicalMessageAuthor(input: {
   uid: string;
   message: ChatMessageDeleteMessage;
@@ -260,7 +337,11 @@ export function isCanonicalMessageAuthor(input: {
     return true;
   }
 
-  if (from.startsWith("anon_") && chat) {
+  if (isAnonMatchBoundMessageAuthor({ uid, message, chat })) {
+    return true;
+  }
+
+  if (from.startsWith("anon_") && chat && !isAnonMatchChatDoc(chat)) {
     const destAnon = asTrimmedId(chat.destinatarioAnonId || chat.anonId);
     const destUid = asTrimmedId(chat.destinatarioUid);
     if (destUid === uid && destAnon && from === destAnon) return true;
@@ -276,6 +357,13 @@ export function isChatMember(input: {
 }) {
   const uid = asTrimmedId(input.uid);
   if (!uid) return false;
+
+  // Anon-match: never trust anon_* / participantes alone. Auth uid must match
+  // solicitanteAuthUid|destinatarioAuthUid on an active session.
+  if (isAnonMatchChatDoc(input.chat)) {
+    return isActiveAnonMatchAuthMember({ uid, chat: input.chat });
+  }
+
   if (isCanonicalMessageAuthor(input)) return true;
   if (isPrivateAnonLeaseMember(input)) return true;
 

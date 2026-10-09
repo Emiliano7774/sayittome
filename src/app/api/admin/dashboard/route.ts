@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 
 import { assertAdminEmail, getAdminEmailFromRequest } from "@/lib/admin/isAdmin";
+import {
+  runCollectionQuery,
+  runCollectionQueryAllByDocumentId,
+} from "@/lib/firestore/rest";
 import { isLiveByConnection, ONLINE_WINDOW_MS } from "@/lib/presence";
-import { runCollectionQuery } from "@/lib/firestore/rest";
+import { ANON_PRESENCE_ACTIVE_MS } from "@/lib/anonMatch/anonymousPresenceIdentity";
+import { sanitizeShuffleVisitorChatId } from "@/lib/shuffle/shuffleVisitorId";
 
 export const dynamic = "force-dynamic";
 
-const ANON_ACTIVE_MS = 2 * 60 * 1000;
+type AdminDocumentSnapshot = {
+  id: string;
+  data: () => Record<string, unknown>;
+  createTime?: { toDate?: () => Date };
+};
 
 function isAnonActive(doc: Record<string, unknown>, now: number) {
   const expiresAt = String(doc.expiresAt || "");
@@ -21,7 +30,7 @@ function isAnonActive(doc: Record<string, unknown>, now: number) {
   const seenDate = new Date(lastSeenAt);
   if (Number.isNaN(seenDate.getTime())) return false;
 
-  return now - seenDate.getTime() <= ANON_ACTIVE_MS;
+  return now - seenDate.getTime() <= ANON_PRESENCE_ACTIVE_MS;
 }
 
 export async function GET(req: Request) {
@@ -32,14 +41,85 @@ export async function GET(req: Request) {
     const now = Date.now();
     const dayAgo = now - 24 * 60 * 60 * 1000;
 
-    const [users, stories, chats, reports, anonDocs, logs] = await Promise.all([
-      runCollectionQuery("usuarios", 500),
-      runCollectionQuery("historias", 500, "createdAt"),
-      runCollectionQuery("chats", 500, "updatedAt"),
-      runCollectionQuery("reportes", 200, "createdAt"),
-      runCollectionQuery("anonimos_activos", 250),
-      runCollectionQuery("admin_logs", 120, "timestamp"),
-    ]);
+    let adminDb: ReturnType<
+      (typeof import("@/lib/chat/historicalAuthorshipRepairAdmin"))["getRepairAdminDb"]
+    > | null = null;
+
+    try {
+      const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
+      adminDb = getRepairAdminDb();
+    } catch (error) {
+      if ((error as Error)?.message !== "admin_sdk_unavailable") throw error;
+    }
+
+    const readAdminCollection = async (name: string, limit?: number) => {
+      if (!adminDb) return null;
+      let query = adminDb.collection(name);
+      // A bounded, unsorted scan could count expired rows while excluding
+      // newer visitors. Sort by heartbeat before applying the existing limit.
+      if (name === "anonimos_activos") query = query.orderBy("lastSeenAt", "desc");
+      if (limit) query = query.limit(limit);
+      const snap = await query.get();
+      return snap.docs.map((doc: AdminDocumentSnapshot) => ({
+        ...doc.data(),
+        id: doc.id,
+        _firestoreCreateTime: doc.createTime?.toDate?.()?.toISOString?.() || "",
+      })) as Record<string, unknown>[];
+    };
+
+    const adminCollections = adminDb
+      ? await Promise.all([
+          readAdminCollection("usuarios"),
+          readAdminCollection("historias", 500),
+          readAdminCollection("chats", 500),
+          readAdminCollection("reportes", 200),
+          readAdminCollection("anonimos_activos", 250),
+          readAdminCollection("admin_logs", 120),
+        ])
+      : null;
+
+    const safeFallbackQuery = async (
+      load: () => Promise<Record<string, unknown>[]>,
+    ) => {
+      try {
+        return await load();
+      } catch {
+        return [];
+      }
+    };
+
+    const [users, stories, chats, reports, anonDocs, logs] = adminCollections
+      ? (adminCollections as Record<string, unknown>[][])
+      : await Promise.all([
+          runCollectionQueryAllByDocumentId("usuarios"),
+          safeFallbackQuery(() => runCollectionQuery("historias", 500, "createdAt")),
+          safeFallbackQuery(() => runCollectionQuery("chats", 500, "updatedAt")),
+          safeFallbackQuery(() => runCollectionQuery("reportes", 200, "createdAt")),
+          safeFallbackQuery(() => runCollectionQuery("anonimos_activos", 250, "lastSeenAt")),
+          safeFallbackQuery(() => runCollectionQuery("admin_logs", 120, "timestamp")),
+        ]);
+
+    // Match the Shuffle API's semantics: one valid, live visitor card per
+    // Firebase anonymous owner. Multiple old aliases never inflate this KPI.
+    const anonymousOwners = new Set<string>();
+    for (const doc of anonDocs) {
+      if (!isAnonActive(doc, now)) continue;
+      const source = String(doc.source || "");
+      if (source && source !== "anon_match_presence") continue;
+      const docId = String(doc.id || doc.anonId || "").trim();
+      const chatId =
+        sanitizeShuffleVisitorChatId(doc.chatSessionId) ||
+        sanitizeShuffleVisitorChatId(docId);
+      if (!chatId) continue;
+      const owner = String(doc.authUid || docId).trim();
+      if (owner) anonymousOwners.add(owner);
+    }
+
+    const usersTotal = new Set(
+      users
+        .map((user) => String(user.uid || user.id || "").trim())
+        .filter(Boolean),
+    ).size;
 
     const usersOnline = users.filter((user) =>
       isLiveByConnection(
@@ -93,9 +173,9 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       stats: {
-        usersTotal: users.length,
+        usersTotal,
         usersOnline,
-        anonymousOnline: anonDocs.filter((doc) => isAnonActive(doc, now)).length,
+        anonymousOnline: anonymousOwners.size,
         storiesActive,
         chatsActive,
         messagesLast24h,

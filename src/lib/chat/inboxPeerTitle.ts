@@ -9,6 +9,11 @@ import {
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { isVisibleInboxChat } from "@/lib/chat/inboxVisible";
 import { preferInboxChat } from "@/lib/chat/inboxShellGuard";
+import {
+  listThreadAnonIds,
+  rootAnonContinuityId,
+  visitorOwnsAnonId,
+} from "@/lib/chat/threadAnonContinuity";
 
 export function formatAnonSessionLabel(sessionId: string) {
   const raw = String(sessionId || "").trim();
@@ -118,6 +123,18 @@ export function isAnonVisitorProfileChat(chat: InboxChat, firebaseUid = "") {
     if (members.includes(liveAnonId)) return true;
   }
 
+  // Continuity after epoch/bind rotation: this browser already proved ownership
+  // of the thread anon even when getChatAnonSenderId() advanced.
+  const known = listThreadAnonIds(
+    chatId,
+    [liveAnonId],
+    {
+      authUid: String(firebaseUid || "").trim(),
+      rootAnonSessionId: rootAnonContinuityId(),
+    },
+  );
+  if (visitorOwnsAnonId(threadAnonId, known)) return true;
+
   return false;
 }
 
@@ -180,6 +197,10 @@ export function chatPeerTitle(
 ) {
   const chatId = chat.canonicalChatId || chat.id;
   const username = profileUsername(chat);
+
+  if (chat.inboxKind === "anon_direct" || chat.sourceCollection === "chats_anonimos") {
+    return "Anónimo";
+  }
 
   if (
     chat.hideProfileFromVisitor === true &&

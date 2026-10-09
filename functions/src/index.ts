@@ -9,6 +9,7 @@ import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { db, ensureAdminApp, messaging } from "./adminApp";
+export { onAnonDirectMessageCreated, resolveAnonDirectPushDelivery, anonDirectPushPreview, anonDirectPushRecipientAlias, anonDirectPushPresenceFresh } from "./anonDirectPush";
 
 import { isValidFcmInstallationId, isValidInstallationProof } from "./fcmInstallation";
 import {
@@ -57,6 +58,9 @@ export { handleDeleteChatMessage } from "./deleteChatMessage";
 export { db, ensureAdminApp, resolveAdminApp } from "./adminApp";
 export {
   decideChatMessageDelete,
+  isActiveAnonMatchAuthMember,
+  isAnonMatchBoundMessageAuthor,
+  isAnonMatchChatDoc,
   isCanonicalMessageAuthor,
   isChatMember,
   isQuietEveryoneDeleteSummary,

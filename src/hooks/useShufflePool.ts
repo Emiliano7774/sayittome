@@ -54,6 +54,13 @@ import {
 } from "@/lib/shuffle/pickWindow";
 import { mixShuffleWindow } from "@/lib/shuffle/shuffleRecencyMix";
 import {
+  filterShuffleFairLiveVisitors,
+  markShuffleFairWindow,
+  nextUnseenShufflePool,
+  shuffleFairCycleScope,
+  shuffleFairSeen,
+} from "@/lib/shuffle/shuffleFairCycle";
+import {
   attachShuffleProfilerWindow,
   shuffleCount,
   shuffleDump,
@@ -208,6 +215,27 @@ export function useShufflePool() {
   const shuffleClickCountRef = useRef(0);
   const shuffleClickInFlightRef = useRef(false);
   const recentBatchKeysQueueRef = useRef<Set<string>[]>([]);
+  // All eligible identities appear once per filter cycle, despite trimmed batch pages.
+  // Module-scope memory survives same-tab remounts without Firestore reads.
+  function currentShuffleFairSeen() {
+    return shuffleFairSeen(
+      shuffleFairCycleScope(filtersRef.current, searchRef.current),
+    );
+  }
+
+  function syncCycleLiveVisitors(
+    visitors: ShuffleProfile[],
+    now: number,
+    options: { preferVisitors?: boolean; fillers?: ShuffleProfile[] },
+  ) {
+    const eligible = filterShuffleFairLiveVisitors(
+      visitors,
+      getVisibleShuffleProfiles(),
+      currentShuffleFairSeen(),
+    );
+    syncLiveShuffleVisitors(eligible, now, options);
+    markShuffleFairWindow(getVisibleShuffleProfiles(), currentShuffleFairSeen());
+  }
   const mountedRef = useRef(false);
 
   function windowSignature(profiles: ShuffleProfile[]) {
@@ -263,6 +291,7 @@ export function useShufflePool() {
     profiles: ShuffleProfile[],
     options: { shuffleRound?: boolean; resetBatchMemory?: boolean },
   ) {
+    markShuffleFairWindow(profiles, currentShuffleFairSeen());
     if (options.resetBatchMemory) {
       clearBatchMemory();
       pushBatchMemory(profiles);
@@ -472,7 +501,12 @@ export function useShufflePool() {
         // fall through — pool ready, visible empty: deal window
       }
 
-      const excludeKeys = buildWindowExcludeKeys({ excludeRecentBatches });
+      // Round-robin fairness uses complete filter-scoped seen memory; older
+      // registered batch queue must never hide still-unseen eligible people.
+      const cyclePage = forceReplace || excludeRecentBatches;
+      const excludeKeys = cyclePage
+        ? new Set(getShuffleExcludeKeys())
+        : buildWindowExcludeKeys({ excludeRecentBatches });
       const excludeSet = excludeKeys.size > 0 ? excludeKeys : undefined;
 
       let featured = dedupeShuffleProfiles(featuredRef.current);
@@ -488,12 +522,20 @@ export function useShufflePool() {
           featuredKeys.add(key);
         }
       }
-      const eligiblePool = dedupeShuffleProfiles(
+      const dedupedPool = dedupeShuffleProfiles(
         pool.filter((profile) => {
           const keys = shuffleProfileDedupeKeys(profile);
           return keys.length === 0 || !keys.some((key) => featuredKeys.has(key));
         }),
       );
+      const eligiblePool = cyclePage
+        ? nextUnseenShufflePool(
+            dedupedPool.filter(
+              (profile) => !profileMatchesExcludeKeys(profile, excludeKeys),
+            ),
+            currentShuffleFairSeen(),
+          ).pool
+        : dedupedPool;
       const len = eligiblePool.length;
       const featuredCount = featured.length;
 
@@ -523,24 +565,20 @@ export function useShufflePool() {
 
       const remainingSlots = Math.max(0, SHUFFLE_WINDOW_SIZE - featuredCount);
       const soloOnlineWindow = filtersRef.current.soloOnline === true;
+      // Both normal Shuffle and Solo conectados interleave live anons with
+      // registered profiles. The old online path grouped every anon at the
+      // start as a list instead of mixing their cards.
       const mixedWindow =
         len > 0
-          ? soloOnlineWindow
-            ? (() => {
-                // Solo-online: show every live anon first, then online profiles.
-                const visitors = eligiblePool.filter((profile) => profile.shuffleVisitor);
-                const others = eligiblePool.filter((profile) => !profile.shuffleVisitor);
-                return [...visitors, ...others].slice(0, remainingSlots);
-              })()
-            : mixShuffleWindow(eligiblePool, {
-                now: Date.now(),
-                windowSize: remainingSlots,
-                excludeKeys: excludeSet,
-                isExcluded: excludeSet
-                  ? (profile) => profileMatchesExcludeKeys(profile, excludeSet)
-                  : undefined,
-                strictExclude: excludeRecentBatches,
-              })
+          ? mixShuffleWindow(eligiblePool, {
+              now: Date.now(),
+              windowSize: remainingSlots,
+              excludeKeys: excludeSet,
+              isExcluded: excludeSet
+                ? (profile) => profileMatchesExcludeKeys(profile, excludeSet)
+                : undefined,
+              strictExclude: cyclePage || (excludeRecentBatches && !soloOnlineWindow),
+            })
           : [];
       const indexByIdentity = new Map<string, number>();
       for (let index = 0; index < eligiblePool.length; index++) {
@@ -909,10 +947,10 @@ export function useShufflePool() {
           if (!q) {
             // Solo-online often empties the painted window before visitors land —
             // still inject live anons (same path as the 45s presence poll).
-            syncLiveShuffleVisitors(
+            syncCycleLiveVisitors(
               activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
               Date.now(),
-              { preferVisitors: filtersRef.current.soloOnline },
+              { preferVisitors: filtersRef.current.soloOnline, fillers: activePoolRef.current },
             );
             // Rehydrate visitors after registered-pool load when solo-online —
             // applyPool preserves prior anons, but cold cache may have none yet.
@@ -921,7 +959,7 @@ export function useShufflePool() {
                 try {
                   const res = await fetchShuffleVisitorsApi();
                   const json = await res.json();
-                  if (!mountedRef.current) return;
+                  if (!res.ok || json?.ok !== true || !mountedRef.current) return;
                   const visitors = normalizeShuffleProfiles(json?.profiles).filter(
                     (profile) => profile.shuffleVisitor === true,
                   );
@@ -931,7 +969,7 @@ export function useShufflePool() {
                   );
                   poolRef.current = dedupeShuffleProfiles([...base, ...visitors]);
                   filterActivePool(searchRef.current.trim(), filtersRef.current);
-                  syncLiveShuffleVisitors(visitors, Date.now(), { preferVisitors: true });
+                  syncCycleLiveVisitors(visitors, Date.now(), { preferVisitors: true, fillers: activePoolRef.current });
                   if (
                     getVisibleShuffleProfiles().every(
                       (profile) => !profile.shuffleVisitor,
@@ -1197,7 +1235,7 @@ export function useShufflePool() {
           try {
             const res = await fetchShuffleVisitorsApi();
             const json = await res.json();
-            if (!mountedRef.current) return;
+            if (!res.ok || json?.ok !== true || !mountedRef.current) return;
             const visitors = normalizeShuffleProfiles(json?.profiles).filter(
               (profile) => profile.shuffleVisitor === true,
             );
@@ -1206,7 +1244,7 @@ export function useShufflePool() {
             filterActivePool(searchRef.current.trim(), filtersRef.current, {
               forceWindow: true,
             });
-            syncLiveShuffleVisitors(visitors, Date.now(), { preferVisitors: true });
+            syncCycleLiveVisitors(visitors, Date.now(), { preferVisitors: true, fillers: activePoolRef.current });
             // Android WebView sometimes painted profiles-only before visitors
             // landed; force one more deal when anons are in the pool but not visible.
             if (
@@ -1276,6 +1314,7 @@ export function useShufflePool() {
       const card = target.closest<HTMLElement>("[data-shuffle-card]");
       const visitor = card?.getAttribute("data-shuffle-visitor") === "1";
       const visitorChat = card?.getAttribute("data-visitor-chat") || "";
+      const visitorMatch = card?.getAttribute("data-visitor-match") || "";
 
       const captureLeave = () => {
         const root = findShuffleKeepAliveScrollRoot();
@@ -1303,7 +1342,7 @@ export function useShufflePool() {
         fastRouterPush(router, `/stories/${encodeURIComponent(ownerUid || username)}`);
       } else if (visitor && (action === "chat" || action === "profile")) {
         captureLeave();
-        void openVisitorChat(router, visitorChat);
+        void openVisitorChat(router, visitorChat, visitorMatch);
       } else if (action === "profile") {
         stashProfileReturnTo("/shuffle");
         captureLeave();
@@ -1594,7 +1633,7 @@ export function useShufflePool() {
       try {
         const res = await fetchShuffleVisitorsApi();
         const json = await res.json();
-        if (!mountedRef.current) return;
+        if (!res.ok || json?.ok !== true || !mountedRef.current) return;
         const visitors = normalizeShuffleProfiles(json?.profiles).filter(
           (profile) => profile.shuffleVisitor === true,
         );
@@ -1632,10 +1671,10 @@ export function useShufflePool() {
         setFilteredCount(activePoolRef.current.length);
         // Always sync visitors — an empty painted window must still receive live anons
         // (solo-online prune → empty slots was skipping this and hiding online anons).
-        syncLiveShuffleVisitors(
+        syncCycleLiveVisitors(
           activePoolRef.current.filter((profile) => profile.shuffleVisitor === true),
           now,
-          { preferVisitors: filters.soloOnline },
+          { preferVisitors: filters.soloOnline, fillers: activePoolRef.current },
         );
         if (
           filters.soloOnline &&
