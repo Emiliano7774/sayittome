@@ -341,12 +341,15 @@ function visitorsRequestHasCustomInit(init?: RequestInit) {
 export async function fetchShuffleVisitorsApi(
   init?: RequestInit,
 ): Promise<Response> {
-  const url = `/api/shuffle?visitors=1&_=${Date.now()}`;
+  // Stable public URL lets Firebase Hosting reuse the server's existing
+  // 20-second visitor snapshot across clients. No browser-side staleness:
+  // max-age=0 always rechecks the shared edge cache.
+  const url = "/api/shuffle?visitors=1";
   if (visitorsRequestHasCustomInit(init)) {
     return fetchShuffleNetwork(url, init);
   }
   if (!visitorsInFlight) {
-    const pending = fetchShuffleNetwork(url, init).finally(() => {
+    const pending = fetchShuffleNetwork(url, { cache: "default" }).finally(() => {
       if (visitorsInFlight === pending) visitorsInFlight = null;
     });
     visitorsInFlight = pending;

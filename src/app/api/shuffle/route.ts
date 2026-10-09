@@ -39,12 +39,19 @@ const SHUFFLE_JSON_HEADERS = {
 function shuffleJson(
   req: Request,
   body: Record<string, unknown>,
-  init?: { status?: number },
+  init?: { status?: number; publicVisitorSlice?: boolean },
 ) {
   const json = JSON.stringify(body);
   const acceptEncoding = String(req.headers.get("accept-encoding") || "").toLowerCase();
   const headers = new Headers(SHUFFLE_JSON_HEADERS);
   headers.set("Content-Type", "application/json; charset=utf-8");
+  // This endpoint returns the same public visitor slice to every caller.
+  // The server already reuses it for 20s, so let Firebase Hosting's shared
+  // cache coalesce simultaneous clients without changing live-match rules.
+  if (init?.publicVisitorSlice) {
+    headers.set("Cache-Control", "public, max-age=0, s-maxage=20");
+    headers.delete("Pragma");
+  }
 
   // Firebase's dynamic SSR path does not currently compress this payload for us.
   // The full pool is hundreds of KB, so explicit compression dramatically cuts
@@ -804,7 +811,7 @@ export async function GET(req: Request) {
         returned: visitors.length,
         dedupeVersion: SHUFFLE_DEDUPE_VERSION,
         ts: Date.now(),
-      });
+      }, { publicVisitorSlice: true });
     }
 
     const { profilesCreated, anonymousOnline, totalLive } = await resolveLiveCounts(countOnly);

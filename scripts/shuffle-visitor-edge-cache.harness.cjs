@@ -1,0 +1,12 @@
+const fs=require("node:fs"),assert=require("node:assert/strict"),path=require("node:path");
+const root=path.resolve(__dirname,"..");
+const api=fs.readFileSync(path.join(root,"src/app/api/shuffle/route.ts"),"utf8");
+const client=fs.readFileSync(path.join(root,"src/lib/shuffle/shuffleSearchTypingGuard.ts"),"utf8");
+assert.match(api,/publicVisitorSlice\?: boolean/);
+assert.match(api,/headers\.set\("Cache-Control", "public, max-age=0, s-maxage=20"\)/);
+assert.match(api,/if \(visitorsOnly\)[\s\S]*?\{ publicVisitorSlice: true \}/);
+assert.match(api,/const SHUFFLE_JSON_HEADERS = \{\s*"Cache-Control": "private, no-store, no-cache, must-revalidate"/);
+assert.match(client,/const url = "\/api\/shuffle\?visitors=1";/);
+assert.match(client,/fetchShuffleNetwork\(url, \{ cache: "default" \}\)/);
+assert.doesNotMatch(client,/visitors=1&_=/);
+console.log("PASS VISITOR EDGE CACHE: 20s public visitor-only shared TTL, stable client URL, no-store retained on full/country-filtered Shuffle routes");
