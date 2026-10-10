@@ -24,6 +24,6 @@ assert.match(route,/anon_arrival_announcements/);
 const visitor=fs.readFileSync(path.join(root,"src/app/api/shuffle/route.ts"),"utf8");
 assert.match(visitor,/enteredAt: fieldString\(fields, "enteredAt"\)/);
 const component=fs.readFileSync(path.join(root,"src/components/anonMatch/AnonArrivalToast.tsx"),"utf8");
-assert.match(component,/setTimeout\(\(\)=>setArrival\(null\),2000\)/);
+assert.match(component,/setTimeout\(\(\)=>setArrival\(null\),5000\)/);
 assert.match(component,/sayittome:anon-direct-target-request/);
 console.log("PASS ANON_ARRIVAL: new-vs-heartbeat, anti-spam, privacy, alias labels, public feed, toast and click");

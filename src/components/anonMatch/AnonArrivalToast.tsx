@@ -60,7 +60,7 @@ export default function AnonArrivalToast() {
   },[scan]);
   useEffect(()=>{
     if(!arrival)return;
-    const timer=window.setTimeout(()=>setArrival(null),2000);
+    const timer=window.setTimeout(()=>setArrival(null),5000);
     return ()=>window.clearTimeout(timer);
   },[arrival]);
 
