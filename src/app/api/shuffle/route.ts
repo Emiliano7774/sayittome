@@ -29,6 +29,7 @@ import {
   profileMatchesShuffleServerFilters,
 } from "@/lib/shuffle/serverFilters";
 import { ANON_SHUFFLE_VISIBILITY_MS, anonShuffleVisible } from "@/lib/anonMatch/anonymousPresenceIdentity";
+import { readOrBuildSharedPublicPool } from "@/lib/shuffle/sharedPublicPoolCache";
 
 const SHUFFLE_JSON_HEADERS = {
   "Cache-Control": "private, no-store, no-cache, must-revalidate",
@@ -684,7 +685,18 @@ async function getProfilesCached(force = false): Promise<ApiProfile[]> {
     return cachedProfiles;
   }
   if (profileScanInFlight) return profileScanInFlight;
-  const pending = fetchProfilesUncached(force);
+  const pending = (async () => {
+    if (force) return fetchProfilesUncached(true);
+    // Cross-instance cache: one authoritative pool scan supplies every cold
+    // Cloud Run instance. Keep the source fetch age so a cache hit cannot
+    // extend the existing 10-minute staleness window.
+    const shared = await readOrBuildSharedPublicPool<ApiProfile>(() =>
+      fetchProfilesUncached(false),
+    );
+    cachedProfiles = shared.items;
+    cachedProfilesAt = shared.refreshedAtMs;
+    return shared.items;
+  })();
   profileScanInFlight = pending;
   try {
     return await pending;
