@@ -35,6 +35,7 @@ assert.match(component,/sayittome:anon-direct-target-request/);
 const routing=fs.readFileSync(path.join(root,"src/contexts/AnonMatchContext.tsx"),"utf8");
 assert.match(routing,/router\.push\(`\/chat\/\$\{encodeURIComponent\(String\(json\.chatId\)\)\}`\)/,"anonymous click navigates to real chat");
 assert.match(routing,/notifyArrival\("opened"\)/,"handler confirms successful navigation");
-assert.match(routing,/notifyArrival\("invited"\)|notifyArrival\(searchSessionActiveRef\.current \? "invited"/,"profile uses existing request consent flow");
+assert.match(routing,/pending\?\.targetAnonId === wanted && pending\?\.solicitudId/,"profile only confirms invited after server-issued solicitudId");
+assert.match(routing,/\? "invited"/,"profile uses consent-based request status");
 assert.match(routing,/if \(!arrivalClick\) window\.alert/,"arrival failures use in-app status, not unrelated alert");
 console.log("PASS ANON_ARRIVAL: realtime notifications, 5s toast, hidden-tab cost pause, verified click, consent, offline states");

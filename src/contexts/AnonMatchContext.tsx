@@ -914,11 +914,11 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
       void (async () => {
         const caller = await resolveLiveAnonMatchCaller();
         if (caller.isRegisteredProfile) {
-          // Profile-to-anon matches require acceptance; never invent an
-          // immediate direct chat or silently replace an existing search.
+          // Keep the viewer on their current screen. Sending a registered
+          // profile to /shuffle was causing a visible route reset without
+          // opening any chat. Profile->anon still requires acceptance.
           if (!isAnonMatchDoorOpen(caller.user)) {
             notifyArrival("consent_required");
-            router.push("/shuffle");
             return;
           }
           if (searchSessionActiveRef.current) {
@@ -926,9 +926,15 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
             return;
           }
           targetAnonIdRef.current = wanted;
-          router.push("/shuffle");
           await startSearchSession();
-          notifyArrival(searchSessionActiveRef.current ? "invited" : "unavailable");
+          // A request is only sent once attemptConnect confirms its server
+          // solicitudId. A local searching latch alone isn't delivery proof.
+          const pending = waitingMetaRef.current;
+          notifyArrival(
+            pending?.targetAnonId === wanted && pending?.solicitudId
+              ? "invited"
+              : "unavailable",
+          );
           return;
         }
         if (searchSessionActiveRef.current) {

@@ -18,6 +18,7 @@ export default function AnonArrivalToast() {
   const [arrival,setArrival] = useState<Arrival | null>(null);
   const [notice,setNotice] = useState<Notice | null>(null);
   const [opening,setOpening] = useState(false);
+  const [registeredViewer,setRegisteredViewer] = useState(false);
   const lastKey=useRef("");
   const handledHref=useRef("");
   const activeTarget=useRef("");
@@ -50,6 +51,7 @@ export default function AnonArrivalToast() {
     };
     const unsubscribeAuth=onAuthStateChanged(auth,user=>{
       loggedIn=Boolean(user);
+      setRegisteredViewer(Boolean(user && !user.isAnonymous));
       if(!user)lastKey.current="";
       connect();
     });
@@ -124,10 +126,10 @@ export default function AnonArrivalToast() {
   const label=arrival?anonArrivalPublicLabel(arrival.id):"";
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-[10000] flex justify-center px-4">
-      {arrival ? <button type="button" onClick={()=>void open(arrival.id)} className="pointer-events-auto flex w-full max-w-[370px] items-center gap-3 rounded-2xl border border-violet-400/20 bg-[#14111e]/95 px-4 py-3 text-left text-white shadow-2xl backdrop-blur-xl" aria-label={"Hablar con el anónimo "+label}>
+      {arrival ? <button type="button" onClick={()=>void open(arrival.id)} className="pointer-events-auto flex w-full max-w-[370px] items-center gap-3 rounded-2xl border border-violet-400/20 bg-[#14111e]/95 px-4 py-3 text-left text-white shadow-2xl backdrop-blur-xl" aria-label={(registeredViewer?"Invitar al anónimo ":"Hablar con el anónimo ")+label}>
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-violet-300"><MessageCircle size={19}/></span>
-        <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-semibold">Anónimo {label} acaba de entrar</span><span className="block text-xs text-white/60">Tocá para empezar a hablar</span></span>
-        <span className="shrink-0 text-[10px] font-semibold text-violet-300">ABRIR</span>
+        <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-semibold">Anónimo {label} acaba de entrar</span><span className="block text-xs text-white/60">{registeredViewer?"Tocá para invitarlo a conversar":"Tocá para empezar a hablar"}</span></span>
+        <span className="shrink-0 text-[10px] font-semibold text-violet-300">{registeredViewer?"INVITAR":"ABRIR"}</span>
       </button> :
       <div role="status" className="pointer-events-none w-full max-w-[370px] rounded-2xl border border-violet-400/20 bg-[#14111e]/95 px-4 py-3 text-sm text-white shadow-2xl backdrop-blur-xl">
         {opening?"Comprobando conexión…":notice?.text}
