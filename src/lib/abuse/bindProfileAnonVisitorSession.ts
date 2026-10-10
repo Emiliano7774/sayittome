@@ -1,14 +1,12 @@
 /**
  * Bind visitor auth → private chat lease (server-atomic create when chat missing).
- * Uses live anon for epoch switch — rotates session only once if server requires new epoch.
+ * Never rotate a live anonymous identity in response to a chat bind failure:
+ * only an explicit session reset/logout can change it.
  */
-import { auth } from "@/lib/firebase";
 import { ensureStorageAuth } from "@/lib/auth/ensureStorageAuth";
 import { fetchAbuseApi } from "@/lib/abuse/abuseApiBase";
 import { resolveSendChatIdForLiveAnon } from "@/lib/abuse/profileAnonAbuseBlock";
-import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
-import { rotateAnonSessionPreserving } from "@/lib/chat/anonSession";
 
 export async function bindProfileAnonVisitorSession(input: {
   receptorUid: string;
@@ -28,8 +26,8 @@ export async function bindProfileAnonVisitorSession(input: {
     username,
     liveAnonId: live,
   });
-  let chatId = resolved.chatId;
-  let epochSwitched = resolved.epochSwitched;
+  const chatId = resolved.chatId;
+  const epochSwitched = resolved.epochSwitched;
 
   async function postBind(targetChatId: string) {
     const res = await fetchAbuseApi("/api/abuse/bind-visitor-session", {
@@ -51,7 +49,7 @@ export async function bindProfileAnonVisitorSession(input: {
     return { res, json };
   }
 
-  let { res, json } = await postBind(chatId);
+  const { res, json } = await postBind(chatId);
   if (res.ok && json?.ok && json.chatId) {
     return {
       chatId: String(json.chatId),
@@ -60,29 +58,9 @@ export async function bindProfileAnonVisitorSession(input: {
     };
   }
 
-  if (
-    json?.requireNewEpoch ||
-    json?.error === "legacy_unbound" ||
-    json?.error === "foreign_lease" ||
-    json?.error === "foreign_anon_alias"
-  ) {
-    // Server rejected: mint ONE fresh anon session and retry (never double-rotate live).
-    const { next } = rotateAnonSessionPreserving();
-    const nextChatId = buildProfileAnonChatId(next, username);
-    if (!nextChatId || nextChatId === chatId) {
-      throw Object.assign(new Error("epoch_rotate_failed"), { status: 409 });
-    }
-    chatId = nextChatId;
-    epochSwitched = true;
-    ({ res, json } = await postBind(chatId));
-    if (res.ok && json?.ok && json.chatId) {
-      return {
-        chatId: String(json.chatId),
-        created: Boolean(json.created),
-        rotated: true,
-      };
-    }
-  }
+  // A foreign/legacy lease is a 409 conflict, not permission to impersonate
+  // another anonymous identity. Preserve this live session and let callers
+  // surface the rejection instead of silently changing the anon for ALL chats.
 
   const err = new Error(String(json?.error || "bind_failed")) as Error & {
     status?: number;

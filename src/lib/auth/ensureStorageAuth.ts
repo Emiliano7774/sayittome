@@ -3,6 +3,7 @@ import { signInAnonymously, type User } from "firebase/auth";
 import {
   adoptTabLocalAnonymousAuth,
   useAnonymousTabPersistence,
+  waitForAnonymousAdoption,
   writeTabAnonClaim,
 } from "@/lib/auth/authPersistence";
 import { auth } from "@/lib/firebase";
@@ -42,6 +43,9 @@ export async function ensureStorageAuth(options?: {
   allowAnonymous?: boolean;
 }): Promise<User> {
   await auth.authStateReady();
+  // Re-entry, reconnect and API consumers must share one inherited-uid
+  // transition rather than minting another identity mid-session.
+  await waitForAnonymousAdoption();
 
   const action = resolveStorageAuthAction(auth.currentUser, options);
   if (action === "use-current" && auth.currentUser) {
