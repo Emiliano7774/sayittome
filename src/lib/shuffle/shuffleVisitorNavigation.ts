@@ -62,28 +62,28 @@ export async function openVisitorChat(
 ) {
   const visitorId = sanitizeShuffleVisitorChatId(visitorChatId);
   const matchAlias = sanitizeShuffleVisitorChatId(visitorMatchAnonId);
-  if (!visitorId) return;
+  if (!visitorId) return false;
   const user = auth.currentUser || await ensureStorageAuth({ allowAnonymous: true }).catch(() => null);
-  if (!user) return;
+  if (!user) return false;
   if (user.isAnonymous) {
     // Profile-anon local session IDs are NOT bound match aliases. Only a
     // verified server alias may be used for targeted anon-to-anon routing.
     if (!matchAlias) {
       window.alert("La sesión anónima ya no está disponible. Actualizá Shuffle.");
-      return;
+      return false;
     }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("sayittome:anon-direct-target-request", {
         detail: { targetAnonId: matchAlias },
       }));
     }
-    return;
+    return true;
   }
 
   const username = await readOwnUsername(user.uid);
   if (!username) {
     requestAnonProfileGate({ allowChat: false, username: "" });
-    return;
+    return false;
   }
 
   const chatId = buildProfileAnonChatId(visitorId, username);
@@ -92,4 +92,5 @@ export async function openVisitorChat(
     router,
     `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}&anonPeer=1`,
   );
+  return true;
 }

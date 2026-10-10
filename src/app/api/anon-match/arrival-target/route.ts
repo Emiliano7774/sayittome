@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { pickAvailableMatchTarget } from "@/lib/anonMatch/matchPool";
+import { getAnonMatchAdminDoc } from "@/lib/anonMatch/anonMatchAdminStore";
+import { sanitizeShuffleVisitorChatId } from "@/lib/shuffle/shuffleVisitorId";
 import { lookupAnonMatchAliasBinding } from "@/lib/anonMatch/anonMatchAliasAdmin";
 import { verifyAnonMatchCaller } from "@/lib/anonMatch/verifyAnonMatchCaller";
 
@@ -29,6 +31,23 @@ export async function POST(req: Request) {
     const targetUid=await lookupAnonMatchAliasBinding(anonId);
     if (!targetUid || targetUid===caller.uid) {
       return NextResponse.json({available:false,error:"invalid_target"}, {status:409,headers:{"Cache-Control":"no-store"}});
+    }
+    // Registered profiles must open the exact same profile-anon chat as a
+    // Shuffle visitor card (chatSessionId), NOT a random match invitation.
+    // The visitor ID is server-sourced only after live presence and audience
+    // checks; it must never come from the requesting client.
+    if (!caller.isAnonymous) {
+      const livePresence = await getAnonMatchAdminDoc("anonimos_activos", anonId);
+      if (!livePresence || livePresence.source !== "anon_match_presence" ||
+          String(livePresence.authUid || "") !== targetUid || livePresence.sessionClosed === true) {
+        return NextResponse.json({available:false,error:"target_offline"}, {status:409,headers:{"Cache-Control":"no-store"}});
+      }
+      const visitorChatId = sanitizeShuffleVisitorChatId(livePresence.chatSessionId) ||
+        sanitizeShuffleVisitorChatId(anonId);
+      if (!visitorChatId) {
+        return NextResponse.json({available:false,error:"missing_visitor_chat_id"}, {status:409,headers:{"Cache-Control":"no-store"}});
+      }
+      return NextResponse.json({available:true,visitorChatId}, {headers:{"Cache-Control":"no-store"}});
     }
     return NextResponse.json({available:true}, {headers:{"Cache-Control":"no-store"}});
   } catch(error) {

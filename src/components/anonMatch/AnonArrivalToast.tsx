@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { MessageCircle } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -8,6 +9,7 @@ import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 import { anonArrivalPublicLabel, isAnonArrivalAlias } from "@/lib/anonMatch/anonArrival";
 import { fetchAnonMatch } from "@/lib/anonMatch/fetchAnonMatch";
 import { readDiscoveryPayload } from "@/lib/shuffle/audiencePayload";
+import { openVisitorChat } from "@/lib/shuffle/shuffleVisitorNavigation";
 
 type Arrival = { id: string; enteredAt: string };
 type Notice = { text: string; kind: "offline"|"error"|"waiting" };
@@ -18,7 +20,7 @@ export default function AnonArrivalToast() {
   const [arrival,setArrival] = useState<Arrival | null>(null);
   const [notice,setNotice] = useState<Notice | null>(null);
   const [opening,setOpening] = useState(false);
-  const [registeredViewer,setRegisteredViewer] = useState(false);
+  const router=useRouter();
   const lastKey=useRef("");
   const handledHref=useRef("");
   const activeTarget=useRef("");
@@ -51,7 +53,6 @@ export default function AnonArrivalToast() {
     };
     const unsubscribeAuth=onAuthStateChanged(auth,user=>{
       loggedIn=Boolean(user);
-      setRegisteredViewer(Boolean(user && !user.isAnonymous));
       if(!user)lastKey.current="";
       connect();
     });
@@ -97,17 +98,27 @@ export default function AnonArrivalToast() {
         setNotice({kind:"offline",text:"Este anónimo ya no está disponible."});
         return;
       }
-      setNotice({kind:"waiting",text:"Conectando con el anónimo…"});
+      setNotice({kind:"waiting",text:"Abriendo chat…"});
+      if (auth.currentUser?.isAnonymous === false) {
+        // Exactly the same direct profile-anon route as tapping this visitor
+        // in Shuffle. No random-matching request or invitation.
+        const visitorChatId=String(result.visitorChatId||"").trim();
+        const navigated=await openVisitorChat(router,visitorChatId,id);
+        if (!navigated) {
+          setNotice({kind:"error",text:"No se pudo abrir el chat. Intentá nuevamente."});
+        } else {
+          setNotice(null);
+        }
+        return;
+      }
       window.dispatchEvent(new CustomEvent("sayittome:anon-direct-target-request",{
         detail:{targetAnonId:id,source:"arrival"},
       }));
-      // The chat provider emits an explicit opened / invited / unavailable
-      // status after it has handled the request; never claim a chat opened yet.
     }catch(error){
       console.warn("[anon-arrival] open failed",String(error));
       setNotice({kind:"error",text:"No se pudo abrir el chat. Intentá nuevamente."});
     }finally{openInFlight.current=false;setOpening(false);}
-  },[]);
+  },[router]);
 
   useEffect(()=>{
     const consume=()=>{
@@ -126,10 +137,10 @@ export default function AnonArrivalToast() {
   const label=arrival?anonArrivalPublicLabel(arrival.id):"";
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-[10000] flex justify-center px-4">
-      {arrival ? <button type="button" onClick={()=>void open(arrival.id)} className="pointer-events-auto flex w-full max-w-[370px] items-center gap-3 rounded-2xl border border-violet-400/20 bg-[#14111e]/95 px-4 py-3 text-left text-white shadow-2xl backdrop-blur-xl" aria-label={(registeredViewer?"Invitar al anónimo ":"Hablar con el anónimo ")+label}>
+      {arrival ? <button type="button" onClick={()=>void open(arrival.id)} className="pointer-events-auto flex w-full max-w-[370px] items-center gap-3 rounded-2xl border border-violet-400/20 bg-[#14111e]/95 px-4 py-3 text-left text-white shadow-2xl backdrop-blur-xl" aria-label={"Hablar con el anónimo "+label}>
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-violet-300"><MessageCircle size={19}/></span>
-        <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-semibold">Anónimo {label} acaba de entrar</span><span className="block text-xs text-white/60">{registeredViewer?"Tocá para invitarlo a conversar":"Tocá para empezar a hablar"}</span></span>
-        <span className="shrink-0 text-[10px] font-semibold text-violet-300">{registeredViewer?"INVITAR":"ABRIR"}</span>
+        <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-semibold">Anónimo {label} acaba de entrar</span><span className="block text-xs text-white/60">Tocá para empezar a hablar</span></span>
+        <span className="shrink-0 text-[10px] font-semibold text-violet-300">ABRIR</span>
       </button> :
       <div role="status" className="pointer-events-none w-full max-w-[370px] rounded-2xl border border-violet-400/20 bg-[#14111e]/95 px-4 py-3 text-sm text-white shadow-2xl backdrop-blur-xl">
         {opening?"Comprobando conexión…":notice?.text}
