@@ -24,10 +24,14 @@ export default function AnonArrivalToast() {
   const openInFlight=useRef(false);
 
   useEffect(()=>{
-    let unsubscribeDoc: (()=>void)|undefined;
-    const unsubscribeAuth=onAuthStateChanged(auth, user=>{
+    let unsubscribeDoc:(()=>void)|undefined;
+    let loggedIn=false;
+    const connect=()=>{
+      // Only foreground viewers need an arrival banner. Keeping a listener
+      // alive behind a hidden tab would charge one Firestore read for every
+      // entrance even though the banner cannot be seen.
       unsubscribeDoc?.();unsubscribeDoc=undefined;
-      if(!user){lastKey.current="";return;}
+      if(!loggedIn||document.hidden)return;
       unsubscribeDoc=onSnapshot(doc(db,"anon_arrival_announcements","latest"),snap=>{
         if(!snap.exists())return;
         const raw=snap.data();
@@ -41,11 +45,20 @@ export default function AnonArrivalToast() {
         lastKey.current=key;
         if(id===getStoredAnonMatchAlias())return;
         if(entered>current+10_000||current-entered>MAX_ENTRY_AGE_MS)return;
-        if(document.hidden)return;
         setNotice(null);setArrival({id,enteredAt});
       },err=>console.warn("[anon-arrival] realtime unavailable",err.code||String(err)));
+    };
+    const unsubscribeAuth=onAuthStateChanged(auth,user=>{
+      loggedIn=Boolean(user);
+      if(!user)lastKey.current="";
+      connect();
     });
-    return ()=>{unsubscribeDoc?.();unsubscribeAuth();};
+    document.addEventListener("visibilitychange",connect);
+    return ()=>{
+      document.removeEventListener("visibilitychange",connect);
+      unsubscribeDoc?.();
+      unsubscribeAuth();
+    };
   },[]);
   useEffect(()=>{
     const onStatus=(event:Event)=>{
