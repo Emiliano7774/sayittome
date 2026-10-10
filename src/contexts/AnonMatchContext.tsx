@@ -895,21 +895,40 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
   // immediately. Only the separate random discovery uses invitations.
   useEffect(() => {
     const onTarget = (event: Event) => {
-      const wanted = String(
-        (event as CustomEvent<{ targetAnonId?: string }>).detail?.targetAnonId || "",
-      ).trim();
+      const eventDetails = (event as CustomEvent<{ targetAnonId?: string; source?: string }>).detail;
+      const wanted = String(eventDetails?.targetAnonId || "").trim();
+      const arrivalClick = eventDetails?.source === "arrival";
+      const notifyArrival = (status: string) => {
+        if (!arrivalClick) return;
+        window.dispatchEvent(new CustomEvent("sayittome:anon-arrival-open-status", {
+          detail: { targetAnonId: wanted, status },
+        }));
+      };
       if (!/^anon_[a-z0-9_]{6,80}$/i.test(wanted)) return;
-      if (shuffleDirectOpenInFlightRef.current) return;
+      if (shuffleDirectOpenInFlightRef.current) {
+        notifyArrival("busy");
+        return;
+      }
       shuffleDirectOpenInFlightRef.current = true;
 
       void (async () => {
         const caller = await resolveLiveAnonMatchCaller();
         if (caller.isRegisteredProfile) {
-          // A registered viewer can target the arriving anon through the
-          // existing consent/acceptance flow, without forging an anon alias.
+          // Profile-to-anon matches require acceptance; never invent an
+          // immediate direct chat or silently replace an existing search.
+          if (!isAnonMatchDoorOpen(caller.user)) {
+            notifyArrival("consent_required");
+            router.push("/shuffle");
+            return;
+          }
+          if (searchSessionActiveRef.current) {
+            notifyArrival("busy");
+            return;
+          }
           targetAnonIdRef.current = wanted;
           router.push("/shuffle");
           await startSearchSession();
+          notifyArrival(searchSessionActiveRef.current ? "invited" : "unavailable");
           return;
         }
         if (searchSessionActiveRef.current) {
@@ -960,9 +979,12 @@ export function AnonMatchProvider({ children }: { children: ReactNode }) {
         // Direct cards navigate to the ordinary full-page chat route, not
         // the floating modal reserved for random matching.
         router.push(`/chat/${encodeURIComponent(String(json.chatId))}`);
+        notifyArrival("opened");
       })().catch((err) => {
-        console.warn("[anon-shuffle-direct] open failed", String(err?.message || err));
-        window.alert("No se pudo abrir este chat. Si el anónimo sigue conectado, actualizá Shuffle e intentá otra vez.");
+        const errorText = String(err?.message || err);
+        console.warn("[anon-shuffle-direct] open failed", errorText);
+        notifyArrival(/offline|restricted|invalid_binding|chat_closed/i.test(errorText) ? "unavailable" : "error");
+        if (!arrivalClick) window.alert("No se pudo abrir este chat. Si el anónimo sigue conectado, actualizá Shuffle e intentá otra vez.");
       }).finally(() => { shuffleDirectOpenInFlightRef.current = false; });
     };
     window.addEventListener("sayittome:anon-direct-target-request", onTarget);

@@ -11,7 +11,11 @@ export function isNewAnonymousArrival(input: {
   const announced = Date.parse(String(input.priorAnnouncedAt || ""));
   const newSession = input.priorSessionClosed === true ||
     !Number.isFinite(seen) || input.nowMs - seen > ANON_ARRIVAL_FRESH_MS;
-  const cooldownOk = !Number.isFinite(announced) || input.nowMs - announced >= ANON_ARRIVAL_MIN_REANNOUNCE_MS;
+  // An explicit session close followed by a fresh entry is a real arrival,
+  // even when the same alias reconnects within the previous 15-minute window.
+  // Heartbeats never pass newSession; push fan-out has a separate global cap.
+  const cooldownOk = input.priorSessionClosed === true ||
+    !Number.isFinite(announced) || input.nowMs - announced >= ANON_ARRIVAL_MIN_REANNOUNCE_MS;
   return newSession && cooldownOk;
 }
 

@@ -298,6 +298,13 @@ service cloud.firestore {
       }
     }
 
+    // One bounded server-authored arrival signal. Authorized anonymous and
+    // registered viewers can listen; clients cannot forge or overwrite it.
+    match /anon_arrival_announcements/{announcementId} {
+      allow get: if announcementId == 'latest' && isLoggedIn();
+      allow list, create, update, delete: if false;
+    }
+
     // Preserved productive catch-all. Exclude secrets + usuarios (+ lite mirrors)
     // and server-owned block/chat paths via collection segment
     // (never Path→string conversion — that can fail-closed and deny chats/**).
