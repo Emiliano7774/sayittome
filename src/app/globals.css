@@ -30,6 +30,16 @@ body.sayittome-has-bottom-nav main {
   padding-bottom: 0 !important;
 }
 
+/* CHAT_INBOX_LAST_ROW_REACHABLE
+ * Main-tab generic reset above zeroes pb-32 on both Chats inbox variants.
+ * Reserve actual scrollable height after the final row, above fixed nav/ads,
+ * instead of leaving the final conversations underneath the bottom bar.
+ */
+body.sayittome-has-bottom-nav main[data-chats-inbox-scroll-root] {
+  padding-bottom: calc(var(--sayittome-bottom-ui, 74px) + 24px) !important;
+  scroll-padding-bottom: calc(var(--sayittome-bottom-ui, 74px) + 24px);
+}
+
 html.sayittome-native-shell,
 body.sayittome-native-shell {
   overscroll-behavior-y: auto;

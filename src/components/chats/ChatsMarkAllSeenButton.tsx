@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { useT } from "@/contexts/LocaleContext";
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { totalUnreadCount } from "@/lib/chat/inboxUnread";
+import { clearAllLocalPendingChats } from "@/lib/chat/localPendingChats";
 import { markAllPendingChatsAsRead } from "@/lib/chat/unread";
 
 type Props = {
@@ -27,6 +28,9 @@ export default function ChatsMarkAllSeenButton({
   async function onMarkAllSeen() {
     if (inflightRef.current || busy) return;
     if (pendingCount <= 0) {
+      // Server/list has no unread rows; clear a leftover local whip latch too.
+      // This is a user-initiated "mark all seen" action, not automatic read.
+      clearAllLocalPendingChats();
       setHint(t("chats_mark_all_seen_done"));
       return;
     }

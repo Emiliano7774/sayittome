@@ -175,7 +175,7 @@ export default function ClassicChatsInbox({
   }, [sortedChats.length]);
 
   return (
-    <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content>
+    <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content data-chats-inbox-scroll-root>
       <div className="pt-[max(0.75rem,env(safe-area-inset-top))]">
         <ClassicUxModeBar className="px-4 pb-2" />
 

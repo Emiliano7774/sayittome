@@ -55,7 +55,7 @@ export default function ModernChatsInbox({
   }, [sortedChats.length]);
 
   return (
-    <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content>
+    <main className="min-h-screen bg-black pb-32 text-white" data-nav-primary-content data-chats-inbox-scroll-root>
       <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6">
         {selection.selectionMode ? (
           <ChatsSelectionToolbar

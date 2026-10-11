@@ -111,9 +111,9 @@ export function useGlobalChatAlerts() {
   );
   const viewerId = resolveInboxViewerId(uid);
   const firebaseUid = firebaseUser?.uid || uid || "";
-  useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
+  const localReadVersion = useSyncExternalStore(subscribeLocalChatRead, getLocalChatReadVersion, () => 0);
   useSyncExternalStore(subscribeSessionChatIds, getSessionChatIdsVersion, () => "");
-  useSyncExternalStore(subscribeLocalPendingChats, getLocalPendingChatsVersion, () => "0");
+  const pendingChatsVersion = useSyncExternalStore(subscribeLocalPendingChats, getLocalPendingChatsVersion, () => "0");
 
   const activeChatId = (() => {
     const match = pathname.match(/\/chat\/([^/?#]+)/);
@@ -133,7 +133,9 @@ export function useGlobalChatAlerts() {
           row.id === activeChatId || row.canonicalChatId === activeChatId,
       )
     : undefined;
-  const inboxUnread = unreadHydrated
+  // On /chats, match the row-level unread policy: cached unsynced summaries
+  // do not paint unread rows and must not independently keep the nav tick on.
+  const inboxUnread = unreadHydrated && (pathname !== "/chats" || firestoreSynced)
     ? totalUnreadCount(unreadSource, firebaseUid, { excludeChatId: activeChatId })
     : 0;
   // Whip marks pending immediately — inbox unreadCounts can lag one snapshot.
@@ -170,7 +172,7 @@ export function useGlobalChatAlerts() {
       byId.set(chat.id, chat);
       if (chat.canonicalChatId) byId.set(chat.canonicalChatId, chat);
     }
-    reconcileLocalPendingChats((chatId) => {
+    const stillUnread = (chatId: string): boolean | null => {
       if (
         chatId === activeChatId ||
         (activeChatId &&
@@ -186,7 +188,18 @@ export function useGlobalChatAlerts() {
           excludeChatId: activeChatId,
         }) > 0
       );
-    });
+    };
+    reconcileLocalPendingChats(stillUnread);
+
+    // A fresh whip latch is protected for 2.5 s. Previously, when no further
+    // Firestore snapshot arrived, nothing ran reconciliation after that grace:
+    // an already-read chat left the bottom-nav orange dot stuck indefinitely.
+    // One-shot local timer only; no extra Firestore reads or subscriptions.
+    if (countLocalPendingChats() === 0) return;
+    const timeout = window.setTimeout(() => {
+      reconcileLocalPendingChats(stillUnread);
+    }, 2700);
+    return () => window.clearTimeout(timeout);
   }, [
     unreadHydrated,
     inboxRouteEnabled,
@@ -194,6 +207,8 @@ export function useGlobalChatAlerts() {
     firebaseUid,
     activeChatId,
     firestoreSynced,
+    localReadVersion,
+    pendingChatsVersion,
   ]);
 
   const seenLatestMessageIdsRef = useRef<Map<string, string> | null>(null);

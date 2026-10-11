@@ -28,12 +28,13 @@ try {
   await page.setContent(`<!doctype html>
     <html data-sayittome-route-kind="main-tab" data-sayittome-bar-target="chats">
       <head><style>${css}</style></head>
-      <body>
+      <body class="sayittome-has-bottom-nav">
         <div id="sayittome-main-tab-keepalive-chats" class="sayittome-main-tab-keepalive-visible">
-          <main data-nav-primary-content>
+          <main data-nav-primary-content data-chats-inbox-scroll-root>
             <div data-nav-chats-primary style="height:2400px"></div>
           </main>
         </div>
+        <nav class="sayittome-bottom-nav" style="position:fixed;left:0;right:0;bottom:0;height:74px"></nav>
       </body>
     </html>`);
 
@@ -52,6 +53,17 @@ try {
 
   await page.evaluate(() => window.scrollTo(0, 900));
   assert.ok((await page.evaluate(() => window.scrollY)) > 0);
+
+  // Regression: the last chat must be wholly ABOVE the fixed bottom navigation.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const bottom = await page.evaluate(() => ({
+    lastRowBottom: document.querySelector("[data-nav-chats-primary]").getBoundingClientRect().bottom,
+    fixedNavTop: document.querySelector(".sayittome-bottom-nav").getBoundingClientRect().top,
+    scrollY: window.scrollY,
+  }));
+  assert.ok(bottom.scrollY > 900, "long inbox must scroll to the actual end");
+  assert.ok(bottom.lastRowBottom <= bottom.fixedNavTop - 16,
+    `last row must clear fixed navbar: ${JSON.stringify(bottom)}`);
 
   await page.evaluate(() =>
     document.documentElement.classList.add("sayittome-main-tab-handoff-pending"),
