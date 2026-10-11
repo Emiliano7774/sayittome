@@ -59,11 +59,14 @@ export async function openVisitorChat(
   router: AppRouterInstance,
   visitorChatId: string,
   visitorMatchAnonId?: string,
+  options?: { ensureNavigation?: boolean },
 ) {
   const visitorId = sanitizeShuffleVisitorChatId(visitorChatId);
   const matchAlias = sanitizeShuffleVisitorChatId(visitorMatchAnonId);
   if (!visitorId) return false;
-  const user = auth.currentUser || await ensureStorageAuth({ allowAnonymous: true }).catch(() => null);
+  // Wait for the same settled Firebase principal used by arrival preflight.
+  // Reading currentUser while tab-local adoption is pending can misroute clicks.
+  const user = await ensureStorageAuth({ allowAnonymous: true }).catch(() => null);
   if (!user) return false;
   if (user.isAnonymous) {
     // Profile-anon local session IDs are NOT bound match aliases. Only a
@@ -88,9 +91,27 @@ export async function openVisitorChat(
 
   const chatId = buildProfileAnonChatId(visitorId, username);
   prefetchChatThread(chatId);
-  fastRouterPush(
-    router,
-    `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}&anonPeer=1`,
-  );
+  const href = `/chat/${encodeURIComponent(chatId)}?u=${encodeURIComponent(username)}&anonPeer=1`;
+  const startingPath = typeof window !== "undefined" ? window.location.pathname : "";
+  fastRouterPush(router, href);
+
+  // The top-of-screen arrival action must result in a real chat route. A
+  // native/keep-alive navigation race can otherwise swallow router.push,
+  // while the toast mistakenly reports success. Guard both retries against
+  // a changed session or an unrelated user navigation.
+  if (options?.ensureNavigation && typeof window !== "undefined") {
+    const expectedPath = href.split("?")[0];
+    window.setTimeout(() => {
+      if (auth.currentUser?.uid !== user.uid) return;
+      if (window.location.pathname === expectedPath || window.location.pathname !== startingPath) return;
+      router.push(href);
+      window.setTimeout(() => {
+        if (auth.currentUser?.uid !== user.uid) return;
+        if (window.location.pathname === startingPath && startingPath !== expectedPath) {
+          window.location.assign(href);
+        }
+      }, 1_250);
+    }, 1_250);
+  }
   return true;
 }

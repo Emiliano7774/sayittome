@@ -7,8 +7,8 @@ const component=fs.readFileSync(path.join(root,"src/components/anonMatch/AnonArr
 const router=fs.readFileSync(path.join(root,"src/lib/shuffle/shuffleVisitorNavigation.ts"),"utf8");
 const preflight=fs.readFileSync(path.join(root,"src/app/api/anon-match/arrival-target/route.ts"),"utf8");
 const ctx=fs.readFileSync(path.join(root,"src/contexts/AnonMatchContext.tsx"),"utf8");
-assert.match(component,/if \(auth\.currentUser\?\.isAnonymous === false\)/,"registered user branches to direct chat");
-assert.match(component,/await openVisitorChat\(router,visitorChatId,id\)/,"arrival shares Shuffle card chat navigation");
+assert.match(component,/if \(caller\.isRegisteredProfile\)/,"settled registered caller branches to direct chat");
+assert.match(component,/await openVisitorChat\(router,visitorChatId,id,\{ensureNavigation:true\}\)/,"arrival shares Shuffle card chat navigation");
 assert.match(component,/visitorChatId=String\(result\.visitorChatId/,"server-backed visitor identity");
 assert.match(component,/source:"arrival"/,"anonymous visitors still use anon-direct pathway");
 assert.doesNotMatch(component,/INVITAR|invitarlo a conversar/,"no invitation UI");

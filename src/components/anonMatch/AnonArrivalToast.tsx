@@ -7,7 +7,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 import { anonArrivalPublicLabel, isAnonArrivalAlias } from "@/lib/anonMatch/anonArrival";
-import { fetchAnonMatch } from "@/lib/anonMatch/fetchAnonMatch";
+import { fetchAnonMatch, resolveLiveAnonMatchCaller } from "@/lib/anonMatch/fetchAnonMatch";
 import { readDiscoveryPayload } from "@/lib/shuffle/audiencePayload";
 import { openVisitorChat } from "@/lib/shuffle/shuffleVisitorNavigation";
 
@@ -89,6 +89,10 @@ export default function AnonArrivalToast() {
     if(!isAnonArrivalAlias(id)||openInFlight.current)return;
     openInFlight.current=true;activeTarget.current=id;setOpening(true);setArrival(null);setNotice(null);
     try{
+      // Resolve one stable principal *before* the preflight. Auth adoption or
+      // hydration can finish while the request is in flight; reading
+      // auth.currentUser afterwards could silently choose the wrong chat route.
+      const caller = await resolveLiveAnonMatchCaller();
       // The server checks current presence, closed state, DND and audience.
       // The display card can legitimately outlive the anonymous session.
       const params=new URLSearchParams({anonId:id});
@@ -99,11 +103,19 @@ export default function AnonArrivalToast() {
         return;
       }
       setNotice({kind:"waiting",text:"Abriendo chat…"});
-      if (auth.currentUser?.isAnonymous === false) {
+      if (caller.isRegisteredProfile) {
+        if (!auth.currentUser || auth.currentUser.uid !== caller.user.uid) {
+          setNotice({kind:"error",text:"La sesión cambió. Tocá nuevamente para abrir el chat."});
+          return;
+        }
         // Exactly the same direct profile-anon route as tapping this visitor
         // in Shuffle. No random-matching request or invitation.
         const visitorChatId=String(result.visitorChatId||"").trim();
-        const navigated=await openVisitorChat(router,visitorChatId,id);
+        if (!visitorChatId) {
+          setNotice({kind:"error",text:"No se pudo identificar el chat. Intentá nuevamente."});
+          return;
+        }
+        const navigated=await openVisitorChat(router,visitorChatId,id,{ensureNavigation:true});
         if (!navigated) {
           setNotice({kind:"error",text:"No se pudo abrir el chat. Intentá nuevamente."});
         } else {

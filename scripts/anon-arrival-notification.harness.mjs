@@ -38,7 +38,7 @@ assert.match(routing,/notifyArrival\("opened"\)/,"handler confirms successful na
 const preflight=fs.readFileSync(path.join(root,"src/app/api/anon-match/arrival-target/route.ts"),"utf8");
 assert.match(preflight,/if \(!caller\.isAnonymous\)/,"registered arrival preflight returns direct chat identity");
 assert.match(preflight,/visitorChatId/,"server returns Shuffle's visitorChatId");
-assert.match(component,/await openVisitorChat\(router,visitorChatId,id\)/,"registered arrival opens the SAME chat as Shuffle");
+assert.match(component,/await openVisitorChat\(router,visitorChatId,id,\{ensureNavigation:true\}\)/,"registered arrival opens the SAME chat as Shuffle with navigation guard");
 assert.doesNotMatch(component,/INVITAR|invitarlo a conversar/,"arrival CTA opens direct chats without invitation");
 assert.match(routing,/if \(!arrivalClick\) window\.alert/,"arrival failures use in-app status, not unrelated alert");
 console.log("PASS ANON_ARRIVAL: realtime notifications, 5s toast, hidden-tab cost pause, verified click, consent, offline states");
