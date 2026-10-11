@@ -158,6 +158,7 @@ export default function ShuffleClient() {
             authPending={following.authPending}
             showGuest={following.showGuest}
             state={following.state}
+            active={shuffleActive}
           />
 
           <div

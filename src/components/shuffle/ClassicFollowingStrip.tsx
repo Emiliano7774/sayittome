@@ -2,12 +2,22 @@
 
 import Link from "next/link";
 import { UserRound } from "lucide-react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useT } from "@/contexts/LocaleContext";
 import { getClassicShuffleHeaderUi } from "@/lib/shuffle/classicHeaderUi";
 import { classicFollowingSlotStyles } from "@/lib/shuffle/shuffleChromeStable";
 import type { FollowingProfile } from "@/lib/shuffle/followingTypes";
+import { followingStoryStatus, orderFollowingProfiles } from "@/lib/shuffle/followingStoryOrder";
+import {
+  getCachedStoryGroups,
+  getStoriesIndexVersion,
+  subscribeStoriesIndex,
+  prefetchOwnerStories,
+  refreshStoriesIndex,
+} from "@/lib/stories/storiesIndexStore";
+import { getStoryViewerKey } from "@/lib/stories/storyAuthor";
 
 type Props = {
   profiles: FollowingProfile[];
@@ -16,6 +26,7 @@ type Props = {
   authPending?: boolean;
   showGuest?: boolean;
   state?: "guest" | "skeleton" | "rows" | "empty";
+  active?: boolean;
 };
 
 function FollowingSkeleton({
@@ -61,10 +72,36 @@ export default function ClassicFollowingStrip({
   authPending = false,
   showGuest = false,
   state,
+  active = true,
 }: Props) {
   const t = useT();
   const { density } = useClassicShuffleDensity();
   const ui = getClassicShuffleHeaderUi(density);
+  // The Shuffle story index is shared and already refreshed elsewhere. This
+  // subscription adds no reads and reorders the circles when stories change.
+  useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, () => 0);
+  const storyGroups = getCachedStoryGroups();
+  const sortedProfiles = orderFollowingProfiles(profiles, storyGroups);
+
+  useEffect(() => {
+    if (!active || !hasSession) return;
+    // Resume only: the shared Stories store enforces its 10-minute TTL,
+    // so switching back to Shuffle can notice new uploads without an extra
+    // per-follow listener or an unbounded foreground polling loop.
+    const onResume = () => {
+      if (document.visibilityState !== "visible") return;
+      const viewer = getStoryViewerKey();
+      if (viewer) void refreshStoriesIndex(viewer, false).catch(() => undefined);
+    };
+    onResume();
+    window.addEventListener("focus", onResume);
+    document.addEventListener("visibilitychange", onResume);
+    return () => {
+      window.removeEventListener("focus", onResume);
+      document.removeEventListener("visibilitychange", onResume);
+    };
+  }, [active, hasSession]);
+
   const resolvedState =
     state ||
     (authPending || loading
@@ -151,35 +188,50 @@ export default function ClassicFollowingStrip({
             className="flex overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             style={{ gap: ui.followingGapPx }}
           >
-            {profiles.map((profile) => (
-              <Link
+            {sortedProfiles.map((profile) => {
+              const story = followingStoryStatus(profile, storyGroups);
+              return <Link
                 key={profile.uid || profile.username}
                 href={`/u/${encodeURIComponent(profile.username)}`}
                 className="flex shrink-0 flex-col items-center gap-1 active:scale-[0.98]"
                 style={{ width: ui.followingItemWPx }}
+                data-following-profile={profile.username}
+                data-following-story={story.latestStoryAtMs > 0 ? "active" : "none"}
+                onPointerDown={() => {
+                  if (story.latestStoryAtMs) prefetchOwnerStories(profile.authUid || profile.uid, profile.username);
+                }}
               >
                 <div
-                  className="relative overflow-hidden rounded-full bg-[#141414]"
+                  className={`relative rounded-full ${
+                    story.latestStoryAtMs
+                      ? story.hasUnseen
+                        ? "bg-gradient-to-br from-violet-400 via-fuchsia-500 to-violet-700"
+                        : "bg-zinc-600"
+                      : "bg-[#141414]"
+                  }`}
                   style={{
                     width: ui.followingAvatarPx,
                     height: ui.followingAvatarPx,
+                    padding: story.latestStoryAtMs ? 2 : 0,
                   }}
                 >
-                  {profile.photo ? (
-                    <img
-                      src={profile.photo}
-                      alt={profile.username}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-white/30">
-                      <UserRound
-                        size={Math.max(12, ui.followingAvatarPx * 0.42)}
-                        strokeWidth={1.75}
+                  <div className="h-full w-full overflow-hidden rounded-full bg-[#141414]">
+                    {profile.photo ? (
+                      <img
+                        src={profile.photo}
+                        alt={profile.username}
+                        className="h-full w-full rounded-full object-cover"
+                        loading="lazy"
                       />
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-white/30">
+                        <UserRound
+                          size={Math.max(12, ui.followingAvatarPx * 0.42)}
+                          strokeWidth={1.75}
+                        />
+                      </div>
+                    )}
+                  </div>
                   {profile.showOnline ? (
                     <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border border-black bg-green-500" />
                   ) : null}
@@ -190,8 +242,8 @@ export default function ClassicFollowingStrip({
                 >
                   {profile.username}
                 </span>
-              </Link>
-            ))}
+              </Link>;
+            })}
           </div>
         ) : null}
       </div>

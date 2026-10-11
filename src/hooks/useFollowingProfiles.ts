@@ -23,6 +23,14 @@ import { dedupeShuffleProfiles } from "@/lib/shuffle/dedupeProfiles";
 
 export type { FollowingProfile } from "@/lib/shuffle/followingTypes";
 
+function edgeTimestampMs(value: unknown): number {
+  if (!value) return 0;
+  const stamp = value as { toMillis?: () => number; seconds?: number };
+  if (typeof stamp.toMillis === "function") return stamp.toMillis();
+  if (typeof stamp.seconds === "number") return stamp.seconds * 1000;
+  return 0;
+}
+
 function isFollowingPermissionDenied(error: unknown) {
   const code = String((error as { code?: string })?.code || "");
   const message = String((error as Error)?.message || "");
@@ -41,7 +49,7 @@ async function loadFollowingProfile(targetUid: string): Promise<FollowingProfile
   if (!snap.exists()) return null;
 
   const data = snap.data() as Record<string, unknown>;
-  const username = String(data.username || data.nombre || "").trim();
+  const username = String(data.username || data.usernameLower || data.nombre || "").trim();
   if (!username) return null;
 
   const lastActive = String(data.presenceAt || data.lastActive || "");
@@ -99,43 +107,59 @@ export function useFollowingProfiles() {
       }
     }
 
+    let cancelled = false;
+    let snapshotGeneration = 0;
     const ref = collection(db, "usuarios", uid, "siguiendo");
     const unsub = onSnapshot(
       ref,
       async (snap) => {
-        const targetUids = snap.docs
-          .map((entry) => String(entry.data().seguidoUid || entry.id || ""))
-          .filter(Boolean);
-
-        const missing = targetUids.filter((targetUid) => !profileCacheRef.current.has(targetUid));
-
+        const generation = ++snapshotGeneration;
+        const follows = snap.docs.map((entry) => {
+          const data = entry.data();
+          return {
+            targetUid: String(data.seguidoUid || entry.id || "").trim(),
+            followedAtMs: edgeTimestampMs(data.createdAt || data.updatedAt),
+          };
+        }).filter((edge) => Boolean(edge.targetUid));
+        // Only fetch profile details once per followed UID. Follow metadata
+        // itself stays live, but profile details never gain N live listeners.
+        const missing = [...new Set(follows.map((edge) => edge.targetUid))]
+          .filter((targetUid) => !profileCacheRef.current.has(targetUid));
         if (missing.length > 0) {
-          const loaded = await Promise.all(missing.map((targetUid) => loadFollowingProfile(targetUid)));
-          for (const profile of loaded) {
-            if (profile) profileCacheRef.current.set(profile.uid, profile);
+          // A deleted/private profile must not make every other follow vanish.
+          const results = await Promise.allSettled(missing.map(loadFollowingProfile));
+          if (cancelled || generation !== snapshotGeneration) return;
+          for (const result of results) {
+            if (result.status === "fulfilled" && result.value) {
+              profileCacheRef.current.set(result.value.uid, result.value);
+            }
           }
         }
-
-        const next = dedupeShuffleProfiles(
-          targetUids
-            .map((targetUid) => profileCacheRef.current.get(targetUid))
-            .filter((profile): profile is FollowingProfile => Boolean(profile)),
-        );
+        if (cancelled || generation !== snapshotGeneration) return;
+        const resolvedProfiles: FollowingProfile[] = follows.flatMap(({ targetUid, followedAtMs }) => {
+          const profile = profileCacheRef.current.get(targetUid);
+          return profile ? [{ ...profile, followedAtMs }] : [];
+        });
+        const next = dedupeShuffleProfiles(resolvedProfiles)
+          .sort((a, b) => (b.followedAtMs || 0) - (a.followedAtMs || 0));
 
         setLive({ uid, profiles: next });
         writeCachedFollowingSnapshot(uid, next, true);
       },
       (error) => {
+        if (cancelled) return;
         const cachedProfiles = readCachedFollowingSnapshot(uid)?.profiles || [];
-        if (!isFollowingPermissionDenied(error)) {
-          console.error("useFollowingProfiles", error);
-        }
+        if (!isFollowingPermissionDenied(error)) console.error("useFollowingProfiles", error);
+        // Permission errors must never persist an authoritative empty list.
         setLive({ uid, profiles: cachedProfiles });
-        writeCachedFollowingSnapshot(uid, cachedProfiles, true);
       },
     );
 
-    return () => unsub();
+    return () => {
+      cancelled = true;
+      snapshotGeneration += 1;
+      unsub();
+    };
   }, [authPending, uid]);
 
   return {

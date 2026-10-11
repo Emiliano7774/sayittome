@@ -7,4 +7,6 @@ export type FollowingProfile = {
   lastActive?: string;
   online?: boolean;
   showOnline: boolean;
+  /** Server-authored follow edge createdAt; newest follows first without stories. */
+  followedAtMs?: number;
 };

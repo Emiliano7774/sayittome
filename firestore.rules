@@ -136,6 +136,14 @@ service cloud.firestore {
       match /story_notif_prefs/{peerId} {
         allow read, write: if isOwner(uid);
       }
+
+      // The Shuffle "Siguiendo" tray only reads the authenticated owner's
+      // own edges. Follow/unfollow is exclusively server-transaction owned.
+      // Parent /usuarios read permissions do NOT cascade into subcollections.
+      match /siguiendo/{targetUid} {
+        allow get, list: if isOwner(uid);
+        allow create, update, delete: if false;
+      }
     }
 
     match /usuarios_shuffle_lite/{uid} {
