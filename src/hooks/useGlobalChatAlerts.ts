@@ -220,7 +220,9 @@ export function useGlobalChatAlerts() {
   // latestMessageId transitions still raise the browser banner on Shuffle /
   // Stories without opening /chats. Deduped with the whip path via message id.
   useEffect(() => {
-    if (!unreadHydrated || !inboxRouteEnabled || !notificationsEnabled) return;
+    // Homepage still hydrates the notification inbox when opted in. Never
+    // restrict banners to bottom-tab routes while their listeners are active.
+    if (!unreadHydrated || !notificationInboxEnabled) return;
     const previous = seenLatestMessageIdsRef.current;
     const next = new Map<string, string>();
     for (const chat of unreadSource) {
@@ -283,18 +285,19 @@ export function useGlobalChatAlerts() {
       const latest = String(chat.latestMessageId || "");
       const prior = previous.get(chatId);
       if (!latest || prior === latest || isLocalOutgoingMessageId(chatId, latest)) continue;
-      // A new latestMessageId is not proof of a new INCOMING message. Our own
-      // send also updates that id, sometimes before a cached sender preview
-      // catches up. Respect the same read/ownership decision used by Chats.
-      if (chatUnreadCountForViewer(chat, firebaseUid, {
-        excludeChatId: activeChatId,
-      }) <= 0) continue;
+      if (chatId === activeChatId && isCapacitorNative()) continue;
+      // An exact new message ID plus confirmed opposite-side authorship is
+      // enough for the WEB banner. readBy/unreadCounts can lag the message
+      // snapshot (or be immediately cleared by a visible thread); requiring
+      // an unread badge here silently loses a real incoming notification.
+      // The orange badge continues using chatUnreadCountForViewer unchanged.
       const sender = String(chat.lastMessageSender || "").trim();
       const threadViewer = resolveChatViewerId(chat, firebaseUid);
       if (!sender || !isIncomingChatActivity(chat, threadViewer, firebaseUid) ||
           isOwnChatSender(sender, threadViewer, firebaseUid, chat)) continue;
       const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
-      if (prior === undefined && arrivedAt > 0 && Date.now() - arrivedAt > 2 * 60_000) {
+      if (prior === undefined && (!arrivedAt || Date.now() - arrivedAt > 2 * 60_000 ||
+          arrivedAt > Date.now() + 30_000)) {
         continue;
       }
       tryAlertIncomingMessage({
@@ -303,24 +306,29 @@ export function useGlobalChatAlerts() {
         incoming: true,
         suppress: false,
         onAlert: () => {
-          // Inbox can discover a new thread before unreadCounts catch up; latch
-          // orange pending here so Shuffle/Stories do not wait for /chats.
-          markLocalPendingChat(chatId);
+          // Keep the already-PASS orange pending contract unchanged: the
+          // browser banner may run ahead of read receipts, but a read thread
+          // must not be re-bolded just to deliver its OS notification.
+          if (chatId !== activeChatId &&
+              chatUnreadCountForViewer(chat, firebaseUid, {
+                excludeChatId: activeChatId,
+              }) > 0) {
+            markLocalPendingChat(chatId);
+          }
           playIncomingWhipSound();
           void showChatNotification({
             title: chatPeerTitle(chat, firebaseUid) || "Nuevo mensaje",
             body: String(chat.lastMessage || "Nuevo mensaje"),
             chatId,
             messageId: latest,
-            viewingActiveChat: false,
+            viewingActiveChat: chatId === activeChatId,
           });
         },
       });
     }
   }, [
     unreadHydrated,
-    inboxRouteEnabled,
-    notificationsEnabled,
+    notificationInboxEnabled,
     inboxAlertSignature,
     unreadSource,
     activeChatId,
@@ -358,22 +366,48 @@ export function useGlobalChatAlerts() {
     };
   }, []);
 
-  // A previously granted browser permission must restore the web push token as
-  // soon as auth is ready. Inbox hydration can take several seconds on a cold
-  // start; waiting for it leaves a real window where backend delivery sees no
-  // token and permanently skips the incoming message.
+  // Web push is separate from the live-inbox banner. Some installations have
+  // permission granted but no FCM token yet (SW activation/network race).
+  // Retry a failed registration once after boot and on a user focus/resume;
+  // do not poll Firestore or keep a periodic registration timer running.
   useEffect(() => {
     if (
       !notificationsEnabled ||
       !firebaseUser ||
       isCapacitorNative() ||
       typeof Notification === "undefined" ||
-      Notification.permission !== "granted" ||
-      hasActiveFcmRegistration()
-    ) {
-      return;
-    }
-    void enableWebChatPush(firebaseUser);
+      Notification.permission !== "granted"
+    ) return;
+
+    let stopped = false;
+    let lastAttemptAt = 0;
+    let retryAttempted = false;
+    let retry: number | undefined;
+    const attempt = () => {
+      if (stopped || hasActiveFcmRegistration()) return;
+      if (Date.now() - lastAttemptAt < 4_000) return;
+      lastAttemptAt = Date.now();
+      void enableWebChatPush(firebaseUser).then((result) => {
+        if (stopped || result.ok || hasActiveFcmRegistration() || retry || retryAttempted) return;
+        retry = window.setTimeout(() => {
+          retry = undefined;
+          retryAttempted = true;
+          attempt();
+        }, 12_000);
+      }).catch(() => undefined);
+    };
+    const onResume = () => {
+      if (document.visibilityState === "visible") attempt();
+    };
+    attempt();
+    window.addEventListener("focus", onResume);
+    document.addEventListener("visibilitychange", onResume);
+    return () => {
+      stopped = true;
+      if (retry) window.clearTimeout(retry);
+      window.removeEventListener("focus", onResume);
+      document.removeEventListener("visibilitychange", onResume);
+    };
   }, [firebaseUser, notificationsEnabled]);
 
   // Keep the first-time permission prompt on the established in-app/loading

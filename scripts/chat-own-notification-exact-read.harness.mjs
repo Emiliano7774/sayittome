@@ -52,7 +52,10 @@ const alerts = fs.readFileSync(path.join(root, "src/hooks/useGlobalChatAlerts.ts
 const whip = fs.readFileSync(path.join(root, "src/lib/chat/globalChatWhipManager.ts"), "utf8");
 assert.match(detail, /ownerViewing: isOwnerViewing/, "detail passes proven role into read writer");
 assert.match(detail, /ctx\.ownerViewing \? ctx\.currentUid : senderId/, "owner marks with auth UID");
-assert.match(alerts, /chatUnreadCountForViewer\(chat, firebaseUid, \{\s*excludeChatId: activeChatId,\s*\}\) <= 0\) continue/s,
-  "inbox delta refuses already-read/own notifications");
+const delta = alerts.split("    for (const chat of unreadSource) {").at(-1).split("  }, [")[0];
+assert.match(delta, /isIncomingChatActivity\(chat, threadViewer, firebaseUid\)/,
+  "inbox delta still proves opposite-side authorship");
+assert.doesNotMatch(delta, /if \(chatUnreadCountForViewer\(/,
+  "incoming web banners must not depend on delayed unread badge metadata");
 assert.match(whip, /senderAuthUid\?: string/);
 console.log("PASS OWN_NOTIFICATION_AND_EXACT_READ: own auth suppresses, visible detail clears, new inbound reopens");

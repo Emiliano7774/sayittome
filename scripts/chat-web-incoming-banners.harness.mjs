@@ -1,0 +1,44 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { installHarnessAlias, installHarnessWindow } from "./harness-alias.mjs";
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
+installHarnessWindow();installHarnessAlias(root);
+const load=async rel=>import(pathToFileURL(path.join(root,rel)).href);
+const {isIncomingChatActivity,isOwnChatSender}=await load("src/lib/chat/incomingChatActivity.ts");
+const {resolveChatViewerId}=await load("src/lib/chat/inboxPeerTitle.ts");
+const {chatUnreadCountForViewer}=await load("src/lib/chat/inboxUnread.ts");
+const {markLocalOutgoingMessageId,isLocalOutgoingMessageId,tryAlertIncomingMessage}=await load("src/lib/chat/whipAlertDedupe.ts");
+const owner="qa_web_owner_uid",anon="anon_qa_browser_peer",id=anon+"__anon_to__qaweb";
+const base={id,canonicalChatId:id,targetUid:owner,receptorUid:owner,anonSessionId:anon,
+ participantes:[anon,owner],lastMessage:"received in web",lastMessageSender:anon,latestSenderKind:"anon",
+ latestMessageId:"qa_web_inbound_message",lastMessageAt:{toMillis:()=>Date.now()},
+ readBy:{[owner]:true},unreadCounts:{[owner]:0}};
+const v=resolveChatViewerId(base,owner);
+assert.equal(isIncomingChatActivity(base,v,owner),true,"fresh visitor message is inbound");
+assert.equal(isOwnChatSender(base.lastMessageSender,v,owner,base),false,"anon author != profile owner");
+assert.equal(chatUnreadCountForViewer(base,owner),0,"server read receipt may already say read");
+assert.equal(isLocalOutgoingMessageId(id,base.latestMessageId),false,"no local self echo");
+let notices=0;
+assert.equal(tryAlertIncomingMessage({chatId:id,messageId:base.latestMessageId,incoming:true,suppress:false,onAlert:()=>notices++}),true);
+assert.equal(notices,1);
+markLocalOutgoingMessageId(id,"qa_web_own_server_message");
+assert.equal(isLocalOutgoingMessageId(id,"qa_web_own_server_message"),true);
+assert.equal(tryAlertIncomingMessage({chatId:id,messageId:"qa_web_own_server_message",incoming:true,suppress:false,onAlert:()=>notices++}),false);
+assert.equal(notices,1);
+const own={...base,lastMessageSender:"profile_"+owner,latestSenderKind:"profile",latestMessageId:"qa_new_own"};
+assert.equal(isIncomingChatActivity(own,resolveChatViewerId(own,owner),owner),false,"own profile sends remain silent");
+const visitorBrowser="qa_other_visitor_auth";
+const reply={...base,lastMessageSender:"profile_"+owner,latestSenderKind:"profile",latestMessageId:"qa_reply"};
+assert.equal(isIncomingChatActivity(reply,resolveChatViewerId(reply,visitorBrowser),visitorBrowser),true,"owner reply reaches visitor");
+const source=fs.readFileSync(path.join(root,"src/hooks/useGlobalChatAlerts.ts"),"utf8");
+const effect=source.slice(source.indexOf("const seenLatestMessageIdsRef"),source.indexOf("const pathnameRef"));
+assert.match(effect,/!unreadHydrated \|\| !notificationInboxEnabled/,"home has notification inbox enabled");
+const delta=effect.split("    for (const chat of unreadSource) {").at(-1);
+assert.doesNotMatch(delta,/if \(chatUnreadCountForViewer/,"pending badge cannot gate web banners");
+assert.match(delta,/isIncomingChatActivity\(chat, threadViewer, firebaseUid\)/);
+assert.match(delta,/isLocalOutgoingMessageId\(chatId, latest\)/);
+assert.match(delta,/viewingActiveChat: chatId === activeChatId/,"web active chat still displays banner");
+assert.match(source,/retryAttempted = true/,"web push retries failed first SW activation");
+console.log(JSON.stringify({gate:"WEB_INCOMING_BANNERS_BOTH_SIDES_AND_ZERO_UNREAD",pass:true,checks:16}));
