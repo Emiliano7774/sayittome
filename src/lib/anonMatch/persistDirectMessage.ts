@@ -124,6 +124,8 @@ export async function persistAnonDirectMessage(input: PersistAnonDirectMessageIn
   const payload: Record<string, unknown> = {
     senderId,
     senderTipo,
+    // Verifiable author proof: Firestore rules require equality to request.auth.uid.
+    senderAuthUid,
     texto: type === "text" ? messageText : "",
     text: type === "text" ? messageText : "",
     type,

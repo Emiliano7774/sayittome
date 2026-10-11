@@ -17,6 +17,8 @@ export type AnonDirectChatMessage = {
   autoModerationRequiresBlur?: boolean;
   moderationRequiresBlur?: boolean;
   clientId?: string;
+  /** Untrusted server-attestation hint: only callable verification grants a badge. */
+  verifiedProfileAttestation?: unknown;
   /** Firestore server creation time for the usual swipe-to-reveal clock. */
   createdAtMs?: number;
   status?: "sending" | "failed";
@@ -72,6 +74,7 @@ export function mapAnonDirectMessageDoc(input: {
     autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
     moderationRequiresBlur: data.moderationRequiresBlur === true,
     clientId: data.clientId ? String(data.clientId) : undefined,
+    verifiedProfileAttestation: data.verifiedProfileAttestation,
     createdAtMs: (() => {
       const value = data.createdAt as { toDate?: () => Date; seconds?: number } | Date | string | number | undefined;
       if (!value) return undefined;

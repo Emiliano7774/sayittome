@@ -138,7 +138,7 @@ export default function VerifiedLinkBubble({
           <div className="w-full max-w-xl rounded-3xl border border-white/15 bg-[#111] p-6">
             <p className="text-2xl font-black">Copiá el link verificado</p>
             <p className="mt-2 text-sm text-white/55">
-              Este link confirma que el perfil es oficial cuando alguien lo abre.
+              El tilde de identidad aparece en chats de SayItToMe solo después de comprobar en el servidor que el dueño de este perfil envió ese mensaje. Fuera de la app, la dirección por sí sola no demuestra quién la compartió.
             </p>
             <p className="mt-3 text-sm font-bold text-violet-200">
               {displayVerifiedProfileLink(username)}

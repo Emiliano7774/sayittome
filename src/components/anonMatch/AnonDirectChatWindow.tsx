@@ -13,6 +13,7 @@ import {
 
 import AnonDirectMediaComposer from "@/components/anonMatch/AnonDirectMediaComposer";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
+import ChatOfficialProfileVerifiedBadge from "@/components/chat/ChatOfficialProfileVerifiedBadge";
 import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
@@ -38,6 +39,9 @@ import { persistAnonDirectMessage } from "@/lib/anonMatch/persistDirectMessage";
 import { markAnonDirectChatRead } from "@/lib/anonMatch/markAnonDirectChatRead";
 import { shouldWhipAnonDirectIncoming } from "@/lib/anonMatch/anonDirectIncomingWhip";
 import { replyQuoteText } from "@/lib/chat/replyQuote";
+import { maybeClaimVerifiedProfileLink } from "@/lib/profile/verifiedProfileLinkTicket";
+import { scheduleVerifiedProfileLinkClaimRetry } from "@/lib/profile/verifiedProfileLinkClaimRetry";
+import { parseExactOfficialProfileLinkMessage } from "@/lib/profile/verifiedLink";
 import {
   notifyIncomingChatMessage,
   playIncomingWhipSound,
@@ -253,6 +257,16 @@ function ChatPanel({
                     {bubble}
                   </ChatSwipeRevealTime>
                 ) : bubble}
+                {message.type === "text" ? (
+                  <ChatOfficialProfileVerifiedBadge
+                    chatId={chatId}
+                    messageId={message.id}
+                    text={message.text}
+                    attestationHint={message.verifiedProfileAttestation}
+                    mine={message.mine}
+                    isClassic={!modern}
+                  />
+                ) : null}
               </div>
             );
           })
@@ -475,7 +489,7 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
     setSending(true);
 
     try {
-      await persistAnonDirectMessage({
+      const saved = await persistAnonDirectMessage({
         chatId,
         senderId,
         senderAuthUid: firebaseUser?.uid || "",
@@ -484,6 +498,24 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
         reply: replyText || undefined,
         clientId: outboundClientId,
       });
+      // Plain URL text is never verification. Only an authenticated registered
+      // profile can claim a server-signed ticket on its exact persisted message.
+      if (parseExactOfficialProfileLinkMessage(value)) {
+        if (senderTipo === "perfil" && firebaseUser?.uid) {
+          const claimed = await maybeClaimVerifiedProfileLink({
+            chatId: saved.chatId,
+            messageId: saved.messageId,
+            text: value,
+            ownerUid: firebaseUser.uid,
+          });
+          if (!claimed.ok) {
+            if (claimed.retryable) scheduleVerifiedProfileLinkClaimRetry(firebaseUser.uid);
+            else setNotice("El enlace se envió sin verificación. Copiá uno nuevo desde tu perfil y reenviá.");
+          }
+        } else {
+          setNotice("El enlace no es verificable desde una identidad anónima.");
+        }
+      }
       inputRef.current?.focus();
     } catch {
       setNotice(t("anon_match_chat_send_error"));

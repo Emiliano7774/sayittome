@@ -530,6 +530,45 @@ export function shouldShowChatNotification(input?: { viewingActiveChat?: boolean
   return !isCapacitorNative();
 }
 
+/** Visible-tab fallback when OS/browser notifications cannot display.
+ * No permission spoof: this is an in-page alert, never a system notification.
+ * Text is assigned via textContent to prevent HTML/script injection. */
+export function showForegroundWebChatBanner(input: {
+  title: string;
+  body: string;
+  chatId?: string;
+  messageId?: string;
+}) {
+  if (typeof document === "undefined" || document.hidden || isCapacitorNative()) return false;
+  const id = "sayittome-web-incoming-chat-banner";
+  const prior = document.getElementById(id);
+  prior?.remove();
+  const banner = document.createElement("button");
+  banner.id = id;
+  banner.type = "button";
+  banner.setAttribute("role", "status");
+  banner.setAttribute("aria-label", "Nuevo mensaje recibido");
+  banner.style.cssText = "position:fixed;z-index:2147483600;top:16px;right:16px;max-width:min(92vw,390px);min-height:58px;padding:12px 18px;border:1px solid rgba(196,181,253,.65);border-radius:16px;background:#1b1530;color:#fff;box-shadow:0 12px 42px rgba(0,0,0,.55);text-align:left;cursor:pointer;font:600 13px system-ui,sans-serif;white-space:normal;overflow-wrap:anywhere";
+  const heading = document.createElement("strong");
+  heading.textContent = "💬 " + (String(input.title || "").trim() || "Mensaje nuevo");
+  heading.style.cssText = "display:block;margin-bottom:4px;font-size:14px";
+  const body = document.createElement("span");
+  body.textContent = String(input.body || "Nuevo mensaje").slice(0, 150);
+  banner.append(heading, body);
+  banner.onclick = () => {
+    banner.remove();
+    if (input.chatId) openChatFromNotification({
+      chatId: input.chatId,
+      messageId: input.messageId,
+      body: input.body,
+      title: input.title,
+    });
+  };
+  document.body.appendChild(banner);
+  window.setTimeout(() => banner.remove(), 6500);
+  return true;
+}
+
 export async function showChatNotification(input: {
   title: string;
   body: string;
@@ -538,6 +577,11 @@ export async function showChatNotification(input: {
   viewingActiveChat?: boolean;
 }) {
   if (typeof window === "undefined") return;
+  if (!areChatNotificationsEnabled()) {
+    // OS opt-in is not required for a foreground in-app chat alert.
+    showForegroundWebChatBanner(input);
+    return;
+  }
   if (!shouldShowChatNotification({ viewingActiveChat: input.viewingActiveChat })) return;
 
   const body = notificationBody({ body: input.body });
@@ -590,10 +634,12 @@ export async function showChatNotification(input: {
 
   if (!("Notification" in window)) {
     recordNotificationStage("web_notification_api", false, "missing");
+    showForegroundWebChatBanner(input);
     return;
   }
   if (Notification.permission !== "granted") {
     recordNotificationStage("web_permission", false, String(Notification.permission));
+    showForegroundWebChatBanner(input);
     return;
   }
 
@@ -690,9 +736,11 @@ export async function showChatNotification(input: {
       const shown = await showViaServiceWorker().catch(() => false);
       if (!shown) {
         recordNotificationStage("web_show", false, "all_paths");
+        showForegroundWebChatBanner(input);
       }
     } catch {
       recordNotificationStage("web_show", false, "blocked");
+      showForegroundWebChatBanner(input);
     }
   }
 }

@@ -222,7 +222,11 @@ export function useGlobalChatAlerts() {
   useEffect(() => {
     // Homepage still hydrates the notification inbox when opted in. Never
     // restrict banners to bottom-tab routes while their listeners are active.
-    if (!unreadHydrated || !notificationInboxEnabled) return;
+    // The foreground web banner is a chat UI feature, not an OS permission.
+    // Native Push still honors its opt-in; web foreground remains useful when
+    // the browser refuses Notification.permission or FCM token registration.
+    if (!unreadHydrated ||
+        !(notificationInboxEnabled || (!isCapacitorNative() && inboxRouteEnabled))) return;
     const previous = seenLatestMessageIdsRef.current;
     const next = new Map<string, string>();
     for (const chat of unreadSource) {
@@ -329,6 +333,7 @@ export function useGlobalChatAlerts() {
   }, [
     unreadHydrated,
     notificationInboxEnabled,
+    inboxRouteEnabled,
     inboxAlertSignature,
     unreadSource,
     activeChatId,

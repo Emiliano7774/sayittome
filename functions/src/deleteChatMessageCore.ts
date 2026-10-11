@@ -9,6 +9,9 @@ export type ProfileAnonPrivateAuthMessage = {
   senderKind?: string;
   profileUid?: string;
   senderProfileId?: string;
+  /** Direct anonymous-match messages use senderId/senderTipo instead of fromUid. */
+  senderId?: string;
+  senderTipo?: string;
 };
 
 export type ProfileAnonPrivateAuthChat = {
@@ -19,6 +22,8 @@ export type ProfileAnonPrivateAuthChat = {
   targetUid?: string | null;
   receptorUid?: string | null;
   anonOwnerUid?: string | null;
+  solicitanteAuthUid?: string | null;
+  destinatarioAuthUid?: string | null;
 };
 
 export function messagePublicAuthorId(message: ProfileAnonPrivateAuthMessage) {
@@ -39,6 +44,21 @@ export function resolveVerifiedProfileMessageAuthorUid(
     chat?: ProfileAnonPrivateAuthChat | null;
   },
 ) {
+  const directSender = asTrimmedId(message.senderId);
+  if (directSender && message.senderTipo === "perfil") {
+    // The message must have been written by a genuine authenticated member.
+    // No anonymous senderId or arbitrary ownerUid may grant a verification.
+    const members = [
+      asTrimmedId(context?.chat?.solicitanteAuthUid),
+      asTrimmedId(context?.chat?.destinatarioAuthUid),
+    ];
+    const authUid = asTrimmedId(message.senderAuthUid);
+    // For direct messages the auth UID is required and protected by Firestore
+    // create rules. Sender aliases alone can never produce a verified badge.
+    return authUid && authUid === directSender && members.includes(authUid) ? authUid : "";
+  }
+  if (directSender && message.senderTipo === "anonimo") return "";
+
   const senderAuth = asTrimmedId(message.senderAuthUid || message.createdByAuthUid);
   if (senderAuth) return senderAuth;
 

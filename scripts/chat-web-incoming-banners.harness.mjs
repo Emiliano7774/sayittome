@@ -34,7 +34,7 @@ const reply={...base,lastMessageSender:"profile_"+owner,latestSenderKind:"profil
 assert.equal(isIncomingChatActivity(reply,resolveChatViewerId(reply,visitorBrowser),visitorBrowser),true,"owner reply reaches visitor");
 const source=fs.readFileSync(path.join(root,"src/hooks/useGlobalChatAlerts.ts"),"utf8");
 const effect=source.slice(source.indexOf("const seenLatestMessageIdsRef"),source.indexOf("const pathnameRef"));
-assert.match(effect,/!unreadHydrated \|\| !notificationInboxEnabled/,"home has notification inbox enabled");
+assert.match(effect,/notificationInboxEnabled \|\| \(!isCapacitorNative\(\) && inboxRouteEnabled\)/,"web foreground works without OS permission");
 const delta=effect.split("    for (const chat of unreadSource) {").at(-1);
 assert.doesNotMatch(delta,/if \(chatUnreadCountForViewer/,"pending badge cannot gate web banners");
 assert.match(delta,/isIncomingChatActivity\(chat, threadViewer, firebaseUid\)/);

@@ -215,7 +215,9 @@ export function consumeVerifiedProfileLinkTicket(input: {
   return pending;
 }
 
-/** Keep ticket durable; clear only on mismatch / other account / expiry. */
+/** Keep the ticket for its exact URL even if other chat text is sent first.
+ * Unrelated messages must never claim or consume the owner's reserved proof.
+ * Expiry and account mismatch still clear it. */
 export function reserveVerifiedProfileLinkTicket(input: {
   ownerUid: string;
   text: string;
@@ -232,7 +234,8 @@ export function reserveVerifiedProfileLinkTicket(input: {
     return null;
   }
   if (asId(input.text) !== pending.text) {
-    clearVerifiedProfileLinkTicket();
+    // The user might send an ordinary message before pasting their verified
+    // URL. Never destroy the ticket merely because that message was unrelated.
     return null;
   }
   return pending;

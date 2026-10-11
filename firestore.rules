@@ -265,8 +265,10 @@ service cloud.firestore {
         allow read: if isAdmin() || anonDirectActiveMember(chatId);
         allow create: if anonDirectActiveMember(chatId) &&
           anonDirectAuthor(chatId) &&
+          (!request.resource.data.keys().hasAny(['senderAuthUid']) ||
+            request.resource.data.get('senderAuthUid', '') == request.auth.uid) &&
           request.resource.data.keys().hasOnly([
-            'senderId', 'senderTipo', 'texto', 'text', 'createdAt', 'type',
+            'senderId', 'senderTipo', 'senderAuthUid', 'texto', 'text', 'createdAt', 'type',
             'mediaUrl', 'source', 'reply', 'clientId', 'viewOnce',
             'viewOnceLimit', 'viewOnceViews', 'viewOnceClaimedBy',
             'viewOnceOpenedCount', 'viewOnceExhausted',

@@ -38,12 +38,12 @@ export function getVerifiedProfileLink(username: string, origin?: string) {
 }
 
 export function isVerifiedProfileLink(search?: string | URLSearchParams | null) {
-  const params =
-    search instanceof URLSearchParams
-      ? search
-      : new URLSearchParams(search || "");
-
-  return params.get(VERIFIED_QUERY_PARAM) === VERIFIED_QUERY_VALUE;
+  // SECURITY: a public ?verified=1 flag (including the /@username redirect)
+  // is trivially forgeable. It is only a navigation source, never a proof that
+  // the person sharing the URL owns the profile. An official chat badge
+  // requires server-verified message attestation bound to its real author.
+  void search;
+  return false;
 }
 
 export type ParsedVerifiedProfileLink = {
