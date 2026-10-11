@@ -188,6 +188,8 @@ class GlobalChatWhipManager {
           ownerId?: string;
           senderUid?: string;
           senderKind?: string;
+          senderAuthUid?: string;
+          createdByAuthUid?: string;
           text?: string;
           texto?: string;
           mediaUrl?: string;

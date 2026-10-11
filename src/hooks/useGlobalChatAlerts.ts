@@ -279,6 +279,12 @@ export function useGlobalChatAlerts() {
       const latest = String(chat.latestMessageId || "");
       const prior = previous.get(chatId);
       if (!latest || prior === latest) continue;
+      // A new latestMessageId is not proof of a new INCOMING message. Our own
+      // send also updates that id, sometimes before a cached sender preview
+      // catches up. Respect the same read/ownership decision used by Chats.
+      if (chatUnreadCountForViewer(chat, firebaseUid, {
+        excludeChatId: activeChatId,
+      }) <= 0) continue;
       const sender = String(chat.lastMessageSender || "");
       if (sender && isOwnChatSender(sender, viewerId, firebaseUid, chat)) continue;
       const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);

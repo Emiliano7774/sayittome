@@ -13,6 +13,8 @@ type IncomingMessage = {
   mine?: boolean;
   fromUid?: string;
   senderKind?: string;
+  senderAuthUid?: string;
+  createdByAuthUid?: string;
   text?: string;
 };
 
@@ -43,6 +45,8 @@ export function useIncomingMessageWhip(
         {
           fromUid: last.fromUid,
           senderKind: last.senderKind,
+          senderAuthUid: last.senderAuthUid,
+          createdByAuthUid: last.createdByAuthUid,
         },
         currentViewerId,
         firebaseUid,

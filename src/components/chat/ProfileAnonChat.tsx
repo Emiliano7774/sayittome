@@ -684,6 +684,7 @@ export default function ProfileAnonChat({
     chatOwnerUid: "",
     chatAnonSessionId: "",
     username: "",
+    ownerViewing: false,
   });
 
   function refocusComposer() {
@@ -713,10 +714,9 @@ export default function ProfileAnonChat({
     const ctx = markReadContextRef.current;
     const chat = chatMetaRef.current;
     const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
-    const profileOwnerUid = ctx.targetUid || ctx.chatOwnerUid;
-    const ownerViewing = Boolean(
-      ctx.currentUid && profileOwnerUid && ctx.currentUid === profileOwnerUid,
-    );
+    // Match the same authoritative owner role used to paint bubbles. A stale
+    // targetUid previously wrote the read receipt under the visitor's anon ID.
+    const ownerViewing = ctx.ownerViewing;
     const leave = resolveLeaveThreadRead({
       seenVisible: chatSeenVisibleRef.current,
       viewerIdentity: ownerViewing ? ctx.currentUid : senderId,
@@ -788,11 +788,9 @@ export default function ProfileAnonChat({
     if (livePath === "/chats" || livePath.startsWith("/chats/")) return;
 
     const senderId = getProfileChatAnonSenderId(ctx.chatId, ctx.chatAnonSessionId);
-    const profileOwnerUid = ctx.targetUid || ctx.chatOwnerUid;
-    const ownerViewing = Boolean(
-      ctx.currentUid && profileOwnerUid && ctx.currentUid === profileOwnerUid,
-    );
-    const messageViewerId = ownerViewing ? ctx.currentUid : senderId;
+    // Owner role is resolved with live Auth + username/author evidence in render,
+    // not only targetUid (which can be absent/late in the chat document).
+    const messageViewerId = ctx.ownerViewing ? ctx.currentUid : senderId;
 
     if (!messageViewerId) return;
     const readDecision = resolveDetailReadMark({
@@ -1602,6 +1600,7 @@ export default function ProfileAnonChat({
     chatOwnerUid,
     chatAnonSessionId,
     username,
+    ownerViewing: isOwnerViewing,
   };
 
 

@@ -385,6 +385,8 @@ export function isIncomingMessageFromDoc(
     ownerId?: string;
     senderUid?: string;
     senderKind?: string;
+    senderAuthUid?: string;
+    createdByAuthUid?: string;
   },
   viewerId: string,
   firebaseUid = "",
@@ -394,6 +396,11 @@ export function isIncomingMessageFromDoc(
   const from = String(data.fromUid || data.ownerId || data.senderUid || "");
   const senderKind = String(data.senderKind || "").trim();
   if (!from || !viewerId) return false;
+  // Authorship fields are stronger than display aliases. A signed-in sender
+  // may post as anon_* or profile_<uid>; neither should notify that same
+  // authenticated installation (including a lagged/rotated anon session).
+  const authorAuthUid = String(data.senderAuthUid || data.createdByAuthUid || "").trim();
+  if (authorAuthUid && firebaseUid && authorAuthUid === firebaseUid) return false;
 
   if (senderKind === "profile" || isProfileReplyAuthorId(from)) {
     return isIncomingProfileReplyForAnonVisitor(from, viewerId, firebaseUid, chat, roleInput);
