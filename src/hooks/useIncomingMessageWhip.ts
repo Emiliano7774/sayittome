@@ -4,12 +4,17 @@ import { useEffect, useRef } from "react";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
 import { isIncomingMessageFromDoc } from "@/lib/chat/incomingChatActivity";
-import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import {
+  isLocalOutgoingClientId,
+  isLocalOutgoingMessageId,
+  tryAlertIncomingMessage,
+} from "@/lib/chat/whipAlertDedupe";
 import { bindWhipSoundUnlock, notifyIncomingChatMessage, playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
 
 type IncomingMessage = {
   id: string;
+  clientId?: string;
   mine?: boolean;
   fromUid?: string;
   senderKind?: string;
@@ -38,11 +43,14 @@ export function useIncomingMessageWhip(
     }
 
     const last = messages[messages.length - 1];
+    const localOutgoing = isLocalOutgoingClientId(chatId, String(last.clientId || "")) ||
+      isLocalOutgoingMessageId(chatId, last.id);
     // Before the profile-anon chat metadata arrives we cannot prove which
     // anonymous author aliases belong to this visitor. Do not convert an
     // uncertain last.mine=false into a local self-notification.
     const identityKnown = !chatId.includes("__anon_to__") || Boolean(chat);
     const isIncoming =
+      !localOutgoing &&
       identityKnown &&
       last.mine !== true &&
       Boolean(currentViewerId) &&

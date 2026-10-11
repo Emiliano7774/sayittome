@@ -8,6 +8,10 @@ export function shouldWhipAnonDirectIncoming(input: {
   messageId: string;
   lastWhipMessageId: string | null;
   bootstrapped: boolean;
+  /** Client-generated ID of the persisted message, never a Firebase Auth UID. */
+  clientId?: string;
+  /** Locally authored outbound IDs for this chat, even across anon alias changes. */
+  ownClientIds?: ReadonlySet<string>;
 }) {
   const senderId = String(input.senderId || "").trim();
   const fromId = String(input.fromId || "").trim();
@@ -25,8 +29,12 @@ export function shouldWhipAnonDirectIncoming(input: {
     };
   }
 
+  // A visitor's alias can rotate while their own message is pending. The
+  // client's immutable message ID is stronger evidence than senderId equality.
+  const ownClientId = String(input.clientId || "").trim();
+  const isOwnSend = Boolean(ownClientId && input.ownClientIds?.has(ownClientId));
   return {
-    whip: Boolean(fromId) && fromId !== senderId,
+    whip: !isOwnSend && Boolean(fromId) && fromId !== senderId,
     nextLastId: messageId,
     nextBootstrapped: true,
   };

@@ -212,6 +212,7 @@ import {
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
+import { markLocalOutgoingClientId, markLocalOutgoingMessageId } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
 import { fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import { prepareInstantKeepAliveReturn } from "@/lib/navigation/instantKeepAliveReturn";
@@ -2469,6 +2470,8 @@ export default function ProfileAnonChat({
       ? outgoingSender.sender.fromUid
       : getProfileChatAnonSenderId(sendChatId, "");
     const clientId = crypto.randomUUID();
+    markLocalOutgoingClientId(chatId, clientId);
+    markLocalOutgoingClientId(sendChatId, clientId);
     const previewType = pendingType;
     const previewSource = pendingSource;
     const previewViewOnce = (previewType === "image" || previewType === "video") ? viewOnce : false;
@@ -2619,8 +2622,11 @@ export default function ProfileAnonChat({
         throw persistError;
       }
 
+      const persistedThreadId = persisted.canonicalChatId || sendChatId;
+      markLocalOutgoingMessageId(persistedThreadId, persisted.messageId);
+      if (persistedThreadId !== chatId) markLocalOutgoingMessageId(chatId, persisted.messageId);
       const persistedAnonSenderId = getProfileChatAnonSenderId(
-        persisted.canonicalChatId || sendChatId,
+        persistedThreadId,
         "",
       );
       if (!provenOwner && identityReady) {
@@ -2685,6 +2691,7 @@ export default function ProfileAnonChat({
   }) {
     const clientId = input.message.clientId;
     if (!clientId) return;
+    markLocalOutgoingClientId(chatId, clientId);
 
     setMessages((old) =>
       old.map((message) =>
@@ -2697,6 +2704,7 @@ export default function ProfileAnonChat({
         const persistence = trackPendingChatSend(
           (async () => {
             const sendChatId = await resolveVisitorSendChatId(input.isOwnerReply);
+            markLocalOutgoingClientId(sendChatId, clientId);
             const persisted = await persistAnonChatMessage({
               chatId: sendChatId,
               username,
@@ -2720,6 +2728,10 @@ export default function ProfileAnonChat({
           { chatId, clientId: clientId || "" },
         );
         const { sendChatId, persisted } = await persistence;
+        const persistedThreadId = persisted.canonicalChatId || sendChatId;
+        markLocalOutgoingClientId(persistedThreadId, clientId);
+        markLocalOutgoingMessageId(persistedThreadId, persisted.messageId);
+        if (persistedThreadId !== chatId) markLocalOutgoingMessageId(chatId, persisted.messageId);
         if (persisted.canonicalChatId && persisted.canonicalChatId !== chatId) {
           onThreadIdChange?.(persisted.canonicalChatId);
         }
@@ -2850,6 +2862,7 @@ export default function ProfileAnonChat({
 
     const messageText = text.trim();
     const clientId = crypto.randomUUID();
+    markLocalOutgoingClientId(chatId, clientId);
     const sendTapAt = Date.now();
     const replyText = replyQuoteText(replyingTo);
     const localMessage = {

@@ -310,6 +310,8 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
   const inputRef = useRef<HTMLInputElement>(null);
   const whipBootstrappedRef = useRef(false);
   const lastWhipMessageIdRef = useRef<string | null>(null);
+  // In-flight sends keep an immutable clientId, independent of anon alias.
+  const ownOutboundClientIdsRef = useRef<Set<string>>(new Set());
   const secureBombObjectUrlRef = useRef("");
   const secureBombOpenRef = useRef(false);
 
@@ -354,6 +356,7 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
     }
     whipBootstrappedRef.current = false;
     lastWhipMessageIdRef.current = null;
+    ownOutboundClientIdsRef.current.clear();
   }, [chatId]);
 
   function revokeSecureBombObjectUrl() {
@@ -433,6 +436,9 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
   );
 
   const mergeOptimistic = useCallback((message: AnonDirectChatMessage) => {
+    if (message.clientId && message.mine && message.status !== "failed") {
+      ownOutboundClientIdsRef.current.add(message.clientId);
+    }
     setMessages((old) => {
       if (message.status === "failed" && message.clientId) {
         return old.filter((row) => row.clientId !== message.clientId && row.id !== message.clientId);
@@ -461,6 +467,8 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
     if (sendInFlightRef.current || sending) return;
 
     sendInFlightRef.current = true;
+    const outboundClientId = crypto.randomUUID();
+    ownOutboundClientIdsRef.current.add(outboundClientId);
     const replyText = replyQuoteText(replyingTo);
     setText("");
     setReplyingTo(null);
@@ -474,6 +482,7 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
         senderTipo,
         messageText: value,
         reply: replyText || undefined,
+        clientId: outboundClientId,
       });
       inputRef.current?.focus();
     } catch {
@@ -502,6 +511,7 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
           id: item.id,
           data: item.data() as Record<string, unknown>,
           senderId,
+          ownClientIds: ownOutboundClientIdsRef.current,
         }),
       );
       setMessages((old) => {
@@ -527,8 +537,11 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
       const data = latest.data() as Record<string, unknown>;
       const from = String(data.senderId || "");
       const messageId = latest.id;
-      // Mark only the viewer's own read receipt, without extra Firestore reads.
-      if (from && from !== senderId && firebaseUser?.uid && chatView !== "minimized") {
+      const clientId = String(data.clientId || "");
+      const isOwnMessage = from === senderId ||
+        Boolean(clientId && ownOutboundClientIdsRef.current.has(clientId));
+      // Mark only truly inbound messages as read, with no additional reads.
+      if (from && !isOwnMessage && firebaseUser?.uid && chatView !== "minimized") {
         void markAnonDirectChatRead({
           chatId,
           viewerAuthUid: firebaseUser.uid,
@@ -546,6 +559,8 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
         messageId,
         lastWhipMessageId: lastWhipId,
         bootstrapped,
+        clientId,
+        ownClientIds: ownOutboundClientIdsRef.current,
       });
       bootstrapped = decision.nextBootstrapped;
       lastWhipId = decision.nextLastId;

@@ -40,7 +40,7 @@ import {
 } from "@/lib/chat/localPendingChats";
 import { chatUnreadCountForViewer } from "@/lib/chat/inboxUnread";
 import { getSessionChatIds, SESSION_CHATS_CHANGED_EVENT } from "@/lib/chat/sessionChats";
-import { tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import { isLocalOutgoingMessageId, tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
 import { bindWhipSoundUnlock, playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { isCapacitorNative } from "@/lib/app/nativeShell";
 import {
@@ -237,7 +237,7 @@ export function useGlobalChatAlerts() {
         const chatId = chat.canonicalChatId || chat.id;
         if (!chatId || chatId === activeChatId) continue;
         const latest = String(chat.latestMessageId || "");
-        if (!latest) continue;
+        if (!latest || isLocalOutgoingMessageId(chatId, latest)) continue;
         if (
           chatUnreadCountForViewer(chat, firebaseUid, {
             excludeChatId: activeChatId,
@@ -282,7 +282,7 @@ export function useGlobalChatAlerts() {
       if (!chatId) continue;
       const latest = String(chat.latestMessageId || "");
       const prior = previous.get(chatId);
-      if (!latest || prior === latest) continue;
+      if (!latest || prior === latest || isLocalOutgoingMessageId(chatId, latest)) continue;
       // A new latestMessageId is not proof of a new INCOMING message. Our own
       // send also updates that id, sometimes before a cached sender preview
       // catches up. Respect the same read/ownership decision used by Chats.

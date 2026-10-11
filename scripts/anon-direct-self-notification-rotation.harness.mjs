@@ -1,0 +1,18 @@
+import assert from "node:assert/strict";
+import {pathToFileURL} from "node:url";
+import path from "node:path";
+const root=path.resolve(".");
+const whip=await import(pathToFileURL(path.join(root,"src/lib/anonMatch/anonDirectIncomingWhip.ts")).href);
+const model=await import(pathToFileURL(path.join(root,"src/lib/anonMatch/anonDirectMessageModel.ts")).href);
+const own=new Set(["locally_created_text_1","locally_created_media_2"]);
+const base={senderId:"anon_current_session",fromId:"anon_previous_session",messageId:"server_own_msg",lastWhipMessageId:"last_remote_msg",bootstrapped:true};
+assert.equal(whip.shouldWhipAnonDirectIncoming({...base,clientId:"locally_created_text_1",ownClientIds:own}).whip,false,"own text remains silent after alias changes");
+assert.equal(whip.shouldWhipAnonDirectIncoming({...base,messageId:"server_media",clientId:"locally_created_media_2",ownClientIds:own}).whip,false,"own media remains silent after alias changes");
+assert.equal(whip.shouldWhipAnonDirectIncoming({...base,messageId:"server_remote",clientId:"genuinely_remote",ownClientIds:own}).whip,true,"real incoming still alerts");
+assert.equal(whip.shouldWhipAnonDirectIncoming({...base,fromId:"anon_current_session",clientId:"unknown",ownClientIds:own}).whip,false,"own matching sender remains silent");
+assert.equal(whip.shouldWhipAnonDirectIncoming({...base,bootstrapped:false,clientId:"remote",ownClientIds:own}).whip,false,"first hydration remains silent");
+const ownMessage=model.mapAnonDirectMessageDoc({id:"server_own_msg",data:{senderId:"anon_previous_session",type:"text",texto:"local authored",clientId:"locally_created_text_1"},senderId:"anon_current_session",ownClientIds:own});
+assert.equal(ownMessage.mine,true,"own text bubble stays on own side after alias rotation");
+const inbound=model.mapAnonDirectMessageDoc({id:"server_remote",data:{senderId:"anon_peer",type:"text",texto:"remote",clientId:"remote_client"},senderId:"anon_current_session",ownClientIds:own});
+assert.equal(inbound.mine,false,"peer bubble remains incoming");
+console.log(JSON.stringify({gate:"ANON_DIRECT_OWN_MESSAGE_NOTIFICATIONS_AFTER_ROTATION",pass:true,checks:7}));

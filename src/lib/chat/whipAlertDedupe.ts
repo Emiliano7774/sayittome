@@ -1,5 +1,46 @@
 const alertedKeys = new Set<string>();
 const MAX_ALERTED_KEYS = 600;
+
+// Exact outgoing IDs from this JS session. They guard against a Firestore
+// server echo being mistaken for inbound while cached sender metadata catches
+// up. Do not share between accounts/tabs: a real recipient must still be
+// notified, even when both sessions run on the same computer.
+const localOutboundClientIds = new Map<string, number>();
+const localOutboundMessageIds = new Map<string, number>();
+const LOCAL_OUTBOUND_TTL_MS = 60 * 60_000;
+function ownKey(chatId: string, id: string) {
+  return chatId && id ? chatId + ":" + id : "";
+}
+function rememberOwn(map: Map<string, number>, chatId: string, id: string) {
+  const key = ownKey(chatId, id);
+  if (!key) return;
+  const now = Date.now();
+  map.set(key, now);
+  if (map.size > 600) {
+    for (const [k, time] of map) {
+      if (time + LOCAL_OUTBOUND_TTL_MS < now || map.size > 500) map.delete(k);
+    }
+  }
+}
+function isRememberedOwn(map: Map<string, number>, chatId: string, id: string) {
+  const key = ownKey(chatId, id);
+  const time = key ? map.get(key) : undefined;
+  return typeof time === "number" && Date.now() - time < LOCAL_OUTBOUND_TTL_MS;
+}
+export function markLocalOutgoingClientId(chatId: string, clientId: string) {
+  rememberOwn(localOutboundClientIds, chatId, clientId);
+}
+export function isLocalOutgoingClientId(chatId: string, clientId: string) {
+  return isRememberedOwn(localOutboundClientIds, chatId, clientId);
+}
+export function markLocalOutgoingMessageId(chatId: string, messageId: string) {
+  rememberOwn(localOutboundMessageIds, chatId, messageId);
+  // Share the existing alert-id dedupe with all local notification producers.
+  markMessageWhipAlerted(chatId, messageId);
+}
+export function isLocalOutgoingMessageId(chatId: string, messageId: string) {
+  return isRememberedOwn(localOutboundMessageIds, chatId, messageId);
+}
 const STORAGE_KEY = "sayittome_whip_alerted_v1";
 
 function alertKey(chatId: string, messageId: string) {

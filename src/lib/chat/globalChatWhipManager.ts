@@ -17,6 +17,8 @@ import {
   SESSION_CHATS_CHANGED_EVENT,
 } from "@/lib/chat/sessionChats";
 import {
+  isLocalOutgoingClientId,
+  isLocalOutgoingMessageId,
   markMessageWhipAlerted,
   tryAlertIncomingMessage,
 } from "@/lib/chat/whipAlertDedupe";
@@ -185,6 +187,7 @@ class GlobalChatWhipManager {
         const previousId = this.lastMessageId.get(chatId);
         const data = docSnap.data() as {
           fromUid?: string;
+          clientId?: string;
           ownerId?: string;
           senderUid?: string;
           senderKind?: string;
@@ -201,6 +204,14 @@ class GlobalChatWhipManager {
         const body =
           textBody || (data.mediaUrl || data.type ? "Nuevo mensaje" : "");
         const chat = ctx.getChatById(chatId);
+        // Exact client-authored IDs take priority over speculative sender/role
+        // metadata. The sender never gets notified by their own Firestore echo.
+        if (isLocalOutgoingClientId(chatId, String(data.clientId || "")) ||
+            isLocalOutgoingMessageId(chatId, messageId)) {
+          this.lastMessageId.set(chatId, messageId);
+          markMessageWhipAlerted(chatId, messageId);
+          return;
+        }
         // The profile↔anon sender's Firebase UID is intentionally private.
         // Without the thread summary we cannot know whether anon_* is this
         // browser's own sender or the peer. Fail closed, not self-notify.

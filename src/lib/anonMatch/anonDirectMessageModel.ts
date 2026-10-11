@@ -39,6 +39,7 @@ export function mapAnonDirectMessageDoc(input: {
   id: string;
   data: Record<string, unknown>;
   senderId: string;
+  ownClientIds?: ReadonlySet<string>;
 }): AnonDirectChatMessage {
   const data = input.data || {};
   const fromId = String(data.senderId || "").trim();
@@ -51,7 +52,8 @@ export function mapAnonDirectMessageDoc(input: {
   return {
     id: input.id,
     text,
-    mine: Boolean(input.senderId) && fromId === input.senderId,
+    mine: (Boolean(input.senderId) && fromId === input.senderId) ||
+      Boolean(data.clientId && input.ownClientIds?.has(String(data.clientId))),
     fromId,
     type,
     // Never expose bomb mediaUrl from the listener — claim delivery only.
