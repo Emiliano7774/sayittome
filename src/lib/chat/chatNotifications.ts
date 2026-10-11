@@ -11,6 +11,9 @@ import {
   markChatOpenedFromNotification,
 } from "@/lib/chat/chatNotificationOpen";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
+import { auth } from "@/lib/firebase";
+import { isLocalOutgoingMessageId, tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import { shouldShowWebForegroundChatPush } from "@/lib/chat/webForegroundPushPolicy";
 
 const CHAT_CHANNEL_ID = "chat-messages";
 const ANON_MATCH_CHANNEL_ID = "anon-match-requests";
@@ -391,10 +394,42 @@ function attachChatNotifySwMessageListener() {
       url?: string;
       chatId?: string;
       messageId?: string;
+      inboxKind?: string;
+      data?: Record<string, string>;
     };
+    // The custom SW runs without Firebase Messaging's own worker library.
+    // Relay its foreground data push to the page without another OS banner.
+    if (data.type === "sayittome:web-foreground-push") {
+      const push = data.data || {};
+      const chatId = String(push.chatId || "").trim();
+      const messageId = String(push.messageId || "").trim();
+      if (shouldShowWebForegroundChatPush({
+        data: push,
+        viewerUid: String(auth.currentUser?.uid || ""),
+        ownMessage: isLocalOutgoingMessageId(chatId, messageId),
+        enabled: areChatNotificationsEnabled(),
+      })) {
+        tryAlertIncomingMessage({
+          chatId, messageId, incoming: true, suppress: false,
+          onAlert: () => {
+            showForegroundWebChatBanner({
+              title: push.title || "Nuevo mensaje",
+              body: push.body || "Nuevo mensaje",
+              chatId, messageId,
+              ...(push.inboxKind === "anon_direct" ? { inboxKind: "anon_direct" as const, href: "/chats" } : {}),
+            });
+          },
+        });
+      }
+      return;
+    }
     if (data.type !== "sayittome:chat-notification-open") return;
     const chatId = String(data.chatId || "").trim();
     const href = String(data.url || "").trim();
+    if (data.inboxKind === "anon_direct") {
+      window.location.assign("/chats");
+      return;
+    }
     if (chatId) {
       openChatFromNotification({
         chatId,
@@ -538,6 +573,8 @@ export function showForegroundWebChatBanner(input: {
   body: string;
   chatId?: string;
   messageId?: string;
+  inboxKind?: "anon_direct";
+  href?: string;
 }) {
   if (typeof document === "undefined" || document.hidden || isCapacitorNative()) return false;
   const id = "sayittome-web-incoming-chat-banner";
@@ -557,6 +594,10 @@ export function showForegroundWebChatBanner(input: {
   banner.append(heading, body);
   banner.onclick = () => {
     banner.remove();
+    if (input.inboxKind === "anon_direct") {
+      window.location.assign("/chats");
+      return;
+    }
     if (input.chatId) openChatFromNotification({
       chatId: input.chatId,
       messageId: input.messageId,
@@ -575,6 +616,8 @@ export async function showChatNotification(input: {
   chatId?: string;
   messageId?: string;
   viewingActiveChat?: boolean;
+  inboxKind?: "anon_direct";
+  href?: string;
 }) {
   if (typeof window === "undefined") return;
   // Always show the verified incoming event *inside an open web tab*.
@@ -645,6 +688,10 @@ export async function showChatNotification(input: {
   }
 
   const onClick = () => {
+    if (input.inboxKind === "anon_direct") {
+      window.location.assign("/chats");
+      return;
+    }
     if (chatId) {
       openChatFromNotification({
         chatId,
@@ -665,7 +712,10 @@ export async function showChatNotification(input: {
     tag,
     icon: ICON_PATH,
     silent: false,
-    data: { chatId, messageId, group },
+    data: {
+      chatId, messageId, group,
+      ...(input.inboxKind ? { inboxKind: input.inboxKind, href: "/chats" } : {}),
+    },
   };
 
   const showPageNotification = () => {

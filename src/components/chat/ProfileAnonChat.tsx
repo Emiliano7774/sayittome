@@ -309,7 +309,7 @@ function chatMessagesSignature(messages: Message[]) {
   return messages
     .map(
       (message) =>
-        `${messageRowKey(message)}:${message.mine ? 1 : 0}:${message.status || ""}:${message.text}:${message.mediaUrl || ""}:${message.deletedForEveryone ? 1 : 0}`,
+        `${messageRowKey(message)}:${message.mine ? 1 : 0}:${message.status || ""}:${message.text}:${message.mediaUrl || ""}:${message.deletedForEveryone ? 1 : 0}:${String((message.verifiedProfileAttestation as { ticketId?: unknown } | undefined)?.ticketId || "")}`,
     )
     .join("|");
 }

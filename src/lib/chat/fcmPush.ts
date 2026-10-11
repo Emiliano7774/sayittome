@@ -4,6 +4,8 @@ import { httpsCallable } from "firebase/functions";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { isCapacitorNative } from "@/lib/app/nativeShell";
+import { isLocalOutgoingMessageId, tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import { shouldShowWebForegroundChatPush } from "@/lib/chat/webForegroundPushPolicy";
 import { getAnonArrivalPushPreference } from "@/lib/chat/anonArrivalPrefs";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
 import { recordNotificationStage } from "@/lib/chat/notificationIncident";
@@ -61,6 +63,46 @@ let tokenWaiters: Array<(token: string) => void> = [];
 const enableInFlightByUid = new Map<string, Promise<PushEnableResult>>();
 let initInFlight: Promise<void> | null = null;
 let authCallbackChain: Promise<void> = Promise.resolve();
+let webForegroundMessagingUnsubscribe: (() => void) | null = null;
+
+/** Receive data-only FCM while a web page is foregrounded. The nested chat
+ * service worker handles background push; it cannot replace this page listener.
+ * Shared message-id dedupe keeps Firestore listeners from showing twice. */
+async function attachWebForegroundMessagingListener() {
+  if (webForegroundMessagingUnsubscribe || isCapacitorNative()) return;
+  const { getMessaging, onMessage } = await import("firebase/messaging");
+  webForegroundMessagingUnsubscribe = onMessage(getMessaging(app), (payload) => {
+    const data = payload.data || {};
+    const viewerUid = asId(auth.currentUser?.uid);
+    const chatId = asId(data.chatId);
+    const messageId = asId(data.messageId);
+    if (!shouldShowWebForegroundChatPush({
+      data,
+      viewerUid,
+      ownMessage: isLocalOutgoingMessageId(chatId, messageId),
+      enabled: areChatNotificationsEnabled(),
+    })) return;
+
+    tryAlertIncomingMessage({
+      chatId,
+      messageId,
+      incoming: true,
+      suppress: false,
+      onAlert: () => {
+        const anonDirect = data.inboxKind === "anon_direct";
+        void import("@/lib/chat/chatNotifications").then(({ showChatNotification }) =>
+          showChatNotification({
+            title: asId(data.title) || "Nuevo mensaje",
+            body: asId(data.body) || "Nuevo mensaje",
+            chatId,
+            messageId,
+            ...(anonDirect ? { inboxKind: "anon_direct" as const, href: "/chats" } : {}),
+          }),
+        ).catch(() => undefined);
+      },
+    });
+  });
+}
 
 function notifyTokenWaiters(token: string) {
   const waiters = tokenWaiters;
@@ -696,6 +738,15 @@ export async function enableWebChatPush(user?: User | null): Promise<PushEnableR
               : "callable",
           message: upserted.reason,
         };
+      }
+      // A data-only push addressed to an open web tab requires onMessage.
+      // Without this listener the browser may silently consume it without an
+      // OS banner, even though the same event works in the Android app.
+      try {
+        await attachWebForegroundMessagingListener();
+        recordNotificationStage("web_fcm_foreground", true, "listening");
+      } catch (error) {
+        recordNotificationStage("web_fcm_foreground", false, String((error as Error)?.name || "err"));
       }
       recordNotificationStage(
         "web_fcm_register",

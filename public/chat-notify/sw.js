@@ -35,15 +35,30 @@ self.addEventListener("push", (event) => {
     chatId ? `sayittome-chat-${chatId}` : data.tag || data.type || "sayittome",
   ).trim();
 
-  event.waitUntil(
-    self.registration.showNotification(title || "SayItToMe", {
-      body,
-      tag,
-      icon: "/icons/Icon-192.png",
-      badge: "/icons/Icon-192.png",
-      data: { chatId, messageId, href, type: String(data.type || ""), inboxKind: String(data.inboxKind || "") },
-    }),
-  );
+  const osNotice = self.registration.showNotification(title || "SayItToMe", {
+    body,
+    tag,
+    icon: "/icons/Icon-192.png",
+    badge: "/icons/Icon-192.png",
+    data: { chatId, messageId, href, type: String(data.type || ""), inboxKind: String(data.inboxKind || "") },
+  });
+  // A custom worker does not automatically forward FCM data-only pushes to
+  // Firebase Messaging onMessage. Deliver the authenticated payload to visible
+  // app pages too, where the recipient is checked before any in-page banner.
+  // OS push remains active for minimized/closed tabs.
+  const foreground = data.type === "chat_message" && chatId && messageId
+    ? self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+        for (const client of clients) {
+          if (client.visibilityState !== "visible") continue;
+          try {
+            client.postMessage({ type: "sayittome:web-foreground-push", data });
+          } catch {
+            // Keep native OS notification even if a page cannot receive relay.
+          }
+        }
+      })
+    : Promise.resolve();
+  event.waitUntil(Promise.all([osNotice, foreground]));
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -82,6 +97,7 @@ self.addEventListener("notificationclick", (event) => {
               url,
               chatId,
               messageId,
+              inboxKind: String(data.inboxKind || ""),
             });
           } catch {
             // ignore
