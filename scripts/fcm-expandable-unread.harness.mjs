@@ -75,6 +75,36 @@ assert.equal(lines[lines.length - 1].t, "segundo");
 assert.match(encodeUnreadLinesForFcm(lines), /primero/);
 assert.equal(formatCollapsedUnreadBody(lines), "primero\nsegundo");
 
+// Regression: visitor's own anon_* lines have no public senderAuthUid by design.
+// A new profile reply must display ONLY the profile's lines, not the visitor's.
+const anonymousVisitorLines = selectUnreadNotificationLines({
+  messages: [
+    { id: "a1", texto: "mi mensaje", fromUid: "anon_visitA", createdAtMs: 100 },
+    { id: "p1", texto: "respuesta recibida", fromUid: "profile_owner", createdAtMs: 200 },
+    { id: "a2", texto: "mi mensaje tras rotación", fromUid: "anon_visitB", createdAtMs: 300 },
+    { id: "p2", texto: "otra respuesta", fromUid: "profile_owner", createdAtMs: 400 },
+  ],
+  recipientUid: "visitorAuth",
+  ownSenderAliases: ["anon_visitA", "anon_visitB"],
+  titleForMessage: () => "Anónimo",
+});
+assert.deepEqual(
+  anonymousVisitorLines.map((row) => row.t),
+  ["respuesta recibida", "otra respuesta"],
+  "visitor must not see their own anonymous outbound messages in an expandable notification",
+);
+const ownerLines = selectUnreadNotificationLines({
+  messages: [
+    { id: "a1", texto: "hola de anon", fromUid: "anon_visitA", createdAtMs: 100 },
+    { id: "p1", texto: "mi respuesta", fromUid: "profile_owner", createdAtMs: 200 },
+  ],
+  recipientUid: "owner",
+  ownSenderAliases: [],
+  titleForMessage: () => "Anon",
+});
+assert.deepEqual(ownerLines.map((row) => row.t), ["hola de anon"],
+  "profile owner must still receive the visitor's inbound anonymous messages");
+
 const readSrc = fs.readFileSync(path.join(root, "scripts/push-chat-read-persist.harness.mjs"), "utf8");
 assert.match(readSrc, /PUSH_CHAT_READ_PERSIST|resolveDetailReadMark/);
 

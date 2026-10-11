@@ -16,6 +16,34 @@ export function bodyFromMessageFields(texto?: string, text?: string, type?: stri
   return "Nuevo mensaje";
 }
 
+export function isMessageAuthoredByRecipient(
+  message: {
+    fromUid?: string;
+    ownerId?: string;
+    senderUid?: string;
+    createdByAuthUid?: string;
+    senderAuthUid?: string;
+  },
+  recipientUid: string,
+  ownSenderAliases: readonly string[] = [],
+): boolean {
+  const recipient = String(recipientUid || "").trim();
+  if (!recipient) return false;
+  const from = String(
+    message.fromUid || message.ownerId || message.senderUid || "",
+  ).trim();
+  const senderIds = new Set(
+    [recipient, `profile_${recipient}`, ...ownSenderAliases]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  );
+  return Boolean(
+    (from && senderIds.has(from)) ||
+    String(message.createdByAuthUid || "").trim() === recipient ||
+    String(message.senderAuthUid || "").trim() === recipient
+  );
+}
+
 export function isMessageUnreadForRecipient(
   message: {
     fromUid?: string;
@@ -26,15 +54,12 @@ export function isMessageUnreadForRecipient(
     senderAuthUid?: string;
   },
   recipientUid: string,
+  ownSenderAliases: readonly string[] = [],
 ): boolean {
   const recipient = String(recipientUid || "").trim();
-  if (!recipient) return false;
-  const from = String(
-    message.fromUid || message.ownerId || message.senderUid || "",
-  ).trim();
-  if (from === recipient || from === `profile_${recipient}`) return false;
-  if (String(message.createdByAuthUid || "").trim() === recipient) return false;
-  if (String(message.senderAuthUid || "").trim() === recipient) return false;
+  if (!recipient || isMessageAuthoredByRecipient(message, recipient, ownSenderAliases)) {
+    return false;
+  }
 
   const readBy = message.readBy || {};
   const keys = [recipient, `profile_${recipient}`];
@@ -60,6 +85,8 @@ export function selectUnreadNotificationLines(input: {
     senderAuthUid?: string;
   }>;
   recipientUid: string;
+  /** Proven sender aliases of the recipient (e.g. visitor's anon_* thread identity). */
+  ownSenderAliases?: string[];
   titleForMessage: (message: {
     fromUid?: string;
     senderKind?: string;
@@ -68,7 +95,7 @@ export function selectUnreadNotificationLines(input: {
 }): UnreadNotifLine[] {
   const limit = Math.max(1, Math.min(Number(input.limit) || 20, 30));
   const unread = input.messages
-    .filter((row) => isMessageUnreadForRecipient(row, input.recipientUid))
+    .filter((row) => isMessageUnreadForRecipient(row, input.recipientUid, input.ownSenderAliases))
     .sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
 
   const sliced = unread.slice(Math.max(0, unread.length - limit));

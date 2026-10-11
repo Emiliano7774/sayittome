@@ -28,6 +28,24 @@ if (fs.existsSync(compiled)) {
   notificationBodyFromMessage = compiledMod.notificationBodyFromMessage;
   mergeVisitorPushRecipient = compiledMod.mergeVisitorPushRecipient;
   anonSessionFromProfileAnonChatId = compiledMod.anonSessionFromProfileAnonChatId;
+  assert.deepEqual(
+    compiledMod.recipientOwnAnonAliases("anon_visitA__anon_to__owner", {
+      targetUid: "owner",
+      anonSessionId: "anon_visitA",
+      participantes: ["anon_visitA", "anon_visitB", "owner"],
+    }, "visitorAuth"),
+    ["anon_visitA", "anon_visitB"],
+    "visitor owns the thread's anonymous author aliases",
+  );
+  assert.deepEqual(
+    compiledMod.recipientOwnAnonAliases("anon_visitA__anon_to__owner", {
+      targetUid: "owner",
+      anonSessionId: "anon_visitA",
+      participantes: ["anon_visitA", "owner"],
+    }, "owner"),
+    [],
+    "owner must not inherit the visitor's aliases",
+  );
 } else {
   resolvePushRecipientUids = (message, chat) => {
     const from = String(message.fromUid || message.ownerId || "").trim();

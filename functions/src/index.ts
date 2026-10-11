@@ -34,6 +34,7 @@ import { handleStoryCreated } from "./storyCreated";
 import {
   encodeUnreadLinesForFcm,
   formatCollapsedUnreadBody,
+  isMessageAuthoredByRecipient,
   selectUnreadNotificationLines,
 } from "./unreadNotificationLines";
 
@@ -168,6 +169,30 @@ export function resolvePushRecipientUids(message: MessageDoc, chat: ChatDoc): st
   }
 
   return [...recipients].filter(isFirebaseUid);
+}
+
+/**
+ * A private visitor's auth uid is intentionally absent from a profile-anon
+ * message. Their own messages use anon_* instead, so FCM cannot filter them
+ * by recipient UID alone. Only assign those aliases to the VISITOR recipient:
+ * the profile owner must still receive the anonymous person's messages.
+ */
+export function recipientOwnAnonAliases(
+  chatId: string,
+  chat: ChatDoc,
+  recipientUid: string,
+): string[] {
+  const recipient = asId(recipientUid);
+  const profileUid = asId(chat.targetUid || chat.receptorUid || chat.anonOwnerUid);
+  if (!chatId.includes("__anon_to__") || !recipient || !profileUid ||
+      recipient === profileUid) return [];
+
+  return [...new Set([
+    anonSessionFromProfileAnonChatId(chatId),
+    asId(chat.anonSessionId),
+    ...(chat.participantes || []),
+    ...(chat.participants || []),
+  ].map(asId).filter((id) => id.startsWith("anon_")))];
 }
 
 const ABUSE_CHAT_LEASE_COLLECTION = "anon_abuse_chat_leases";
@@ -433,6 +458,7 @@ async function loadUnreadLinesForPush(input: {
   return selectUnreadNotificationLines({
     messages: rows,
     recipientUid: input.recipientUid,
+    ownSenderAliases: recipientOwnAnonAliases(input.chatId, input.chat, input.recipientUid),
     titleForMessage: (row) =>
       notificationTitleForRecipient(row as MessageDoc, input.chat, input.recipientUid),
     limit: 20,
@@ -718,6 +744,15 @@ export const onChatMessageCreated = onDocumentCreated(
     const invalidDeleted: string[] = [];
 
     for (const recipientUid of recipients) {
+      // Never deliver a self-authored message, including private anon_* aliases.
+      // This also protects legacy chats with an incorrect initiatorUid.
+      if (isMessageAuthoredByRecipient(
+        message,
+        recipientUid,
+        recipientOwnAnonAliases(chatId, chat, recipientUid),
+      )) {
+        continue;
+      }
       const tokens = await loadTokensForUid(recipientUid);
       if (tokens.length === 0) continue;
 
