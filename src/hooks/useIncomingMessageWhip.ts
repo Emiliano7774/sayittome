@@ -38,7 +38,12 @@ export function useIncomingMessageWhip(
     }
 
     const last = messages[messages.length - 1];
+    // Before the profile-anon chat metadata arrives we cannot prove which
+    // anonymous author aliases belong to this visitor. Do not convert an
+    // uncertain last.mine=false into a local self-notification.
+    const identityKnown = !chatId.includes("__anon_to__") || Boolean(chat);
     const isIncoming =
+      identityKnown &&
       last.mine !== true &&
       Boolean(currentViewerId) &&
       isIncomingMessageFromDoc(

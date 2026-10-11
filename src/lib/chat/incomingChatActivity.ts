@@ -57,6 +57,20 @@ export function resolveChatViewerRole(input: {
     return { viewerKind: "anon", provenOwner: false };
   }
 
+  // A registered account may browse another profile ANONYMOUSLY. If the
+  // thread metadata proves that account is not the target profile owner,
+  // it must be evaluated as the visitor even after its anon alias rotated.
+  // Without this, direction-based self-message suppression would hide real
+  // profile replies when resolveChatViewerId fell back to auth uid.
+  if (input.chat && (input.chat.canonicalChatId || input.chat.id).includes("__anon_to__")) {
+    const owner = String(
+      input.chat.receptorUid || input.chat.targetUid || input.chat.anonOwnerUid || "",
+    ).trim();
+    if (uid && owner && uid !== owner) {
+      return { viewerKind: "anon", provenOwner: false };
+    }
+  }
+
   return { viewerKind: "unknown", provenOwner: false };
 }
 
@@ -333,6 +347,25 @@ export function isIncomingChatActivity(
   const preview = String(chat.lastMessage || "").trim();
   const sender = String(chat.lastMessageSender || "").trim();
   if (!preview || !viewerId) return false;
+
+  // Profile↔anon threads have two AUTHOR ROLES, not two immutable viewer IDs.
+  // After a visitor identity rotation their own old anon_* alias no longer
+  // matches the current viewerId. Treating !isOwnChatSender as "incoming"
+  // then resurrected orange unread and raised self-notifications.
+  // Prefer durable sender-side evidence, irrespective of anon alias age.
+  if ((chat.canonicalChatId || chat.id).includes("__anon_to__")) {
+    const role = resolveChatViewerRole({
+      viewerId, firebaseUid, chat,
+      viewerKind: roleInput?.viewerKind,
+      provenOwner: roleInput?.provenOwner,
+    });
+    const kind = sender.startsWith("anon_") ? "anon"
+      : sender.startsWith("profile_") ? "profile"
+      : String(chat.latestSenderKind || "").trim();
+    if (role.viewerKind === "anon") return kind === "profile";
+    if (role.provenOwner || role.viewerKind === "owner") return kind === "anon";
+    return false;
+  }
   // Late/missing lastMessageSender: prefer stable kind/session attribution
   // before fail-open, so own sends do not bold while outbound meta catches up.
   if (!sender) {
@@ -401,6 +434,23 @@ export function isIncomingMessageFromDoc(
   // authenticated installation (including a lagged/rotated anon session).
   const authorAuthUid = String(data.senderAuthUid || data.createdByAuthUid || "").trim();
   if (authorAuthUid && firebaseUid && authorAuthUid === firebaseUid) return false;
+
+  // Detect direction before comparing anonymous aliases. An anon visitor
+  // changing identity cannot turn their own historical anon_* messages into
+  // incoming ones just because the original alias is no longer in memory.
+  if (chat && (chat.canonicalChatId || chat.id).includes("__anon_to__")) {
+    const role = resolveChatViewerRole({
+      viewerId, firebaseUid, chat,
+      viewerKind: roleInput?.viewerKind,
+      provenOwner: roleInput?.provenOwner,
+    });
+    const kind = from.startsWith("anon_") ? "anon"
+      : from.startsWith("profile_") ? "profile"
+      : senderKind;
+    if (role.viewerKind === "anon") return kind === "profile";
+    if (role.provenOwner || role.viewerKind === "owner") return kind === "anon";
+    return false;
+  }
 
   if (senderKind === "profile" || isProfileReplyAuthorId(from)) {
     return isIncomingProfileReplyForAnonVisitor(from, viewerId, firebaseUid, chat, roleInput);
