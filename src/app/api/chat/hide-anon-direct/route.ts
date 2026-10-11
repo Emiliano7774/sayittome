@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import type { DocumentReference, Transaction } from "firebase-admin/firestore";
 
 import { verifyFirebaseIdTokenAllowingAnonymous } from "@/lib/admin/verifyAdminRequest";
 import { exactChatId } from "@/lib/chat/ownedChatDelete";
@@ -9,6 +8,16 @@ import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 export const dynamic = "force-dynamic";
 
 const MAX_IDS = 25;
+
+// Runtime admin handle is intentionally opaque to the Next.js bundler.
+// Describe only the transaction operations used by this route.
+type ChatHideTransaction = {
+  get(ref: unknown): Promise<{
+    exists: boolean;
+    data(): Record<string, unknown> | undefined;
+  }>;
+  update(ref: unknown, patch: Record<string, unknown>): void;
+};
 
 function reply(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -52,8 +61,8 @@ export async function POST(req: Request) {
     const denied: string[] = [];
     for (const chatId of ids) {
       const ref = db.collection("chats_anonimos").doc(chatId);
-      const allowed = await db.runTransaction(async (tx: Transaction) => {
-        const snap = await tx.get(ref as DocumentReference);
+      const allowed = await db.runTransaction(async (tx: ChatHideTransaction) => {
+        const snap = await tx.get(ref);
         if (!snap.exists) return false;
         const data = (snap.data() || {}) as Record<string, unknown>;
         if (!anonDirectCanHideChat(
