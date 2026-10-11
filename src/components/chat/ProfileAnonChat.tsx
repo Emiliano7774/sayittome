@@ -154,7 +154,7 @@ import { prefetchChatThreadAsync } from "@/lib/chat/prefetchChatThread";
 import { useAuth } from "@/contexts/AuthContext";
 import { isChatThreadRoute, isProfileChatRoute } from "@/lib/navigation/routeKind";
 import type { InboxChat } from "@/hooks/useChatsInbox";
-import { isProfileAnonMessageUnreadForViewer } from "@/lib/chat/incomingChatActivity";
+import { isIncomingMessageFromDoc, isProfileAnonMessageUnreadForViewer } from "@/lib/chat/incomingChatActivity";
 import {
   inboxChatFromFirestore,
   markThreadReadExact,
@@ -1604,12 +1604,30 @@ export default function ProfileAnonChat({
   };
 
 
+  // Receipts must follow persisted authorship, not the visual bubble side.
+  // Older messages can have a stale mine flag/correction while the thread is
+  // otherwise fully visible, and those rows previously never got marked read.
+  const isPersistedInbound = (row: (typeof displayMessages)[number]) =>
+    Boolean(row.id) &&
+    isIncomingMessageFromDoc(
+      {
+        fromUid: row.fromUid,
+        senderKind: row.senderKind || row.senderRole,
+        senderAuthUid: row.senderAuthUid,
+      },
+      isOwnerViewing ? currentUid : anonSenderId,
+      currentUid,
+      chatMetaRef.current || undefined,
+      isOwnerViewing
+        ? { viewerKind: "owner", provenOwner: true }
+        : { viewerKind: "anon", provenOwner: false },
+    );
   const inboundRenderedIds = displayMessages
-    .filter((row) => !row.mine && row.id)
+    .filter(isPersistedInbound)
     .map((row) => String(row.id));
   inboundReadIdsRef.current = inboundRenderedIds;
   const latestInboundMessageId = inboundRenderedIds[inboundRenderedIds.length - 1] || "";
-  const latestInboundPreview = [...displayMessages].reverse().find((row) => !row.mine && row.id);
+  const latestInboundPreview = [...displayMessages].reverse().find(isPersistedInbound);
   const inboundPreviewText = String(latestInboundPreview?.text || "").trim() ||
     (latestInboundPreview?.type === "image" ? "Foto" :
       latestInboundPreview?.type === "video" ? "Video" :

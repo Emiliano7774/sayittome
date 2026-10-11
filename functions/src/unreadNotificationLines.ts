@@ -16,6 +16,39 @@ export function bodyFromMessageFields(texto?: string, text?: string, type?: stri
   return "Nuevo mensaje";
 }
 
+/**
+ * Direction is authoritative in a profile↔anonymous thread. Visitors can
+ * rotate anon_* identities without rewriting all historical message authors.
+ * For notification history, deliver only the opposing side's messages.
+ */
+export function isOppositeSideProfileAnonMessage(
+  message: {
+    fromUid?: string;
+    ownerId?: string;
+    senderUid?: string;
+    senderKind?: string;
+    senderRole?: string;
+  },
+  recipientUid: string,
+  profileOwnerUid: string,
+): boolean {
+  const recipient = String(recipientUid || "").trim();
+  const owner = String(profileOwnerUid || "").trim();
+  if (!recipient || !owner) return false;
+  const from = String(message.fromUid || message.ownerId || message.senderUid || "").trim();
+  const declaredKind = String(message.senderRole || message.senderKind || "").trim();
+  // Immutable author id is preferred when inconsistent legacy role metadata exists.
+  const profileAuthor =
+    from.startsWith("profile_") ||
+    (from && from === owner) ||
+    (!from.startsWith("anon_") && declaredKind === "profile");
+  const anonAuthor =
+    from.startsWith("anon_") ||
+    (!from.startsWith("profile_") && from !== owner && declaredKind === "anon");
+  if (recipient === owner) return Boolean(anonAuthor && !profileAuthor);
+  return Boolean(profileAuthor && !anonAuthor);
+}
+
 export function isMessageAuthoredByRecipient(
   message: {
     fromUid?: string;
@@ -62,7 +95,7 @@ export function isMessageUnreadForRecipient(
   }
 
   const readBy = message.readBy || {};
-  const keys = [recipient, `profile_${recipient}`];
+  const keys = [recipient, `profile_${recipient}`, ...ownSenderAliases];
   for (const key of keys) {
     if (readBy[key] === true) return false;
   }
@@ -79,6 +112,7 @@ export function selectUnreadNotificationLines(input: {
     ownerId?: string;
     senderUid?: string;
     senderKind?: string;
+    senderRole?: string;
     createdAtMs?: number;
     readBy?: Record<string, unknown>;
     createdByAuthUid?: string;
@@ -87,6 +121,11 @@ export function selectUnreadNotificationLines(input: {
   recipientUid: string;
   /** Proven sender aliases of the recipient (e.g. visitor's anon_* thread identity). */
   ownSenderAliases?: string[];
+  /** Only present for profile↔anonymous threads. */
+  profileAnonOwnerUid?: string;
+  /** Thread receipt: message documents are not updated when their chat is read. */
+  afterReadAtMs?: number;
+  afterReadMessageIds?: string[];
   titleForMessage: (message: {
     fromUid?: string;
     senderKind?: string;
@@ -94,9 +133,23 @@ export function selectUnreadNotificationLines(input: {
   limit?: number;
 }): UnreadNotifLine[] {
   const limit = Math.max(1, Math.min(Number(input.limit) || 20, 30));
-  const unread = input.messages
-    .filter((row) => isMessageUnreadForRecipient(row, input.recipientUid, input.ownSenderAliases))
+  const ordered = input.messages
+    .slice()
     .sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+  const lastReadIds = new Set((input.afterReadMessageIds || []).filter(Boolean));
+  let lastReadIndex = -1;
+  ordered.forEach((row, index) => {
+    if (lastReadIds.has(row.id)) lastReadIndex = index;
+  });
+  const readAt = Math.max(0, Number(input.afterReadAtMs) || 0);
+  const unread = ordered.filter((row, index) =>
+    index > lastReadIndex &&
+    (!readAt || !row.createdAtMs || row.createdAtMs > readAt) &&
+    isMessageUnreadForRecipient(row, input.recipientUid, input.ownSenderAliases) &&
+    (!input.profileAnonOwnerUid || isOppositeSideProfileAnonMessage(
+      row, input.recipientUid, input.profileAnonOwnerUid,
+    )),
+  );
 
   const sliced = unread.slice(Math.max(0, unread.length - limit));
   return sliced.map((row) => ({

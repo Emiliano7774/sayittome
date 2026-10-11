@@ -201,6 +201,11 @@ class GlobalChatWhipManager {
         const body =
           textBody || (data.mediaUrl || data.type ? "Nuevo mensaje" : "");
         const chat = ctx.getChatById(chatId);
+        // The profile↔anon sender's Firebase UID is intentionally private.
+        // Without the thread summary we cannot know whether anon_* is this
+        // browser's own sender or the peer. Fail closed, not self-notify.
+        // The inbox observer will recover genuine inbound once hydrated.
+        if (!chat && chatId.includes("__anon_to__")) return;
         const viewerId = chat
           ? resolveChatViewerId(chat, ctx.firebaseUid)
           : ctx.viewerId;

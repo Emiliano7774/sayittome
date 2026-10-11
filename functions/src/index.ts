@@ -35,6 +35,7 @@ import {
   encodeUnreadLinesForFcm,
   formatCollapsedUnreadBody,
   isMessageAuthoredByRecipient,
+  isOppositeSideProfileAnonMessage,
   selectUnreadNotificationLines,
 } from "./unreadNotificationLines";
 
@@ -89,6 +90,8 @@ type ChatDoc = {
   anonBlocksProfile?: boolean;
   /** Profile approached a live visitor — never reveal the profile name to them. */
   hideProfileFromVisitor?: boolean;
+  readAt?: Record<string, unknown>;
+  latestReadMessageIds?: Record<string, string>;
 };
 
 type MessageDoc = {
@@ -431,6 +434,7 @@ async function loadUnreadLinesForPush(input: {
       ownerId: data.ownerId,
       senderUid: data.senderUid,
       senderKind: data.senderKind,
+      senderRole: data.senderRole,
       createdAtMs: createdAtMsFromFirestore(data.createdAt),
       readBy: data.readBy,
       createdByAuthUid: data.createdByAuthUid,
@@ -448,6 +452,7 @@ async function loadUnreadLinesForPush(input: {
       ownerId: input.message.ownerId,
       senderUid: input.message.senderUid,
       senderKind: input.message.senderKind,
+      senderRole: input.message.senderRole,
       createdAtMs: Date.now(),
       readBy: {},
       createdByAuthUid: input.message.createdByAuthUid,
@@ -455,10 +460,23 @@ async function loadUnreadLinesForPush(input: {
     });
   }
 
+  const ownSenderAliases = recipientOwnAnonAliases(input.chatId, input.chat, input.recipientUid);
+  const receiptIds = [
+    input.recipientUid, `profile_${input.recipientUid}`, ...ownSenderAliases,
+  ];
   return selectUnreadNotificationLines({
     messages: rows,
     recipientUid: input.recipientUid,
-    ownSenderAliases: recipientOwnAnonAliases(input.chatId, input.chat, input.recipientUid),
+    ownSenderAliases,
+    afterReadAtMs: Math.max(0, ...receiptIds.map(
+      (id) => createdAtMsFromFirestore(input.chat.readAt?.[id]),
+    )),
+    afterReadMessageIds: receiptIds.map(
+      (id) => asId(input.chat.latestReadMessageIds?.[id]),
+    ).filter(Boolean),
+    profileAnonOwnerUid: input.chatId.includes("__anon_to__")
+      ? asId(input.chat.targetUid || input.chat.receptorUid || input.chat.anonOwnerUid)
+      : "",
     titleForMessage: (row) =>
       notificationTitleForRecipient(row as MessageDoc, input.chat, input.recipientUid),
     limit: 20,
@@ -753,6 +771,17 @@ export const onChatMessageCreated = onDocumentCreated(
       )) {
         continue;
       }
+      // A rotated visitor alias is not always present in chat.participantes.
+      // Profile-anon direction is stronger than an individual anon_* identity:
+      // a visitor's own send can only notify the profile owner, never visitor.
+      const ownerUid = asId(chat.targetUid || chat.receptorUid || chat.anonOwnerUid);
+      if (
+        chatId.includes("__anon_to__") &&
+        ownerUid &&
+        !isOppositeSideProfileAnonMessage(message, recipientUid, ownerUid)
+      ) {
+        continue;
+      }
       const tokens = await loadTokensForUid(recipientUid);
       if (tokens.length === 0) continue;
 
@@ -776,6 +805,7 @@ export const onChatMessageCreated = onDocumentCreated(
           },
         ];
       }
+      if (unreadLines.length === 0) continue;
       const body = formatCollapsedUnreadBody(unreadLines);
       const unreadEncoded = encodeUnreadLinesForFcm(unreadLines);
       ensureAdminApp();

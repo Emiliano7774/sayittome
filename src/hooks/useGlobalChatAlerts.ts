@@ -9,7 +9,7 @@ import { useChatsInbox } from "@/hooks/useChatsInbox";
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { isAnonDirectInboxChat, mergeInboxWithAnonDirectBridge } from "@/lib/anonMatch/anonDirectInboxBridge";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
-import { chatPeerTitle } from "@/lib/chat/inboxPeerTitle";
+import { chatPeerTitle, resolveChatViewerId } from "@/lib/chat/inboxPeerTitle";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import {
   shouldEnableChatNotificationListeners,
@@ -29,7 +29,7 @@ import {
   subscribeChatNotificationPrefs,
 } from "@/lib/chat/chatNotificationPrefs";
 import { initChatNotifications, requestChatNotificationPermission, showChatNotification } from "@/lib/chat/chatNotifications";
-import { isOwnChatSender } from "@/lib/chat/incomingChatActivity";
+import { isIncomingChatActivity, isOwnChatSender } from "@/lib/chat/incomingChatActivity";
 import {
   clearLocalPendingChatsForThread,
   countLocalPendingChats,
@@ -245,8 +245,12 @@ export function useGlobalChatAlerts() {
         ) {
           continue;
         }
-        const sender = String(chat.lastMessageSender || "");
-        if (sender && isOwnChatSender(sender, viewerId, firebaseUid, chat)) {
+        const sender = String(chat.lastMessageSender || "").trim();
+        const threadViewer = resolveChatViewerId(chat, firebaseUid);
+        // A new id alone can be our own send; never alert on absent/stale
+        // direction metadata. Use the THREAD viewer, not the global uid.
+        if (!sender || !isIncomingChatActivity(chat, threadViewer, firebaseUid) ||
+            isOwnChatSender(sender, threadViewer, firebaseUid, chat)) {
           continue;
         }
         const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
@@ -285,8 +289,10 @@ export function useGlobalChatAlerts() {
       if (chatUnreadCountForViewer(chat, firebaseUid, {
         excludeChatId: activeChatId,
       }) <= 0) continue;
-      const sender = String(chat.lastMessageSender || "");
-      if (sender && isOwnChatSender(sender, viewerId, firebaseUid, chat)) continue;
+      const sender = String(chat.lastMessageSender || "").trim();
+      const threadViewer = resolveChatViewerId(chat, firebaseUid);
+      if (!sender || !isIncomingChatActivity(chat, threadViewer, firebaseUid) ||
+          isOwnChatSender(sender, threadViewer, firebaseUid, chat)) continue;
       const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
       if (prior === undefined && arrivedAt > 0 && Date.now() - arrivedAt > 2 * 60_000) {
         continue;
