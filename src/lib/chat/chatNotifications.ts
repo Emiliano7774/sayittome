@@ -577,11 +577,12 @@ export async function showChatNotification(input: {
   viewingActiveChat?: boolean;
 }) {
   if (typeof window === "undefined") return;
-  if (!areChatNotificationsEnabled()) {
-    // OS opt-in is not required for a foreground in-app chat alert.
-    showForegroundWebChatBanner(input);
-    return;
-  }
+  // Always show the verified incoming event *inside an open web tab*.
+  // OS notification APIs sometimes report success but Chromium/Windows
+  // suppress the system popup. The in-page banner guarantees visible feedback
+  // without changing the separate OS permission/Push contract.
+  showForegroundWebChatBanner(input);
+  if (!areChatNotificationsEnabled()) return;
   if (!shouldShowChatNotification({ viewingActiveChat: input.viewingActiveChat })) return;
 
   const body = notificationBody({ body: input.body });

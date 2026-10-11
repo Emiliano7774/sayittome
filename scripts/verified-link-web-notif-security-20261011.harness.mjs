@@ -34,4 +34,6 @@ const direct=fs.readFileSync(path.join(root,"src/components/anonMatch/AnonDirect
 assert.match(direct,/maybeClaimVerifiedProfileLink/);assert.match(direct,/ChatOfficialProfileVerifiedBadge/);
 const web=fs.readFileSync(path.join(root,"src/lib/chat/chatNotifications.ts"),"utf8");
 assert.match(web,/showForegroundWebChatBanner/);assert.match(web,/textContent/);
+assert.match(web,/export async function showChatNotification[\s\S]*?showForegroundWebChatBanner\(input\);[\s\S]*?if \(!areChatNotificationsEnabled\(\)\)/,
+  "foreground incoming banner must appear even when browser OS permission is granted but silent");
 console.log(JSON.stringify({gate:"WEB_INCOMING_FALLBACK_VERIFIED_AUTHOR_SECURITY",pass:true,checks:18}));

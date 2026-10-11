@@ -124,8 +124,9 @@ export async function persistAnonDirectMessage(input: PersistAnonDirectMessageIn
   const payload: Record<string, unknown> = {
     senderId,
     senderTipo,
-    // Verifiable author proof: Firestore rules require equality to request.auth.uid.
-    senderAuthUid,
+    // Only registered profile senders expose authenticated authorship.
+    // Never leak a visitor's private Firebase auth UID into anon chat messages.
+    ...(senderTipo === "perfil" ? { senderAuthUid } : {}),
     texto: type === "text" ? messageText : "",
     text: type === "text" ? messageText : "",
     type,
