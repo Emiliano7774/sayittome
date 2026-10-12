@@ -555,6 +555,7 @@ export default function ProfileAnonChat({
   const [viewOnce, setViewOnce] = useState(false);
   const [viewOnceLimit, setViewOnceLimit] = useState(VIEW_ONCE_DEFAULT_LIMIT);
   const [claimingBombId, setClaimingBombId] = useState<string | null>(null);
+  const [bombNotice, setBombNotice] = useState("");
   const [firebaseUid, setFirebaseUid] = useState(() => String(auth.currentUser?.uid || ""));
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const [deleteStage, setDeleteStage] = useState<"choose" | "confirm-me" | "confirm-everyone">("choose");
@@ -2953,7 +2954,12 @@ export default function ProfileAnonChat({
   async function openBombMessage(message: Message) {
     if (!message.viewOnce || message.mine) return;
     if (message.viewOnceExhausted || viewOnceRemaining(message) === 0) return;
+    if (message.viewOnceSealed === false) {
+      setBombNotice("La bomba se está preparando. Intentá abrirla cuando esté lista.");
+      return;
+    }
     if (!beginViewOnceClaim(message.id)) return;
+    setBombNotice("");
 
     setClaimingBombId(message.id);
     try {
@@ -2973,7 +2979,13 @@ export default function ProfileAnonChat({
         ),
       );
       if (!claimed.ok) {
-        alert(claimed.exhausted ? "Esta bomba ya se agotó" : t("chat_load_fail"));
+        setBombNotice(claimed.reason === "pending-seal"
+          ? "La bomba se está preparando. Intentá de nuevo en un momento."
+          : claimed.reason === "missing-media"
+            ? "El contenido no está disponible todavía. No se gastaron vistas; podés reintentar."
+            : claimed.exhausted
+              ? "Esta bomba ya se agotó"
+              : t("chat_load_fail"));
         return;
       }
       const idToken = await auth.currentUser?.getIdToken();
@@ -3004,7 +3016,7 @@ export default function ProfileAnonChat({
       console.error(error);
       setFullscreenUrl("");
       if (secureBombOpenRef.current) leaveSecureBombMode();
-      alert(t("chat_load_fail"));
+      setBombNotice("No se pudo cargar la bomba. Revisá tu conexión.");
     } finally {
       endViewOnceClaim(message.id);
       setClaimingBombId(null);
@@ -3123,6 +3135,12 @@ export default function ProfileAnonChat({
 
   return (
     <main id="sayittome-chat-page-root" className="sayittome-chat-shell text-white">
+      {bombNotice && !fullscreenUrl ? (
+        <div role="status" className="fixed left-1/2 top-20 z-[99998] w-[min(92vw,460px)] -translate-x-1/2 rounded-xl border border-amber-400/30 bg-zinc-950 px-4 py-3 text-sm font-semibold text-amber-100 shadow-xl" data-chat-bomb-notice="1">
+          {bombNotice}
+          <button type="button" onClick={() => setBombNotice("")} className="ml-3 text-white/70" aria-label="Cerrar aviso">×</button>
+        </div>
+      ) : null}
       {fullscreenUrl ? (
         <FullscreenMedia
           url={fullscreenUrl}
@@ -3446,11 +3464,12 @@ export default function ProfileAnonChat({
                         message.mine ||
                         message.viewOnceExhausted === true ||
                         remaining === 0;
+                      const preparing = message.viewOnceSealed === false;
                       const limit = normalizeViewOnceLimit(message.viewOnceLimit);
                       return (
                     <button
                       type="button"
-                      disabled={locked || claimingBombId === message.id}
+                      disabled={locked || preparing || claimingBombId === message.id}
                       onClick={() => {
                         void openBombMessage(message);
                       }}
@@ -3465,7 +3484,9 @@ export default function ProfileAnonChat({
                             : `Enviada · hasta ${limit} vista${limit === 1 ? "" : "s"}`
                           : locked
                             ? "Agotada · ya no se puede ver"
-                            : claimingBombId === message.id
+                            : preparing
+                              ? "Preparando bomba…"
+                              : claimingBombId === message.id
                               ? "Abriendo…"
                               : remaining === 1
                                 ? "1 vista restante · tocá para abrir"

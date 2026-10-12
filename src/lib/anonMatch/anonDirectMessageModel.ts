@@ -70,7 +70,7 @@ export function mapAnonDirectMessageDoc(input: {
         ? Math.max(0, Number(data.viewOnceOpenedCount) || 0)
         : undefined,
     viewOnceExhausted: data.viewOnceExhausted === true,
-    viewOnceSealed: data.viewOnceSealed === true,
+    viewOnceSealed: data.viewOnceSealed !== false,
     autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
     moderationRequiresBlur: data.moderationRequiresBlur === true,
     clientId: data.clientId ? String(data.clientId) : undefined,

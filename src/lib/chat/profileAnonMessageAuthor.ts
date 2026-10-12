@@ -11,6 +11,7 @@ import {
   shouldHoldVisualAuthorship,
 } from "@/lib/chat/authorshipGates";
 import { resolveStoryReplyCard } from "@/lib/stories/storyReplySnapshot";
+import { normalizeViewOnceLimit } from "@/lib/media/viewOncePolicy";
 import {
   DELETED_MESSAGE_PREVIEW,
   isHiddenForViewer,
@@ -368,7 +369,7 @@ export function mapFirestoreDocToProfileAnonMessage(
     viewOnce: data.viewOnce === true,
     viewOnceLimit:
       data.viewOnce === true
-        ? Math.max(1, Math.min(5, Math.floor(Number(data.viewOnceLimit) || 1)))
+        ? normalizeViewOnceLimit(data.viewOnceLimit)
         : undefined,
     viewOnceOpenedCount:
       data.viewOnce === true
@@ -377,7 +378,7 @@ export function mapFirestoreDocToProfileAnonMessage(
     viewOnceLastOpenedBy: data.viewOnce === true && data.viewOnceLastOpenedBy ? String(data.viewOnceLastOpenedBy) : undefined,
     viewOnceLastOpenedAt: data.viewOnce === true ? data.viewOnceLastOpenedAt : undefined,
     viewOnceExhausted: data.viewOnce === true ? data.viewOnceExhausted === true : undefined,
-    viewOnceSealed: data.viewOnce === true ? data.viewOnceSealed === true : undefined,
+    viewOnceSealed: data.viewOnce === true ? data.viewOnceSealed !== false : undefined,
     autoModerationRequiresBlur: data.autoModerationRequiresBlur === true,
     moderationRequiresBlur: data.moderationRequiresBlur === true,
     readBy: data.readBy || {},

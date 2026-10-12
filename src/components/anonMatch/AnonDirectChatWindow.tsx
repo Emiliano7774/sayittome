@@ -167,16 +167,18 @@ function ChatPanel({
                     ) : (
                       <button
                         type="button"
-                        disabled={claimingBombId === message.id}
+                        disabled={claimingBombId === message.id || message.viewOnceSealed === false}
                         onClick={() => onOpenBomb(message)}
                         className="rounded-xl border border-amber-400/40 bg-amber-400/15 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-amber-100 disabled:opacity-40"
                         data-anon-direct-bomb-open="1"
                       >
                         {claimingBombId === message.id
                           ? "Abriendo…"
-                          : message.type === "video"
-                            ? "Ver bomba video"
-                            : "Ver bomba foto"}
+                          : message.viewOnceSealed === false
+                            ? "Preparando bomba…"
+                            : message.type === "video"
+                              ? "Ver bomba video"
+                              : "Ver bomba foto"}
                       </button>
                     )
                   ) : message.type === "audio" && message.mediaUrl ? (
@@ -390,6 +392,10 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
     async (message: AnonDirectChatMessage) => {
       if (!message.viewOnce || message.mine || !chatId) return;
       if (message.viewOnceExhausted || viewOnceRemaining(message) === 0) return;
+      if (message.viewOnceSealed === false) {
+        setNotice("La bomba se está preparando. Intentá abrirla cuando esté lista.");
+        return;
+      }
       if (!getAnonDirectViewOnceCapability().mayClaimViewOnce) return;
       if (!beginViewOnceClaim(message.id)) return;
 
@@ -410,7 +416,11 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
           ),
         );
         if (!claimed.ok) {
-          setNotice(claimed.exhausted ? "Esta bomba ya se agotó" : t("chat_load_fail"));
+          setNotice(claimed.reason === "pending-seal"
+            ? "La bomba se está preparando. Intentá de nuevo en un momento."
+            : claimed.reason === "missing-media"
+              ? "El contenido no está disponible todavía. No se gastaron vistas; podés reintentar."
+              : claimed.exhausted ? "Esta bomba ya se agotó" : t("chat_load_fail"));
           return;
         }
         const idToken = await auth.currentUser?.getIdToken();
