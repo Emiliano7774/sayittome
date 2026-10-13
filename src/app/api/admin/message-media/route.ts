@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveAdminMessageKind } from "@/lib/admin/adminMediaPresentation";
 
 import {
   readAdminMessageMedia,
@@ -62,7 +63,7 @@ export async function GET(req: Request) {
         "Content-Length": String(media.bytes.byteLength),
         "Content-Disposition": "inline",
         "X-Content-Type-Options": "nosniff",
-        "X-SayItToMe-Media-Type": result.type,
+        "X-SayItToMe-Media-Type": resolveAdminMessageKind({ type: result.type, contentType: media.contentType }),
         "X-SayItToMe-Media-Source": result.source,
       },
     });

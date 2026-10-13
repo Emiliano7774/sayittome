@@ -10,6 +10,7 @@ import {
   selectAnonMatchMessageRows,
 } from "@/lib/admin/anonMatchChatReview";
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
+import { resolveAdminMessageKind, hasAdminMessageAttachment } from "@/lib/admin/adminMediaPresentation";
 import { classifyAnonReviewBucket, ANON_REVIEW_BUCKETS } from "@/lib/admin/anonReviewBucket";
 import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 
@@ -160,10 +161,12 @@ export async function GET(req: Request) {
                 rawMessageId: row.id,
                 collectionName: name,
                 viewOnce: data.viewOnce === true,
+                temporal: data.temporal === true,
                 text: anonMatchMessageText(data),
-                senderId: String(data.senderId || data.fromUid || data.ownerId || ""),
-                senderTipo: String(data.senderTipo || data.senderKind || ""),
-                type: String(data.type || "text"),
+                senderId: String(data.senderId || data.fromUid || data.ownerId || data.sender || ""),
+                senderTipo: String(data.senderTipo || data.senderKind || (data.sender === "receptor" ? "perfil" : data.sender === "anonimo" ? "anonimo" : "")),
+                type: resolveAdminMessageKind(data),
+                hasAttachment: hasAdminMessageAttachment(data),
                 createdAtMs: firestoreTimeMs(data.createdAt),
               };
             });

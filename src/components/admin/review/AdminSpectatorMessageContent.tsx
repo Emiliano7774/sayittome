@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import AdminEvidenceMedia from "@/components/admin/AdminEvidenceMedia";
+import { hasAdminMessageAttachment, resolveAdminMessageKind } from "@/lib/admin/adminMediaPresentation";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
 import {
   adminMediaScopeKey,
@@ -31,9 +32,9 @@ function isMediaType(type: string) {
 }
 
 function AdminSpectatorMessageContentBody({ chatId, msg, compact = false }: Props) {
-  const type = String(msg.type || "text").trim() || "text";
+  const type = resolveAdminMessageKind(msg as Record<string, unknown>);
   const inlineUrl = String(msg.mediaUrl || "").trim();
-  const needsAdminFetch = Boolean(msg.viewOnce) || isMediaType(type);
+  const needsAdminFetch = hasAdminMessageAttachment(msg as Record<string, unknown>) || msg.hasAttachment === true;
   const requestKey = adminMediaScopeKey(chatId, msg);
   const [retryNonce, setRetryNonce] = useState(0);
   const fetchKey = `${requestKey}:${retryNonce}`;
@@ -121,7 +122,7 @@ function AdminSpectatorMessageContentBody({ chatId, msg, compact = false }: Prop
     asyncMedia,
   });
 
-  const text = messageDisplayText(msg);
+  const text = messageDisplayText({ ...msg, type });
   const showText =
     Boolean(String(msg.text || msg.texto || msg.reply || "").trim()) || !isMediaType(resolvedType);
 
@@ -133,9 +134,9 @@ function AdminSpectatorMessageContentBody({ chatId, msg, compact = false }: Prop
     <div className={compact ? "space-y-1.5" : "space-y-2"}>
       {showText ? <p className={chatBubbleTextClass(true)}>{text}</p> : null}
 
-      {msg.viewOnce ? (
+      {msg.viewOnce || msg.temporal ? (
         <p className="text-[10px] font-bold uppercase tracking-wide text-amber-200/80">
-          bomba · lectura admin (no consume vistas)
+          {msg.viewOnce ? "bomba" : "archivo temporal"} · lectura admin (no consume vistas)
         </p>
       ) : null}
 

@@ -27,6 +27,8 @@ type AnonMatchMessage = {
   sourceChatId?: string;
   rawMessageId?: string;
   viewOnce?: boolean;
+  temporal?: boolean;
+  hasAttachment?: boolean;
   text: string;
   senderId: string;
   senderTipo: string;
@@ -260,6 +262,8 @@ export default function AdminAnonMatchChatsPanel({ mode }: { mode: "direct" | "m
                       text: msg.text,
                       type: msg.type,
                       viewOnce: msg.viewOnce,
+                      temporal: msg.temporal,
+                      hasAttachment: msg.hasAttachment,
                       senderId: msg.senderId,
                     }}
                     compact
