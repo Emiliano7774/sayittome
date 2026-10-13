@@ -14,6 +14,44 @@ function pushData(payload) {
   return nested && typeof nested === "object" ? nested : payload;
 }
 
+// The same message can arrive through Firestore, FCM, or another open tab.
+// Serialize those paths; new message ids in the same chat must re-alert.
+let displayQueue = Promise.resolve();
+const displayedMessages = new Set();
+
+function displayChatNotification(title, options) {
+  const job = displayQueue.then(async () => {
+    const data = options.data || {};
+    const key = data.chatId && data.messageId ? `${data.chatId}:${data.messageId}` : "";
+    if (key && displayedMessages.has(key)) return;
+    if (key && typeof self.registration.getNotifications === "function") {
+      const existing = await self.registration.getNotifications({ tag: options.tag }).catch(() => []);
+      if (existing.some((item) => item.data?.messageId === data.messageId && item.data?.chatId === data.chatId)) return;
+    }
+    await self.registration.showNotification(title, { ...options, silent: false, renotify: Boolean(options.tag) });
+    if (key) {
+      displayedMessages.add(key);
+      if (displayedMessages.size > 600) displayedMessages.delete(displayedMessages.values().next().value);
+    }
+  });
+  displayQueue = job.catch(() => undefined);
+  return job;
+}
+
+self.addEventListener("message", (event) => {
+  const port = event.ports?.[0];
+  if (event.data?.type === "sayittome:notification-capabilities") {
+    port?.postMessage({ chatDisplay: 1 });
+    return;
+  }
+  if (event.data?.type !== "sayittome:show-chat-notification") return;
+  event.waitUntil(
+    displayChatNotification(String(event.data.title || "SayItToMe"), event.data.options || {})
+      .then(() => port?.postMessage({ ok: true }))
+      .catch(() => port?.postMessage({ ok: false })),
+  );
+});
+
 self.addEventListener("push", (event) => {
   let payload = {};
   try {
@@ -35,7 +73,7 @@ self.addEventListener("push", (event) => {
     chatId ? `sayittome-chat-${chatId}` : data.tag || data.type || "sayittome",
   ).trim();
 
-  const osNotice = self.registration.showNotification(title || "SayItToMe", {
+  const osNotice = displayChatNotification(title || "SayItToMe", {
     body,
     tag,
     icon: "/icons/Icon-192.png",

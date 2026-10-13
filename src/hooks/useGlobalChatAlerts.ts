@@ -30,6 +30,7 @@ import {
 } from "@/lib/chat/chatNotificationPrefs";
 import { initChatNotifications, requestChatNotificationPermission, showChatNotification } from "@/lib/chat/chatNotifications";
 import { isIncomingChatActivity, isOwnChatSender } from "@/lib/chat/incomingChatActivity";
+import { classifiedInboxNotificationIds } from "@/lib/chat/incomingChatNotification";
 import {
   clearLocalPendingChatsForThread,
   countLocalPendingChats,
@@ -228,12 +229,7 @@ export function useGlobalChatAlerts() {
     if (!unreadHydrated ||
         !(notificationInboxEnabled || (!isCapacitorNative() && inboxRouteEnabled))) return;
     const previous = seenLatestMessageIdsRef.current;
-    const next = new Map<string, string>();
-    for (const chat of unreadSource) {
-      const chatId = chat.canonicalChatId || chat.id;
-      if (!chatId) continue;
-      next.set(chatId, String(chat.latestMessageId || ""));
-    }
+    const next = classifiedInboxNotificationIds(unreadSource, firebaseUid, previous);
     seenLatestMessageIdsRef.current = next;
     if (!previous) {
       // First hydration: no indiscriminate historical alerts. Recover only rows

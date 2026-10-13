@@ -543,27 +543,27 @@ assert.match(
   "foregrounding the web app must re-check notification permission",
 );
 const notificationEffectStart = globalAlertsSrc.indexOf(
-  "if (!unreadHydrated || !inboxRouteEnabled || !notificationsEnabled) return;",
+  "const seenLatestMessageIdsRef",
 );
+assert.ok(notificationEffectStart >= 0);
 const baselineStart = globalAlertsSrc.indexOf("if (!previous) {", notificationEffectStart);
-const liveUpdateMarker = globalAlertsSrc.indexOf(
-  "// Inbox can discover a new thread before unreadCounts catch up",
-  baselineStart,
-);
-const liveUpdateStart = globalAlertsSrc.lastIndexOf(
+const liveUpdateStart = globalAlertsSrc.indexOf(
   "for (const chat of unreadSource)",
-  liveUpdateMarker,
+  globalAlertsSrc.indexOf("\n      return;", baselineStart),
 );
 assert.ok(liveUpdateStart >= 0, "live message update loop must exist");
 const liveUpdateEnd = globalAlertsSrc.indexOf("\n  }, [", liveUpdateStart);
 assert.ok(liveUpdateEnd > liveUpdateStart, "live message update effect must close");
 assert.doesNotMatch(
   globalAlertsSrc.slice(liveUpdateStart, liveUpdateEnd),
-  /chatId === activeChatId/,
+  /if \(chatId === activeChatId\) continue/,
   "a newly received message in the open web thread must notify",
 );
+assert.match(globalAlertsSrc.slice(liveUpdateStart, liveUpdateEnd),
+  /chatId === activeChatId && isCapacitorNative\(\)/,
+  "only native active-thread banners are suppressed");
 const eagerWebRegistration = globalAlertsSrc.slice(
-  globalAlertsSrc.indexOf("A previously granted browser permission"),
+  globalAlertsSrc.indexOf("Web push is separate from the live-inbox banner"),
   globalAlertsSrc.indexOf("Keep the first-time permission prompt"),
 );
 assert.doesNotMatch(eagerWebRegistration, /\bloading\b/);

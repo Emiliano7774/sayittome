@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
-import { isIncomingMessageFromDoc } from "@/lib/chat/incomingChatActivity";
+import { isIncomingChatNotification } from "@/lib/chat/incomingChatNotification";
 import {
   isLocalOutgoingClientId,
   isLocalOutgoingMessageId,
@@ -54,7 +54,7 @@ export function useIncomingMessageWhip(
       identityKnown &&
       last.mine !== true &&
       Boolean(currentViewerId) &&
-      isIncomingMessageFromDoc(
+      isIncomingChatNotification(
         {
           fromUid: last.fromUid,
           senderKind: last.senderKind,
@@ -90,6 +90,8 @@ export function useIncomingMessageWhip(
             title: "Nuevo mensaje",
             body: String(last.text || "").trim() || "Nuevo mensaje",
             chatId,
+            messageId: last.id,
+            viewingActiveChat: true,
           });
         },
       });
