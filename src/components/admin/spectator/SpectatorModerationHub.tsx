@@ -16,7 +16,7 @@ export default function SpectatorModerationHub() {
   const { feed, loading, errorText, authoritativeTotal, refreshAuthoritative } =
     useClassicModerationFeed(recentLiveLimit);
   const [selectedEntry, setSelectedEntry] = useState<ModerationUserFeedEntry | null>(null);
-  const [scope, setScope] = useState<"profiles" | "all_anon" | "anon_match">("profiles");
+  const [scope, setScope] = useState<"profiles" | "legacy_profile" | "all_anon" | "anon_match">("profiles");
   const username = selectedEntry?.username || "";
 
   const scopeBar = (
@@ -27,6 +27,13 @@ export default function SpectatorModerationHub() {
         className={scope === "profiles" ? "rounded-full bg-violet-600 px-4 py-2 text-sm font-black" : "rounded-full border border-white/15 px-4 py-2 text-sm font-black text-white/55"}
       >
         Chats de perfiles
+      </button>
+      <button
+        type="button"
+        onClick={() => setScope("legacy_profile")}
+        className={scope === "legacy_profile" ? "rounded-full bg-violet-600 px-4 py-2 text-sm font-black" : "rounded-full border border-white/15 px-4 py-2 text-sm font-black text-white/55"}
+      >
+        Historial anónimo → perfil
       </button>
       <button
         type="button"
@@ -45,11 +52,11 @@ export default function SpectatorModerationHub() {
     </div>
   );
 
-  if (scope === "all_anon" || scope === "anon_match") {
+  if (scope === "all_anon" || scope === "anon_match" || scope === "legacy_profile") {
     return (
       <div className="space-y-4">
         {scopeBar}
-        <AdminAnonMatchChatsPanel mode={scope === "all_anon" ? "all" : "match"} />
+        <AdminAnonMatchChatsPanel key={scope} mode={scope === "all_anon" ? "direct" : scope === "anon_match" ? "match" : "legacy_profile"} />
       </div>
     );
   }

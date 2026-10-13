@@ -27,6 +27,8 @@ type AnonMatchMessage = {
   sourceChatId?: string;
   rawMessageId?: string;
   viewOnce?: boolean;
+  temporal?: boolean;
+  hasAttachment?: boolean;
   text: string;
   senderId: string;
   senderTipo: string;
@@ -67,7 +69,7 @@ function conversationKind(chat: AnonMatchChat) {
   }
 }
 
-export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all" | "match" }) {
+export default function AdminAnonMatchChatsPanel({ mode }: { mode: "direct" | "match" | "legacy_profile" }) {
   const [chats, setChats] = useState<AnonMatchChat[]>([]);
   const [selected, setSelected] = useState("");
   const [messages, setMessages] = useState<AnonMatchMessage[]>([]);
@@ -86,7 +88,7 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
       setError("");
     }
     try {
-      const json = await adminGet("/api/admin/anon-match-chats");
+      const json = await adminGet(`/api/admin/anon-match-chats?bucket=${encodeURIComponent(mode)}`);
       const rows = Array.isArray(json.chats) ? json.chats : [];
       const visible = rows as AnonMatchChat[];
       setChats(visible);
@@ -139,7 +141,7 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
       }
       try {
         const json = await adminGet(
-          `/api/admin/anon-match-chats?chatId=${encodeURIComponent(selected)}`,
+          `/api/admin/anon-match-chats?bucket=${encodeURIComponent(mode)}&chatId=${encodeURIComponent(selected)}`,
         );
         if (cancelled) return;
         setMessages(Array.isArray(json.messages) ? json.messages : []);
@@ -159,7 +161,7 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [selected]);
+  }, [selected, mode]);
 
   if (loading) {
     return <p className="p-5 font-bold text-white/40">Cargando chats anónimos...</p>;
@@ -181,8 +183,8 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
       <div className="grid h-[min(76dvh,760px)] min-h-[520px] min-w-[760px] grid-cols-[minmax(280px,0.8fr)_minmax(380px,1.2fr)] gap-4">
       <section className="min-h-0 overflow-y-auto rounded-2xl border border-white/10 bg-[#080808] p-3">
         <div className="mb-3 px-2">
-          <p className="text-sm font-black">{mode === "all" ? "Revisión de todos los chats anónimos" : "No encontraste a nadie interesante"}</p>
-          <p className="text-xs font-bold text-white/40">{chats.length} conversaciones para revisar</p>
+          <p className="text-sm font-black">{mode === "direct" ? "Chats directos del perfil anónimo" : mode === "match" ? "No encontraste a nadie interesante" : "Historial anónimo a perfiles"}</p>
+          <p className="text-xs font-bold text-white/40">{chats.length} conversaciones con mensajes para revisar</p>
         </div>
         <div className="space-y-2">
           {chats.map((chat) => (
@@ -195,7 +197,7 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
                 selected === chat.id ? "border-violet-400/40 bg-violet-500/10" : "border-white/10 bg-white/[.02]",
               ].join(" ")}
             >
-              <p className="truncate text-sm font-black">Conversación temporal</p>
+              <p className="truncate text-sm font-black">{mode === "direct" ? "Chat directo anónimo" : mode === "match" ? "Chat por emparejamiento" : "Anónimo a perfil"}</p>
               <p className="mt-1 line-clamp-2 text-xs font-semibold text-white/55">
                 {chat.ultimoMensaje || "Sin mensajes"}
               </p>
@@ -215,7 +217,7 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
               ) : null}
             </button>
           ))}
-          {chats.length === 0 ? <p className="p-4 text-sm font-bold text-white/35">No hay chats anon-match.</p> : null}
+          {chats.length === 0 ? <p className="p-4 text-sm font-bold text-white/35">No hay conversaciones con mensajes para revisar.</p> : null}
         </div>
       </section>
 
@@ -260,6 +262,8 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
                       text: msg.text,
                       type: msg.type,
                       viewOnce: msg.viewOnce,
+                      temporal: msg.temporal,
+                      hasAttachment: msg.hasAttachment,
                       senderId: msg.senderId,
                     }}
                     compact

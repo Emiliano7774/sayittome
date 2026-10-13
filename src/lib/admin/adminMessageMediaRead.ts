@@ -1,3 +1,4 @@
+import { resolveAdminMessageKind } from "@/lib/admin/adminMediaPresentation";
 import {
   exactMessageCollectionName,
   moderationMessagePath,
@@ -64,6 +65,7 @@ function directMediaUrl(message: Record<string, unknown>) {
     message.photoUrl,
     message.videoUrl,
     message.audioUrl,
+    message.voiceUrl,
     message.fileUrl,
     message.url,
   ];
@@ -234,13 +236,13 @@ export async function readAdminMessageMedia(input: {
   if (!located) return { ok: false, error: "message_not_found", status: 404 };
 
   const message = (located.snap.data() || {}) as Record<string, unknown>;
-  const type = normalizeAdminMessageMediaType(message.type);
+  const type = resolveAdminMessageKind(message);
   const viewOnce = message.viewOnce === true;
   let mediaUrl = directMediaUrl(message);
   let storagePath = storagePathFromAdminMediaUrl(mediaUrl);
   let source: AdminMediaSource = "message";
 
-  if (viewOnce) {
+  if (message.viewOnce === true) {
     const secretSnap = await db
       .collection(VIEW_ONCE_SECRETS_COLLECTION)
       .doc(viewOnceSecretDocId(chatId, messageId))
@@ -319,10 +321,10 @@ export function sniffAdminMediaContentType(
   const logical = normalizeAdminMessageMediaType(logicalType);
 
   if (hasBytes(bytes, [0x1a, 0x45, 0xdf, 0xa3])) {
-    return logical === "audio" ? "audio/webm" : "video/webm";
+    return logical === "audio" || declared.startsWith("audio/") ? "audio/webm" : "video/webm";
   }
   if (asciiBytes(bytes, 0, 4) === "OggS") {
-    return logical === "audio" ? "audio/ogg" : "video/ogg";
+    return logical === "audio" || declared.startsWith("audio/") ? "audio/ogg" : "video/ogg";
   }
   if (asciiBytes(bytes, 0, 4) === "RIFF" && asciiBytes(bytes, 8, 4) === "WAVE") return "audio/wav";
   if (asciiBytes(bytes, 0, 4) === "RIFF" && asciiBytes(bytes, 8, 4) === "AVI ") return "video/x-msvideo";

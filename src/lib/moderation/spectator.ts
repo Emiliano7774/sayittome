@@ -21,7 +21,17 @@ export type SpectatorMessage = {
   texto?: string;
   reply?: string;
   type?: string;
+  mediaType?: string;
+  mimeType?: string;
+  contentType?: string;
   mediaUrl?: string;
+  imageUrl?: string;
+  photoUrl?: string;
+  videoUrl?: string;
+  audioUrl?: string;
+  voiceUrl?: string;
+  hasAttachment?: boolean;
+  temporal?: boolean;
   viewOnce?: boolean;
   viewOnceLimit?: number;
   viewOnceOpenedCount?: number;

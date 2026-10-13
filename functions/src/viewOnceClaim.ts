@@ -142,7 +142,7 @@ export async function handleClaimViewOnceMedia(
     });
 
     if (!decision.ok) {
-      if (decision.reason === "exhausted" || decision.reason === "missing-media") {
+      if (decision.reason === "exhausted") {
         const messageRef = located.chatRef
           .collection(located.messageSubcollection)
           .doc(messageId);
@@ -174,10 +174,10 @@ export async function handleClaimViewOnceMedia(
       }
       return {
         ok: false,
-        remaining: 0,
+        remaining: decision.remaining,
         openedCount: decision.openedCount,
         limit: decision.limit,
-        exhausted: true,
+        exhausted: decision.exhausted,
         reason: decision.reason,
       };
     }

@@ -140,7 +140,7 @@ export type ViewOnceClaimDecision =
     }
   | {
       ok: false;
-      reason: "not-view-once" | "exhausted" | "missing-media" | "author" | "not-member";
+      reason: "not-view-once" | "exhausted" | "pending-seal" | "missing-media" | "author" | "not-member";
       openedCount: number;
       limit: number;
       remaining: number;
@@ -210,11 +210,12 @@ export function decideViewOnceClaim(input: {
   if (!mediaUrl) {
     return {
       ok: false,
-      reason: "missing-media",
+      reason: message.viewOnceSealed === false ? "pending-seal" : "missing-media",
       openedCount: opened,
       limit,
       remaining: remainingBefore,
-      exhausted: remainingBefore <= 0,
+      // A delayed commit or transient missing secret must never consume a view.
+      exhausted: false,
     };
   }
 
