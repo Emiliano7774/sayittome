@@ -29,7 +29,15 @@ New behavioral harnesses: `incoming-alert-repeat`, `incoming-notification-direct
 
 Existing regression gates: `chat-own-notification-exact-read`, `chat-role-notif-author-read`, `chat-web-incoming-banners`, `chat-bidirectional-unread-sound`, `chat-notification-unique-ids`, `anon-direct-self-notification-rotation`, `fcm-registration`, `fcm-push-pipeline`, `anon-inbox-multi-thread`, `shuffle-live-visitors`, `shuffle-following-recovery-20261011`, `web-push-verified-refresh-20261011`.
 
-These are local/worker-harness results, not physical OS popup verification. The release wrapper must also complete the production build and SSR packaging gates before upload. Deployment and public verification will be recorded separately after completion.
+These are local/worker-harness results, not physical OS popup verification.
+
+## First publication and subsequent replacement
+
+Hosting/SSR `0e13dce` completed successfully in 627 seconds, exit 0, after both production builds and the packaged SSR zero-hash gate passed. BuiltAt `2026-10-13T13:16:33.638Z`. No business Functions or Rules were deployed.
+
+On resuming at `2026-10-13T18:28:06Z`, both public markers instead showed `6766bf8`, builtAt `2026-10-13T15:23:09.886Z`. That later publication includes additional admin review/media and view-once work but does not descend from the notification release. The completed first deploy is therefore not evidence that this notification correction remains live.
+
+Reconciliation with `6766bf8` is in progress. Preserve its actually published work, the 120-second cost fix and this notification correction; do not replace it with the old candidate or deploy mixed MAIN. The initial exclusion of unrelated `b89d2ca` above describes the first release; it is now part of the later baseline and will be preserved if the package proof confirms it.
 
 ## Physical acceptance still required
 
