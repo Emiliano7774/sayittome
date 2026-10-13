@@ -1,4 +1,5 @@
 /** Pure mapping for the admin review of chats_anonimos. No I/O. */
+import type { AnonReviewBucket } from "@/lib/admin/anonReviewBucket";
 
 export function firestoreTimeMs(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -63,6 +64,7 @@ export type AdminAnonMatchChatRow = {
   id: string;
   sourceDocIds: string[];
   sourceCount: number;
+  reviewBucket?: AnonReviewBucket | "unclassified";
   tipo: string;
   estado: string;
   solicitanteUid: string;
@@ -103,6 +105,7 @@ export function collapseAnonMatchChatRows(rows: AdminAnonMatchChatRow[]) {
       id,
       sourceDocIds,
       sourceCount: sourceDocIds.length,
+      reviewBucket: previous.reviewBucket === row.reviewBucket ? previous.reviewBucket : "unclassified",
       createdAtMs: oldestCreated,
       updatedAtMs: Math.max(previous.updatedAtMs, row.updatedAtMs),
       ultimoMensaje: newest.ultimoMensaje || previous.ultimoMensaje || row.ultimoMensaje,

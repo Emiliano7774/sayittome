@@ -10,6 +10,7 @@ import {
   selectAnonMatchMessageRows,
 } from "@/lib/admin/anonMatchChatReview";
 import { verifyAdminIdToken } from "@/lib/admin/verifyAdminRequest";
+import { classifyAnonReviewBucket, ANON_REVIEW_BUCKETS } from "@/lib/admin/anonReviewBucket";
 import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 
 export const dynamic = "force-dynamic";
@@ -24,17 +25,19 @@ function noStore(body: unknown, status = 200) {
 function safeChat(row: { id: string; data: () => Record<string, unknown> }) {
   const data = row.data() || {};
   const interactionId = anonMatchInteractionId(row.id, data);
+  const reviewBucket = classifyAnonReviewBucket(row.id, data);
   return {
     id: interactionId,
     sourceDocIds: [row.id],
     sourceCount: 1,
+    reviewBucket,
     source: String(data.source || ""),
-    tipo: String(data.tipo || ""),
+    tipo: reviewBucket === "legacy_profile" ? "anon_con_perfil" : String(data.tipo || ""),
     estado: String(data.estado || ""),
     solicitanteUid: String(data.solicitanteUid || ""),
-    destinatarioUid: String(data.destinatarioUid || ""),
-    solicitanteAnonId: String(data.solicitanteAnonId || ""),
-    destinatarioAnonId: String(data.destinatarioAnonId || data.anonId || ""),
+    destinatarioUid: String(data.destinatarioUid || data.receptorUid || ""),
+    solicitanteAnonId: String(data.solicitanteAnonId || (reviewBucket === "legacy_profile" ? data.anonId || data.visitorId : "") || ""),
+    destinatarioAnonId: reviewBucket === "legacy_profile" ? "" : String(data.destinatarioAnonId || data.anonId || ""),
     ultimoMensaje: String(data.ultimoMensaje || data.lastMessage || "").slice(0, 180),
     hasMessages: anonMatchHasMessages(data),
     createdAtMs: firestoreTimeMs(data.createdAt),
@@ -86,11 +89,12 @@ async function participantLabel(
   return anonId ? `anónimo ${anonId}` : "anónimo";
 }
 
-async function listChats() {
+async function listChats(bucket: string) {
   const db = getRepairAdminDb();
-  // Admin review is intentionally retroactive. A creation-ordered limit hid
-  // active older sessions as soon as more than 250 chats existed.
-  return db.collection("chats_anonimos").get();
+  // All historical docs were backfilled with adminReviewBucket. Query only the
+  // requested family to avoid re-reading every unrelated thread on each tab.
+  // No creation-ordered limit: historical conversations remain discoverable.
+  return db.collection("chats_anonimos").where("adminReviewBucket", "==", bucket).get();
 }
 
 export async function GET(req: Request) {
@@ -101,17 +105,22 @@ export async function GET(req: Request) {
     return noStore({ ok: false, error: status === 403 ? "forbidden" : "unauthorized" }, status);
   }
 
-  const chatId = String(new URL(req.url).searchParams.get("chatId") || "").trim();
+  const url = new URL(req.url);
+  const chatId = String(url.searchParams.get("chatId") || "").trim();
+  const bucket = String(url.searchParams.get("bucket") || "").trim();
+  if (!ANON_REVIEW_BUCKETS.some((value) => value === bucket)) {
+    return noStore({ ok: false, error: "invalid_review_bucket" }, 400);
+  }
   try {
     const db = getRepairAdminDb();
     if (!chatId) {
-      const snap = await listChats();
+      const snap = await listChats(bucket);
       const chats = collapseAnonMatchChatRows(
         snap.docs.map((row: { id: string; data: () => Record<string, unknown> }) =>
           safeChat(row),
         ),
-      ).filter((chat) => chat.hasMessages === true);
-      return noStore({ ok: true, chats });
+      ).filter((chat) => chat.hasMessages === true && chat.reviewBucket === bucket);
+      return noStore({ ok: true, chats, bucket });
     }
 
     if (chatId.length > 180 || chatId.includes("/")) {
@@ -121,6 +130,10 @@ export async function GET(req: Request) {
     const sourceDocs = await interactionDocs(db, chatId);
     if (sourceDocs.length === 0) {
       return noStore({ ok: false, error: "chat_not_found" }, 404);
+    }
+    // A copied deep link must not expose a chat from another admin section.
+    if (sourceDocs.some((doc) => classifyAnonReviewBucket(doc.id, doc.data() || {}) !== bucket)) {
+      return noStore({ ok: false, error: "chat_not_in_section" }, 404);
     }
     sourceDocs.sort(
       (a, b) => anonMatchActivityMs(b.data() || {}) - anonMatchActivityMs(a.data() || {}),
@@ -159,11 +172,11 @@ export async function GET(req: Request) {
       ),
     );
     const [solicitanteLabel, destinatarioLabel] = await Promise.all([
-      participantLabel(db, String(chatData.solicitanteUid || ""), String(chatData.solicitanteAnonId || "")),
+      participantLabel(db, String(chatData.solicitanteUid || ""), String(chatData.solicitanteAnonId || (bucket === "legacy_profile" ? chatData.anonId || chatData.visitorId : "") || "")),
       participantLabel(
         db,
-        String(chatData.destinatarioUid || ""),
-        String(chatData.destinatarioAnonId || chatData.anonId || ""),
+        String(chatData.destinatarioUid || chatData.receptorUid || ""),
+        String(bucket === "legacy_profile" ? "" : chatData.destinatarioAnonId || chatData.anonId || ""),
       ),
     ]);
     const messages = selectAnonMatchMessageRows({

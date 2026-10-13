@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     const chatId = buildShuffleAnonDirectChatId(ownAlias, targetAlias);
     const created = await createAnonMatchAdminDoc("chats_anonimos",chatId,{
-      chatId,source:"shuffle_direct",tipo:"anon_con_anonimo",
+      chatId,source:"shuffle_direct",adminReviewBucket:"direct",tipo:"anon_con_anonimo",
       solicitanteUid:"",solicitanteAnonId:ownAlias,solicitanteAuthUid:caller.uid,
       destinatarioUid:"",anonId:targetAlias,destinatarioAuthUid:targetUid,
       estado:"activo",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),ultimoMensaje:"",

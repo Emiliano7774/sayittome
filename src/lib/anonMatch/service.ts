@@ -618,6 +618,7 @@ export async function respondAnonMatchRequest(input: {
 
   await setAnonMatchAdminDoc("chats_anonimos", chatId, {
     chatId,
+    adminReviewBucket: "match",
     tipo: chatTipo,
     solicitanteUid,
     solicitanteAnonId,
