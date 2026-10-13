@@ -122,6 +122,21 @@ export function markChatMessagesWhipAlerted(chatId: string, messageIds: string[]
   persistAlertedKeys();
 }
 
+/** Suppress only old initial history, never a later live detail snapshot. */
+export function createChatWhipHistoryBaseline(chatId: string, attachedAt = Date.now()) {
+  let initialSnapshot = true;
+  return (messages: { id: string; createdAtMs?: number }[]) => {
+    if (!initialSnapshot) return;
+    initialSnapshot = false;
+    const historicalIds = messages
+      .filter((message) => typeof message.createdAtMs === "number" &&
+        Number.isFinite(message.createdAtMs) && message.createdAtMs > 0 &&
+        message.createdAtMs < attachedAt - 8_000)
+      .map((message) => message.id);
+    markChatMessagesWhipAlerted(chatId, historicalIds);
+  };
+}
+
 export function tryAlertIncomingMessage(input: {
   chatId: string;
   messageId: string;
@@ -131,6 +146,9 @@ export function tryAlertIncomingMessage(input: {
 }) {
   const { chatId, messageId, incoming, suppress, onAlert } = input;
   if (!chatId || !messageId) return false;
+  // Late author/role metadata may become known on the next snapshot. Do not
+  // consume an unclassified event; exact locally authored IDs stay suppressed.
+  if (!incoming) return false;
   if (wasMessageWhipAlerted(chatId, messageId)) return false;
 
   // A global listener suppresses alerts while the exact detail is visible.
@@ -139,7 +157,6 @@ export function tryAlertIncomingMessage(input: {
   if (incoming && suppress) return false;
 
   markMessageWhipAlerted(chatId, messageId);
-  if (!incoming) return false;
 
   onAlert();
   return true;

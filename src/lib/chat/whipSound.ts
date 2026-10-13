@@ -109,6 +109,8 @@ export function notifyIncomingChatMessage(input: {
   title: string;
   body: string;
   chatId?: string;
+  messageId?: string;
+  viewingActiveChat?: boolean;
 }) {
   void import("@/lib/chat/chatNotifications")
     .then(({ showChatNotification }) => showChatNotification(input))

@@ -14,6 +14,7 @@ import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { auth } from "@/lib/firebase";
 import { isLocalOutgoingMessageId, tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
 import { shouldShowWebForegroundChatPush } from "@/lib/chat/webForegroundPushPolicy";
+import { deliverWebChatNotification, waitForWebNotificationWorker } from "@/lib/chat/webNotificationDelivery";
 
 const CHAT_CHANNEL_ID = "chat-messages";
 const ANON_MATCH_CHANNEL_ID = "anon-match-requests";
@@ -68,28 +69,6 @@ function isChatNotifyRegistration(
   }
 }
 
-async function waitForServiceWorkerActive(
-  registration: ServiceWorkerRegistration,
-): Promise<ServiceWorkerRegistration | null> {
-  if (registration.active) return registration;
-  const worker = registration.installing || registration.waiting;
-  if (!worker) return registration.active ? registration : null;
-  await new Promise<void>((resolve) => {
-    const onState = () => {
-      if (worker.state === "activated" || worker.state === "redundant") {
-        worker.removeEventListener("statechange", onState);
-        resolve();
-      }
-    };
-    worker.addEventListener("statechange", onState);
-    if (worker.state === "activated" || worker.state === "redundant") {
-      worker.removeEventListener("statechange", onState);
-      resolve();
-    }
-  });
-  return registration.active ? registration : null;
-}
-
 async function findChatNotifyRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return null;
@@ -139,11 +118,11 @@ export async function ensureChatNotifyServiceWorker(): Promise<ServiceWorkerRegi
       const existing = await findChatNotifyRegistration();
       if (existing) {
         try {
-          await existing.update();
+          void existing.update().catch(() => undefined);
         } catch {
           // Existing active worker is still usable; update retries on next boot.
         }
-        const active = await waitForServiceWorkerActive(existing);
+        const active = await waitForWebNotificationWorker(existing);
         if (active?.active && isChatNotifyRegistration(active)) {
           chatNotifyRegistration = active;
           recordNotificationStage("chat_notify_sw", true, "existing");
@@ -159,7 +138,7 @@ export async function ensureChatNotifyServiceWorker(): Promise<ServiceWorkerRegi
         recordNotificationStage("chat_notify_sw", false, "wrong_script");
         return null;
       }
-      const active = await waitForServiceWorkerActive(registered);
+      const active = await waitForWebNotificationWorker(registered);
       chatNotifyRegistration =
         active?.active && isChatNotifyRegistration(active) ? active : null;
       recordNotificationStage(
@@ -707,11 +686,12 @@ export async function showChatNotification(input: {
     }
   };
 
-  const notificationOptions: NotificationOptions = {
+  const notificationOptions: NotificationOptions & { renotify: boolean } = {
     body,
     tag,
     icon: ICON_PATH,
     silent: false,
+    renotify: true,
     data: {
       chatId, messageId, group,
       ...(input.inboxKind ? { inboxKind: input.inboxKind, href: "/chats" } : {}),
@@ -744,8 +724,8 @@ export async function showChatNotification(input: {
       isChatNotifyRegistration(own) &&
       typeof own.showNotification === "function"
     ) {
-      await own.showNotification(title, notificationOptions);
-      recordNotificationStage("web_show", true, "chat-notify-sw");
+      const delivery = await deliverWebChatNotification(own, title, notificationOptions);
+      recordNotificationStage("web_show", delivery === "shown", delivery === "shown" ? "chat-notify-sw" : "chat-notify-sw-pending");
       return true;
     }
 

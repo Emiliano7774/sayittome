@@ -10,7 +10,8 @@ import {
 } from "firebase/firestore";
 
 import type { InboxChat } from "@/hooks/useChatsInbox";
-import { isIncomingMessageFromDoc } from "@/lib/chat/incomingChatActivity";
+import { chatNotificationDirection } from "@/lib/chat/incomingChatNotification";
+import { isCapacitorNative } from "@/lib/app/nativeShell";
 import { resolveChatViewerId } from "@/lib/chat/inboxPeerTitle";
 import {
   getSessionChatIds,
@@ -220,12 +221,14 @@ class GlobalChatWhipManager {
         const viewerId = chat
           ? resolveChatViewerId(chat, ctx.firebaseUid)
           : ctx.viewerId;
-        const incoming = isIncomingMessageFromDoc(
+        const direction = chatNotificationDirection(
           data,
           viewerId,
           ctx.firebaseUid,
           chat,
         );
+        if (direction === "unknown") return;
+        const incoming = direction === "incoming";
         const activeChatId = ctx.getActiveChatId();
         const viewingActiveChat = activeChatId === chatId && !document.hidden;
         const isNewMessage = Boolean(previousId && previousId !== messageId);
@@ -280,7 +283,7 @@ class GlobalChatWhipManager {
           chatId,
           messageId,
           incoming,
-          suppress: viewingActiveChat,
+          suppress: viewingActiveChat && isCapacitorNative(),
           onAlert: () => {
             if (!viewingActiveChat) {
               markLocalPendingChat(chatId);

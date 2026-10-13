@@ -80,7 +80,7 @@ import {
   buildOutgoingChatMetaPatch,
   resolveChatRecipientIds,
 } from "@/lib/chat/outgoingChatMeta";
-import { markChatMessagesWhipAlerted } from "@/lib/chat/whipAlertDedupe";
+import { createChatWhipHistoryBaseline } from "@/lib/chat/whipAlertDedupe";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import {
   profileAuthUid,
@@ -270,8 +270,6 @@ export default function LegacyChatPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const firstMessagesLoadRef = useRef(true);
-  const lastIncomingMessageIdRef = useRef<string | null>(null);
   const chatMetaRef = useRef<ChatData | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -384,6 +382,7 @@ export default function LegacyChatPage() {
       orderBy("createdAt", "asc"),
       limitToLast(50),
     );
+    const baselineHistory = createChatWhipHistoryBaseline(chatId);
 
     const unsub = onSnapshot(q, async (snapshot) => {
       const docs: MessageData[] = [];
@@ -416,25 +415,10 @@ export default function LegacyChatPage() {
         return !isHiddenForViewer(row.hiddenFor, hideKeys);
       });
 
-      if (user && visibleDocs.length > 0) {
-        const lastRealMessage = visibleDocs[visibleDocs.length - 1];
-        const lastRealMessageId =
-          lastRealMessage.id || lastRealMessage.clientMessageId || null;
-
-        if (firstMessagesLoadRef.current) {
-          firstMessagesLoadRef.current = false;
-          lastIncomingMessageIdRef.current = lastRealMessageId;
-        } else if (lastRealMessageId) {
-          lastIncomingMessageIdRef.current = lastRealMessageId;
-        }
-      } else if (firstMessagesLoadRef.current) {
-        firstMessagesLoadRef.current = false;
-      }
-
-      markChatMessagesWhipAlerted(
-        chatId,
-        docs.map((message) => message.id || message.clientMessageId || "").filter(Boolean),
-      );
+      baselineHistory(docs.map((message) => ({
+        id: message.id || message.clientMessageId || "",
+        createdAtMs: createdAtToMs(message.createdAt),
+      })));
 
       setMessages(visibleDocs);
       writeCachedChatMessages(
