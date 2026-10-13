@@ -39,6 +39,15 @@ export function anonMatchActivityMs(data: Record<string, unknown>): number {
   return firestoreTimeMs(data.updatedAt) || firestoreTimeMs(data.createdAt);
 }
 
+/** An opened session is not an auditable conversation until a message is sent. */
+export function anonMatchHasMessages(data: Record<string, unknown>): boolean {
+  if (data.hasMessages === true) return true;
+  if (Number(data.messageCount || data.messagesCount || 0) > 0) return true;
+  if (firestoreTimeMs(data.lastMessageAt) > 0) return true;
+  return [data.latestMessageId, data.ultimoMensaje, data.lastMessage, data.lastMessagePreview]
+    .some((value) => typeof value === "string" && value.trim().length > 0);
+}
+
 export function anonMatchInteractionId(
   sourceDocId: string,
   data: Record<string, unknown>,
@@ -61,6 +70,7 @@ export type AdminAnonMatchChatRow = {
   solicitanteAnonId: string;
   destinatarioAnonId: string;
   ultimoMensaje: string;
+  hasMessages?: boolean;
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -96,6 +106,7 @@ export function collapseAnonMatchChatRows(rows: AdminAnonMatchChatRow[]) {
       createdAtMs: oldestCreated,
       updatedAtMs: Math.max(previous.updatedAtMs, row.updatedAtMs),
       ultimoMensaje: newest.ultimoMensaje || previous.ultimoMensaje || row.ultimoMensaje,
+      hasMessages: Boolean(previous.hasMessages || row.hasMessages),
     });
   }
 

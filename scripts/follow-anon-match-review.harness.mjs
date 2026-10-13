@@ -35,4 +35,32 @@ assert.equal(review.anonMatchMessageText({ texto: "hola", text: "otro" }), "hola
 assert.equal(review.anonMatchMessageText({ mensaje: "hola" }), "hola");
 assert.equal(review.anonMatchMessageText({ text: "  desde text  " }), "desde text");
 
+// Opening an anonymous match is not a conversation until there is a real send.
+assert.equal(review.anonMatchHasMessages({ estado: "activo", ultimoMensaje: "", updatedAt: iso }), false);
+assert.equal(review.anonMatchHasMessages({ estado: "cerrado", ultimoMensaje: "" }), false);
+assert.equal(review.anonMatchHasMessages({ ultimoMensaje: "hola" }), true);
+assert.equal(review.anonMatchHasMessages({ ultimoMensaje: "  ", lastMessage: "foto" }), true);
+assert.equal(review.anonMatchHasMessages({ latestMessageId: "message-1" }), true);
+assert.equal(review.anonMatchHasMessages({ lastMessageAt: iso }), true);
+assert.equal(review.anonMatchHasMessages({ hasMessages: true }), true);
+assert.equal(review.anonMatchHasMessages({ messagesCount: 1 }), true);
+
+// A legacy fragment containing a sent message must survive collapse, even
+// when a newer fragment of the same conversation is just an empty shell.
+const row = (id, sourceDocId, updatedAtMs, hasMessages) => ({
+  id, sourceDocIds: [sourceDocId], sourceCount: 1, tipo: "anon_con_anonimo",
+  estado: "activo", solicitanteUid: "", destinatarioUid: "",
+  solicitanteAnonId: "anon_a", destinatarioAnonId: "anon_b",
+  ultimoMensaje: hasMessages ? "hola" : "", hasMessages,
+  createdAtMs: 10, updatedAtMs,
+});
+const auditRows = review.collapseAnonMatchChatRows([
+  row("same-chat", "legacy-with-message", 10, true),
+  row("same-chat", "recent-empty-shell", 20, false),
+  row("empty-only", "no-message", 30, false),
+]).filter((chat) => chat.hasMessages === true);
+assert.equal(auditRows.length, 1);
+assert.equal(auditRows[0].id, "same-chat");
+assert.equal(auditRows[0].sourceCount, 2);
+
 console.log(JSON.stringify({ gate: "FOLLOW_AND_ANON_MATCH_REVIEW", pass: true }));

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   anonMatchActivityMs,
+  anonMatchHasMessages,
   anonMatchInteractionId,
   anonMatchMessageText,
   collapseAnonMatchChatRows,
@@ -34,7 +35,8 @@ function safeChat(row: { id: string; data: () => Record<string, unknown> }) {
     destinatarioUid: String(data.destinatarioUid || ""),
     solicitanteAnonId: String(data.solicitanteAnonId || ""),
     destinatarioAnonId: String(data.destinatarioAnonId || data.anonId || ""),
-    ultimoMensaje: String(data.ultimoMensaje || "").slice(0, 180),
+    ultimoMensaje: String(data.ultimoMensaje || data.lastMessage || "").slice(0, 180),
+    hasMessages: anonMatchHasMessages(data),
     createdAtMs: firestoreTimeMs(data.createdAt),
     updatedAtMs: anonMatchActivityMs(data),
   };
@@ -108,7 +110,7 @@ export async function GET(req: Request) {
         snap.docs.map((row: { id: string; data: () => Record<string, unknown> }) =>
           safeChat(row),
         ),
-      );
+      ).filter((chat) => chat.hasMessages === true);
       return noStore({ ok: true, chats });
     }
 

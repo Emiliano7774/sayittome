@@ -182,7 +182,7 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
       <section className="min-h-0 overflow-y-auto rounded-2xl border border-white/10 bg-[#080808] p-3">
         <div className="mb-3 px-2">
           <p className="text-sm font-black">{mode === "all" ? "Revisión de todos los chats anónimos" : "No encontraste a nadie interesante"}</p>
-          <p className="text-xs font-bold text-white/40">{chats.length} conversaciones para revisar</p>
+          <p className="text-xs font-bold text-white/40">{chats.length} conversaciones con mensajes para revisar</p>
         </div>
         <div className="space-y-2">
           {chats.map((chat) => (
@@ -215,7 +215,7 @@ export default function AdminAnonMatchChatsPanel({ mode = "all" }: { mode?: "all
               ) : null}
             </button>
           ))}
-          {chats.length === 0 ? <p className="p-4 text-sm font-bold text-white/35">No hay chats anon-match.</p> : null}
+          {chats.length === 0 ? <p className="p-4 text-sm font-bold text-white/35">No hay conversaciones con mensajes para revisar.</p> : null}
         </div>
       </section>
 
