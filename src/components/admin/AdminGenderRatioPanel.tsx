@@ -15,6 +15,8 @@ type Props = {
   defaultOpen?: boolean;
 };
 
+const GENDER_RATIO_REFRESH_MS = 10 * 60_000;
+
 function barWidth(value: number, max: number) {
   if (max <= 0) return 8;
   return Math.max(8, Math.round((value / max) * 100));
@@ -30,7 +32,14 @@ export default function AdminGenderRatioPanel({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    let lastLoadedAt = 0;
+
     async function load() {
+      if (inFlight || document.hidden) return;
+      if (lastLoadedAt && Date.now() - lastLoadedAt < GENDER_RATIO_REFRESH_MS) return;
+      inFlight = true;
       try {
         setLoading(true);
         setError("");
@@ -40,21 +49,32 @@ export default function AdminGenderRatioPanel({
           headers: { "x-admin-email": email },
         });
         const json = await res.json();
+        if (cancelled) return;
         if (!json?.ok) {
           setError(String(json?.error || "Error al cargar proporción de género"));
           return;
         }
         setSummary(json.summary || null);
       } catch {
-        setError("Error al cargar proporción de género");
+        if (!cancelled) setError("Error al cargar proporción de género");
       } finally {
-        setLoading(false);
+        lastLoadedAt = Date.now();
+        inFlight = false;
+        if (!cancelled) setLoading(false);
       }
     }
 
-    load();
-    const timer = window.setInterval(load, 60_000);
-    return () => window.clearInterval(timer);
+    void load();
+    const timer = window.setInterval(() => void load(), GENDER_RATIO_REFRESH_MS);
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [adminEmail]);
 
   const buckets: GenderBucket[] = ["hombre", "mujer", "otro", "sin_dato"];

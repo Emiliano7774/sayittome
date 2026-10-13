@@ -37,7 +37,16 @@ Hosting/SSR `0e13dce` completed successfully in 627 seconds, exit 0, after both 
 
 On resuming at `2026-10-13T18:28:06Z`, both public markers instead showed `6766bf8`, builtAt `2026-10-13T15:23:09.886Z`. That later publication includes additional admin review/media and view-once work but does not descend from the notification release. The completed first deploy is therefore not evidence that this notification correction remains live.
 
-Reconciliation with `6766bf8` is in progress. Preserve its actually published work, the 120-second cost fix and this notification correction; do not replace it with the old candidate or deploy mixed MAIN. The initial exclusion of unrelated `b89d2ca` above describes the first release; it is now part of the later baseline and will be preserved if the package proof confirms it.
+Reconciliation with `6766bf8` completed in merge `2338eb5`, retaining its already-published admin/view-once work. The initial exclusion of unrelated `b89d2ca` above describes the first release; it now belongs to the verified newer baseline.
+
+Independent read-only proof: `/`, `/admin`, `/shuffle` and all 35 referenced JS/CSS files are byte-identical to MAIN's packaged release. All 745 project source files recovered from 446 packaged sourcemaps match current MAIN after BOM/CRLF normalization. This also proves four uncommitted admin cost reductions were actually live; they are saved here as baseline, not inferred from dirty MAIN:
+
+- `src/app/admin/page.tsx`: normalized SHA256 `1988dfccc46447ad3982a910a213be4c8c66a1845ea7318a997c02e4933b1867`.
+- `src/components/admin/AdminGenderRatioPanel.tsx`: `0e423364ec6980f4cca0c31e439acf3c5a53842d6f30d526cabe1929b9902b43`.
+- `src/components/admin/AdminRegistrationsPanel.tsx`: `451fd6776f9a53e91dc7f08ca4a4f35adcc7f717d93a02a40cc9cff4cb17fb3c`.
+- `src/hooks/useClassicModerationFeed.ts`: `2df135ba2b6a360e9c42615f932ff272ed88cbd6e91bdce39b6f4e79c8c2cc6f`.
+
+The already-preserved 120-second inbox file matches live too. Restored admin/media/view-once harnesses pass after recompiling their local Functions test dependency; that compilation is not a Functions deployment. Nineteen regression harnesses and TypeScript pass after reconciliation. The effective source delta against verified current production is only the notification correction.
 
 ## Physical acceptance still required
 

@@ -22,6 +22,8 @@ type Props = {
   defaultOpen?: boolean;
 };
 
+const REGISTRATIONS_REFRESH_MS = 10 * 60_000;
+
 function deltaTone(delta: number | null) {
   if (delta === null) return "text-white/45";
   if (delta > 0) return "text-emerald-300";
@@ -46,7 +48,14 @@ export default function AdminRegistrationsPanel({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    let lastLoadedAt = 0;
+
     async function load() {
+      if (inFlight || document.hidden) return;
+      if (lastLoadedAt && Date.now() - lastLoadedAt < REGISTRATIONS_REFRESH_MS) return;
+      inFlight = true;
       try {
         setLoading(true);
         setError("");
@@ -56,6 +65,7 @@ export default function AdminRegistrationsPanel({
           headers: { "x-admin-email": email },
         });
         const json = await res.json();
+        if (cancelled) return;
         if (!json?.ok) {
           setError(String(json?.error || "Error al cargar registros"));
           return;
@@ -63,15 +73,25 @@ export default function AdminRegistrationsPanel({
         setDays(json.days || []);
         setSummary(json.summary || null);
       } catch {
-        setError("Error al cargar registros");
+        if (!cancelled) setError("Error al cargar registros");
       } finally {
-        setLoading(false);
+        lastLoadedAt = Date.now();
+        inFlight = false;
+        if (!cancelled) setLoading(false);
       }
     }
 
-    load();
-    const timer = window.setInterval(load, 60_000);
-    return () => window.clearInterval(timer);
+    void load();
+    const timer = window.setInterval(() => void load(), REGISTRATIONS_REFRESH_MS);
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [adminEmail]);
 
   const maxCount = Math.max(...days.map((day) => day.count), 1);

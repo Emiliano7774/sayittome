@@ -28,6 +28,8 @@ import type {
   ModerationUserFeedEntry,
 } from "@/lib/moderation/types";
 
+const AUTHORITATIVE_REFRESH_TTL_MS = 10 * 60_000;
+
 export function useClassicModerationFeed(recentLiveLimit = 250) {
   const [profiles, setProfiles] = useState<ModerationProfileRow[]>([]);
   const [authoritativeChats, setAuthoritativeChats] = useState<ModerationChatRow[]>([]);
@@ -42,11 +44,19 @@ export function useClassicModerationFeed(recentLiveLimit = 250) {
   const [lastAuthoritativeAt, setLastAuthoritativeAt] = useState("");
   const resolvedUidsRef = useRef<Set<string>>(new Set());
   const inFlightRef = useRef(false);
+  const lastAuthoritativeLoadAtRef = useRef(0);
 
   const loadAuthoritative = useCallback(async (options?: { silent?: boolean }) => {
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
     const silent = options?.silent === true;
+    if (inFlightRef.current) return;
+    if (
+      silent &&
+      lastAuthoritativeLoadAtRef.current &&
+      Date.now() - lastAuthoritativeLoadAtRef.current < AUTHORITATIVE_REFRESH_TTL_MS
+    ) {
+      return;
+    }
+    inFlightRef.current = true;
     try {
       await auth.authStateReady();
       const user = auth.currentUser;
@@ -84,6 +94,7 @@ export function useClassicModerationFeed(recentLiveLimit = 250) {
       setAuthoritativeTotal(Number(json.total || rows.length) || rows.length);
       setAuthoritativeScanned(Number(json.scanned || rows.length) || rows.length);
       setLastAuthoritativeAt(String(json.generatedAt || new Date().toISOString()));
+      lastAuthoritativeLoadAtRef.current = Date.now();
       if (json.uidToUsername && typeof json.uidToUsername === "object") {
         setUidToUsername((prev) => ({
           ...prev,

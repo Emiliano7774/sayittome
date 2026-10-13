@@ -22,13 +22,22 @@ type DashboardStats = {
   growthToday: number;
 };
 
+const DASHBOARD_REFRESH_MS = 5 * 60_000;
+
 export default function AdminDashboardPage() {
   const admin = useAdminApi();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    let lastLoadedAt = 0;
+
     async function load() {
+      if (inFlight || document.hidden) return;
+      if (lastLoadedAt && Date.now() - lastLoadedAt < DASHBOARD_REFRESH_MS) return;
+      inFlight = true;
       try {
         const email = auth.currentUser?.email || admin.email;
         const res = await fetch("/api/admin/dashboard", {
@@ -36,15 +45,25 @@ export default function AdminDashboardPage() {
           headers: { "x-admin-email": email },
         });
         const json = await res.json();
-        if (json?.ok) setStats(json.stats);
+        if (!cancelled && json?.ok) setStats(json.stats);
       } finally {
-        setLoading(false);
+        lastLoadedAt = Date.now();
+        inFlight = false;
+        if (!cancelled) setLoading(false);
       }
     }
 
-    load();
-    const timer = window.setInterval(load, 20_000);
-    return () => window.clearInterval(timer);
+    void load();
+    const timer = window.setInterval(() => void load(), DASHBOARD_REFRESH_MS);
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [admin.email]);
 
   const cards = stats
