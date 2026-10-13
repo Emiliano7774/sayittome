@@ -129,8 +129,12 @@ export function chatHref(chat: InboxChat) {
 
 export { dedupeInboxChats as dedupeChats, mergeVisibleInboxThreads };
 
-/** Shuffle/Stories fallback re-polls recovered anon threads on this TTL (no session seeding). */
-export const FALLBACK_ANON_RECOVERY_TTL_MS = 25_000;
+/**
+ * Shuffle/Stories fallback re-polls recovered anon threads on this TTL.
+ * Realtime listeners remain the fast path; keep this recovery slow enough that
+ * an open page cannot repeatedly replay the endpoint's multi-query audit.
+ */
+export const FALLBACK_ANON_RECOVERY_TTL_MS = 120_000;
 
 export type UseChatsInboxOptions = {
   /** Logged-in user: four Firestore inbox queries. */
@@ -697,12 +701,18 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     if (loading || !enableAnonInboxQuery || forceAnonRecovery || !firebaseUser) {
       return;
     }
-    const timer = window.setInterval(() => {
+    const wakeFallbackRecovery = () => {
+      if (document.hidden) return;
       fallbackAnonRecoveryKeyRef.current = "";
       fallbackAnonRecoveryAtRef.current = 0;
       setFallbackAnonRecoveryEpoch((epoch) => epoch + 1);
-    }, FALLBACK_ANON_RECOVERY_TTL_MS);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(wakeFallbackRecovery, FALLBACK_ANON_RECOVERY_TTL_MS);
+    document.addEventListener("visibilitychange", wakeFallbackRecovery);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", wakeFallbackRecovery);
+    };
   }, [enableAnonInboxQuery, firebaseUser, forceAnonRecovery, loading]);
 
   useEffect(() => {
