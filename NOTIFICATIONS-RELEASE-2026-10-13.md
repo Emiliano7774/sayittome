@@ -48,6 +48,14 @@ Independent read-only proof: `/`, `/admin`, `/shuffle` and all 35 referenced JS/
 
 The already-preserved 120-second inbox file matches live too. Restored admin/media/view-once harnesses pass after recompiling their local Functions test dependency; that compilation is not a Functions deployment. Nineteen regression harnesses and TypeScript pass after reconciliation. The effective source delta against verified current production is only the notification correction.
 
+## Final publication verified
+
+Hosting/SSR release `cc051c7`, builtAt `2026-10-13T18:31:53.141Z`, completed exit 0 in 514 seconds. Both production builds and packaged SSR zero-hash gates passed. No business Functions or Rules were deployed.
+
+Public proof at `2026-10-14T01:07:23.637Z` (13/10, 22:07 ART): 44/44 checks passed. Runtime API and static release marker both show `cc051c7`; `/`, `/shuffle`, `/admin`, all 35 referenced JS/CSS, the notification worker and ads.txt are byte-equal to the verified package/source. Unauthenticated admin/anonymous-incoming calls return 401; the admin response is private/no-store. These negative checks are not authenticated functional tests. Full hashes: `scripts/notification-production-proof-20261013.json`.
+
+To prevent another later MAIN-based release dropping the correction, the exact notification commit was also cherry-picked as `8152a0c` onto active `p0/abuse-checkpoint` and pushed. Its 14 target files and the index had no pre-existing changes; unrelated dirty work was preserved. MAIN was not used for deployment. The three notification harnesses were rerun there with PASS.
+
 ## Physical acceptance still required
 
 After normal reload on each receiving browser: sending yourself must not show an incoming OS popup; receive three distinct consecutive messages in the same conversation and check all three, including while that chat is open. Check Windows Chrome and Android Chrome separately. Record observed latency; do not promise zero network/OS delay or infer PASS from a successful deploy.
