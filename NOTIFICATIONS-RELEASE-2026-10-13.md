@@ -2,9 +2,9 @@
 
 ## Scope and release baseline
 
-User-authorized direct implementation, selective Git and Hosting/SSR release. No Rules, business Functions, credentials, system notification settings, historical messages or authorship changes. Physical Windows/Android PASS remains pending.
+User-authorized direct implementation, selective Git and Hosting/SSR release. No Rules, business Functions, credentials, system notification settings, historical messages or authorship changes. Browser notifications received definitive user acceptance, recorded 2026-10-13 22:16 ART (see below).
 
-The current report is notification on own send, only the first incoming alert and delay. The older Windows Chrome-disabled diagnosis is historical, not an explanation of this new partial-delivery report.
+The repaired report was notification on own send, only the first incoming alert and delay. The older Windows Chrome-disabled diagnosis is historical, not an explanation of that partial-delivery report.
 
 Baseline reconciliation:
 
@@ -56,6 +56,8 @@ Public proof at `2026-10-14T01:07:23.637Z` (13/10, 22:07 ART): 44/44 checks pass
 
 To prevent another later MAIN-based release dropping the correction, the exact notification commit was also cherry-picked as `8152a0c` onto active `p0/abuse-checkpoint` and pushed. Its 14 target files and the index had no pre-existing changes; unrelated dirty work was preserved. MAIN was not used for deployment. The three notification harnesses were rerun there with PASS.
 
-## Physical acceptance still required
+## Definitive user acceptance — closed
 
-After normal reload on each receiving browser: sending yourself must not show an incoming OS popup; receive three distinct consecutive messages in the same conversation and check all three, including while that chat is open. Check Windows Chrome and Android Chrome separately. Record observed latency; do not promise zero network/OS delay or infer PASS from a successful deploy.
+Recorded 2026-10-13 22:16 ART: the user explicitly confirmed “PASS ABSOLUTO A LO DE LAS NOTIFICACIONES EN EL NAVEGADOR.” This accepts production release `cc051c7`; browser notifications are closed, no longer awaiting user PASS. Preserve this acceptance and the fix in future releases; reopen only for a demonstrated regression.
+
+This is user-reported acceptance, distinct from local harnesses and the earlier public deployment proof. Do not invent a device/version test matrix, extend it to native notifications, promise zero network/OS latency, or mark unrelated project work complete. Historical proof files retain their original pending-at-check-time status.
