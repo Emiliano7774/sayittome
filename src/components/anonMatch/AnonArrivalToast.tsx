@@ -11,6 +11,7 @@ import { anonArrivalPublicLabel, isAnonArrivalAlias } from "@/lib/anonMatch/anon
 import { fetchAnonMatch, resolveLiveAnonMatchCaller } from "@/lib/anonMatch/fetchAnonMatch";
 import { readDiscoveryPayload } from "@/lib/shuffle/audiencePayload";
 import { openVisitorChat } from "@/lib/shuffle/shuffleVisitorNavigation";
+import { consumeAnonArrivalToastOnce, markAnonArrivalActionHandled } from "@/lib/anonMatch/arrivalToastReceipt";
 
 type Arrival = { id: string; enteredAt: string };
 type Notice = { text: string; kind: "offline"|"error"|"waiting" };
@@ -43,13 +44,21 @@ export default function AnonArrivalToast() {
         const id=String(raw.anonId||"").trim();
         const enteredAt=String(raw.enteredAt||"").trim();
         const entered=Date.parse(enteredAt);
-        const key=id+":"+enteredAt;
+        const key=viewerUid+":"+id+":"+enteredAt;
         const current=Date.now();
         if(!isAnonArrivalAlias(id)||!Number.isFinite(entered)||raw.audience!=="public")return;
         if(key===lastKey.current)return;
         lastKey.current=key;
         if(id===getStoredAnonMatchAlias())return;
         if(entered>current+10_000||current-entered>MAX_ENTRY_AGE_MS)return;
+        // A system-notification deep link must consume this event even if
+        // its latest Firestore snapshot arrives before the navigation effect.
+        if(new URLSearchParams(window.location.search).get("anonArrival")===id){
+          markAnonArrivalActionHandled(viewerUid,id,current);
+          return;
+        }
+        // Rehydrating this 'latest' snapshot must not re-show a dismissed toast.
+        if(!consumeAnonArrivalToastOnce(viewerUid,id,enteredAt,current))return;
         setNotice(null);setArrival({id,enteredAt});
       },err=>console.warn("[anon-arrival] realtime unavailable",err.code||String(err)));
     };
@@ -92,12 +101,15 @@ export default function AnonArrivalToast() {
 
   const open=useCallback(async(id:string)=>{
     if(!isAnonArrivalAlias(id)||openInFlight.current)return;
-    openInFlight.current=true;activeTarget.current=id;setOpening(true);setArrival(null);setNotice(null);
+    markAnonArrivalActionHandled(auth.currentUser?.uid || "",id);
+    openInFlight.current=true;activeTarget.current=id;
+    setOpening(true);setArrival(null);setNotice(null);
     try{
       // Resolve one stable principal *before* the preflight. Auth adoption or
       // hydration can finish while the request is in flight; reading
       // auth.currentUser afterwards could silently choose the wrong chat route.
       const caller = await resolveLiveAnonMatchCaller();
+      markAnonArrivalActionHandled(caller.user.uid,id);
       // The server checks current presence, closed state, DND and audience.
       // The display card can legitimately outlive the anonymous session.
       const params=new URLSearchParams({anonId:id});
@@ -143,6 +155,7 @@ export default function AnonArrivalToast() {
       const id=url.searchParams.get("anonArrival")||"";
       if(!isAnonArrivalAlias(id)||handledHref.current===id+url.pathname)return;
       handledHref.current=id+url.pathname;
+      markAnonArrivalActionHandled(auth.currentUser?.uid || "",id);
       url.searchParams.delete("anonArrival");
       window.history.replaceState(window.history.state,"",url.pathname+url.search+url.hash);
       window.setTimeout(()=>void open(id),350);
