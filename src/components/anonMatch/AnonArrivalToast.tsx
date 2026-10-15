@@ -74,7 +74,12 @@ export default function AnonArrivalToast() {
       // alive behind a hidden tab would charge one Firestore read for every
       // entrance even though the banner cannot be seen.
       unsubscribeDoc?.();unsubscribeDoc=undefined;
+      if(document.hidden) setArrival(null);
       if(!loggedIn||document.hidden||!getAnonArrivalPushPreference(viewerUid))return;
+      // Reconnecting the listener replays its latest document even when no
+      // person just arrived. Display only arrivals published in this
+      // foreground subscription, never a preexisting cached snapshot.
+      const listeningSince = Date.now();
       unsubscribeDoc=onSnapshot(doc(db,"anon_arrival_announcements","latest"),snap=>{
         if(!snap.exists())return;
         const raw=snap.data();
@@ -87,6 +92,7 @@ export default function AnonArrivalToast() {
         if(key===lastKey.current)return;
         lastKey.current=key;
         if(id===getStoredAnonMatchAlias())return;
+        if(entered < listeningSince - 1_000) return;
         if(entered>current+10_000||current-entered>MAX_ENTRY_AGE_MS)return;
         // A system-notification deep link must consume this event even if
         // its latest Firestore snapshot arrives before the navigation effect.

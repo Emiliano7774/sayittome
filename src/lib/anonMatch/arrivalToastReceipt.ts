@@ -16,17 +16,22 @@ function validScope(uid: string) {
 
 function readReceipts() {
   if (typeof window === "undefined") return;
-  try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const json = JSON.parse(raw) as Record<string, unknown>;
-    if (!json || typeof json !== "object" || Array.isArray(json)) return;
-    for (const [key, expiry] of Object.entries(json)) {
-      if (Number.isFinite(expiry) && (expiry as number) > Date.now() && key.length < 350) {
-        memory.set(key, expiry as number);
+  // Native WebViews and independent browser tabs may recreate sessionStorage.
+  // Merge persistent and session receipts so an already dismissed arrival
+  // cannot be replayed when Providers / Firebase listeners are remounted.
+  for (const storageType of ["localStorage", "sessionStorage"] as const) {
+    try {
+      const raw = window[storageType].getItem(STORAGE_KEY);
+      if (!raw) continue;
+      const json = JSON.parse(raw) as Record<string, unknown>;
+      if (!json || typeof json !== "object" || Array.isArray(json)) continue;
+      for (const [key, expiry] of Object.entries(json)) {
+        if (Number.isFinite(expiry) && (expiry as number) > Date.now() && key.length < 350) {
+          memory.set(key, Math.max(memory.get(key) || 0, expiry as number));
+        }
       }
-    }
-  } catch { /* storage is optional; in-memory dedupe continues */ }
+    } catch { /* storage may be disabled; in-memory dedupe still works */ }
+  }
 }
 
 function writeReceipts(now: number) {
@@ -39,9 +44,11 @@ function writeReceipts(now: number) {
     memory.delete(oldest);
   }
   if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(memory)));
-  } catch { /* ignore browsers without sessionStorage access */ }
+  const serialized = JSON.stringify(Object.fromEntries(memory));
+  for (const kind of ["localStorage", "sessionStorage"] as const) {
+    try { window[kind].setItem(STORAGE_KEY, serialized); }
+    catch { /* optional in private browsing; memory remains authoritative */ }
+  }
 }
 
 function receiptKey(uid: string, alias: string, enteredAt: string) {
@@ -54,6 +61,15 @@ function aliasKey(uid: string, alias: string) {
 function displayedPersonKey(uid: string, alias: string) {
   return `displayed:${uid}:${alias}`;
 }
+function deviceEventKey(alias: string, enteredAt: string) {
+  return `device-event:${alias}:${enteredAt}`;
+}
+function devicePersonKey(alias: string) {
+  return `device-display:${alias}`;
+}
+function deviceOpenedKey(alias: string) {
+  return `device-opened:${alias}`;
+}
 
 /** Marks an entry displayed BEFORE painting it. A replay of the same entry is ignored. */
 export function consumeAnonArrivalToastOnce(
@@ -65,14 +81,18 @@ export function consumeAnonArrivalToastOnce(
   const key = receiptKey(viewer, alias, enteredAt);
   if ((memory.get(key) || 0) > now ||
       (memory.get(aliasKey(viewer, alias)) || 0) > now ||
-      (memory.get(displayedPersonKey(viewer, alias)) || 0) > now) {
+      (memory.get(displayedPersonKey(viewer, alias)) || 0) > now ||
+      (memory.get(deviceEventKey(alias, enteredAt)) || 0) > now ||
+      (memory.get(devicePersonKey(alias)) || 0) > now ||
+      (memory.get(deviceOpenedKey(alias)) || 0) > now) {
     return false;
   }
-  memory.delete(key);
   memory.set(key, now + RECEIPT_LIFETIME_MS);
-  // Two near-simultaneous server writes can carry different enteredAt values
-  // for the same person. Only the first toast may reach this viewer.
+  memory.set(deviceEventKey(alias, enteredAt), now + RECEIPT_LIFETIME_MS);
+  // Same viewer may be rehydrated with a different anonymous auth UID.
+  // Keep a local device receipt too, so navigation never replays this person.
   memory.set(displayedPersonKey(viewer, alias), now + SAME_PERSON_BURST_MS);
+  memory.set(devicePersonKey(alias), now + SAME_PERSON_BURST_MS);
   writeReceipts(now);
   return true;
 }
@@ -80,10 +100,31 @@ export function consumeAnonArrivalToastOnce(
 /** Tapping a system notification/deep link consumes the corresponding active entry. */
 export function markAnonArrivalActionHandled(uid: string, alias: string, now = Date.now()) {
   const viewer = validScope(uid);
-  if (!viewer || !alias) return;
+  if (!alias) return;
   readReceipts();
-  const key = aliasKey(viewer, alias);
-  memory.delete(key);
-  memory.set(key, now + DEEP_LINK_LIFETIME_MS);
+  if (viewer) memory.set(aliasKey(viewer, alias), now + DEEP_LINK_LIFETIME_MS);
+  // A deep link may be handled before Firebase auth hydration. It must still
+  // consume the pending banner when the viewer UID becomes available.
+  memory.set(deviceOpenedKey(alias), now + DEEP_LINK_LIFETIME_MS);
   writeReceipts(now);
+}
+
+/** One OS foreground connection banner per profile/anonymous person, across
+ * WebView recreation, native tab changes and web notification callbacks.
+ * New arrivals of the same person are eligible again after the server's
+ * existing 15-minute reannounce window. No Firestore reads or writes. */
+export function consumeForegroundConnectionNoticeOnce(
+  uid: string, principal: string, now = Date.now(),
+) {
+  if (!principal) return false;
+  readReceipts();
+  const key = `os-arrival:${validScope(uid) || "device"}:${principal.toLowerCase()}`;
+  const deviceKey = `os-arrival-device:${principal.toLowerCase()}`;
+  if ((memory.get(key) || 0) > now || (memory.get(deviceKey) || 0) > now) {
+    return false;
+  }
+  memory.set(key, now + SAME_PERSON_BURST_MS);
+  memory.set(deviceKey, now + SAME_PERSON_BURST_MS);
+  writeReceipts(now);
+  return true;
 }

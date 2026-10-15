@@ -8,6 +8,7 @@ import { isLocalOutgoingMessageId, tryAlertIncomingMessage } from "@/lib/chat/wh
 import { playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { shouldShowWebForegroundChatPush } from "@/lib/chat/webForegroundPushPolicy";
 import { getAnonArrivalPushPreference } from "@/lib/chat/anonArrivalPrefs";
+import { consumeForegroundConnectionNoticeOnce } from "@/lib/anonMatch/arrivalToastReceipt";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
 import { recordNotificationStage } from "@/lib/chat/notificationIncident";
 import {
@@ -88,6 +89,10 @@ async function attachWebForegroundMessagingListener() {
         if (auth.currentUser?.uid !== viewerUid || !getAnonArrivalPushPreference(viewerUid)) return;
         const registration = await ensureChatNotifyServiceWorker();
         if (!registration?.active) return;
+        // FCM may redeliver a foreground entry during tab / WebView resume.
+        // Persist the person receipt before showing the OS notification.
+        if (!consumeForegroundConnectionNoticeOnce(viewerUid,
+          "profile_arrival:" + asId(data.username).toLowerCase())) return;
         await deliverWebChatNotification(registration,
           asId(data.title) || "Nueva conexión en SayItToMe", {
             body: asId(data.body) || "Un perfil acaba de entrar.",
@@ -629,7 +634,7 @@ function openChatDeepLink(input: {
 const ARRIVAL_LOCAL_CHANNEL = "connection-arrivals-v1";
 // Prevent repeated FCM callbacks from scheduling the same OS banner twice.
 const displayedNativeArrivals = new Map<string,number>();
-const NATIVE_ARRIVAL_DEDUPE_MS = 2 * 60_000;
+const NATIVE_ARRIVAL_DEDUPE_MS = 15 * 60_000;
 function arrivalPrincipalKey(data: Record<string, unknown>) {
   const type = asId(data.type);
   const principal = type === "anon_arrival" ? asId(data.anonId) : asId(data.username).toLowerCase();
@@ -684,6 +689,9 @@ async function showNativeForegroundArrival(data: Record<string, unknown>, fallba
     // passed the initial test while the OS permission query was pending.
     const permittedAt = Date.now();
     if ((displayedNativeArrivals.get(arrivalKey) || 0) > permittedAt) return;
+    if (!consumeForegroundConnectionNoticeOnce(
+      asId(auth.currentUser?.uid), arrivalKey, permittedAt,
+    )) return;
     // This check and insertion are synchronous, before any further await.
     displayedNativeArrivals.set(arrivalKey, permittedAt + NATIVE_ARRIVAL_DEDUPE_MS);
     while (displayedNativeArrivals.size > 300) {
