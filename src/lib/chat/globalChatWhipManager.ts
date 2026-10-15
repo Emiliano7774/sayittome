@@ -267,6 +267,14 @@ class GlobalChatWhipManager {
 
         this.lastMessageId.set(chatId, messageId);
 
+        // Firestore can replay a different historical last message after a
+        // listener reattaches. A changed ID alone never makes an old send new.
+        const ageMs = createdAtMs ? Date.now() - createdAtMs : 0;
+        if (createdAtMs && (ageMs > 2 * 60_000 || ageMs < -30_000)) {
+          markMessageWhipAlerted(chatId, messageId);
+          return;
+        }
+
         if (!isNewMessage && !liveInboundOnFreshWatch) {
           // Burn clearly-old hydration so detail listeners own that id later.
           // Ambiguous/fresh incoming=false must NOT consume the id; inbox recovery

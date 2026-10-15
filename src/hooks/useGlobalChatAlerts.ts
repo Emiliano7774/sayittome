@@ -296,8 +296,10 @@ export function useGlobalChatAlerts() {
       if (!sender || !isIncomingChatActivity(chat, threadViewer, firebaseUid) ||
           isOwnChatSender(sender, threadViewer, firebaseUid, chat)) continue;
       const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
-      if (prior === undefined && (!arrivedAt || Date.now() - arrivedAt > 2 * 60_000 ||
-          arrivedAt > Date.now() + 30_000)) {
+      // A restored inbox row can change IDs while opening a chat. Even when
+      // there was a previous ID, old history is never a fresh notification.
+      if (!arrivedAt || Date.now() - arrivedAt > 2 * 60_000 ||
+          arrivedAt > Date.now() + 30_000) {
         continue;
       }
       tryAlertIncomingMessage({

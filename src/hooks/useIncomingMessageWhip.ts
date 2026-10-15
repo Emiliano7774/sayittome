@@ -33,14 +33,19 @@ export function useIncomingMessageWhip(
 ) {
   const firstLoadRef = useRef(true);
   const lastIncomingIdRef = useRef<string | null>(null);
+  const baselineChatIdRef = useRef(chatId);
 
   useEffect(() => bindWhipSoundUnlock(), []);
 
   useEffect(() => {
-    if (!enabled || messages.length === 0) {
-      if (firstLoadRef.current) firstLoadRef.current = false;
-      return;
+    if (baselineChatIdRef.current !== chatId) {
+      baselineChatIdRef.current = chatId;
+      firstLoadRef.current = true;
+      lastIncomingIdRef.current = null;
     }
+    // Empty/pre-hydration renders are not a message snapshot. Marking the
+    // baseline complete here replays older messages when the chat loads.
+    if (!enabled || messages.length === 0) return;
 
     const last = messages[messages.length - 1];
     const localOutgoing = isLocalOutgoingClientId(chatId, String(last.clientId || "")) ||
