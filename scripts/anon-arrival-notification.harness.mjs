@@ -26,7 +26,7 @@ assert.match(visitor,/enteredAt: fieldString\(fields, "enteredAt"\)/);
 const component=fs.readFileSync(path.join(root,"src/components/anonMatch/AnonArrivalToast.tsx"),"utf8");
 assert.match(component,/setTimeout\(\(\)=>setArrival\(null\),5000\)/);
 assert.match(component,/onSnapshot\(doc\(db,"anon_arrival_announcements","latest"\)/,"realtime listener replaces polling");
-assert.match(component,/if\(!loggedIn\|\|document\.hidden\)return/,"hidden tabs do not read presence announcements");
+assert.match(component,/if\(!loggedIn\|\|document\.hidden\|\|!getAnonArrivalPushPreference\(viewerUid\)\)return/,"hidden tabs and opted-out recipients do not read presence announcements");
 assert.match(component,/document\.addEventListener\("visibilitychange",connect\)/,"reconnects on foreground");
 assert.doesNotMatch(component,/POLL_MS|visitors=1/,"no global API polling per viewer");
 assert.match(component,/api\/anon-match\/arrival-target/,"click checks live target");

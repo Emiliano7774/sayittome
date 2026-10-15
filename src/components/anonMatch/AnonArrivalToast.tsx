@@ -5,6 +5,7 @@ import { MessageCircle } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { getAnonArrivalPushPreference } from "@/lib/chat/anonArrivalPrefs";
 import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 import { anonArrivalPublicLabel, isAnonArrivalAlias } from "@/lib/anonMatch/anonArrival";
 import { fetchAnonMatch, resolveLiveAnonMatchCaller } from "@/lib/anonMatch/fetchAnonMatch";
@@ -29,12 +30,13 @@ export default function AnonArrivalToast() {
   useEffect(()=>{
     let unsubscribeDoc:(()=>void)|undefined;
     let loggedIn=false;
+    let viewerUid="";
     const connect=()=>{
       // Only foreground viewers need an arrival banner. Keeping a listener
       // alive behind a hidden tab would charge one Firestore read for every
       // entrance even though the banner cannot be seen.
       unsubscribeDoc?.();unsubscribeDoc=undefined;
-      if(!loggedIn||document.hidden)return;
+      if(!loggedIn||document.hidden||!getAnonArrivalPushPreference(viewerUid))return;
       unsubscribeDoc=onSnapshot(doc(db,"anon_arrival_announcements","latest"),snap=>{
         if(!snap.exists())return;
         const raw=snap.data();
@@ -53,12 +55,15 @@ export default function AnonArrivalToast() {
     };
     const unsubscribeAuth=onAuthStateChanged(auth,user=>{
       loggedIn=Boolean(user);
+      viewerUid=user?.uid||"";
       if(!user)lastKey.current="";
       connect();
     });
     document.addEventListener("visibilitychange",connect);
+    window.addEventListener("sayittome:anon-arrival-prefs",connect);
     return ()=>{
       document.removeEventListener("visibilitychange",connect);
+      window.removeEventListener("sayittome:anon-arrival-prefs",connect);
       unsubscribeDoc?.();
       unsubscribeAuth();
     };

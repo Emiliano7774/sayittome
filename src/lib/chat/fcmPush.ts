@@ -602,6 +602,8 @@ function openChatDeepLink(input: {
 }
 
 const ARRIVAL_LOCAL_CHANNEL = "connection-arrivals-v1";
+// Prevent repeated FCM callbacks from scheduling the same OS banner twice.
+const displayedNativeArrivals = new Set<string>();
 function arrivalActionHref(data: Record<string, unknown>) {
   const type = asId(data.type);
   if (type === "anon_arrival") {
@@ -631,6 +633,18 @@ function arrivalLocalNotificationId(data: Record<string, unknown>) {
 async function showNativeForegroundArrival(data: Record<string, unknown>, fallbackTitle = "", fallbackBody = "") {
   if (!getAnonArrivalPushPreference(asId(auth.currentUser?.uid))) return;
   if (!arrivalActionHref(data)) return;
+  // The already-mounted AnonArrivalToast owns foreground anonymous alerts.
+  // Avoid a second, identical local OS banner for the same arrival.
+  if (asId(data.type) === "anon_arrival" && document.visibilityState === "visible") return;
+  const arrivalKey = asId(data.tag);
+  if (arrivalKey && displayedNativeArrivals.has(arrivalKey)) return;
+  if (arrivalKey) {
+    displayedNativeArrivals.add(arrivalKey);
+    if (displayedNativeArrivals.size > 300) {
+      const oldest = displayedNativeArrivals.values().next().value;
+      if (oldest) displayedNativeArrivals.delete(oldest);
+    }
+  }
   try {
     const { LocalNotifications } = await import("@capacitor/local-notifications");
     const permission = await LocalNotifications.checkPermissions();

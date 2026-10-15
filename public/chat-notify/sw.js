@@ -18,17 +18,29 @@ function pushData(payload) {
 // Serialize those paths; new message ids in the same chat must re-alert.
 let displayQueue = Promise.resolve();
 const displayedMessages = new Set();
+const displayedArrivals = new Set();
 
 function displayChatNotification(title, options) {
   const job = displayQueue.then(async () => {
     const data = options.data || {};
     const key = data.chatId && data.messageId ? `${data.chatId}:${data.messageId}` : "";
+    const arrivalKey = (data.type === "anon_arrival" || data.type === "profile_arrival")
+      ? String(options.tag || "") : "";
     if (key && displayedMessages.has(key)) return;
+    if (arrivalKey && displayedArrivals.has(arrivalKey)) return;
     if (key && typeof self.registration.getNotifications === "function") {
       const existing = await self.registration.getNotifications({ tag: options.tag }).catch(() => []);
       if (existing.some((item) => item.data?.messageId === data.messageId && item.data?.chatId === data.chatId)) return;
     }
+    if (arrivalKey && typeof self.registration.getNotifications === "function") {
+      const existing = await self.registration.getNotifications({ tag: arrivalKey }).catch(() => []);
+      if (existing.some((item) => item.data?.type === data.type)) return;
+    }
     await self.registration.showNotification(title, { ...options, silent: false, renotify: Boolean(options.tag) });
+    if (arrivalKey) {
+      displayedArrivals.add(arrivalKey);
+      if (displayedArrivals.size > 600) displayedArrivals.delete(displayedArrivals.values().next().value);
+    }
     if (key) {
       displayedMessages.add(key);
       if (displayedMessages.size > 600) displayedMessages.delete(displayedMessages.values().next().value);
@@ -73,13 +85,21 @@ self.addEventListener("push", (event) => {
     chatId ? `sayittome-chat-${chatId}` : data.tag || data.type || "sayittome",
   ).trim();
 
-  const osNotice = displayChatNotification(title || "SayItToMe", {
-    body,
-    tag,
-    icon: "/icons/Icon-192.png",
-    badge: "/icons/Icon-192.png",
-    data: { chatId, messageId, href, type: String(data.type || ""), inboxKind: String(data.inboxKind || "") },
-  });
+  const osNotice = (async () => {
+    // A visible app tab already shows the anonymous arrival toast from Firestore.
+    // Background/closed web still receives exactly one OS notification.
+    if (data.type === "anon_arrival") {
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      if (clients.some((client) => client.visibilityState === "visible")) return;
+    }
+    await displayChatNotification(title || "SayItToMe", {
+      body,
+      tag,
+      icon: "/icons/Icon-192.png",
+      badge: "/icons/Icon-192.png",
+      data: { chatId, messageId, href, type: String(data.type || ""), inboxKind: String(data.inboxKind || "") },
+    });
+  })();
   // A custom worker does not automatically forward FCM data-only pushes to
   // Firebase Messaging onMessage. Deliver the authenticated payload to visible
   // app pages too, where the recipient is checked before any in-page banner.
