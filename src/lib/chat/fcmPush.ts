@@ -601,6 +601,59 @@ function openChatDeepLink(input: {
   }
 }
 
+const ARRIVAL_LOCAL_CHANNEL = "connection-arrivals-v1";
+function arrivalActionHref(data: Record<string, unknown>) {
+  const type = asId(data.type);
+  if (type === "anon_arrival") {
+    const id = asId(data.anonId);
+    return /^anon_[a-z0-9_]{6,80}$/i.test(id)
+      ? "/?anonArrival=" + encodeURIComponent(id) : "";
+  }
+  if (type === "profile_arrival") {
+    const username = asId(data.username);
+    return /^[\p{L}\p{N}_.-]{2,40}$/u.test(username)
+      ? "/u/" + encodeURIComponent(username) : "";
+  }
+  return "";
+}
+function openArrivalAction(data: Record<string, unknown>) {
+  const href = arrivalActionHref(data);
+  if (!href || typeof window === "undefined") return false;
+  window.location.assign(href);
+  return true;
+}
+function arrivalLocalNotificationId(data: Record<string, unknown>) {
+  const key = asId(data.tag) || asId(data.anonId) || asId(data.username);
+  let hash = 2166136261;
+  for (const ch of key) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+  return (hash >>> 0) % 2000000000 || 1;
+}
+async function showNativeForegroundArrival(data: Record<string, unknown>, fallbackTitle = "", fallbackBody = "") {
+  if (!getAnonArrivalPushPreference(asId(auth.currentUser?.uid))) return;
+  if (!arrivalActionHref(data)) return;
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    const permission = await LocalNotifications.checkPermissions();
+    if (permission.display !== "granted") return;
+    await LocalNotifications.createChannel({
+      id: ARRIVAL_LOCAL_CHANNEL, name: "Nuevas conexiones",
+      description: "Usuarios y anónimos que acaban de conectarse",
+      importance: 4, vibration: true, visibility: 1, sound: "default",
+    });
+    await LocalNotifications.schedule({notifications:[{
+      id: arrivalLocalNotificationId(data),
+      title: asId(data.title) || fallbackTitle || "🌙 SayItToMe",
+      body: asId(data.body) || fallbackBody || "Nueva conexión",
+      channelId: ARRIVAL_LOCAL_CHANNEL,
+      smallIcon: "ic_stat_notify",
+      largeIcon: "ic_notify_moon", iconColor: "#7C3AED",
+      extra: {type:asId(data.type), anonId:asId(data.anonId), username:asId(data.username)},
+    }]});
+  } catch (error) {
+    console.warn("[arrival] foreground notification unavailable", String(error));
+  }
+}
+
 async function attachPushListeners() {
   const { PushNotifications } = await import("@capacitor/push-notifications");
 
@@ -620,6 +673,10 @@ async function attachPushListeners() {
   await PushNotifications.addListener("pushNotificationReceived", (event) => {
     const data = (event.notification?.data || {}) as Record<string, unknown>;
     const type = asId(data.type);
+    if (type === "anon_arrival" || type === "profile_arrival") {
+      void showNativeForegroundArrival(data, asId(event.notification?.title), asId(event.notification?.body));
+      return;
+    }
     if (type === "story_like" || type === "story_upload") {
       void presentStoryForegroundNotification({
         title: asId(data.title) || asId(event.notification?.title),
@@ -634,11 +691,8 @@ async function attachPushListeners() {
 
   await PushNotifications.addListener("pushNotificationActionPerformed", (event) => {
     const data = (event.notification?.data || {}) as Record<string, unknown>;
-    if (asId(data.type) === "anon_arrival") {
-      const alias = asId(data.anonId);
-      if (/^anon_[a-z0-9_]{6,80}$/i.test(alias)) {
-        window.location.assign(`/shuffle?anonArrival=${encodeURIComponent(alias)}`);
-      }
+    if (asId(data.type) === "anon_arrival" || asId(data.type) === "profile_arrival") {
+      openArrivalAction(data);
       return;
     }
     const chatId = asId(data.chatId);
@@ -653,6 +707,18 @@ async function attachPushListeners() {
     }
     openStoryNotificationHref(asId(data.href));
   });
+
+  // Foreground Android FCM uses a local OS banner. Its click must follow the
+  // same action as a background FCM notification (including anon direct chat).
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    await LocalNotifications.addListener("localNotificationActionPerformed", (event) => {
+      const extra = (event.notification?.extra || {}) as Record<string, unknown>;
+      if (extra.type === "anon_arrival" || extra.type === "profile_arrival") {
+        openArrivalAction(extra);
+      }
+    });
+  } catch { /* OS notification action unavailable. */ }
 }
 
 export type PushEnableResult =

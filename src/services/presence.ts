@@ -2,8 +2,9 @@
 
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 
-import { auth, db } from "@/lib/firebase";
+import { auth, db, functions } from "@/lib/firebase";
 
 let started = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -28,8 +29,10 @@ async function writePresence(uid: string, online: boolean, force = false) {
       lastActive: serverTimestamp(),
       presenceUpdatedAt: serverTimestamp(),
     });
+    return true;
   } catch (e) {
     console.error("presence error", e);
+    return false;
   }
 }
 
@@ -78,7 +81,13 @@ export function startPresenceSystem() {
       return;
     }
 
-    writePresence(user.uid, true, true);
+    // Notify once per real page/app session, not on periodic heartbeats,
+    // foreground focus, tab visibility or background reactivation.
+    void writePresence(user.uid, true, true).then((written) => {
+      if (!written || auth.currentUser?.uid !== user.uid) return;
+      const announce = httpsCallable(functions, "announceProfileArrival");
+      void announce({}).catch(() => undefined); // Optional, presence is authoritative.
+    });
     startHeartbeat(user.uid);
   });
 

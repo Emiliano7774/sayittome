@@ -12,7 +12,7 @@ assert.match(component,/await openVisitorChat\(router,visitorChatId,id,\{ensureN
 assert.match(component,/visitorChatId=String\(result\.visitorChatId/,"server-backed visitor identity");
 assert.match(component,/source:"arrival"/,"anonymous visitors still use anon-direct pathway");
 assert.doesNotMatch(component,/INVITAR|invitarlo a conversar/,"no invitation UI");
-assert.match(component,/Tocá para empezar a hablar/);
+assert.match(component,/Tocá para hablarle/);
 assert.match(preflight,/pickAvailableMatchTarget/,"still checks live availability and audience");
 assert.match(preflight,/lookupAnonMatchAliasBinding/,"validates bound anonymous target");
 assert.match(preflight,/getAnonMatchAdminDoc\("anonimos_activos", anonId\)/,"trusted presence read");

@@ -11,6 +11,7 @@ import { auth } from "@/lib/firebase";
 import { parseReportCreatedAtMs } from "@/lib/admin/reportSort";
 import ChatNotificationSetting from "@/components/chat/ChatNotificationSetting";
 import StoryNotificationSettings from "@/components/stories/StoryNotificationSettings";
+import AnonArrivalPushSettings from "@/components/anonMatch/AnonArrivalPushSettings";
 import {
   fitAnchoredMenu,
   readBottomUiReserve,
@@ -364,6 +365,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
 
                 <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-5">
                   <ChatNotificationSetting variant="panel" />
+                  <AnonArrivalPushSettings compact />
                   <StoryNotificationSettings mode="global" />
                 </div>
               </section>
