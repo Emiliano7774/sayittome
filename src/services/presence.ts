@@ -5,22 +5,39 @@ import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 
 import { auth, db, functions } from "@/lib/firebase";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 
 let started = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let lastWriteAt = 0;
 let currentUid: string | null = null;
+let foregroundActive = true;
+let windowFocused = true;
+let nativeAppActive = true;
+let entrySequence = 0;
+let pendingExitWrite: Promise<boolean> | null = null;
 
 const HEARTBEAT_MS = 90_000;
 const MIN_WRITE_GAP_MS = 60_000;
+const RETURN_GAP_MS = 15 * 60_000;
+const EXIT_KEY = "sayittome:registered-foreground-exit-v1:";
 
-async function writePresence(uid: string, online: boolean, force = false) {
+function saveLastExit(uid: string) {
+  try { window.localStorage.setItem(EXIT_KEY + uid, String(Date.now())); }
+  catch { /* Private mode may deny storage; the server remains authoritative. */ }
+}
+
+function justReturned(uid: string) {
+  try {
+    const last = Number(window.localStorage.getItem(EXIT_KEY + uid) || 0);
+    return last > 0 && Date.now() >= last && Date.now() - last < RETURN_GAP_MS;
+  } catch { return false; }
+}
+
+async function writePresence(uid: string, online: boolean, force = false): Promise<boolean> {
   const now = Date.now();
-
-  if (!force && now - lastWriteAt < MIN_WRITE_GAP_MS) return;
-
+  if (!force && now - lastWriteAt < MIN_WRITE_GAP_MS) return false;
   lastWriteAt = now;
-
   try {
     await updateDoc(doc(db, "usuarios", uid), {
       online,
@@ -28,10 +45,14 @@ async function writePresence(uid: string, online: boolean, force = false) {
       lastActiveAt: serverTimestamp(),
       lastActive: serverTimestamp(),
       presenceUpdatedAt: serverTimestamp(),
+      // Timestamp updated only while foregrounded OR when leaving.
+      // The first heartbeat on reentry happens AFTER the server evaluates
+      // the previous value, so reloads and multi-tab races cannot reannounce.
+      lastForegroundAt: serverTimestamp(),
     });
     return true;
-  } catch (e) {
-    console.error("presence error", e);
+  } catch (error) {
+    console.error("presence error", error);
     return false;
   }
 }
@@ -45,65 +66,101 @@ function stopHeartbeat() {
 
 function startHeartbeat(uid: string) {
   stopHeartbeat();
-
   heartbeatTimer = setInterval(() => {
-    // Background tab timers keep presence alive whenever the OS permits.
-    // Minimize/blur is NOT a logout or an offline signal.
+    // Paused in background: remaining signed in is not active foreground time.
+    if (uid !== currentUid || !foregroundActive) return;
     void writePresence(uid, true);
   }, HEARTBEAT_MS);
 }
 
-function markCurrentUserOnline(force = false) {
-  if (!currentUid) return;
-  void writePresence(currentUid, true, force);
+async function enterForeground(uid: string) {
+  const sequence = ++entrySequence;
+  stopHeartbeat();
+  // A fast return must not race the departure timestamp still in flight.
+  const priorExit = pendingExitWrite;
+  if (priorExit) await priorExit.catch(() => false);
+  if (sequence !== entrySequence || currentUid !== uid || !foregroundActive) return;
+
+  // Skip server calls for short returns on this installation. Firestore still
+  // checks the authoritative gap across tabs/devices for eligible attempts.
+  if (!justReturned(uid)) {
+    try {
+      const announce = httpsCallable(functions, "announceProfileArrival");
+      await announce({});
+    } catch {
+      // Presence and chat delivery never depend on optional arrival pushes.
+    }
+  }
+  if (sequence !== entrySequence || currentUid !== uid || !foregroundActive) return;
+  void writePresence(uid, true, true);
+  startHeartbeat(uid);
 }
 
-function markCurrentUserOffline(force = false) {
-  if (!currentUid) return;
+function leaveForeground(uid: string) {
+  ++entrySequence;
+  stopHeartbeat();
+  saveLastExit(uid);
+  // Keep "online" until the fifteen-minute heartbeat window expires;
+  // do not equate backgrounding with logout or disable incoming chat pushes.
+  pendingExitWrite = writePresence(uid, true, true);
+}
 
-  writePresence(currentUid, false, force);
+function reconcileForeground() {
+  // Native resume is authoritative: WebView focus can remain false after pause.
+  const active = !document.hidden && (isNativeAppShell() ? nativeAppActive : windowFocused);
+  if (active === foregroundActive) return;
+  foregroundActive = active;
+  const uid = currentUid;
+  if (!uid) return;
+  if (active) void enterForeground(uid);
+  else leaveForeground(uid);
 }
 
 export function startPresenceSystem() {
   if (started) return;
-
   started = true;
+  foregroundActive = !document.hidden;
 
   onAuthStateChanged(auth, (user) => {
-    currentUid = user?.uid ?? null;
-    lastWriteAt = 0;
+    ++entrySequence;
     stopHeartbeat();
-
-    // Anonymous visitors have no usuarios profile. updateDoc would throw and
-    // is unrelated to chat delivery.
-    if (!user || user.isAnonymous) {
-      currentUid = null;
-      return;
-    }
-
-    // Notify once per real page/app session, not on periodic heartbeats,
-    // foreground focus, tab visibility or background reactivation.
-    void writePresence(user.uid, true, true).then((written) => {
-      if (!written || auth.currentUser?.uid !== user.uid) return;
-      const announce = httpsCallable(functions, "announceProfileArrival");
-      void announce({}).catch(() => undefined); // Optional, presence is authoritative.
-    });
-    startHeartbeat(user.uid);
+    currentUid = user && !user.isAnonymous ? user.uid : null;
+    lastWriteAt = 0;
+    // Anonymous visitors have no usuarios profile and keep their own 3h rules.
+    if (currentUid && foregroundActive) void enterForeground(currentUid);
   });
 
-  document.addEventListener("visibilitychange", () => {
-    // Switching apps is not going offline. Renew before timers may suspend.
-    markCurrentUserOnline(true);
-  });
-
-  window.addEventListener("beforeunload", () => {
-    markCurrentUserOffline(true);
-  });
-
+  document.addEventListener("visibilitychange", reconcileForeground);
   window.addEventListener("focus", () => {
-    markCurrentUserOnline(true);
+    windowFocused = true;
+    reconcileForeground();
+  });
+  window.addEventListener("blur", () => {
+    windowFocused = false;
+    reconcileForeground();
+  });
+  window.addEventListener("pageshow", () => {
+    windowFocused = true;
+    reconcileForeground();
+  });
+  window.addEventListener("beforeunload", () => {
+    const uid = currentUid;
+    if (!uid) return;
+    ++entrySequence;
+    stopHeartbeat();
+    saveLastExit(uid);
+    // Existing unload behavior retained. This is not a Firebase sign-out.
+    void writePresence(uid, false, true);
   });
 
-  // No blur→offline: web and Android minimize both emit blur while the
-  // user remains signed in and can still receive OS push notifications.
+  // Android WebView can deliver appStateChange without visibilitychange.
+  // This listener is only installed inside the native shell.
+  if (isNativeAppShell()) {
+    void import("@capacitor/app").then(async ({ App }) => {
+      await App.addListener("appStateChange", ({ isActive }) => {
+        nativeAppActive = isActive;
+        reconcileForeground();
+      });
+    }).catch(() => undefined);
+  }
 }

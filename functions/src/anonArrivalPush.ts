@@ -3,11 +3,11 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { db, messaging } from "./adminApp";
+import { mayAnnounceRegisteredReturn } from "./profileArrivalPolicy";
 
 // Retain the existing topic so devices which opted in before this release keep working.
 const TOPIC = "anon-presence-optin-v1";
 const ALIAS = /^anon_[a-z0-9_]{6,80}$/i;
-const PROFILE_COOLDOWN_MS = 10 * 60_000;
 
 function stableShortId(alias: string) {
   let hash = 2166136261;
@@ -84,40 +84,56 @@ export const onAnonArrivalAnnounced = onDocumentWritten({
   } catch (error) { logger.warn("anon arrival push failed",{error:String(error)}); }
 });
 
-/** Called once when a registered profile establishes presence. Never on heartbeat.
- * Server verifies current online status and public presence, then rate-limits by
- * profile to suppress duplicate tabs, refreshes, reconnect loops and abuse. */
+/** Registered-profile pilot: one arrival on initial entrance and again only
+ * after >=15 minutes without foreground presence. The client calls this BEFORE
+ * its first foreground heartbeat, so Firestore still contains the previous
+ * departure time. Hidden tabs never invoke it. No anonymous behavior changes.
+ * A single Firestore transaction serializes concurrent tabs/device entrances. */
 export const announceProfileArrival = onCall({region:"us-central1"}, async (request) => {
   const uid = String(request.auth?.uid || "").trim();
-  if (!uid) throw new HttpsError("unauthenticated","Auth required");
-  const user = await db().collection("usuarios").doc(uid).get();
-  const profile = user.data() || {};
-  const username = String(profile.username || "").trim();
-  const seen = profile.presenceUpdatedAt || profile.lastSeenAt;
-  const presenceMs = typeof seen?.toMillis === "function" ? seen.toMillis() : Date.parse(String(seen || ""));
-  const now = Date.now();
-  if (!/^[\p{L}\p{N}_.-]{2,40}$/u.test(username) ||
-      profile.online !== true || profile.mostrarUltimaVez === false ||
-      (Array.isArray(profile.visibilidadPaises) && profile.visibilidadPaises.length > 0) ||
-      (Array.isArray(profile.visibilidadProvincias) && profile.visibilidadProvincias.length > 0) ||
-      !Number.isFinite(presenceMs) || now-presenceMs > 120_000 || presenceMs>now+30_000) {
-    return {ok:true,announced:false,reason:"not_public_or_offline"};
+  if (!uid || request.auth?.token?.firebase?.sign_in_provider === "anonymous") {
+    throw new HttpsError("unauthenticated","Registered profile required");
   }
-  const gate=db().collection("arrivalPushGates").doc("profile_"+uid);
-  const shouldSend=await db().runTransaction(async(tx)=>{
-    const previous=await tx.get(gate);
-    const last=Number(previous.data()?.lastMs || 0);
-    if (now-last < PROFILE_COOLDOWN_MS) return false;
+  const now = Date.now();
+  const profileRef = db().collection("usuarios").doc(uid);
+  const gate = db().collection("arrivalPushGates").doc("profile_"+uid);
+  const outcome = await db().runTransaction(async (tx) => {
+    // Read everything before writing, so competing tabs cannot both announce.
+    const user = await tx.get(profileRef);
+    const previous = await tx.get(gate);
+    const profile = user.data() || {};
+    const username = String(profile.username || "").trim();
+    if (!user.exists || !/^[\p{L}\p{N}_.-]{2,40}$/u.test(username) ||
+        profile.mostrarUltimaVez === false ||
+        (Array.isArray(profile.visibilidadPaises) && profile.visibilidadPaises.length > 0) ||
+        (Array.isArray(profile.visibilidadProvincias) && profile.visibilidadProvincias.length > 0) ||
+        profile.banned === true) {
+      return {announced:false as const,reason:"not_public_or_offline"};
+    }
+    const lastForeground = profile.lastForegroundAt;
+    const foregroundMs = typeof lastForeground?.toMillis === "function"
+      ? lastForeground.toMillis()
+      : Date.parse(String(lastForeground || ""));
+    const lastAnnounced = Number(previous.data()?.lastMs || 0);
+    if (!mayAnnounceRegisteredReturn({
+      nowMs: now,
+      lastForegroundMs: Number.isFinite(foregroundMs) ? foregroundMs : 0,
+      lastAnnouncementMs: lastAnnounced,
+    })) {
+      return {announced:false as const,reason:"duplicate_session"};
+    }
+    // Old clients that reload with stale presence still hit this durable gate;
+    // the new client also refreshes lastForegroundAt on every foreground beat.
     tx.set(gate,{lastMs:now},{merge:true});
-    return true;
+    return {announced:true as const,username};
   });
-  if (!shouldSend) return {ok:true,announced:false,reason:"duplicate_session"};
+  if (!outcome.announced) return {ok:true,...outcome};
   try {
     await broadcast({
-      type:"profile_arrival",username,
+      type:"profile_arrival",username:outcome.username,
       title:"🌙 Nueva conexión en SayItToMe",
-      body:"@"+username+" se acaba de conectar. Tocá para hablarle.",
-      href:"/u/"+encodeURIComponent(username),
+      body:"@"+outcome.username+" se acaba de conectar. Tocá para hablarle.",
+      href:"/u/"+encodeURIComponent(outcome.username),
       tag:noticeTag(uid,String(now)),
     });
     return {ok:true,announced:true};
