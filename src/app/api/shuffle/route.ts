@@ -862,7 +862,12 @@ export async function GET(req: Request) {
     const requestedLimit = Number(searchParams.get("limit") || 0);
     const shouldShuffle = searchParams.get("shuffle") === "1";
     const countOnly = searchParams.get("countOnly") === "1";
-    const force = searchParams.get("force") === "1";
+    // This is a public endpoint: never let caller-supplied force=1 bypass both
+    // the process-local and shared public-profile caches. A single uncached
+    // request can otherwise scan the entire usuarios collection (and bill one
+    // read per document), allowing arbitrary amplification by repeated calls.
+    // Client refreshes already get fresh data from the normal TTL path.
+    const force = false;
     const filters = parseShuffleFiltersFromSearchParams(searchParams);
     const viewer = parseViewerGeoTarget(
       searchParams,
