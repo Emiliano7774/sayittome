@@ -51,13 +51,13 @@ function StoryTile({
           className="h-full w-full"
         >
           <>
-            <video
-              src={story.mediaUrl}
-              className="h-full w-full object-cover"
-              muted
-              playsInline
-              preload="metadata"
-            />
+            {story.thumbnailUrl ? (
+              <div className="relative h-full w-full">
+                <AppImage src={story.thumbnailUrl} alt="" fill className="object-cover" />
+              </div>
+            ) : (
+              <div className="h-full w-full bg-gradient-to-br from-zinc-800 via-zinc-950 to-black" />
+            )}
             <span className="absolute left-2 top-2 rounded-full bg-black/60 p-1.5">
               <Film size={14} className="text-white" />
             </span>

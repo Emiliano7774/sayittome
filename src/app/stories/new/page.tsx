@@ -17,6 +17,7 @@ import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind } from "@/lib/media/fileKind";
+import { createStoryVideoPoster } from "@/lib/media/createStoryVideoPoster";
 import {
   formatStorageUploadError,
   uploadFileToStorage,
@@ -106,6 +107,7 @@ export default function NewStoryPage() {
       setUploadProgress(0);
 
       let mediaUrl = "";
+      let thumbnailUrl = "";
       let mediaType = "text";
       let mediaName = "";
       let mediaSize = 0;
@@ -142,6 +144,8 @@ export default function NewStoryPage() {
             ? await compressImageForUpload(file, { maxEdge: 1920, quality: 0.84 })
             : file;
 
+        // Extract once from the local file, not by downloading a video on every feed visit.
+        const poster = isVideo ? await createStoryVideoPoster(file) : null;
         mediaUrl = await uploadFileToStorage({
           path,
           file: uploadFile,
@@ -150,6 +154,20 @@ export default function NewStoryPage() {
           allowAnonymousAuth: author.isAnonymousStory,
           requireRegisteredUser: !author.isAnonymousStory,
         });
+        if (poster) {
+          try {
+            thumbnailUrl = await uploadFileToStorage({
+              path: `${path}.poster.jpg`,
+              file: poster,
+              kind: "image",
+              allowAnonymousAuth: author.isAnonymousStory,
+              requireRegisteredUser: !author.isAnonymousStory,
+            });
+          } catch (posterError) {
+            // A preview upload failure must not strand an already uploaded story.
+            console.warn("story_video_poster_upload_failed", posterError);
+          }
+        }
 
         mediaType = kind;
         mediaName = uploadFile.name;
@@ -177,6 +195,7 @@ export default function NewStoryPage() {
         anonSessionId: author.anonSessionId,
         texto: texto.trim(),
         mediaUrl,
+        thumbnailUrl,
         mediaType,
         mediaSource: storedMediaSource,
         mediaName,

@@ -12,6 +12,8 @@ export type StoryItem = {
   anonSessionId?: string;
   texto?: string;
   mediaUrl?: string;
+  /** Small cached still image for video cards; never use the original video as a feed preview. */
+  thumbnailUrl?: string;
   mediaType: StoryMediaType;
   mediaSource?: StoryMediaSource;
   createdAtMs: number;
