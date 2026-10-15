@@ -173,11 +173,12 @@ export default function NewStoryPage() {
         }
         if (preview?.boomerang) {
           try {
-            const ext = preview.boomerang.name.endsWith(".mp4") ? "mp4" : "webm";
+            const ext = preview.boomerang.name.endsWith(".webp")
+              ? "webp" : preview.boomerang.name.endsWith(".mp4") ? "mp4" : "webm";
             boomerangUrl = await uploadFileToStorage({
               path: `${path}.boomerang.${ext}`,
               file: preview.boomerang,
-              kind: "video",
+              kind: ext === "webp" ? "image" : "video",
               allowAnonymousAuth: author.isAnonymousStory,
               requireRegisteredUser: !author.isAnonymousStory,
             });

@@ -1,3 +1,5 @@
+import { encodeStoryAnimatedWebP } from "@/lib/media/encodeStoryAnimatedWebP";
+
 /**
  * Builds a low-bandwidth silent, ping-pong preview from the FIRST three seconds.
  * Everything happens locally before the original video is uploaded.
@@ -77,6 +79,15 @@ export async function createStoryBoomerang(file: File): Promise<{
     const jpeg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.65));
     const thumbnail = jpeg && jpeg.size > 0 && jpeg.size <= 160_000
       ? new File([jpeg], "story-cover.jpg", { type: "image/jpeg" }) : null;
+
+    // Animated WebP needs no video autoplay or codec support in the viewer's
+    // WebView. Encode once from local frames; keep MediaRecorder as fallback.
+    try {
+      const animatedImage = await encodeStoryAnimatedWebP(bitmaps, canvas.width, canvas.height);
+      if (animatedImage) return { thumbnail, boomerang: animatedImage };
+    } catch (error) {
+      console.warn("story_animated_webp_encode_failed", error);
+    }
 
     const CanvasPrototype = HTMLCanvasElement.prototype as HTMLCanvasElement & {
       captureStream?: (fps?: number) => MediaStream;

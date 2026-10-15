@@ -93,16 +93,35 @@ export default function StoryBoomerangPreview({ src, poster, locked = false }: P
     };
   }, [attemptPlay]);
 
-  const visible = Boolean(src && near && motionAllowed && !failed && !locked);
+  // Animated WebP is a small native <img>, not autoplay media. The browser
+  // lazily downloads it only when close to the viewport; Android's video and
+  // reduced-motion autoplay gates cannot freeze the story anymore.
+  const imageLoop = Boolean(src && /\.webp(?:[/?#]|$)/i.test(src));
+  const imageVisible = Boolean(imageLoop && src && !locked && !failed);
+  const visible = Boolean(src && near && motionAllowed && !failed && !locked && !imageLoop);
 
   return (
     <div
       ref={rootRef}
       className="relative h-full w-full bg-gradient-to-br from-zinc-800 via-zinc-950 to-black"
       data-story-boomerang={src ? "1" : "0"}
-      data-story-boomerang-state={failed ? "error" : playing ? "playing" : visible ? "loading" : "still"}
+      data-story-boomerang-state={failed ? "error" : imageVisible ? "animated-image" : playing ? "playing" : visible ? "loading" : "still"}
     >
       {poster ? <AppImage src={poster} alt="" fill className="object-cover" /> : null}
+      {imageVisible ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={src}
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+          className="absolute inset-0 z-[1] h-full w-full object-cover"
+          aria-hidden="true"
+          data-story-animated-image="1"
+        />
+      ) : null}
       {visible ? (
         <video
           key={src}
