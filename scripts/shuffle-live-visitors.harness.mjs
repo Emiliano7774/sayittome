@@ -378,8 +378,8 @@ assert.match(
 );
 assert.match(
   serverFilters,
-  /if \(filters\.soloOnline\) return isShuffleProfileOnline\(profile, now, ONLINE_WINDOW_MS\)/,
-  "solo online keeps only anonymous sessions active during the last 15 minutes",
+  /if \(filters\.soloOnline\) return isProfileOnline\(profile, now\)/,
+  "solo online keeps anonymous sessions for the full three-hour visitor period",
 );
 const clientFilters = fs.readFileSync(path.join(root, "src/lib/shuffle/filters.ts"), "utf8");
 assert.match(clientFilters, /shuffleVisitor: profile\.shuffleVisitor === true/);

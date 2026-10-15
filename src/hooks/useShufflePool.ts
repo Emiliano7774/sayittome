@@ -47,6 +47,7 @@ import {
 } from "@/lib/shuffle/filters";
 import { publishVisibilityAudience } from "@/lib/shuffle/publishVisibility";
 import { refreshPoolPresence } from "@/lib/shuffle/refreshPresence";
+import { mergeRecentOnlineProfiles } from "@/lib/shuffle/recentOnlineProfiles";
 import { applyShuffleProfileBlurFlags, mergeShuffleProfileModeration } from "@/lib/shuffle/resolveShuffleBlur";
 import {
   shuffleBatchMemoryForPool,
@@ -1239,7 +1240,13 @@ export function useShufflePool() {
             const visitors = normalizeShuffleProfiles(json?.profiles).filter(
               (profile) => profile.shuffleVisitor === true,
             );
-            const base = poolRef.current.filter((profile) => profile.shuffleVisitor !== true);
+            const recentlyOnline = normalizeShuffleProfiles(json?.onlineProfiles).filter(
+              (profile) => profile.shuffleVisitor !== true,
+            );
+            const base = mergeRecentOnlineProfiles(
+              poolRef.current.filter((profile) => profile.shuffleVisitor !== true),
+              recentlyOnline,
+            );
             poolRef.current = dedupeShuffleProfiles([...base, ...visitors]);
             filterActivePool(searchRef.current.trim(), filtersRef.current, {
               forceWindow: true,
@@ -1637,6 +1644,9 @@ export function useShufflePool() {
         const visitors = normalizeShuffleProfiles(json?.profiles).filter(
           (profile) => profile.shuffleVisitor === true,
         );
+        const recentlyOnline = normalizeShuffleProfiles(json?.onlineProfiles).filter(
+          (profile) => profile.shuffleVisitor !== true,
+        );
         const reportedRegistered = Number(json?.profilesCreated || 0);
         if (reportedRegistered > 0) registeredCountRef.current = reportedRegistered;
         const anon = visitors.length;
@@ -1655,7 +1665,10 @@ export function useShufflePool() {
           });
         }
         if (searchRef.current.trim()) return;
-        const base = poolRef.current.filter((profile) => profile.shuffleVisitor !== true);
+        const base = mergeRecentOnlineProfiles(
+          poolRef.current.filter((profile) => profile.shuffleVisitor !== true),
+          recentlyOnline,
+        );
         poolRef.current = dedupeShuffleProfiles([...base, ...visitors]);
         const now = Date.now();
         const filters = filtersRef.current;
@@ -1669,6 +1682,9 @@ export function useShufflePool() {
         );
         activePoolRef.current = dedupeShuffleProfiles(filtered);
         setFilteredCount(activePoolRef.current.length);
+        // Solo online must immediately drop expired registered cards and fill
+        // the newly vacant seats with eligible profiles, up to 35 in total.
+        if (filters.soloOnline) pruneShuffleSlotsToPool(activePoolRef.current);
         // Always sync visitors — an empty painted window must still receive live anons
         // (solo-online prune → empty slots was skipping this and hiding online anons).
         syncCycleLiveVisitors(
@@ -1676,6 +1692,9 @@ export function useShufflePool() {
           now,
           { preferVisitors: filters.soloOnline, fillers: activePoolRef.current },
         );
+        // Green dots in the general Shuffle must update in place without
+        // resetting the painted window or triggering more pool reads.
+        patchShuffleSlotPresence(activePoolRef.current);
         if (
           filters.soloOnline &&
           getVisibleShuffleProfiles().length === 0 &&

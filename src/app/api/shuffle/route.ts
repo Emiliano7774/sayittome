@@ -30,6 +30,7 @@ import {
 } from "@/lib/shuffle/serverFilters";
 import { ANON_SHUFFLE_VISIBILITY_MS, anonShuffleVisible } from "@/lib/anonMatch/anonymousPresenceIdentity";
 import { readOrBuildSharedPublicPool } from "@/lib/shuffle/sharedPublicPoolCache";
+import { mergeRecentOnlineProfiles } from "@/lib/shuffle/recentOnlineProfiles";
 
 const SHUFFLE_JSON_HEADERS = {
   "Cache-Control": "private, no-store, no-cache, must-revalidate",
@@ -96,6 +97,10 @@ const ANON_SCAN_LIMIT = 1000;
 /** Live anonymous sessions are a separate, short-lived slice of the pool. */
 const VISITOR_SCAN_LIMIT = 1000;
 const VISITOR_CACHE_MS = 20_000;
+// One small indexed presence scan per warm SSR instance/minute, reused by both
+// full Shuffle and the existing 20-second visitors endpoint.
+const RECENT_PROFILE_CACHE_MS = 60_000;
+const RECENT_PROFILE_LIMIT = 500;
 
 type ApiProfile = {
   uid: string;
@@ -159,6 +164,9 @@ let cachedAnonymousOnline = 0;
 let cachedAnonymousAt = 0;
 let cachedVisitors: ApiProfile[] = [];
 let cachedVisitorsAt = 0;
+let cachedRecentRegistered: ApiProfile[] = [];
+let cachedRecentRegisteredAt = 0;
+let recentRegisteredInFlight: Promise<ApiProfile[]> | null = null;
 let cachedRegisteredCount = 0;
 let cachedRegisteredAt = 0;
 
@@ -490,6 +498,49 @@ function docToProfile(doc: any): ApiProfile {
   return rawToProfile(raw, fallbackUid);
 }
 
+// The full public pool is intentionally cached for ten minutes, but profile
+// heartbeats cannot be: otherwise newly active users lose their green dot and
+// disappear from Solo online. Reuse one bounded, indexed scan for both routes.
+async function getRecentRegisteredProfiles(): Promise<ApiProfile[]> {
+  const now = Date.now();
+  const alive = (rows: ApiProfile[]) => rows.filter((row) =>
+    isShuffleProfileOnline(row, Date.now(), ONLINE_WINDOW_MS),
+  );
+  if (cachedRecentRegisteredAt && now - cachedRecentRegisteredAt < RECENT_PROFILE_CACHE_MS) {
+    return alive(cachedRecentRegistered);
+  }
+  if (recentRegisteredInFlight) return recentRegisteredInFlight;
+  const pending = (async () => {
+    try {
+      const docs = await runStructuredQuery({
+        from: [{ collectionId: "usuarios" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "lastActiveAt" },
+            op: "GREATER_THAN_OR_EQUAL",
+            value: { timestampValue: new Date(now - ONLINE_WINDOW_MS).toISOString() },
+          },
+        },
+        orderBy: [{ field: { fieldPath: "lastActiveAt" }, direction: "DESCENDING" }],
+        limit: RECENT_PROFILE_LIMIT,
+      });
+      const rows = dedupeShuffleProfiles(docs
+        .filter((doc: any) => isPublicProfile(parseFirestoreDoc(doc)))
+        .map((doc: any) => withResolvedCountry(docToProfile(doc)))
+        .filter((profile) => isShuffleEligibleProfile(profile) && isLastSeenPublic(profile)));
+      cachedRecentRegistered = rows;
+      cachedRecentRegisteredAt = Date.now();
+      return alive(rows);
+    } catch (error) {
+      console.warn("[shuffle] recent registered-presence scan unavailable", error);
+      return alive(cachedRecentRegistered);
+    }
+  })();
+  recentRegisteredInFlight = pending;
+  try { return await pending; }
+  finally { if (recentRegisteredInFlight === pending) recentRegisteredInFlight = null; }
+}
+
 function profileMatchesQueryText(profile: ApiProfile, query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
@@ -819,10 +870,22 @@ export async function GET(req: Request) {
     );
 
     if (visitorsOnly) {
-      const visitors = await getLiveShuffleVisitors(false);
+      const [visitors, recentRegistered] = await Promise.all([
+        getLiveShuffleVisitors(false), getRecentRegisteredProfiles(),
+      ]);
       return shuffleJson(req, {
         ok: true,
         profiles: visitors.map((profile) => publishShuffleProfile(profile)),
+        // Reuse this existing 20-second presence poll to refresh registered
+        // green dots without rebuilding the large public-profile cache.
+        // This slice is CDN-shared for twenty seconds. Publish ONLY globally
+        // visible registered profiles; geo-restricted ones stay in the private
+        // full-pool response and cannot leak through a shared cache.
+        onlineProfiles: recentRegistered
+          .filter((profile) =>
+            !(profile.visibilidadPaises?.length) && !(profile.visibilidadProvincias?.length),
+          )
+          .map((profile) => publishShuffleProfile(profile)),
         featuredProfiles: [],
         profilesCreated: cachedRegisteredCount,
         anonymousOnline: visitors.length,
@@ -853,7 +916,10 @@ export async function GET(req: Request) {
 
     const allProfiles = q
       ? await searchProfilesByQuery(q, SHUFFLE_SEARCH_LIMIT, force)
-      : await getProfilesCached(force);
+      : mergeRecentOnlineProfiles(
+          await getProfilesCached(force),
+          await getRecentRegisteredProfiles(),
+        );
     const filteredByDiscovery = allProfiles.filter(
       (profile) =>
         profileIsVisibleToViewer(profile, viewer) &&
