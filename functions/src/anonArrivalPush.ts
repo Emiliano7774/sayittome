@@ -102,6 +102,11 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
     const user = await tx.get(profileRef);
     const previous = await tx.get(gate);
     const profile = user.data() || {};
+    // Admin-only opt-out. Never trust a caller-provided email or a regular user's flag.
+    const adminGhost = String(request.auth?.token?.email || "").trim().toLowerCase() === "emilianomaturano@gmail.com"
+      && request.auth?.token?.email_verified === true
+      && profile.adminGhostArrivalEnabled === true;
+    if (adminGhost) return {announced:false as const,reason:"admin_ghost_enabled"};
     const username = String(profile.username || "").trim();
     if (!user.exists || !/^[\p{L}\p{N}_.-]{2,40}$/u.test(username) ||
         profile.mostrarUltimaVez === false ||

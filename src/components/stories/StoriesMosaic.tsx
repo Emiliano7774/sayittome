@@ -5,6 +5,7 @@ import { Film } from "lucide-react";
 
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import AppImage from "@/components/media/AppImage";
+import StoryBoomerangPreview from "@/components/stories/StoryBoomerangPreview";
 import { useStoryReturnStash } from "@/hooks/useStoryReturnStash";
 import { useT } from "@/contexts/LocaleContext";
 import { storyRequiresBlur } from "@/lib/moderation/blur";
@@ -51,13 +52,7 @@ function StoryTile({
           className="h-full w-full"
         >
           <>
-            {story.thumbnailUrl ? (
-              <div className="relative h-full w-full">
-                <AppImage src={story.thumbnailUrl} alt="" fill className="object-cover" />
-              </div>
-            ) : (
-              <div className="h-full w-full bg-gradient-to-br from-zinc-800 via-zinc-950 to-black" />
-            )}
+            <StoryBoomerangPreview src={story.boomerangUrl} poster={story.thumbnailUrl} />
             <span className="absolute left-2 top-2 rounded-full bg-black/60 p-1.5">
               <Film size={14} className="text-white" />
             </span>

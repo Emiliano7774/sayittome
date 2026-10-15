@@ -143,7 +143,7 @@ const listeners = new Set<() => void>();
 
 function storyMembershipKey(groups: StoryUserGroup[]) {
   return groups
-    .map((group) => `${group.ownerUid}:${group.stories.map((story) => `${story.id}:${story.thumbnailUrl || ""}`).join(",")}`)
+    .map((group) => `${group.ownerUid}:${group.stories.map((story) => `${story.id}:${story.thumbnailUrl || ""}:${story.boomerangUrl || ""}`).join(",")}`)
     .join("|");
 }
 

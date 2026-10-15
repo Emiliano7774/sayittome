@@ -14,6 +14,8 @@ export type StoryItem = {
   mediaUrl?: string;
   /** Small cached still image for video cards; never use the original video as a feed preview. */
   thumbnailUrl?: string;
+  /** Lightweight 3s-forward/3s-reverse silent preview (not the original video). */
+  boomerangUrl?: string;
   mediaType: StoryMediaType;
   mediaSource?: StoryMediaSource;
   createdAtMs: number;

@@ -56,6 +56,7 @@ function parseStoryDoc(docSnap: { id: string; data: () => unknown }, now: number
     texto: String(data.texto || ""),
     mediaUrl: String(data.mediaUrl || ""),
     thumbnailUrl: String(data.thumbnailUrl || ""),
+    boomerangUrl: String(data.boomerangUrl || ""),
     mediaType: (data.mediaType as StoryItem["mediaType"]) || "text",
     mediaSource:
       data.mediaSource === "camera" || data.mediaSource === "gallery"

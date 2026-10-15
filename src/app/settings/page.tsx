@@ -28,6 +28,7 @@ import {
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
 import ProfileEntryGate from "@/components/profile/ProfileEntryGate";
+import AdminGhostArrivalToggle from "@/components/profile/AdminGhostArrivalToggle";
 import AnonArrivalPushSettings from "@/components/anonMatch/AnonArrivalPushSettings";
 import HeaderControls from "@/components/HeaderControls";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
@@ -448,6 +449,11 @@ export function SettingsRouteContent() {
 
     return (
       <div data-nav-settings-primary>
+        {ownerUid && isAdminEmail(auth.currentUser?.email) ? (
+          <div className="mx-auto max-w-[1500px] px-4 pt-4">
+            <AdminGhostArrivalToggle ownerUid={ownerUid} enabled={profile.adminGhostArrivalEnabled === true} onChange={(value) => setProfile((prev: any) => prev ? {...prev, adminGhostArrivalEnabled: value} : prev)} />
+          </div>
+        ) : null}
         {ownerUid ? (
           <div className="mx-auto max-w-[1500px] px-4 pt-4">
             <AdminClaimReplyBanner uid={ownerUid} />
@@ -546,6 +552,11 @@ export function SettingsRouteContent() {
         ) : null}
 
         <div className="relative z-10 mx-auto max-w-[1500px]">
+          {ownerUid && isAdminEmail(auth.currentUser?.email) ? (
+            <div className="mb-4 ml-auto max-w-md">
+              <AdminGhostArrivalToggle ownerUid={ownerUid} enabled={profile?.adminGhostArrivalEnabled === true} onChange={(value) => setProfile((prev: any) => prev ? {...prev, adminGhostArrivalEnabled: value} : prev)} />
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center justify-end gap-3">
             <HeaderControls />
             {ownerUid ? <ProfileClaimHistoryMenu /> : null}

@@ -53,6 +53,7 @@ function sanitizeGroups(groups: StoryUserGroup[]): StoryUserGroup[] {
       texto: story.texto,
       mediaUrl: story.mediaUrl,
       thumbnailUrl: story.thumbnailUrl,
+      boomerangUrl: story.boomerangUrl,
       mediaType: story.mediaType,
       mediaSource: story.mediaSource,
       createdAtMs: story.createdAtMs,

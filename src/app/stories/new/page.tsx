@@ -18,6 +18,7 @@ import { useT } from "@/contexts/LocaleContext";
 import { auth, db } from "@/lib/firebase";
 import { guessMediaFileKind } from "@/lib/media/fileKind";
 import { createStoryVideoPoster } from "@/lib/media/createStoryVideoPoster";
+import { createStoryBoomerang } from "@/lib/media/createStoryBoomerang";
 import {
   formatStorageUploadError,
   uploadFileToStorage,
@@ -108,6 +109,7 @@ export default function NewStoryPage() {
 
       let mediaUrl = "";
       let thumbnailUrl = "";
+      let boomerangUrl = "";
       let mediaType = "text";
       let mediaName = "";
       let mediaSize = 0;
@@ -145,7 +147,9 @@ export default function NewStoryPage() {
             : file;
 
         // Extract once from the local file, not by downloading a video on every feed visit.
-        const poster = isVideo ? await createStoryVideoPoster(file) : null;
+        const preview = isVideo ? await createStoryBoomerang(file) : null;
+        const poster = isVideo && !preview?.thumbnail
+          ? await createStoryVideoPoster(file) : preview?.thumbnail || null;
         mediaUrl = await uploadFileToStorage({
           path,
           file: uploadFile,
@@ -164,8 +168,22 @@ export default function NewStoryPage() {
               requireRegisteredUser: !author.isAnonymousStory,
             });
           } catch (posterError) {
-            // A preview upload failure must not strand an already uploaded story.
             console.warn("story_video_poster_upload_failed", posterError);
+          }
+        }
+        if (preview?.boomerang) {
+          try {
+            const ext = preview.boomerang.name.endsWith(".mp4") ? "mp4" : "webm";
+            boomerangUrl = await uploadFileToStorage({
+              path: `${path}.boomerang.${ext}`,
+              file: preview.boomerang,
+              kind: "video",
+              allowAnonymousAuth: author.isAnonymousStory,
+              requireRegisteredUser: !author.isAnonymousStory,
+            });
+          } catch (previewError) {
+            // The original story remains publishable even when a device cannot encode a preview.
+            console.warn("story_boomerang_upload_failed", previewError);
           }
         }
 
@@ -196,6 +214,7 @@ export default function NewStoryPage() {
         texto: texto.trim(),
         mediaUrl,
         thumbnailUrl,
+        boomerangUrl,
         mediaType,
         mediaSource: storedMediaSource,
         mediaName,
