@@ -283,8 +283,18 @@ assert.match(inboxSrc, /if \(forceAnonRecovery\) \{\s*registerSessionChat/);
 assert.match(inboxSrc, /Latch fallback only after success/);
 assert.match(
   inboxSrc,
-  /FALLBACK_ANON_RECOVERY_TTL_MS\s*=\s*25_000/,
-  "fallback anon recovery re-polls on TTL",
+  /FALLBACK_ANON_RECOVERY_TTL_MS\s*=\s*120_000/,
+  "fallback anon recovery uses a bounded low-rate TTL",
+);
+assert.match(
+  inboxSrc,
+  /if \(document\.hidden\) return;[\s\S]*setFallbackAnonRecoveryEpoch/,
+  "hidden tabs do not run fallback anon recovery",
+);
+assert.match(
+  inboxSrc,
+  /addEventListener\("visibilitychange", wakeFallbackRecovery\)/,
+  "visible tabs wake fallback recovery without waiting for the next interval",
 );
 assert.match(
   inboxSrc,
@@ -368,8 +378,8 @@ assert.match(
 );
 assert.match(
   serverFilters,
-  /if \(filters\.soloOnline\) return isProfileOnline/,
-  "solo online keeps live anonymous sessions",
+  /if \(filters\.soloOnline\) return isShuffleProfileOnline\(profile, now, ONLINE_WINDOW_MS\)/,
+  "solo online keeps only anonymous sessions active during the last 15 minutes",
 );
 const clientFilters = fs.readFileSync(path.join(root, "src/lib/shuffle/filters.ts"), "utf8");
 assert.match(clientFilters, /shuffleVisitor: profile\.shuffleVisitor === true/);

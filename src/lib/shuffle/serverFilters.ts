@@ -117,7 +117,10 @@ export function profileMatchesShuffleServerFilters(
   // Photo/stories filters still exclude them — they have neither.
   if (profile.shuffleVisitor === true) {
     if (filters.soloConFoto || filters.soloConHistorias) return false;
-    if (filters.soloOnline) return isProfileOnline(profile, now);
+    // General Shuffle deliberately keeps anonymous cards for up to three hours,
+    // but "Solo online" must use the same 15-minute heartbeat window as profiles.
+    // The generic online helper treats visitors as online for their visible lifetime.
+    if (filters.soloOnline) return isShuffleProfileOnline(profile, now, ONLINE_WINDOW_MS);
     return true;
   }
 
