@@ -84,7 +84,9 @@ export async function createStoryBoomerang(file: File): Promise<{
     if (bitmaps.length < 4 || typeof CanvasPrototype.captureStream !== "function" ||
         typeof MediaRecorder === "undefined") return { thumbnail, boomerang: null };
 
-    const mimeType = ["video/webm;codecs=vp8", "video/webm", "video/mp4"]
+    // Prefer H.264 MP4 when the device can encode it: Android WebViews and
+    // Safari can play it more consistently. VP8 WebM remains the fallback.
+    const mimeType = ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp8", "video/webm"]
       .find((type) => MediaRecorder.isTypeSupported(type));
     if (!mimeType) return { thumbnail, boomerang: null };
 
