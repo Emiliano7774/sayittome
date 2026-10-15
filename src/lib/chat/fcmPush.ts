@@ -5,6 +5,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { isCapacitorNative } from "@/lib/app/nativeShell";
 import { isLocalOutgoingMessageId, tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import { playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { shouldShowWebForegroundChatPush } from "@/lib/chat/webForegroundPushPolicy";
 import { getAnonArrivalPushPreference } from "@/lib/chat/anonArrivalPrefs";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
@@ -89,6 +90,7 @@ async function attachWebForegroundMessagingListener() {
       incoming: true,
       suppress: false,
       onAlert: () => {
+        playIncomingWhipSound();
         const anonDirect = data.inboxKind === "anon_direct";
         void import("@/lib/chat/chatNotifications").then(({ showChatNotification }) =>
           showChatNotification({

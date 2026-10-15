@@ -13,6 +13,7 @@ import {
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { auth } from "@/lib/firebase";
 import { isLocalOutgoingMessageId, tryAlertIncomingMessage } from "@/lib/chat/whipAlertDedupe";
+import { playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { shouldShowWebForegroundChatPush } from "@/lib/chat/webForegroundPushPolicy";
 import { deliverWebChatNotification, waitForWebNotificationWorker } from "@/lib/chat/webNotificationDelivery";
 
@@ -300,6 +301,20 @@ export async function showRequiredAnonMatchNotification(input: {
   }
 
   try {
+    // new Notification() throws "Illegal constructor" in Chrome/Brave Android.
+    // Use the same owned notification worker as all other browser alerts.
+    const sw = await ensureChatNotifyServiceWorker();
+    if (sw?.active) {
+      await deliverWebChatNotification(sw, title, {
+        body,
+        tag: `sayittome-anon-match-${requestId}`,
+        icon: ICON_PATH,
+        silent: false,
+        data: { kind: "anon-match", requestId, href: "/chats" },
+      });
+      return true;
+    }
+    if (!pageNotificationConstructorSupported()) return false;
     webAnonMatchNotifications.get(requestId)?.close();
     const notification = new Notification(title, {
       body,
@@ -391,6 +406,7 @@ function attachChatNotifySwMessageListener() {
         tryAlertIncomingMessage({
           chatId, messageId, incoming: true, suppress: false,
           onAlert: () => {
+            playIncomingWhipSound();
             showForegroundWebChatBanner({
               title: push.title || "Nuevo mensaje",
               body: push.body || "Nuevo mensaje",
@@ -454,9 +470,41 @@ export async function requestChatNotificationPermission(options?: {
   if (typeof window === "undefined") return false;
   if (!areChatNotificationsEnabled()) return false;
 
+  // Web: request permission synchronously inside the user's click/tap.
+  // Awaiting SW/channel bootstrap first drops transient user activation on
+  // Chromium Android (Brave/Chrome), so the browser silently refuses prompts.
+  // SW registration happens after consent; no permission is bypassed.
+  if (!isCapacitorNative()) {
+    if (!("Notification" in window)) {
+      recordNotificationStage("web_notification_api", false, "missing");
+      return false;
+    }
+    if (Notification.permission === "granted") {
+      void initChatNotifications();
+      return true;
+    }
+    if (Notification.permission !== "default") {
+      recordNotificationStage("web_permission", false, Notification.permission);
+      return false;
+    }
+    permissionRequested = true;
+    let requested: Promise<NotificationPermission>;
+    try {
+      requested = Notification.requestPermission();
+    } catch (error) {
+      recordNotificationStage("web_permission", false, String(error));
+      return false;
+    }
+    const permission = await requested.catch(() => "denied" as NotificationPermission);
+    recordNotificationStage("web_permission", permission === "granted", permission);
+    if (permission !== "granted") return false;
+    await initChatNotifications();
+    return true;
+  }
+
   await initChatNotifications();
 
-  recordNotificationStage("capacitor_native", isCapacitorNative(), isCapacitorNative() ? "1" : "0");
+  recordNotificationStage("capacitor_native", true, "1");
 
   if (isCapacitorNative()) {
     try {
@@ -492,21 +540,7 @@ export async function requestChatNotificationPermission(options?: {
     }
   }
 
-  if (!("Notification" in window)) {
-    recordNotificationStage("web_notification_api", false, "missing");
-    return false;
-  }
-  if (Notification.permission === "granted") return true;
-  if (Notification.permission !== "default" && !options?.force) return false;
-  if (Notification.permission !== "default") return false;
-
-  try {
-    permissionRequested = true;
-    const result = await Notification.requestPermission();
-    return result === "granted";
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 export function resetChatNotificationPermissionLatch() {

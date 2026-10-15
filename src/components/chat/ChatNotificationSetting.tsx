@@ -213,6 +213,56 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
     }
   }
 
+  async function repairWebPush() {
+    if (isCapacitorNative() || busy || !uid) return;
+    setBusy(true);
+    setError("");
+    try {
+      // Keep permission request attached to the actual tap: no awaited work
+      // until Notification.requestPermission is invoked.
+      setChatNotificationsEnabled(true);
+      const granted = await requestChatNotificationPermission({ force: true });
+      setOsPermission(await readOsPermission());
+      if (!granted) {
+        setError("El navegador no autorizó las notificaciones. Permitilas para este sitio en la configuración de Brave/Chrome y volvé a intentar.");
+        return;
+      }
+      const result = await enableWebChatPush(firebaseUser);
+      if (!result.ok) {
+        setError(`No se pudo conectar este navegador para recibir avisos (${result.reason}). Volvé a intentar.`);
+        return;
+      }
+      setTokenForUid({ uid, active: true });
+      completeChatNotificationPrompt(true);
+    } catch (error) {
+      setError(`No se pudo activar Web Push: ${String((error as Error)?.message || "Error")}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function testWebNotification() {
+    if (isCapacitorNative() || busy) return;
+    setError("");
+    try {
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+        setError("Primero autorizá las notificaciones en este navegador.");
+        return;
+      }
+      const { ensureChatNotifyServiceWorker } = await import("@/lib/chat/chatNotifications");
+      const sw = await ensureChatNotifyServiceWorker();
+      if (!sw?.active) throw new Error("service_worker_inactive");
+      await sw.showNotification("🌙 SayItToMe · prueba de navegador", {
+        body: "Este navegador puede mostrar avisos del sistema. Los mensajes y conexiones llegan por Web Push.",
+        tag: "stm-browser-push-test",
+        icon: "/icons/Icon-192.png",
+        data: { href: "/chats", type: "test" },
+      });
+    } catch (error) {
+      setError(`Este navegador no pudo mostrar el aviso de prueba: ${String((error as Error)?.message || "Error")}`);
+    }
+  }
+
   const osLabel =
     osPermission === "granted"
       ? t("chat_notifications_os_granted")
@@ -223,7 +273,9 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
           : osPermission === "error"
             ? t("chat_notifications_error")
             : t("chat_notifications_os_unknown");
-  const tokenActiveUi = Boolean(uid) && (tokenActive || regState?.status === "active");
+  // A persisted "active" state is not proof of a currently registered web token.
+  // Native retains its existing UI indicator while web requires this live tab.
+  const tokenActiveUi = Boolean(uid) && (tokenActive || hasActiveFcmRegistration());
 
   const appLabel = enabled
     ? t("chat_notifications_enabled")
@@ -259,6 +311,40 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
     </button>
   );
 
+  const webPushTools = !isCapacitorNative() && uid ? (
+    <div className="mt-3 space-y-2" data-browser-push-tools="1">
+      {enabled && osPermission === "granted" && !tokenActiveUi ? (
+        <p className="text-xs text-amber-300" role="status">
+          Este navegador tiene permiso, pero todavía no confirmó la conexión de Web Push. Activala para recibir avisos con STM en segundo plano.
+        </p>
+      ) : null}
+      {osPermission === "denied" ? (
+        <p className="text-xs text-amber-300" role="status">
+          Las notificaciones están bloqueadas para este sitio. En Brave o Chrome abrí los permisos del sitio, permití Notificaciones y recargá SayItToMe. Revisá también los permisos del navegador en Android.
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {(!tokenActiveUi || osPermission !== "granted") && (
+          <button type="button" disabled={busy} onClick={() => void repairWebPush()}
+            data-browser-push-repair="1"
+            className="rounded-full border border-violet-400/50 bg-violet-500/15 px-3 py-2 text-xs font-bold text-violet-100 disabled:opacity-50">
+            {busy ? "Activando…" : "Activar/reparar avisos del navegador"}
+          </button>
+        )}
+        {osPermission === "granted" && (
+          <button type="button" disabled={busy} onClick={() => void testWebNotification()}
+            data-browser-push-test="1"
+            className="rounded-full border border-white/25 px-3 py-2 text-xs font-bold text-white/85 disabled:opacity-50">
+            Probar aviso del sistema
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] leading-4 text-white/45">
+        Los mensajes, historias y conexiones usan los avisos del propio navegador. El sonido del latigazo funciona al tener STM abierta y el audio habilitado.
+      </p>
+    </div>
+  ) : null;
+
   if (variant === "panel") {
     return (
       <div data-chat-notification-setting="panel" className="flex min-h-0 flex-1 flex-col">
@@ -290,7 +376,8 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
               {error}
             </p>
           ) : null}
-          {osPermission === "denied" ? (
+          {webPushTools}
+          {osPermission === "denied" && isCapacitorNative() ? (
             <button
               type="button"
               data-chat-notification-open-settings="1"
@@ -324,6 +411,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
         <p className="text-white/35">{t("chat_notifications_hint")}</p>
         <p className="mt-2 text-xs text-white/45">{osLabel}</p>
         {error ? <p className="mt-2 text-sm font-semibold text-red-300">{error}</p> : null}
+        {webPushTools}
         <div className="mt-5 flex items-center justify-end gap-3">{toggleButton}</div>
       </div>
     );
@@ -337,6 +425,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
         <p className="mt-2 text-xs text-white/55">{osLabel}</p>
         <p className="mt-1 text-xs text-white/45">{appLabel}</p>
         {error ? <p className="mt-2 text-sm font-semibold text-red-300">{error}</p> : null}
+        {webPushTools}
         <div className="mt-4 flex items-center justify-end">{toggleButton}</div>
       </div>
     </div>
