@@ -68,6 +68,11 @@ export const setAnonArrivalPush = onCall({region:"us-central1"}, async (request)
   if (!uid) throw new HttpsError("unauthenticated","Auth required");
   const token = String(request.data?.token || "").trim();
   const enabled = request.data?.enabled === true;
+  // Anonymous sessions are always opted in at the application level.
+  // Browser/Android OS permission can still be denied or revoked by the user.
+  if (request.auth?.token?.firebase?.sign_in_provider === "anonymous" && !enabled) {
+    throw new HttpsError("permission-denied", "Anonymous connection alerts cannot be disabled");
+  }
   if (token.length < 20 || token.length > 5000) throw new HttpsError("invalid-argument","Invalid token");
   const tokenId = createHash("sha256").update(token).digest("hex").slice(0,40);
   const doc = await db().collection("usuarios").doc(uid).collection("fcmTokens").doc(tokenId).get();

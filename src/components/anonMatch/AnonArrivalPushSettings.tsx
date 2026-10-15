@@ -14,12 +14,18 @@ export default function AnonArrivalPushSettings({compact=false}:Props) {
   const {locale}=useLocale();
   const es=locale==="es";
   const [enabled,setEnabled]=useState(false);
+  const [registered,setRegistered]=useState(false);
   const [busy,setBusy]=useState(false);
   const [explain,setExplain]=useState(false);
   const [error,setError]=useState("");
 
   useEffect(()=>{
-    const sync=()=>setEnabled(getAnonArrivalPushPreference(auth.currentUser?.uid||""));
+    const sync=()=>{
+      const user=auth.currentUser;
+      const isRegistered=Boolean(user && !user.isAnonymous);
+      setRegistered(isRegistered);
+      setEnabled(isRegistered ? getAnonArrivalPushPreference(user?.uid||"") : false);
+    };
     sync();
     const unsubscribe=auth.onAuthStateChanged(sync);
     window.addEventListener("sayittome:anon-arrival-prefs",sync);
@@ -29,7 +35,7 @@ export default function AnonArrivalPushSettings({compact=false}:Props) {
 
   async function toggle() {
     const uid=auth.currentUser?.uid||"";
-    if (!uid||busy)return;
+    if (!uid||!registered||auth.currentUser?.isAnonymous||busy)return;
     const next=!enabled;
     setBusy(true);setError("");
     try {
@@ -54,6 +60,10 @@ export default function AnonArrivalPushSettings({compact=false}:Props) {
       setError(es?"No se pudo guardar. Revisá los permisos e intentá de nuevo.":"Could not save. Check permissions and try again.");
     } finally {setBusy(false);}
   }
+
+  // Anonymous sessions have arrival alerts permanently enabled; no opt-out
+  // control or explanatory panel should appear anywhere in their interface.
+  if (!registered) return null;
 
   return (
     <section data-arrival-notification-setting="1" className={

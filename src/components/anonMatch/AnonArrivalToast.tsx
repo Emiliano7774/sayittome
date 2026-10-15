@@ -16,6 +16,8 @@ import { consumeAnonArrivalToastOnce, markAnonArrivalActionHandled } from "@/lib
 type Arrival = { id: string; enteredAt: string };
 type Notice = { text: string; kind: "offline"|"error"|"waiting" };
 const MAX_ENTRY_AGE_MS = 30_000;
+const ANON_AUTO_SUBSCRIBE_KEY = "sayittome:anonymous-arrival-auto-subscribe-v1:";
+const attemptedAnonymousSubscriptions = new Set<string>();
 
 /** One Firestore document listener, shared by every client; no 20s API polling. */
 export default function AnonArrivalToast() {
@@ -27,6 +29,41 @@ export default function AnonArrivalToast() {
   const handledHref=useRef("");
   const activeTarget=useRef("");
   const openInFlight=useRef(false);
+
+  useEffect(()=>{
+    // Anonymous arrivals are on by default. If this browser already granted
+    // notification permission, join the FCM topic once per anonymous session
+    // without presenting an arrival-specific opt-in switch.
+    let anonymousUid="";
+    const subscribeIfPermitted=()=>{
+      if (!anonymousUid || typeof Notification === "undefined" ||
+          Notification.permission !== "granted") return;
+      if (attemptedAnonymousSubscriptions.has(anonymousUid)) return;
+      const key=ANON_AUTO_SUBSCRIBE_KEY+anonymousUid;
+      const now=Date.now();
+      try {
+        if (Number(window.sessionStorage.getItem(key)||0)>now) return;
+        window.sessionStorage.setItem(key,String(now+5*60_000));
+      } catch { /* still dedupe in memory */ }
+      attemptedAnonymousSubscriptions.add(anonymousUid);
+      void import("@/lib/chat/fcmPush")
+        .then(({setAnonArrivalPushEnabled})=>setAnonArrivalPushEnabled(true))
+        .then((ok)=>{
+          if (!ok) return;
+          try {window.sessionStorage.setItem(key,String(Date.now()+12*60*60_000));}
+          catch { /* private browsers may not persist storage */ }
+        }).catch(()=>undefined);
+    };
+    const stopAuth=onAuthStateChanged(auth,user=>{
+      anonymousUid=user?.isAnonymous ? user.uid : "";
+      subscribeIfPermitted();
+    });
+    window.addEventListener("focus",subscribeIfPermitted);
+    return ()=>{
+      stopAuth();
+      window.removeEventListener("focus",subscribeIfPermitted);
+    };
+  },[]);
 
   useEffect(()=>{
     let unsubscribeDoc:(()=>void)|undefined;
