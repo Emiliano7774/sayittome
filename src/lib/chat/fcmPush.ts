@@ -605,7 +605,13 @@ function openChatDeepLink(input: {
 
 const ARRIVAL_LOCAL_CHANNEL = "connection-arrivals-v1";
 // Prevent repeated FCM callbacks from scheduling the same OS banner twice.
-const displayedNativeArrivals = new Set<string>();
+const displayedNativeArrivals = new Map<string,number>();
+const NATIVE_ARRIVAL_DEDUPE_MS = 2 * 60_000;
+function arrivalPrincipalKey(data: Record<string, unknown>) {
+  const type = asId(data.type);
+  const principal = type === "anon_arrival" ? asId(data.anonId) : asId(data.username).toLowerCase();
+  return type + ":" + (principal || asId(data.tag));
+}
 function arrivalActionHref(data: Record<string, unknown>) {
   const type = asId(data.type);
   if (type === "anon_arrival") {
@@ -627,7 +633,7 @@ function openArrivalAction(data: Record<string, unknown>) {
   return true;
 }
 function arrivalLocalNotificationId(data: Record<string, unknown>) {
-  const key = asId(data.tag) || asId(data.anonId) || asId(data.username);
+  const key = arrivalPrincipalKey(data);
   let hash = 2166136261;
   for (const ch of key) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
   return (hash >>> 0) % 2000000000 || 1;
@@ -635,22 +641,33 @@ function arrivalLocalNotificationId(data: Record<string, unknown>) {
 async function showNativeForegroundArrival(data: Record<string, unknown>, fallbackTitle = "", fallbackBody = "") {
   if (!getAnonArrivalPushPreference(asId(auth.currentUser?.uid))) return;
   if (!arrivalActionHref(data)) return;
+  // Background notification payloads are rendered by Android itself.
+  // Do not also schedule a local notification during background/foreground races.
+  if (document.visibilityState !== "visible") return;
   // The already-mounted AnonArrivalToast owns foreground anonymous alerts.
   // Avoid a second, identical local OS banner for the same arrival.
   if (asId(data.type) === "anon_arrival" && document.visibilityState === "visible") return;
-  const arrivalKey = asId(data.tag);
-  if (arrivalKey && displayedNativeArrivals.has(arrivalKey)) return;
-  if (arrivalKey) {
-    displayedNativeArrivals.add(arrivalKey);
-    if (displayedNativeArrivals.size > 300) {
-      const oldest = displayedNativeArrivals.values().next().value;
-      if (oldest) displayedNativeArrivals.delete(oldest);
-    }
+  const arrivalKey = arrivalPrincipalKey(data);
+  const now = Date.now();
+  for (const [key, expiry] of displayedNativeArrivals) {
+    if (expiry <= now) displayedNativeArrivals.delete(key);
   }
+  if ((displayedNativeArrivals.get(arrivalKey) || 0) > now) return;
   try {
     const { LocalNotifications } = await import("@capacitor/local-notifications");
     const permission = await LocalNotifications.checkPermissions();
     if (permission.display !== "granted") return;
+    // Recheck after the permission await. Several callbacks may all have
+    // passed the initial test while the OS permission query was pending.
+    const permittedAt = Date.now();
+    if ((displayedNativeArrivals.get(arrivalKey) || 0) > permittedAt) return;
+    // This check and insertion are synchronous, before any further await.
+    displayedNativeArrivals.set(arrivalKey, permittedAt + NATIVE_ARRIVAL_DEDUPE_MS);
+    while (displayedNativeArrivals.size > 300) {
+      const oldest = displayedNativeArrivals.keys().next().value;
+      if (!oldest) break;
+      displayedNativeArrivals.delete(oldest);
+    }
     await LocalNotifications.createChannel({
       id: ARRIVAL_LOCAL_CHANNEL, name: "Nuevas conexiones",
       description: "Usuarios y anónimos que acaban de conectarse",

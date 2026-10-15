@@ -6,7 +6,8 @@
 const STORAGE_KEY = "sayittome:arrival-toast-receipts:v1";
 const RECEIPT_LIFETIME_MS = 10 * 60_000;
 const DEEP_LINK_LIFETIME_MS = 45_000;
-const MAX_RECEIPTS = 80;
+const SAME_PERSON_BURST_MS = 15 * 60_000;
+const MAX_RECEIPTS = 600;
 const memory = new Map<string, number>();
 
 function validScope(uid: string) {
@@ -50,6 +51,9 @@ function receiptKey(uid: string, alias: string, enteredAt: string) {
 function aliasKey(uid: string, alias: string) {
   return `opened:${uid}:${alias}`;
 }
+function displayedPersonKey(uid: string, alias: string) {
+  return `displayed:${uid}:${alias}`;
+}
 
 /** Marks an entry displayed BEFORE painting it. A replay of the same entry is ignored. */
 export function consumeAnonArrivalToastOnce(
@@ -59,11 +63,16 @@ export function consumeAnonArrivalToastOnce(
   if (!viewer || !alias || !enteredAt) return false;
   readReceipts();
   const key = receiptKey(viewer, alias, enteredAt);
-  if ((memory.get(key) || 0) > now || (memory.get(aliasKey(viewer, alias)) || 0) > now) {
+  if ((memory.get(key) || 0) > now ||
+      (memory.get(aliasKey(viewer, alias)) || 0) > now ||
+      (memory.get(displayedPersonKey(viewer, alias)) || 0) > now) {
     return false;
   }
   memory.delete(key);
   memory.set(key, now + RECEIPT_LIFETIME_MS);
+  // Two near-simultaneous server writes can carry different enteredAt values
+  // for the same person. Only the first toast may reach this viewer.
+  memory.set(displayedPersonKey(viewer, alias), now + SAME_PERSON_BURST_MS);
   writeReceipts(now);
   return true;
 }

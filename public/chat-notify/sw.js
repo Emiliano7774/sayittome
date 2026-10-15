@@ -18,7 +18,8 @@ function pushData(payload) {
 // Serialize those paths; new message ids in the same chat must re-alert.
 let displayQueue = Promise.resolve();
 const displayedMessages = new Set();
-const displayedArrivals = new Set();
+const displayedArrivals = new Map();
+const ARRIVAL_RECENT_MS = 2 * 60 * 1000;
 
 function displayChatNotification(title, options) {
   const job = displayQueue.then(async () => {
@@ -27,19 +28,38 @@ function displayChatNotification(title, options) {
     const arrivalKey = (data.type === "anon_arrival" || data.type === "profile_arrival")
       ? String(options.tag || "") : "";
     if (key && displayedMessages.has(key)) return;
-    if (arrivalKey && displayedArrivals.has(arrivalKey)) return;
+    if (arrivalKey) {
+      const now = Date.now();
+      for (const [prior, expires] of displayedArrivals) {
+        if (expires <= now) displayedArrivals.delete(prior);
+      }
+      if ((displayedArrivals.get(arrivalKey) || 0) > now) return;
+    }
     if (key && typeof self.registration.getNotifications === "function") {
       const existing = await self.registration.getNotifications({ tag: options.tag }).catch(() => []);
       if (existing.some((item) => item.data?.messageId === data.messageId && item.data?.chatId === data.chatId)) return;
     }
+    let previouslyShownArrival = false;
     if (arrivalKey && typeof self.registration.getNotifications === "function") {
       const existing = await self.registration.getNotifications({ tag: arrivalKey }).catch(() => []);
-      if (existing.some((item) => item.data?.type === data.type)) return;
+      const matches = existing.filter((item) => item.data?.type === data.type);
+      // A stable per-person tag must NOT block a genuine return 15 minutes
+      // later. Only a recently displayed OS notice is a duplicate.
+      if (matches.some((item) =>
+        Number.isFinite(item.timestamp) && Date.now() - item.timestamp >= 0 &&
+        Date.now() - item.timestamp < ARRIVAL_RECENT_MS)) return;
+      previouslyShownArrival = matches.some((item) =>
+        Number.isFinite(item.timestamp) && Date.now() - item.timestamp >= ARRIVAL_RECENT_MS);
     }
-    await self.registration.showNotification(title, { ...options, silent: false, renotify: Boolean(options.tag) });
+    await self.registration.showNotification(title, {
+      ...options,
+      silent: false,
+      // Only an older genuine return may re-alert with the same OS tag.
+      renotify: arrivalKey ? previouslyShownArrival : Boolean(options.tag),
+    });
     if (arrivalKey) {
-      displayedArrivals.add(arrivalKey);
-      if (displayedArrivals.size > 600) displayedArrivals.delete(displayedArrivals.values().next().value);
+      displayedArrivals.set(arrivalKey, Date.now() + ARRIVAL_RECENT_MS);
+      if (displayedArrivals.size > 600) displayedArrivals.delete(displayedArrivals.keys().next().value);
     }
     if (key) {
       displayedMessages.add(key);

@@ -31,6 +31,7 @@ export const adminArrivalGhostControl = onCall({ region: "us-central1" }, async 
   return {enabled: request.data.enabled};
 });
 const TOPIC = "anon-presence-optin-v1";
+const ANON_PUSH_DEDUPE_MS = 15 * 60_000;
 const ALIAS = /^anon_[a-z0-9_]{6,80}$/i;
 
 function stableShortId(alias: string) {
@@ -38,8 +39,10 @@ function stableShortId(alias: string) {
   for (const ch of alias) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
   return (hash >>> 0).toString(36).toUpperCase().padStart(7,"0").slice(-7);
 }
-function noticeTag(value: string, stamp: string) {
-  return "stm-arrival-" + createHash("sha256").update(value + ":" + stamp).digest("hex").slice(0,16);
+function noticeTag(principal: string) {
+  // Stable per PERSON, not per delivery timestamp. Android/web OS replaces a
+  // previous banner rather than stacking one for every transport retry.
+  return "stm-arrival-" + createHash("sha256").update(principal).digest("hex").slice(0,16);
 }
 async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; anonId?: string; username?: string}) {
   await messaging().send({
@@ -96,6 +99,27 @@ export const onAnonArrivalAnnounced = onDocumentWritten({
   const entered = Date.parse(enteredAt);
   const now = Date.now();
   if (!Number.isFinite(entered) || entered > now+30000 || now-entered > 90000) return;
+  // The route writes anonymous presence with a non-transactional heartbeat.
+  // Concurrent first-entry requests can both publish *different* enteredAt
+  // timestamps. Serialize the notification itself with a durable person gate.
+  // This also dedupes rotated aliases attached to the same anonymous auth UID.
+  const accepted = await db().runTransaction(async (tx) => {
+    const presenceRef = db().collection("anonimos_activos").doc(anonId);
+    const presence = await tx.get(presenceRef);
+    const identity = String(presence.data()?.authUid || "").trim() || anonId;
+    const gateId = "anon_" + createHash("sha256").update(identity).digest("hex").slice(0,40);
+    const gateRef = db().collection("arrivalPushGates").doc(gateId);
+    const gate = await tx.get(gateRef);
+    const lastPush = Number(gate.data()?.lastPushedAtMs || 0);
+    const currentMs = Date.now();
+    if (!presence.exists || presence.data()?.sessionClosed === true) return null;
+    if (lastPush > 0 && currentMs - lastPush < ANON_PUSH_DEDUPE_MS) return null;
+    const observed = Date.parse(String(presence.data()?.lastSeenAt || ""));
+    if (!Number.isFinite(observed) || currentMs-observed>90_000 || observed>currentMs+30_000) return null;
+    tx.set(gateRef, {lastPushedAtMs:currentMs,lastEntry:enteredAt}, {merge:true});
+    return identity;
+  });
+  if (!accepted) return;
   const label = stableShortId(anonId);
   try {
     await broadcast({
@@ -103,7 +127,7 @@ export const onAnonArrivalAnnounced = onDocumentWritten({
       title: "🌙 Nueva conexión en SayItToMe",
       body: "Anónimo-" + label + " se acaba de conectar. Tocá para hablarle.",
       href: "/?anonArrival=" + encodeURIComponent(anonId),
-      tag: noticeTag(anonId,enteredAt),
+      tag: noticeTag("anon:" + accepted),
     });
   } catch (error) { logger.warn("anon arrival push failed",{error:String(error)}); }
 });
@@ -162,7 +186,7 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
       title:"🌙 Nueva conexión en SayItToMe",
       body:"@"+outcome.username+" se acaba de conectar. Tocá para hablarle.",
       href:"/u/"+encodeURIComponent(outcome.username),
-      tag:noticeTag(uid,String(now)),
+      tag:noticeTag("profile:" + uid),
     });
     return {ok:true,announced:true};
   } catch(error) {
