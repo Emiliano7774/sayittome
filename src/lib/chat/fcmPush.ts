@@ -75,6 +75,29 @@ async function attachWebForegroundMessagingListener() {
   webForegroundMessagingUnsubscribe = onMessage(getMessaging(app), (payload) => {
     const data = payload.data || {};
     const viewerUid = asId(auth.currentUser?.uid);
+    // Profile-arrival FCM events must not enter the chat-only message filter.
+    // Anonymous foreground entries already have a separate Firestore toast.
+    if (data.type === "profile_arrival") {
+      if (!getAnonArrivalPushPreference(viewerUid)) return;
+      const href = arrivalActionHref(data);
+      if (!href) return;
+      void Promise.all([
+        import("@/lib/chat/chatNotifications"),
+        import("@/lib/chat/webNotificationDelivery"),
+      ]).then(async ([{ ensureChatNotifyServiceWorker }, { deliverWebChatNotification }]) => {
+        if (auth.currentUser?.uid !== viewerUid || !getAnonArrivalPushPreference(viewerUid)) return;
+        const registration = await ensureChatNotifyServiceWorker();
+        if (!registration?.active) return;
+        await deliverWebChatNotification(registration,
+          asId(data.title) || "Nueva conexión en SayItToMe", {
+            body: asId(data.body) || "Un perfil acaba de entrar.",
+            tag: asId(data.tag) || "stm-arrival-profile-" + asId(data.username),
+            icon: "/icons/Icon-192.png", badge: "/icons/Icon-192.png",
+            data: { type: "profile_arrival", href },
+          });
+      }).catch(error => console.warn("[arrival] web foreground failed", String(error)));
+      return;
+    }
     const chatId = asId(data.chatId);
     const messageId = asId(data.messageId);
     if (!shouldShowWebForegroundChatPush({
@@ -786,7 +809,7 @@ export async function enableWebChatPush(user?: User | null): Promise<PushEnableR
   if (isCapacitorNative() || typeof window === "undefined") {
     return { ok: false, reason: "not_web", message: "not_web" };
   }
-  if (!areChatNotificationsEnabled()) {
+  if (!areChatNotificationsEnabled() && !getAnonArrivalPushPreference(asId(user?.uid || auth.currentUser?.uid))) {
     await flushPendingFcmUnregister();
     return { ok: false, reason: "prefs", message: "prefs_off" };
   }
@@ -899,7 +922,7 @@ async function enableNativeChatPushOnce(user?: User | null): Promise<PushEnableR
 
   await initNativePushNotifications({ skipAutoEnable: true });
 
-  if (!areChatNotificationsEnabled()) {
+  if (!areChatNotificationsEnabled() && !getAnonArrivalPushPreference(asId(user?.uid || auth.currentUser?.uid))) {
     await flushPendingFcmUnregister();
     recordNotificationStage("enable_prefs", false, "prefs_off");
     return { ok: false, reason: "prefs", message: "prefs_off" };
@@ -1015,7 +1038,7 @@ export async function initNativePushNotifications(options?: { skipAutoEnable?: b
         authCallbackChain = authCallbackChain
           .catch(() => undefined)
           .then(async () => {
-            if (areChatNotificationsEnabled()) {
+            if (areChatNotificationsEnabled() || getAnonArrivalPushPreference(user.uid)) {
               await registerNativePushIfEnabled(user);
             } else {
               await flushPendingFcmUnregister();
@@ -1043,7 +1066,7 @@ export async function initNativePushNotifications(options?: { skipAutoEnable?: b
   await initInFlight;
 
   if (options?.skipAutoEnable) return;
-  if (areChatNotificationsEnabled() && auth.currentUser) {
+  if (auth.currentUser && (areChatNotificationsEnabled() || getAnonArrivalPushPreference(auth.currentUser.uid))) {
     await registerNativePushIfEnabled(auth.currentUser);
   } else {
     await flushPendingFcmUnregister();
@@ -1060,7 +1083,7 @@ export { FCM_CHANNEL_ID };
 /** Resume: retry durable pending unregister even if prefs are off; register only if prefs on. */
 export async function onNativePushForegroundResume() {
   const user = auth.currentUser;
-  if (!user || !areChatNotificationsEnabled()) {
+  if (!user || (!areChatNotificationsEnabled() && !getAnonArrivalPushPreference(user.uid))) {
     await flushPendingFcmUnregister();
     return;
   }

@@ -55,7 +55,8 @@ async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title
       ...(input.username ? {username:input.username} : {}),
     },
     android: {
-      priority: "normal", ttl: 120_000,
+      // Prompt delivery while Android is idle; stale arrivals expire after two minutes.
+      priority: "high", ttl: 120_000,
       notification: {channelId:"chat-messages-v2", tag: input.tag, color:"#7C3AED", icon:"ic_stat_notify"},
     },
     webpush: {headers:{TTL:"120"}},
