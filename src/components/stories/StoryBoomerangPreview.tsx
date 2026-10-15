@@ -6,10 +6,12 @@ import AppImage from "@/components/media/AppImage";
 type Props = {
   src?: string;
   poster?: string;
+  /** Never play media classified as sensitive before explicit consent. */
+  locked?: boolean;
 };
 
 /** Only fetch the small silent loop when its story card is near the viewport. */
-export default function StoryBoomerangPreview({ src, poster }: Props) {
+export default function StoryBoomerangPreview({ src, poster, locked = false }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [near, setNear] = useState(false);
@@ -30,28 +32,28 @@ export default function StoryBoomerangPreview({ src, poster }: Props) {
 
   useEffect(() => {
     const root = rootRef.current;
-    if (!root || !src || !motionAllowed || !("IntersectionObserver" in window)) return;
+    if (!root || !src || locked || !motionAllowed || !("IntersectionObserver" in window)) return;
     const observer = new IntersectionObserver((entries) => {
       setNear(Boolean(entries[0]?.isIntersecting));
     }, { rootMargin: "80px", threshold: 0.01 });
     observer.observe(root);
     return () => observer.disconnect();
-  }, [src, motionAllowed]);
+  }, [src, locked, motionAllowed]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    if (near && motionAllowed && !failed) {
+    if (near && motionAllowed && !failed && !locked) {
       void video.play().catch(() => { /* user agent may defer until visible */ });
     } else {
       video.pause();
     }
-  }, [near, motionAllowed, failed, src]);
+  }, [near, motionAllowed, failed, src, locked]);
 
   return (
     <div ref={rootRef} className="relative h-full w-full bg-gradient-to-br from-zinc-800 via-zinc-950 to-black" data-story-boomerang={src ? "1" : "0"}>
       {poster ? <AppImage src={poster} alt="" fill className="object-cover" /> : null}
-      {src && near && motionAllowed && !failed ? (
+      {src && near && motionAllowed && !failed && !locked ? (
         <video
           key={src}
           ref={videoRef}

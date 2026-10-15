@@ -451,7 +451,7 @@ export function SettingsRouteContent() {
       <div data-nav-settings-primary>
         {ownerUid && isAdminEmail(auth.currentUser?.email) ? (
           <div className="mx-auto max-w-[1500px] px-4 pt-4">
-            <AdminGhostArrivalToggle ownerUid={ownerUid} enabled={profile.adminGhostArrivalEnabled === true} onChange={(value) => setProfile((prev: any) => prev ? {...prev, adminGhostArrivalEnabled: value} : prev)} />
+            <AdminGhostArrivalToggle ownerUid={ownerUid} />
           </div>
         ) : null}
         {ownerUid ? (
@@ -554,7 +554,7 @@ export function SettingsRouteContent() {
         <div className="relative z-10 mx-auto max-w-[1500px]">
           {ownerUid && isAdminEmail(auth.currentUser?.email) ? (
             <div className="mb-4 ml-auto max-w-md">
-              <AdminGhostArrivalToggle ownerUid={ownerUid} enabled={profile?.adminGhostArrivalEnabled === true} onChange={(value) => setProfile((prev: any) => prev ? {...prev, adminGhostArrivalEnabled: value} : prev)} />
+              <AdminGhostArrivalToggle ownerUid={ownerUid} />
             </div>
           ) : null}
           <div className="flex flex-wrap items-center justify-end gap-3">

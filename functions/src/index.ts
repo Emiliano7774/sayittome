@@ -10,7 +10,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { db, ensureAdminApp, messaging } from "./adminApp";
 export { onAnonDirectMessageCreated, resolveAnonDirectPushDelivery, anonDirectPushPreview, anonDirectPushRecipientAlias, anonDirectPushPresenceFresh } from "./anonDirectPush";
-export { onAnonArrivalAnnounced, setAnonArrivalPush, announceProfileArrival } from "./anonArrivalPush";
+export { onAnonArrivalAnnounced, setAnonArrivalPush, announceProfileArrival, adminArrivalGhostControl } from "./anonArrivalPush";
 
 import { isValidFcmInstallationId, isValidInstallationProof } from "./fcmInstallation";
 import {

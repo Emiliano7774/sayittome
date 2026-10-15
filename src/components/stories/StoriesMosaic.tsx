@@ -52,7 +52,7 @@ function StoryTile({
           className="h-full w-full"
         >
           <>
-            <StoryBoomerangPreview src={story.boomerangUrl} poster={story.thumbnailUrl} />
+            <StoryBoomerangPreview src={story.boomerangUrl} poster={story.thumbnailUrl} locked={needsBlur} />
             <span className="absolute left-2 top-2 rounded-full bg-black/60 p-1.5">
               <Film size={14} className="text-white" />
             </span>

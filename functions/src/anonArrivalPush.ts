@@ -6,6 +6,30 @@ import { db, messaging } from "./adminApp";
 import { mayAnnounceRegisteredReturn } from "./profileArrivalPolicy";
 
 // Retain the existing topic so devices which opted in before this release keep working.
+const OWNER_ADMIN_EMAIL = "emilianomaturano@gmail.com";
+function isVerifiedOwnerAdmin(auth: {uid?: string; token?: Record<string, unknown>} | undefined) {
+  return Boolean(
+    auth?.uid && auth?.token?.email_verified === true &&
+    String(auth?.token?.email || "").trim().toLowerCase() === OWNER_ADMIN_EMAIL
+  );
+}
+
+/** Server-only gate. Public usuarios documents must not reveal private admin preferences. */
+export const adminArrivalGhostControl = onCall({ region: "us-central1" }, async (request) => {
+  if (!isVerifiedOwnerAdmin(request.auth)) {
+    throw new HttpsError("permission-denied", "Verified administrator required");
+  }
+  const gate = db().collection("arrivalPushGates").doc("profile_" + request.auth!.uid);
+  if (request.data?.action === "get") {
+    const doc = await gate.get();
+    return {enabled: doc.data()?.adminGhostArrivalEnabled === true};
+  }
+  if (request.data?.action !== "set" || typeof request.data?.enabled !== "boolean") {
+    throw new HttpsError("invalid-argument", "Invalid ghost mode request");
+  }
+  await gate.set({adminGhostArrivalEnabled: request.data.enabled}, {merge:true});
+  return {enabled: request.data.enabled};
+});
 const TOPIC = "anon-presence-optin-v1";
 const ALIAS = /^anon_[a-z0-9_]{6,80}$/i;
 
@@ -103,9 +127,8 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
     const previous = await tx.get(gate);
     const profile = user.data() || {};
     // Admin-only opt-out. Never trust a caller-provided email or a regular user's flag.
-    const adminGhost = String(request.auth?.token?.email || "").trim().toLowerCase() === "emilianomaturano@gmail.com"
-      && request.auth?.token?.email_verified === true
-      && profile.adminGhostArrivalEnabled === true;
+    const adminGhost = isVerifiedOwnerAdmin(request.auth)
+      && previous.data()?.adminGhostArrivalEnabled === true;
     if (adminGhost) return {announced:false as const,reason:"admin_ghost_enabled"};
     const username = String(profile.username || "").trim();
     if (!user.exists || !/^[\p{L}\p{N}_.-]{2,40}$/u.test(username) ||

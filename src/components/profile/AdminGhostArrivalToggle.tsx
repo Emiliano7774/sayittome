@@ -1,47 +1,56 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { EyeOff, Eye } from "lucide-react";
 
-import { auth, db } from "@/lib/firebase";
+import { auth, functions } from "@/lib/firebase";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 
-/** Only appears on the signed-in administrator's own profile. */
-export default function AdminGhostArrivalToggle({
-  ownerUid,
-  enabled,
-  onChange,
-}: {
-  ownerUid: string;
-  enabled: boolean;
-  onChange?: (enabled: boolean) => void;
-}) {
-  const [active, setActive] = useState(enabled);
+type GhostResponse = {enabled: boolean};
+const ghostControl = httpsCallable<{action: "get" | "set"; enabled?: boolean}, GhostResponse>(
+  functions, "adminArrivalGhostControl",
+);
+
+/** Administrator-only UI, with a server-only preference inaccessible to other profiles. */
+export default function AdminGhostArrivalToggle({ ownerUid }: {ownerUid: string}) {
+  const [active, setActive] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => { setActive(enabled); }, [enabled]);
-
   const admin = auth.currentUser;
-  if (!admin || admin.uid !== ownerUid || !isAdminEmail(admin.email) || !admin.emailVerified) {
-    return null;
-  }
+  const authorized = Boolean(
+    admin && admin.uid === ownerUid && isAdminEmail(admin.email) && admin.emailVerified
+  );
+
+  useEffect(() => {
+    if (!authorized) return;
+    let cancelled = false;
+    setLoaded(false);
+    setError("");
+    void ghostControl({action:"get"}).then(({data}) => {
+      if (cancelled) return;
+      setActive(data.enabled === true);
+      setLoaded(true);
+    }).catch(() => {
+      if (!cancelled) setError("No se pudo leer el modo fantasma.");
+    });
+    return () => {cancelled = true;};
+  }, [authorized, ownerUid]);
+
+  if (!authorized) return null;
 
   async function toggle() {
     const user = auth.currentUser;
-    if (!user || user.uid !== ownerUid || !isAdminEmail(user.email) || !user.emailVerified || busy) return;
+    if (!user || !isAdminEmail(user.email) || user.uid !== ownerUid ||
+        !user.emailVerified || !loaded || busy) return;
     const next = !active;
     setBusy(true);
     setError("");
     try {
-      // Server-side notification suppression is enforced independently by the
-      // signed Firebase callable's verified admin email claim.
-      await updateDoc(doc(db, "usuarios", user.uid), {
-        adminGhostArrivalEnabled: next,
-      });
-      setActive(next);
-      onChange?.(next);
+      const {data} = await ghostControl({action:"set",enabled:next});
+      setActive(data.enabled === true);
     } catch {
       setError("No se pudo guardar. Volvé a intentar.");
     } finally {
@@ -57,7 +66,7 @@ export default function AdminGhostArrivalToggle({
           <div className="min-w-0">
             <p className="text-sm font-bold">Modo fantasma · Administrador</p>
             <p className="text-xs leading-snug text-white/60">
-              {active
+              {!loaded ? "Consultando configuración privada..." : active
                 ? "Activado: no se anuncia tu entrada después de 15 minutos."
                 : "Desactivado: tu reconexión se anuncia normalmente."}
             </p>
@@ -67,11 +76,11 @@ export default function AdminGhostArrivalToggle({
           type="button"
           aria-label={active ? "Desactivar modo fantasma" : "Activar modo fantasma"}
           aria-pressed={active}
-          disabled={busy}
+          disabled={busy || !loaded}
           onClick={() => void toggle()}
           className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition disabled:opacity-50 ${active ? "bg-violet-600 text-white" : "bg-white/15 text-white"}`}
         >
-          {busy ? "Guardando..." : active ? "ON" : "OFF"}
+          {busy ? "Guardando..." : !loaded ? "..." : active ? "ON" : "OFF"}
         </button>
       </div>
       {error ? <p role="alert" className="mt-2 text-xs text-red-300">{error}</p> : null}
