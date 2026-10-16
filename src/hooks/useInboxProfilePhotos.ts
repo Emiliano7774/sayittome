@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useEffectivePathname } from "@/contexts/MainTabShellContext";
 
 import {
   chatTitle,
@@ -16,7 +17,77 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 const photoCache: Record<string, string> = {};
 const blurCache: Record<string, boolean> = {};
 
+// Inbox snapshots can arrive in bursts (multiple query cohorts). Share photo
+// work across hook re-renders instead of starting one request per render/row.
+// A small global concurrency budget prevents photo lookups from starving chats.
+const PHOTO_FETCH_CONCURRENCY = 3;
+const photoFetchInFlight = new Map<string, Promise<void>>();
+const photoFetchRetryAfter = new Map<string, number>();
+const photoFetchWaiters: Array<() => void> = [];
+let activePhotoFetches = 0;
+
+async function acquirePhotoFetchSlot() {
+  if (activePhotoFetches < PHOTO_FETCH_CONCURRENCY) {
+    activePhotoFetches += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => photoFetchWaiters.push(resolve));
+}
+
+function releasePhotoFetchSlot() {
+  const next = photoFetchWaiters.shift();
+  if (next) next();
+  else activePhotoFetches = Math.max(0, activePhotoFetches - 1);
+}
+
+function fetchInboxPhotoOnce(username: string): Promise<void> {
+  if (photoCache[username] || Date.now() < (photoFetchRetryAfter.get(username) || 0)) {
+    return Promise.resolve();
+  }
+  const existing = photoFetchInFlight.get(username);
+  if (existing) return existing;
+  const task = (async () => {
+    await acquirePhotoFetchSlot();
+    try {
+      // A large inbox can queue more rows than fit on screen. Do not keep
+      // fetching their photos after the user opens a thread or another tab.
+      if (typeof window !== "undefined" && window.location.pathname !== "/chats") return;
+      // Reuse the app's existing cached profile API, never bypass its TTL.
+      const profile = await fetchProfileByUsername(username);
+      const photo = resolveProfilePhoto(profile);
+      if (!photo) {
+        photoFetchRetryAfter.set(username, Date.now() + 15 * 60_000);
+        return;
+      }
+      const blurPhoto = profilePhotoRequiresBlur({
+        adminBlurProfilePhoto: profile?.adminBlurProfilePhoto === true,
+        adminBlurFotosPerfil: profile?.adminBlurFotosPerfil === true,
+        adminBlurGallery: profile?.adminBlurGallery === true,
+        mediaBlurFlags: profile?.mediaBlurFlags as Record<string, boolean> | undefined,
+      });
+      photoCache[username] = photo;
+      blurCache[username] = blurPhoto;
+      photoFetchRetryAfter.delete(username);
+      setCachedProfile(username, {
+        uid: String(profile?.uid || ""),
+        photo,
+        blurPhoto,
+        lastActive: String(profile?.lastActive || ""),
+        online: profile?.online === true,
+      });
+    } catch {
+      // Avoid retry storms when a profile is missing or the connection fails.
+      photoFetchRetryAfter.set(username, Date.now() + 60_000);
+    } finally {
+      releasePhotoFetchSlot();
+    }
+  })().finally(() => photoFetchInFlight.delete(username));
+  photoFetchInFlight.set(username, task);
+  return task;
+}
+
 export function useInboxProfilePhotos(chats: InboxChat[]) {
+  const pathname = useEffectivePathname();
   const [photos, setPhotos] = useState<Record<string, string>>(() => ({ ...photoCache }));
   const [blurPhotos, setBlurPhotos] = useState<Record<string, boolean>>(() => ({ ...blurCache }));
 
@@ -29,7 +100,7 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
     let cancelled = false;
 
     async function loadPhotos() {
-      if (usernames.length === 0) {
+      if (pathname !== "/chats" || usernames.length === 0) {
         return;
       }
 
@@ -66,44 +137,13 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
         return;
       }
 
-      await Promise.all(
-        missing.map(async (username) => {
-          try {
-            // Reuse client + server /api/profile route cache; do not force-bypass.
-            const profile = await fetchProfileByUsername(username);
-            const photo = resolveProfilePhoto(profile);
-            if (!photo) return;
-
-            const blurPhoto = profilePhotoRequiresBlur({
-              adminBlurProfilePhoto: profile?.adminBlurProfilePhoto === true,
-              adminBlurFotosPerfil: profile?.adminBlurFotosPerfil === true,
-              adminBlurGallery: profile?.adminBlurGallery === true,
-              mediaBlurFlags: profile?.mediaBlurFlags as Record<string, boolean> | undefined,
-            });
-
-            next[username] = photo;
-            nextBlur[username] = blurPhoto;
-            photoCache[username] = photo;
-            blurCache[username] = blurPhoto;
-            setCachedProfile(username, {
-              uid: String(profile?.uid || ""),
-              photo,
-              blurPhoto,
-              lastActive: String(profile?.lastActive || ""),
-              online: profile?.online === true,
-            });
-          } catch {
-            // Ignore per-row photo failures.
-          }
-        }),
-      );
+      await Promise.all(missing.map((username) => fetchInboxPhotoOnce(username)));
 
       if (cancelled) return;
 
-      Object.assign(photoCache, next);
-      Object.assign(blurCache, nextBlur);
-      setPhotos({ ...next });
-      setBlurPhotos({ ...nextBlur });
+      // Another render may have finished an in-flight lookup while we awaited.
+      setPhotos({ ...next, ...photoCache });
+      setBlurPhotos({ ...nextBlur, ...blurCache });
     }
 
     void loadPhotos();
@@ -111,7 +151,7 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
     return () => {
       cancelled = true;
     };
-  }, [chats, usernames]);
+  }, [chats, usernames, pathname]);
 
   return { photos, blurPhotos };
 }

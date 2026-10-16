@@ -22,7 +22,7 @@ export default function ChatInboxLink({ href, className, children, ...rest }: Pr
   const openedAtRef = useRef(0);
 
   const warmThread = () => {
-    if (chatId) prefetchChatThread(chatId);
+    if (chatId) prefetchChatThread(chatId, { cacheOnly: true });
     try {
       router.prefetch(href);
     } catch {

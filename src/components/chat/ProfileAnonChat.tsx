@@ -993,7 +993,7 @@ export default function ProfileAnonChat({
   useEffect(() => {
     if (!chatId) return;
     let cancelled = false;
-    void prefetchChatThreadAsync(chatId).then((rows) => {
+    void prefetchChatThreadAsync(chatId, { cacheOnly: true }).then((rows) => {
       if (cancelled || !rows.length) return;
       setMessages((prev) => {
         const hydrated = hydrateCachedMessages(chatId, rows, {
