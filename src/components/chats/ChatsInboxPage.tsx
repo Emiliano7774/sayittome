@@ -30,15 +30,18 @@ function ChatsPageSkeleton() {
 export default function ChatsInboxPage() {
   const { uxMode } = useUxMode();
   const inbox = useChatAlerts();
-  const selection = useChatsSelection(inbox.sortedChats);
+  // Global alerts already merges the live inbox with its persisted snapshot.
+  // Reuse those rows for paint and selection; never wait for a new query here.
+  const visibleChats = inbox.sortedChats;
+  const selection = useChatsSelection(visibleChats);
 
   useChatsTabPaint({
     loading: inbox.loading,
-    sortedChats: inbox.sortedChats,
+    sortedChats: visibleChats,
     firestoreHydrated: inbox.firestoreSynced,
   });
 
-  const warmIds = inbox.sortedChats
+  const warmIds = visibleChats
     // Direct matches live in chats_anonimos, not the regular chats collection.
     // Prefetching their IDs as regular chats wastes Firestore reads.
     .filter((chat) => !isAnonDirectInboxChat(chat))
@@ -53,7 +56,7 @@ export default function ChatsInboxPage() {
     const useIdle = typeof window.requestIdleCallback === "function";
     const run = () => {
       if (cancelled) return;
-      for (const id of ids) prefetchChatThread(id);
+      for (const id of ids) prefetchChatThread(id, { cacheOnly: true });
     };
     const idleId = useIdle
       ? window.requestIdleCallback(run)
@@ -65,7 +68,7 @@ export default function ChatsInboxPage() {
     };
   }, [warmIds]);
 
-  if (shouldShowChatsInboxSkeleton(inbox)) {
+  if (shouldShowChatsInboxSkeleton({ loading: inbox.loading, sortedChats: visibleChats })) {
     return <ChatsPageSkeleton />;
   }
 
@@ -73,7 +76,7 @@ export default function ChatsInboxPage() {
     <ChatsInboxErrorBoundary>
       {uxMode === "modern" ? (
         <ModernChatsInbox
-          sortedChats={inbox.sortedChats}
+          sortedChats={visibleChats}
           uid={inbox.uid}
           isAnonymousSession={inbox.isAnonymousSession}
           firestoreSynced={inbox.firestoreSynced}
@@ -81,7 +84,7 @@ export default function ChatsInboxPage() {
         />
       ) : (
         <ClassicChatsInbox
-          sortedChats={inbox.sortedChats}
+          sortedChats={visibleChats}
           uid={inbox.uid}
           isAnonymousSession={inbox.isAnonymousSession}
           firestoreSynced={inbox.firestoreSynced}

@@ -63,14 +63,14 @@ function mapDocToCached(
 }
 
 /** Warm the thread cache before navigation so the chat opens with history visible. */
-export function prefetchChatThread(chatId: string, options?: { force?: boolean }) {
+export function prefetchChatThread(chatId: string, options?: { force?: boolean; cacheOnly?: boolean }) {
   void prefetchChatThreadAsync(chatId, options);
 }
 
 /** Awaitable prefetch — returns cached rows (existing or freshly fetched). */
 export function prefetchChatThreadAsync(
   chatId: string,
-  options?: { force?: boolean },
+  options?: { force?: boolean; cacheOnly?: boolean },
 ): Promise<CachedChatMessage[]> {
   if (!chatId || typeof window === "undefined") return Promise.resolve([]);
 
@@ -109,6 +109,10 @@ export function prefetchChatThreadAsync(
       } catch {
         // Persistent Firestore cache may be unavailable on first boot/private mode.
       }
+
+      // Background/intent warmup must not compete with the actual thread listener.
+      // The cache-only path never contacts Firestore servers or consumes reads.
+      if (options?.cacheOnly) return [];
 
       const snap = await getDocs(q);
       const messages = snap.docs

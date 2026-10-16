@@ -36,7 +36,7 @@ function ProfileAnonChatRoute() {
 
   useEffect(() => {
     if (canOpenImmediately) {
-      prefetchChatThread(rawChatId);
+      prefetchChatThread(rawChatId, { cacheOnly: true });
     }
   }, [canOpenImmediately, rawChatId]);
 
@@ -68,7 +68,7 @@ function ProfileAnonChatRoute() {
               if (docUsername) setUsername(docUsername);
               if (resolvedChatId !== rawChatId) {
                 setChatId(resolvedChatId);
-                prefetchChatThread(resolvedChatId);
+                prefetchChatThread(resolvedChatId, { cacheOnly: true });
               }
               if (
                 resolvedChatId !== rawChatId ||
@@ -132,7 +132,7 @@ function ProfileAnonChatRoute() {
           setUsername(resolvedUsername);
           setChatId(resolvedChatId);
           setReady(true);
-          if (resolvedChatId !== rawChatId) prefetchChatThread(resolvedChatId);
+          if (resolvedChatId !== rawChatId) prefetchChatThread(resolvedChatId, { cacheOnly: true });
 
           if (
             resolvedChatId !== rawChatId ||
