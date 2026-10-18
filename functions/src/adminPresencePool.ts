@@ -1,12 +1,11 @@
-/** Bounded, real-presence pool for administrator connection notices.
- * Never exposes hidden, expired or geographically restricted identities. */
+/** Owner-only presence pool. Registered profiles follow Shuffle's 15-minute online filter. */
 export type PoolRow = { id: string; data: Record<string, unknown> };
 export type ActiveTarget =
   | { type: "anonymous"; id: string; lastSeenMs: number }
   | { type: "profile"; id: string; username: string; lastSeenMs: number };
 
 const ANON_FRESH_MS = 120_000;
-const PROFILE_FRESH_MS = 180_000;
+const PROFILE_FRESH_MS = 15 * 60_000;
 const USERNAME = /^[\p{L}\p{N}_.-]{2,40}$/u;
 const ANON_ALIAS = /^anon_[a-z0-9_]{6,80}$/i;
 
@@ -46,9 +45,14 @@ export function activeAdminPresencePool(
   const profiles: ActiveTarget[] = profileRows.flatMap((row) => {
     const d = row.data;
     const username = String(d.username || "").trim();
-    const lastSeenMs = asTime(d.lastForegroundAt);
-    if (!USERNAME.test(username) || d.online !== true || d.banned === true ||
-        d.mostrarUltimaVez === false || !openAudience(d) ||
+    // Shuffle uses recent activity rather than the unreliable online flag.
+    // Older clients may not write lastForegroundAt at all.
+    const lastSeenMs = Math.max(
+      ...[d.lastActiveAt,d.lastSeenAt,d.lastActive,d.presenceUpdatedAt,d.lastForegroundAt]
+        .map(asTime).filter(Number.isFinite),
+      0,
+    );
+    if (!USERNAME.test(username) || d.banned === true || !openAudience(d) ||
         !fresh(lastSeenMs, nowMs, PROFILE_FRESH_MS)) return [];
     return [{type:"profile",id:row.id,username,lastSeenMs}];
   });

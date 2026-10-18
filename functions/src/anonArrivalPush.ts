@@ -164,7 +164,6 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
     if (adminGhost) return {announced:false as const,reason:"admin_ghost_enabled"};
     const username = String(profile.username || "").trim();
     if (!user.exists || !/^[\p{L}\p{N}_.-]{2,40}$/u.test(username) ||
-        profile.mostrarUltimaVez === false ||
         (Array.isArray(profile.visibilidadPaises) && profile.visibilidadPaises.length > 0) ||
         (Array.isArray(profile.visibilidadProvincias) && profile.visibilidadProvincias.length > 0) ||
         profile.banned === true) {
@@ -217,13 +216,16 @@ export const adminSendAvailableAnonAlert = onCall({region:"us-central1"}, async 
   const now = Date.now();
   // Sorted by freshness (not document ID): a stale anonymous card must not
   // hide currently active users from the first N results.
-  const [anonymousSnap, profileSnap] = await Promise.all([
+  const [anonymousSnap, recentActiveSnap, recentSeenSnap] = await Promise.all([
     db().collection("anonimos_activos").orderBy("lastSeenAt","desc").limit(120).get(),
-    db().collection("usuarios").orderBy("lastForegroundAt","desc").limit(120).get(),
+    // Mirror Shuffles source of truth; include legacy clients without lastForegroundAt.
+    db().collection("usuarios").orderBy("lastActiveAt","desc").limit(160).get(),
+    db().collection("usuarios").orderBy("lastSeenAt","desc").limit(160).get(),
   ]);
   const pool = activeAdminPresencePool(
     anonymousSnap.docs.map(row => ({id:row.id,data:row.data()})),
-    profileSnap.docs.map(row => ({id:row.id,data:row.data()})),
+    Array.from(new Map([...recentActiveSnap.docs,...recentSeenSnap.docs]
+      .map(row => [row.id,{id:row.id,data:row.data()}] as const)).values()),
     now,
   );
   const counts = {anonymousCount:pool.anonymous.length,profileCount:pool.profiles.length};
@@ -263,7 +265,9 @@ export const adminSendAvailableAnonAlert = onCall({region:"us-central1"}, async 
       type:selected.type === "anonymous" ? "anon_arrival" : "profile_arrival",
       ...(selected.type === "anonymous" ? {anonId:selected.id} : {username:selected.username}),
       title:"Actividad en SayItToMe",
-      body:label + " está en línea. Tocá para conversar.",
+      body:label + (now - selected.lastSeenMs <= 180_000
+        ? " está en línea. Tocá para conversar."
+        : " estuvo activo recientemente. Tocá para conversar."),
       href,tag:noticeTag("admin-active:" + selected.type + ":" + selected.id + ":" + now),
       source:"manual_admin",
     });

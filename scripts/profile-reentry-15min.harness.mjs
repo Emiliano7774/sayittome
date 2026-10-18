@@ -34,7 +34,7 @@ assert.match(fn,/tx\.get\(profileRef\)/,"server reads prior foreground inside tr
 assert.match(fn,/tx\.get\(gate\)/,"server reads same user's broadcast gate");
 assert.match(fn,/mayAnnounceRegisteredReturn/);
 assert.match(fn,/sign_in_provider === "anonymous"/,"no anon-to-profile conversion");
-assert.match(fn,/mostrarUltimaVez === false/,"profile privacy");
+assert.doesNotMatch(fn.slice(fn.indexOf("export const announceProfileArrival"),fn.indexOf("export const adminSendAvailableAnonAlert")),/mostrarUltimaVez === false/,"last-seen preference cannot suppress registered arrival notices");
 assert.match(fn,/type:"anon_arrival"/,"anonymous arrival path unaffected");
 assert.match(fn,/type:"profile_arrival"/,"registered arrival uses existing topic");
 console.log("PASS PROFILE RETURN PILOT: 19 time scenarios, 60s boundary, concurrent tabs, foreground-only heartbeat, reload/native/privacy/anon contract");

@@ -143,7 +143,7 @@ const es = {
   province_hidden: "Oculta",
   last_seen_privacy_label: "Última conexión",
   last_seen_privacy_hint:
-    "Si lo ocultás, otros no verán cuándo estuviste en línea ni el indicador verde en el shuffle.",
+    "Si la ocultás, no se muestra el horario de tu última conexión ni el indicador verde en Shuffle. Tu entrada a la aplicación puede anunciarse en las notificaciones de conexiones.",
   last_seen_visible: "Visible",
   last_seen_hidden: "Oculta",
 
@@ -1032,7 +1032,7 @@ const en: Record<keyof typeof es, string> = {
   province_hidden: "Hidden",
   last_seen_privacy_label: "Last seen",
   last_seen_privacy_hint:
-    "If hidden, others won't see when you were online or the green indicator in shuffle.",
+    "If hidden, your last-seen time and green Shuffle indicator won't appear. Opening the app may still be announced in connection notifications.",
   last_seen_visible: "Visible",
   last_seen_hidden: "Hidden",
 
@@ -1911,7 +1911,7 @@ const it: Record<keyof typeof es, string> = {
   province_hidden: "Nascosta",
   last_seen_privacy_label: "Ultima connessione",
   last_seen_privacy_hint:
-    "Se nascosto, gli altri non vedranno quando eri online né l'indicatore verde nello shuffle.",
+    "Se la nascondi, non compariranno l'orario dell'ultimo accesso né l'indicatore verde in Shuffle. L'apertura dell'app può comunque essere annunciata nelle notifiche di connessione.",
   last_seen_visible: "Visibile",
   last_seen_hidden: "Nascosta",
 
@@ -2137,7 +2137,7 @@ const de: Record<keyof typeof es, string> = {
   province_hidden: "Versteckt",
   last_seen_privacy_label: "Zuletzt online",
   last_seen_privacy_hint:
-    "Wenn ausgeblendet, sehen andere nicht, wann du online warst, und kein grüner Indikator im Shuffle.",
+    "Wenn ausgeblendet, werden weder die Uhrzeit deiner letzten Aktivität noch der grüne Shuffle-Indikator angezeigt. Das Öffnen der App kann weiterhin in Verbindungsbenachrichtigungen angekündigt werden.",
   last_seen_visible: "Sichtbar",
   last_seen_hidden: "Versteckt",
 

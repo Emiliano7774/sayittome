@@ -21,7 +21,7 @@ export default function AdminAnonymousActivityButton() {
   const [success, setSuccess] = useState(false);
 
   function countsText(data: BroadcastResult) {
-    return (data.profileCount ?? 0) + " perfiles y " +
+    return (data.profileCount ?? 0) + " perfiles activos en los últimos 15 minutos y " +
       (data.anonymousCount ?? 0) + " anónimos públicos conectados.";
   }
 
@@ -70,7 +70,7 @@ export default function AdminAnonymousActivityButton() {
       <h2 className="text-xl font-black">Avisos manuales de conexiones</h2>
       <p className="text-sm font-bold text-white/60">
         Solo administración. El pool incluye perfiles registrados y anónimos
-        actualmente conectados, públicos y accesibles. Se selecciona un destino
+        activos recientemente, públicos y accesibles. En perfiles se usa\n        la misma ventana de 15 minutos de Shuffle. Se selecciona un destino
         real y al tocar el aviso se abre su perfil o chat. Se alternan los dos
         tipos cuando ambos están disponibles. Máximo un envío por hora.
       </p>
