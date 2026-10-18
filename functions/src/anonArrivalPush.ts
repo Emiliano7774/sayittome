@@ -32,7 +32,7 @@ export const adminArrivalGhostControl = onCall({ region: "us-central1" }, async 
   return {enabled: request.data.enabled};
 });
 const TOPIC = "anon-presence-optin-v1";
-const ANON_PUSH_DEDUPE_MS = 15 * 60_000;
+const ANON_PUSH_DEDUPE_MS = 60_000;
 const ALIAS = /^anon_[a-z0-9_]{6,80}$/i;
 
 function stableShortId(alias: string) {
@@ -150,9 +150,7 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
   if (!uid || request.auth?.token?.firebase?.sign_in_provider === "anonymous") {
     throw new HttpsError("unauthenticated","Registered profile required");
   }
-  if (isVerifiedOwnerAdmin(request.auth)) {
-    return {ok:true,announced:false,reason:"administrator_excluded"};
-  }
+  // The owner may opt out through adminArrivalGhostControl; no hard block.
   const now = Date.now();
   const profileRef = db().collection("usuarios").doc(uid);
   const gate = db().collection("arrivalPushGates").doc("profile_"+uid);

@@ -59,7 +59,8 @@ export function stripPublicPresence<T extends {
   };
 }
 
-/** Online status is independent of whether the last-seen time is shown. */
+/** Solo online deliberately excludes hidden-last-seen profiles;
+ * their green badge remains visible in ordinary Shuffle. */
 export function isPublicShuffleOnline(
   profile?: (LastSeenPrivacy & {
     showOnline?: boolean;
@@ -69,7 +70,7 @@ export function isPublicShuffleOnline(
   }) | null,
   isOnline?: (p: { presenceAt?: string | null; lastActive?: string | null; onlineUntilAt?: string | null }) => boolean,
 ) {
-  if (!profile) return false;
+  if (!profile || !isLastSeenPublic(profile)) return false;
   if (isOnline) return isOnline(profile);
   if (profile.showOnline === true) return true;
   if (profile.showOnline === false) return false;

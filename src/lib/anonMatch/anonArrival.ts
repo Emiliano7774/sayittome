@@ -1,22 +1,24 @@
 export const ANON_ARRIVAL_TOPIC = "anon-presence-optin-v1";
-export const ANON_ARRIVAL_MIN_REANNOUNCE_MS = 15 * 60 * 1000;
-export const ANON_ARRIVAL_FRESH_MS = 15 * 60 * 1000;
+export const ANON_ARRIVAL_MIN_REANNOUNCE_MS = 60 * 1000;
+export const ANON_ARRIVAL_FRESH_MS = 60 * 1000;
 
 export function isNewAnonymousArrival(input: {
   priorLastSeenAt?: unknown; priorEnteredAt?: unknown;
   priorAnnouncedAt?: unknown; priorSessionClosed?: unknown;
+  priorSessionClosedAt?: unknown;
   nowMs: number;
 }) {
   const seen = Date.parse(String(input.priorLastSeenAt || ""));
   const announced = Date.parse(String(input.priorAnnouncedAt || ""));
-  const newSession = input.priorSessionClosed === true ||
-    !Number.isFinite(seen) || input.nowMs - seen > ANON_ARRIVAL_FRESH_MS;
-  // An explicit session close followed by a fresh entry is a real arrival,
-  // even when the same alias reconnects within the previous 15-minute window.
-  // Heartbeats never pass newSession; push fan-out has a separate global cap.
-  const cooldownOk = input.priorSessionClosed === true ||
-    !Number.isFinite(announced) || input.nowMs - announced >= ANON_ARRIVAL_MIN_REANNOUNCE_MS;
-  return newSession && cooldownOk;
+  const left = Date.parse(String(input.priorSessionClosedAt || ""));
+  // If the tab explicitly closed, measure the interval from its departure,
+  // not from its last heartbeat. The Shuffle card still lives for three hours.
+  const wasAway = input.priorSessionClosed === true
+    ? (!Number.isFinite(left) || input.nowMs - left >= ANON_ARRIVAL_FRESH_MS)
+    : (!Number.isFinite(seen) || input.nowMs - seen >= ANON_ARRIVAL_FRESH_MS);
+  const gapSincePush = !Number.isFinite(announced) ||
+    input.nowMs - announced >= ANON_ARRIVAL_MIN_REANNOUNCE_MS;
+  return wasAway && gapSincePush;
 }
 
 export function isAnonArrivalGloballyVisible(input: { paises?: unknown; provincias?: unknown; doNotDisturb?: boolean }) {

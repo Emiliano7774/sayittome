@@ -54,9 +54,10 @@ async function writePresenceDoc(
     priorEnteredAt: existing?.enteredAt,
     priorAnnouncedAt: existing?.lastAnnouncementAt,
     priorSessionClosed: existing?.sessionClosed,
+    priorSessionClosedAt: existing?.sessionClosedAt || existing?.updatedAt,
     nowMs: now.getTime(),
   });
-  const mayAnnounce = isEntrance && isAnonArrivalGloballyVisible({
+  const mayAnnounce = !backgrounded && isEntrance && isAnonArrivalGloballyVisible({
     paises: geo.visibilidad.paises,
     provincias: geo.visibilidad.provincias,
     doNotDisturb: dndActive,
@@ -222,6 +223,7 @@ async function endAnonymousPresenceSession(anonId: string) {
   const expiryMs = (Number.isFinite(seenMs) ? seenMs : Date.now()) + ANON_SHUFFLE_VISIBILITY_MS;
   await setAnonMatchAdminDoc("anonimos_activos", anonId, {
     sessionClosed: true,
+    sessionClosedAt: new Date().toISOString(),
     disponibleParaChat: false,
     backgrounded: true,
     expiresAt: new Date(expiryMs).toISOString(),
