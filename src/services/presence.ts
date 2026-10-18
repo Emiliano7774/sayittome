@@ -19,7 +19,7 @@ let pendingExitWrite: Promise<boolean> | null = null;
 
 const HEARTBEAT_MS = 90_000;
 const MIN_WRITE_GAP_MS = 60_000;
-const RETURN_GAP_MS = 15 * 60_000;
+const RETURN_GAP_MS = 60_000;
 const EXIT_KEY = "sayittome:registered-foreground-exit-v1:";
 
 function saveLastExit(uid: string) {

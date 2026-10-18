@@ -1,0 +1,11 @@
+const assert=require("node:assert/strict"),fs=require("node:fs");
+const f=p=>fs.readFileSync(p,"utf8");
+const fn=f("functions/src/anonArrivalPush.ts"),web=f("src/lib/chat/fcmPush.ts"),panel=f("src/components/admin/panels/AdminSystemPanel.tsx"),control=f("src/components/admin/panels/AdminAnonymousActivityButton.tsx");
+for(const key of ['adminSendAvailableAnonAlert','isVerifiedOwnerAdmin(request.auth)','permission-denied','no_available_anonymous','sessionClosed','disponibleParaChat','backgrounded','visibilidadPaises','visibilidadProvincias','source:"manual_admin"','60 * 60_000','type:"anon_arrival"']) assert(fn.includes(key),key);
+assert(!fn.slice(fn.indexOf("export const adminSendAvailableAnonAlert")).includes('collection("anon_arrival_announcements")'));
+assert(web.includes('data.source === "manual_admin"'));
+assert(web.includes('asId(data.source) !== "manual_admin"'));
+assert(panel.includes('<AdminAnonymousActivityButton />'));
+assert(control.includes('httpsCallable'));
+assert(control.includes('confirm:true'));
+console.log("PASS: admin authorization, nonfabricated live presence, public/privacy filters, cooldown, topic notification, Web/Android foreground handling, admin-only UI");

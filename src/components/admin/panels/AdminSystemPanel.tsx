@@ -8,6 +8,7 @@ import { ADMIN_EMAIL } from "@/lib/admin/isAdmin";
 import { buildUndoPayload, canUndoAdminAction } from "@/lib/admin/adminActionUndo";
 import { useT } from "@/contexts/LocaleContext";
 import { db } from "@/lib/firebase";
+import AdminAnonymousActivityButton from "@/components/admin/panels/AdminAnonymousActivityButton";
 
 type AdminLogRow = {
   id: string;
@@ -82,6 +83,8 @@ export default function AdminSystemPanel() {
           Autoría histórica: <a className="underline" href="/admin/authorship">/admin/authorship</a>
         </p>
       </section>
+
+      <AdminAnonymousActivityButton />
 
       <section>
         <p className="mb-4 text-lg font-black">Logs recientes</p>

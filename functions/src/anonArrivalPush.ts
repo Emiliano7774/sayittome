@@ -44,7 +44,7 @@ function noticeTag(principal: string) {
   // previous banner rather than stacking one for every transport retry.
   return "stm-arrival-" + createHash("sha256").update(principal).digest("hex").slice(0,16);
 }
-async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; anonId?: string; username?: string}) {
+async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; anonId?: string; username?: string; source?: "manual_admin"}) {
   await messaging().send({
     topic: TOPIC,
     notification: {title: input.title, body: input.body},
@@ -53,6 +53,7 @@ async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title
       href: input.href, tag: input.tag,
       ...(input.anonId ? {anonId:input.anonId} : {}),
       ...(input.username ? {username:input.username} : {}),
+      ...(input.source ? {source:input.source} : {}),
     },
     android: {
       // Prompt delivery while Android is idle; stale arrivals expire after two minutes.
@@ -139,7 +140,7 @@ export const onAnonArrivalAnnounced = onDocumentWritten({
 });
 
 /** Registered-profile pilot: one arrival on initial entrance and again only
- * after >=15 minutes without foreground presence. The client calls this BEFORE
+ * after >=1 minute without foreground presence. The client calls this BEFORE
  * its first foreground heartbeat, so Firestore still contains the previous
  * departure time. Hidden tabs never invoke it. No anonymous behavior changes.
  * A single Firestore transaction serializes concurrent tabs/device entrances. */
@@ -198,5 +199,60 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
   } catch(error) {
     logger.warn("profile arrival push failed",{uid,error:String(error)});
     return {ok:false,announced:false};
+  }
+});
+
+/** Verified-owner-only activity prompt. Never fabricates an anonymous account:
+ * it links to a live, globally visible anonymous visitor who can receive chats.
+ * Reuses the existing opt-in topic and does not alter the public arrival stream. */
+export const adminSendAvailableAnonAlert = onCall({region:"us-central1"}, async (request) => {
+  if (!isVerifiedOwnerAdmin(request.auth)) {
+    throw new HttpsError("permission-denied", "Verified administrator required");
+  }
+  if (request.data?.confirm !== true) {
+    throw new HttpsError("invalid-argument", "Explicit confirmation required");
+  }
+  const now = Date.now();
+  const candidates = await db().collection("anonimos_activos")
+    .where("sessionClosed", "==", false).limit(60).get();
+  const eligible = candidates.docs
+    .filter((row) => {
+      const value = row.data();
+      const lastSeen = Date.parse(String(value.lastSeenAt || ""));
+      const dndUntil = Date.parse(String(value.doNotDisturbUntil || ""));
+      return ALIAS.test(row.id) && value.disponibleParaChat === true &&
+        value.backgrounded !== true &&
+        (!Number.isFinite(dndUntil) || dndUntil < now) &&
+        (!Array.isArray(value.visibilidadPaises) || value.visibilidadPaises.length === 0) &&
+        (!Array.isArray(value.visibilidadProvincias) || value.visibilidadProvincias.length === 0) &&
+        Number.isFinite(lastSeen) && lastSeen <= now + 30_000 && now - lastSeen < 90_000;
+    })
+    .sort((a,b) => Date.parse(String(b.data().lastSeenAt)) - Date.parse(String(a.data().lastSeenAt)));
+  if (!eligible.length) return {ok:false,reason:"no_available_anonymous"};
+  const anonId = eligible[0].id;
+  const gate = db().collection("arrivalPushGates").doc("admin_available_anon_broadcast");
+  const claimed = await db().runTransaction(async tx => {
+    const prior = await tx.get(gate);
+    const previousMs = Number(prior.data()?.lastMs || 0);
+    if (previousMs > 0 && now - previousMs < 60 * 60_000) return false;
+    tx.set(gate,{lastMs:now,anonId,adminUid:request.auth!.uid},{merge:true});
+    return true;
+  });
+  if (!claimed) return {ok:false,reason:"cooldown_60_minutes"};
+  const label = stableShortId(anonId);
+  try {
+    await broadcast({
+      type:"anon_arrival",anonId,
+      title:"Nueva actividad en SayItToMe",
+      body:"Anónimo-" + label + " está disponible para conversar. Tocá para hablarle.",
+      href:"/?anonArrival=" + encodeURIComponent(anonId),
+      tag:noticeTag("admin-active-anon:" + anonId + ":" + now),
+      source:"manual_admin",
+    });
+    logger.info("admin available anonymous alert sent", {adminUid:request.auth!.uid});
+    return {ok:true,deliveredToTopic:true,anonLabel:label};
+  } catch(error) {
+    logger.error("admin available anonymous alert failed",{error:String(error)});
+    return {ok:false,reason:"broadcast_failed"};
   }
 });

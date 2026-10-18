@@ -77,7 +77,7 @@ async function attachWebForegroundMessagingListener() {
     const viewerUid = asId(auth.currentUser?.uid);
     // Profile-arrival FCM events must not enter the chat-only message filter.
     // Anonymous foreground entries already have a separate Firestore toast.
-    if (data.type === "profile_arrival") {
+    if (data.type === "profile_arrival" || (data.type === "anon_arrival" && data.source === "manual_admin")) {
       if (!getAnonArrivalPushPreference(viewerUid)) return;
       const href = arrivalActionHref(data);
       if (!href) return;
@@ -93,7 +93,7 @@ async function attachWebForegroundMessagingListener() {
             body: asId(data.body) || "Un perfil acaba de entrar.",
             tag: asId(data.tag) || "stm-arrival-profile-" + asId(data.username),
             icon: "/icons/Icon-192.png", badge: "/icons/Icon-192.png",
-            data: { type: "profile_arrival", href },
+            data: { type: asId(data.type), href },
           });
       }).catch(error => console.warn("[arrival] web foreground failed", String(error)));
       return;
@@ -633,7 +633,7 @@ const NATIVE_ARRIVAL_DEDUPE_MS = 2 * 60_000;
 function arrivalPrincipalKey(data: Record<string, unknown>) {
   const type = asId(data.type);
   const principal = type === "anon_arrival" ? asId(data.anonId) : asId(data.username).toLowerCase();
-  return type + ":" + (principal || asId(data.tag));
+  return type + ":" + (principal || asId(data.tag)) + (asId(data.source) === "manual_admin" ? ":admin" : "");
 }
 function arrivalActionHref(data: Record<string, unknown>) {
   const type = asId(data.type);
@@ -669,7 +669,7 @@ async function showNativeForegroundArrival(data: Record<string, unknown>, fallba
   if (document.visibilityState !== "visible") return;
   // The already-mounted AnonArrivalToast owns foreground anonymous alerts.
   // Avoid a second, identical local OS banner for the same arrival.
-  if (asId(data.type) === "anon_arrival" && document.visibilityState === "visible") return;
+  if (asId(data.type) === "anon_arrival" && asId(data.source) !== "manual_admin" && document.visibilityState === "visible") return;
   const arrivalKey = arrivalPrincipalKey(data);
   const now = Date.now();
   for (const [key, expiry] of displayedNativeArrivals) {

@@ -1,7 +1,7 @@
 /** Only registered public profiles participate in the reconnect pilot.
  * The clock is last foreground departure/heartbeat, NOT authentication/logout.
  * Anonymous arrivals and their three-hour Shuffle rule are unchanged. */
-export const REGISTERED_RETURN_GAP_MS = 15 * 60_000;
+export const REGISTERED_RETURN_GAP_MS = 60_000;
 
 export function mayAnnounceRegisteredReturn(input: {
   nowMs: number;
