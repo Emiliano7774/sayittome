@@ -148,11 +148,30 @@ export async function setAnonArrivalPushEnabled(enabled: boolean): Promise<boole
     persisted = readPersistedDeviceToken();
   }
   if (persisted.uid !== current.uid || !persisted.token) return !enabled;
+  const fn = httpsCallable(functions, "setAnonArrivalPush");
   try {
-    const fn = httpsCallable(functions, "setAnonArrivalPush");
     const response = await fn({ token: persisted.token, enabled });
     return (response.data as { ok?: boolean })?.ok === true;
   } catch (error) {
+    // Existing browsers can hold a stale local FCM token after a logout,
+    // reset or failed registration. Retry once with the current authenticated
+    // installation before showing an inaccurate "permission" error.
+    if (enabled) {
+      try {
+        const repaired = isCapacitorNative()
+          ? await enableNativeChatPush(current)
+          : await enableWebChatPush(current);
+        if (repaired.ok) {
+          const fresh = readPersistedDeviceToken();
+          if (fresh.uid === current.uid && fresh.token) {
+            const response = await fn({ token: fresh.token, enabled: true });
+            if ((response.data as { ok?: boolean })?.ok === true) return true;
+          }
+        }
+      } catch (retryError) {
+        console.warn("[arrival] token repair failed", String(retryError));
+      }
+    }
     console.warn("[anon-arrival] push preference failed", String(error));
     return false;
   }

@@ -65,8 +65,8 @@ export default function AnonArrivalPushSettings({ compact = false }: Props) {
       setPermission(getBrowserPermission());
       if (!granted) {
         setMessage(es
-          ? "Los avisos de conexiones siguen activados dentro de SayItToMe. Para verlos con la web cerrada, permití Notificaciones para este sitio en Chrome o Brave."
-          : "Connection alerts remain enabled inside SayItToMe. To get background alerts, allow site notifications in Chrome or Brave.");
+          ? "La opción de conexiones quedó activada, pero el navegador no mostrará avisos del sistema hasta que permitas Notificaciones para este sitio en Chrome o Brave."
+          : "Connection alerts are selected, but the browser cannot show system alerts until you allow site notifications in Chrome or Brave.");
         return;
       }
       const ok = await setAnonArrivalPushEnabled(true);
@@ -74,7 +74,7 @@ export default function AnonArrivalPushSettings({ compact = false }: Props) {
         ? (es ? "Este navegador ya está suscrito a los avisos de conexiones." : "This browser is subscribed to connection alerts.")
         : (es ? "El navegador dio permiso, pero no se pudo registrar Web Push. Usá «Activar/reparar avisos del navegador» en Notificaciones." : "Permission was granted but Web Push could not be registered. Use the browser notification repair option."));
     } catch {
-      setMessage(es ? "No se pudo completar la suscripción del navegador. Los avisos internos permanecen activados." : "Browser subscription failed. In-app alerts remain enabled.");
+      setMessage(es ? "No se pudo completar la suscripción del navegador. La opción quedó activada, pero la entrega del sistema necesita Web Push." : "Browser subscription failed. The preference remains enabled but system delivery needs Web Push.");
     } finally {
       setBusy(false);
     }
@@ -102,7 +102,7 @@ export default function AnonArrivalPushSettings({ compact = false }: Props) {
           const ok = await setAnonArrivalPushEnabled(true);
           if (!ok) setMessage(es ? "Los avisos están activos, pero no se pudo completar la suscripción." : "Alerts are on but the subscription did not finish.");
         } else {
-          setMessage(es ? "Los avisos internos siguen activados. Autorizá las notificaciones del dispositivo para recibirlas fuera de la app." : "In-app alerts remain on. Allow device notifications for background delivery.");
+          setMessage(es ? "La opción sigue activada, pero los avisos del sistema requieren permiso del dispositivo." : "The preference remains on, but system delivery requires device notification permission.");
         }
       } finally { setBusy(false); }
       return;
@@ -159,7 +159,7 @@ export default function AnonArrivalPushSettings({ compact = false }: Props) {
           <p className="text-xs text-amber-200" role="status">
             {permission === "denied"
               ? (es ? "Tu navegador bloquea los avisos del sistema. Permití Notificaciones para SayItToMe en la configuración de Chrome o Brave." : "Your browser blocks system notifications. Allow notifications for SayItToMe in Chrome or Brave settings.")
-              : (es ? "Los avisos internos están activos. Para recibir notificaciones del sistema, autorizá este navegador." : "In-app alerts are on. Allow this browser for system notifications.")}
+              : (es ? "La opción de conexiones está activada. Para recibir avisos del sistema necesitás autorizar este navegador." : "The connection preference is on. Allow this browser to receive system notifications.")}
           </p>
           {permission !== "denied" && permission !== "unsupported" && (
             <button type="button" disabled={busy} onClick={() => void enableBrowserDelivery()}
