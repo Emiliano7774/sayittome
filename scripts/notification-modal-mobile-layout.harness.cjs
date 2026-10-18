@@ -1,0 +1,14 @@
+const assert=require("node:assert/strict"),fs=require("node:fs");
+const src=fs.readFileSync("src/components/chat/ChatNotificationSetting.tsx","utf8");
+const modal=fs.readFileSync("src/components/profile/ProfileClaimHistoryMenu.tsx","utf8");
+const section=src.slice(src.indexOf('  if (variant === "panel") {'),src.indexOf('  if (variant === "classic") {'));
+assert(!section.includes("flex-1"),"Panel may not stretch to occupy empty vertical space");
+assert(!section.includes("sticky"),"Panel toggle must not float over next section");
+assert(!section.includes("overflow-y-auto"),"Inner panel must not scroll separately");
+assert(section.includes('className="mt-4 flex flex-wrap justify-end gap-2"'),"Message toggle attached to message card");
+assert(modal.includes('data-notification-panel-scroll="1"'),"Single owner scroll exists");
+const modalBlock=modal.slice(modal.indexOf('data-chat-notification-panel="1"'),modal.indexOf('{historyOpen &&'));
+assert.equal((modalBlock.match(/overflow-y-auto/g)||[]).length,1,"Exactly one overflow scroll inside modal");
+assert(modalBlock.indexOf('<ChatNotificationSetting variant="panel" />') < modalBlock.indexOf('<AnonArrivalPushSettings compact />'),"Correct visual order");
+assert(modalBlock.indexOf('<AnonArrivalPushSettings compact />') < modalBlock.indexOf('<StoryNotificationSettings mode="global" />'),"Stories after connections");
+console.log("PASS: no flex height filling, no nested scroll, no sticky overlap, proper notification section order.");

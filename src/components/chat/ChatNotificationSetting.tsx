@@ -349,61 +349,61 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
 
   if (variant === "panel") {
     return (
-      <div data-chat-notification-setting="panel" className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-          <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-4">
-            <p
-              data-chat-notification-app-status={enabled ? "on" : "off"}
-              className="text-sm font-black text-white"
-            >
-              {t("chat_notifications_label")}: {appLabel}
-            </p>
-            <p
-              data-chat-notification-os-status={osPermission}
-              className="mt-2 text-xs font-semibold text-white/55"
-            >
-              {osLabel}
-            </p>
-            <p
-              data-chat-notification-fcm-status={regState?.status || "unknown"}
-              className="mt-2 text-xs font-semibold text-white/40"
-            >
-              {tokenActiveUi
-                ? t("chat_notifications_token_on")
-                : t("chat_notifications_token_off")}
-            </p>
+      <section
+        data-chat-notification-setting="panel"
+        className="w-full min-w-0 space-y-3"
+      >
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <p
+            data-chat-notification-app-status={enabled ? "on" : "off"}
+            className="text-sm font-black leading-5 text-white"
+          >
+            {t("chat_notifications_label")}: {appLabel}
+          </p>
+          <p
+            data-chat-notification-os-status={osPermission}
+            className="mt-2 text-xs font-semibold leading-5 text-white/55"
+          >
+            {osLabel}
+          </p>
+          <p
+            data-chat-notification-fcm-status={regState?.status || "unknown"}
+            className="mt-1 text-xs font-semibold leading-5 text-white/40"
+          >
+            {tokenActiveUi
+              ? t("chat_notifications_token_on")
+              : t("chat_notifications_token_off")}
+          </p>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            {toggleButton}
           </div>
-          {error ? (
-            <p data-chat-notification-error="1" className="text-sm font-semibold text-red-300">
-              {error}
-            </p>
-          ) : null}
-          {webPushTools}
-          {osPermission === "denied" && isCapacitorNative() ? (
-            <button
-              type="button"
-              data-chat-notification-open-settings="1"
-              onPointerUp={(event) => {
-                event.preventDefault();
-                void openNativeNotificationSettings();
-              }}
-              onClick={(event) => {
-                event.preventDefault();
-                void openNativeNotificationSettings();
-              }}
-              className="w-full rounded-full border border-white/15 bg-white/5 px-4 py-3 text-sm font-black text-white"
-            >
-              {t("chat_notifications_open_settings")}
-            </button>
-          ) : null}
         </div>
-        <div className="pointer-events-auto sticky bottom-0 mt-4 flex justify-end bg-zinc-950 pt-2">
-          {toggleButton}
-        </div>
-      </div>
+        {error ? (
+          <p data-chat-notification-error="1" className="text-sm font-semibold text-red-300">
+            {error}
+          </p>
+        ) : null}
+        {webPushTools}
+        {osPermission === "denied" && isCapacitorNative() ? (
+          <button
+            type="button"
+            data-chat-notification-open-settings="1"
+            onPointerUp={(event) => {
+              event.preventDefault();
+              void openNativeNotificationSettings();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              void openNativeNotificationSettings();
+            }}
+            className="w-full rounded-full border border-white/15 bg-white/5 px-4 py-3 text-sm font-black text-white"
+          >
+            {t("chat_notifications_open_settings")}
+          </button>
+        ) : null}
+      </section>
     );
   }
-
   if (variant === "classic") {
     return (
       <div className="border-b border-white/18 pb-8 mb-8">

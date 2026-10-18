@@ -345,7 +345,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
               data-chat-notification-panel="1"
               className="pointer-events-auto fixed inset-0 z-[1000002] flex items-center justify-center bg-black/85 px-3 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:p-4"
             >
-              <section className="pointer-events-auto flex max-h-[min(78dvh,680px)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl">
+              <section className="pointer-events-auto flex max-h-[min(78dvh,680px)] w-full max-w-xl min-w-0 flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 shadow-2xl">
                 <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
                   <div>
                     <p className="text-lg font-black text-white">{t("chat_notifications_label")}</p>
@@ -363,7 +363,7 @@ export default function ProfileClaimHistoryMenu({ className = "" }: Props) {
                   </button>
                 </header>
 
-                <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-5">
+                <div data-notification-panel-scroll="1" className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 pb-6 touch-pan-y sm:p-5">
                   <ChatNotificationSetting variant="panel" />
                   <AnonArrivalPushSettings compact />
                   <StoryNotificationSettings mode="global" />
