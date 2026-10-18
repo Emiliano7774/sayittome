@@ -1,5 +1,6 @@
 "use client";
 import { auth } from "@/lib/firebase";
+import { isCapacitorNative } from "@/lib/app/nativeShell";
 import { areChatNotificationsEnabled } from "@/lib/chat/chatNotificationPrefs";
 
 const PREFIX = "sayittome:anon-arrival-push-v1:";
@@ -10,9 +11,14 @@ export function resolveArrivalPushPreference(input: {
   anonymous: boolean;
   stored: string | null;
   chatEnabled: boolean;
+  web?: boolean;
 }) {
   if (input.anonymous) return true;
-  return input.stored === "1" || (input.stored === null && input.chatEnabled);
+  // Registered profiles default ON independently of chat notifications.
+  // An explicit user opt-out is the only reason to turn arrivals off.
+  if (input.stored !== null) return input.stored === "1";
+  // Only WEB registered profiles change default; keep native choice unchanged.
+  return input.web === true || input.chatEnabled;
 }
 
 export function getAnonArrivalPushPreference(uid: string) {
@@ -25,10 +31,13 @@ export function getAnonArrivalPushPreference(uid: string) {
       anonymous,
       stored,
       chatEnabled: areChatNotificationsEnabled(),
+      web: !isCapacitorNative(),
     });
   } catch {
     // Restricted/private browser storage must not silence anonymous arrivals.
-    return anonymous || areChatNotificationsEnabled();
+    // Storage denial is not an arrival opt-out. Respect OS permission
+    // separately when attempting to display a system notification.
+    return anonymous || !isCapacitorNative() || areChatNotificationsEnabled();
   }
 }
 

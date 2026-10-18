@@ -466,9 +466,11 @@ export async function initChatNotifications() {
 
 export async function requestChatNotificationPermission(options?: {
   force?: boolean;
+  /** Explicit arrival-alert consent, independent of message notification toggle. */
+  forArrival?: boolean;
 }) {
   if (typeof window === "undefined") return false;
-  if (!areChatNotificationsEnabled()) return false;
+  if (!areChatNotificationsEnabled() && !options?.forArrival) return false;
 
   // Web: request permission synchronously inside the user's click/tap.
   // Awaiting SW/channel bootstrap first drops transient user activation on

@@ -17,6 +17,7 @@ type Arrival = { id: string; enteredAt: string };
 type Notice = { text: string; kind: "offline"|"error"|"waiting" };
 const MAX_ENTRY_AGE_MS = 30_000;
 const ANON_AUTO_SUBSCRIBE_KEY = "sayittome:anonymous-arrival-auto-subscribe-v1:";
+const PROFILE_AUTO_SUBSCRIBE_KEY = "sayittome:profile-arrival-auto-subscribe-v1:";
 const attemptedAnonymousSubscriptions = new Set<string>();
 
 /** One Firestore document listener, shared by every client; no 20s API polling. */
@@ -31,37 +32,45 @@ export default function AnonArrivalToast() {
   const openInFlight=useRef(false);
 
   useEffect(()=>{
-    // Anonymous arrivals are on by default. If this browser already granted
-    // notification permission, join the FCM topic once per anonymous session
-    // without presenting an arrival-specific opt-in switch.
-    let anonymousUid="";
+    // One auto topic reconciliation serves anonymous and registered WEB users.
+    // It never requests OS permission: only the existing dialog/settings can.
+    let currentUid="";
+    let isAnon=false;
     const subscribeIfPermitted=()=>{
-      if (!anonymousUid || typeof Notification === "undefined" ||
+      if (!currentUid || typeof Notification === "undefined" ||
           Notification.permission !== "granted") return;
-      if (attemptedAnonymousSubscriptions.has(anonymousUid)) return;
-      const key=ANON_AUTO_SUBSCRIBE_KEY+anonymousUid;
+      if (!isAnon && !getAnonArrivalPushPreference(currentUid)) return;
+      const identity=(isAnon ? "anon:" : "profile:")+currentUid;
+      if (attemptedAnonymousSubscriptions.has(identity)) return;
+      const key=(isAnon ? ANON_AUTO_SUBSCRIBE_KEY : PROFILE_AUTO_SUBSCRIBE_KEY)+currentUid;
       const now=Date.now();
       try {
         if (Number(window.sessionStorage.getItem(key)||0)>now) return;
-        window.sessionStorage.setItem(key,String(now+5*60_000));
-      } catch { /* still dedupe in memory */ }
-      attemptedAnonymousSubscriptions.add(anonymousUid);
+        window.sessionStorage.setItem(key,String(now+30_000));
+      } catch { /* private browsing may refuse sessionStorage */ }
+      attemptedAnonymousSubscriptions.add(identity);
       void import("@/lib/chat/fcmPush")
         .then(({setAnonArrivalPushEnabled})=>setAnonArrivalPushEnabled(true))
-        .then((ok)=>{
-          if (!ok) return;
-          try {window.sessionStorage.setItem(key,String(Date.now()+12*60*60_000));}
-          catch { /* private browsers may not persist storage */ }
-        }).catch(()=>undefined);
+        .then(ok=>{
+          try {
+            window.sessionStorage.setItem(key,String(Date.now()+(ok ? 60*60_000 : 30_000)));
+          } catch { /* retry next focus with no storage */ }
+        }).catch(()=>undefined)
+        .finally(()=>attemptedAnonymousSubscriptions.delete(identity));
     };
     const stopAuth=onAuthStateChanged(auth,user=>{
-      anonymousUid=user?.isAnonymous ? user.uid : "";
+      currentUid=user?.uid||"";
+      isAnon=Boolean(user?.isAnonymous);
       subscribeIfPermitted();
     });
     window.addEventListener("focus",subscribeIfPermitted);
+    window.addEventListener("sayittome:anon-arrival-prefs",subscribeIfPermitted);
+    window.addEventListener("sayittome:chat-notification-prefs",subscribeIfPermitted);
     return ()=>{
       stopAuth();
       window.removeEventListener("focus",subscribeIfPermitted);
+      window.removeEventListener("sayittome:anon-arrival-prefs",subscribeIfPermitted);
+      window.removeEventListener("sayittome:chat-notification-prefs",subscribeIfPermitted);
     };
   },[]);
 

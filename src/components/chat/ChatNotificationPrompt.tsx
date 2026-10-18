@@ -79,7 +79,11 @@ export default function ChatNotificationPrompt() {
   );
   const notificationApiReady =
     isCapacitorNative() || (typeof Notification !== "undefined");
-  const open = chatNotificationPromptOpen({
+  // Settings already has notification controls. Do not overlay the global
+  // consent dialog over those switches and instructions in Chrome/Brave.
+  const settingsScreen = !isCapacitorNative() &&
+    (pathname === "/settings" || pathname.startsWith("/settings/") || pathname.startsWith("/admin"));
+  const open = !settingsScreen && chatNotificationPromptOpen({
     loading,
     hasUser: Boolean(firebaseUser),
     profileReady,
@@ -125,6 +129,7 @@ export default function ChatNotificationPrompt() {
     }
 
     completeChatNotificationPrompt(true);
+    if (!isCapacitorNative()) window.dispatchEvent(new Event("sayittome:anon-arrival-prefs"));
   }
 
   if (!open) return null;

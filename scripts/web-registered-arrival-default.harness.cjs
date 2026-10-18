@@ -1,0 +1,37 @@
+const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm"),ts=require("typescript");
+function transpile(p,extras={}){const exports={},events=[],store=new Map();const localStorage={getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v))};const win={localStorage,dispatchEvent:e=>events.push(e.type),addEventListener:()=>{},removeEventListener:()=>{}};const req=()=>({auth:{currentUser:{uid:"profile-001",isAnonymous:false}}});const context={exports,window:win,localStorage,Notification:{permission:"granted"},CustomEvent:class{constructor(name){this.type=name}},require:(p)=>p.includes("nativeShell")?{isCapacitorNative:()=>false}:p.includes("chatNotificationPrefs")?{areChatNotificationsEnabled:()=>false}:req(),console};vm.runInNewContext(ts.transpileModule(fs.readFileSync(p,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);return {exports,context,events,store}}
+const arrivals=transpile("src/lib/chat/anonArrivalPrefs.ts").exports.resolveArrivalPushPreference;
+for(const chatEnabled of [true,false]) {
+ assert.equal(arrivals({anonymous:false,stored:null,chatEnabled,web:true}),true,"profile web default on even when chat off");
+ assert.equal(arrivals({anonymous:false,stored:"0",chatEnabled,web:true}),false,"web explicit off honored");
+ assert.equal(arrivals({anonymous:false,stored:"1",chatEnabled,web:true}),true);
+ assert.equal(arrivals({anonymous:true,stored:"0",chatEnabled,web:true}),true,"anon permanently on");
+ assert.equal(arrivals({anonymous:false,stored:null,chatEnabled,web:false}),chatEnabled,"native unchanged");
+}
+const prefs=transpile("src/lib/chat/chatNotificationPrefs.ts");
+assert.equal(prefs.exports.areChatNotificationsEnabled(),true,"legacy OS grant fallback until choice");
+prefs.exports.completeChatNotificationPrompt(false);
+assert.equal(prefs.exports.areChatNotificationsEnabled(),false,"explicit no beats granted OS");
+prefs.exports.syncChatNotificationPrefsFromBrowserPermission();
+assert.equal(prefs.exports.areChatNotificationsEnabled(),false,"background sync cannot override no");
+prefs.exports.setChatNotificationsEnabled(true);
+assert.equal(prefs.exports.areChatNotificationsEnabled(),true);
+prefs.exports.setChatNotificationsEnabled(false);
+assert.equal(prefs.exports.areChatNotificationsEnabled(),false,"chat explicitly off even if arrival ON");
+const ui=fs.readFileSync("src/components/anonMatch/AnonArrivalPushSettings.tsx","utf8");
+const auto=fs.readFileSync("src/components/anonMatch/AnonArrivalToast.tsx","utf8");
+const settings=fs.readFileSync("src/components/chat/ChatNotificationSetting.tsx","utf8");
+const modal=fs.readFileSync("src/components/chat/ChatNotificationPrompt.tsx","utf8");
+const request=fs.readFileSync("src/lib/chat/chatNotifications.ts","utf8");
+for(const str of ["setAnonArrivalPushPreference(uid, next)","forArrival: true","Notification.permission","setAnonArrivalPushEnabled(true)","data-arrival-notification-toggle"])assert(ui.includes(str),str);
+assert(!ui.includes("setChatNotificationsEnabled"),"arrivals never implicitly turn on chat notifs");
+assert(ui.indexOf("setAnonArrivalPushPreference(uid, next)")<ui.indexOf("if (isCapacitorNative()) {",ui.indexOf("async function toggle()")),"store before OS");
+assert(auto.includes('PROFILE_AUTO_SUBSCRIBE_KEY'),"auto subscribe registered web after permission");
+assert(auto.includes('if (!isAnon && !getAnonArrivalPushPreference(currentUid)) return;'),"opt-out respected");
+assert(auto.includes('Notification.permission !== "granted"'),"no unauthorized OS prompt");
+assert(auto.includes('setAnonArrivalPushEnabled(true)'),"auto join FCM topic");
+assert(modal.includes('const settingsScreen = !isCapacitorNative()'),"global overlay hidden above settings");
+assert(modal.includes('window.dispatchEvent(new Event("sayittome:anon-arrival-prefs"))'),"consent immediately synchronizes topic");
+assert(settings.includes('window.dispatchEvent(new Event("sayittome:anon-arrival-prefs"))'),"settings permission immediately synchronizes topic");
+assert(request.includes("!areChatNotificationsEnabled() && !options?.forArrival"),"permission check independent for arrivals");
+console.log("PASS: 10 arrival pref scenarios, consent ON/OFF despite OS grant, saved-before-permission, no duplicate settings overlay, automatic registered web topic.");

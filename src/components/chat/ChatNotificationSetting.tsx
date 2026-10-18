@@ -202,6 +202,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
         return;
       }
       setTokenForUid({ uid, active: true });
+      window.dispatchEvent(new Event("sayittome:anon-arrival-prefs"));
     } catch {
       setChatNotificationsEnabled(false);
       setTokenForUid({ uid, active: false });
@@ -234,6 +235,7 @@ export default function ChatNotificationSetting({ variant = "modern" }: Props) {
       }
       setTokenForUid({ uid, active: true });
       completeChatNotificationPrompt(true);
+      window.dispatchEvent(new Event("sayittome:anon-arrival-prefs"));
     } catch (error) {
       setError(`No se pudo activar Web Push: ${String((error as Error)?.message || "Error")}`);
     } finally {
