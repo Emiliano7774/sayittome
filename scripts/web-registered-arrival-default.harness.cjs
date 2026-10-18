@@ -34,4 +34,9 @@ assert(modal.includes('const settingsScreen = !isCapacitorNative()'),"global ove
 assert(modal.includes('window.dispatchEvent(new Event("sayittome:anon-arrival-prefs"))'),"consent immediately synchronizes topic");
 assert(settings.includes('window.dispatchEvent(new Event("sayittome:anon-arrival-prefs"))'),"settings permission immediately synchronizes topic");
 assert(request.includes("!areChatNotificationsEnabled() && !options?.forArrival"),"permission check independent for arrivals");
-console.log("PASS: 10 arrival pref scenarios, consent ON/OFF despite OS grant, saved-before-permission, no duplicate settings overlay, automatic registered web topic.");
+const fcm=fs.readFileSync("src/lib/chat/fcmPush.ts","utf8");
+assert(fcm.includes("const repaired = isCapacitorNative()"),"stale topic token triggers one repair");
+assert(fcm.includes("await enableWebChatPush(current)"),"web token re-registration supported");
+assert(fcm.includes("const response = await fn({ token: fresh.token, enabled: true })"),"repaired token re-subscribes");
+assert(ui.includes("La opción de conexiones quedó activada"),"permission denial does not claim OS delivery");
+console.log("PASS: 10 arrival pref scenarios, consent ON/OFF despite OS grant, no overlay, topic auto-subscription and token self-heal.");
