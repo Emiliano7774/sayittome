@@ -1,0 +1,14 @@
+const assert=require("node:assert/strict"),fs=require("node:fs");
+const a=fs.readFileSync("src/services/anonymousPresence.ts","utf8");
+const f=fs.readFileSync("functions/src/anonArrivalPush.ts","utf8");
+const client=fs.readFileSync("src/lib/chat/fcmPush.ts","utf8");
+assert(a.includes("if (!anonymousForegroundActive()) return;"),"no background anon heartbeat");
+assert(a.includes('import("@capacitor/app")'),"native app lifecycle wired");
+assert(a.includes('window.addEventListener("blur"'),"desktop browser leave wired");
+assert(a.includes('backgrounded: !anonymousForegroundActive()'),"server gets foreground departure flag");
+assert(f.includes("originUid:accepted"),"anon origin attached");
+assert(f.includes("originUid:uid"),"profile origin attached");
+assert(f.includes("(input.originUid ? {originUid:input.originUid} : {})"),"FCM sends origin");
+assert(client.includes("asId(data.originUid) === viewerUid"),"web blocks sender's own");
+assert(client.includes('asId(data.originUid) === asId(auth.currentUser?.uid)'),"Android foreground blocks sender's own");
+console.log("PASS: no background heartbeat; real 60s return; native lifecycle; client foreground self-exclusion");

@@ -45,7 +45,7 @@ function noticeTag(principal: string) {
   // previous banner rather than stacking one for every transport retry.
   return "stm-arrival-" + createHash("sha256").update(principal).digest("hex").slice(0,16);
 }
-async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; anonId?: string; username?: string; source?: "manual_admin"}) {
+async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; anonId?: string; username?: string; source?: "manual_admin"; originUid?: string}) {
   return await messaging().send({
     topic: TOPIC,
     notification: {title: input.title, body: input.body},
@@ -55,6 +55,7 @@ async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title
       ...(input.anonId ? {anonId:input.anonId} : {}),
       ...(input.username ? {username:input.username} : {}),
       ...(input.source ? {source:input.source} : {}),
+      ...(input.originUid ? {originUid:input.originUid} : {}),
     },
     android: {
       // Prompt delivery while Android is idle; stale arrivals expire after two minutes.
@@ -131,7 +132,7 @@ export const onAnonArrivalAnnounced = onDocumentWritten({
   const label = stableShortId(anonId);
   try {
     await broadcast({
-      type:"anon_arrival", anonId,
+      type:"anon_arrival", anonId, originUid:accepted,
       title: "🌙 Nueva conexión en SayItToMe",
       body: "Anónimo-" + label + " se acaba de conectar. Tocá para hablarle.",
       href: "/?anonArrival=" + encodeURIComponent(anonId),
@@ -190,7 +191,7 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
   if (!outcome.announced) return {ok:true,...outcome};
   try {
     await broadcast({
-      type:"profile_arrival",username:outcome.username,
+      type:"profile_arrival",username:outcome.username, originUid:uid,
       title:"🌙 Nueva conexión en SayItToMe",
       body:"@"+outcome.username+" se acaba de conectar. Tocá para hablarle.",
       href:"/u/"+encodeURIComponent(outcome.username),

@@ -75,6 +75,7 @@ async function attachWebForegroundMessagingListener() {
   webForegroundMessagingUnsubscribe = onMessage(getMessaging(app), (payload) => {
     const data = payload.data || {};
     const viewerUid = asId(auth.currentUser?.uid);
+    if (viewerUid && asId(data.originUid) === viewerUid) return;
     // Profile-arrival FCM events must not enter the chat-only message filter.
     // Anonymous foreground entries already have a separate Firestore toast.
     if (data.type === "profile_arrival" || (data.type === "anon_arrival" && data.source === "manual_admin")) {
@@ -662,6 +663,7 @@ function arrivalLocalNotificationId(data: Record<string, unknown>) {
   return (hash >>> 0) % 2000000000 || 1;
 }
 async function showNativeForegroundArrival(data: Record<string, unknown>, fallbackTitle = "", fallbackBody = "") {
+  if (asId(data.originUid) && asId(data.originUid) === asId(auth.currentUser?.uid)) return;
   if (!getAnonArrivalPushPreference(asId(auth.currentUser?.uid))) return;
   if (!arrivalActionHref(data)) return;
   // Background notification payloads are rendered by Android itself.

@@ -19,6 +19,7 @@ import { resolveAnonMatchSessionId } from "@/lib/anonMatch/fetchAnonMatch";
 import { readVisibilityPayload } from "@/lib/shuffle/audiencePayload";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { auth } from "@/lib/firebase";
+import { isNativeAppShell } from "@/lib/app/nativeShell";
 
 let started = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -31,6 +32,12 @@ let cachedPresenceAlias = "";
 let currentUser: User | null = null;
 /** Last usable auth headers for the browser's best-effort unload request. */
 let leaveHeaders: Record<string, string> | null = null;
+let nativeAppActive = true;
+let windowFocused = true;
+
+function anonymousForegroundActive() {
+  return !document.hidden && (isNativeAppShell() ? nativeAppActive : windowFocused);
+}
 
 const MIN_WRITE_GAP_MS = 60_000;
 const PRESENCE_FETCH_TIMEOUT_MS = 12_000;
@@ -75,7 +82,7 @@ async function postPresenceHeartbeat(anonId: string, headers: Record<string, str
     body: JSON.stringify({
       anonId,
       chatSessionId: getAnonSessionId(),
-      backgrounded: document.hidden,
+      backgrounded: !anonymousForegroundActive(),
       ...readVisibilityPayload(),
       ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
     }),
@@ -213,6 +220,9 @@ function stopHeartbeat() {
 function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
+    // While the visitor is away, leave the LAST foreground/exit heartbeat
+    // intact so returning after 60 seconds can be recognized as reentry.
+    if (!anonymousForegroundActive()) return;
     void writeAnonymousPresence(false);
   }, ANON_PRESENCE_HEARTBEAT_MS);
 }
@@ -268,12 +278,27 @@ export function startAnonymousPresenceSystem() {
   });
 
   window.addEventListener("focus", () => {
+    windowFocused = true;
+    void writeAnonymousPresence(true);
+  });
+  window.addEventListener("blur", () => {
+    windowFocused = false;
     void writeAnonymousPresence(true);
   });
 
   window.addEventListener("pageshow", () => {
     void writeAnonymousPresence(true);
   });
+
+  // Native app backgrounding may not fire WebView visibilitychange.
+  if (isNativeAppShell()) {
+    void import("@capacitor/app").then(async ({ App }) => {
+      await App.addListener("appStateChange", ({isActive}) => {
+        nativeAppActive = isActive;
+        void writeAnonymousPresence(true);
+      });
+    }).catch(() => undefined);
+  }
 
   // beforeunload covers ordinary desktop tab/window close without waiting
   // for background timers. Do NOT use pagehide/visibilitychange as a leave:
