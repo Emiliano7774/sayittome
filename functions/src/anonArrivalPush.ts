@@ -4,6 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { db, messaging } from "./adminApp";
 import { mayAnnounceRegisteredReturn } from "./profileArrivalPolicy";
+import { activeAdminPresencePool, chooseAdminPresenceTarget } from "./adminPresencePool";
 
 // Retain the existing topic so devices which opted in before this release keep working.
 const OWNER_ADMIN_EMAIL = "emilianomaturano@gmail.com";
@@ -202,57 +203,81 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
   }
 });
 
-/** Verified-owner-only activity prompt. Never fabricates an anonymous account:
- * it links to a live, globally visible anonymous visitor who can receive chats.
- * Reuses the existing opt-in topic and does not alter the public arrival stream. */
+/** Owner-only prompt drawn from currently active public profiles and anonymous
+ * visitors. Does not claim that a prior user has just entered the app.
+ * Kept under its original callable name for backwards-compatible clients. */
 export const adminSendAvailableAnonAlert = onCall({region:"us-central1"}, async (request) => {
   if (!isVerifiedOwnerAdmin(request.auth)) {
     throw new HttpsError("permission-denied", "Verified administrator required");
   }
-  if (request.data?.confirm !== true) {
+  const preview = request.data?.preview === true;
+  if (!preview && request.data?.confirm !== true) {
     throw new HttpsError("invalid-argument", "Explicit confirmation required");
   }
   const now = Date.now();
-  const candidates = await db().collection("anonimos_activos")
-    .where("sessionClosed", "==", false).limit(60).get();
-  const eligible = candidates.docs
-    .filter((row) => {
-      const value = row.data();
-      const lastSeen = Date.parse(String(value.lastSeenAt || ""));
-      const dndUntil = Date.parse(String(value.doNotDisturbUntil || ""));
-      return ALIAS.test(row.id) && value.disponibleParaChat === true &&
-        value.backgrounded !== true &&
-        (!Number.isFinite(dndUntil) || dndUntil < now) &&
-        (!Array.isArray(value.visibilidadPaises) || value.visibilidadPaises.length === 0) &&
-        (!Array.isArray(value.visibilidadProvincias) || value.visibilidadProvincias.length === 0) &&
-        Number.isFinite(lastSeen) && lastSeen <= now + 30_000 && now - lastSeen < 90_000;
-    })
-    .sort((a,b) => Date.parse(String(b.data().lastSeenAt)) - Date.parse(String(a.data().lastSeenAt)));
-  if (!eligible.length) return {ok:false,reason:"no_available_anonymous"};
-  const anonId = eligible[0].id;
+  // Sorted by freshness (not document ID): a stale anonymous card must not
+  // hide currently active users from the first N results.
+  const [anonymousSnap, profileSnap] = await Promise.all([
+    db().collection("anonimos_activos").orderBy("lastSeenAt","desc").limit(120).get(),
+    db().collection("usuarios").orderBy("lastForegroundAt","desc").limit(120).get(),
+  ]);
+  const pool = activeAdminPresencePool(
+    anonymousSnap.docs.map(row => ({id:row.id,data:row.data()})),
+    profileSnap.docs.map(row => ({id:row.id,data:row.data()})),
+    now,
+  );
+  const counts = {anonymousCount:pool.anonymous.length,profileCount:pool.profiles.length};
+  if (preview) return {ok:true,preview:true,...counts};
+  if (!pool.anonymous.length && !pool.profiles.length) {
+    return {ok:false,reason:"no_public_online_users",...counts};
+  }
+
   const gate = db().collection("arrivalPushGates").doc("admin_available_anon_broadcast");
-  const claimed = await db().runTransaction(async tx => {
+  const selection = await db().runTransaction(async tx => {
     const prior = await tx.get(gate);
-    const previousMs = Number(prior.data()?.lastMs || 0);
-    if (previousMs > 0 && now - previousMs < 60 * 60_000) return false;
-    tx.set(gate,{lastMs:now,anonId,adminUid:request.auth!.uid},{merge:true});
-    return true;
+    const data = prior.data() || {};
+    const lastMs = Number(data.lastMs || 0);
+    if (lastMs > 0 && now - lastMs < 60 * 60_000) {
+      return {target:null,reason:"cooldown_60_minutes"};
+    }
+    const type = data.lastTargetType === "anonymous" || data.lastTargetType === "profile"
+      ? data.lastTargetType as "anonymous" | "profile" : "";
+    const target = chooseAdminPresenceTarget(pool,type,String(data.lastTargetId || ""));
+    if (!target) return {target:null,reason:"no_public_online_users"};
+    tx.set(gate,{
+      lastMs:now,lastTargetId:target.id,lastTargetType:target.type,
+      adminUid:request.auth!.uid,
+    },{merge:true});
+    return {target,reason:""};
   });
-  if (!claimed) return {ok:false,reason:"cooldown_60_minutes"};
-  const label = stableShortId(anonId);
+  if (!selection.target) return {ok:false,reason:selection.reason,...counts};
+
+  const selected = selection.target;
+  const label = selected.type === "anonymous"
+    ? "Anónimo-" + stableShortId(selected.id) : "@" + selected.username;
+  const href = selected.type === "anonymous"
+    ? "/?anonArrival=" + encodeURIComponent(selected.id)
+    : "/u/" + encodeURIComponent(selected.username);
   try {
     await broadcast({
-      type:"anon_arrival",anonId,
-      title:"Nueva actividad en SayItToMe",
-      body:"Anónimo-" + label + " está disponible para conversar. Tocá para hablarle.",
-      href:"/?anonArrival=" + encodeURIComponent(anonId),
-      tag:noticeTag("admin-active-anon:" + anonId + ":" + now),
+      type:selected.type === "anonymous" ? "anon_arrival" : "profile_arrival",
+      ...(selected.type === "anonymous" ? {anonId:selected.id} : {username:selected.username}),
+      title:"Actividad en SayItToMe",
+      body:label + " está en línea. Tocá para conversar.",
+      href,tag:noticeTag("admin-active:" + selected.type + ":" + selected.id + ":" + now),
       source:"manual_admin",
     });
-    logger.info("admin available anonymous alert sent", {adminUid:request.auth!.uid});
-    return {ok:true,deliveredToTopic:true,anonLabel:label};
+    logger.info("admin active user alert published",{adminUid:request.auth!.uid,targetType:selected.type});
+    return {ok:true,deliveredToTopic:true,targetType:selected.type,targetLabel:label,...counts};
   } catch(error) {
-    logger.error("admin available anonymous alert failed",{error:String(error)});
-    return {ok:false,reason:"broadcast_failed"};
+    logger.error("admin active user alert failed",{error:String(error)});
+    // Failed sends must not silently consume the full one-hour allowance.
+    await db().runTransaction(async tx => {
+      const current = await tx.get(gate);
+      if (Number(current.data()?.lastMs || 0) === now) {
+        tx.set(gate,{lastMs:0},{merge:true});
+      }
+    }).catch(err => logger.warn("manual arrival gate recovery failed",{error:String(err)}));
+    return {ok:false,reason:"broadcast_failed",...counts};
   }
 });
