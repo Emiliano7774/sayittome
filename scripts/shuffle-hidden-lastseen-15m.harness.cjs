@@ -16,6 +16,8 @@ const norm=fs.readFileSync("src/lib/shuffle/normalize.ts","utf8");
 const refresh=fs.readFileSync("src/lib/shuffle/refreshPresence.ts","utf8");
 const server=fs.readFileSync("src/lib/shuffle/serverFilters.ts","utf8");
 assert(api.includes("onlineUntilAt:expiry"),"private green-dot expiry issued");
+assert(api.includes("Math.min(90_000,remaining)"),"privacy-friendly short online lease");
+assert(!api.includes("new Date(rawMs + ONLINE_WINDOW_MS)"),"no exact last-seen timestamp leak via expiry");
 assert(api.includes("showOnline,\n    onlineUntilAt:expiry"),"green dot remains on");
 assert(!api.includes("&& isLastSeenPublic(profile)"),"recent hidden profiles included");
 assert(!recent.includes("|| old.mostrarUltimaVez === false"),"hidden cache overlay works");
