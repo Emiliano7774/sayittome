@@ -15,6 +15,8 @@ export type ShuffleProfile = {
   coverVideo?: string;
   lastActive?: string;
   presenceAt?: string;
+  /** For last-seen-hidden profiles: presence expiry, not a publicly shown timestamp. */
+  onlineUntilAt?: string;
   online?: boolean;
   adminBlurProfilePhoto?: boolean;
   adminBlurFotosPerfil?: boolean;

@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { db, messaging } from "./adminApp";
 import { mayAnnounceRegisteredReturn } from "./profileArrivalPolicy";
-import { activeAdminPresencePool, chooseAdminPresenceTarget } from "./adminPresencePool";
+import { activeAdminPresencePool, chooseAdminPresenceTarget, excludeAdministratorRows } from "./adminPresencePool";
 
 // Retain the existing topic so devices which opted in before this release keep working.
 const OWNER_ADMIN_EMAIL = "emilianomaturano@gmail.com";
@@ -46,7 +46,7 @@ function noticeTag(principal: string) {
   return "stm-arrival-" + createHash("sha256").update(principal).digest("hex").slice(0,16);
 }
 async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; anonId?: string; username?: string; source?: "manual_admin"}) {
-  await messaging().send({
+  return await messaging().send({
     topic: TOPIC,
     notification: {title: input.title, body: input.body},
     data: {
@@ -150,6 +150,9 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
   if (!uid || request.auth?.token?.firebase?.sign_in_provider === "anonymous") {
     throw new HttpsError("unauthenticated","Registered profile required");
   }
+  if (isVerifiedOwnerAdmin(request.auth)) {
+    return {ok:true,announced:false,reason:"administrator_excluded"};
+  }
   const now = Date.now();
   const profileRef = db().collection("usuarios").doc(uid);
   const gate = db().collection("arrivalPushGates").doc("profile_"+uid);
@@ -222,12 +225,17 @@ export const adminSendAvailableAnonAlert = onCall({region:"us-central1"}, async 
     db().collection("usuarios").orderBy("lastActiveAt","desc").limit(160).get(),
     db().collection("usuarios").orderBy("lastSeenAt","desc").limit(160).get(),
   ]);
-  const pool = activeAdminPresencePool(
+  const ownerUid = request.auth!.uid;
+  const anonymousRows = excludeAdministratorRows(
     anonymousSnap.docs.map(row => ({id:row.id,data:row.data()})),
+    ownerUid,OWNER_ADMIN_EMAIL,
+  );
+  const registeredRows = excludeAdministratorRows(
     Array.from(new Map([...recentActiveSnap.docs,...recentSeenSnap.docs]
       .map(row => [row.id,{id:row.id,data:row.data()}] as const)).values()),
-    now,
+    ownerUid,OWNER_ADMIN_EMAIL,
   );
+  const pool = activeAdminPresencePool(anonymousRows,registeredRows,now);
   const counts = {anonymousCount:pool.anonymous.length,profileCount:pool.profiles.length};
   if (preview) return {ok:true,preview:true,...counts};
   if (!pool.anonymous.length && !pool.profiles.length) {
@@ -239,8 +247,8 @@ export const adminSendAvailableAnonAlert = onCall({region:"us-central1"}, async 
     const prior = await tx.get(gate);
     const data = prior.data() || {};
     const lastMs = Number(data.lastMs || 0);
-    if (lastMs > 0 && now - lastMs < 60 * 60_000) {
-      return {target:null,reason:"cooldown_60_minutes"};
+    if (lastMs > 0 && now - lastMs < 15_000) {
+      return {target:null,reason:"cooldown_15_seconds"};
     }
     const type = data.lastTargetType === "anonymous" || data.lastTargetType === "profile"
       ? data.lastTargetType as "anonymous" | "profile" : "";
@@ -261,7 +269,7 @@ export const adminSendAvailableAnonAlert = onCall({region:"us-central1"}, async 
     ? "/?anonArrival=" + encodeURIComponent(selected.id)
     : "/u/" + encodeURIComponent(selected.username);
   try {
-    await broadcast({
+    const fcmMessageId = await broadcast({
       type:selected.type === "anonymous" ? "anon_arrival" : "profile_arrival",
       ...(selected.type === "anonymous" ? {anonId:selected.id} : {username:selected.username}),
       title:"Actividad en SayItToMe",
@@ -271,8 +279,8 @@ export const adminSendAvailableAnonAlert = onCall({region:"us-central1"}, async 
       href,tag:noticeTag("admin-active:" + selected.type + ":" + selected.id + ":" + now),
       source:"manual_admin",
     });
-    logger.info("admin active user alert published",{adminUid:request.auth!.uid,targetType:selected.type});
-    return {ok:true,deliveredToTopic:true,targetType:selected.type,targetLabel:label,...counts};
+    logger.info("admin active user alert published",{targetType:selected.type,topicAccepted:true});
+    return {ok:true,publishedToFcm:true,fcmMessageId,targetType:selected.type,targetLabel:label,...counts};
   } catch(error) {
     logger.error("admin active user alert failed",{error:String(error)});
     // Failed sends must not silently consume the full one-hour allowance.

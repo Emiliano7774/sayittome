@@ -270,6 +270,7 @@ export function profileMatchesShuffleFilters(
       etiquetas: profile.etiquetas,
       presenceAt: profile.presenceAt,
       lastActive: profile.lastActive,
+      onlineUntilAt: profile.onlineUntilAt,
       online: profile.online,
       showOnline: profile.showOnline,
       mostrarUltimaVez: profile.mostrarUltimaVez,

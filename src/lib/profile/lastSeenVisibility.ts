@@ -59,16 +59,17 @@ export function stripPublicPresence<T extends {
   };
 }
 
-/** Online for shuffle filters, badges, and counts — false when last seen is hidden. */
+/** Online status is independent of whether the last-seen time is shown. */
 export function isPublicShuffleOnline(
   profile?: (LastSeenPrivacy & {
     showOnline?: boolean;
     presenceAt?: string | null;
     lastActive?: string | null;
+    onlineUntilAt?: string | null;
   }) | null,
-  isOnline?: (p: { presenceAt?: string | null; lastActive?: string | null }) => boolean,
+  isOnline?: (p: { presenceAt?: string | null; lastActive?: string | null; onlineUntilAt?: string | null }) => boolean,
 ) {
-  if (!profile || !isLastSeenPublic(profile)) return false;
+  if (!profile) return false;
   if (isOnline) return isOnline(profile);
   if (profile.showOnline === true) return true;
   if (profile.showOnline === false) return false;

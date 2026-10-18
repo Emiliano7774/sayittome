@@ -33,6 +33,7 @@ export type ShuffleFilterProfile = {
   etiquetas?: string[];
   presenceAt?: string;
   lastActive?: string;
+  onlineUntilAt?: string;
   online?: boolean;
   showOnline?: boolean;
   mostrarUltimaVez?: boolean;

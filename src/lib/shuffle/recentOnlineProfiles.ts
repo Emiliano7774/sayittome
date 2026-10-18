@@ -19,6 +19,7 @@ export function mergeRecentOnlineProfiles<T extends {
   aliasIds?: string[];
   presenceAt?: string;
   lastActive?: string;
+  onlineUntilAt?: string;
   shuffleVisitor?: boolean;
   mostrarUltimaVez?: boolean;
   showOnline?: boolean;
@@ -27,7 +28,7 @@ export function mergeRecentOnlineProfiles<T extends {
   if (recent.length === 0) return pool;
   const consumed = new Set<number>();
   const overlaid = pool.map((old) => {
-    if (old.shuffleVisitor === true || old.mostrarUltimaVez === false) return old;
+    if (old.shuffleVisitor === true) return old;
     const index = recent.findIndex(
       (next) => next.shuffleVisitor !== true && shuffleProfilesShareIdentity(old, next),
     );
@@ -45,6 +46,7 @@ export function mergeRecentOnlineProfiles<T extends {
       // photo/biography quality tie in a prior identity reconciliation.
       presenceAt: fresh.presenceAt,
       lastActive: fresh.lastActive,
+      onlineUntilAt: fresh.onlineUntilAt,
       showOnline: fresh.showOnline,
     };
   });

@@ -1,4 +1,4 @@
-import { isActiveWithinWindow } from "@/lib/presence";
+import { isActiveWithinWindow, isShuffleProfileOnline } from "@/lib/presence";
 import { normalizeUsername } from "@/lib/profile/username";
 import { dedupeShuffleProfiles, resolveUsernameLower } from "@/lib/shuffle/dedupeProfiles";
 import {
@@ -18,6 +18,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
       const lastActive = item?.lastActive ? String(item.lastActive) : undefined;
       const online = item?.online === true;
       const mostrarUltimaVez = item?.mostrarUltimaVez !== false;
+      const onlineUntilAt = item?.onlineUntilAt ? String(item.onlineUntilAt) : undefined;
       const adminBlurProfilePhoto = item?.adminBlurProfilePhoto === true;
       const adminBlurFotosPerfil = item?.adminBlurFotosPerfil === true;
       const adminBlurGallery = item?.adminBlurGallery === true;
@@ -69,6 +70,7 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         coverVideo: String(item?.coverVideo || item?.videoPortada || ""),
         lastActive,
         presenceAt,
+        onlineUntilAt,
         online,
         adminBlurProfilePhoto,
         adminBlurFotosPerfil,
@@ -93,11 +95,11 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
         hasActiveStories:
           item?.hasActiveStories === true || item?.tieneHistoriasActivas === true,
         mostrarUltimaVez,
-        showOnline: mostrarUltimaVez
-          ? typeof item?.showOnline === "boolean"
+        showOnline: onlineUntilAt
+          ? isShuffleProfileOnline({onlineUntilAt})
+          : typeof item?.showOnline === "boolean"
             ? item.showOnline
-            : isActiveWithinWindow(presenceAt, lastActive)
-          : false,
+            : isActiveWithinWindow(presenceAt, lastActive),
         blurPhoto: resolveShuffleProfileBlurPhoto({
           photo: mainPhoto,
           adminBlurProfilePhoto,

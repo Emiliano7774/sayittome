@@ -42,10 +42,14 @@ export function isActiveWithinWindow(
 
 /** Perfil "online" para filtros shuffle: heartbeat real dentro de la ventana (15 min). */
 export function isShuffleProfileOnline(
-  profile: { presenceAt?: string | null; lastActive?: string | null },
+  profile: { presenceAt?: string | null; lastActive?: string | null; onlineUntilAt?: string | null },
   now = Date.now(),
   windowMs = ONLINE_WINDOW_MS,
 ) {
+  if (profile.onlineUntilAt) {
+    const expiry = parsePresenceDate(profile.onlineUntilAt);
+    return Boolean(expiry && now <= expiry.getTime() && now >= expiry.getTime() - windowMs - 30_000);
+  }
   return isLiveByConnection(profile.presenceAt || profile.lastActive, windowMs, now);
 }
 

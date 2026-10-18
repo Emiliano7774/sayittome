@@ -1,6 +1,6 @@
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
-const {activeAdminPresencePool,chooseAdminPresenceTarget}=require("../functions/lib/adminPresencePool.js");
+const {activeAdminPresencePool,chooseAdminPresenceTarget,excludeAdministratorRows}=require("../functions/lib/adminPresencePool.js");
 const now=Date.parse("2026-10-18T14:00:00Z");
 const anon=(id,data={})=>({id,data:{lastSeenAt:new Date(now-30000).toISOString(),sessionClosed:false,backgrounded:false,disponibleParaChat:true,visibilidadPaises:[],visibilidadProvincias:[],...data}});
 const prof=(id,data={})=>({id,data:{username:id,online:true,lastActiveAt:{toMillis:()=>now-35000},mostrarUltimaVez:true,visibilidadPaises:[],visibilidadProvincias:[],banned:false,...data}});
@@ -17,7 +17,14 @@ const profiles=[
  prof("expired_profile",{lastActiveAt:{toMillis:()=>now-16*60000}}),
  prof("banned_name",{banned:true}),prof("region_name",{visibilidadProvincias:["Cordoba"]})
 ];
-const p=activeAdminPresencePool(anonymous,profiles,now);
+const owner="owner-account-uid",ownerEmail="owner@example.com";
+const extraProfiles=[prof(owner,{email:ownerEmail}),prof("another_admin",{rol:"admin"}),prof("email_admin",{correo:ownerEmail})];
+const extraAnon=anon("anon_adminid",{authUid:owner});
+const selectedProfiles=excludeAdministratorRows([...profiles,...extraProfiles],owner,ownerEmail);
+const selectedAnon=excludeAdministratorRows([...anonymous,extraAnon],owner,ownerEmail);
+assert.equal(selectedProfiles.length,profiles.length,"owner UID, email, role all excluded");
+assert.equal(selectedAnon.length,anonymous.length,"admin anon alias excluded");
+const p=activeAdminPresencePool(selectedAnon,selectedProfiles,now);
 assert.equal(p.anonymous.length,1);assert.equal(p.profiles.length,4,"Shuffle 15m including legacy, hidden-lastseen and online=false recent");
 assert.deepEqual(p.profiles.map(x=>x.username).sort(),["legacy_profile","private_profile","recent_online","test_profile"]);
 assert.equal(chooseAdminPresenceTarget(p,"","")?.type,"anonymous");

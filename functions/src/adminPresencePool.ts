@@ -59,6 +59,26 @@ export function activeAdminPresencePool(
   return {anonymous,profiles};
 }
 
+/** Exclude the owner account (including anonymous aliases) and all
+ * Firestore-marked administrator profiles before any candidate is counted. */
+export function excludeAdministratorRows(rows: PoolRow[], ownerUid: string, ownerEmail: string): PoolRow[] {
+  const uid = String(ownerUid || '').trim();
+  const email = String(ownerEmail || '').trim().toLowerCase();
+  return rows.filter(({id,data:d}) => {
+    const identities = [id,d.uid,d.authUid,d.firebaseUid,d.ownerUid,d.profileUid]
+      .map(value => String(value || '').trim());
+    if (uid && identities.includes(uid)) return false;
+    const emails = [d.email,d.correo,d.ownerEmail]
+      .map(value => String(value || '').trim().toLowerCase());
+    if (email && emails.includes(email)) return false;
+    if (d.isAdmin === true || d.admin === true || d.esAdministrador === true) return false;
+    if (['admin','administrador','owner','superadmin'].includes(
+      String(d.role || d.rol || d.tipoRol || '').trim().toLowerCase()
+    )) return false;
+    return true;
+  });
+}
+
 export function chooseAdminPresenceTarget(
   pool: ReturnType<typeof activeAdminPresencePool>,
   previousType: "anonymous" | "profile" | "",

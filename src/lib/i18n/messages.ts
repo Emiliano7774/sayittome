@@ -143,7 +143,7 @@ const es = {
   province_hidden: "Oculta",
   last_seen_privacy_label: "Última conexión",
   last_seen_privacy_hint:
-    "Si la ocultás, no se muestra el horario de tu última conexión ni el indicador verde en Shuffle. Tu entrada a la aplicación puede anunciarse en las notificaciones de conexiones.",
+    "Si ocultás la última conexión, el horario sigue privado, pero el indicador verde y el filtro Solo online siguen mostrándote durante 15 minutos desde tu actividad. Tu entrada también puede anunciarse en las notificaciones.",
   last_seen_visible: "Visible",
   last_seen_hidden: "Oculta",
 
@@ -1032,7 +1032,7 @@ const en: Record<keyof typeof es, string> = {
   province_hidden: "Hidden",
   last_seen_privacy_label: "Last seen",
   last_seen_privacy_hint:
-    "If hidden, your last-seen time and green Shuffle indicator won't appear. Opening the app may still be announced in connection notifications.",
+    "If hidden, your last-seen time stays private, but the green dot and Online filter still show you for 15 minutes after activity. Opening the app may also trigger connection notifications.",
   last_seen_visible: "Visible",
   last_seen_hidden: "Hidden",
 
@@ -1911,7 +1911,7 @@ const it: Record<keyof typeof es, string> = {
   province_hidden: "Nascosta",
   last_seen_privacy_label: "Ultima connessione",
   last_seen_privacy_hint:
-    "Se la nascondi, non compariranno l'orario dell'ultimo accesso né l'indicatore verde in Shuffle. L'apertura dell'app può comunque essere annunciata nelle notifiche di connessione.",
+    "Se nascondi l'ultimo accesso, l'orario resta privato, ma il pallino verde e il filtro Online ti mostrano per 15 minuti dall'attività. L'apertura dell'app può generare notifiche di connessione.",
   last_seen_visible: "Visibile",
   last_seen_hidden: "Nascosta",
 
@@ -2137,7 +2137,7 @@ const de: Record<keyof typeof es, string> = {
   province_hidden: "Versteckt",
   last_seen_privacy_label: "Zuletzt online",
   last_seen_privacy_hint:
-    "Wenn ausgeblendet, werden weder die Uhrzeit deiner letzten Aktivität noch der grüne Shuffle-Indikator angezeigt. Das Öffnen der App kann weiterhin in Verbindungsbenachrichtigungen angekündigt werden.",
+    "Wenn ausgeblendet, bleibt die Uhrzeit der letzten Aktivität privat. Der grüne Punkt und der Online-Filter zeigen dich dennoch 15 Minuten nach Aktivität an. Das Öffnen der App kann Verbindungsbenachrichtigungen auslösen.",
   last_seen_visible: "Sichtbar",
   last_seen_hidden: "Versteckt",
 

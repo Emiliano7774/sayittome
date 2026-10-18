@@ -119,6 +119,7 @@ type ApiProfile = {
   coverVideo?: string;
   lastActive?: string;
   presenceAt?: string;
+  onlineUntilAt?: string;
   online?: boolean;
   showOnline?: boolean;
   mostrarUltimaVez?: boolean;
@@ -215,12 +216,19 @@ function isProfileOnlineForBadge(profile: ApiProfile, now = Date.now()) {
 
 function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
   const visible = isLastSeenPublic(profile);
-  const withBadge = {
-    ...profile,
-    mostrarUltimaVez: visible,
-    showOnline: visible && isProfileOnlineForBadge(profile, now),
+  const showOnline = isProfileOnlineForBadge(profile, now);
+  if (visible) return { ...profile, mostrarUltimaVez:true, showOnline };
+  // Keep last-seen timestamps private but expose the green-dot expiry for
+  // 15-minute membership so the client can expire it without extra reads.
+  const rawMs = Date.parse(String(profile.presenceAt || profile.lastActive || ""));
+  const expiry = showOnline && Number.isFinite(rawMs)
+    ? new Date(rawMs + ONLINE_WINDOW_MS).toISOString() : undefined;
+  return {
+    ...stripPublicPresence(profile, false),
+    mostrarUltimaVez:false,
+    showOnline,
+    onlineUntilAt:expiry,
   };
-  return stripPublicPresence(withBadge, visible);
 }
 
 function isAnonymousDocActive(doc: any, now = Date.now()) {
@@ -527,7 +535,7 @@ async function getRecentRegisteredProfiles(): Promise<ApiProfile[]> {
       const rows = dedupeShuffleProfiles(docs
         .filter((doc: any) => isPublicProfile(parseFirestoreDoc(doc)))
         .map((doc: any) => withResolvedCountry(docToProfile(doc)))
-        .filter((profile) => isShuffleEligibleProfile(profile) && isLastSeenPublic(profile)));
+        .filter(isShuffleEligibleProfile));
       cachedRecentRegistered = rows;
       cachedRecentRegisteredAt = Date.now();
       return alive(rows);
