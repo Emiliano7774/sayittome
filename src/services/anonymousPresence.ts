@@ -34,6 +34,20 @@ let currentUser: User | null = null;
 let leaveHeaders: Record<string, string> | null = null;
 let nativeAppActive = true;
 let windowFocused = true;
+let backgroundSinceMs = 0;
+let resumeSinceMs = 0;
+
+/** One departure timestamp across blur + visibilitychange; no duplicate reset. */
+function noteForegroundTransition() {
+  if (!anonymousForegroundActive()) {
+    if (!backgroundSinceMs) backgroundSinceMs = Date.now();
+  } else if (backgroundSinceMs) {
+    // A late blur/focus pair must not replace an older genuine absence
+    // before its foreground heartbeat has been acknowledged.
+    resumeSinceMs = resumeSinceMs ? Math.min(resumeSinceMs, backgroundSinceMs) : backgroundSinceMs;
+    backgroundSinceMs = 0;
+  }
+}
 
 function anonymousForegroundActive() {
   return !document.hidden && (isNativeAppShell() ? nativeAppActive : windowFocused);
@@ -74,6 +88,7 @@ async function postPresenceHeartbeat(anonId: string, headers: Record<string, str
     localAnonSessionId: readLegacyLocalId(),
   });
 
+  const sendingResumeMs = anonymousForegroundActive() ? resumeSinceMs : 0;
   // No keepalive here: keepalive + AbortSignal is rejected in some browsers,
   // and heartbeats are not unload beacons (leave uses TTL / door-close DELETE).
   const res = await fetch("/api/anonymous-presence", {
@@ -83,6 +98,7 @@ async function postPresenceHeartbeat(anonId: string, headers: Record<string, str
       anonId,
       chatSessionId: getAnonSessionId(),
       backgrounded: !anonymousForegroundActive(),
+      ...(sendingResumeMs ? { resumedFromAt: new Date(sendingResumeMs).toISOString() } : {}),
       ...readVisibilityPayload(),
       ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
     }),
@@ -94,7 +110,7 @@ async function postPresenceHeartbeat(anonId: string, headers: Record<string, str
     anonId?: string;
     error?: string;
   };
-  return { res, json };
+  return { res, json, sendingResumeMs };
 }
 
 function adoptServerPresenceAlias(anonId: string, ownerUid?: string) {
@@ -148,7 +164,7 @@ async function writeAnonymousPresence(force = false) {
     if (!headers) return;
     leaveHeaders = headers;
 
-    let { res, json } = await postPresenceHeartbeat(anonId, headers);
+    let { res, json, sendingResumeMs } = await postPresenceHeartbeat(anonId, headers);
 
     // Rotated / stale client alias must not leave an open tab offline.
     const err = String(json?.error || "");
@@ -162,12 +178,13 @@ async function writeAnonymousPresence(force = false) {
       anonId = resolveAnonPresenceDocId({ serverAnonAlias: rebound });
       if (!anonId) return;
       cachedPresenceAlias = anonId;
-      ({ res, json } = await postPresenceHeartbeat(anonId, headers));
+      ({ res, json, sendingResumeMs } = await postPresenceHeartbeat(anonId, headers));
     }
 
     if (res.ok) {
       lastWriteAt = Date.now();
       adoptServerPresenceAlias(String(json?.anonId || anonId), user?.uid);
+      if (sendingResumeMs && resumeSinceMs === sendingResumeMs) resumeSinceMs = 0;
     }
   } catch {
     // Presence is best-effort — match delivery still depends on alias identity.
@@ -233,6 +250,8 @@ function onUserChanged(user: User | null) {
   if ((user?.uid || "") !== (currentUser?.uid || "")) {
     cachedPresenceAlias = "";
     leaveHeaders = null;
+    backgroundSinceMs = 0;
+    resumeSinceMs = 0;
   }
   currentUser = user;
   lastWriteAt = 0;
@@ -273,20 +292,26 @@ export function startAnonymousPresenceSystem() {
   });
 
   document.addEventListener("visibilitychange", () => {
-    // A tab that is still open, even behind another window, stays in the pool.
+    // Android Brave may restore visibility without dispatching window.focus.
+    if (!document.hidden && !isNativeAppShell()) windowFocused = true;
+    noteForegroundTransition();
     void writeAnonymousPresence(true);
   });
 
   window.addEventListener("focus", () => {
     windowFocused = true;
+    noteForegroundTransition();
     void writeAnonymousPresence(true);
   });
   window.addEventListener("blur", () => {
     windowFocused = false;
+    noteForegroundTransition();
     void writeAnonymousPresence(true);
   });
 
   window.addEventListener("pageshow", () => {
+    if (!document.hidden && !isNativeAppShell()) windowFocused = true;
+    noteForegroundTransition();
     void writeAnonymousPresence(true);
   });
 
@@ -295,6 +320,7 @@ export function startAnonymousPresenceSystem() {
     void import("@capacitor/app").then(async ({ App }) => {
       await App.addListener("appStateChange", ({isActive}) => {
         nativeAppActive = isActive;
+        noteForegroundTransition();
         void writeAnonymousPresence(true);
       });
     }).catch(() => undefined);

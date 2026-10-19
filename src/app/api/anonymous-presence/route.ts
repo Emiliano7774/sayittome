@@ -43,6 +43,7 @@ async function writePresenceDoc(
   },
   chatSessionId = "",
   backgrounded = false,
+  resumedFromAt?: string,
 ) {
   const now = new Date();
   // Retention is three hours for the Shuffle card; background/foreground
@@ -57,6 +58,10 @@ async function writePresenceDoc(
     priorAnnouncedAt: existing?.lastAnnouncementAt,
     priorSessionClosed: existing?.sessionClosed,
     priorSessionClosedAt: existing?.sessionClosedAt || existing?.updatedAt,
+    priorBackgrounded: existing?.backgrounded,
+    priorBackgroundedAt: existing?.lastBackgroundedAt,
+    priorLastForegroundAt: existing?.lastForegroundAt,
+    resumedFromAt,
     nowMs: now.getTime(),
   });
   const mayAnnounce = !backgrounded && isEntrance && isAnonArrivalGloballyVisible({
@@ -69,8 +74,17 @@ async function writePresenceDoc(
     anonId,
     authUid,
     lastSeenAt: now.toISOString(),
-    ...(isEntrance ? { enteredAt: now.toISOString() } : {}),
-    ...(mayAnnounce ? { lastAnnouncementAt: now.toISOString() } : {}),
+    ...(mayAnnounce ? {
+      enteredAt: now.toISOString(),
+      lastAnnouncementAt: now.toISOString(),
+    } : {}),
+    ...(!backgrounded ? { lastForegroundAt: now.toISOString() } : {
+      // Never reset the departure clock on repeated hidden writes,
+      // including visibilitychange-before-focus when returning to Brave.
+      lastBackgroundedAt: existing?.backgrounded === true
+        ? String(existing.lastBackgroundedAt || existing.updatedAt || now.toISOString())
+        : now.toISOString(),
+    }),
     updatedAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
     sessionClosed: false,
@@ -167,6 +181,7 @@ export async function POST(req: Request) {
       },
       sanitizeShuffleVisitorChatId(body?.chatSessionId),
       body?.backgrounded === true,
+      typeof body?.resumedFromAt === "string" ? body.resumedFromAt : undefined,
     );
     try {
       const siblings = await listAnonMatchAdminDocs("anonimos_activos", {
