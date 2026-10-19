@@ -1,0 +1,10 @@
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const route=fs.readFileSync("src/app/api/shuffle/route.ts","utf8");
+const client=fs.readFileSync("src/hooks/useShufflePool.ts","utf8");
+assert.match(route,/const force = false;/);
+assert.doesNotMatch(route,/const force = searchParams\.get\("force"\)/);
+assert.match(route,/await getProfilesCached\(force\)/);
+assert.match(route,/await getRecentRegisteredProfiles\(\)/);
+assert.match(client,/Do not\s*\n\s*\/\/ translate it into a server cache bypass/);
+console.log("PASS_SHUFFLE_PUBLIC_FORCE_CACHE_BYPASS_BLOCKED");

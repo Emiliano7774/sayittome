@@ -875,7 +875,11 @@ export async function GET(req: Request) {
     const requestedLimit = Number(searchParams.get("limit") || 0);
     const shouldShuffle = searchParams.get("shuffle") === "1";
     const countOnly = searchParams.get("countOnly") === "1";
-    const force = searchParams.get("force") === "1";
+    // Never let an unauthenticated query parameter bypass the shared profile
+    // cache. Repeated /api/shuffle?force=1 requests could bill a complete
+    // Firestore usuarios scan each time. Fresh online presence is retrieved
+    // independently, so ignoring the old parameter preserves online badges.
+    const force = false;
     const filters = parseShuffleFiltersFromSearchParams(searchParams);
     const viewer = parseViewerGeoTarget(
       searchParams,

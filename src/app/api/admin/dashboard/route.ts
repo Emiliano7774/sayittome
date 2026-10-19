@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { assertAdminEmail, getAdminEmailFromRequest } from "@/lib/admin/isAdmin";
-import {
-  runCollectionQuery,
-  runCollectionQueryAllByDocumentId,
-} from "@/lib/firestore/rest";
+import { runCollectionQuery } from "@/lib/firestore/rest";
+import { getCachedAdminUsers } from "@/lib/admin/cachedAdminUsers";
 import { isLiveByConnection, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { ANON_PRESENCE_ACTIVE_MS } from "@/lib/anonMatch/anonymousPresenceIdentity";
 import { sanitizeShuffleVisitorChatId } from "@/lib/shuffle/shuffleVisitorId";
@@ -67,9 +65,10 @@ export async function GET(req: Request) {
       })) as Record<string, unknown>[];
     };
 
+    const users = await getCachedAdminUsers();
+
     const adminCollections = adminDb
       ? await Promise.all([
-          readAdminCollection("usuarios"),
           readAdminCollection("historias", 500),
           readAdminCollection("chats", 500),
           readAdminCollection("reportes", 200),
@@ -88,10 +87,9 @@ export async function GET(req: Request) {
       }
     };
 
-    const [users, stories, chats, reports, anonDocs, logs] = adminCollections
+    const [stories, chats, reports, anonDocs, logs] = adminCollections
       ? (adminCollections as Record<string, unknown>[][])
       : await Promise.all([
-          runCollectionQueryAllByDocumentId("usuarios"),
           safeFallbackQuery(() => runCollectionQuery("historias", 500, "createdAt")),
           safeFallbackQuery(() => runCollectionQuery("chats", 500, "updatedAt")),
           safeFallbackQuery(() => runCollectionQuery("reportes", 200, "createdAt")),
