@@ -4,6 +4,7 @@ export type AnonMatchAdminCollection =
   | "usuarios"
   | "anonimos_activos"
   | "anon_arrival_announcements"
+  | "connection_arrival_events"
   | "solicitudes_chat_anonimo"
   | "chats_anonimos"
   | "reportes";
@@ -74,6 +75,22 @@ export async function deleteAnonMatchAdminDoc(
   const key = String(id || "").trim();
   if (!key) throw new Error("missing_doc_id");
   await getRepairAdminDb().collection(collection).doc(key).delete();
+}
+
+/** Atomically publish presence and an immutable arrival event in one commit.
+ * A transient failure can never advance the 60-second gate without an event. */
+export async function writeAnonymousPresenceAndArrival(
+  anonId: string,
+  presence: Record<string, unknown>,
+  arrival: { id: string; data: Record<string, unknown> } | null,
+) {
+  const database = getRepairAdminDb();
+  const batch = database.batch();
+  batch.set(database.collection("anonimos_activos").doc(anonId), presence, { merge: true });
+  if (arrival) {
+    batch.create(database.collection("connection_arrival_events").doc(arrival.id), arrival.data);
+  }
+  await batch.commit();
 }
 
 export async function createAnonMatchAdminDoc(

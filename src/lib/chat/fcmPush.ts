@@ -651,6 +651,9 @@ const ARRIVAL_LOCAL_CHANNEL = "connection-arrivals-v1";
 const displayedNativeArrivals = new Map<string,number>();
 const NATIVE_ARRIVAL_DEDUPE_MS = 2 * 60_000;
 function arrivalPrincipalKey(data: Record<string, unknown>) {
+  // Deduplicate transport retries, never suppress a later eligible entrance.
+  const eventId = asId(data.eventId);
+  if (eventId) return "event:" + eventId;
   const type = asId(data.type);
   const principal = type === "anon_arrival" ? asId(data.anonId) : asId(data.username).toLowerCase();
   return type + ":" + (principal || asId(data.tag)) + (asId(data.source) === "manual_admin" ? ":admin" : "");

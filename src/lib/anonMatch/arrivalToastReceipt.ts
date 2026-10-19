@@ -6,7 +6,9 @@
 const STORAGE_KEY = "sayittome:arrival-toast-receipts:v1";
 const RECEIPT_LIFETIME_MS = 10 * 60_000;
 const DEEP_LINK_LIFETIME_MS = 45_000;
-const SAME_PERSON_BURST_MS = 15 * 60_000;
+// Only suppress duplicate entrances within the server's one-minute cooldown.
+// Returning after a full minute must show again, even for the 500th return.
+const SAME_PERSON_BURST_MS = 60_000;
 const MAX_RECEIPTS = 600;
 const memory = new Map<string, number>();
 
@@ -70,8 +72,8 @@ export function consumeAnonArrivalToastOnce(
   }
   memory.delete(key);
   memory.set(key, now + RECEIPT_LIFETIME_MS);
-  // Two near-simultaneous server writes can carry different enteredAt values
-  // for the same person. Only the first toast may reach this viewer.
+  // Duplicate writes for the same entrance are hidden, but a legitimate
+  // reconnection after >=60 seconds must be visible again.
   memory.set(displayedPersonKey(viewer, alias), now + SAME_PERSON_BURST_MS);
   writeReceipts(now);
   return true;

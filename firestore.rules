@@ -167,6 +167,18 @@ service cloud.firestore {
       }
     }
 
+    // Only the specified authenticated recipient (and the administrator) may
+    // read these records. Clients can never create, modify or delete notices.
+    // Never put unilateral moderation notes in a shared chats message path.
+    match /admin_chat_notices/{recipientUid}/threads/{chatId}/messages/{noticeId} {
+      allow get, list: if isOwner(recipientUid) || isAdmin();
+      allow create, update, delete: if false;
+    }
+    match /admin_chat_notice_audit/{noticeId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /photo_moderation_chats/{docId} {
       allow read, write: if isAdmin();
     }
@@ -308,11 +320,17 @@ service cloud.firestore {
       }
     }
 
-    // One bounded server-authored arrival signal. Authorized anonymous and
-    // registered viewers can listen; clients cannot forge or overwrite it.
+    // Legacy singleton: read only, retained for old client compatibility.
     match /anon_arrival_announcements/{announcementId} {
       allow get: if announcementId == 'latest' && isLoggedIn();
       allow list, create, update, delete: if false;
+    }
+
+    // Short-lived immutable ingress events. Readable only after Firebase Auth,
+    // including anonymous Auth. Never client-writable or exposed by catch-all.
+    match /connection_arrival_events/{eventId} {
+      allow get, list: if isLoggedIn();
+      allow create, update, delete: if false;
     }
 
     // Preserved productive catch-all. Exclude secrets + usuarios (+ lite mirrors)
@@ -324,9 +342,12 @@ service cloud.firestore {
         && collection != 'usuarios'
         && collection != 'usuarios_shuffle_lite'
         && collection != 'chat_inbox_lite'
+        && collection != 'admin_chat_notices'
+        && collection != 'admin_chat_notice_audit'
         && collection != 'anon_profile_blocks'
         && collection != 'chats_anonimos'
         && collection != 'anon_arrival_announcements'
+        && collection != 'connection_arrival_events'
         && collection != 'system'
         && collection != 'chats';
     }

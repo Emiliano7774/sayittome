@@ -1,6 +1,6 @@
-export const ONLINE_LABEL_MS = 3 * 60 * 1000;
-/** Green dot + "activos/en línea" filter membership. */
+/** Green dot, active filters and displayed "En línea" share one 15-minute window. */
 export const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+export const ONLINE_LABEL_MS = ONLINE_WINDOW_MS;
 
 export function parsePresenceDate(value?: string | null) {
   if (!value) return null;
@@ -54,8 +54,7 @@ export function isShuffleProfileOnline(
 }
 
 /**
- * Label copy: 0–3 min → "en línea"; 3–15 min → minutes (caller keeps green via 15m window);
- * after 15 min → last-seen phrasing.
+ * Label copy: up to 15 min → "en línea"; after 15 min → last-seen phrasing.
  */
 export function formatLastSeen(
   lastActive?: string | null,

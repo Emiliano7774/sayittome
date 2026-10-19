@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 
 import {
   decideAnonymousPresenceWrite,
@@ -15,6 +16,7 @@ import {
   getAnonMatchAdminDoc,
   listAnonMatchAdminDocs,
   setAnonMatchAdminDoc,
+  writeAnonymousPresenceAndArrival,
 } from "@/lib/anonMatch/anonMatchAdminStore";
 import { invalidateAnonMatchAvailabilityCache } from "@/lib/anonMatch/matchPool";
 import { normalizeGeoAudience } from "@/lib/geo/audience";
@@ -63,7 +65,7 @@ async function writePresenceDoc(
     doNotDisturb: dndActive,
   });
 
-  await setAnonMatchAdminDoc("anonimos_activos", anonId, {
+  const presencePayload = {
     anonId,
     authUid,
     lastSeenAt: now.toISOString(),
@@ -83,8 +85,21 @@ async function writePresenceDoc(
     source: "anon_match_presence",
     backgrounded,
     ...(chatSessionId ? { chatSessionId } : {}),
-  });
-  return { mayAnnounce, enteredAt: isEntrance ? now.toISOString() : String(existing?.enteredAt || "") };
+  };
+  const enteredAt = now.toISOString();
+  const arrival = mayAnnounce ? {
+    id: createHash("sha256").update(authUid + "|" + enteredAt).digest("hex").slice(0,40),
+    data: {
+      type: "anon_arrival",
+      anonId,
+      enteredAt,
+      enteredAtMs: now.getTime(),
+      audience: "public",
+      expiresAt: new Date(now.getTime()+60*60_000),
+    },
+  } : null;
+  await writeAnonymousPresenceAndArrival(anonId,presencePayload,arrival);
+  return { mayAnnounce, enteredAt: isEntrance ? enteredAt : String(existing?.enteredAt || "") };
 }
 
 async function deletePresenceDoc(anonId: string) {
@@ -139,7 +154,7 @@ export async function POST(req: Request) {
       req.headers.get("cf-ipcountry") || req.headers.get("x-country-code") || "",
     ).trim().toUpperCase();
 
-    const arrival = await writePresenceDoc(
+    await writePresenceDoc(
       decision.anonId,
       caller.uid,
       {
@@ -168,20 +183,6 @@ export async function POST(req: Request) {
       // The live alias is already published. A leftover sibling expires on its own.
     }
     invalidateAnonMatchAvailabilityCache();
-    if (arrival.mayAnnounce) {
-      // A fixed one-document announcement avoids an unbounded event log.
-      try {
-        await setAnonMatchAdminDoc("anon_arrival_announcements", "latest", {
-          anonId: decision.anonId,
-          enteredAt: arrival.enteredAt,
-          updatedAt: new Date().toISOString(),
-          audience: "public",
-        });
-      } catch (error) {
-        console.warn("[anon-arrival] optional announcement failed", error);
-      }
-    }
-
     const legacyLocal = String(body?.legacyLocalAnonId || "").trim();
     let legacyCleaned: string | null = null;
     if (legacyLocal && legacyLocal !== decision.anonId) {

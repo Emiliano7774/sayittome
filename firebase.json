@@ -1,5 +1,6 @@
 {
     "hosting":  {
+                    "frameworksBackend": { "region": "us-central1", "memory": "512MiB" },
                     "source":  ".",
                     "predeploy":  [
                                       "node scripts/ssr-firebase-admin-zero-hash-predeploy.mjs"

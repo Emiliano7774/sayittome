@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { db, messaging } from "./adminApp";
@@ -41,17 +41,18 @@ function stableShortId(alias: string) {
   return (hash >>> 0).toString(36).toUpperCase().padStart(7,"0").slice(-7);
 }
 function noticeTag(principal: string) {
-  // Stable per PERSON, not per delivery timestamp. Android/web OS replaces a
-  // previous banner rather than stacking one for every transport retry.
+  // Stable per event: dedupe retries of the same arrival but retain later
+  // legitimate entrances rather than replacing their OS notifications.
   return "stm-arrival-" + createHash("sha256").update(principal).digest("hex").slice(0,16);
 }
-async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; anonId?: string; username?: string; source?: "manual_admin"; originUid?: string}) {
-  return await messaging().send({
+async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; eventId?: string; anonId?: string; username?: string; source?: "manual_admin"; originUid?: string}) {
+  const push = {
     topic: TOPIC,
     notification: {title: input.title, body: input.body},
     data: {
       type: input.type, title: input.title, body: input.body,
       href: input.href, tag: input.tag,
+      ...(input.eventId ? {eventId:input.eventId} : {}),
       ...(input.anonId ? {anonId:input.anonId} : {}),
       ...(input.username ? {username:input.username} : {}),
       ...(input.source ? {source:input.source} : {}),
@@ -59,11 +60,29 @@ async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title
     },
     android: {
       // Prompt delivery while Android is idle; stale arrivals expire after two minutes.
-      priority: "high", ttl: 120_000,
+      priority: "high" as const, ttl: 120_000,
       notification: {channelId:"chat-messages-v2", tag: input.tag, color:"#7C3AED", icon:"ic_stat_notify"},
     },
     webpush: {headers:{TTL:"120"}},
-  });
+  };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const messageId = await messaging().send(push);
+      logger.info("arrival_fcm_accepted", {
+        kind:input.type, eventTag:input.tag, attempts:attempt, fcmMessageId:messageId,
+      });
+      return messageId;
+    } catch (error) {
+      const code = String((error as {code?:string})?.code || "");
+      const temporary = /server-unavailable|internal-error|unknown-error|unavailable/.test(code);
+      logger.warn("arrival_fcm_attempt_failed", {
+        kind:input.type,eventTag:input.tag,attempt,code:code||"unknown",
+      });
+      if (!temporary || attempt === 3) throw error;
+      await new Promise(resolve => setTimeout(resolve, attempt * 300));
+    }
+  }
+  throw new Error("arrival_fcm_unreachable");
 }
 
 /** Enable arrival notifications on a registered FCM installation after OS permission. */
@@ -95,19 +114,31 @@ export const setAnonArrivalPush = onCall({region:"us-central1"}, async (request)
   return {ok:true,enabled};
 });
 
-/** This document is written only on real anonymous entrances, never heartbeats. */
+/** Legacy listener remains for compatible clients during rollout. New
+ * entrances never write the contended latest document. */
 export const onAnonArrivalAnnounced = onDocumentWritten({
   document:"anon_arrival_announcements/latest", region:"us-central1", retry:false,
 }, async (event) => {
   const before = event.data?.before.data() || {};
   const after = event.data?.after.data() || {};
+  if (before.anonId === after.anonId && before.enteredAt === after.enteredAt) return;
+  await dispatchAnonArrival(after);
+});
+
+/** Every event gets a separate Firestore document and its own trigger. */
+export const onAnonArrivalEventCreated = onDocumentCreated({
+  document:"connection_arrival_events/{eventId}", region:"us-central1", retry:false,
+}, async (event) => {
+  await dispatchAnonArrival(event.data?.data() || {});
+});
+
+async function dispatchAnonArrival(after: Record<string, unknown>) {
   const anonId = String(after.anonId || "").trim();
   const enteredAt = String(after.enteredAt || "").trim();
-  if (!ALIAS.test(anonId) || after.audience !== "public" || !enteredAt ||
-    (before.anonId === anonId && before.enteredAt === enteredAt)) return;
+  if (!ALIAS.test(anonId) || after.audience !== "public" || !enteredAt) return;
   const entered = Date.parse(enteredAt);
   const now = Date.now();
-  if (!Number.isFinite(entered) || entered > now+30000 || now-entered > 90000) return;
+  if (!Number.isFinite(entered) || entered > now+30000 || now-entered > 5*60_000) return;
   // The route writes anonymous presence with a non-transactional heartbeat.
   // Concurrent first-entry requests can both publish *different* enteredAt
   // timestamps. Serialize the notification itself with a durable person gate.
@@ -121,10 +152,18 @@ export const onAnonArrivalAnnounced = onDocumentWritten({
     const gate = await tx.get(gateRef);
     const lastPush = Number(gate.data()?.lastPushedAtMs || 0);
     const currentMs = Date.now();
-    if (!presence.exists || presence.data()?.sessionClosed === true) return null;
-    if (lastPush > 0 && currentMs - lastPush < ANON_PUSH_DEDUPE_MS) return null;
+    // A legitimate entrance remains an entrance if the visitor closes immediately.
+    if (!presence.exists) return null;
+    // Use the entrance clock rather than delayed FCM processing time:
+    // 500 real returns separated by >=60s must remain valid.
+    const priorEntryMs = Date.parse(String(gate.data()?.lastEntry || ""));
+    if (Number.isFinite(priorEntryMs)) {
+      if (entered <= priorEntryMs || entered-priorEntryMs < ANON_PUSH_DEDUPE_MS) return null;
+    } else if (lastPush > 0 && currentMs-lastPush < ANON_PUSH_DEDUPE_MS) {
+      return null;
+    }
     const observed = Date.parse(String(presence.data()?.lastSeenAt || ""));
-    if (!Number.isFinite(observed) || currentMs-observed>90_000 || observed>currentMs+30_000) return null;
+    if (!Number.isFinite(observed) || observed<entered-30_000 || observed>currentMs+30_000) return null;
     tx.set(gateRef, {lastPushedAtMs:currentMs,lastEntry:enteredAt}, {merge:true});
     return identity;
   });
@@ -136,10 +175,22 @@ export const onAnonArrivalAnnounced = onDocumentWritten({
       title: "🌙 Nueva conexión en SayItToMe",
       body: "Anónimo-" + label + " se acaba de conectar. Tocá para hablarle.",
       href: "/?anonArrival=" + encodeURIComponent(anonId),
-      tag: noticeTag("anon:" + accepted),
+      eventId: "anon:" + createHash("sha256").update(accepted + "|" + enteredAt).digest("hex").slice(0,32),
+      tag: noticeTag("anon:" + accepted + ":" + enteredAt),
     });
-  } catch (error) { logger.warn("anon arrival push failed",{error:String(error)}); }
-});
+  } catch (error) {
+    logger.warn("anon arrival push failed",{error:String(error)});
+    // A rejected FCM send must not permanently consume this entrance gate.
+    const gateId = "anon_" + createHash("sha256").update(accepted).digest("hex").slice(0,40);
+    await db().runTransaction(async tx => {
+      const ref = db().collection("arrivalPushGates").doc(gateId);
+      const current = await tx.get(ref);
+      if (current.data()?.lastEntry === enteredAt) {
+        tx.set(ref, {lastPushedAtMs:0}, {merge:true});
+      }
+    }).catch(err => logger.warn("anon arrival gate recovery failed",{error:String(err)}));
+  }
+}
 
 /** Registered-profile pilot: one arrival on initial entrance and again only
  * after >=1 minute without foreground presence. The client calls this BEFORE
@@ -189,17 +240,37 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
     return {announced:true as const,username};
   });
   if (!outcome.announced) return {ok:true,...outcome};
+  // Same durable, immutable event stream as anonymous entrances: registered
+  // arrivals remain visible while the app is foregrounded even without OS push.
+  const eventId = createHash("sha256").update("profile|" + uid + "|" + now).digest("hex").slice(0,40);
+  try {
+    await db().collection("connection_arrival_events").doc(eventId).create({
+      type:"profile_arrival", username:outcome.username, originUid:uid,
+      enteredAt:new Date(now).toISOString(), enteredAtMs:now, audience:"public",
+      expiresAt:new Date(now + 60*60_000),
+    });
+  } catch(error) {
+    logger.error("profile_arrival_event_write_failed",{uid,error:String(error)});
+    // Preserve normal FCM delivery despite a rare event-log write failure.
+  }
   try {
     await broadcast({
       type:"profile_arrival",username:outcome.username, originUid:uid,
       title:"🌙 Nueva conexión en SayItToMe",
       body:"@"+outcome.username+" se acaba de conectar. Tocá para hablarle.",
       href:"/u/"+encodeURIComponent(outcome.username),
-      tag:noticeTag("profile:" + uid),
+      eventId:"profile:" + uid + ":" + now,
+      tag:noticeTag("profile:" + uid + ":" + now),
     });
     return {ok:true,announced:true};
   } catch(error) {
     logger.warn("profile arrival push failed",{uid,error:String(error)});
+    await db().runTransaction(async tx => {
+      const current = await tx.get(gate);
+      if (Number(current.data()?.lastMs || 0) === now) {
+        tx.set(gate,{lastMs:0},{merge:true});
+      }
+    }).catch(err => logger.warn("profile arrival gate recovery failed",{uid,error:String(err)}));
     return {ok:false,announced:false};
   }
 });
