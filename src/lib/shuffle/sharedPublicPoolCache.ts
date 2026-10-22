@@ -5,13 +5,20 @@ import { gunzipSync, gzipSync } from "node:zlib";
  * Stored under system/*: Firestore rules exclude it from client access.
  * Keep its age below the existing 10-minute per-instance freshness contract.
  */
-const SHARED_TTL_MS = 4 * 60_000;
+const SHARED_TTL_MS = 8 * 60_000;
 const MAX_EXISTING_AGE_MS = 10 * 60_000;
 const LEASE_MS = 30_000;
 const MAX_BASE64_BYTES = 800_000;
 const SHARED_DOC = "shuffle_public_pool_v1";
 
 type Cached<T> = { items: T[]; refreshedAtMs: number };
+type SharedPoolSettings = {
+  documentId?: string;
+  ttlMs?: number;
+  maxExistingAgeMs?: number;
+  leaseMs?: number;
+  allowEmpty?: boolean;
+};
 type CacheDecision =
   | { kind: "hit"; payload: string; refreshedAtMs: number }
   | { kind: "wait"; payload: string; refreshedAtMs: number }
@@ -42,13 +49,14 @@ function decodeIfUsable<T>(
   payload: string,
   refreshedAtMs: number,
   maxAgeMs: number,
+  allowEmpty = false,
 ): Cached<T> | null {
   if (!payload || !sharedPoolWithinAge(refreshedAtMs, Date.now(), maxAgeMs)) {
     return null;
   }
   try {
     const items = unpackSharedPool<T>(payload);
-    return items.length ? { items, refreshedAtMs } : null;
+    return items.length > 0 || allowEmpty ? { items, refreshedAtMs } : null;
   } catch {
     return null;
   }
@@ -62,11 +70,17 @@ function decodeIfUsable<T>(
  */
 export async function readOrBuildSharedPublicPool<T>(
   directScan: () => Promise<T[]>,
+  settings: SharedPoolSettings = {},
 ): Promise<Cached<T>> {
+  const documentId = settings.documentId || SHARED_DOC;
+  const ttlMs = settings.ttlMs ?? SHARED_TTL_MS;
+  const maxExistingAgeMs = settings.maxExistingAgeMs ?? MAX_EXISTING_AGE_MS;
+  const leaseMs = settings.leaseMs ?? LEASE_MS;
+  const allowEmpty = settings.allowEmpty ?? false;
   let ref: any;
   try {
     const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
-    ref = getRepairAdminDb().collection("system").doc(SHARED_DOC);
+    ref = getRepairAdminDb().collection("system").doc(documentId);
   } catch {
     const items = await directScan();
     return { items, refreshedAtMs: Date.now() };
@@ -83,20 +97,20 @@ export async function readOrBuildSharedPublicPool<T>(
           const payload = String(data.payload || "");
           const refreshedAtMs = Number(data.refreshedAtMs || 0);
           const nowMs = Date.now();
-          if (payload && sharedPoolWithinAge(refreshedAtMs, nowMs, SHARED_TTL_MS)) {
+          if (payload && sharedPoolWithinAge(refreshedAtMs, nowMs, ttlMs)) {
             return { kind: "hit", payload, refreshedAtMs };
           }
           if (Number(data.leaseUntilMs || 0) > nowMs) {
             return { kind: "wait", payload, refreshedAtMs };
           }
-          tx.set(ref, { leaseUntilMs: nowMs + LEASE_MS }, { merge: true });
+          tx.set(ref, { leaseUntilMs: nowMs + leaseMs }, { merge: true });
           return { kind: "rebuild" };
         },
       );
 
       if (decision.kind === "hit") {
         const cached = decodeIfUsable<T>(
-          decision.payload, decision.refreshedAtMs, SHARED_TTL_MS,
+          decision.payload, decision.refreshedAtMs, ttlMs, allowEmpty,
         );
         if (cached) return cached;
       }
@@ -104,7 +118,7 @@ export async function readOrBuildSharedPublicPool<T>(
         // Existing clients could already retain this snapshot for 10 minutes.
         // Returning it while a new rebuild runs is not a freshness regression.
         const stale = decodeIfUsable<T>(
-          decision.payload, decision.refreshedAtMs, MAX_EXISTING_AGE_MS,
+          decision.payload, decision.refreshedAtMs, maxExistingAgeMs, allowEmpty,
         );
         if (stale) return stale;
         continue;
@@ -121,7 +135,7 @@ export async function readOrBuildSharedPublicPool<T>(
         const refreshedAtMs = Date.now();
         try {
           const payload = packSharedPool(items);
-          if (items.length > 0 && payload.length <= MAX_BASE64_BYTES) {
+          if ((items.length > 0 || allowEmpty) && payload.length <= MAX_BASE64_BYTES) {
             await ref.set(
               { payload, refreshedAtMs, leaseUntilMs: 0, format: "gzip-base64-v1" },
               { merge: true },

@@ -776,7 +776,7 @@ async function getAnonymousOnlineCached(forceFresh = false) {
   return cachedAnonymousOnline;
 }
 
-async function fetchLiveShuffleVisitorsUncached(force = false) {
+async function fetchLiveShuffleVisitorsUncached(force = false, throwOnError = false) {
   const now = Date.now();
   if (!force && cachedVisitorsAt > 0 && now - cachedVisitorsAt < VISITOR_CACHE_MS) {
     return cachedVisitors;
@@ -807,7 +807,8 @@ async function fetchLiveShuffleVisitorsUncached(force = false) {
     cachedVisitors = visitors;
     cachedVisitorsAt = now;
     return visitors;
-  } catch {
+  } catch (error) {
+    if (throwOnError) throw error;
     // A failed read must not freeze an empty list for the cache window.
     // That hid live anons on solo-online until the next cold instance.
     return cachedVisitors;
@@ -823,7 +824,32 @@ async function getLiveShuffleVisitors(force = false): Promise<ApiProfile[]> {
   }
   // One Firestore scan per warm SSR instance, even under simultaneous client polls.
   if (visitorScanInFlight) return visitorScanInFlight;
-  const pending = fetchLiveShuffleVisitorsUncached(force);
+  const pending = force
+    ? fetchLiveShuffleVisitorsUncached(true)
+    : (async () => {
+        try {
+          // Keep the same 20-second client freshness, but let warm/cold SSR
+          // instances reuse one recent presence scan instead of each billing
+          // a separate query over the anonymous visitor collection.
+          const shared = await readOrBuildSharedPublicPool<ApiProfile>(
+            () => fetchLiveShuffleVisitorsUncached(true, true),
+            {
+              documentId: "shuffle_live_visitors_v1",
+              ttlMs: 15_000,
+              maxExistingAgeMs: VISITOR_CACHE_MS,
+              leaseMs: 5_000,
+              allowEmpty: true,
+            },
+          );
+          cachedVisitors = shared.items;
+          cachedVisitorsAt = shared.refreshedAtMs;
+          return shared.items;
+        } catch {
+          // A transient cache/Firestore error should retain the last local
+          // snapshot, not permanently cache an empty pool or break Shuffle.
+          return cachedVisitors;
+        }
+      })();
   visitorScanInFlight = pending;
   try {
     return await pending;
