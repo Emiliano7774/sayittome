@@ -7,7 +7,7 @@ const api=await import(pathToFileURL(path.join(root,"src/lib/anonMatch/anonArriv
 const now=Date.parse("2026-10-09T23:45:00.000Z");
 assert.equal(api.isNewAnonymousArrival({nowMs:now}),true,"brand new");
 assert.equal(api.isNewAnonymousArrival({nowMs:now,priorLastSeenAt:new Date(now-30000).toISOString(),priorAnnouncedAt:new Date(now-30000).toISOString()}),false,"heartbeat ignored");
-assert.equal(api.isNewAnonymousArrival({nowMs:now,priorLastSeenAt:new Date(now-3600000).toISOString(),priorAnnouncedAt:new Date(now-3600000).toISOString()}),true,"re-entry after long absence");
+assert.equal(api.isNewAnonymousArrival({nowMs:now,priorLastSeenAt:new Date(now-3600000).toISOString(),priorAnnouncedAt:new Date(now-3600000).toISOString(),priorBackgrounded:true}),true,"re-entry after long absence");
 assert.equal(api.isNewAnonymousArrival({nowMs:now,priorLastSeenAt:new Date(now-3600000).toISOString(),priorSessionClosed:true,priorSessionClosedAt:new Date(now-60000).toISOString(),priorAnnouncedAt:new Date(now-60000).toISOString()}),true,"explicitly closed session returning after 60s must alert again");
 assert.equal(api.isAnonArrivalGloballyVisible({paises:["AR"]}),false,"restrict country privacy");
 assert.equal(api.isAnonArrivalGloballyVisible({provincias:["Cordoba"]}),false,"restrict province privacy");
@@ -38,7 +38,10 @@ assert.match(routing,/notifyArrival\("opened"\)/,"handler confirms successful na
 const preflight=fs.readFileSync(path.join(root,"src/app/api/anon-match/arrival-target/route.ts"),"utf8");
 assert.match(preflight,/if \(!caller\.isAnonymous\)/,"registered arrival preflight returns direct chat identity");
 assert.match(preflight,/visitorChatId/,"server returns Shuffle's visitorChatId");
-assert.match(component,/await openVisitorChat\(router,visitorChatId,id,\{ensureNavigation:true\}\)/,"registered arrival opens the SAME chat as Shuffle with navigation guard");
+assert.match(preflight,/safetyWarningTitles/,"registered preflight returns public safety titles");
+assert.match(component,/Promise\.all\(\[/,"caller resolve and arrival-target preflight run in parallel");
+assert.match(component,/arrivalPreflight/,"registered arrival skips duplicate client Firestore reads");
+assert.match(component,/await openVisitorChat\(router,visitorChatId,id,\{/,"registered arrival opens the SAME chat as Shuffle with navigation guard");
 assert.doesNotMatch(component,/INVITAR|invitarlo a conversar/,"arrival CTA opens direct chats without invitation");
 assert.match(routing,/if \(!arrivalClick\) window\.alert/,"arrival failures use in-app status, not unrelated alert");
 console.log("PASS ANON_ARRIVAL: immutable realtime events, queued toasts, hidden-tab cost pause, verified click, consent, offline states");

@@ -5,20 +5,26 @@ export const ANON_ARRIVAL_FRESH_MS = 60 * 1000;
 export function isNewAnonymousArrival(input: {
   priorLastSeenAt?: unknown; priorEnteredAt?: unknown;
   priorAnnouncedAt?: unknown; priorSessionClosed?: unknown;
-  priorSessionClosedAt?: unknown;
+  priorSessionClosedAt?: unknown; priorBackgrounded?: unknown;
   nowMs: number;
 }) {
   const seen = Date.parse(String(input.priorLastSeenAt || ""));
   const announced = Date.parse(String(input.priorAnnouncedAt || ""));
   const left = Date.parse(String(input.priorSessionClosedAt || ""));
-  // If the tab explicitly closed, measure the interval from its departure,
-  // not from its last heartbeat. The Shuffle card still lives for three hours.
-  const wasAway = input.priorSessionClosed === true
-    ? (!Number.isFinite(left) || input.nowMs - left >= ANON_ARRIVAL_FRESH_MS)
-    : (!Number.isFinite(seen) || input.nowMs - seen >= ANON_ARRIVAL_FRESH_MS);
+  // CRITICAL: the normal foreground heartbeat is 90 seconds, so a 60-second
+  // timestamp gap alone MUST NOT be called a reconnection. It previously
+  // generated phantom push events every 90 seconds from an uninterrupted tab.
+  // Require a real background/closed transition, preserved in the same
+  // existing presence document (no extra Firestore reads or writes).
+  const firstEntrance = !Number.isFinite(seen);
+  const fromClosedSession = input.priorSessionClosed === true &&
+    (!Number.isFinite(left) || input.nowMs - left >= ANON_ARRIVAL_FRESH_MS);
+  const fromBackground = input.priorSessionClosed !== true &&
+    input.priorBackgrounded === true &&
+    Number.isFinite(seen) && input.nowMs - seen >= ANON_ARRIVAL_FRESH_MS;
   const gapSincePush = !Number.isFinite(announced) ||
     input.nowMs - announced >= ANON_ARRIVAL_MIN_REANNOUNCE_MS;
-  return wasAway && gapSincePush;
+  return (firstEntrance || fromClosedSession || fromBackground) && gapSincePush;
 }
 
 export function isAnonArrivalGloballyVisible(input: { paises?: unknown; provincias?: unknown; doNotDisturb?: boolean }) {

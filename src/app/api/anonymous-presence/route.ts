@@ -57,6 +57,7 @@ async function writePresenceDoc(
     priorAnnouncedAt: existing?.lastAnnouncementAt,
     priorSessionClosed: existing?.sessionClosed,
     priorSessionClosedAt: existing?.sessionClosedAt || existing?.updatedAt,
+    priorBackgrounded: existing?.backgrounded,
     nowMs: now.getTime(),
   });
   const mayAnnounce = !backgrounded && isEntrance && isAnonArrivalGloballyVisible({

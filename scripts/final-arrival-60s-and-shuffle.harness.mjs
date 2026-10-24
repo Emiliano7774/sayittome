@@ -5,7 +5,7 @@ import ts from "typescript";
 const exported={};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync("src/lib/anonMatch/anonArrival.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:exported,Date,Number,Math,String});
 const now=Date.parse("2026-10-18T20:00:00Z");
-const alias=(age,extra={})=>({nowMs:now,priorLastSeenAt:new Date(now-age*1000).toISOString(),priorAnnouncedAt:new Date(now-age*1000).toISOString(),...extra});
+const alias=(age,extra={})=>({nowMs:now,priorLastSeenAt:new Date(now-age*1000).toISOString(),priorAnnouncedAt:new Date(now-age*1000).toISOString(),priorBackgrounded:true,...extra});
 assert.equal(exported.ANON_ARRIVAL_MIN_REANNOUNCE_MS,60000);
 assert.equal(exported.ANON_ARRIVAL_FRESH_MS,60000);
 assert.equal(exported.isNewAnonymousArrival({nowMs:now}),true,"first arrival");
