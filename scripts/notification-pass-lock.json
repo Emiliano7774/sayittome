@@ -1,9 +1,9 @@
 {
   "locked": "PASS_ABSOLUTO",
-  "scope": "Android Web + PC Web: notificaciones entrantes y de reconexion",
-  "approval": "Confirmación explícita del responsable, 2026-10-23 (America/Argentina/Cordoba)",
-  "lastKnownProductionBuiltAt": "2026-10-24T00:43:00.399Z",
-  "revalidatedAt": "2026-10-24T01:17:12.849Z",
+  "scope": "Android Web + PC Web: notificaciones entrantes, anónimos regresando cada >=60s sin límite de ciclos",
+  "approval": "PASS ABSOLUTO explícito del responsable para entrega web y reconexiones anónimas repetidas, 2026-10-23 (America/Argentina/Cordoba)",
+  "lastKnownProductionBuiltAt": "2026-10-24T01:51:15.384Z",
+  "revalidatedAt": "2026-10-24T02:43:12.980Z",
   "files": {
     "public/chat-notify/sw.js": "9d940b0b67be2c51a7e42e5688acb558208bc18876b54f1c72cd184f00346c2e",
     "src/lib/chat/fcmPush.ts": "c828bcbb321652ad90c430d23f285faf3f7872ef203aa5b274d83b2706c6617f",
@@ -19,6 +19,8 @@
     "src/components/anonMatch/AnonArrivalToast.tsx": "8cbd339e175a0bdaf409c9a831b6e1edf5564c1a507553eee6b73aa7e80f98fe",
     "src/hooks/useGlobalChatAlerts.ts": "42ef8c1c58f6e2f6f0293d957e5c7f4eb667546a0f0743d8669d51157f130dca",
     "src/components/app/NativeAppBootstrap.tsx": "b47b7296d5857a6cf96344f5e05eceb4dd59110577c3304c085e86e38d3ab898",
-    "functions/src/anonArrivalPush.ts": "d41696e16256987a6adc40856a6a537a592ca94b91f83bb68f002c41a7515b91"
+    "functions/src/anonArrivalPush.ts": "d41696e16256987a6adc40856a6a537a592ca94b91f83bb68f002c41a7515b91",
+    "src/lib/anonMatch/anonArrival.ts": "3c864e164b101daa1df11d52ce813bea5443b024163e1c1e2960cd14680b9f9b",
+    "src/app/api/anonymous-presence/route.ts": "d6e7e1c04710910dea1d0061afb78a80180b9b0774e6b9217d0207a7e53368bb"
   }
 }

@@ -26,12 +26,15 @@ const approvedPaths = [
   "src/hooks/useGlobalChatAlerts.ts",
   "src/components/app/NativeAppBootstrap.tsx",
   "functions/src/anonArrivalPush.ts",
+  // Owner verified continued anonymous reconnect alerts beyond the fourth return.
+  "src/lib/anonMatch/anonArrival.ts",
+  "src/app/api/anonymous-presence/route.ts",
 ];
 const banner = [
   "",
   "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "!!!  ALTO: NOTIFICACIONES WEB BLINDADAS — PASS ABSOLUTO DEL USUARIO    !!!",
-  "!!!  ANDROID WEB + PC WEB: ENTREGA REAL CONFIRMADA, NO TOCAR A CIEGAS  !!!",
+  "!!!  ANDROID WEB + PC WEB + RECONEXIONES ANONIMAS >=60s: PASS TOTAL    !!!",
   "!!!  CAMBIO BLOQUEADO: ANTES DE MODIFICAR, REVALIDAR AMBAS PLATAFORMAS  !!!",
   "!!!  NO ANULAR ESTE CONTROL NI DESACTIVAR LAS NOTIFICACIONES EXISTENTES!!!",
   "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
@@ -52,9 +55,9 @@ if (sealing) {
   const files = Object.fromEntries(approvedPaths.map(path => [path, checksum(read(path))]));
   const manifest = {
     locked: "PASS_ABSOLUTO",
-    scope: "Android Web + PC Web: notificaciones entrantes y de reconexion",
-    approval: "Confirmación explícita del responsable, 2026-10-23 (America/Argentina/Cordoba)",
-    lastKnownProductionBuiltAt: "2026-10-24T00:43:00.399Z",
+    scope: "Android Web + PC Web: notificaciones entrantes, anónimos regresando cada >=60s sin límite de ciclos",
+    approval: "PASS ABSOLUTO explícito del responsable para entrega web y reconexiones anónimas repetidas, 2026-10-23 (America/Argentina/Cordoba)",
+    lastKnownProductionBuiltAt: "2026-10-24T01:51:15.384Z",
     revalidatedAt: new Date().toISOString(),
     files,
   };
