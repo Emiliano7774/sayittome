@@ -28,5 +28,6 @@ assert.match(route,/const mayAnnounce = !backgrounded/);
 const client=readFileSync("src/services/anonymousPresence.ts","utf8");
 assert.match(client,/if \(!anonymousForegroundActive\(\)\) return/);
 assert.match(client,/document\.addEventListener\("visibilitychange"/);
-assert.match(client,/backgrounded:\s*!anonymousForegroundActive\(\)/);
+assert.match(client,/backgrounded = !anonymousForegroundActive\(\)/);
+assert.match(client,/backgrounded \? \{ keepalive: true \}/);
 console.log("PASS: 50 uninterrupted 90s beats suppressed; 20 legit 61s reconnects accepted, <60s refused, closed session, old clients, existing no-cost presence route");

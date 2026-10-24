@@ -1,5 +1,7 @@
 {
   "locked": "PASS_ABSOLUTO",
+  "currentAnonReentryStatus": "FAIL_REPORTED_pending_real_browser_validation",
+  "currentWebPushStatus": "PASS_CONFIRMED_AndroidWeb_PCWeb",
   "scope": "Android Web + PC Web: notificaciones entrantes, anónimos regresando cada >=60s sin límite de ciclos",
   "approval": "PASS ABSOLUTO explícito del responsable para entrega web y reconexiones anónimas repetidas, 2026-10-23 (America/Argentina/Cordoba)",
   "lastKnownProductionBuiltAt": "2026-10-24T01:51:15.384Z",

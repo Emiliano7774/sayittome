@@ -1,4 +1,6 @@
-# 🚨🚨🚨 NOTIFICACIONES BLINDADAS — PASS ABSOLUTO 🚨🚨🚨
+# 🚨🚨🚨 NOTIFICACIONES WEB BLINDADAS — RECONEXIONES ANÓNIMAS EN REVISIÓN 🚨🚨🚨
+
+**INCIDENCIA REABIERTA (23/10/2026, 23:49 ART):** el responsable retiró la confirmación anterior de reconexiones anónimas de 60 segundos al recuperar el foco en web (PC o Android). **Estado actual: FAIL / pendiente de prueba real tras la corrección de presencia.** El PASS de entrega general Android Web y PC Web se conserva. El sello anterior permite comparar archivos y detectar regresiones; **no representa una nueva validación del caso de 60 segundos**.
 
 > **PROHIBIDO TOCAR SIN NUEVA VERIFICACIÓN REAL.**
 > El responsable confirmó el **23/10/2026** el **PASS ABSOLUTO** de entrega en **ANDROID WEB** y **PC WEB**, y posteriormente el **PASS ABSOLUTO** de **reconexiones anónimas repetidas cada 60 segundos o más, incluso más allá de la cuarta vuelta**.

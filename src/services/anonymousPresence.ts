@@ -67,27 +67,27 @@ function readLegacyLocalId(): string {
   }
 }
 
-async function postPresenceHeartbeat(anonId: string, headers: Record<string, string>) {
+async function postPresenceHeartbeat(anonId: string, headers: Record<string, string>, backgrounded: boolean) {
   const legacyLocalAnonId = resolveLegacyAnonPresenceCleanupId({
     serverAnonAlias: anonId,
     // Never mint a new local chat session id just for presence cleanup.
     localAnonSessionId: readLegacyLocalId(),
   });
 
-  // No keepalive here: keepalive + AbortSignal is rejected in some browsers,
-  // and heartbeats are not unload beacons (leave uses TTL / door-close DELETE).
+  // Browser background transitions are small, authenticated keepalive POSTs.
+  // Never combine keepalive and AbortSignal (rejected in some browsers).
   const res = await fetch("/api/anonymous-presence", {
     method: "POST",
     headers,
     body: JSON.stringify({
       anonId,
       chatSessionId: getAnonSessionId(),
-      backgrounded: !anonymousForegroundActive(),
+      backgrounded,
       ...readVisibilityPayload(),
       ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
     }),
     cache: "no-store",
-    signal: AbortSignal.timeout(PRESENCE_FETCH_TIMEOUT_MS),
+    ...(backgrounded ? { keepalive: true } : { signal: AbortSignal.timeout(PRESENCE_FETCH_TIMEOUT_MS) }),
   });
   const json = (await res.json().catch(() => ({}))) as {
     ok?: boolean;
@@ -104,7 +104,7 @@ function adoptServerPresenceAlias(anonId: string, ownerUid?: string) {
   storeAnonMatchAlias(id, ownerUid);
 }
 
-async function writeAnonymousPresence(force = false) {
+async function writeAnonymousPresence(force = false, backgrounded = !anonymousForegroundActive()) {
   if (typeof window === "undefined") return;
 
   const user = auth.currentUser;
@@ -144,11 +144,13 @@ async function writeAnonymousPresence(force = false) {
     if (!anonId) return;
 
     cachedPresenceAlias = anonId;
-    const headers = await authHeaders();
+    // Reuse an already-issued token on blur: launch keepalive while the
+    // browser still lets the page run. Foreground can refresh normally.
+    const headers = backgrounded && leaveHeaders ? leaveHeaders : await authHeaders();
     if (!headers) return;
     leaveHeaders = headers;
 
-    let { res, json } = await postPresenceHeartbeat(anonId, headers);
+    let { res, json } = await postPresenceHeartbeat(anonId, headers, backgrounded);
 
     // Rotated / stale client alias must not leave an open tab offline.
     const err = String(json?.error || "");
@@ -162,7 +164,7 @@ async function writeAnonymousPresence(force = false) {
       anonId = resolveAnonPresenceDocId({ serverAnonAlias: rebound });
       if (!anonId) return;
       cachedPresenceAlias = anonId;
-      ({ res, json } = await postPresenceHeartbeat(anonId, headers));
+      ({ res, json } = await postPresenceHeartbeat(anonId, headers, backgrounded));
     }
 
     if (res.ok) {
@@ -273,7 +275,9 @@ export function startAnonymousPresenceSystem() {
   });
 
   document.addEventListener("visibilitychange", () => {
-    // A tab that is still open, even behind another window, stays in the pool.
+    // Brave/Chrome on mobile can show the tab without firing window.focus.
+    // The foreground heartbeat must not stay stuck as backgrounded=true.
+    if (!document.hidden) windowFocused = true;
     void writeAnonymousPresence(true);
   });
 
@@ -287,6 +291,7 @@ export function startAnonymousPresenceSystem() {
   });
 
   window.addEventListener("pageshow", () => {
+    windowFocused = true;
     void writeAnonymousPresence(true);
   });
 
