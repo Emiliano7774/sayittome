@@ -23,6 +23,7 @@ import { stripNativeChatFullscreen } from "@/lib/navigation/nativeBack";
 import { resetChatBackNavigationState } from "@/lib/navigation/chatBackNavigation";
 import { recordNativeNavPath, seedNativeNavStack } from "@/lib/navigation/nativeNavStack";
 import { prepareInstantKeepAliveReturn } from "@/lib/navigation/instantKeepAliveReturn";
+import { fastMainTabHistoryReplace, fastRouterPush } from "@/lib/navigation/fastNavigate";
 import {
   isInstantShuffleReturnDestination,
   isShuffleKeepAliveActive,
@@ -65,6 +66,7 @@ async function runNativeBackNavigation(
       isMainTabHref(action.navigateTo)
     ) {
       prepareInstantKeepAliveReturn(action.navigateTo);
+      if (fastMainTabHistoryReplace(action.navigateTo, "native-back-instant-return")) return;
       router.replace(action.navigateTo);
       return;
     }
@@ -142,6 +144,21 @@ export default function NativeAppBootstrap() {
       stripNativeChatFullscreen();
     }
   }, [pathname]);
+
+  useEffect(() => {
+    const onNotificationChatRoute = (event: Event) => {
+      const intent = event as CustomEvent<{ href?: string }>;
+      const href = String(intent.detail?.href || "");
+      if (!/^\/chat\/[^/?#]+(?:\?.*)?$/.test(href)) return;
+      event.preventDefault();
+      fastRouterPush(router, href, {
+        forceSoftNavigation: true,
+        reason: "notification-chat-same-document",
+      });
+    };
+    window.addEventListener("sayittome:notification-chat-route", onNotificationChatRoute);
+    return () => window.removeEventListener("sayittome:notification-chat-route", onNotificationChatRoute);
+  }, [router]);
 
   useEffect(() => {
     if (!isNativeAppShell()) return;

@@ -1,0 +1,24 @@
+{
+  "locked": "PASS_ABSOLUTO",
+  "scope": "Android Web + PC Web: notificaciones entrantes y de reconexion",
+  "approval": "Confirmación explícita del responsable, 2026-10-23 (America/Argentina/Cordoba)",
+  "lastKnownProductionBuiltAt": "2026-10-24T00:43:00.399Z",
+  "revalidatedAt": "2026-10-24T01:17:12.849Z",
+  "files": {
+    "public/chat-notify/sw.js": "9d940b0b67be2c51a7e42e5688acb558208bc18876b54f1c72cd184f00346c2e",
+    "src/lib/chat/fcmPush.ts": "c828bcbb321652ad90c430d23f285faf3f7872ef203aa5b274d83b2706c6617f",
+    "src/lib/chat/chatNotifications.ts": "8710c9dfb872fb5eccfb0fb5d9216b5ace33d7d6614c6360bdb5fc8b89341143",
+    "src/lib/chat/webNotificationDelivery.ts": "298a83a227e17f953e711e0f589146c86aa6d9765a826551ae87fcd72af0febd",
+    "src/lib/chat/fcmEnablePipeline.ts": "f215ea9e4dfe7fb7380d6ae13f423b9b079d7837ef3faacd1aecc8eafa282a0b",
+    "src/lib/chat/fcmRegistrationStore.ts": "55d8b7398ef661b73864ec9b0c300e8257dffa36a454d9517e61dd65f9dd13f3",
+    "src/lib/chat/webPushAutoPolicy.ts": "458f0b375cdf4ba6c7981a06053e7544a4e09ebc1837b981a9d32e439518f59d",
+    "src/lib/chat/webPushTokenRecovery.ts": "ce63e66dfb4b26e43e8449c53049e7c91d38a95647562a0dc1846179aa1cef58",
+    "src/lib/chat/webPushSwTelemetry.ts": "5e205a2b0724962d4be065272425a7415dbebb8193d661d8130d2ca81f38b3c8",
+    "src/lib/chat/webForegroundPushPolicy.ts": "7a03da68761fc466b56a1b064970af42b4ae34812493f59f9a0250131d10f441",
+    "src/lib/chat/anonArrivalPrefs.ts": "175fa7e25a93b25429671f796036a3ba977fa44fe7eb5ec5bcb0fe3fad18630c",
+    "src/components/anonMatch/AnonArrivalToast.tsx": "8cbd339e175a0bdaf409c9a831b6e1edf5564c1a507553eee6b73aa7e80f98fe",
+    "src/hooks/useGlobalChatAlerts.ts": "42ef8c1c58f6e2f6f0293d957e5c7f4eb667546a0f0743d8669d51157f130dca",
+    "src/components/app/NativeAppBootstrap.tsx": "b47b7296d5857a6cf96344f5e05eceb4dd59110577c3304c085e86e38d3ab898",
+    "functions/src/anonArrivalPush.ts": "d41696e16256987a6adc40856a6a537a592ca94b91f83bb68f002c41a7515b91"
+  }
+}

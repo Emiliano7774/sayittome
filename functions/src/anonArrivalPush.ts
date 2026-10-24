@@ -35,6 +35,56 @@ const TOPIC = "anon-presence-optin-v1";
 const ANON_PUSH_DEDUPE_MS = 60_000;
 const ALIAS = /^anon_[a-z0-9_]{6,80}$/i;
 
+const SUPPORTED_COUNTRIES = new Set(
+  "AR US IT DE ES MX BR CO CL PE UY PY FR GB CA PT VE EC BO CR PA DO AU".split(" ")
+);
+const geoCountry = (value: unknown) => {
+  const code = String(value || "").trim().toUpperCase();
+  return SUPPORTED_COUNTRIES.has(code) ? code : "";
+};
+const geoProvinceKey = (value: unknown) => String(value || "").trim()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const countryTopic = (code: string) => "stm-arrival-country-" + code.toLowerCase();
+const provinceTopic = (code: string, province: string) =>
+  countryTopic(code) + "-p" + createHash("sha256").update(geoProvinceKey(province)).digest("hex").slice(0,12);
+function targetGeoTopics(data: Record<string, unknown>) {
+  const countries = [...new Set((Array.isArray(data.visibilidadPaises) ? data.visibilidadPaises : [])
+    .map(geoCountry).filter(Boolean))];
+  // Never broaden malformed or unknown country restrictions to a global push.
+  const restricted = Array.isArray(data.visibilidadPaises) && data.visibilidadPaises.length > 0 ||
+    Array.isArray(data.visibilidadProvincias) && data.visibilidadProvincias.length > 0;
+  if (!restricted) return {restricted:false,topics:[] as string[]};
+  const provinces = Array.isArray(data.visibilidadProvincias) ? data.visibilidadProvincias : [];
+  if (countries.length === 1 && provinces.length) {
+    return {restricted:true, topics:[...new Set(provinces.filter(x=>String(x||"").trim())
+      .map(province=>provinceTopic(countries[0], String(province))))]};
+  }
+  return {restricted:true,topics:countries.map(countryTopic)};
+}
+function targetConditions(topics: string[]) {
+  // FCM allows at most five topics per condition.
+  const list:string[] = [];
+  for (let i=0;i<topics.length;i+=5) {
+    list.push(topics.slice(i,i+5).map(topic=>"'"+topic+"' in topics").join(" || "));
+  }
+  return list;
+}
+async function authorizedGeoTopics(uid: string, anonymous: boolean) {
+  const user = await db().collection("usuarios").doc(uid).get();
+  let row = user.data() || {};
+  if (anonymous && !geoCountry(row.pais)) {
+    const found = await db().collection("anonimos_activos")
+      .where("authUid","==",uid).limit(1).get();
+    row = found.docs[0]?.data() || row;
+  }
+  const code=geoCountry(row.pais);
+  if (!code) return [] as string[];
+  const topics=[countryTopic(code)];
+  if (String(row.provincia||"").trim()) topics.push(provinceTopic(code,String(row.provincia)));
+  return topics;
+}
+
+
 function stableShortId(alias: string) {
   let hash = 2166136261;
   for (const ch of alias) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
@@ -45,9 +95,9 @@ function noticeTag(principal: string) {
   // legitimate entrances rather than replacing their OS notifications.
   return "stm-arrival-" + createHash("sha256").update(principal).digest("hex").slice(0,16);
 }
-async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; eventId?: string; anonId?: string; username?: string; source?: "manual_admin"; originUid?: string}) {
+async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title: string; body: string; href: string; tag: string; eventId?: string; anonId?: string; username?: string; source?: "manual_admin"; originUid?: string; condition?: string}) {
   const push = {
-    topic: TOPIC,
+    ...(input.condition ? {condition:input.condition} : {topic:TOPIC}),
     notification: {title: input.title, body: input.body},
     data: {
       type: input.type, title: input.title, body: input.body,
@@ -57,6 +107,7 @@ async function broadcast(input: {type: "anon_arrival" | "profile_arrival"; title
       ...(input.username ? {username:input.username} : {}),
       ...(input.source ? {source:input.source} : {}),
       ...(input.originUid ? {originUid:input.originUid} : {}),
+      ...(input.condition ? {geoTargeted:"1"} : {}),
     },
     android: {
       // Prompt delivery while Android is idle; stale arrivals expire after two minutes.
@@ -103,10 +154,25 @@ export const setAnonArrivalPush = onCall({region:"us-central1"}, async (request)
     throw new HttpsError("permission-denied","Token not registered for this user");
   }
   try {
-    const result = enabled
+    const previous = Array.isArray(doc.data()?.arrivalGeoTopics)
+      ? (doc.data()?.arrivalGeoTopics as unknown[]).map(String) : [];
+    const desired = enabled ? await authorizedGeoTopics(uid,
+      request.auth?.token?.firebase?.sign_in_provider === "anonymous") : [];
+    // Unsubscribe stale regions FIRST. A moved user must never retain access
+    // to arrivals meant for their old geographic audience.
+    for (const topic of [...new Set(previous)].filter(t=>t!==TOPIC && !desired.includes(t))) {
+      const result=await messaging().unsubscribeFromTopic([token],topic);
+      if (result.failureCount || result.successCount!==1) throw new Error("geo_topic_unsubscribe_failed");
+    }
+    const globalResult = enabled
       ? await messaging().subscribeToTopic([token],TOPIC)
       : await messaging().unsubscribeFromTopic([token],TOPIC);
-    if (result.failureCount > 0 || result.successCount !== 1) throw new Error("fcm_topic_token_rejected");
+    if (globalResult.failureCount > 0 || globalResult.successCount !== 1) throw new Error("fcm_topic_token_rejected");
+    for (const topic of desired.filter(t=>!previous.includes(t))) {
+      const result=await messaging().subscribeToTopic([token],topic);
+      if (result.failureCount || result.successCount!==1) throw new Error("geo_topic_subscribe_failed");
+    }
+    await doc.ref.set({arrivalGeoTopics:desired},{merge:true});
   } catch (error) {
     logger.warn("arrival topic update failed", {uid,error:String(error)});
     throw new HttpsError("unavailable","Topic update unavailable");
@@ -206,6 +272,11 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
   const now = Date.now();
   const profileRef = db().collection("usuarios").doc(uid);
   const gate = db().collection("arrivalPushGates").doc("profile_"+uid);
+  // Keep the event and its deduplication gate in the SAME atomic commit.
+  // A transient event-write failure must not make an eligible user disappear
+  // from the foreground stream while consuming their 60-second allowance.
+  const eventId = createHash("sha256").update("profile|" + uid + "|" + now).digest("hex").slice(0,40);
+  const arrivalRef = db().collection("connection_arrival_events").doc(eventId);
   const outcome = await db().runTransaction(async (tx) => {
     // Read everything before writing, so competing tabs cannot both announce.
     const user = await tx.get(profileRef);
@@ -217,8 +288,6 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
     if (adminGhost) return {announced:false as const,reason:"admin_ghost_enabled"};
     const username = String(profile.username || "").trim();
     if (!user.exists || !/^[\p{L}\p{N}_.-]{2,40}$/u.test(username) ||
-        (Array.isArray(profile.visibilidadPaises) && profile.visibilidadPaises.length > 0) ||
-        (Array.isArray(profile.visibilidadProvincias) && profile.visibilidadProvincias.length > 0) ||
         profile.banned === true) {
       return {announced:false as const,reason:"not_public_or_offline"};
     }
@@ -236,32 +305,35 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
     }
     // Old clients that reload with stale presence still hit this durable gate;
     // the new client also refreshes lastForegroundAt on every foreground beat.
+    const targeting=targetGeoTopics(profile);
+    if (targeting.restricted && targeting.topics.length===0) {
+      return {announced:false as const,reason:"unresolvable_geo_scope"};
+    }
     tx.set(gate,{lastMs:now},{merge:true});
-    return {announced:true as const,username};
+    // Geo-restricted usernames must never enter the globally readable event
+    // collection. Only country/province topic subscribers may receive them.
+    if (!targeting.restricted) {
+      tx.create(arrivalRef, {
+        type:"profile_arrival", username, originUid:uid,
+        enteredAt:new Date(now).toISOString(), enteredAtMs:now, audience:"public",
+        expiresAt:new Date(now + 60*60_000),
+      });
+    }
+    return {announced:true as const,username,topics:targeting.topics};
   });
   if (!outcome.announced) return {ok:true,...outcome};
-  // Same durable, immutable event stream as anonymous entrances: registered
-  // arrivals remain visible while the app is foregrounded even without OS push.
-  const eventId = createHash("sha256").update("profile|" + uid + "|" + now).digest("hex").slice(0,40);
   try {
-    await db().collection("connection_arrival_events").doc(eventId).create({
-      type:"profile_arrival", username:outcome.username, originUid:uid,
-      enteredAt:new Date(now).toISOString(), enteredAtMs:now, audience:"public",
-      expiresAt:new Date(now + 60*60_000),
-    });
-  } catch(error) {
-    logger.error("profile_arrival_event_write_failed",{uid,error:String(error)});
-    // Preserve normal FCM delivery despite a rare event-log write failure.
-  }
-  try {
-    await broadcast({
-      type:"profile_arrival",username:outcome.username, originUid:uid,
+    const base={
+      type:"profile_arrival" as const, username:outcome.username, originUid:uid,
       title:"🌙 Nueva conexión en SayItToMe",
       body:"@"+outcome.username+" se acaba de conectar. Tocá para hablarle.",
       href:"/u/"+encodeURIComponent(outcome.username),
       eventId:"profile:" + uid + ":" + now,
       tag:noticeTag("profile:" + uid + ":" + now),
-    });
+    };
+    const conditions=targetConditions(outcome.topics);
+    if (conditions.length===0) await broadcast(base);
+    else for (const condition of conditions) await broadcast({...base,condition});
     return {ok:true,announced:true};
   } catch(error) {
     logger.warn("profile arrival push failed",{uid,error:String(error)});

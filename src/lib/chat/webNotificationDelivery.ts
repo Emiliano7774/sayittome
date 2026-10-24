@@ -17,7 +17,12 @@ function workerSupportsChatDisplay(worker: ServiceWorker): Promise<boolean> {
     };
     // A probe has no display side effect. A late old-worker response therefore
     // cannot race the direct fallback and show a second notification.
-    const timer = setTimeout(() => finish(false), 350);
+    // A sleeping worker can need longer than this to boot, so a timeout is not
+    // an answer: forget it and probe again on the next delivery.
+    const timer = setTimeout(() => {
+      if (workerCapabilities.get(worker) === pending) workerCapabilities.delete(worker);
+      finish(false);
+    }, 350);
     channel.port1.onmessage = (event) => finish(event.data?.chatDisplay === 1);
     try {
       worker.postMessage({ type: "sayittome:notification-capabilities" }, [channel.port2]);
@@ -59,8 +64,30 @@ export async function deliverWebChatNotification(
     });
     if (result !== "failed") return result;
   }
+  // The direct path bypasses the worker queue; with renotify the same message
+  // would alert twice once the push already displayed it.
+  if (await isMessageAlreadyDisplayed(registration, options)) return "shown";
   await registration.showNotification(title, options);
   return "shown";
+}
+
+async function isMessageAlreadyDisplayed(
+  registration: ServiceWorkerRegistration,
+  options: NotificationOptions,
+): Promise<boolean> {
+  const data = (options.data || {}) as { chatId?: unknown; messageId?: unknown };
+  const chatId = String(data.chatId || "");
+  const messageId = String(data.messageId || "");
+  if (!chatId || !messageId || !options.tag || typeof registration.getNotifications !== "function") {
+    return false;
+  }
+  try {
+    const existing = await registration.getNotifications({ tag: options.tag });
+    return existing.some((item) =>
+      item.data?.chatId === chatId && item.data?.messageId === messageId);
+  } catch {
+    return false;
+  }
 }
 
 /** Never wait forever on an interrupted worker installation. */

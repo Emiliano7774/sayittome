@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/notification-pass-lock.mjs",
     "build": "next build",
     "postbuild": "node scripts/prune-next-dev-artifacts.mjs",
     "postinstall": "node scripts/install-next-ssr-bin.mjs",

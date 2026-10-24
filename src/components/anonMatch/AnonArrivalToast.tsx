@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { MessageCircle } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -11,14 +11,14 @@ import { anonArrivalPublicLabel, isAnonArrivalAlias } from "@/lib/anonMatch/anon
 import { fetchAnonMatch, resolveLiveAnonMatchCaller } from "@/lib/anonMatch/fetchAnonMatch";
 import { readDiscoveryPayload } from "@/lib/shuffle/audiencePayload";
 import { openVisitorChat } from "@/lib/shuffle/shuffleVisitorNavigation";
+import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
+import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { consumeAnonArrivalToastOnce, markAnonArrivalActionHandled } from "@/lib/anonMatch/arrivalToastReceipt";
+import { recordNotificationStage } from "@/lib/chat/notificationIncident";
 
 type Arrival = { type:"anon_arrival"|"profile_arrival"; id:string; enteredAt:string; username?:string };
 type Notice = { text: string; kind: "offline"|"error"|"waiting" };
 const MAX_ENTRY_AGE_MS = 120_000;
-const ANON_AUTO_SUBSCRIBE_KEY = "sayittome:anonymous-arrival-auto-subscribe-v1:";
-const PROFILE_AUTO_SUBSCRIBE_KEY = "sayittome:profile-arrival-auto-subscribe-v1:";
-const attemptedAnonymousSubscriptions = new Set<string>();
 
 /** Immutable event stream: no latest-document overwrite, no polling. */
 export default function AnonArrivalToast() {
@@ -26,6 +26,7 @@ export default function AnonArrivalToast() {
   const [notice,setNotice] = useState<Notice | null>(null);
   const [opening,setOpening] = useState(false);
   const router=useRouter();
+  const isDirectArrivalLanding=usePathname()==="/arrival";
   const pendingArrivals=useRef<Arrival[]>([]);
   const currentlyShowing=useRef(false);
   const displayNext=useCallback(()=>{
@@ -46,58 +47,88 @@ export default function AnonArrivalToast() {
   const openInFlight=useRef(false);
 
   useEffect(()=>{
-    // One auto topic reconciliation serves anonymous and registered WEB users.
-    // It never requests OS permission: only the existing dialog/settings can.
+    // The one global web-push bootstrap in ChatAlertsProvider now owns token
+    // and topic repair for registered profiles and anonymous visitors.
+    // ArrivalToast only identifies this open tab so FCM can avoid self-alerts.
     let currentUid="";
-    let isAnon=false;
-    const subscribeIfPermitted=()=>{
-      if (!currentUid || typeof Notification === "undefined" ||
-          Notification.permission !== "granted") return;
-      if (!isAnon && !getAnonArrivalPushPreference(currentUid)) return;
-      const identity=(isAnon ? "anon:" : "profile:")+currentUid;
-      if (attemptedAnonymousSubscriptions.has(identity)) return;
-      const key=(isAnon ? ANON_AUTO_SUBSCRIBE_KEY : PROFILE_AUTO_SUBSCRIBE_KEY)+currentUid;
-      const now=Date.now();
-      try {
-        if (Number(window.sessionStorage.getItem(key)||0)>now) return;
-        window.sessionStorage.setItem(key,String(now+30_000));
-      } catch { /* private browsing may refuse sessionStorage */ }
-      attemptedAnonymousSubscriptions.add(identity);
-      void import("@/lib/chat/fcmPush")
-        .then(({setAnonArrivalPushEnabled})=>setAnonArrivalPushEnabled(true))
-        .then(ok=>{
-          try {
-            window.sessionStorage.setItem(key,String(Date.now()+(ok ? 60*60_000 : 30_000)));
-          } catch { /* retry next focus with no storage */ }
-        }).catch(()=>undefined)
-        .finally(()=>attemptedAnonymousSubscriptions.delete(identity));
+    const identifyViewerToWorker=()=>{
+      if(typeof navigator==="undefined" || !("serviceWorker" in navigator))return;
+      if(typeof Notification==="undefined" || Notification.permission!=="granted")return;
+      const uid=currentUid;
+      void import("@/lib/chat/chatNotifications")
+        .then(({ensureChatNotifyServiceWorker})=>ensureChatNotifyServiceWorker())
+        .then(registration=>{
+          if((auth.currentUser?.uid||"")!==uid)return;
+          registration?.active?.postMessage({type:"sayittome:arrival-viewer",uid});
+        }).catch(()=>undefined);
     };
     const stopAuth=onAuthStateChanged(auth,user=>{
       currentUid=user?.uid||"";
-      isAnon=Boolean(user?.isAnonymous);
-      subscribeIfPermitted();
+      identifyViewerToWorker();
     });
-    window.addEventListener("focus",subscribeIfPermitted);
-    window.addEventListener("sayittome:anon-arrival-prefs",subscribeIfPermitted);
-    window.addEventListener("sayittome:chat-notification-prefs",subscribeIfPermitted);
+    window.addEventListener("focus",identifyViewerToWorker);
+    window.addEventListener("pageshow",identifyViewerToWorker);
+    document.addEventListener("visibilitychange",identifyViewerToWorker);
     return ()=>{
       stopAuth();
-      window.removeEventListener("focus",subscribeIfPermitted);
-      window.removeEventListener("sayittome:anon-arrival-prefs",subscribeIfPermitted);
-      window.removeEventListener("sayittome:chat-notification-prefs",subscribeIfPermitted);
+      window.removeEventListener("focus",identifyViewerToWorker);
+      window.removeEventListener("pageshow",identifyViewerToWorker);
+      document.removeEventListener("visibilitychange",identifyViewerToWorker);
     };
   },[]);
-
   useEffect(()=>{
     let unsubscribeDoc:(()=>void)|undefined;
     let loggedIn=false;
     let viewerUid="";
+    let stopped=false;
+    let retryTimer:number|undefined;
+    let retryAttempt=0;
+    let replayAfterStreamError=false;
+    const scheduleStreamRecovery=()=>{
+      if(stopped||retryTimer||!loggedIn||document.hidden)return;
+      const delay=Math.min(30_000,1_000*2**Math.min(retryAttempt++,5));
+      retryTimer=window.setTimeout(()=>{
+        retryTimer=undefined;
+        connect();
+      },delay);
+    };
+    const notifyWebForegroundArrival=(raw:Record<string,unknown>, target:{username?:string;anonId?:string})=>{
+      if(typeof Notification==="undefined"||Notification.permission!=="granted")return;
+      const identity=target.anonId||target.username||"";
+      if(!identity||!viewerUid||!getAnonArrivalPushPreference(viewerUid))return;
+      const uid=viewerUid;
+      const enteredAtMs=Number(raw.enteredAtMs||Date.parse(String(raw.enteredAt||""))||0);
+      const href=target.anonId
+        ? "/arrival?anonArrival="+encodeURIComponent(target.anonId)
+        : "/u/"+encodeURIComponent(target.username||"");
+      const title="🌙 Nueva conexión en SayItToMe";
+      const body=target.anonId
+        ? anonArrivalPublicLabel(target.anonId)+" se acaba de conectar. Tocá para hablarle."
+        : "@"+target.username+" se acaba de conectar. Tocá para hablarle.";
+      void Promise.all([
+        import("@/lib/chat/chatNotifications"),
+        import("@/lib/chat/webNotificationDelivery"),
+      ]).then(async([{ensureChatNotifyServiceWorker},{deliverWebChatNotification}])=>{
+        if(auth.currentUser?.uid!==uid||document.hidden||!getAnonArrivalPushPreference(uid))return;
+        const sw=await ensureChatNotifyServiceWorker();
+        if(!sw?.active)return;
+        await deliverWebChatNotification(sw,title,{
+          body,tag:"stm-web-arrival-"+String(raw.type||"")+"-"+identity+"-"+enteredAtMs,
+          icon:"/icons/Icon-192.png",badge:"/icons/Icon-192.png",
+          data:{type:String(raw.type||""),href,username:target.username||"",
+            anonId:target.anonId||"",eventId:String(raw.eventId||enteredAtMs)},
+        });
+      }).catch(error=>console.warn("[arrival] foreground web notification",String(error)));
+    };
     const connect=()=>{
-      // A new listener starts from NOW, so opening a tab never downloads
-      // history. Events while hidden are owned by OS push, not Firestore reads.
+      // A normal listener starts NOW. After a terminal stream error only,
+      // replay at most the last two minutes (deduped by event ID).
+      // This heals missed 4th/5th/500th entrances without perpetual polling.
+      if(stopped)return;
+      if(retryTimer){window.clearTimeout(retryTimer);retryTimer=undefined;}
       unsubscribeDoc?.();unsubscribeDoc=undefined;
       if(!loggedIn||document.hidden||!getAnonArrivalPushPreference(viewerUid))return;
-      const joinedAt=Date.now()-2_000;
+      const joinedAt=Date.now()-(replayAfterStreamError?MAX_ENTRY_AGE_MS:2_000);
       const arrivalsQuery=query(
         collection(db,"connection_arrival_events"),
         where("enteredAtMs",">=",joinedAt),
@@ -120,6 +151,7 @@ export default function AnonArrivalToast() {
             const key="profile:"+username;
             if(!consumeAnonArrivalToastOnce(viewerUid,key,enteredAt,current))continue;
             pendingArrivals.current.push({type:"profile_arrival",id:key,username,enteredAt});
+            notifyWebForegroundArrival(raw,{username});
             continue;
           }
           const id=String(raw.anonId||"").trim();
@@ -131,9 +163,19 @@ export default function AnonArrivalToast() {
           }
           if(!consumeAnonArrivalToastOnce(viewerUid,id,enteredAt,current))continue;
           pendingArrivals.current.push({type:"anon_arrival",id,enteredAt});
+          notifyWebForegroundArrival(raw,{anonId:id});
         }
+        retryAttempt=0;
+        replayAfterStreamError=false;
         displayNext();
-      },err=>console.warn("[anon-arrival] event stream unavailable",err.code||String(err)));
+      },err=>{
+        console.warn("[anon-arrival] event stream unavailable; retrying",err.code||String(err));
+        // Firestore's error callback is terminal: without an explicit retry
+        // this page stops receiving ALL later reentries until another reload.
+        replayAfterStreamError=true;
+        unsubscribeDoc?.();unsubscribeDoc=undefined;
+        scheduleStreamRecovery();
+      });
     };
     const unsubscribeAuth=onAuthStateChanged(auth,user=>{
       loggedIn=Boolean(user);
@@ -141,15 +183,36 @@ export default function AnonArrivalToast() {
       if(!user){pendingArrivals.current=[];currentlyShowing.current=false;setArrival(null);}
       connect();
     });
+    const onGeoProfileArrival=(event:Event)=>{
+      if(!loggedIn||document.hidden||!getAnonArrivalPushPreference(viewerUid))return;
+      const raw=(event as CustomEvent<Record<string,unknown>>).detail||{};
+      if(raw.geoTargeted!=="1"||raw.type!=="profile_arrival")return;
+      const username=String(raw.username||"").trim();
+      if(!/^[\\p{L}\\p{N}_.-]{2,40}$/u.test(username))return;
+      if(String(raw.originUid||"")===viewerUid)return;
+      const timestamp=Number(String(raw.eventId||"").split(":").at(-1)||0);
+      if(!Number.isFinite(timestamp)||timestamp<=0||Date.now()-timestamp>MAX_ENTRY_AGE_MS)return;
+      const enteredAt=new Date(timestamp).toISOString();
+      const key="profile:"+username;
+      if(!consumeAnonArrivalToastOnce(viewerUid,key,enteredAt,Date.now()))return;
+      pendingArrivals.current.push({type:"profile_arrival",id:key,username,enteredAt});
+      displayNext();
+    };
     document.addEventListener("visibilitychange",connect);
+    window.addEventListener("online",connect);
+    window.addEventListener("sayittome:geo-profile-arrival",onGeoProfileArrival);
     window.addEventListener("sayittome:anon-arrival-prefs",connect);
-    // Refresh only every 15 minutes while visible to bound query growth.
-    // No periodic database reads/polling are performed.
+    // Retain the cheap 15-minute refresh, with immediate bounded error recovery.
+    // There is NO added periodic Firestore polling.
     const reconnectTimer=window.setInterval(()=>{
       if(loggedIn&&!document.hidden)connect();
     },15*60_000);
     return ()=>{
+      stopped=true;
+      if(retryTimer)window.clearTimeout(retryTimer);
       document.removeEventListener("visibilitychange",connect);
+      window.removeEventListener("online",connect);
+      window.removeEventListener("sayittome:geo-profile-arrival",onGeoProfileArrival);
       window.removeEventListener("sayittome:anon-arrival-prefs",connect);
       window.clearInterval(reconnectTimer);
       unsubscribeDoc?.();
@@ -170,6 +233,7 @@ export default function AnonArrivalToast() {
       };
       const text=byStatus[String(detail.status||"")];
       if(text===undefined)return;
+      window.dispatchEvent(new CustomEvent("sayittome:anon-arrival-deeplink-status",{detail:{status:detail.status}}));
       setOpening(false);setNotice(text?{kind:detail.status==="unavailable"?"offline":detail.status==="invited"?"waiting":"error",text}:null);
     };
     window.addEventListener("sayittome:anon-arrival-open-status",onStatus);
@@ -191,28 +255,42 @@ export default function AnonArrivalToast() {
     markAnonArrivalActionHandled(auth.currentUser?.uid || "",id);
     openInFlight.current=true;activeTarget.current=id;
     setOpening(true);
+    window.dispatchEvent(new CustomEvent("sayittome:anon-arrival-deeplink-status",{detail:{status:"opening"}}));
     currentlyShowing.current=false;
     setArrival(null);
     setNotice(null);
     window.setTimeout(displayNext,0);
     try{
+      const openStarted = Date.now();
+      recordNotificationStage("arrival_open", true, "start");
       // Resolve one stable principal *before* the preflight. Auth adoption or
       // hydration can finish while the request is in flight; reading
       // auth.currentUser afterwards could silently choose the wrong chat route.
-      const caller = await resolveLiveAnonMatchCaller();
+      const params=new URLSearchParams({anonId:id});
+      const targetStarted = Date.now();
+      const [caller, res] = await Promise.all([
+        resolveLiveAnonMatchCaller(),
+        fetchAnonMatch("/api/anon-match/arrival-target?"+params.toString(),{
+          method:"POST",
+          body:JSON.stringify(readDiscoveryPayload()),
+          cache:"no-store",
+        }),
+      ]);
+      recordNotificationStage("arrival_open_caller", true, String(Date.now() - openStarted));
+      recordNotificationStage("arrival_open_target", res.ok, String(Date.now() - targetStarted));
       markAnonArrivalActionHandled(caller.user.uid,id);
       // The server checks current presence, closed state, DND and audience.
       // The display card can legitimately outlive the anonymous session.
-      const params=new URLSearchParams({anonId:id});
-      const res=await fetchAnonMatch("/api/anon-match/arrival-target?"+params.toString(),{method:"POST",body:JSON.stringify(readDiscoveryPayload()),cache:"no-store"});
       const result=await res.json().catch(()=>({}));
       if(!res.ok||!result.available){
+        window.dispatchEvent(new CustomEvent("sayittome:anon-arrival-deeplink-status",{detail:{status:"unavailable"}}));
         setNotice({kind:"offline",text:"Este anónimo ya no está disponible."});
         return;
       }
       setNotice({kind:"waiting",text:"Abriendo chat…"});
       if (caller.isRegisteredProfile) {
         if (!auth.currentUser || auth.currentUser.uid !== caller.user.uid) {
+          window.dispatchEvent(new CustomEvent("sayittome:anon-arrival-deeplink-status",{detail:{status:"error"}}));
           setNotice({kind:"error",text:"La sesión cambió. Tocá nuevamente para abrir el chat."});
           return;
         }
@@ -220,11 +298,26 @@ export default function AnonArrivalToast() {
         // in Shuffle. No random-matching request or invitation.
         const visitorChatId=String(result.visitorChatId||"").trim();
         if (!visitorChatId) {
+          window.dispatchEvent(new CustomEvent("sayittome:anon-arrival-deeplink-status",{detail:{status:"error"}}));
           setNotice({kind:"error",text:"No se pudo identificar el chat. Intentá nuevamente."});
           return;
         }
-        const navigated=await openVisitorChat(router,visitorChatId,id,{ensureNavigation:true});
+        const ownUsername=String(result.ownUsername||"").trim();
+        const safetyWarningTitles=Array.isArray(result.safetyWarningTitles)
+          ? result.safetyWarningTitles.map((row: unknown)=>String(row||"").trim()).filter(Boolean)
+          : [];
+        if (ownUsername) {
+          prefetchChatThread(buildProfileAnonChatId(visitorChatId, ownUsername));
+        }
+        const navStarted = Date.now();
+        const navigated=await openVisitorChat(router,visitorChatId,id,{
+          ensureNavigation:true,
+          authenticatedUser:caller.user,
+          arrivalPreflight:{ ownUsername, safetyWarningTitles },
+        });
+        recordNotificationStage("arrival_open_nav", navigated, String(Date.now() - navStarted));
         if (!navigated) {
+          window.dispatchEvent(new CustomEvent("sayittome:anon-arrival-deeplink-status",{detail:{status:"error"}}));
           setNotice({kind:"error",text:"No se pudo abrir el chat. Intentá nuevamente."});
         } else {
           setNotice(null);
@@ -235,6 +328,7 @@ export default function AnonArrivalToast() {
         detail:{targetAnonId:id,source:"arrival"},
       }));
     }catch(error){
+      window.dispatchEvent(new CustomEvent("sayittome:anon-arrival-deeplink-status",{detail:{status:"error"}}));
       console.warn("[anon-arrival] open failed",String(error));
       setNotice({kind:"error",text:"No se pudo abrir el chat. Intentá nuevamente."});
     }finally{openInFlight.current=false;setOpening(false);}
@@ -249,11 +343,16 @@ export default function AnonArrivalToast() {
       markAnonArrivalActionHandled(auth.currentUser?.uid || "",id);
       url.searchParams.delete("anonArrival");
       window.history.replaceState(window.history.state,"",url.pathname+url.search+url.hash);
-      window.setTimeout(()=>void open(id),350);
+      // Authentication is awaited inside open(), so a fixed delay adds only
+      // black-screen latency without preventing an auth/hydration race.
+      window.setTimeout(()=>void open(id),0);
     };
     consume();window.addEventListener("pageshow",consume);window.addEventListener("popstate",consume);
     return ()=>{window.removeEventListener("pageshow",consume);window.removeEventListener("popstate",consume);};
   },[open]);
+  // Deep-linked chat opening paints pure black; the landing itself displays
+  // an error only when opening actually fails. No floating loading banner.
+  if(isDirectArrivalLanding)return null;
   if(!arrival&&!notice&&!opening)return null;
   const label=arrival?.type==="profile_arrival"
     ? "@"+String(arrival.username||"")

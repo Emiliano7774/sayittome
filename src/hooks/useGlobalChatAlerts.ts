@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDocumentHidden } from "@/hooks/useDocumentHidden";
 import { useChatsInbox } from "@/hooks/useChatsInbox";
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
-import { isAnonDirectInboxChat, mergeInboxWithAnonDirectBridge } from "@/lib/anonMatch/anonDirectInboxBridge";
+import { isAnonDirectInboxChat, isVerifiedAnonDirectIncomingChat, mergeInboxWithAnonDirectBridge } from "@/lib/anonMatch/anonDirectInboxBridge";
 import { globalChatWhipManager } from "@/lib/chat/globalChatWhipManager";
 import { chatPeerTitle, resolveChatViewerId } from "@/lib/chat/inboxPeerTitle";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
@@ -47,7 +47,20 @@ import { isCapacitorNative } from "@/lib/app/nativeShell";
 import {
   enableWebChatPush,
   hasActiveFcmRegistration,
+  reconcileWebChatPush,
+  setAnonArrivalPushEnabled,
 } from "@/lib/chat/fcmPush";
+import { getAnonArrivalPushPreference } from "@/lib/chat/anonArrivalPrefs";
+import { shouldAutoReconcileWebPush } from "@/lib/chat/webPushAutoPolicy";
+import { auth } from "@/lib/firebase";
+
+/** Anonymous-direct rows have Auth-UID authorship, not profile/anon role inference. */
+function isVerifiedInboxIncoming(chat: import("@/hooks/useChatsInbox").InboxChat, threadViewer: string, firebaseUid: string) {
+  if (isAnonDirectInboxChat(chat)) return isVerifiedAnonDirectIncomingChat(chat, firebaseUid);
+  const sender = String(chat.lastMessageSender || "").trim();
+  return Boolean(sender && isIncomingChatActivity(chat, threadViewer, firebaseUid) &&
+    !isOwnChatSender(sender, threadViewer, firebaseUid, chat));
+}
 
 function subscribeSessionChatIds(onStoreChange: () => void) {
   if (typeof window === "undefined") return () => undefined;
@@ -247,12 +260,10 @@ export function useGlobalChatAlerts() {
         ) {
           continue;
         }
-        const sender = String(chat.lastMessageSender || "").trim();
         const threadViewer = resolveChatViewerId(chat, firebaseUid);
         // A new id alone can be our own send; never alert on absent/stale
         // direction metadata. Use the THREAD viewer, not the global uid.
-        if (!sender || !isIncomingChatActivity(chat, threadViewer, firebaseUid) ||
-            isOwnChatSender(sender, threadViewer, firebaseUid, chat)) {
+        if (!isVerifiedInboxIncoming(chat, threadViewer, firebaseUid)) {
           continue;
         }
         const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
@@ -291,13 +302,13 @@ export function useGlobalChatAlerts() {
       // snapshot (or be immediately cleared by a visible thread); requiring
       // an unread badge here silently loses a real incoming notification.
       // The orange badge continues using chatUnreadCountForViewer unchanged.
-      const sender = String(chat.lastMessageSender || "").trim();
       const threadViewer = resolveChatViewerId(chat, firebaseUid);
-      if (!sender || !isIncomingChatActivity(chat, threadViewer, firebaseUid) ||
-          isOwnChatSender(sender, threadViewer, firebaseUid, chat)) continue;
+      if (!isVerifiedInboxIncoming(chat, threadViewer, firebaseUid)) continue;
       const arrivedAt = Number(chat.lastMessageAt?.toMillis?.() || 0);
-      if (prior === undefined && (!arrivedAt || Date.now() - arrivedAt > 2 * 60_000 ||
-          arrivedAt > Date.now() + 30_000)) {
+      // A restored inbox row can change IDs while opening a chat. Even when
+      // there was a previous ID, old history is never a fresh notification.
+      if (!arrivedAt || Date.now() - arrivedAt > 2 * 60_000 ||
+          arrivedAt > Date.now() + 30_000) {
         continue;
       }
       tryAlertIncomingMessage({
@@ -367,29 +378,40 @@ export function useGlobalChatAlerts() {
     };
   }, []);
 
-  // Web push is separate from the live-inbox banner. Some installations have
-  // permission granted but no FCM token yet (SW activation/network race).
-  // Retry a failed registration once after boot and on a user focus/resume;
-  // do not poll Firestore or keep a periodic registration timer running.
+  // One global web-push bootstrap for profiles AND anonymous sessions, mounted
+  // through ChatAlertsProvider on every route. Anon arrivals are always opted
+  // in at app level, even if messages are off and /settings is inaccessible.
+  // Never request the browser permission here: only a user gesture may do that.
+  // No Firestore inbox reads or periodic polling for push registration.
   useEffect(() => {
-    if (
-      !notificationsEnabled ||
-      !firebaseUser ||
-      isCapacitorNative() ||
-      typeof Notification === "undefined" ||
-      Notification.permission !== "granted"
-    ) return;
-
+    if (!firebaseUser || isCapacitorNative()) return;
     let stopped = false;
     let lastAttemptAt = 0;
     let retryAttempted = false;
     let retry: number | undefined;
+    const uid = firebaseUser.uid;
+    const allowed = () => shouldAutoReconcileWebPush({
+      uid,
+      native: isCapacitorNative(),
+      permission: typeof Notification === "undefined" ? "unsupported" : Notification.permission,
+      messagesEnabled: areChatNotificationsEnabled(),
+      arrivalsEnabled: getAnonArrivalPushPreference(uid),
+    });
     const attempt = () => {
-      if (stopped || hasActiveFcmRegistration()) return;
-      if (Date.now() - lastAttemptAt < 4_000) return;
+      if (stopped || !allowed() || Date.now() - lastAttemptAt < 10_000) return;
       lastAttemptAt = Date.now();
-      void enableWebChatPush(firebaseUser).then((result) => {
-        if (stopped || result.ok || hasActiveFcmRegistration() || retry || retryAttempted) return;
+      // Validate PushManager + current user token once on boot and on resume.
+      // Successful checks and temporary failures already have durable, shared
+      // throttles inside the FCM registration and topic-sync layers.
+      void reconcileWebChatPush(firebaseUser).then((result) => {
+        if (stopped || authCurrentUidChanged()) return;
+        if (result.ok && getAnonArrivalPushPreference(uid)) {
+          // Arrival topic is separate from messages. Sync even when the user
+          // opted out of messages; automatic:true honors topic backoff.
+          void setAnonArrivalPushEnabled(true, { repair: false, automatic: true })
+            .catch(() => undefined);
+        }
+        if (result.ok || retry || retryAttempted) return;
         retry = window.setTimeout(() => {
           retry = undefined;
           retryAttempted = true;
@@ -397,27 +419,41 @@ export function useGlobalChatAlerts() {
         }, 12_000);
       }).catch(() => undefined);
     };
+    const authCurrentUidChanged = () => auth.currentUser?.uid !== uid;
     const onResume = () => {
       if (document.visibilityState === "visible") attempt();
     };
     attempt();
     window.addEventListener("focus", onResume);
+    window.addEventListener("pageshow", onResume);
+    window.addEventListener("online", onResume);
     document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("sayittome:anon-arrival-prefs", attempt);
+    window.addEventListener("sayittome:chat-notification-prefs", attempt);
     return () => {
       stopped = true;
       if (retry) window.clearTimeout(retry);
       window.removeEventListener("focus", onResume);
+      window.removeEventListener("pageshow", onResume);
+      window.removeEventListener("online", onResume);
       document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("sayittome:anon-arrival-prefs", attempt);
+      window.removeEventListener("sayittome:chat-notification-prefs", attempt);
     };
-  }, [firebaseUser, notificationsEnabled]);
+  }, [firebaseUser?.uid, notificationsEnabled]);
 
   // Keep the first-time permission prompt on the established in-app/loading
   // path. The eager effect above only runs for permission already granted.
   useEffect(() => {
     if (!chatAlertsRouteEnabled || loading || !notificationsEnabled) return;
+    // A permission granted before this page belongs to the throttled reconcile
+    // above; only a grant obtained by this prompt registers immediately.
+    const grantedBefore =
+      typeof Notification !== "undefined" && Notification.permission === "granted";
     void requestChatNotificationPermission().then((granted) => {
       if (
         granted &&
+        !grantedBefore &&
         firebaseUser &&
         !isCapacitorNative() &&
         !hasActiveFcmRegistration()

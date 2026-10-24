@@ -16,6 +16,7 @@ import { isLocalOutgoingMessageId, tryAlertIncomingMessage } from "@/lib/chat/wh
 import { playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { shouldShowWebForegroundChatPush } from "@/lib/chat/webForegroundPushPolicy";
 import { deliverWebChatNotification, waitForWebNotificationWorker } from "@/lib/chat/webNotificationDelivery";
+import { getStoredAnonMatchAlias } from "@/lib/anonMatch/anonMatchSession";
 
 const CHAT_CHANNEL_ID = "chat-messages";
 const ANON_MATCH_CHANNEL_ID = "anon-match-requests";
@@ -204,20 +205,29 @@ function openChatFromNotification(input: {
   title?: string;
 }) {
   const id = String(input.chatId || "").trim();
-  if (!id || typeof window === "undefined") return;
+  if (!id || typeof window === "undefined") return false;
   markChatOpenedFromNotification({
     chatId: id,
     messageId: input.messageId,
     body: input.body,
     title: input.title,
   });
-  prefetchChatThread(id);
-  window.location.assign(
-    buildChatNotificationOpenHref({
-      chatId: id,
-      messageId: input.messageId,
-    }),
-  );
+  prefetchChatThread(id, { cacheOnly: true });
+  const href = buildChatNotificationOpenHref({
+    chatId: id,
+    messageId: input.messageId,
+  });
+  // Reuse the mounted app instead of forcing a full web document reload.
+  // If the router bridge has not hydrated, preserve the old safe fallback.
+  const intent = new CustomEvent("sayittome:notification-chat-route", {
+    cancelable: true,
+    detail: { href },
+  });
+  if (window.dispatchEvent(intent)) {
+    window.location.assign(href);
+    return false;
+  }
+  return true;
 }
 
 async function ensureNativeChannel() {
@@ -391,6 +401,14 @@ function attachChatNotifySwMessageListener() {
       inboxKind?: string;
       data?: Record<string, string>;
     };
+    // Scoped entrances never enter the public stream; the authorized push
+    // can instead reach the current tab through this worker relay.
+    if (data.type === "sayittome:geo-profile-arrival-push") {
+      if (data.data?.geoTargeted === "1" && data.data?.originUid !== auth.currentUser?.uid) {
+        window.dispatchEvent(new CustomEvent("sayittome:geo-profile-arrival", { detail: data.data }));
+      }
+      return;
+    }
     // The custom SW runs without Firebase Messaging's own worker library.
     // Relay its foreground data push to the page without another OS banner.
     if (data.type === "sayittome:web-foreground-push") {
@@ -402,6 +420,7 @@ function attachChatNotifySwMessageListener() {
         viewerUid: String(auth.currentUser?.uid || ""),
         ownMessage: isLocalOutgoingMessageId(chatId, messageId),
         enabled: areChatNotificationsEnabled(),
+        anonAlias: getStoredAnonMatchAlias(),
       })) {
         tryAlertIncomingMessage({
           chatId, messageId, incoming: true, suppress: false,
@@ -426,10 +445,11 @@ function attachChatNotifySwMessageListener() {
       return;
     }
     if (chatId) {
-      openChatFromNotification({
+      const handledInPlace = openChatFromNotification({
         chatId,
         messageId: String(data.messageId || "").trim(),
       });
+      if (handledInPlace) event.ports?.[0]?.postMessage({ handled: true });
       return;
     }
     if (href) {
@@ -442,6 +462,31 @@ function attachChatNotifySwMessageListener() {
   });
 }
 
+/** Lets the worker drop a queued anonymous-chat push for a session this tab ended. */
+function attachAnonDirectSessionReporter() {
+  const report = (state: "active" | "ended") => {
+    const anonId = getStoredAnonMatchAlias();
+    if (!anonId) return;
+    try {
+      chatNotifyRegistration?.active?.postMessage({
+        type: "sayittome:anon-direct-session",
+        anonId,
+        state,
+      });
+    } catch {
+      // The push TTL still bounds a queued message.
+    }
+  };
+  // Same leave signal as anonymous presence: pagehide and visibilitychange
+  // also fire for Android/bfcache sessions that are still open.
+  window.addEventListener("beforeunload", () => report("ended"));
+  window.addEventListener("pageshow", () => report("active"));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") report("active");
+  });
+  void ensureChatNotifyServiceWorker().then(() => report("active")).catch(() => undefined);
+}
+
 export async function initChatNotifications() {
   if (bootstrapped || typeof window === "undefined") return;
   bootstrapped = true;
@@ -450,7 +495,18 @@ export async function initChatNotifications() {
   await attachNativeActionListener();
   if (!isCapacitorNative()) {
     attachChatNotifySwMessageListener();
+    attachAnonDirectSessionReporter();
     void ensureChatNotifyServiceWorker();
+    // The page must listen for foreground FCM payloads even if the token
+    // refresh callable is pending/temporarily unavailable. Otherwise a
+    // visible Chromium tab silently consumes the data-only message.
+    if (typeof Notification !== "undefined" &&
+        Notification.permission === "granted" &&
+        areChatNotificationsEnabled()) {
+      void import("@/lib/chat/fcmPush").then(({ attachWebForegroundMessagingListener }) =>
+        attachWebForegroundMessagingListener()
+      ).catch(error => recordNotificationStage("web_fcm_foreground", false, String(error)));
+    }
   }
 
   if (isCapacitorNative() && areChatNotificationsEnabled()) {

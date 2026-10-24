@@ -1,0 +1,4 @@
+#!/bin/sh
+# PASS ABSOLUTO: no commits containing unverified notification mutations.
+node scripts/notification-pass-lock.mjs --staged || exit 1
+node scripts/notification-pass-lock.mjs || exit 1

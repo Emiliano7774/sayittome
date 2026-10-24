@@ -3,6 +3,7 @@ import {
   shouldClearPendingUnregister,
   shouldFlushPendingUnregister,
 } from "@/lib/chat/fcmInstallation";
+import { isUnregisteredFcmTokenError } from "@/lib/chat/webPushTokenRecovery";
 
 const installOpLocks = new Map<string, Promise<unknown>>();
 const lockActive = new Map<string, number>();
@@ -30,7 +31,10 @@ export function peekInstallationLockStats(installationId?: string) {
 
 export type FcmUpsertResult =
   | { ok: true }
-  | { ok: false; reason: "stale" | "cancelled" | "callable" | "invalid_proof" };
+  | {
+      ok: false;
+      reason: "stale" | "cancelled" | "callable" | "invalid_proof" | "token_unregistered";
+    };
 
 export type PendingUnregisterRow = {
   uid: string;
@@ -173,8 +177,11 @@ export async function reconcileThenRegisterUnlocked(
       token: input.token,
       installationId: input.installationId,
     });
-  } catch {
-    return { ok: false, reason: "callable" };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: isUnregisteredFcmTokenError(error) ? "token_unregistered" : "callable",
+    };
   }
 
   if (deps.liveUid() !== input.uid) return { ok: false, reason: "stale" };

@@ -1,0 +1,18 @@
+name: "🚨 PASS ABSOLUTO — Android Web + PC Web notifications"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  prevent-notification-regressions:
+    name: "🚨 NO MODIFICAR NOTIFICACIONES SIN REVALIDAR"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: "🚨 Comparar archivos de notificaciones con snapshot PASS ABSOLUTO"
+        run: node scripts/notification-pass-lock.mjs

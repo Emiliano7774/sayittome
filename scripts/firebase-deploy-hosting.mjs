@@ -56,6 +56,9 @@ const sha = gitSha();
 const builtAt = new Date().toISOString();
 console.log(`[deploy:hosting] start ${builtAt} sha=${sha}`);
 
+// PASS ABSOLUTO: protect the known-working Android Web + desktop Web push tree.
+// Fail BEFORE touching build assets or starting Firebase if any core changes.
+await run("node", ["scripts/notification-pass-lock.mjs"]);
 await ensureCleanDist();
 await run("node", ["scripts/install-next-ssr-bin.mjs"]);
 writeFileSync(
