@@ -7,13 +7,20 @@ export function mayAnnounceRegisteredReturn(input: {
   nowMs: number;
   lastForegroundMs?: number;
   lastAnnouncementMs?: number;
+  clientAwaySinceMs?: number;
 }): boolean {
   const { nowMs } = input;
   const priorForeground = Number(input.lastForegroundMs || 0);
   const priorAnnouncement = Number(input.lastAnnouncementMs || 0);
   if (!Number.isFinite(nowMs) || nowMs <= 0) return false;
-  // A concurrent tab/device still active updates this timestamp every 90s.
-  if (priorForeground > 0 && nowMs - priorForeground < REGISTERED_RETURN_GAP_MS) return false;
+  // On mobile, the browser may freeze before recording the departure in
+  // Firestore. Validate a full minute since local blur/minimize and allow
+  // this genuine return despite a stale/late presence heartbeat. The durable
+  // per-profile announcement gate below still prevents rapid duplicates.
+  const departedAt = Number(input.clientAwaySinceMs || 0);
+  const resumedAfterFullMinute = Number.isFinite(departedAt) && departedAt > 0 &&
+    departedAt <= nowMs && nowMs - departedAt >= REGISTERED_RETURN_GAP_MS;
+  if (!resumedAfterFullMinute && priorForeground > 0 && nowMs - priorForeground < REGISTERED_RETURN_GAP_MS) return false;
   // Server-side dedupe across tabs, devices, retries, and request races.
   if (priorAnnouncement > 0 && nowMs - priorAnnouncement < REGISTERED_RETURN_GAP_MS) return false;
   // Future timestamps cannot turn the gate into an unbounded cooldown.

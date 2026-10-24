@@ -1,0 +1,12 @@
+{
+  "status": "REVIEWED_PENDING_REAL_BROWSER_PASS",
+  "referenceProductionSha": "bf006b6",
+  "reason": "A user-reported FAIL: all anonymous and registered browsers must rebroadcast after every real >60s background/focus return. No time-limit on cycles.",
+  "baseSnapshotMustRemainPreserved": true,
+  "testedWith": "scripts/all-web-reentry-500.harness.mjs",
+  "files": {
+    "src/lib/anonMatch/anonArrival.ts": "89afe184e411bc0d33c6c98b31d05396c6e6b9ba7e0a10a4c1068fe173df27ab",
+    "src/app/api/anonymous-presence/route.ts": "6ed0a72b6addae54dee9ee22f214b6f93f69647926ed78e6e758f49cc22aeb30",
+    "functions/src/anonArrivalPush.ts": "5922f6aaa6b697a1f8f10bc19b8789cd6818afb5332e30b7d6c5e5aab42584d2"
+  }
+}

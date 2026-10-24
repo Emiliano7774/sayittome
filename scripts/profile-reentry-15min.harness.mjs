@@ -23,8 +23,9 @@ assert.equal(ok({nowMs:now,lastForegroundMs:now+40000,lastAnnouncementMs:0}),fal
 const service=fs.readFileSync("src/services/presence.ts","utf8");
 assert.match(service,/lastForegroundAt: serverTimestamp\(\)/,"existing 90s profile heartbeat carries foreground timestamp");
 assert.match(service,/if \(uid !== currentUid \|\| !foregroundActive\) return;/,"background does not renew heartbeat");
-assert.match(service,/if \(!justReturned\(uid\)\)/,"sub-60s local fast return never calls service");
-assert.match(service,/if \(priorExit\) await priorExit\.catch/,"fast return awaits pending departure");
+assert.match(service,/if \(justReturned\(uid\)\)/,"sub-60s local fast return never calls service");
+assert.doesNotMatch(service,/if \(priorExit\) await priorExit\.catch/,"browser suspend must never stall resume behind an exit promise");
+assert.match(service,/browserAwaySince\("profile", uid\)/,"resume carries local departure timestamp");
 assert.match(service,/isNativeAppShell\(\) \? nativeAppActive : windowFocused/,"native resume supported without window focus");
 assert.match(service,/window\.addEventListener\("beforeunload"/,"reload guards");
 assert.match(service,/saveLastExit\(uid\)/,"session-independent persistent departure guard");

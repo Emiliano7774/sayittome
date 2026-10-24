@@ -1,9 +1,9 @@
 # 🚨🚨🚨 NOTIFICACIONES WEB BLINDADAS — RECONEXIONES ANÓNIMAS EN REVISIÓN 🚨🚨🚨
 
-**INCIDENCIA REABIERTA (23/10/2026, 23:49 ART):** el responsable retiró la confirmación anterior de reconexiones anónimas de 60 segundos al recuperar el foco en web (PC o Android). **Estado actual: FAIL / pendiente de prueba real tras la corrección de presencia.** El PASS de entrega general Android Web y PC Web se conserva. El sello anterior permite comparar archivos y detectar regresiones; **no representa una nueva validación del caso de 60 segundos**.
+**INCIDENCIA REABIERTA (24/10/2026):** el responsable informa que **sigue FAIL para anónimos y perfiles registrados** al recuperar una ventana de navegador (Chrome/Brave en Android y PC) tras al menos 60 segundos fuera de foco. La nueva corrección calcula esa ausencia en la sesión del navegador y la valida en servidor en cada reingreso, sin límite de ciclos; **pendiente de prueba real**. El PASS anterior de entrega general Android Web y PC Web se conserva. `scripts/notification-pass-candidate.json` autoriza solamente tres hashes exactos de la corrección: el sello original no se sobrescribe, el build muestra alerta de CANDIDATO NO PASS y cualquier cambio adicional queda bloqueado. No certificar PASS de reingresos hasta nueva confirmación del responsable.
 
 > **PROHIBIDO TOCAR SIN NUEVA VERIFICACIÓN REAL.**
-> El responsable confirmó el **23/10/2026** el **PASS ABSOLUTO** de entrega en **ANDROID WEB** y **PC WEB**, y posteriormente el **PASS ABSOLUTO** de **reconexiones anónimas repetidas cada 60 segundos o más, incluso más allá de la cuarta vuelta**.
+> El responsable confirmó el **23/10/2026** el **PASS ABSOLUTO** de entrega en **ANDROID WEB** y **PC WEB**. La aprobación posterior de **reconexiones de 60 segundos** fue expresamente **RETIRADA**: anónimos y perfiles registrados permanecen en **FAIL** hasta nueva prueba real.
 > Esta confirmación corresponde al funcionamiento observado por el usuario, no a un certificado perpetuo ni a pruebas que sustituyan los dispositivos reales.
 
 ## Regla permanente para cualquier agente, Cursor, Desktop Commander o desarrollador

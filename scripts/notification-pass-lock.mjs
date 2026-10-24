@@ -33,8 +33,8 @@ const approvedPaths = [
 const banner = [
   "",
   "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
-  "!!!  ALTO: NOTIFICACIONES WEB BLINDADAS — PASS ABSOLUTO DEL USUARIO    !!!",
-  "!!!  ANDROID WEB + PC WEB + RECONEXIONES ANONIMAS >=60s: PASS TOTAL    !!!",
+  "!!!  ALTO: NOTIFICACIONES WEB BLINDADAS — NO MODIFICAR SIN REVISAR      !!!",
+  "!!!  ANDROID WEB + PC WEB: ENTREGA PASS; RECONEXIONES 60s EN REVISION !!!",
   "!!!  CAMBIO BLOQUEADO: ANTES DE MODIFICAR, REVALIDAR AMBAS PLATAFORMAS  !!!",
   "!!!  NO ANULAR ESTE CONTROL NI DESACTIVAR LAS NOTIFICACIONES EXISTENTES!!!",
   "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
@@ -78,6 +78,22 @@ if (manifest.locked !== "PASS_ABSOLUTO" ||
   process.exit(1);
 }
 const changed = [];
+// Reviewed correction candidate: keep the owner-confirmed baseline immutable.
+// Only exact, explicitly recorded hashes may proceed while device revalidation
+// is pending; every build prints an unmistakable NOT-PASS warning.
+let candidate = null;
+try { candidate = JSON.parse(readFileSync(new URL("./notification-pass-candidate.json", import.meta.url), "utf8")); }
+catch { /* No candidate: original fail-closed behavior */ }
+const candidatePaths = [
+  "src/lib/anonMatch/anonArrival.ts",
+  "src/app/api/anonymous-presence/route.ts",
+  "functions/src/anonArrivalPush.ts",
+];
+const candidateValid = candidate?.status === "REVIEWED_PENDING_REAL_BROWSER_PASS" &&
+  manifest.currentAnonReentryStatus === "FAIL_REPORTED_pending_real_browser_validation" &&
+  candidatePaths.every(path => typeof candidate.files?.[path] === "string") &&
+  Object.keys(candidate.files || {}).length === candidatePaths.length;
+const candidateUsed = [];
 for (const path of approvedPaths) {
   let actual;
   try {
@@ -87,7 +103,10 @@ for (const path of approvedPaths) {
     changed.push(path + " (archivo faltante)");
     continue;
   }
-  if (manifest.files[path] !== actual) changed.push(path);
+  if (manifest.files[path] !== actual) {
+    if (candidateValid && candidate.files[path] === actual) candidateUsed.push(path);
+    else changed.push(path);
+  }
 }
 if (changed.length) {
   console.error(banner);
@@ -99,4 +118,12 @@ if (changed.length) {
   console.error("Documento: NOTIFICACIONES-PASS-ABSOLUTO.md");
   process.exit(1);
 }
-console.log("[NOTIFICACIONES PASS ABSOLUTO] Sello intacto: Android Web + PC Web (" + approvedPaths.length + " archivos).");
+if (candidateUsed.length) {
+  console.warn(banner);
+  console.warn("CANDIDATO DE RECONEXIONES WEB EN REVISIÓN — NO ES PASS ABSOLUTO.");
+  console.warn("ÚNICAS MODIFICACIONES APROBADAS POR HASH, PENDIENTES DE PRUEBA REAL:");
+  candidateUsed.forEach(path => console.warn("  ~ " + path));
+  console.warn("Entregas web previamente aprobadas se mantienen bloqueadas ante cambios no revisados.");
+} else {
+  console.log("[NOTIFICACIONES PASS ABSOLUTO] Sello base intacto: Android Web + PC Web (" + approvedPaths.length + " archivos).");
+}

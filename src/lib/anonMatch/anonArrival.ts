@@ -6,6 +6,7 @@ export function isNewAnonymousArrival(input: {
   priorLastSeenAt?: unknown; priorEnteredAt?: unknown;
   priorAnnouncedAt?: unknown; priorSessionClosed?: unknown;
   priorSessionClosedAt?: unknown; priorBackgrounded?: unknown;
+  clientAwaySinceMs?: unknown;
   nowMs: number;
 }) {
   const seen = Date.parse(String(input.priorLastSeenAt || ""));
@@ -22,9 +23,15 @@ export function isNewAnonymousArrival(input: {
   const fromBackground = input.priorSessionClosed !== true &&
     input.priorBackgrounded === true &&
     Number.isFinite(seen) && input.nowMs - seen >= ANON_ARRIVAL_FRESH_MS;
+  const awaySince = Number(input.clientAwaySinceMs || 0);
+  // A browser can be suspended before its background POST is delivered.
+  // A locally recorded exit is eligible only after a full minute. The
+  // existing authoritative announcement gate still prevents fast repeats.
+  const resumedAfterFullMinute = Number.isFinite(awaySince) && awaySince > 0 &&
+    input.nowMs - awaySince >= ANON_ARRIVAL_FRESH_MS && awaySince <= input.nowMs;
   const gapSincePush = !Number.isFinite(announced) ||
     input.nowMs - announced >= ANON_ARRIVAL_MIN_REANNOUNCE_MS;
-  return (firstEntrance || fromClosedSession || fromBackground) && gapSincePush;
+  return (firstEntrance || fromClosedSession || fromBackground || resumedAfterFullMinute) && gapSincePush;
 }
 
 export function isAnonArrivalGloballyVisible(input: { paises?: unknown; provincias?: unknown; doNotDisturb?: boolean }) {

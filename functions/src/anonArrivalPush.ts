@@ -300,6 +300,7 @@ export const announceProfileArrival = onCall({region:"us-central1"}, async (requ
       nowMs: now,
       lastForegroundMs: Number.isFinite(foregroundMs) ? foregroundMs : 0,
       lastAnnouncementMs: lastAnnounced,
+      clientAwaySinceMs: Number(request.data?.awaySinceMs || 0),
     })) {
       return {announced:false as const,reason:"duplicate_session"};
     }

@@ -43,6 +43,7 @@ async function writePresenceDoc(
   },
   chatSessionId = "",
   backgrounded = false,
+  awaySinceMs = 0,
 ) {
   const now = new Date();
   // Retention is three hours for the Shuffle card; background/foreground
@@ -58,6 +59,7 @@ async function writePresenceDoc(
     priorSessionClosed: existing?.sessionClosed,
     priorSessionClosedAt: existing?.sessionClosedAt || existing?.updatedAt,
     priorBackgrounded: existing?.backgrounded,
+    clientAwaySinceMs: awaySinceMs,
     nowMs: now.getTime(),
   });
   const mayAnnounce = !backgrounded && isEntrance && isAnonArrivalGloballyVisible({
@@ -168,6 +170,7 @@ export async function POST(req: Request) {
       },
       sanitizeShuffleVisitorChatId(body?.chatSessionId),
       body?.backgrounded === true,
+      Number(body?.awaySinceMs || 0),
     );
     try {
       const siblings = await listAnonMatchAdminDocs("anonimos_activos", {

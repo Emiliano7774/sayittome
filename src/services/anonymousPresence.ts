@@ -20,6 +20,7 @@ import { readVisibilityPayload } from "@/lib/shuffle/audiencePayload";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { auth } from "@/lib/firebase";
 import { isNativeAppShell } from "@/lib/app/nativeShell";
+import { markBrowserAway, browserAwaySince, clearBrowserAway } from "@/lib/anonMatch/browserAwayClock";
 
 let started = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -67,7 +68,7 @@ function readLegacyLocalId(): string {
   }
 }
 
-async function postPresenceHeartbeat(anonId: string, headers: Record<string, string>, backgrounded: boolean) {
+async function postPresenceHeartbeat(anonId: string, headers: Record<string, string>, backgrounded: boolean, awaySinceMs = 0) {
   const legacyLocalAnonId = resolveLegacyAnonPresenceCleanupId({
     serverAnonAlias: anonId,
     // Never mint a new local chat session id just for presence cleanup.
@@ -83,6 +84,7 @@ async function postPresenceHeartbeat(anonId: string, headers: Record<string, str
       anonId,
       chatSessionId: getAnonSessionId(),
       backgrounded,
+      ...(awaySinceMs ? { awaySinceMs } : {}),
       ...readVisibilityPayload(),
       ...(legacyLocalAnonId ? { legacyLocalAnonId } : {}),
     }),
@@ -150,7 +152,8 @@ async function writeAnonymousPresence(force = false, backgrounded = !anonymousFo
     if (!headers) return;
     leaveHeaders = headers;
 
-    let { res, json } = await postPresenceHeartbeat(anonId, headers, backgrounded);
+    const awaySinceMs = backgrounded ? 0 : browserAwaySince("anon", user!.uid);
+    let { res, json } = await postPresenceHeartbeat(anonId, headers, backgrounded, awaySinceMs);
 
     // Rotated / stale client alias must not leave an open tab offline.
     const err = String(json?.error || "");
@@ -164,10 +167,11 @@ async function writeAnonymousPresence(force = false, backgrounded = !anonymousFo
       anonId = resolveAnonPresenceDocId({ serverAnonAlias: rebound });
       if (!anonId) return;
       cachedPresenceAlias = anonId;
-      ({ res, json } = await postPresenceHeartbeat(anonId, headers, backgrounded));
+      ({ res, json } = await postPresenceHeartbeat(anonId, headers, backgrounded, awaySinceMs));
     }
 
     if (res.ok) {
+      if (!backgrounded) clearBrowserAway("anon", user!.uid);
       lastWriteAt = Date.now();
       adoptServerPresenceAlias(String(json?.anonId || anonId), user?.uid);
     }
@@ -257,7 +261,11 @@ function onUserChanged(user: User | null) {
     return;
   }
 
-  void writeAnonymousPresence(true);
+  if (!anonymousForegroundActive()) {
+    if (user?.uid) markBrowserAway("anon", user.uid);
+  } else {
+    void writeAnonymousPresence(true);
+  }
   startHeartbeat();
 }
 
@@ -278,7 +286,8 @@ export function startAnonymousPresenceSystem() {
     // Brave/Chrome on mobile can show the tab without firing window.focus.
     // The foreground heartbeat must not stay stuck as backgrounded=true.
     if (!document.hidden) windowFocused = true;
-    void writeAnonymousPresence(true);
+    if (anonymousForegroundActive()) void writeAnonymousPresence(true);
+    else if (auth.currentUser?.isAnonymous) markBrowserAway("anon", auth.currentUser.uid);
   });
 
   window.addEventListener("focus", () => {
@@ -287,7 +296,7 @@ export function startAnonymousPresenceSystem() {
   });
   window.addEventListener("blur", () => {
     windowFocused = false;
-    void writeAnonymousPresence(true);
+    if (auth.currentUser?.isAnonymous) markBrowserAway("anon", auth.currentUser.uid);
   });
 
   window.addEventListener("pageshow", () => {

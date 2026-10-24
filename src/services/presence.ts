@@ -6,6 +6,7 @@ import { httpsCallable } from "firebase/functions";
 
 import { auth, db, functions } from "@/lib/firebase";
 import { isNativeAppShell } from "@/lib/app/nativeShell";
+import { markBrowserAway, browserAwaySince, clearBrowserAway } from "@/lib/anonMatch/browserAwayClock";
 
 let started = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -76,17 +77,20 @@ function startHeartbeat(uid: string) {
 async function enterForeground(uid: string) {
   const sequence = ++entrySequence;
   stopHeartbeat();
-  // A fast return must not race the departure timestamp still in flight.
-  const priorExit = pendingExitWrite;
-  if (priorExit) await priorExit.catch(() => false);
+  // Browser suspension can stall an exit write indefinitely. The local
+  // departure clock is captured synchronously and validated server-side.
   if (sequence !== entrySequence || currentUid !== uid || !foregroundActive) return;
 
   // Skip server calls for short returns on this installation. Firestore still
   // checks the authoritative gap across tabs/devices for eligible attempts.
-  if (!justReturned(uid)) {
+  if (justReturned(uid)) {
+    clearBrowserAway("profile", uid);
+  } else {
     try {
       const announce = httpsCallable(functions, "announceProfileArrival");
-      await announce({});
+      const awaySinceMs = browserAwaySince("profile", uid);
+      const result = await announce(awaySinceMs ? { awaySinceMs } : {});
+      if ((result.data as {ok?: boolean})?.ok === true) clearBrowserAway("profile", uid);
     } catch {
       // Presence and chat delivery never depend on optional arrival pushes.
     }
@@ -102,6 +106,7 @@ function leaveForeground(uid: string) {
   saveLastExit(uid);
   // Keep "online" until the fifteen-minute heartbeat window expires;
   // do not equate backgrounding with logout or disable incoming chat pushes.
+  markBrowserAway("profile", uid);
   pendingExitWrite = writePresence(uid, true, true);
 }
 
@@ -128,9 +133,16 @@ export function startPresenceSystem() {
     lastWriteAt = 0;
     // Anonymous visitors have no usuarios profile and keep their own 3h rules.
     if (currentUid && foregroundActive) void enterForeground(currentUid);
+    else if (currentUid) markBrowserAway("profile", currentUid);
   });
 
-  document.addEventListener("visibilitychange", reconcileForeground);
+  document.addEventListener("visibilitychange", () => {
+    // Mobile browsers can restore visibility without dispatching window.focus.
+    // Treat a visible tab as foreground again; blur still handles background
+    // desktop windows while the document itself remains visible.
+    if (!document.hidden) windowFocused = true;
+    reconcileForeground();
+  });
   window.addEventListener("focus", () => {
     windowFocused = true;
     reconcileForeground();
