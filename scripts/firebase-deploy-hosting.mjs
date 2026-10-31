@@ -9,6 +9,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { spawn, execSync } from "node:child_process";
+import { dirname, join } from "node:path";
 
 function gitSha() {
   try {
@@ -21,10 +22,22 @@ function gitSha() {
 function run(cmd, args, env = process.env) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
-    const child = spawn(cmd, args, {
+    // Node 24/Windows cannot reliably spawn .cmd shims through shell:true.
+    // Run the JS entrypoints directly through the same Node executable.
+    const win = process.platform === "win32";
+    let executable = cmd === "node" ? process.execPath : cmd;
+    let argv = args;
+    if (win && cmd === "npm") {
+      executable = process.execPath;
+      argv = [join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"), ...args];
+    } else if (win && cmd === "firebase") {
+      executable = process.execPath;
+      argv = [join(process.env.APPDATA || "", "npm", "node_modules", "firebase-tools", "lib", "bin", "firebase.js"), ...args];
+    }
+    const child = spawn(executable, argv, {
       stdio: "inherit",
-      shell: process.platform === "win32",
-      env,
+      shell: false,
+      env: win ? { ...env, npm_config_script_shell: "powershell.exe" } : env,
     });
     const beat = setInterval(() => {
       const sec = Math.round((Date.now() - started) / 1000);
