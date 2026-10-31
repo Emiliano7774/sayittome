@@ -4,10 +4,33 @@ import { resolveAnonDirectViewerRole } from "@/lib/anonMatch/anonDirectInboxShel
 
 export const ANON_DIRECT_INBOX_KIND = "anon_direct" as const;
 
+/** Normalize old anon/profile display aliases using the two verified thread participants.
+ * An unrecognized sender must remain unclassified, never become a new inbound alert. */
+export function resolveAnonDirectLastSenderAuthUid(shell: AnonDirectInboxShell): string {
+  const from = String(shell.lastMessageSender || "").trim();
+  const a = String(shell.solicitanteAuthUid || "").trim();
+  const b = String(shell.destinatarioAuthUid || "").trim();
+  if (!from || !a || !b || a === b) return "";
+  const fromA = [a, shell.solicitanteAnonId, shell.solicitanteUid].some((id) => Boolean(id) && id === from);
+  const fromB = [b, shell.anonId, shell.destinatarioUid].some((id) => Boolean(id) && id === from);
+  if (fromA === fromB) return "";
+  return fromA ? a : b;
+}
+
+/** Only the authenticated other participant can produce an anon-direct inbox alert. */
+export function isVerifiedAnonDirectIncomingChat(chat: InboxChat, viewerAuthUid: string): boolean {
+  if (!isAnonDirectInboxChat(chat)) return false;
+  const viewer = String(viewerAuthUid || "").trim();
+  const peer = String(chat.anonDirectPeerAuthUid || "").trim();
+  const sender = String(chat.lastMessageSender || "").trim();
+  return Boolean(viewer && peer && peer !== viewer && sender === peer);
+}
+
 export type AnonDirectInboxChat = InboxChat & {
   inboxKind: typeof ANON_DIRECT_INBOX_KIND;
   sourceCollection: "chats_anonimos";
   anonDirectRole: "perfil" | "anonimo";
+  anonDirectPeerAuthUid?: string;
 };
 
 export function isAnonDirectInboxChat(
@@ -40,6 +63,12 @@ export function bridgeAnonDirectShellToInboxChat(
   }
 
   const role = resolveAnonDirectViewerRole(shell, viewerAuthUid);
+  const a = String(shell.solicitanteAuthUid || "").trim();
+  const b = String(shell.destinatarioAuthUid || "").trim();
+  const peerAuthUid = a && b && a !== b
+    ? (viewerAuthUid === a ? b : viewerAuthUid === b ? a : "")
+    : "";
+  const senderAuthUid = resolveAnonDirectLastSenderAuthUid(shell);
   const preview = String(shell.lastMessage || shell.ultimoMensaje || "").trim();
   const atMs = shell.lastMessageAtMs || shell.updatedAtMs || 0;
 
@@ -49,8 +78,10 @@ export function bridgeAnonDirectShellToInboxChat(
     inboxKind: ANON_DIRECT_INBOX_KIND,
     sourceCollection: "chats_anonimos",
     anonDirectRole: role,
+    anonDirectPeerAuthUid: peerAuthUid || undefined,
     lastMessage: preview || undefined,
-    lastMessageSender: shell.lastMessageSender,
+    // The old alias cannot be mistaken for a peer after identity rotation.
+    lastMessageSender: senderAuthUid || undefined,
     latestMessageId: shell.latestMessageId,
     latestReadMessageIds: shell.latestReadMessageIds,
     readBy: shell.readBy,

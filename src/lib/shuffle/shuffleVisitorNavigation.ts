@@ -59,7 +59,7 @@ export async function openVisitorChat(
   router: AppRouterInstance,
   visitorChatId: string,
   visitorMatchAnonId?: string,
-  options?: { ensureNavigation?: boolean },
+  options?: { ensureNavigation?: boolean; authenticatedUser?: unknown; arrivalPreflight?: { ownUsername?: string; safetyWarningTitles?: string[] } },
 ) {
   const visitorId = sanitizeShuffleVisitorChatId(visitorChatId);
   const matchAlias = sanitizeShuffleVisitorChatId(visitorMatchAnonId);

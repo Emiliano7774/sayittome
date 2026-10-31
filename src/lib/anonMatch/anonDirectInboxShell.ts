@@ -13,6 +13,8 @@ export type AnonDirectInboxShell = {
   lastMessageAtMs?: number;
   updatedAtMs?: number;
   solicitanteAuthUid?: string;
+  solicitanteUid?: string;
+  destinatarioUid?: string;
   destinatarioAuthUid?: string;
   solicitanteAnonId?: string;
   anonId?: string;

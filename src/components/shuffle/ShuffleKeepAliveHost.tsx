@@ -61,6 +61,7 @@ import {
   subscribeMainTabPathname,
 } from "@/lib/navigation/mainTabInternalPathnameStore";
 import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
+import { installShuffleOneFingerFallback } from "@/lib/navigation/shuffleOneFingerFallback";
 import { presentExistingShuffleSnapshot } from "@/lib/navigation/shuffleForegroundRecover";
 import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
 import { isMainTabHref, type MainTabHref } from "@/lib/navigation/mainTabs";
@@ -379,6 +380,17 @@ export default function ShuffleKeepAliveHost() {
     });
   }, []);
 
+  useEffect(() => {
+    // Keep native scrolling first; rescue only a verified stalled one-finger pan.
+    const host = document.getElementById("sayittome-shuffle-keepalive-host");
+    if (!host) return;
+    host.dataset.shuffleTouchFallbackStatus = "installed";
+    const remove = installShuffleOneFingerFallback(host);
+    return () => {
+      remove();
+      delete host.dataset.shuffleTouchFallbackStatus;
+    };
+  }, [pathname, visible]);
   useEffect(() => {
     function onPageShow(event: PageTransitionEvent) {
       if (!event.persisted) return;
