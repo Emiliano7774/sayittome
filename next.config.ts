@@ -12,6 +12,11 @@ function resolveBuildSha() {
 }
 
 const nextConfig: NextConfig = {
+  // Isolated Windows release worktrees may share node_modules via a junction.
+  // Include both directories in Turbopack's filesystem root only during QA/build.
+  ...(process.env.SAYITTOME_ISOLATED_TURBO_ROOT
+    ? { turbopack: { root: process.env.SAYITTOME_ISOLATED_TURBO_ROOT } }
+    : {}),
   // firebase-admin must not be statically imported into the SSR graph.
   // Turbopack rewrites import("firebase-admin/…") → firebase-admin-<hash>
   // externals that Firebase packaging drops on Linux GCF → MODULE_NOT_FOUND.
