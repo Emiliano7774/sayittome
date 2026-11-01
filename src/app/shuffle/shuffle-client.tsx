@@ -15,6 +15,8 @@ import AnonShuffleProfileGate from "@/components/shuffle/AnonShuffleProfileGate"
 import { useFollowingProfiles } from "@/hooks/useFollowingProfiles";
 import { useClassicShuffleDensity } from "@/hooks/useClassicShuffleDensity";
 import { useShufflePool } from "@/hooks/useShufflePool";
+import { useStableShuffleSurfaceMode } from "@/hooks/useStableShuffleSurfaceMode";
+import { isShuffleTouchGestureActive } from "@/lib/shuffle/shuffleTouchStability";
 import { traceLoadingShellPresentation, traceShuffleVisualCommit } from "@/lib/shuffle/shuffleWarmVisual";
 import {
   deriveShufflePresentation,
@@ -77,6 +79,8 @@ export default function ShuffleClient() {
   );
 
   useLayoutEffect(() => {
+    // Do not replace the feed's DOM touch target while Android is panning.
+    if (isShuffleTouchGestureActive()) return;
     if (isShuffleRevealDeferred()) {
       restorePinnedShuffleWindowSync();
     }
@@ -93,13 +97,14 @@ export default function ShuffleClient() {
   };
   const presentation = deriveShufflePresentation(gateInput);
   const { showShuffleLoading, showShuffleFeed } = presentation;
-  const surfaceMode = deriveShuffleSurfaceMode({
+  const nextSurfaceMode = deriveShuffleSurfaceMode({
     showShuffleLoading,
     showShuffleFeed,
     poolSize: pool.poolSize,
     filteredVisibleCount: pool.visibleCount,
     hasActiveDiscovery: pool.hasActiveDiscovery,
   });
+  const surfaceMode = useStableShuffleSurfaceMode(nextSurfaceMode);
 
   useLayoutEffect(() => {
     traceLoadingShellPresentation(showShuffleLoading, gateInput);

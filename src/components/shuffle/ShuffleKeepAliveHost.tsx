@@ -425,12 +425,29 @@ export default function ShuffleKeepAliveHost() {
     // A late snapshot-restore rAF must never override a real Android swipe.
     // Capture in the document so it also works after the keep-alive host mounts.
     let touchingShuffle = false;
+    let cancelledTouchReleaseTimer: number | null = null;
+    const clearCancelledTouchRelease = () => {
+      if (cancelledTouchReleaseTimer === null) return;
+      window.clearTimeout(cancelledTouchReleaseTimer);
+      cancelledTouchReleaseTimer = null;
+    };
+    const deferCancelledTouchRelease = () => {
+      clearCancelledTouchRelease();
+      // Some Android WebViews send touchcancel when compositor panning takes
+      // over, but never dispatch scrollend. Never hold the feed frozen for
+      // the 12-second emergency timeout when scrolling has stopped.
+      cancelledTouchReleaseTimer = window.setTimeout(() => {
+        cancelledTouchReleaseTimer = null;
+        endShuffleTouchGesture();
+      }, 650);
+    };
     const onTouchStart = (event: TouchEvent) => {
       touchingShuffle = Boolean(
         event.target instanceof Element &&
         event.target.closest("#sayittome-shuffle-keepalive-host main[data-scroll-root]")
       );
       if (!touchingShuffle) return;
+      clearCancelledTouchRelease();
       cancelShuffleViewportSnapshotRestore();
       notifyShuffleFeedUserInput();
       startShuffleTouchGesture();
@@ -447,10 +464,12 @@ export default function ShuffleKeepAliveHost() {
         // takes over. This is not finger-up: keep cards/restore locked until
         // scrollend, rather than unmounting the original touch target mid-pan.
         touchingShuffle = false;
+        deferCancelledTouchRelease();
         return;
       }
       if (event.touches.length === 0) {
         touchingShuffle = false;
+        clearCancelledTouchRelease();
         endShuffleTouchGesture();
       }
     };
@@ -458,14 +477,20 @@ export default function ShuffleKeepAliveHost() {
       if (
         event.target instanceof Element &&
         event.target.matches("#sayittome-shuffle-keepalive-host main[data-scroll-root]")
-      ) continueShuffleTouchGesture();
+      ) {
+        continueShuffleTouchGesture();
+        if (cancelledTouchReleaseTimer !== null) deferCancelledTouchRelease();
+      }
     };
     const onNativeScrollEnd = (event: Event) => {
       if (
         !touchingShuffle &&
         event.target instanceof Element &&
         event.target.matches("#sayittome-shuffle-keepalive-host main[data-scroll-root]")
-      ) endShuffleTouchGesture();
+      ) {
+        clearCancelledTouchRelease();
+        endShuffleTouchGesture();
+      }
     };
     document.addEventListener("scroll", onNativeScroll, { passive: true, capture: true });
     document.addEventListener("scrollend", onNativeScrollEnd, { passive: true, capture: true });
@@ -480,6 +505,7 @@ export default function ShuffleKeepAliveHost() {
       document.removeEventListener("touchmove", onTouchMove, true);
       document.removeEventListener("touchend", onTouchEnd, true);
       document.removeEventListener("touchcancel", onTouchEnd, true);
+      clearCancelledTouchRelease();
       endShuffleTouchGesture();
     };
   }, []);

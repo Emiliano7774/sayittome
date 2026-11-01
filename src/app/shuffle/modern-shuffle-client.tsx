@@ -16,6 +16,8 @@ import ShuffleFiltersEmptyState from "@/components/shuffle/ShuffleFiltersEmptySt
 import ShuffleFiltersSheet from "@/components/shuffle/ShuffleFiltersSheet";
 import ModernShuffleGlassToolbar from "@/components/shuffle/ModernShuffleGlassToolbar";
 import { useShufflePool } from "@/hooks/useShufflePool";
+import { useStableShuffleSurfaceMode } from "@/hooks/useStableShuffleSurfaceMode";
+import { isShuffleTouchGestureActive } from "@/lib/shuffle/shuffleTouchStability";
 import {
   getServerShuffleSlotsVersion,
   getShuffleSlotsVersion,
@@ -69,6 +71,8 @@ export default function ModernShuffleClient() {
   useSyncExternalStore(subscribeStoriesIndex, getStoriesIndexVersion, getStoriesIndexVersion);
 
   useLayoutEffect(() => {
+    // Keep the original WebView touch target mounted during a native swipe.
+    if (isShuffleTouchGestureActive()) return;
     if (isShuffleRevealDeferred()) {
       restorePinnedShuffleWindowSync();
     }
@@ -89,13 +93,14 @@ export default function ModernShuffleClient() {
   };
   const presentation = deriveShufflePresentation(gateInput);
   const { showShuffleLoading, showShuffleFeed } = presentation;
-  const surfaceMode = deriveShuffleSurfaceMode({
+  const nextSurfaceMode = deriveShuffleSurfaceMode({
     showShuffleLoading,
     showShuffleFeed,
     poolSize: pool.poolSize,
     filteredVisibleCount: pool.visibleCount,
     hasActiveDiscovery: pool.hasActiveDiscovery,
   });
+  const surfaceMode = useStableShuffleSurfaceMode(nextSurfaceMode);
 
   useLayoutEffect(() => {
     traceShuffleVisualCommit("modern-shuffle-render", {
