@@ -118,7 +118,7 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
 
   return (
     <div
-      className="sayittome-bottom-nav fixed bottom-0 left-0 right-0 z-[9999] border-t border-white/[0.04] bg-[#171717]/96 backdrop-blur-2xl"
+      className="sayittome-bottom-nav fixed bottom-0 left-0 right-0 z-[9999] border-t border-white/[0.04] bg-[#171717]"
       data-bottom-nav-implementation="classic"
     >
       <div className="sayittome-bottom-nav-inner flex w-full items-center justify-around px-[max(22px,4vw)]">
