@@ -57,8 +57,10 @@ function ModernShuffleCard({
   const subtext = visitor
     ? t("shuffle_visitor_bio")
     : profile.bio?.trim() || "Perfil SayItToMe";
-  const photoLoading = feedIndex < 8 ? "eager" : "lazy";
-  const photoPriority = feedIndex < 8 ? "high" : "auto";
+  // Only above-the-fold cards compete at high priority. The rest are lazy:
+  // eager-loading eight full-resolution photos starved chat and story fetches.
+  const photoLoading = feedIndex < 4 ? "eager" : "lazy";
+  const photoPriority = feedIndex < 4 ? "high" : "low";
 
   function handleLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
@@ -222,8 +224,12 @@ function ModernShuffleCard({
 export default memo(
   ModernShuffleCard,
   (a, b) =>
+    // Preserve the mounted card only when both its visible content and
+    // download priority are unchanged. Otherwise live edits stay stale.
+    ((a.feedIndex ?? 0) < 4) === ((b.feedIndex ?? 0) < 4) &&
     a.profile.uid === b.profile.uid &&
     a.profile.username === b.profile.username &&
+    a.profile.bio === b.profile.bio &&
     a.profile.photo === b.profile.photo &&
     a.profile.showOnline === b.profile.showOnline &&
     a.profile.shuffleFeatured === b.profile.shuffleFeatured &&
