@@ -17,6 +17,18 @@ import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
 const photoCache: Record<string, string> = {};
 const blurCache: Record<string, boolean> = {};
 
+function mergePhotoRecords<T extends string | boolean>(
+  previous: Record<string, T>,
+  incoming: Record<string, T>,
+): Record<string, T> {
+  // Live inbox snapshots frequently contain identical photo maps. Preserve
+  // reference equality when nothing changed to avoid re-rendering all rows.
+  for (const [key, value] of Object.entries(incoming)) {
+    if (previous[key] !== value) return { ...previous, ...incoming };
+  }
+  return previous;
+}
+
 // Inbox snapshots can arrive in bursts (multiple query cohorts). Share photo
 // work across hook re-renders instead of starting one request per render/row.
 // A small global concurrency budget prevents photo lookups from starving chats.
@@ -98,22 +110,41 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
 
   useEffect(() => {
     let cancelled = false;
+    let publishTimer = 0;
 
-    async function loadPhotos() {
-      if (pathname !== "/chats" || usernames.length === 0) {
-        return;
-      }
+    const publishAvailablePhotos = () => {
+      if (cancelled || publishTimer) return;
+      // Coalesce closely spaced async completions, but never wait for every
+      // profile in a long inbox before displaying the first successful photo.
+      publishTimer = window.setTimeout(() => {
+        publishTimer = 0;
+        if (cancelled) return;
+        setPhotos((previous) => mergePhotoRecords(previous, photoCache));
+        setBlurPhotos((previous) => mergePhotoRecords(previous, blurCache));
+      }, 32);
+    };
+
+    function loadPhotos() {
+      if (pathname !== "/chats" || usernames.length === 0) return;
 
       const next: Record<string, string> = { ...photoCache };
       const nextBlur: Record<string, boolean> = { ...blurCache };
+      // One pass avoids a chats.find scan for every username (O(n²) on
+      // large inboxes), while retaining the same authoritative targetPhoto.
+      const targetPhotos = new Map<string, string>();
+      for (const chat of chats) {
+        if (isAnonDirectInboxChat(chat) || !chat.targetPhoto) continue;
+        const username = resolveChatUsername(chat);
+        if (username && !targetPhotos.has(username)) {
+          targetPhotos.set(username, chat.targetPhoto);
+        }
+      }
 
       const missing = usernames.filter((username) => {
-        const cachedChat = chats.find(
-          (chat) => resolveChatUsername(chat) === username && chat.targetPhoto,
-        );
-        if (cachedChat?.targetPhoto) {
-          next[username] = cachedChat.targetPhoto;
-          photoCache[username] = cachedChat.targetPhoto;
+        const targetPhoto = targetPhotos.get(username);
+        if (targetPhoto) {
+          next[username] = targetPhoto;
+          photoCache[username] = targetPhoto;
           return false;
         }
 
@@ -129,27 +160,24 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
         return !next[username];
       });
 
-      if (missing.length === 0) {
-        if (!cancelled) {
-          setPhotos(next);
-          setBlurPhotos(nextBlur);
-        }
-        return;
+      // Render known avatar data now, independently of outstanding requests.
+      setPhotos((previous) => mergePhotoRecords(previous, next));
+      setBlurPhotos((previous) => mergePhotoRecords(previous, nextBlur));
+
+      // Keep the existing global three-request budget and in-flight dedupe.
+      // Each completed image can appear without waiting for slower profiles.
+      for (const username of missing) {
+        void fetchInboxPhotoOnce(username).then(() => {
+          if (!cancelled && photoCache[username]) publishAvailablePhotos();
+        });
       }
-
-      await Promise.all(missing.map((username) => fetchInboxPhotoOnce(username)));
-
-      if (cancelled) return;
-
-      // Another render may have finished an in-flight lookup while we awaited.
-      setPhotos({ ...next, ...photoCache });
-      setBlurPhotos({ ...nextBlur, ...blurCache });
     }
 
-    void loadPhotos();
+    loadPhotos();
 
     return () => {
       cancelled = true;
+      if (publishTimer) window.clearTimeout(publishTimer);
     };
   }, [chats, usernames, pathname]);
 
