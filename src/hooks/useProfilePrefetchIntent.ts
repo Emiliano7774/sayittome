@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef } from "react";
 
 import {
   cancelProfilePrefetch,
-  prefetchProfileImmediately,
   scheduleProfilePrefetch,
 } from "@/lib/profile/prefetchPublicProfile";
 
@@ -12,7 +11,7 @@ type Options = {
   enabled?: boolean;
 };
 
-/** Bind delayed hover/touch prefetch handlers to a profile target. */
+/** Warm profile data only on deliberate desktop hover, never during a tap. */
 export function useProfilePrefetchIntent(username: string, options: Options = {}) {
   const enabled = options.enabled !== false;
   const usernameRef = useRef(username);
@@ -30,8 +29,11 @@ export function useProfilePrefetchIntent(username: string, options: Options = {}
     };
   }, []);
 
-  const onPointerEnter = useCallback(() => {
-    if (!enabled) return;
+  const onPointerEnter = useCallback((event: { pointerType: string }) => {
+    // Touch pointerenter fires immediately before pointerdown. Scheduling a
+    // speculative profile fetch there competes with actual navigation and
+    // delays content on Android. Desktop hover remains useful.
+    if (!enabled || (event.pointerType !== "mouse" && event.pointerType !== "pen")) return;
     scheduleProfilePrefetch(usernameRef.current);
   }, [enabled]);
 
@@ -39,14 +41,10 @@ export function useProfilePrefetchIntent(username: string, options: Options = {}
     cancelProfilePrefetch(usernameRef.current);
   }, []);
 
-  const onPointerDown = useCallback(() => {
-    if (!enabled) return;
-    prefetchProfileImmediately(usernameRef.current);
-  }, [enabled]);
-
+  // The click itself starts profile navigation and its authoritative fetch.
+  // Avoid spawning a duplicate /api/profile?prefetch=1 request on pointerdown.
   return {
     onPointerEnter,
     onPointerLeave,
-    onPointerDown,
   };
 }

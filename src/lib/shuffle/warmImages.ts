@@ -35,9 +35,14 @@ export function warmShuffleImages(
       }
       const img = new Image();
       img.decoding = "async";
-      if (warmed <= 4) {
-        img.fetchPriority = "high";
-      }
+      // Warm the first visible avatars ahead of speculative/offscreen photos.
+      // Beyond the first screen, low priority prevents these requests from
+      // competing with the tapped profile, chat messages or visible stories.
+      img.fetchPriority = warmed <= 4 ? "high" : "low";
+      img.onerror = () => {
+        // A failed photo must not remain marked warm for the whole session.
+        warmedUrls.delete(src);
+      };
       img.src = src;
     }
   };
