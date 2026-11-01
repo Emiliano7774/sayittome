@@ -1,5 +1,6 @@
 import { useEffect, useRef, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
+import { LocaleProvider } from "@/contexts/LocaleContext";
 
 import ShuffleFeedWithNativeAds from "@/components/shuffle/ShuffleFeedWithNativeAds";
 import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
@@ -86,7 +87,7 @@ function toShuffleProfile(profile: HarnessProfile): ShuffleProfile {
 const host = document.getElementById("root");
 if (!host) throw new Error("missing #root");
 const root = createRoot(host);
-root.render(<Feed />);
+root.render(<LocaleProvider><Feed /></LocaleProvider>);
 
 window.__shuffleRemount = {
   paint(profiles, forceReplace) {
