@@ -20,13 +20,27 @@ export default function ChatInboxLink({ href, className, children, ...rest }: Pr
   const router = useRouter();
   const chatId = decodeURIComponent(href.split("/chat/")[1]?.split("?")[0] || "");
   const openedAtRef = useRef(0);
+  const warmedAtRef = useRef(0);
+  const prefetchedRouteRef = useRef(false);
 
-  const warmThread = () => {
+  // A touch can fire pointerenter -> pointerdown -> click back-to-back.
+  // Deduplicate cache-only work and NEVER start a competing route prefetch
+  // on a touch: the actual navigation already fetches that route.
+  const warmCachedMessages = () => {
+    const now = Date.now();
+    if (now - warmedAtRef.current < 800) return;
+    warmedAtRef.current = now;
     if (chatId) prefetchChatThread(chatId, { cacheOnly: true });
+  };
+
+  // Desktop hover gives us time to warm the route before the user clicks.
+  const warmDesktopRoute = () => {
+    if (prefetchedRouteRef.current) return;
+    prefetchedRouteRef.current = true;
     try {
       router.prefetch(href);
     } catch {
-      /* prefetch is best-effort */
+      prefetchedRouteRef.current = false;
     }
   };
 
@@ -34,7 +48,7 @@ export default function ChatInboxLink({ href, className, children, ...rest }: Pr
     const now = Date.now();
     if (now - openedAtRef.current < 800) return;
     openedAtRef.current = now;
-    warmThread();
+    warmCachedMessages();
     if (chatId) captureChatsListScroll(chatId);
     clearMainTabShellOverlay();
     presentChatThreadNow(href, { title });
@@ -50,10 +64,15 @@ export default function ChatInboxLink({ href, className, children, ...rest }: Pr
       className={className}
       data-chat-id={chatId || undefined}
       {...rest}
-      onPointerEnter={warmThread}
+      onPointerEnter={(event) => {
+        if (event.pointerType !== "mouse") return;
+        warmCachedMessages();
+        warmDesktopRoute();
+      }}
+      onFocus={warmCachedMessages}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
-        warmThread();
+        warmCachedMessages();
       }}
       onClick={(event) => {
         event.preventDefault();

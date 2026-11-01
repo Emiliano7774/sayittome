@@ -2,6 +2,8 @@ const SHELL_ID = "sayittome-chat-open-shell";
 
 let shellChatId = "";
 let watchTimer = 0;
+let watchFrame = 0;
+let watchObserver: MutationObserver | null = null;
 
 function chatIdFromHref(href: string) {
   const path = href.split("?")[0].split("#")[0];
@@ -19,6 +21,12 @@ export function dismissPresentedChatThread() {
     window.clearInterval(watchTimer);
     watchTimer = 0;
   }
+  if (watchFrame) {
+    window.cancelAnimationFrame(watchFrame);
+    watchFrame = 0;
+  }
+  watchObserver?.disconnect();
+  watchObserver = null;
   document.getElementById(SHELL_ID)?.remove();
   document.documentElement.removeAttribute("data-sayittome-chat-open");
 }
@@ -32,22 +40,46 @@ function realThreadIsReady() {
 }
 
 function watchForRealThread(chatId: string) {
+  // Watch actual thread readiness instead of polling the entire DOM ~31 times
+  // per second during an opening chat (and competing with incoming messages).
   if (watchTimer) window.clearInterval(watchTimer);
+  if (watchFrame) window.cancelAnimationFrame(watchFrame);
+  watchObserver?.disconnect();
+  watchFrame = 0;
   const started = Date.now();
-  watchTimer = window.setInterval(() => {
+  const check = () => {
     if (shellChatId !== chatId) return;
     const path = window.location.pathname;
     if (path.startsWith("/chat/") && realThreadIsReady()) {
       dismissPresentedChatThread();
       return;
     }
-    if (!path.startsWith("/chat/") && Date.now() - started > 1200) {
-      const stillMarked =
-        document.documentElement.getAttribute("data-sayittome-chat-open") === "1";
-      if (!stillMarked) dismissPresentedChatThread();
+    if (Date.now() - started > 1200 && !path.startsWith("/chat/") &&
+      document.documentElement.getAttribute("data-sayittome-chat-open") !== "1") {
+      dismissPresentedChatThread();
+      return;
     }
     if (Date.now() - started > 12000) dismissPresentedChatThread();
-  }, 32);
+  };
+  const scheduleCheck = () => {
+    if (watchFrame || shellChatId !== chatId) return;
+    watchFrame = window.requestAnimationFrame(() => {
+      watchFrame = 0;
+      check();
+    });
+  };
+  if (typeof MutationObserver !== "undefined") {
+    watchObserver = new MutationObserver(scheduleCheck);
+    watchObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-chat-bubbles-settled", "data-sayittome-chat-open"],
+    });
+  }
+  // Backup for navigation changes that don't mutate the document.
+  watchTimer = window.setInterval(check, 400);
+  scheduleCheck();
 }
 
 /** Cover the inbox until the real thread has its final bubble colors. */
