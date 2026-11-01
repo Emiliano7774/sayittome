@@ -8,6 +8,7 @@ import {
   captureShuffleFeedScroll,
   findShuffleKeepAliveScrollRoot,
   peekShuffleFeedScroll,
+  shuffleFeedUserInputActive,
 } from "@/lib/navigation/shuffleFeedScroll";
 import { shuffleProfileIdentityKey } from "@/lib/shuffle/dedupeProfiles";
 import {
@@ -407,13 +408,16 @@ export function restoreShuffleViewportSnapshot(options?: {
   attempts?: number;
   schedule?: (cb: () => void) => void;
 }) {
+  if (shuffleFeedUserInputActive()) return peekShuffleViewportSnapshot();
   const snapshot = peekShuffleViewportSnapshot();
   if (!isUsableShuffleViewportSnapshot(snapshot)) return null;
 
   const token = ++restoreRetryGeneration;
-  const apply =
+  const applyScroll =
     options?.applyScroll ??
     ((scrollTop: number) => defaultApplyShuffleRestoreScroll(scrollTop));
+  const apply = (scrollTop: number) =>
+    !shuffleFeedUserInputActive() && applyScroll(scrollTop);
 
   if (apply(snapshot.scrollTop)) return snapshot;
 

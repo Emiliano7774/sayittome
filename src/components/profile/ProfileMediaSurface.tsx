@@ -12,6 +12,7 @@ type Props = {
   imageClassName?: string;
   videoClassName?: string;
   children?: ReactNode;
+  priority?: boolean;
 };
 
 export default function ProfileMediaSurface({
@@ -20,6 +21,7 @@ export default function ProfileMediaSurface({
   className = "",
   imageClassName = "h-full w-full object-cover",
   videoClassName = "h-full w-full object-cover",
+  priority = false,
 }: Props) {
   if (!url) return null;
 
@@ -29,11 +31,14 @@ export default function ProfileMediaSurface({
         src={url}
         className={className}
         videoClassName={videoClassName}
+        priority={priority}
       />
     );
   }
 
   return (
-    <img src={url} alt={alt} className={imageClassName} draggable={false} />
+    <img src={url} alt={alt} className={imageClassName} draggable={false}
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : "low"} decoding="async" />
   );
 }

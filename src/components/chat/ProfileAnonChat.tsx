@@ -16,6 +16,7 @@ import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import ChatAudioHoldLockMic from "@/components/chat/ChatAudioHoldLockMic";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
 import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
+import PrivateAdminChatNotices from "@/components/chat/PrivateAdminChatNotices";
 import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
@@ -88,6 +89,7 @@ import {
 } from "@/lib/abuse/anonProfileBlocks";
 import { getVisitorId } from "@/lib/abuse/fingerprint";
 import { getProfileChatAnonSenderId } from "@/lib/chat/anonSender";
+import { takeAnonymousStoryReplyForProfileChat } from "@/lib/stories/anonStoryReplyDraft";
 import { getAnonSessionId } from "@/lib/chat/anonSession";
 import { rememberOwnThreadAnonId, rootAnonContinuityId } from "@/lib/chat/threadAnonContinuity";
 import {
@@ -108,6 +110,7 @@ import {
   inferOwnerViewingFromAuthors,
   isProfileReplyAuthorId,
   isProfileThreadOwner,
+  mapFirestoreDocToProfileAnonMessage,
   mapFirestoreDocsToProfileAnonMessages,
   profileAuthUid,
   profileReplyAuthorId,
@@ -183,6 +186,12 @@ import {
   uiMessageToCached,
   writeCachedChatMessages,
 } from "@/lib/chat/chatMessageCache";
+import { chatMessagesVisuallyEqual } from "@/lib/chat/chatMessagesVisualEqual";
+import {
+  realtimePerfAfterSetState,
+  realtimePerfListenerBegin,
+  realtimePerfSchedulePaint,
+} from "@/lib/perf/realtimeDeliveryTrace";
 import { isMessageClearedByInboxDelete } from "@/lib/chat/deletedInboxChats";
 import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
 import { persistAnonChatMessage } from "@/lib/chat/persistAnonMessage";
@@ -214,7 +223,7 @@ import { useChatViewportLock } from "@/hooks/useChatViewportLock";
 import { useIncomingMessageWhip } from "@/hooks/useIncomingMessageWhip";
 import { markLocalOutgoingClientId, markLocalOutgoingMessageId } from "@/lib/chat/whipAlertDedupe";
 import { useT } from "@/contexts/LocaleContext";
-import { fastRouterReplace } from "@/lib/navigation/fastNavigate";
+import { fastMainTabHistoryReplace, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import { prepareInstantKeepAliveReturn } from "@/lib/navigation/instantKeepAliveReturn";
 import { setSecureBombScreen } from "@/lib/security/secureBombScreen";
 import {
@@ -226,8 +235,9 @@ import { resolveChatBackDestination } from "@/lib/navigation/nativeBack";
 import {
   isChatImeDismissLatched,
   noteChatComposerFocused,
-  resolveChatBackAction,
+  dismissChatComposerKeyboard,
 } from "@/lib/navigation/chatBackNavigation";
+import { decideComposerRefocus } from "@/lib/chat/composerFocusPolicy";
 import {
   CHAT_MESSAGE_PAGE_SIZE,
   captureScrollAnchor,
@@ -237,6 +247,7 @@ import {
 } from "@/lib/chat/chatHistoryPages";
 import { replyQuoteText } from "@/lib/chat/replyQuote";
 import { recordQaCriticalEvent } from "@/lib/qa/realDeviceQaDebug";
+import { CHAT_LIVE_TAIL_HINT_EVENT, type LiveTailHint } from "@/lib/chat/realtimeIncomingHints";
 import {
   collection,
   doc,
@@ -303,15 +314,6 @@ function formatMessageTime(createdAt?: { toDate?: () => Date }) {
 
 function messageRowKey(message: Message) {
   return message.clientId || message.id;
-}
-
-function chatMessagesSignature(messages: Message[]) {
-  return messages
-    .map(
-      (message) =>
-        `${messageRowKey(message)}:${message.mine ? 1 : 0}:${message.status || ""}:${message.text}:${message.mediaUrl || ""}:${message.deletedForEveryone ? 1 : 0}:${String((message.verifiedProfileAttestation as { ticketId?: unknown } | undefined)?.ticketId || "")}`,
-    )
-    .join("|");
 }
 
 function hydrateCachedMessages(
@@ -539,6 +541,11 @@ export default function ProfileAnonChat({
     () => !openedFromNotificationRef.current,
   );
   const [text, setText] = useState("");
+  useEffect(() => {
+    if (!chatId) return;
+    const draft=takeAnonymousStoryReplyForProfileChat(chatId);
+    if (draft) setText(value=>value||draft);
+  },[chatId]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMoreOlder, setHasMoreOlder] = useState(true);
@@ -645,10 +652,15 @@ export default function ProfileAnonChat({
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }
 
-  function scheduleScrollToBottom(options?: { keepKeyboard?: boolean }) {
+  function scheduleScrollToBottom(options?: {
+    keepKeyboard?: boolean;
+    /** Default true only when keepKeyboard; vv-resize must pass false. */
+    allowRefocus?: boolean;
+  }) {
     if (options?.keepKeyboard) {
       keepComposerFocusRef.current = true;
     }
+    const allowRefocus = options?.allowRefocus ?? Boolean(options?.keepKeyboard);
 
     stickToBottomRef.current = true;
     const run = () => {
@@ -663,7 +675,12 @@ export default function ProfileAnonChat({
           ) {
             setThreadRevealReady(true);
           }
-          if (keepComposerFocusRef.current) {
+          // Never re-focus after scroll unless an explicit send path asked for it.
+          if (
+            allowRefocus &&
+            keepComposerFocusRef.current &&
+            document.activeElement !== inputRef.current
+          ) {
             refocusComposer();
           }
         });
@@ -690,24 +707,21 @@ export default function ProfileAnonChat({
   });
 
   function refocusComposer() {
-    if (isChatImeDismissLatched()) return;
     const input = inputRef.current;
     if (!input) return;
 
-    const focus = () => {
-      if (isChatImeDismissLatched()) return;
-      try {
-        input.focus({ preventScroll: true });
-      } catch {
-        input.focus();
-      }
-    };
+    const decision = decideComposerRefocus({
+      imeDismissLatched: isChatImeDismissLatched(),
+      alreadyFocused: document.activeElement === input,
+    });
+    if (!decision.focusNow) return;
 
-    focus();
-    requestAnimationFrame(focus);
-    window.setTimeout(focus, 0);
-    window.setTimeout(focus, 80);
-    window.setTimeout(focus, 180);
+    // Single focus only — delayed cascades fight Android IME / visualViewport.
+    try {
+      input.focus({ preventScroll: true });
+    } catch {
+      input.focus();
+    }
   }
 
   function flushSeenThreadReadOnLeave() {
@@ -732,11 +746,11 @@ export default function ProfileAnonChat({
   }
 
   async function goBackFromChat() {
-    const backAction = resolveChatBackAction(pathname);
-    if (backAction?.kind === "dismiss-keyboard") {
-      keepComposerFocusRef.current = false;
-      return;
-    }
+    // The visible header arrow always means LEAVE. Only Android's hardware
+    // back button uses the two-step IME dismissal rule. Otherwise autofocus
+    // makes the header look dead on the second visit to the same thread.
+    keepComposerFocusRef.current = false;
+    dismissChatComposerKeyboard();
 
     // Native-shell navigation may become a full document load. Never leave the
     // chat while a send is still waiting for bind/permit/Firestore ACK, or the
@@ -749,6 +763,9 @@ export default function ProfileAnonChat({
     // frozen previous surface before soft-nav (never hard-reload the document).
     if (isMainTabHref(dest)) {
       prepareInstantKeepAliveReturn(dest);
+      // A ready Chats/Stories panel is already mounted: commit the URL without
+      // asking Firebase Hosting for an RSC response that can reload the app.
+      if (fastMainTabHistoryReplace(dest, "chat-back-instant-return")) return;
       fastRouterReplace(router, dest);
       return;
     }
@@ -975,11 +992,9 @@ export default function ProfileAnonChat({
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         keyboardAnimatingRef.current = false;
-        if (keepComposerFocusRef.current) {
-          refocusComposer();
-        }
+        // Never re-focus on vv resize — that loop opens/closes Samsung IME.
         if (!stickToBottomRef.current) return;
-        scheduleScrollToBottom({ keepKeyboard: keepComposerFocusRef.current });
+        scheduleScrollToBottom({ keepKeyboard: false, allowRefocus: false });
       }, 360);
     };
 
@@ -1434,7 +1449,7 @@ export default function ProfileAnonChat({
         liveAnonId: provenOwner ? "" : liveVisitorAnonId,
       }),
     ),
-  );
+  ).filter((row) => row.deletedForEveryone !== true);
 
   const bubblesSettled = displayMessages.length === 0 ? authReady : identityReady;
   bubblesSettledRef.current = bubblesSettled;
@@ -1707,15 +1722,56 @@ export default function ProfileAnonChat({
     historyOldestSnapRef.current = null;
     setHasMoreOlder(true);
 
+    // Fast path: reuse the latest document from the ALREADY-OPEN global
+    // one-message listener. The 50-message detail stream remains authoritative.
+    // No additional Firestore reads/listeners and no fake authored messages.
+    const onFastInbound=(event:Event)=>{
+      const hint=(event as CustomEvent<LiveTailHint>).detail;
+      if(!hint||hint.chatId!==chatId||!hint.messageId)return;
+      const live=threadContextRef.current;
+      const baseCtx=buildProfileAnonViewerContext({
+        chatId:live.chatId,chatAnonSessionId:live.chatAnonSessionId,
+        currentUid:live.currentUid,targetUid:live.targetUid,
+        chatOwnerUid:live.chatOwnerUid,viewerUsername:live.viewerUsername,
+        authReady:true,identityReady:live.identityReady,
+      });
+      const hideIdentities=viewerHideKeys({
+        authUid:firebaseUid||auth.currentUser?.uid||"",
+        profileUid:baseCtx.currentUid,anonId:baseCtx.threadAnonId,
+      });
+      const mapped=mapFirestoreDocToProfileAnonMessage(
+        hint.messageId,hint.data as ProfileAnonFirestoreMessage,
+        {...baseCtx,hideIdentities},
+      ) as Message|null;
+      if(!mapped||mapped.mine||!mapped.mineResolved)return;
+      if(readLocalHiddenMessageIds(chatId).includes(mapped.id))return;
+      const createdAtMs=mapped.createdAt?.toDate?.()?.getTime();
+      if(isMessageClearedByInboxDelete(chatId,createdAtMs))return;
+      setMessages(prev=>{
+        if(prev.some(item=>item.id===mapped.id))return prev;
+        const pending=prev.filter(item=>item.status==="sending"||item.status==="error");
+        return mergeLiveWindowIntoHistory(prev,[mapped],pending,mergeLoadedChatMessages,
+          {completeTail:false});
+      });
+      recordQaCriticalEvent("chat","CHAT_MESSAGE_FAST_HINT",{
+        threadId:chatId,messageId:mapped.id,listenerSnapshotAt:Date.now(),
+      });
+    };
+    window.addEventListener(CHAT_LIVE_TAIL_HINT_EVENT,onFastInbound);
+
     const q = query(
       collection(db, "chats", chatId, "mensajes"),
       orderBy("createdAt", "asc"),
       limitToLast(CHAT_MESSAGE_PAGE_SIZE),
     );
 
+    let retryTimer:ReturnType<typeof setTimeout>|null=null;
     const unsub = onSnapshot(
       q,
       (snapshot) => {
+        const rtHandle = realtimePerfListenerBegin("profile-anon", {
+          docCount: snapshot.size,
+        });
         const baseCtx = buildProfileAnonViewerContext({
           chatId: threadContextRef.current.chatId,
           chatAnonSessionId: threadContextRef.current.chatAnonSessionId,
@@ -1784,6 +1840,9 @@ export default function ProfileAnonChat({
           setHasMoreOlder(false);
         }
 
+        const removedIds = new Set(
+          snapshot.docs.filter((row) => row.data().deletedForEveryone === true).map((row) => row.id),
+        );
         setMessages((prev) => {
           const pending = prev.filter(
             (message) => message.status === "sending" || message.status === "error",
@@ -1798,7 +1857,10 @@ export default function ProfileAnonChat({
                 !snapshot.metadata.fromCache &&
                 snapshot.size < CHAT_MESSAGE_PAGE_SIZE,
             },
-          );
+          ).filter((row) => !removedIds.has(row.id));
+          if (chatMessagesVisuallyEqual(prev, merged)) {
+            return prev;
+          }
           const durable = merged
             .filter((row) => {
               const status = (row as Message).status;
@@ -1807,11 +1869,10 @@ export default function ProfileAnonChat({
             .map((row) => uiMessageToCached(row as Message));
           if (durable.length) writeCachedChatMessages(chatId, durable);
           else removeCachedChatMessages(chatId);
-          if (chatMessagesSignature(prev) === chatMessagesSignature(merged)) {
-            return prev;
-          }
           return merged;
         });
+        realtimePerfAfterSetState(rtHandle);
+        realtimePerfSchedulePaint(rtHandle);
 
         if (!messageViewerId) return;
 
@@ -1850,11 +1911,18 @@ export default function ProfileAnonChat({
 
       },
       (error) => {
-        console.error(error);
+        console.error("[chat] detail listener interrupted",error);
+        // A terminal Firestore watch error must not strand the open chat.
+        // Reattach only on recoverable transport failures, never poll.
+        if(["unavailable","deadline-exceeded","internal","aborted"].includes(error.code)){
+          retryTimer=setTimeout(()=>setMessageListenerEpoch(value=>value+1),750);
+        }
       },
     );
 
     return () => {
+      if(retryTimer)clearTimeout(retryTimer);
+      window.removeEventListener(CHAT_LIVE_TAIL_HINT_EVENT,onFastInbound);
       if (readMarkTimerRef.current) {
         clearTimeout(readMarkTimerRef.current);
         readMarkTimerRef.current = null;
@@ -3048,19 +3116,7 @@ export default function ProfileAnonChat({
       setMessages((old) => old.filter((row) => row.id !== messageId && row.clientId !== target.clientId));
     } else {
       setMessages((old) =>
-        old.map((row) =>
-          row.id === messageId || (target.clientId && row.clientId === target.clientId)
-            ? {
-                ...row,
-                text: DELETED_MESSAGE_PREVIEW,
-                mediaUrl: "",
-                type: "text" as const,
-                storyReply: undefined,
-                deletedForEveryone: true,
-                source: undefined,
-              }
-            : row,
-        ),
+        old.filter((row) => row.id !== messageId && (!target.clientId || row.clientId !== target.clientId)),
       );
     }
 
@@ -3128,7 +3184,8 @@ export default function ProfileAnonChat({
     identityReady: authReady,
   };
   const canDeleteTargetForEveryone = Boolean(
-    deleteTarget && isCanonicalDeleteAuthor(deleteTarget, deleteViewer),
+    deleteTarget && deleteTarget.status !== "sending" &&
+      (isCanonicalDeleteAuthor(deleteTarget, deleteViewer) || (authReady && deleteTarget.mine === true)),
   );
 
   const hasMediaPreview = Boolean(audioPreview || imagePreview || videoPreview);
@@ -3606,6 +3663,7 @@ export default function ProfileAnonChat({
               </div>
             );
             })}
+            <PrivateAdminChatNotices chatId={chatId} />
             <div ref={messagesEndRef} />
           </div>
         </div>

@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppImage from "@/components/media/AppImage";
+import {
+  findKeepAliveHost,
+  isKeepAliveHostFrozen,
+} from "@/lib/navigation/keepAliveHostActivity";
 
 type Props = {
   src?: string;
@@ -22,6 +26,7 @@ export default function StoryBoomerangPreview({ src, poster, locked = false }: P
   const [failed, setFailed] = useState(false);
   const [motionAllowed, setMotionAllowed] = useState(true);
   const [playing, setPlaying] = useState(false);
+  const [hostActive, setHostActive] = useState(true);
 
   useEffect(() => {
     setFailed(false);
@@ -35,6 +40,20 @@ export default function StoryBoomerangPreview({ src, poster, locked = false }: P
     media.addEventListener?.("change", update);
     return () => media.removeEventListener?.("change", update);
   }, []);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    const host = findKeepAliveHost(root);
+    if (!host) {
+      setHostActive(true);
+      return;
+    }
+    const sync = () => setHostActive(!isKeepAliveHostFrozen(host));
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(host, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, [src]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -56,7 +75,7 @@ export default function StoryBoomerangPreview({ src, poster, locked = false }: P
 
   const attemptPlay = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !near || !src || failed || locked || !motionAllowed ||
+    if (!video || !near || !hostActive || !src || failed || locked || !motionAllowed ||
         document.visibilityState !== "visible") return;
     if (!video.paused) return;
     // React mounts a <video> only after near=true. Some Android WebViews
@@ -65,16 +84,16 @@ export default function StoryBoomerangPreview({ src, poster, locked = false }: P
       setPlaying(false);
       // Do not mark as failed: returning to foreground may unlock autoplay.
     });
-  }, [near, src, failed, locked, motionAllowed]);
+  }, [near, hostActive, src, failed, locked, motionAllowed]);
 
   useEffect(() => {
-    if (!near || !motionAllowed || failed || locked || !src) {
+    if (!near || !hostActive || !motionAllowed || failed || locked || !src) {
       videoRef.current?.pause();
       setPlaying(false);
     } else {
       attemptPlay();
     }
-  }, [near, motionAllowed, failed, locked, src, attemptPlay]);
+  }, [near, hostActive, motionAllowed, failed, locked, src, attemptPlay]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -97,8 +116,14 @@ export default function StoryBoomerangPreview({ src, poster, locked = false }: P
   // lazily downloads it only when close to the viewport; Android's video and
   // reduced-motion autoplay gates cannot freeze the story anymore.
   const imageLoop = Boolean(src && /\.webp(?:[/?#]|$)/i.test(src));
-  const imageVisible = Boolean(imageLoop && src && !locked && !failed);
-  const visible = Boolean(src && near && motionAllowed && !failed && !locked && !imageLoop);
+  // Animated WebP cannot be paused once mounted. Only start its download for
+  // cards near the viewport: offscreen mosaics must not drain Storage egress.
+  const imageVisible = Boolean(
+    imageLoop && src && near && hostActive && motionAllowed && !locked && !failed,
+  );
+  const visible = Boolean(
+    src && near && hostActive && motionAllowed && !failed && !locked && !imageLoop,
+  );
 
   return (
     <div

@@ -229,6 +229,16 @@ export default function MainTabKeepAliveHost() {
     ) {
       document.documentElement.removeAttribute("data-sayittome-bar-target");
     } else if (isNonMainRoute(livePath)) {
+      // After a history-only chat -> Shuffle return, the previous shell may
+      // have a persistent [hidden] attribute. A new chat/profile route reuses
+      // the same container, so restore it whenever Shuffle is NOT being
+      // revealed from this non-main route right now.
+      if (
+        !document.documentElement.hasAttribute("data-sayittome-shuffle-reveal-from") &&
+        !document.documentElement.hasAttribute("data-sayittome-shuffle-reveal-pending")
+      ) {
+        restoreNonMainRouteShellAfterShuffleReveal();
+      }
       neutralizeMainTabPresentationForNonMainRoute(livePath);
       document.documentElement.removeAttribute("data-sayittome-bar-target");
     } else if (typeof document !== "undefined") {

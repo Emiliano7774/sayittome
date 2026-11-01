@@ -21,7 +21,11 @@ import {
   OPEN_MAIN_TAB_EVENT,
 } from "@/lib/navigation/mainTabShellBridge";
 import { releaseChatViewportLock } from "@/hooks/useChatViewportLock";
-import { waitForPendingChatSends } from "@/lib/chat/pendingChatSends";
+import { shouldRenderShuffleKeepAliveHost } from "@/lib/navigation/shuffleKeepAlive";
+import {
+  hasPendingChatSends,
+  waitForPendingChatSends,
+} from "@/lib/chat/pendingChatSends";
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
   hardNavigate,
@@ -106,9 +110,11 @@ export function MainTabShellProvider({
       resetMainTabHistoryPathnameStore("open-main-tab");
       if (href === resolvedPathname) return;
 
-      // Native tab changes may become full-document navigations. Never tear
-      // down bind/permit/Firestore while a chat send is still in flight.
-      await waitForPendingChatSends();
+      // Match BottomNavLink: only stall when a send is actually in flight.
+      // Unconditional await added tab-switch latency even with an empty queue.
+      if (hasPendingChatSends()) {
+        await waitForPendingChatSends();
+      }
 
       pinMainTabKeepAlive();
       recordNativeNavPath(href);
@@ -160,6 +166,19 @@ export function MainTabShellProvider({
   const keepAliveOwnsConcreteMainTab =
     keepAliveOwner !== null && shouldRenderMainTabKeepAliveHost(keepAliveOwner);
   const childrenHidden = activeShellTab !== null || keepAliveOwnsConcreteMainTab;
+  // A history-only return from /chat/* updates the URL but Next can leave the
+  // previous page component mounted. Simply hiding it keeps the chat's body
+  // viewport lock, realtime listeners and :has(.sayittome-chat-shell) CSS
+  // active over Chats/Stories: black frame, dead nav and a slow next open.
+  // Main tabs and Shuffle both have dedicated keep-alive hosts. On return
+  // from /chat/*, unmount the stale chat route, including returns to Shuffle:
+  // its viewport lock and body:has(chat-shell) selectors must actually release.
+  // Keep ordinary non-main route children mounted (profiles, story viewers).
+  const unmountStaleRoute =
+    isMainTabHref(resolvedPathname) &&
+    (resolvedPathname === "/shuffle"
+      ? shouldRenderShuffleKeepAliveHost(resolvedPathname)
+      : keepAliveOwnsConcreteMainTab);
   const effectivePathname = activeShellTab ?? resolvedPathname;
 
   const value = useMemo<MainTabShellContextValue>(
@@ -187,7 +206,7 @@ export function MainTabShellProvider({
         hidden={childrenHidden}
         aria-hidden={childrenHidden}
       >
-        {children}
+        {unmountStaleRoute ? null : children}
       </div>
       <MainTabKeepAliveHost />
       {chrome}

@@ -2,6 +2,8 @@
 
 import { ArrowLeft, Flag, Maximize2, Minimize2, Minus, Reply, UserRound, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { prepareInstantKeepAliveReturn } from "@/lib/navigation/instantKeepAliveReturn";
+import { fastMainTabHistoryReplace, fastRouterReplace } from "@/lib/navigation/fastNavigate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   collection,
@@ -13,6 +15,12 @@ import {
 
 import AnonDirectMediaComposer from "@/components/anonMatch/AnonDirectMediaComposer";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
+import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
+import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
+import PrivateAdminChatNotices from "@/components/chat/PrivateAdminChatNotices";
+import { persistMessageDelete } from "@/lib/chat/persistMessageDelete";
+import { isHiddenForViewer } from "@/lib/chat/messageDelete";
+import { viewerHideKeys } from "@/lib/chat/messageDeleteServer";
 import ChatOfficialProfileVerifiedBadge from "@/components/chat/ChatOfficialProfileVerifiedBadge";
 import ChatSwipeRevealTime from "@/components/chat/ChatSwipeRevealTime";
 import { chatBubbleShellClass, chatBubbleTextClass } from "@/lib/chat/chatBubbleStyles";
@@ -20,6 +28,7 @@ import FullscreenMedia from "@/components/chat/media/FullscreenMedia";
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { useAnonMatchOptional } from "@/contexts/AnonMatchContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { takeAnonymousStoryReplyForDirectChat } from "@/lib/stories/anonStoryReplyDraft";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useT } from "@/contexts/LocaleContext";
 import { fetchAnonMatch, resolveAnonMatchSessionId } from "@/lib/anonMatch/fetchAnonMatch";
@@ -39,6 +48,11 @@ import { persistAnonDirectMessage } from "@/lib/anonMatch/persistDirectMessage";
 import { markAnonDirectChatRead } from "@/lib/anonMatch/markAnonDirectChatRead";
 import { shouldWhipAnonDirectIncoming } from "@/lib/anonMatch/anonDirectIncomingWhip";
 import { replyQuoteText } from "@/lib/chat/replyQuote";
+import {
+  realtimePerfAfterSetState,
+  realtimePerfListenerBegin,
+  realtimePerfSchedulePaint,
+} from "@/lib/perf/realtimeDeliveryTrace";
 import { maybeClaimVerifiedProfileLink } from "@/lib/profile/verifiedProfileLinkTicket";
 import { scheduleVerifiedProfileLinkClaimRetry } from "@/lib/profile/verifiedProfileLinkClaimRetry";
 import { parseExactOfficialProfileLinkMessage } from "@/lib/profile/verifiedLink";
@@ -47,6 +61,7 @@ import {
   playIncomingWhipSound,
 } from "@/lib/chat/whipSound";
 import { auth, db } from "@/lib/firebase";
+import { ANON_DIRECT_PUSH_HINT_EVENT, type DirectPushHint } from "@/lib/chat/realtimeIncomingHints";
 import { beginViewOnceClaim, endViewOnceClaim } from "@/lib/media/viewOnce";
 import { claimViewOnceMedia } from "@/lib/media/viewOnceClaim";
 import { viewOnceRemaining } from "@/lib/media/viewOncePolicy";
@@ -103,6 +118,25 @@ function ChatPanel({
 }) {
   const t = useT();
   const bombCap = getAnonDirectViewOnceCapability();
+  const [deleteTarget, setDeleteTarget] = useState<AnonDirectChatMessage | null>(null);
+  const [deleteStage, setDeleteStage] = useState<"choose" | "confirm-me" | "confirm-everyone">("choose");
+  const [locallyHidden, setLocallyHidden] = useState<string[]>([]);
+  useEffect(() => setLocallyHidden([]), [chatId]);
+  const closeDelete = () => { setDeleteTarget(null); setDeleteStage("choose"); };
+  async function deleteSelected(mode: "me" | "everyone") {
+    const target = deleteTarget;
+    if (!target?.id) return;
+    closeDelete();
+    setLocallyHidden((old) => [...old, target.id]);
+    try {
+      const result = await persistMessageDelete({ chatId, messageId: target.id, mode });
+      if (!result?.ok) throw new Error("delete_failed");
+    } catch {
+      setLocallyHidden((old) => old.filter((id) => id !== target.id));
+      onNotice("No se pudo eliminar el mensaje. Probá de nuevo.");
+    }
+  }
+  const visibleMessages = messages.filter((message) => !locallyHidden.includes(message.id));
 
   return (
     <>
@@ -111,7 +145,7 @@ function ChatPanel({
         data-anon-direct-chat-scroll="1"
         className={`overflow-y-auto overscroll-contain px-4 py-4 ${expanded ? "min-h-0 flex-1" : "max-h-[44vh]"} ${pageMode ? "sayittome-chat-thread-scroller" : ""}`}
       >
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           pageMode ? (
             <div data-chat-standard-intro="1" className="flex flex-col items-center px-5 pt-[min(10vh,5rem)]">
               <div className="flex h-40 w-40 items-center justify-center rounded-full bg-[#367a5c] text-white">
@@ -126,7 +160,7 @@ function ChatPanel({
             </div>
           ) : <p className="text-center text-sm font-bold text-white/35">{t("anon_match_chat_empty")}</p>
         ) : (
-          messages.map((message) => {
+          visibleMessages.map((message) => {
             if (message.status === "failed") return null;
             const bubbleClass = message.mine
               ? modern
@@ -250,6 +284,7 @@ function ChatPanel({
             );
             return (
               <div key={message.id} className={`mb-2 flex ${message.mine ? "justify-end" : "justify-start"}`}>
+                <ChatMessageLongPress onLongPress={() => { setDeleteTarget(message); setDeleteStage("choose"); }}>
                 {pageMode ? (
                   <ChatSwipeRevealTime
                     timeLabel={message.createdAtMs ? new Date(message.createdAtMs).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : ""}
@@ -259,6 +294,7 @@ function ChatPanel({
                     {bubble}
                   </ChatSwipeRevealTime>
                 ) : bubble}
+                </ChatMessageLongPress>
                 {message.type === "text" ? (
                   <ChatOfficialProfileVerifiedBadge
                     chatId={chatId}
@@ -273,6 +309,7 @@ function ChatPanel({
             );
           })
         )}
+        <PrivateAdminChatNotices chatId={chatId} />
       </div>
 
       {notice ? (
@@ -297,6 +334,24 @@ function ChatPanel({
         onNotice={onNotice}
         inputRef={inputRef}
       />
+      <ChatMessageDeleteMenu
+        open={Boolean(deleteTarget)}
+        canDeleteForEveryone={Boolean(deleteTarget?.mine && deleteTarget.status !== "sending")}
+        stage={deleteStage}
+        onChooseMe={() => setDeleteStage("confirm-me")}
+        onChooseEveryone={() => setDeleteStage("confirm-everyone")}
+        onConfirmMe={() => void deleteSelected("me")}
+        onConfirmEveryone={() => void deleteSelected("everyone")}
+        onClose={closeDelete}
+        labels={{
+          forMe: "Eliminar para mí",
+          forEveryone: "Eliminar para todos",
+          confirmMe: "Este mensaje desaparecerá solamente para vos.",
+          confirmEveryone: "El mensaje desaparecerá para ambos participantes, sin aviso.",
+          confirm: "Eliminar",
+          cancel: "Cancelar",
+        }}
+      />
     </>
   );
 }
@@ -309,6 +364,8 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
   const router = useRouter();
   const modern = uxMode === "modern";
   const [messages, setMessages] = useState<AnonDirectChatMessage[]>([]);
+  const [pushPreviews,setPushPreviews] = useState<DirectPushHint[]>([]);
+  const [messageStreamEpoch,setMessageStreamEpoch] = useState(0);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
@@ -336,6 +393,40 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
   const role = openChat?.role || "anonimo";
   const chatView = match?.chatView || "compact";
 
+  // FCM is sometimes quicker than Firestore's 50-message detail update.
+  // The preview is provisional, never persisted or marked read, and vanishes
+  // once the authoritative message arrives (or after a short expiry).
+  useEffect(()=>{
+    setPushPreviews([]);
+    if(!chatId)return;
+    const pendingTimers=new Set<number>();
+    const onHint=(event:Event)=>{
+      const hint=(event as CustomEvent<DirectPushHint>).detail;
+      if(!hint||hint.chatId!==chatId||!hint.messageId||!hint.body)return;
+      setPushPreviews(old=>old.some(row=>row.messageId===hint.messageId)
+        ?old:[...old,hint].slice(-8));
+      const timer=window.setTimeout(()=>{
+        pendingTimers.delete(timer);
+        setPushPreviews(old=>old.filter(row=>row.messageId!==hint.messageId));
+      },30_000);
+      pendingTimers.add(timer);
+    };
+    window.addEventListener(ANON_DIRECT_PUSH_HINT_EVENT,onHint);
+    return ()=>{
+      window.removeEventListener(ANON_DIRECT_PUSH_HINT_EVENT,onHint);
+      for(const timer of pendingTimers)window.clearTimeout(timer);
+    };
+  },[chatId]);
+  const renderedMessages:AnonDirectChatMessage[]=[
+    ...messages,
+    ...pushPreviews.filter(preview=>preview.chatId===chatId&&
+      !messages.some(message=>message.id===preview.messageId))
+      .map(preview=>({
+        id:preview.messageId,text:preview.body,mine:false,fromId:"incoming",
+        type:"text" as const,createdAtMs:preview.receivedAt,
+      })),
+  ];
+
   const [anonSenderId, setAnonSenderId] = useState("");
 
   useEffect(() => {
@@ -355,7 +446,7 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
   const senderTipo = role === "perfil" ? "perfil" : "anonimo";
 
   useEffect(() => {
-    setText("");
+    setText(chatId?takeAnonymousStoryReplyForDirectChat(chatId):"");
     setNotice("");
     setSending(false);
     sendInFlightRef.current = false;
@@ -502,7 +593,7 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
       const saved = await persistAnonDirectMessage({
         chatId,
         senderId,
-        senderAuthUid: firebaseUser?.uid || "",
+        senderAuthUid: auth.currentUser?.uid || firebaseUser?.uid || "",
         senderTipo,
         messageText: value,
         reply: replyText || undefined,
@@ -528,6 +619,9 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
       }
       inputRef.current?.focus();
     } catch {
+      // Keep the draft when the browser wakes without a ready connection.
+      setText((current) => current || value);
+      if (replyingTo) setReplyingTo((current) => current || replyingTo);
       setNotice(t("anon_match_chat_send_error"));
     } finally {
       sendInFlightRef.current = false;
@@ -547,8 +641,16 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
     let bootstrapped = false;
     let lastWhipId: string | null = lastWhipMessageIdRef.current;
 
+    let retryTimer:ReturnType<typeof setTimeout>|null=null;
     const unsub = onSnapshot(q, (snap) => {
-      const next = snap.docs.map((item) =>
+      const rtHandle = realtimePerfListenerBegin("anon-direct", {
+        docCount: snap.size,
+      });
+      const hideKeys = viewerHideKeys({ authUid: auth.currentUser?.uid || "" });
+      const next = snap.docs.filter((item) =>
+        item.data().deletedForEveryone !== true &&
+        !isHiddenForViewer(item.data().hiddenFor as Record<string, boolean> | undefined, hideKeys),
+      ).map((item) =>
         mapAnonDirectMessageDoc({
           id: item.id,
           data: item.data() as Record<string, unknown>,
@@ -569,8 +671,13 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
         );
         return [...next, ...optimistic];
       });
+      realtimePerfAfterSetState(rtHandle);
+      realtimePerfSchedulePaint(rtHandle);
 
-      const latest = snap.docs[snap.docs.length - 1];
+      const latest = [...snap.docs].reverse().find((item) =>
+        item.data().deletedForEveryone !== true &&
+        !isHiddenForViewer(item.data().hiddenFor as Record<string, boolean> | undefined, hideKeys),
+      );
       if (!latest) {
         bootstrapped = true;
         return;
@@ -616,10 +723,18 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
         title: "Chat anónimo",
         body: body || "Nuevo mensaje",
       });
+    },(error)=>{
+      console.warn("[anon-direct] message stream interrupted",error);
+      if(["unavailable","deadline-exceeded","internal","aborted"].includes(error.code)){
+        retryTimer=setTimeout(()=>setMessageStreamEpoch(value=>value+1),750);
+      }
     });
 
-    return () => unsub();
-  }, [chatId, chatView, firebaseUser?.uid, senderId]);
+    return () => {
+      if(retryTimer)clearTimeout(retryTimer);
+      unsub();
+    };
+  }, [chatId, chatView, firebaseUser?.uid, senderId, messageStreamEpoch]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -641,7 +756,7 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
     pinAnonChatScroll(listRef.current);
     const frame = window.requestAnimationFrame(() => pinAnonChatScroll(listRef.current));
     return () => window.cancelAnimationFrame(frame);
-  }, [messages, chatView, keyboardPx, notice, replyingTo]);
+  }, [messages, pushPreviews, chatView, keyboardPx, notice, replyingTo]);
 
   useEffect(() => {
     if (!openChat?.closedReason) {
@@ -891,7 +1006,7 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
 
   const panel = (
     <ChatPanel
-      messages={messages}
+      messages={renderedMessages}
       notice={notice}
       closed={closed}
       text={text}
@@ -968,7 +1083,13 @@ export default function AnonDirectChatWindow({ pageMode = false, pageChatId }: {
         <main id="sayittome-chat-page-root" data-anon-shuffle-standard-chat="1" className="sayittome-chat-shell h-dvh min-h-0 bg-black text-white">
           <section className="sayittome-chat-thread flex h-full min-h-0 flex-col bg-black" style={{ paddingBottom: keyboardPx > 0 ? keyboardPx : undefined }}>
             <header data-chat-thread-header="1" className="sayittome-chat-thread-header flex shrink-0 items-center gap-4 bg-black px-5 py-4">
-              <button type="button" aria-label="Volver a Chats" onClick={() => { matchApi.closeChatWindow(); router.push("/chats"); }} className="text-white/70">
+              <button type="button" aria-label="Volver a Chats" onClick={() => {
+                matchApi.closeChatWindow();
+                prepareInstantKeepAliveReturn("/chats");
+                if (!fastMainTabHistoryReplace("/chats", "anon-direct-chat-back")) {
+                  fastRouterReplace(router, "/chats");
+                }
+              }} className="text-white/70">
                 <ArrowLeft size={27} />
               </button>
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#367a5c]">

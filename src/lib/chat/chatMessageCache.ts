@@ -74,10 +74,14 @@ export function readCachedChatMessages(chatId: string): CachedChatMessage[] | nu
     const parsed = JSON.parse(raw) as CachedChatMessage[];
     if (!Array.isArray(parsed) || parsed.length === 0) return null;
     memory.set(chatId, parsed);
-    try {
-      window.sessionStorage.setItem(storageKey(chatId), JSON.stringify(parsed));
-    } catch {
-      // ignore quota
+    // Migrate a legacy entry only; rewriting an existing v3 entry on cold
+    // read synchronously blocks the first visible chat frame for no benefit.
+    if (!primary) {
+      try {
+        window.sessionStorage.setItem(storageKey(chatId), JSON.stringify(parsed));
+      } catch {
+        // ignore quota
+      }
     }
     return parsed;
   } catch {
@@ -85,19 +89,52 @@ export function readCachedChatMessages(chatId: string): CachedChatMessage[] | nu
   }
 }
 
+/** Coalesce sessionStorage JSON writes so snapshot→paint is not blocked. */
+const pendingSessionPersist = new Map<string, CachedChatMessage[]>();
+let sessionPersistScheduled = false;
+
+function flushPendingSessionPersist() {
+  sessionPersistScheduled = false;
+  if (typeof window === "undefined") return;
+  const entries = Array.from(pendingSessionPersist.entries());
+  pendingSessionPersist.clear();
+  for (const [chatId, trimmed] of entries) {
+    // Prefer the latest in-memory row if a newer write landed.
+    const latest = memory.get(chatId) || trimmed;
+    try {
+      window.sessionStorage.setItem(storageKey(chatId), JSON.stringify(latest));
+    } catch {
+      // sessionStorage full or unavailable
+    }
+  }
+}
+
+function scheduleSessionPersist(chatId: string, trimmed: CachedChatMessage[]) {
+  if (typeof window === "undefined") return;
+  pendingSessionPersist.set(chatId, trimmed);
+  if (sessionPersistScheduled) return;
+  sessionPersistScheduled = true;
+  const run = () => flushPendingSessionPersist();
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 120 });
+  } else {
+    // On browsers without requestIdleCallback, a microtask would run before
+    // the next paint and recreate the very input/paint stall we avoid.
+    window.setTimeout(run, 32);
+  }
+}
+
 export function writeCachedChatMessages(chatId: string, messages: CachedChatMessage[]) {
   if (!chatId || messages.length === 0) return;
 
   const trimmed = messages.slice(-MAX_CACHED);
+  // Memory stays sync so reopen/warm reads see fresh rows immediately.
   memory.set(chatId, trimmed);
 
   if (typeof window === "undefined") return;
 
-  try {
-    window.sessionStorage.setItem(storageKey(chatId), JSON.stringify(trimmed));
-  } catch {
-    // sessionStorage full or unavailable
-  }
+  // Defer JSON.stringify + sessionStorage off the listener→paint path.
+  scheduleSessionPersist(chatId, trimmed);
 }
 
 /** Remove one thread's cached bubbles so a deleted chat cannot reopen with history. */
@@ -105,6 +142,7 @@ export function removeCachedChatMessages(chatId: string) {
   const id = String(chatId || "").trim();
   if (!id) return;
   memory.delete(id);
+  pendingSessionPersist.delete(id);
   if (typeof window === "undefined") return;
 
   try {
@@ -128,6 +166,7 @@ export function removeCachedChatMessages(chatId: string) {
 }
 export function clearCachedChatMessages() {
   memory.clear();
+  pendingSessionPersist.clear();
   if (typeof window === "undefined") return;
 
   try {

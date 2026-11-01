@@ -1,3 +1,5 @@
+import { isShuffleTouchGestureActive } from "@/lib/shuffle/shuffleTouchStability";
+
 export const SHUFFLE_KEEPALIVE_HOST_ID = "sayittome-shuffle-keepalive-host";
 const SHUFFLE_FEED_SCROLL_KEY = "sayittome:shuffle-feed-scroll:v1";
 const SHUFFLE_RESTORE_MAX_ATTEMPTS = 8;
@@ -54,6 +56,15 @@ export function peekShuffleFeedScroll() {
 }
 
 let restoreRetryGeneration = 0;
+/** Active touch gestures must own the feed; no cached navigation restore may fight them. */
+let lastShuffleTouchMs = 0;
+export function notifyShuffleFeedUserInput() {
+  lastShuffleTouchMs = Date.now();
+  restoreRetryGeneration += 1;
+}
+export function shuffleFeedUserInputActive(now = Date.now()) {
+  return isShuffleTouchGestureActive() || (lastShuffleTouchMs > 0 && now - lastShuffleTouchMs < 1200);
+}
 
 export type RestoreShuffleFeedScrollOptions = {
   attempts?: number;
@@ -71,6 +82,7 @@ function defaultRestoreSchedule(cb: () => void) {
 export function restoreShuffleFeedScroll(options?: RestoreShuffleFeedScrollOptions) {
   if (typeof window === "undefined") return 0;
   const next = peekShuffleFeedScroll();
+  if (shuffleFeedUserInputActive()) return next;
   const token = ++restoreRetryGeneration;
   const maxAttempts = Math.max(
     1,
@@ -79,6 +91,7 @@ export function restoreShuffleFeedScroll(options?: RestoreShuffleFeedScrollOptio
   const schedule = options?.schedule ?? defaultRestoreSchedule;
 
   const apply = () => {
+    if (token !== restoreRetryGeneration || shuffleFeedUserInputActive()) return false;
     const root = shuffleScrollRoot();
     if (!root) return false;
     root.scrollTop = next;

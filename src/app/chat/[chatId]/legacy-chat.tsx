@@ -26,6 +26,7 @@ import { uploadChatMessageMedia } from "@/lib/media/upload";
 import ChatAudioHoldLockMic from "@/components/chat/ChatAudioHoldLockMic";
 import ChatAudioPlayer from "@/components/chat/ChatAudioPlayer";
 import ChatMessageDeleteMenu from "@/components/chat/ChatMessageDeleteMenu";
+import PrivateAdminChatNotices from "@/components/chat/PrivateAdminChatNotices";
 import ChatMessageLongPress from "@/components/chat/ChatMessageLongPress";
 import ChatMessageReceipt from "@/components/chat/ChatMessageReceipt";
 import ChatMessageText from "@/components/chat/ChatMessageText";
@@ -82,6 +83,7 @@ import {
 } from "@/lib/chat/outgoingChatMeta";
 import { createChatWhipHistoryBaseline } from "@/lib/chat/whipAlertDedupe";
 import { useChatViewportLock } from "@/hooks/useChatViewportLock";
+import { CHAT_LIVE_TAIL_HINT_EVENT, type LiveTailHint } from "@/lib/chat/realtimeIncomingHints";
 import {
   profileAuthUid,
   resolveLegacyChatMessageMine,
@@ -93,6 +95,12 @@ import {
   writeCachedChatMessages,
   type CachedChatMessage,
 } from "@/lib/chat/chatMessageCache";
+import {
+  realtimePerfAfterSetState,
+  realtimePerfListenerBegin,
+  realtimePerfSchedulePaint,
+  realtimePerfWriteAck,
+} from "@/lib/perf/realtimeDeliveryTrace";
 
 type MessageStatus = "sending" | "sent" | "error";
 type MediaType = "image" | "video" | "audio";
@@ -253,6 +261,7 @@ export default function LegacyChatPage() {
     chatId ? hydrateLegacyCachedMessages(chatId) : [],
   );
   const [optimisticMessages, setOptimisticMessages] = useState<MessageData[]>([]);
+  const [messageStreamEpoch,setMessageStreamEpoch] = useState(0);
   const [chat, setChat] = useState<ChatData | null>(null);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<MessageData | null>(null);
@@ -383,8 +392,32 @@ export default function LegacyChatPage() {
       limitToLast(50),
     );
     const baselineHistory = createChatWhipHistoryBaseline(chatId);
+    // Local fan-out from the existing one-message listener. This bridges
+    // an inbound message before the full 50-message query finishes updating.
+    const onFastInbound=(event:Event)=>{
+      const hint=(event as CustomEvent<LiveTailHint>).detail;
+      if(!hint||hint.chatId!==chatId||!hint.messageId)return;
+      const row={id:hint.messageId,status:"sent" as const,
+        ...hint.data} as MessageData;
+      if(row.deletedForEveryone===true)return;
+      const user=auth.currentUser;
+      const hideKeys=viewerHideKeys({
+        authUid:user?.uid||firebaseUid,
+        profileUid:profileAuthUid(user)||currentUid,
+      });
+      if(isHiddenForViewer(row.hiddenFor,hideKeys))return;
+      if(readLocalHiddenMessageIds(chatId).includes(hint.messageId))return;
+      setMessages(prev=>prev.some(item=>item.id===hint.messageId)
+        ? prev : [...prev,row]);
+      window.setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"auto"}),32);
+    };
+    window.addEventListener(CHAT_LIVE_TAIL_HINT_EVENT,onFastInbound);
+    let retryTimer:ReturnType<typeof setTimeout>|null=null;
 
-    const unsub = onSnapshot(q, async (snapshot) => {
+    const unsub = onSnapshot(q, (snapshot) => {
+      const rtHandle = realtimePerfListenerBegin("legacy", {
+        docCount: snapshot.size,
+      });
       const docs: MessageData[] = [];
 
       snapshot.forEach((docu) => {
@@ -410,6 +443,7 @@ export default function LegacyChatPage() {
       });
       const localHidden = new Set(readLocalHiddenMessageIds(chatId));
       const visibleDocs = docs.filter((row) => {
+        if (row.deletedForEveryone === true) return false;
         const id = String(row.id || "");
         if (id && localHidden.has(id)) return false;
         return !isHiddenForViewer(row.hiddenFor, hideKeys);
@@ -420,6 +454,7 @@ export default function LegacyChatPage() {
         createdAtMs: createdAtToMs(message.createdAt),
       })));
 
+      // Paint first: keep setMessages on the sync critical path.
       setMessages(visibleDocs);
       writeCachedChatMessages(
         chatId,
@@ -442,48 +477,56 @@ export default function LegacyChatPage() {
           return !existsInFirestore;
         })
       );
+      realtimePerfAfterSetState(rtHandle);
+      realtimePerfSchedulePaint(rtHandle);
 
+      // Side-effects after state: do not await inside the listener (avoids
+      // holding the turn through mark-read/typing network round-trips).
       if (user) {
-        snapshot.forEach(async (docu) => {
+        snapshot.forEach((docu) => {
           const data = docu.data() as MessageData;
           const alreadyRead = data.readBy?.[user.uid];
 
           if (!alreadyRead && data.fromUid !== user.uid) {
-            try {
-              await updateDoc(doc(db, "chats", chatId, "mensajes", docu.id), {
-                ["readBy." + user.uid]: true,
-              });
-            } catch (e) {
-              console.error(e);
-            }
+            void updateDoc(doc(db, "chats", chatId, "mensajes", docu.id), {
+              ["readBy." + user.uid]: true,
+            }).catch((e) => console.error(e));
           }
         });
 
-        try {
-          await markChatAsRead(
+        void markChatAsRead(
+          chatId,
+          user.uid,
+          inboxChatFromFirestore(
             chatId,
-            user.uid,
-            inboxChatFromFirestore(
-              chatId,
-              (chatMetaRef.current || {}) as Record<string, unknown>,
-            ),
-            user.uid,
-          );
-          await updateDoc(doc(db, "chats", chatId), {
-            ["typing." + user.uid]: false,
-          });
-        } catch (e) {
-          console.error(e);
-        }
+            (chatMetaRef.current || {}) as Record<string, unknown>,
+          ),
+          user.uid,
+        )
+          .then(() =>
+            updateDoc(doc(db, "chats", chatId), {
+              ["typing." + user.uid]: false,
+            }),
+          )
+          .catch((e) => console.error(e));
       }
 
       setTimeout(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 50);
+    },(error)=>{
+      console.warn("[chat] classic realtime listener interrupted",error);
+      if(["unavailable","deadline-exceeded","internal","aborted"].includes(error.code)){
+        retryTimer=setTimeout(()=>setMessageStreamEpoch(value=>value+1),750);
+      }
     });
 
-    return () => unsub();
-  }, [chatId, firebaseUid, currentUid]);
+    return () => {
+      if(retryTimer)clearTimeout(retryTimer);
+      window.removeEventListener(CHAT_LIVE_TAIL_HINT_EVENT,onFastInbound);
+      unsub();
+    };
+  }, [chatId, firebaseUid, currentUid, messageStreamEpoch]);
 
   const viewerUid =
     currentUid ||
@@ -504,7 +547,7 @@ export default function LegacyChatPage() {
       return !realClientIds.has(msg.clientMessageId);
     });
 
-    return [...messages, ...pendingMessages];
+    return [...messages, ...pendingMessages].filter((row) => row.deletedForEveryone !== true);
   }, [messages, optimisticMessages]);
 
   const setTyping = async (value: boolean) => {
@@ -570,20 +613,7 @@ export default function LegacyChatPage() {
       rememberLocalHiddenMessage(chatId, messageId);
       setMessages((old) => old.filter((row) => row.id !== messageId));
     } else {
-      const tombstone = tombstoneDeletedMessage();
-      setMessages((old) =>
-        old.map((row) =>
-          row.id === messageId
-            ? {
-                ...row,
-                texto: tombstone.texto,
-                mediaUrl: "",
-                mediaType: undefined,
-                deletedForEveryone: true,
-              }
-            : row,
-        ),
-      );
+      setMessages((old) => old.filter((row) => row.id !== messageId));
     }
     try {
       const result = await persistMessageDelete({ chatId, messageId, mode });
@@ -641,7 +671,7 @@ export default function LegacyChatPage() {
         forEveryone: "Eliminar para todos",
         confirmMe: "El mensaje se ocultará solo para vos. La otra persona lo va a seguir viendo.",
         confirmEveryone:
-          "El mensaje se reemplazará por “Mensaje eliminado” para todos y se quitarán los adjuntos.",
+          "El mensaje desaparecerá para ambos participantes, sin aviso de eliminación.",
         confirm: "Eliminar",
         cancel: "Cancelar",
       }}
@@ -865,6 +895,7 @@ export default function LegacyChatPage() {
     }, 20);
 
     try {
+      const writeStartedAt = performance.now();
       const messageRef = await addDoc(collection(db, "chats", chatId, "mensajes"), {
         texto: clean,
         fromUid: author.fromUid,
@@ -879,6 +910,7 @@ export default function LegacyChatPage() {
         readBy: { [author.senderAuthUid]: true },
         ...replyPayload,
       });
+      realtimePerfWriteAck("local-write", writeStartedAt);
       const claim = await maybeClaimVerifiedProfileLink({
         chatId,
         messageId: messageRef.id,
@@ -1252,6 +1284,7 @@ if (uxMode === "classic") {
                 </div>
               );
             })}
+            <PrivateAdminChatNotices chatId={chatId} />
           </div>
         </section>
 
@@ -1445,6 +1478,7 @@ if (uxMode === "classic") {
             </div>
           )}
 
+          <PrivateAdminChatNotices chatId={chatId} />
           <div ref={bottomRef} />
         </div>
       </div>

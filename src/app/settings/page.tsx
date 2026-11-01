@@ -516,15 +516,19 @@ export function SettingsRouteContent() {
           >
             {coverVideo ? (
               <ProfileMediaSurface
+                priority
                 url={coverVideo}
                 alt={username}
-                videoClassName="w-full h-full object-cover opacity-45 blur-[1px] transition-opacity duration-200"
+                // No CSS filter/blur on looping cover: opacity + gradient scrim only.
+                videoClassName="w-full h-full object-cover opacity-45 transition-opacity duration-200"
               />
             ) : (
               <img
                 src={coverPhoto}
+                fetchPriority="high"
+                decoding="async"
                 alt={username}
-                className="w-full h-full object-cover opacity-45 blur-[1px] transition-opacity duration-200"
+                className="w-full h-full object-cover opacity-45 transition-opacity duration-200"
               />
             )}
           </div>

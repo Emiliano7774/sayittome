@@ -150,6 +150,15 @@ body.sayittome-profile-edit-open.sayittome-has-bottom-nav {
   -webkit-backdrop-filter: blur(40px);
 }
 
+/* Android WebView: continuous backdrop-filter over scrolling keep-alive layers
+   is a measurable GPU cost (heat). Prefer opaque nav chrome in the native shell. */
+html.sayittome-native-shell .sayittome-glass-bar,
+body.sayittome-native-shell .sayittome-glass-bar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(8, 8, 12, 0.96);
+}
+
 .sayittome-bottom-nav.sayittome-glass-bar,
 .sayittome-shuffle-toolbar.sayittome-glass-bar {
   border-top: 1px solid rgba(255, 255, 255, 0.14);
@@ -344,6 +353,8 @@ body.sayittome-chat-open {
   overscroll-behavior: none;
   contain: strict;
   visibility: hidden;
+  /* Skip paint for parked tabs; pair with JS video pause on frozen hosts. */
+  content-visibility: hidden;
 }
 
 .sayittome-main-tab-keepalive-visible {
@@ -406,6 +417,7 @@ html[data-sayittome-route-kind="main-tab"][data-sayittome-bar-target="settings"]
   contain: strict;
   visibility: hidden;
   opacity: 0;
+  content-visibility: hidden;
 }
 
 .sayittome-shuffle-surface-prep {
@@ -907,6 +919,15 @@ html[data-main-tab-shuffle-slide="running"] .sayittome-slide-source-active {
   contain: layout style paint;
 }
 
+/* Slide layers disable pointer-events; bottom nav must stay hittable or the
+   first tap is swallowed and the user needs a second tap. */
+html[data-main-tab-shuffle-slide="armed"] .sayittome-bottom-nav,
+html[data-main-tab-shuffle-slide="running"] .sayittome-bottom-nav,
+html[data-main-tab-shuffle-slide="preparing"] .sayittome-bottom-nav {
+  pointer-events: auto !important;
+  z-index: 40 !important;
+}
+
 html[data-main-tab-shuffle-slide="running"] .sayittome-slide-source-active,
 html[data-main-tab-shuffle-slide="running"] #sayittome-shuffle-keepalive-host {
   will-change: transform;
@@ -1135,16 +1156,38 @@ html[data-post-settle-route-bridge] body.sayittome-shuffle-surface-active
   pointer-events: none !important;
 }
 
+/* The native Android shell formerly constrained touch-action on html/body.
+   Shuffle is a real scroll surface: let Chromium handle a regular one-finger pan. */
+html.sayittome-native-shell:has(
+    #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  ),
+body.sayittome-native-shell:has(
+    #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  ),
+body.sayittome-native-shell.sayittome-shuffle-route {
+  touch-action: auto;
+}
+
 /* One scroll surface inside shuffle — touch swipe works, no OS scrollbar chrome. */
 #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible main[data-scroll-root] {
   height: 100%;
   max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  /* Android/WebView: suppress elastic rebound that snaps the short pan back. */
+  overscroll-behavior-y: none;
+  overflow-anchor: none;
+  /* Use native Android one-finger scrolling. Never restrict the gesture axis. */
+  touch-action: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+/* Native scrolling must also work when a swipe begins on a profile card. */
+#sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible
+  [data-shuffle-list] {
+  touch-action: auto;
 }
 
 #sayittome-shuffle-keepalive-host.sayittome-shuffle-keepalive-visible

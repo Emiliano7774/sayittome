@@ -919,6 +919,19 @@ export function commitShuffleTabReturn() {
 export function canShowShuffleKeepAliveSurface(pathname: string) {
   const path = normalizePath(pathname);
   if (isInstantShuffleReturnPending()) return true;
+  // A new /chat or /u route wins over an old "shuffle" route-kind latch.
+  // Only an explicit in-flight reveal may paint Shuffle over a non-main URL.
+  // The old check below trusted a stale route-kind and could cover the second
+  // chat with an opaque Shuffle host after chat -> Shuffle -> chat.
+  if (path.startsWith("/chat/") || path.startsWith("/u/")) {
+    const html = typeof document === "undefined" ? null : document.documentElement;
+    if (
+      !html?.hasAttribute("data-sayittome-shuffle-reveal-from") &&
+      !html?.hasAttribute("data-sayittome-shuffle-reveal-pending")
+    ) {
+      return false;
+    }
+  }
   // Non-main → Shuffle reveal must paint the host even while the URL is still
   // /u/* or /chat/* — otherwise CSS hides the route shell with nothing visible.
   if (typeof document !== "undefined") {

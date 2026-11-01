@@ -1717,6 +1717,9 @@ export function useShufflePool() {
     window.addEventListener("focus", onVisible);
 
     const presenceTimer = window.setInterval(() => {
+      // Keep-alive mounts Shuffle permanently; never churn presence/React
+      // state while the WebView is backgrounded (heat + jank on resume).
+      if (typeof document !== "undefined" && document.hidden) return;
       void refreshLiveVisitors();
       if (poolRef.current.length === 0) return;
 

@@ -62,6 +62,13 @@ import {
 } from "@/lib/navigation/mainTabInternalPathnameStore";
 import { restorePinnedShuffleWindowSync } from "@/lib/shuffle/shufflePinnedWindow";
 import { installShuffleOneFingerFallback } from "@/lib/navigation/shuffleOneFingerFallback";
+import { cancelShuffleViewportSnapshotRestore } from "@/lib/navigation/shuffleViewportSnapshot";
+import { notifyShuffleFeedUserInput } from "@/lib/navigation/shuffleFeedScroll";
+import {
+  startShuffleTouchGesture,
+  continueShuffleTouchGesture,
+  endShuffleTouchGesture,
+} from "@/lib/shuffle/shuffleTouchStability";
 import { presentExistingShuffleSnapshot } from "@/lib/navigation/shuffleForegroundRecover";
 import { ghostFrameWatchEnd, ghostFrameWatchInspect } from "@/lib/perf/ghostFrameTrace";
 import { isMainTabHref, type MainTabHref } from "@/lib/navigation/mainTabs";
@@ -256,9 +263,32 @@ function armShuffleExitNoLoadingWatchdog(
   const token = exitNoLoadingWatchdogToken;
   let frames = 0;
 
+  let waitingVisible: (() => void) | null = null;
+  const clearVisibleWait = () => {
+    if (!waitingVisible) return;
+    document.removeEventListener("visibilitychange", waitingVisible);
+    waitingVisible = null;
+  };
   const tick = () => {
-    if (token !== exitNoLoadingWatchdogToken) return;
-    if (!isShuffleExitToMainTabPending()) return;
+    if (token !== exitNoLoadingWatchdogToken) {
+      clearVisibleWait();
+      return;
+    }
+    if (!isShuffleExitToMainTabPending()) {
+      clearVisibleWait();
+      return;
+    }
+    // Do not spin 900 rAF frames while the app is backgrounded (phone call /
+    // multi-task). Resume when the WebView is visible again.
+    if (typeof document !== "undefined" && document.hidden) {
+      if (waitingVisible) return;
+      waitingVisible = () => {
+        clearVisibleWait();
+        if (token === exitNoLoadingWatchdogToken) requestAnimationFrame(tick);
+      };
+      document.addEventListener("visibilitychange", waitingVisible);
+      return;
+    }
     frames += 1;
 
     const visual = getTabDestinationVisualReadiness(path);
@@ -381,7 +411,7 @@ export default function ShuffleKeepAliveHost() {
   }, []);
 
   useEffect(() => {
-    // Keep native scrolling first; rescue only a verified stalled one-finger pan.
+    // Native compositor scroll wins; rescue only when a one-finger pan stalls.
     const host = document.getElementById("sayittome-shuffle-keepalive-host");
     if (!host) return;
     host.dataset.shuffleTouchFallbackStatus = "installed";
@@ -391,6 +421,70 @@ export default function ShuffleKeepAliveHost() {
       delete host.dataset.shuffleTouchFallbackStatus;
     };
   }, [pathname, visible]);
+  useEffect(() => {
+    // A late snapshot-restore rAF must never override a real Android swipe.
+    // Capture in the document so it also works after the keep-alive host mounts.
+    let touchingShuffle = false;
+    const onTouchStart = (event: TouchEvent) => {
+      touchingShuffle = Boolean(
+        event.target instanceof Element &&
+        event.target.closest("#sayittome-shuffle-keepalive-host main[data-scroll-root]")
+      );
+      if (!touchingShuffle) return;
+      cancelShuffleViewportSnapshotRestore();
+      notifyShuffleFeedUserInput();
+      startShuffleTouchGesture();
+    };
+    const onTouchMove = () => {
+      if (touchingShuffle) {
+        notifyShuffleFeedUserInput();
+        continueShuffleTouchGesture();
+      }
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (touchingShuffle) notifyShuffleFeedUserInput();
+      if (event.type === "touchcancel") {
+        // Chromium may cancel DOM touch events when native compositor scrolling
+        // takes over. This is not finger-up: keep cards/restore locked until
+        // scrollend, rather than unmounting the original touch target mid-pan.
+        touchingShuffle = false;
+        return;
+      }
+      if (event.touches.length === 0) {
+        touchingShuffle = false;
+        endShuffleTouchGesture();
+      }
+    };
+    const onNativeScroll = (event: Event) => {
+      if (
+        event.target instanceof Element &&
+        event.target.matches("#sayittome-shuffle-keepalive-host main[data-scroll-root]")
+      ) continueShuffleTouchGesture();
+    };
+    const onNativeScrollEnd = (event: Event) => {
+      if (
+        !touchingShuffle &&
+        event.target instanceof Element &&
+        event.target.matches("#sayittome-shuffle-keepalive-host main[data-scroll-root]")
+      ) endShuffleTouchGesture();
+    };
+    document.addEventListener("scroll", onNativeScroll, { passive: true, capture: true });
+    document.addEventListener("scrollend", onNativeScrollEnd, { passive: true, capture: true });
+    document.addEventListener("touchstart", onTouchStart, { passive: true, capture: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true, capture: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true, capture: true });
+    document.addEventListener("touchcancel", onTouchEnd, { passive: true, capture: true });
+    return () => {
+      document.removeEventListener("scroll", onNativeScroll, true);
+      document.removeEventListener("scrollend", onNativeScrollEnd, true);
+      document.removeEventListener("touchstart", onTouchStart, true);
+      document.removeEventListener("touchmove", onTouchMove, true);
+      document.removeEventListener("touchend", onTouchEnd, true);
+      document.removeEventListener("touchcancel", onTouchEnd, true);
+      endShuffleTouchGesture();
+    };
+  }, []);
+
   useEffect(() => {
     function onPageShow(event: PageTransitionEvent) {
       if (!event.persisted) return;
@@ -422,10 +516,25 @@ export default function ShuffleKeepAliveHost() {
 
     let cancelled = false;
     let frames = 0;
+    let waitingVisible: (() => void) | null = null;
+    const clearVisibleWait = () => {
+      if (!waitingVisible) return;
+      document.removeEventListener("visibilitychange", waitingVisible);
+      waitingVisible = null;
+    };
     const tick = () => {
       if (cancelled) return;
-      frames += 1;
       if (!isShuffleExitToMainTabPending()) return;
+      if (typeof document !== "undefined" && document.hidden) {
+        if (waitingVisible) return;
+        waitingVisible = () => {
+          clearVisibleWait();
+          if (!cancelled) requestAnimationFrame(tick);
+        };
+        document.addEventListener("visibilitychange", waitingVisible);
+        return;
+      }
+      frames += 1;
       const visual = getTabDestinationVisualReadiness(path);
       const safe = isStrictNoLoadingReady(path, visual);
       if (safe) {
@@ -481,6 +590,7 @@ export default function ShuffleKeepAliveHost() {
     requestAnimationFrame(tick);
     return () => {
       cancelled = true;
+      clearVisibleWait();
     };
   }, [pathname]);
 
@@ -488,6 +598,19 @@ export default function ShuffleKeepAliveHost() {
     const path = pathname.split("?")[0].split("#")[0];
     const prev = prevPathRef.current.split("?")[0].split("#")[0];
     prevPathRef.current = pathname;
+
+    // Returning from a chat via history.replaceState can leave prevPathRef
+    // already pointing at /chat on the NEXT entrance. Never require prev
+    // === "/shuffle" to park the Shuffle host once a real chat/profile owns
+    // the live URL; otherwise the opaque Shuffle surface covers the chat.
+    if (
+      (path.startsWith("/chat/") || path.startsWith("/u/")) &&
+      !isInstantShuffleReturnPending() &&
+      !document.documentElement.hasAttribute("data-sayittome-shuffle-reveal-from") &&
+      !document.documentElement.hasAttribute("data-sayittome-shuffle-reveal-pending")
+    ) {
+      parkShuffleKeepAliveForNonMainRoute();
+    }
 
     // Recover stuck Shuffle presentation / exit latch when the live route is
     // already a concrete main tab. History pathname sync can re-enter this

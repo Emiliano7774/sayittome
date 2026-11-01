@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import { useT } from "@/contexts/LocaleContext";
 
@@ -26,6 +26,12 @@ import {
 } from "@/lib/shuffle/shuffleOnlineFilterNotice";
 import type { ShuffleProfile } from "@/lib/shuffle/types";
 import { useHydrationReady } from "@/hooks/useHydrationReady";
+import {
+  getServerShuffleTouchReleaseEpoch,
+  getShuffleTouchReleaseEpoch,
+  isShuffleTouchGestureActive,
+  subscribeShuffleTouchRelease,
+} from "@/lib/shuffle/shuffleTouchStability";
 
 type Props = {
   /** Used for ad slot IDs so modern and classic never share the same ad instance. */
@@ -55,9 +61,24 @@ export default function ShuffleFeedWithNativeAds({
     getServerShuffleSlotsVersion,
   );
 
-  const windowGeneration = getShuffleWindowGeneration();
-  const profiles =
-    hydrationReady && slotsVersion > 0 ? getVisibleShuffleProfiles() : [];
+  // Re-render once when the finger lifts to apply any deferred pool/presence changes.
+  const releaseEpoch = useSyncExternalStore(
+    subscribeShuffleTouchRelease,
+    getShuffleTouchReleaseEpoch,
+    getServerShuffleTouchReleaseEpoch,
+  );
+  const fresh = {
+    profiles: hydrationReady && slotsVersion > 0 ? getVisibleShuffleProfiles() : [],
+    windowGeneration: getShuffleWindowGeneration(),
+    soloOnline,
+  };
+  const renderedFeedRef = useRef<typeof fresh | null>(null);
+  // Keep existing React keys and DOM touch targets alive until the finger lifts.
+  // Never hold Firestore listeners or network refreshes: only their visual output.
+  if (!isShuffleTouchGestureActive() || !renderedFeedRef.current) {
+    renderedFeedRef.current = fresh;
+  }
+  const { profiles, windowGeneration, soloOnline: shownSoloOnline } = renderedFeedRef.current;
   const showAds = shouldShowShuffleFeedAds(profiles.length);
   const itemCount = getShuffleFeedItemCount(profiles.length, showAds);
 
@@ -68,6 +89,7 @@ export default function ShuffleFeedWithNativeAds({
       data-nav-shuffle-primary
       data-stm-no-polish
       data-window-generation={windowGeneration}
+      data-touch-release-epoch={releaseEpoch}
     >
       {Array.from({ length: itemCount }, (_, index) => {
         if (isShuffleNativeAdIndex(index, profiles.length, showAds)) {
@@ -95,7 +117,7 @@ export default function ShuffleFeedWithNativeAds({
 
         return renderProfile(profile, profileIndex);
       })}
-      {soloOnline && profiles.length > 0 ? (
+      {shownSoloOnline && profiles.length > 0 ? (
         <div
           data-shuffle-online-filter-footer="1"
           data-shuffle-online-filter-footer-mode={mode}
