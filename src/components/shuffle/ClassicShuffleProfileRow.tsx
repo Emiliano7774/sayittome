@@ -3,10 +3,7 @@
 import { memo } from "react";
 
 import StoryAvatarButton from "@/components/stories/StoryAvatarButton";
-import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
-import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
-import AdminProfileSafetyTagButtons from "@/components/profile/AdminProfileSafetyTagButtons";
-import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
+import ShuffleAdminControls from "@/components/shuffle/ShuffleAdminControls";
 import ProfileModerationBadges from "@/components/profile/ProfileModerationBadges";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useT } from "@/contexts/LocaleContext";
@@ -98,22 +95,7 @@ function ClassicShuffleProfileRow({
         </button>
 
         <div className="grid shrink-0 grid-flow-col grid-rows-3 gap-1">
-          <AdminProfileRoleplayButton
-            profile={profile}
-            variant="classic"
-            appearance="shuffle"
-          />
-          <AdminProfileFakeButton
-            profile={profile}
-            variant="classic"
-            appearance="shuffle"
-          />
-          <AdminProfileSafetyTagButtons profile={profile} variant="classic" appearance="shuffle" />
-          <AdminProfileBlurPhotosButton
-            profile={profile}
-            variant="classic"
-            appearance="shuffle"
-          />
+          <ShuffleAdminControls profile={profile} variant="classic" />
         </div>
       </div>
     </div>

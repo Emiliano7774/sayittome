@@ -6,10 +6,7 @@ import { useRouter } from "next/navigation";
 import { UserRound } from "lucide-react";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
-import AdminProfileFakeButton from "@/components/profile/AdminProfileFakeButton";
-import AdminProfileRoleplayButton from "@/components/profile/AdminProfileRoleplayButton";
-import AdminProfileSafetyTagButtons from "@/components/profile/AdminProfileSafetyTagButtons";
-import AdminProfileBlurPhotosButton from "@/components/profile/AdminProfileBlurPhotosButton";
+import ShuffleAdminControls from "@/components/shuffle/ShuffleAdminControls";
 import ProfileModerationBadges from "@/components/profile/ProfileModerationBadges";
 import ShuffleModeratedIndicator from "@/components/shuffle/ShuffleModeratedIndicator";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
@@ -108,22 +105,7 @@ function ModernShuffleCard({
           live ? "top-14" : "top-3",
         ].join(" ")}
       >
-        <AdminProfileRoleplayButton
-          profile={profile}
-          variant="modern"
-          appearance="shuffle"
-        />
-        <AdminProfileFakeButton
-          profile={profile}
-          variant="modern"
-          appearance="shuffle"
-        />
-        <AdminProfileSafetyTagButtons profile={profile} variant="modern" appearance="shuffle" />
-        <AdminProfileBlurPhotosButton
-          profile={profile}
-          variant="modern"
-          appearance="shuffle"
-        />
+        <ShuffleAdminControls profile={profile} variant="modern" />
       </div>
       <Link
         href={href}
