@@ -81,12 +81,16 @@ export default function BottomNav({ unreadCount = 0 }: Props) {
       commitNonMainRouteToShuffleNavigation(router, fastRouterPush, pathname);
       return;
     }
-    if (getMainTabToShufflePhase() !== "preparing") {
+    // Pointerdown already painted Shuffle; do not repeat synchronous warm handoff.
+    const alreadyPainted = document.getElementById("sayittome-shuffle-keepalive-host")?.classList.contains("sayittome-shuffle-keepalive-visible") === true;
+    if (!alreadyPainted && getMainTabToShufflePhase() !== "preparing") {
       beginWarmShuffleTabNavigation(pathname, { triggerType: "user-main-tab-click" });
     }
     completeWarmShuffleTabNavigation(router, fastRouterPush, pathname);
-    armIncomingBarTab("/shuffle");
-    presentNativeBarSectionNow("/shuffle");
+    if (!alreadyPainted) {
+      armIncomingBarTab("/shuffle");
+      presentNativeBarSectionNow("/shuffle");
+    }
   }
 
   function warmShuffleTabPointerDown() {

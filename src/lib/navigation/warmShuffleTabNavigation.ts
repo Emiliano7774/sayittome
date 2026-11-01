@@ -367,7 +367,11 @@ export function commitPreparedMainTabToShuffleNavigation(
     return;
   }
 
-  presentInstantShuffleHostSync();
+  // Pointerdown already presented the live Shuffle surface; skip re-reading
+  // its snapshot synchronously on click (but keep route commit and failsafe).
+  const hostReady = document.getElementById("sayittome-shuffle-keepalive-host")?.classList.contains("sayittome-shuffle-keepalive-visible") === true
+    && document.documentElement.getAttribute("data-sayittome-bar-target") === "shuffle";
+  if (!hostReady) presentInstantShuffleHostSync();
   executeShuffleRouteCommit(router, push, path);
   armAndroidShufflePresentationFailsafe(router, push, path);
 }
