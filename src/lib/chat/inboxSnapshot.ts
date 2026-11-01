@@ -14,6 +14,44 @@ type StoredInboxRow = Omit<InboxChat, "updatedAt"> & {
 let memorySnapshot: InboxChat[] = [];
 let firstInboxSnapshotReadMeta: InboxSnapshotReadMeta | null = null;
 
+// Firestore can deliver several inbox snapshots in a single short burst.
+// Keep the live in-memory view immediate while coalescing JSON serialization
+// and the two synchronous Storage writes off the listener-to-paint path.
+let pendingSnapshotPersist: InboxChat[] | null = null;
+let snapshotPersistScheduled = false;
+let pagehideFlushInstalled = false;
+
+function flushInboxSnapshotPersist() {
+  snapshotPersistScheduled = false;
+  const pending = pendingSnapshotPersist;
+  pendingSnapshotPersist = null;
+  if (!pending || typeof window === "undefined") return;
+  try {
+    const encoded = JSON.stringify(pending.map(rowFromChat));
+    window.sessionStorage.setItem(STORAGE_KEY, encoded);
+    if (isNativeAppShell()) window.localStorage.setItem(NATIVE_STORAGE_KEY, encoded);
+  } catch {
+    // Storage can be full or disabled; memory + live Firestore remain valid.
+  }
+}
+
+function scheduleInboxSnapshotPersist(chats: InboxChat[]) {
+  if (typeof window === "undefined") return;
+  pendingSnapshotPersist = chats;
+  if (!pagehideFlushInstalled) {
+    pagehideFlushInstalled = true;
+    // Preserve latest warm-open data on immediate navigation/closing the tab.
+    window.addEventListener("pagehide", flushInboxSnapshotPersist);
+  }
+  if (snapshotPersistScheduled) return;
+  snapshotPersistScheduled = true;
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(flushInboxSnapshotPersist, { timeout: 200 });
+  } else {
+    window.setTimeout(flushInboxSnapshotPersist, 32);
+  }
+}
+
 export function resetInboxSnapshotReadTrace() {
   firstInboxSnapshotReadMeta = null;
 }
@@ -83,6 +121,8 @@ function chatFromRow(row: StoredInboxRow): InboxChat {
 }
 
 export function clearInboxSnapshotCache() {
+  // Cancel any stale deferred write so a logout/deletion cannot resurrect rows.
+  pendingSnapshotPersist = null;
   memorySnapshot = [];
   resetInboxSnapshotReadTrace();
   if (typeof window !== "undefined") {
@@ -225,21 +265,15 @@ export function writeInboxSnapshot(chats: InboxChat[]) {
 
   if (typeof window === "undefined") return;
 
-  try {
-    const encoded = JSON.stringify(trimmed.map(rowFromChat));
-    window.sessionStorage.setItem(STORAGE_KEY, encoded);
-    if (isNativeAppShell()) {
-      window.localStorage.setItem(NATIVE_STORAGE_KEY, encoded);
-    }
-  } catch {
-    // storage full or unavailable
-  }
+  scheduleInboxSnapshotPersist(trimmed);
 }
 
 export function removeInboxSnapshotChat(chatId: string) {
   const cleanId = String(chatId || "").trim();
   if (!cleanId) return;
 
+  // Deletion is rare and must persist immediately; invalidate an older batch.
+  pendingSnapshotPersist = null;
   memorySnapshot = memorySnapshot.filter(
     (chat) => chat.id !== cleanId && chat.canonicalChatId !== cleanId,
   );

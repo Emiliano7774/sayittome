@@ -277,7 +277,15 @@ export function useChatsInbox(options?: UseChatsInboxOptions) {
     anonRecovery: new Map(),
   });
   const snapshotBootstrappedRef = useRef(false);
-  const lastSortedChatsRef = useRef<InboxChat[]>(withoutDeletedInboxChats(readInboxSnapshot()));
+  const snapshotInitializedRef = useRef(false);
+  // useRef(initialValue) evaluates initialValue on *every* React render.
+  // Filtering up to 500 cached threads on every incoming message/tap was
+  // wasted main-thread work. Initialize once, then keep live refs updated.
+  const lastSortedChatsRef = useRef<InboxChat[]>([]);
+  if (!snapshotInitializedRef.current) {
+    snapshotInitializedRef.current = true;
+    lastSortedChatsRef.current = withoutDeletedInboxChats(readInboxSnapshot());
+  }
   if (!snapshotBootstrappedRef.current && lastSortedChatsRef.current.length > 0) {
     rememberInboxChatCount(lastSortedChatsRef.current.length);
     snapshotBootstrappedRef.current = true;
