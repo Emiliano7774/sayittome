@@ -25,6 +25,7 @@ const rows=[{username:'cached',targetPhoto:'cached.jpg'},{username:'slow',target
  assert.equal(state[0].cached,'cached.jpg','cached chat photo should render immediately');
  await new Promise(r=>setTimeout(r,12));
  assert.equal(deferred.size,2,'only two uncached public profiles fetched');
+ assert.deepEqual([...deferred.keys()],['slow','fast'],'photo lookups prioritize the visible inbox order, not alphabetical order');
  deferred.get('fast')({photo:'fast.jpg'});
  await new Promise(r=>setTimeout(r,60));
  assert.equal(state[0].fast,'fast.jpg','first completed avatar must appear before slow request');

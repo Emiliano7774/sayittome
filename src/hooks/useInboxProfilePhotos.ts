@@ -105,7 +105,10 @@ export function useInboxProfilePhotos(chats: InboxChat[]) {
 
   const usernames = useMemo(() => {
     // Never resolve an anonymous direct match as a public profile/photo.
-    return [...new Set(chats.filter((chat) => !isAnonDirectInboxChat(chat)).map((chat) => resolveChatUsername(chat)).filter(Boolean))].sort();
+    // The inbox is already ordered by recent activity. Keep that order so
+    // the first visible conversations receive missing avatar requests first;
+    // sorting alphabetically can starve the newest chat behind old entries.
+    return [...new Set(chats.filter((chat) => !isAnonDirectInboxChat(chat)).map((chat) => resolveChatUsername(chat)).filter(Boolean))];
   }, [chats]);
 
   useEffect(() => {
