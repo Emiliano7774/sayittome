@@ -10,6 +10,8 @@ type Gesture = {
   previousY: number;
   previousScrollTop: number;
   lastNativeMoveAt: number;
+  nextNativeSampleAt: number;
+  rescuing: boolean;
   root: HTMLElement;
 };
 
@@ -46,6 +48,8 @@ export function installShuffleOneFingerFallback(host: HTMLElement) {
       previousY: touch.clientY,
       previousScrollTop: root.scrollTop,
       lastNativeMoveAt: performance.now(),
+      nextNativeSampleAt: 0,
+      rescuing: false,
       root,
     };
   };
@@ -73,11 +77,16 @@ export function installShuffleOneFingerFallback(host: HTMLElement) {
     }
 
     const now = performance.now();
+    // Chromium may have to synchronize compositor scroll position to answer
+    // scrollTop. Never force that read on every Android touchmove while native
+    // scrolling is healthy. Keep full touchmove resolution only during rescue.
+    if (!active.rescuing && now < active.nextNativeSampleAt) return;
+    active.nextNativeSampleAt = now + 48;
     const observed = root.scrollTop;
-    // Movement since our previous touchmove, not caused by this listener, is
-    // browser-native movement. Give the compositor priority indefinitely.
+    // Motion not caused by our rescue belongs to the native compositor.
     if (Math.abs(observed - active.previousScrollTop) > 2) {
       active.lastNativeMoveAt = now;
+      active.rescuing = false;
     }
     active.previousScrollTop = observed;
 
@@ -93,6 +102,8 @@ export function installShuffleOneFingerFallback(host: HTMLElement) {
     // touch scrolling even if the main JavaScript thread becomes busy.
     root.scrollTop = Math.max(0, Math.min(max, observed + dy));
     active.previousScrollTop = root.scrollTop;
+    active.rescuing = true;
+    active.nextNativeSampleAt = now;
   };
 
   const onEnd = () => { gesture = null; };

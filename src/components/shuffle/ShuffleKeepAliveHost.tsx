@@ -436,10 +436,9 @@ export default function ShuffleKeepAliveHost() {
       startShuffleTouchGesture();
     };
     const onTouchMove = () => {
-      if (touchingShuffle) {
-        notifyShuffleFeedUserInput();
-        continueShuffleTouchGesture();
-      }
+      // The gesture lock itself prevents every restore until finger-up.
+      // Do not invalidate scroll-restore generations on every touch frame.
+      if (touchingShuffle) continueShuffleTouchGesture();
     };
     const onTouchEnd = (event: TouchEvent) => {
       if (touchingShuffle) notifyShuffleFeedUserInput();
