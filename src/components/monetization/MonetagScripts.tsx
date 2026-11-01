@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { isNativeAppShell } from "@/lib/app/nativeShell";
 import {
   isMonetagBodyBlocked,
+  isShuffleRoute,
   isVignetteSurfaceEligible,
 } from "@/lib/monetization/adSurfaces";
 import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
@@ -63,9 +64,9 @@ function markPushZoneLoaded(zoneId: string) {
 export default function MonetagScripts() {
   const pathname = usePathname();
   const [uiBlocked, setUiBlocked] = useState(false);
-  const [nativeVignetteReady, setNativeVignetteReady] = useState(
-    () => typeof window !== "undefined" && !isNativeAppShell(),
-  );
+  // SSR and the first native WebView render must never contain ad scripts.
+  // Enable web-only vignettes after hydration, and never enable them in APK.
+  const [nativeVignetteReady, setNativeVignetteReady] = useState(false);
   const lastPathnameRef = useRef<string | null>(null);
   const initialRecordedRef = useRef(false);
 
@@ -74,10 +75,7 @@ export default function MonetagScripts() {
   }, []);
 
   useEffect(() => {
-    if (!isNativeAppShell()) return;
-
-    const timer = window.setTimeout(() => setNativeVignetteReady(true), 20_000);
-    return () => window.clearTimeout(timer);
+    if (!isNativeAppShell()) setNativeVignetteReady(true);
   }, []);
 
   useEffect(() => {
@@ -100,6 +98,7 @@ export default function MonetagScripts() {
 
   const surfaceEligible = isVignetteSurfaceEligible(pathname);
   const vignetteEnabled =
+    !isNativeAppShell() && !isShuffleRoute(pathname) &&
     surfaceEligible && !uiBlocked && nativeVignetteReady;
   const pushEnabled = !isNativeAppShell();
 
