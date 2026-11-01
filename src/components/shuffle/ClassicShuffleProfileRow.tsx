@@ -31,7 +31,9 @@ function ClassicShuffleProfileRow({
   const visitor = profile.shuffleVisitor === true;
   const username = visitor ? t("shuffle_visitor_name") : profile.username;
   const bio = visitor ? t("shuffle_visitor_bio") : profile.bio || "Sin descripcion.";
-  const photoLoading = feedIndex < 15 ? "eager" : "lazy";
+  // Prioritize the first screen, not 15 competing high-priority images.
+  // The pool already warms upcoming photos; offscreen rows remain lazy.
+  const photoLoading = feedIndex < 4 ? "eager" : "lazy";
 
   if (!isShuffleVisitorFresh(profile)) return null;
 
@@ -121,7 +123,26 @@ function ClassicShuffleProfileRow({
 export default memo(
   ClassicShuffleProfileRow,
   (a, b) =>
+    // Keep a mounted row only when its *visible* contents are unchanged.
+    // UID-only equality delayed new photos, bios and online indicators until
+    // another unrelated action forced the card to remount.
+    ((a.feedIndex ?? 0) < 4) === ((b.feedIndex ?? 0) < 4) &&
     a.profile.uid === b.profile.uid &&
+    a.profile.username === b.profile.username &&
+    a.profile.bio === b.profile.bio &&
+    a.profile.photo === b.profile.photo &&
+    a.profile.showOnline === b.profile.showOnline &&
+    a.profile.shuffleVisitor === b.profile.shuffleVisitor &&
+    a.profile.visitorChatId === b.profile.visitorChatId &&
+    a.profile.visitorMatchAnonId === b.profile.visitorMatchAnonId &&
+    a.profile.shuffleFeatured === b.profile.shuffleFeatured &&
+    a.profile.ownerUid === b.profile.ownerUid &&
+    a.profile.profileUid === b.profile.profileUid &&
+    a.profile.firebaseUid === b.profile.firebaseUid &&
+    a.profile.authUid === b.profile.authUid &&
+    a.profile.lastActive === b.profile.lastActive &&
+    a.profile.presenceAt === b.profile.presenceAt &&
+    a.profile.onlineUntilAt === b.profile.onlineUntilAt &&
     a.profile.moderationTag === b.profile.moderationTag &&
     a.profile.fakeProfileTag === b.profile.fakeProfileTag &&
     a.profile.groomingTag === b.profile.groomingTag &&
