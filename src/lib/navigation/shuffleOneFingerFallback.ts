@@ -10,7 +10,7 @@ type Gesture = {
   previousY: number;
   previousScrollTop: number;
   lastNativeMoveAt: number;
-  nextNativeSampleAt: number;
+  // Progress is tracked from scroll events, not per-touch compositor reads.
   rescuing: boolean;
   root: HTMLElement;
 };
@@ -48,7 +48,6 @@ export function installShuffleOneFingerFallback(host: HTMLElement) {
       previousY: touch.clientY,
       previousScrollTop: root.scrollTop,
       lastNativeMoveAt: performance.now(),
-      nextNativeSampleAt: 0,
       rescuing: false,
       root,
     };
@@ -77,16 +76,15 @@ export function installShuffleOneFingerFallback(host: HTMLElement) {
     }
 
     const now = performance.now();
-    // Chromium may have to synchronize compositor scroll position to answer
-    // scrollTop. Never force that read on every Android touchmove while native
-    // scrolling is healthy. Keep full touchmove resolution only during rescue.
-    if (!active.rescuing && now < active.nextNativeSampleAt) return;
-    active.nextNativeSampleAt = now + 48;
+    // Native scroll events update our position without forcing a synchronous
+    // compositor read on every touchmove. Only inspect scrollTop after a real
+    // 130ms stall (or when the fallback is already rescuing the pan).
+    if (!active.rescuing && now - active.lastNativeMoveAt < 130) return;
     const observed = root.scrollTop;
-    // Motion not caused by our rescue belongs to the native compositor.
-    if (Math.abs(observed - active.previousScrollTop) > 2) {
+    if (!active.rescuing && Math.abs(observed - active.previousScrollTop) > 2) {
+      active.previousScrollTop = observed;
       active.lastNativeMoveAt = now;
-      active.rescuing = false;
+      return;
     }
     active.previousScrollTop = observed;
 
@@ -103,15 +101,27 @@ export function installShuffleOneFingerFallback(host: HTMLElement) {
     root.scrollTop = Math.max(0, Math.min(max, observed + dy));
     active.previousScrollTop = root.scrollTop;
     active.rescuing = true;
-    active.nextNativeSampleAt = now;
   };
 
+  const onNativeScroll = (event: Event) => {
+    const active = gesture;
+    if (!active || event.target !== active.root) return;
+    const observed = active.root.scrollTop;
+    if (Math.abs(observed - active.previousScrollTop) <= 2) return;
+    // A scroll event beyond the last position written by our rescue means
+    // the native compositor took ownership again.
+    active.previousScrollTop = observed;
+    active.lastNativeMoveAt = performance.now();
+    active.rescuing = false;
+  };
   const onEnd = () => { gesture = null; };
+  host.addEventListener("scroll", onNativeScroll, { passive: true, capture: true });
   host.addEventListener("touchstart", onStart, { passive: true, capture: true });
   host.addEventListener("touchmove", onMove, { passive: true, capture: true });
   host.addEventListener("touchend", onEnd, { passive: true, capture: true });
   host.addEventListener("touchcancel", onEnd, { passive: true, capture: true });
   return () => {
+    host.removeEventListener("scroll", onNativeScroll, true);
     host.removeEventListener("touchstart", onStart, true);
     host.removeEventListener("touchmove", onMove, true);
     host.removeEventListener("touchend", onEnd, true);
