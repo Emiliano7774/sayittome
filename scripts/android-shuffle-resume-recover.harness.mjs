@@ -57,9 +57,14 @@ const host = {
   querySelector(sel) {
     if (String(sel).includes("data-shuffle-list")) {
       return {
-        querySelector() {
-          return { tagName: "ARTICLE" };
-        },
+        // Real painted Shuffle cards: this must not be mistaken for an
+        // empty shell when resuming the native WebView in the foreground.
+        children: [{
+          classList: { contains() { return false; } },
+          getAttribute() { return null; },
+          getBoundingClientRect() { return { width: 200, height: 200 }; },
+        }],
+        querySelector() { return { tagName: "ARTICLE" }; },
       };
     }
     if (String(sel).includes("shuffle-surface-prep")) {
@@ -99,6 +104,19 @@ assert.equal(presented.emptiedBackground, false);
 assert.equal(presented.hostFrozen, false);
 assert.equal(host.classList.contains("sayittome-shuffle-keepalive-visible"), true);
 assert.equal(host.classList.contains("sayittome-shuffle-keepalive-frozen"), false);
+
+// Android permission/system overlays produce repeated app-resume events even
+// when the already-visible Shuffle feed never navigated away. The second
+// resume must not call the unfreeze/reconstruct path and rewind scroll.
+const originalAdd = host.classList.add;
+host.classList.add = () => {
+  throw new Error("visible Shuffle resume mutated an already-live surface");
+};
+const warmResumed = recover.presentExistingShuffleSnapshot({ reason: "app-resume" });
+assert.equal(warmResumed.presented, true);
+assert.equal(warmResumed.snapshotPainted, true);
+assert.equal(warmResumed.hostFrozen, false);
+host.classList.add = originalAdd;
 
 let state = back.initialShuffleProfileBackState();
 for (let i = 0; i < 4; i += 1) {

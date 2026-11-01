@@ -145,6 +145,34 @@ export function presentExistingShuffleSnapshot(options: {
     return empty;
   }
 
+  // Android permission/system overlays can fire appStateChange(true) even
+  // though Shuffle never navigated away. Replaying the stored snapshot here
+  // rewinds an actively scrolled feed to an older pixel/card window.
+  // Real profile-back / hidden-host recovery must still reconstruct normally.
+  if (
+    reason === "app-resume" &&
+    path === "/shuffle" &&
+    host.classList.contains("sayittome-shuffle-keepalive-visible") &&
+    !host.classList.contains("sayittome-shuffle-keepalive-frozen") &&
+    !host.hasAttribute?.("inert") &&
+    !host.hasAttribute?.("hidden") &&
+    host.style.opacity !== "0" &&
+    host.style.visibility !== "hidden" &&
+    host.style.pointerEvents !== "none" &&
+    !isShuffleRevealDeferred() &&
+    !isShuffleExitToMainTabPending() &&
+    hasShuffleSnapshotPaint(host)
+  ) {
+    return {
+      reason,
+      presented: true,
+      snapshotPainted: true,
+      remounted: false,
+      emptiedBackground: false,
+      hostFrozen: false,
+    };
+  }
+
   // Reconstruct window + scroll BEFORE unfreeze so the first visible paint
   // is already at the captured profile/pixel (no top flash / reshuffle).
   restorePinnedShuffleWindowSync();
