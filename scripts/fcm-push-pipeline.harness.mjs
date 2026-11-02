@@ -65,12 +65,24 @@ if (fs.existsSync(compiled)) {
     out.delete(from);
     return [...out];
   };
-  notificationTitleForRecipient = (message, chat) => {
+  // CI may run this harness before compiling functions/. Mirror the
+  // real source's anonymity rules rather than a legacy fallback that leaked
+  // targetUsername when senderRole was "anon" but fromUid was Firebase UID.
+  notificationTitleForRecipient = (message, chat, recipientUid) => {
     const from = String(message.fromUid || "").trim();
-    if (from.startsWith("anon_")) {
+    const role = String(message.senderRole || "").trim();
+    if (role === "anon" || from.startsWith("anon_")) {
+      if (!from.startsWith("anon_")) return "Anon";
       const parts = from.split("_").filter(Boolean);
-      const token = parts[1] || "anon";
-      return `Anon-${token.slice(0, 10)}`;
+      return `Anon-${(parts[1] || "anon").slice(0, 10)}`;
+    }
+    const profileUid = String(message.profileUid || chat.targetUid || chat.receptorUid || chat.anonOwnerUid || "").trim();
+    const fromProfile = role === "profile" || message.senderKind === "profile" ||
+      from.startsWith("profile_") || (profileUid && from === profileUid);
+    const isAnonThread = chat.anon === true || chat.hideProfileFromVisitor === true ||
+      String(chat.anonSessionId || "").startsWith("anon_");
+    if (fromProfile && isAnonThread && profileUid && recipientUid && recipientUid !== profileUid) {
+      return "Anónimo";
     }
     return String(chat.targetUsername || "Nuevo mensaje");
   };
