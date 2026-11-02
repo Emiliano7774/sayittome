@@ -53,8 +53,13 @@ const whip = fs.readFileSync(path.join(root, "src/lib/chat/globalChatWhipManager
 assert.match(detail, /ownerViewing: isOwnerViewing/, "detail passes proven role into read writer");
 assert.match(detail, /ctx\.ownerViewing \? ctx\.currentUid : senderId/, "owner marks with auth UID");
 const delta = alerts.split("    for (const chat of unreadSource) {").at(-1).split("  }, [")[0];
-assert.match(delta, /isIncomingChatActivity\(chat, threadViewer, firebaseUid\)/,
-  "inbox delta still proves opposite-side authorship");
+assert.match(delta, /isVerifiedInboxIncoming\(chat, threadViewer, firebaseUid\)/,
+  "inbox delta delegates opposite-side authorship to the verified guard");
+const verifier = alerts.split("function isVerifiedInboxIncoming(").at(-1).split("function subscribeSessionChatIds(")[0];
+assert.match(verifier, /isIncomingChatActivity\(chat, threadViewer, firebaseUid\)/,
+  "verified guard retains the existing incoming-role check");
+assert.match(verifier, /!isOwnChatSender\(sender, threadViewer, firebaseUid, chat\)/,
+  "verified guard explicitly excludes messages authored by this installation");
 assert.doesNotMatch(delta, /if \(chatUnreadCountForViewer\(/,
   "incoming web banners must not depend on delayed unread badge metadata");
 assert.match(whip, /senderAuthUid\?: string/);
