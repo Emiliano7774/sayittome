@@ -51,6 +51,7 @@ function ClassicShuffleProfileRow({
           size={tokens.avatarSize}
           mode="delegate"
           photoLoading={photoLoading}
+          prefetchStoryMedia={photoLoading === "eager"}
           blurPhoto={profile.blurPhoto}
           showOnline={visitor || profile.showOnline}
           iconSize={tokens.iconSize}

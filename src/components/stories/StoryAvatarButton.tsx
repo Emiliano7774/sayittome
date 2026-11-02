@@ -66,6 +66,8 @@ type Props = {
   anonKey?: string;
   onOpenProfile?: () => void;
   photoLoading?: "lazy" | "eager";
+  /** Avoid speculative background story media downloads on Shuffle cards. */
+  prefetchStoryMedia?: boolean;
   /** Shuffle visitors are not public profiles — skip /u prefetch. */
   prefetchProfile?: boolean;
   children?: ReactNode;
@@ -87,6 +89,7 @@ function StoryAvatarButton({
   anonKey = "",
   onOpenProfile,
   photoLoading = "lazy",
+  prefetchStoryMedia = true,
   prefetchProfile = true,
   children,
   avatarOverlay,
@@ -100,10 +103,13 @@ function StoryAvatarButton({
   const resolvedAnonKey = anonKey || username || "anon";
 
   useEffect(() => {
-    if (status.hasActive) {
+    // In a 35-card Shuffle, eagerly prefetching every active owner's first
+    // three stories (including videos) competes with visible avatars, taps,
+    // and live chat. Only prefetch automatically on dedicated story surfaces.
+    if (prefetchStoryMedia && status.hasActive) {
       prefetchOwnerStories(ownerUid, username);
     }
-  }, [ownerUid, username, status.hasActive, status.storyCount]);
+  }, [ownerUid, username, prefetchStoryMedia, status.hasActive, status.storyCount]);
 
   function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
     const storyPath =
@@ -114,6 +120,8 @@ function StoryAvatarButton({
     if (storyPath && !preferProfile) {
       event.preventDefault();
       event.stopPropagation();
+      // The tapped story still warms its first media alongside navigation.
+      if (!prefetchStoryMedia) prefetchOwnerStories(ownerUid, username);
       fastRouterPush(router, storyPath);
       return;
     }
