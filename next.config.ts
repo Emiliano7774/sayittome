@@ -33,9 +33,6 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_AT: process.env.NEXT_PUBLIC_BUILD_AT || "",
   },
   images: {
-    // Compatibility fallback for Firebase Hosting's packaged Next image handler.
-    // The primary remotePatterns remain the restrictive source policy.
-    domains: ["firebasestorage.googleapis.com", "storage.googleapis.com"],
     remotePatterns: [
       {
         protocol: "https",
