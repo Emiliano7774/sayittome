@@ -1,0 +1,15 @@
+const fs=require("node:fs");
+const assert=require("node:assert/strict");
+const modern=fs.readFileSync("src/components/modern/ModernShuffleCard.tsx","utf8");
+const moderation=fs.readFileSync("src/components/shuffle/ShuffleModeratedIndicator.tsx","utf8");
+assert.doesNotMatch(modern,/bg-fuchsia-500\/20 blur-2xl/,"no full-bleed blur effect on every card");
+assert.doesNotMatch(modern,/backdrop-blur-sm/,"no repeated backdrop filter badges");
+assert.doesNotMatch(moderation,/backdrop-blur-sm/,"moderated avatar indicators avoid compositor blur");
+assert.match(modern,/profile\.blurPhoto \? "scale-110 blur-2xl"/,"sensitive photos retain security blur");
+assert.match(modern,/<SensitiveBlurOverlay label="Contenido moderado"/,"sensitive moderation overlay still displayed");
+assert.match(modern,/<ShuffleAdminControls profile=\{profile\} variant="modern"/,"admin controls kept");
+assert.match(modern,/const photoLoading = feedIndex < 4 \? "eager" : "lazy"/,"lazy downloads preserved");
+assert.match(modern,/data-shuffle-visitor=\{visitor \? "1"/,"visitor routing preserved");
+assert.match(modern,/onClick=\{handleLinkClick\}/,"clickable card preserved");
+assert.match(moderation,/<EyeOff/,"moderation icon preserved");
+console.log("PASS_MODERN_SHUFFLE_GPU_FILTERS",JSON.stringify({decorativeBackdropFilters:0,moderatedPhotoBlurRetained:true,adminButtonsRetained:true,visitorClicksRetained:true,downloadsPreserved:true}));

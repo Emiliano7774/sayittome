@@ -113,7 +113,6 @@ function ModernShuffleCard({
         {...prefetchIntent}
         className="relative block w-full"
       >
-      <div className="absolute -inset-4 rounded-[2rem] bg-fuchsia-500/20 blur-2xl" />
       <div className="group relative overflow-hidden rounded-[2.5rem] border border-fuchsia-500/20 bg-zinc-950 shadow-2xl shadow-fuchsia-950/40 contain-[layout_paint_style]">
         <div className="relative aspect-[3/4] w-full overflow-hidden">
           {!visitor && profile.photo ? (
@@ -141,13 +140,13 @@ function ModernShuffleCard({
           <ShuffleModeratedIndicator profile={profile} variant="modern" />
 
           {profile.shuffleFeatured ? (
-            <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full border border-orange-400/40 bg-black/60 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-300 backdrop-blur-sm">
+            <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full border border-orange-400/40 bg-black/60 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-300">
               ★ Destacado
             </span>
           ) : null}
 
           {live ? (
-            <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-green-400/30 bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-green-300 backdrop-blur-sm">
+            <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-green-400/30 bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-green-300">
               <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
               En línea
             </span>

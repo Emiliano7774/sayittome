@@ -31,7 +31,7 @@ export default function ShuffleModeratedIndicator({
   const badge = ready && isAdmin ? (
     <span
       className={[
-        "inline-flex items-center justify-center rounded-full border backdrop-blur-sm",
+        "inline-flex items-center justify-center rounded-full border",
         modern
           ? "border-white/20 bg-black/70 text-white/75"
           : "border-violet-400/35 bg-black/75 text-violet-100/90",
