@@ -33,11 +33,6 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_AT: process.env.NEXT_PUBLIC_BUILD_AT || "",
   },
   images: {
-    // Firebase Frameworks SSR has rejected allowed Storage URLs through
-    // /_next/image even when remotePatterns reached the packaged manifest.
-    // Mirror the same exact hosts in the legacy allowlist for compatibility;
-    // this does not add any new image origin.
-    domains: ["firebasestorage.googleapis.com", "storage.googleapis.com"],
     remotePatterns: [
       {
         protocol: "https",
