@@ -70,14 +70,17 @@ function ClassicShuffleProfileRow({
           }
         />
 
-        <button
-          type="button"
-          data-action="chat"
-          data-username={username}
-          className="min-w-0 flex-1 text-left transition active:scale-[0.99]"
-          aria-label={`Abrir chat con ${username}`}
-        >
-          <h2 className={`truncate ${tokens.nameClass}`}>
+        <div className="relative min-w-0 flex-1 text-left">
+          {/* Keep the primary chat action as a sibling of moderation buttons.
+              A nested <button> breaks hydration and touch targeting on Android. */}
+          <button
+            type="button"
+            data-action="chat"
+            data-username={username}
+            className="absolute inset-0 z-0 w-full touch-manipulation rounded-sm transition active:scale-[0.99]"
+            aria-label={`Abrir chat con ${username}`}
+          />
+          <h2 className={`pointer-events-none truncate ${tokens.nameClass}`}>
             {username}
             {profile.shuffleFeatured ? (
               <span className="ml-2 inline-flex align-middle rounded-full bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-orange-300">
@@ -90,10 +93,10 @@ function ClassicShuffleProfileRow({
             fakeProfileTag={profile.fakeProfileTag}
             groomingTag={profile.groomingTag}
             potentialPedophileTag={profile.potentialPedophileTag}
-            className="mt-1"
+            className="relative z-10 mt-1"
           />
-          <p className={`mt-0.5 ${tokens.bioClass}`}>{bio}</p>
-        </button>
+          <p className={`pointer-events-none mt-0.5 ${tokens.bioClass}`}>{bio}</p>
+        </div>
 
         <div className="grid shrink-0 grid-flow-col grid-rows-3 gap-1">
           <ShuffleAdminControls profile={profile} variant="classic" />
