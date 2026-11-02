@@ -19,6 +19,9 @@ export type AnonProfileGateDetail = {
 };
 
 const usernameCache = { uid: "", username: "" };
+// Multiple near-simultaneous visitor taps must share one pending profile read.
+// Only successful usernames are cached; missing/error responses can retry.
+const usernameInFlight = new Map<string, Promise<string>>();
 
 export function viewerIsAnonymous() {
   const user = auth.currentUser;
@@ -44,13 +47,22 @@ export function openProfileAnonChat(router: AppRouterInstance, username: string)
 
 async function readOwnUsername(uid: string) {
   if (usernameCache.uid === uid && usernameCache.username) return usernameCache.username;
-  const snap = await getDoc(doc(db, "usuarios", uid));
-  const username = String(snap.data()?.username || "").trim();
-  if (username) {
-    usernameCache.uid = uid;
-    usernameCache.username = username;
-  }
-  return username;
+  const pending = usernameInFlight.get(uid);
+  if (pending) return pending;
+  const read = getDoc(doc(db, "usuarios", uid))
+    .then((snap) => {
+      const username = String(snap.data()?.username || "").trim();
+      if (username) {
+        usernameCache.uid = uid;
+        usernameCache.username = username;
+      }
+      return username;
+    })
+    .finally(() => {
+      usernameInFlight.delete(uid);
+    });
+  usernameInFlight.set(uid, read);
+  return read;
 }
 
 /** Select a live Shuffle visitor. Registered users use profile-anon chat;
@@ -64,9 +76,17 @@ export async function openVisitorChat(
   const visitorId = sanitizeShuffleVisitorChatId(visitorChatId);
   const matchAlias = sanitizeShuffleVisitorChatId(visitorMatchAnonId);
   if (!visitorId) return false;
-  // Wait for the same settled Firebase principal used by arrival preflight.
-  // Reading currentUser while tab-local adoption is pending can misroute clicks.
-  const user = await ensureStorageAuth({ allowAnonymous: true }).catch(() => null);
+  // Arrival preflight has already resolved the Firebase principal. Reuse it
+  // only if the current Auth session still matches exactly; otherwise keep
+  // the existing settled-auth fallback to avoid cross-account navigation.
+  const provided = options?.authenticatedUser as { uid?: unknown; isAnonymous?: unknown } | undefined;
+  const current = auth.currentUser;
+  const provenCurrent = current && provided &&
+    typeof provided.uid === "string" && provided.uid === current.uid &&
+    provided.isAnonymous === current.isAnonymous;
+  const user = provenCurrent
+    ? current
+    : await ensureStorageAuth({ allowAnonymous: true }).catch(() => null);
   if (!user) return false;
   if (user.isAnonymous) {
     // Profile-anon local session IDs are NOT bound match aliases. Only a
