@@ -148,7 +148,8 @@ export default function AdminProfileBlurPhotosButton({
   }
 
   const shellClass = [
-    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition active:scale-95 disabled:opacity-50",
+    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition active:scale-95 disabled:opacity-50",
+    appearance === "shuffle" ? "" : "backdrop-blur-sm",
     modern
       ? "border-violet-400/35 bg-black/65 text-violet-200"
       : "border-violet-400/35 bg-violet-500/15 text-violet-100",

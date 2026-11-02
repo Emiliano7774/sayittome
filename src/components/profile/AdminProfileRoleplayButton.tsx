@@ -111,7 +111,7 @@ export default function AdminProfileRoleplayButton({
   }
 
   const shuffleShellClass = [
-    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition active:scale-95 disabled:opacity-50",
+    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition active:scale-95 disabled:opacity-50",
     isRoleplay
       ? "border-sky-400/45 bg-sky-500/15 text-sky-300 shadow-[0_0_14px_rgba(56,189,248,0.22)]"
       : modern

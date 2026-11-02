@@ -114,7 +114,7 @@ export default function AdminProfileSafetyTagButtons({
 
   const shuffle = appearance === "shuffle";
   const base = shuffle
-    ? "flex h-8 w-8 items-center justify-center rounded-full border shadow-lg backdrop-blur-sm transition disabled:opacity-50"
+    ? "flex h-8 w-8 items-center justify-center rounded-full border transition disabled:opacity-50"
     : "inline-flex items-center justify-center rounded-full border p-2 transition disabled:opacity-50";
   const groomingClass = flags.grooming
     ? "border-orange-300 bg-orange-500/85 text-black"

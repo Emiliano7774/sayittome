@@ -111,7 +111,7 @@ export default function AdminProfileFakeButton({
   }
 
   const shuffleShellClass = [
-    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border backdrop-blur-sm transition active:scale-95 disabled:opacity-50",
+    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition active:scale-95 disabled:opacity-50",
     isFake
       ? "border-rose-400/45 bg-rose-500/15 text-rose-300 shadow-[0_0_14px_rgba(244,63,94,0.22)]"
       : modern
