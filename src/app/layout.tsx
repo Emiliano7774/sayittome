@@ -42,6 +42,11 @@ export default function RootLayout({
   return (
     <html lang="es">
       <head>
+        {/* Start Firebase Storage TLS before the visible Shuffle and inbox
+            avatars are discovered after React hydration. Preconnect is only
+            a socket hint: no additional Storage reads or photo prefetches. */}
+        <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://storage.googleapis.com" />
         {/* Native failsafe must run before any React/Next chunks or handoff CSS. */}
         <script
           dangerouslySetInnerHTML={{ __html: NATIVE_BOOT_RECOVERY_SCRIPT }}
