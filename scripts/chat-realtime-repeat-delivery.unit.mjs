@@ -63,7 +63,8 @@ assert(
 );
 assert(
   persist.includes("canonicalChatId !== chatId") &&
-    persist.includes('collection(db, "chats", canonicalChatId, "mensajes")'),
+    persist.includes('const chatRef = doc(db, "chats", canonicalChatId)') &&
+    persist.includes('doc(collection(db, "chats", effectiveChatId, "mensajes"))'),
   "send path does not bridge alias to canonical thread",
 );
 assert(
