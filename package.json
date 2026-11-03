@@ -188,7 +188,7 @@
     "framer-motion": "^12.40.0",
     "idb": "^8.0.3",
     "lucide-react": "^1.16.0",
-    "next": "16.2.6",
+    "next": "16.4.1",
     "nsfwjs": "^4.3.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -211,7 +211,7 @@
     "firebase-admin": "^14.1.0",
     "playwright": "^1.61.1",
     "postcss": "^8.5.15",
-    "sharp": "^0.34.5",
+    "sharp": "0.35.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   },
