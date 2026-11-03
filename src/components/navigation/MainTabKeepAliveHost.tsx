@@ -83,35 +83,92 @@ const PANELS: Record<Exclude<MainTabHref, "/shuffle">, ComponentType> = {
 const HANDOFF_FRAME_BUDGET = 120;
 const NO_LOADING_HANDOFF_FRAME_BUDGET = 360;
 
-/** Scrub leftover entry handoff CSS while /stories owns the URL. */
+/** Scrub leftover entry handoff CSS while /stories owns the URL.
+ * The old 360-rAF watchdog kept Android WebView rendering at display rate
+ * for seconds even when Stories was completely idle. Observe real changes
+ * immediately, with a low-frequency fallback for missed handoff events.
+ */
 let storiesEntryHandoffScrubToken = 0;
+let disposeStoriesEntryHandoffScrub: (() => void) | null = null;
 
 function armStoriesEntryHandoffScrub() {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  disposeStoriesEntryHandoffScrub?.();
   storiesEntryHandoffScrubToken += 1;
   const token = storiesEntryHandoffScrubToken;
-  let frames = 0;
-  const tick = () => {
-    if (token !== storiesEntryHandoffScrubToken) return;
-    const live = window.location.pathname.split("?")[0].split("#")[0];
-    if (live !== "/stories") return;
-    // Do not scrub while Stories→Shuffle micro-slide is arming (path still /stories).
-    if (isInternalMainTabToShuffleTransitionActive()) {
-      frames += 1;
-      if (frames < 360) requestAnimationFrame(tick);
-      return;
+  let remainingMs = 6_000;
+  let visibleSince = performance.now();
+  let timeoutId: number | null = null;
+  let intervalId: number | null = null;
+  let stopped = false;
+  let observer: MutationObserver | null = null;
+  let unsubscribe: (() => void) | null = null;
+
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+    if (intervalId !== null) window.clearInterval(intervalId);
+    observer?.disconnect();
+    unsubscribe?.();
+    document.removeEventListener("visibilitychange", onVisibility);
+    if (disposeStoriesEntryHandoffScrub === stop) {
+      disposeStoriesEntryHandoffScrub = null;
     }
-    if (isShuffleRevealDeferred() && getShuffleDeferSourcePath() === "/stories") {
-      frames += 1;
-      if (frames < 360) requestAnimationFrame(tick);
-      return;
-    }
-    clearStaleShuffleEntryHandoffForMainTabDestination("/stories");
-    frames += 1;
-    // Cover the Stories stay 5s gate window without becoming a permanent loop.
-    if (frames < 360) requestAnimationFrame(tick);
   };
-  requestAnimationFrame(tick);
+  const scrub = () => {
+    if (stopped || token !== storiesEntryHandoffScrubToken) {
+      stop();
+      return;
+    }
+    const live = window.location.pathname.split("?")[0].split("#")[0];
+    if (live !== "/stories") {
+      stop();
+      return;
+    }
+    // Preserve in-progress Stories→Shuffle ownership; a late scrub used to
+    // blank the slide source before the destination was ready.
+    if (document.hidden || isInternalMainTabToShuffleTransitionActive()) return;
+    if (isShuffleRevealDeferred() && getShuffleDeferSourcePath() === "/stories") return;
+    clearStaleShuffleEntryHandoffForMainTabDestination("/stories");
+  };
+  const pause = () => {
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+      timeoutId = null;
+      remainingMs = Math.max(0, remainingMs - (performance.now() - visibleSince));
+    }
+    if (intervalId !== null) {
+      window.clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
+  const resume = () => {
+    if (stopped || document.hidden) return;
+    if (remainingMs <= 0) {
+      stop();
+      return;
+    }
+    visibleSince = performance.now();
+    timeoutId = window.setTimeout(stop, remainingMs);
+    // Fallback only: real module and root-class mutations scrub immediately.
+    intervalId = window.setInterval(scrub, 120);
+    scrub();
+  };
+  const onVisibility = () => {
+    if (document.hidden) pause();
+    else resume();
+  };
+
+  observer = new MutationObserver(scrub);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class", "data-shuffle-defer-source"],
+  });
+  unsubscribe = subscribeShuffleHandoffState(scrub);
+  document.addEventListener("visibilitychange", onVisibility);
+  disposeStoriesEntryHandoffScrub = stop;
+  resume();
 }
 
 function resolveMainTabPanelPath(pathname: string) {
@@ -324,6 +381,7 @@ export default function MainTabKeepAliveHost() {
           armStoriesEntryHandoffScrub();
         } else {
           storiesEntryHandoffScrubToken += 1;
+          disposeStoriesEntryHandoffScrub?.();
         }
         if (isShuffleExitToMainTabPending()) {
           releaseShuffleTabSurface();
