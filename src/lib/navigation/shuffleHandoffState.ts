@@ -107,14 +107,20 @@ export function clearStaleShuffleEntryHandoffForMainTabDestination(
   destination: MainTabHref,
 ) {
   if (!destination || destination === "/shuffle") return false;
+  const html = typeof document !== "undefined" ? document.documentElement : null;
+  // The Stories stay watchdog inspects this state on every animation frame.
+  // A no-op must NOT publish a new version: the old unconditional notify()
+  // made subscribed React roots re-render hundreds of times while idle.
+  const hasPendingCss =
+    html?.classList.contains("sayittome-shuffle-handoff-pending") === true ||
+    html?.hasAttribute("data-shuffle-defer-source") === true;
+  if (!shuffleRevealDeferred && !hasPendingCss) return false;
+
   shuffleRevealDeferred = false;
-  if (typeof document !== "undefined") {
-    const html = document.documentElement;
-    // Force-clear even if presentation ownership still latches — destination
-    // URL already won, so entry handoff CSS must not linger.
-    html.classList.remove("sayittome-shuffle-handoff-pending");
-    html.removeAttribute("data-shuffle-defer-source");
-  }
+  // Force-clear even if presentation ownership still latches — destination
+  // URL already won, so entry handoff CSS must not linger.
+  html?.classList.remove("sayittome-shuffle-handoff-pending");
+  html?.removeAttribute("data-shuffle-defer-source");
   notify();
   return true;
 }
