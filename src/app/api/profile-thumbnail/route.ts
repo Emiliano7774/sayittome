@@ -1,4 +1,6 @@
-import sharp from "profile-image-codec";
+import { loadProfileImageCodec } from "@/lib/media/profileImageCodecNative";
+
+const sharp = loadProfileImageCodec();
 import {
   canonicalPublicProfilePhoto,
   PROFILE_THUMB_WIDTHS,
