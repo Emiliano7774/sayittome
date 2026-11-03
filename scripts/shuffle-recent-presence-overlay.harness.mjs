@@ -8,6 +8,12 @@ const exports={};
 const require=(name)=>{
  if(name.includes("dedupeProfiles"))return {
   dedupeShuffleProfiles:(rows)=>[...new Map(rows.map(x=>[x.uid,x])).values()],
+  shuffleProfileDedupeKeys:(p)=>{
+   const keys=[];
+   if(p.uid) keys.push(`id:${String(p.uid)}`);
+   if(p.authUid) keys.push(`id:${String(p.authUid)}`);
+   return keys;
+  },
   shuffleProfilesShareIdentity:(a,b)=>a.uid===b.uid || !!(a.authUid&&a.authUid===b.authUid),
  };
  return {};

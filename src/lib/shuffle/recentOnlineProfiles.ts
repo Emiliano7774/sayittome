@@ -1,6 +1,6 @@
 import {
   dedupeShuffleProfiles,
-  shuffleProfilesShareIdentity,
+  shuffleProfileDedupeKeys,
 } from "@/lib/shuffle/dedupeProfiles";
 
 /**
@@ -27,11 +27,24 @@ export function mergeRecentOnlineProfiles<T extends {
 }>(pool: T[], recent: T[]): T[] {
   if (recent.length === 0) return pool;
   const consumed = new Set<number>();
+  const earliestRecentIndexByKey = new Map<string, number>();
+  for (let index = 0; index < recent.length; index++) {
+    if (recent[index].shuffleVisitor === true) continue;
+    for (const key of shuffleProfileDedupeKeys(recent[index])) {
+      if (!earliestRecentIndexByKey.has(key)) {
+        earliestRecentIndexByKey.set(key, index);
+      }
+    }
+  }
   const overlaid = pool.map((old) => {
     if (old.shuffleVisitor === true) return old;
-    const index = recent.findIndex(
-      (next) => next.shuffleVisitor !== true && shuffleProfilesShareIdentity(old, next),
-    );
+    let index = -1;
+    for (const key of shuffleProfileDedupeKeys(old)) {
+      const candidate = earliestRecentIndexByKey.get(key);
+      if (candidate !== undefined && (index < 0 || candidate < index)) {
+        index = candidate;
+      }
+    }
     if (index < 0) return old;
     consumed.add(index);
     const fresh = recent[index];
