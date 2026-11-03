@@ -43,7 +43,23 @@ function shuffleJson(
   body: Record<string, unknown>,
   init?: { status?: number; publicVisitorSlice?: boolean },
 ) {
-  const json = JSON.stringify(body);
+  // The Shuffle API is public. Keep email available to server-side identity
+  // deduplication, but never serialize it to browsers, including the shared
+  // visitors CDN slice or error fallback. This is a privacy boundary, not a
+  // change to the identity/35-slot selection algorithm.
+  const publicRows = (value: unknown) => Array.isArray(value)
+    ? value.map((row) => {
+        if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+        const { email: _privateEmail, ...publicRow } = row as Record<string, unknown>;
+        return publicRow;
+      })
+    : value;
+  const json = JSON.stringify({
+    ...body,
+    profiles: publicRows(body.profiles),
+    featuredProfiles: publicRows(body.featuredProfiles),
+    onlineProfiles: publicRows(body.onlineProfiles),
+  });
   const acceptEncoding = String(req.headers.get("accept-encoding") || "").toLowerCase();
   const headers = new Headers(SHUFFLE_JSON_HEADERS);
   headers.set("Content-Type", "application/json; charset=utf-8");
