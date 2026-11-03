@@ -940,7 +940,24 @@ export async function GET(req: Request) {
       }, { publicVisitorSlice: true });
     }
 
-    const { profilesCreated, anonymousOnline, totalLive } = await resolveLiveCounts(countOnly);
+    // Fetch independent Firestore-backed slices concurrently. Previously the
+    // counts request, full pool, recent presence, visitor slice and boosts
+    // waited for each other serially even on a warm SSR instance.
+    // The existing in-flight coalescers still prevent duplicate scans.
+    const [counts, allProfiles, visitors, activeBoosts] = await Promise.all([
+      resolveLiveCounts(countOnly),
+      countOnly
+        ? Promise.resolve([] as ApiProfile[])
+        : q
+          ? searchProfilesByQuery(q, SHUFFLE_SEARCH_LIMIT, force)
+          : Promise.all([getProfilesCached(force), getRecentRegisteredProfiles()])
+              .then(([profiles, recent]) => mergeRecentOnlineProfiles(profiles, recent)),
+      countOnly || q
+        ? Promise.resolve([] as ApiProfile[])
+        : getLiveShuffleVisitors(false),
+      countOnly ? Promise.resolve([]) : getActiveBoostProfiles(),
+    ]);
+    const { profilesCreated, anonymousOnline, totalLive } = counts;
 
     if (countOnly) {
       return shuffleJson(req, {
@@ -957,31 +974,22 @@ export async function GET(req: Request) {
       });
     }
 
-    const allProfiles = q
-      ? await searchProfilesByQuery(q, SHUFFLE_SEARCH_LIMIT, force)
-      : mergeRecentOnlineProfiles(
-          await getProfilesCached(force),
-          await getRecentRegisteredProfiles(),
-        );
     const filteredByDiscovery = allProfiles.filter(
       (profile) =>
         profileIsVisibleToViewer(profile, viewer) &&
         profileMatchesShuffleServerFilters(profile, filters),
     );
 
-    const liveVisitors = q
-      ? []
-      : (await getLiveShuffleVisitors(false)).filter(
-          (profile) =>
-            profileIsVisibleToViewer(profile, viewer) &&
-            profileMatchesShuffleServerFilters(profile, filters),
-        );
+    const liveVisitors = visitors.filter(
+      (profile) =>
+        profileIsVisibleToViewer(profile, viewer) &&
+        profileMatchesShuffleServerFilters(profile, filters),
+    );
 
     const filtered = dedupeShuffleProfiles([...filteredByDiscovery, ...liveVisitors]);
 
     const ordered = shouldShuffle && !q ? shuffleArray(filtered) : filtered;
 
-    const activeBoosts = await getActiveBoostProfiles();
     const boostUidOrder = activeBoosts
       .slice(0, BOOST_TOP_SLOTS)
       .map((row) => String(row.uid || ""))
