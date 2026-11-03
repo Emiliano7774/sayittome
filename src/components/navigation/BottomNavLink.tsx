@@ -169,7 +169,9 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
   }
 
   function commitConcreteMainTabHistory(hrefTo: string) {
-    supersedeInFlightShuffle("navigation-replaced");
+    // warmTab({ allowSupersede: true }) already canceled an in-flight
+    // Shuffle transition. Running it again on the same pointerdown
+    // repeats expensive DOM + handoff state reconciliation.
     softPushFromPointerDownRef.current = hrefTo;
     scheduleMainTabHistory(hrefTo, "bottom-nav-pointerdown-history");
   }
@@ -183,6 +185,18 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
   function onPointerDown() {
     if (!forceSoftMainTabNav || !isConcreteMainTabHref(href)) {
       warmTab({ allowSupersede: true });
+      return;
+    }
+    // Retapping an already-active concrete tab must not push history or
+    // re-run Shuffle handoff reconciliation. Preserve the full path while
+    // a micro-slide is actually active so cancellation remains reliable.
+    if (
+      typeof window !== "undefined" &&
+      window.location.pathname.split("?")[0].split("#")[0] === href &&
+      !blockMainTabNavigationDuringSlide() &&
+      !isInternalMainTabToShuffleTransitionActive()
+    ) {
+      softPushFromPointerDownRef.current = null;
       return;
     }
     // Capture handoff state BEFORE warm/abort — abort clears sliding/active.
@@ -233,17 +247,11 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       return;
     }
 
-    // Abort any in-flight Shuffle slide before the history commit so a late
-    // deferred /shuffle commit cannot overwrite the selected concrete tab.
-    if (concreteMainTabDestination) {
-      supersedeInFlightShuffle("navigation-replaced");
-    }
+    // warmTab performs the one required Shuffle supersede before we push
+    // history; don't run the same cancellation three times per keyboard/click.
     warmTab({ allowSupersede: true });
     if (!concreteMainTabDestination && blockMainTabNavigationDuringSlide()) {
       return;
-    }
-    if (concreteMainTabDestination) {
-      supersedeInFlightShuffle("navigation-replaced");
     }
 
     scheduleMainTabHistory(href, "bottom-nav-main-tab-history");
