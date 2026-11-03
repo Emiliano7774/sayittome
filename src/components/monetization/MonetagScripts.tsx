@@ -10,7 +10,12 @@ import {
   isShuffleRoute,
   isVignetteSurfaceEligible,
 } from "@/lib/monetization/adSurfaces";
-import { isMonetagWebEnabled } from "@/lib/monetization/monetagConfig";
+import {
+  isMonetagWebEnabled,
+  MONETAG_VIGNETTE_WEB_ENABLED,
+  MONETAG_PUSH_TAG_WEB_ENABLED,
+} from "@/lib/monetization/monetagConfig";
+import { clearFullscreenTouchBlockingFrames } from "@/lib/monetization/monetagTouchShield";
 import { logMonetag } from "@/lib/monetization/monetagDev";
 import {
   MONETAG_PUSH_ZONE,
@@ -75,6 +80,20 @@ export default function MonetagScripts() {
   }, []);
 
   useEffect(() => {
+    if (isNativeAppShell()) return;
+    // Old web sessions can keep full-screen ad frames alive after the ad
+    // script is unmounted. Remove only proven touch-blocking HTML-root frames
+    // immediately, and watch new direct children (no polling/frame loop).
+    const removeObstructions = () => {
+      clearFullscreenTouchBlockingFrames(document);
+    };
+    removeObstructions();
+    const observer = new MutationObserver(removeObstructions);
+    observer.observe(document.documentElement, { childList: true });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (!isNativeAppShell()) setNativeVignetteReady(true);
   }, []);
 
@@ -98,9 +117,10 @@ export default function MonetagScripts() {
 
   const surfaceEligible = isVignetteSurfaceEligible(pathname);
   const vignetteEnabled =
+    MONETAG_VIGNETTE_WEB_ENABLED &&
     !isNativeAppShell() && !isShuffleRoute(pathname) &&
     surfaceEligible && !uiBlocked && nativeVignetteReady;
-  const pushEnabled = !isNativeAppShell();
+  const pushEnabled = MONETAG_PUSH_TAG_WEB_ENABLED && !isNativeAppShell();
 
   useEffect(() => {
     if (!isMonetagWebEnabled()) return;
