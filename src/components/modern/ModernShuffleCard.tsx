@@ -4,6 +4,7 @@ import { memo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserRound } from "lucide-react";
+import FastProfilePhoto from "@/components/media/FastProfilePhoto";
 
 import SensitiveBlurOverlay from "@/components/moderation/SensitiveBlurOverlay";
 import ShuffleAdminControls from "@/components/shuffle/ShuffleAdminControls";
@@ -117,8 +118,9 @@ function ModernShuffleCard({
         <div className="relative aspect-[3/4] w-full overflow-hidden">
           {!visitor && profile.photo ? (
             <>
-              <img
+              <FastProfilePhoto
                 src={profile.photo}
+                variant="card"
                 alt={profile.username}
                 loading={photoLoading}
                 decoding="async"

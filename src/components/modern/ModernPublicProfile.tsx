@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import ProfileMediaSurface from "@/components/profile/ProfileMediaSurface";
+import FastProfilePhoto from "@/components/media/FastProfilePhoto";
 import ProfileVideoViewer from "@/components/profile/ProfileVideoViewer";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import ProfileCreatedFooter from "@/components/profile/ProfileCreatedFooter";
@@ -425,8 +426,9 @@ export default function ModernPublicProfile({
                   className="h-full w-full"
                   overlayLabel={t("profile_photo_moderated")}
                 >
-                  <img
+                  <FastProfilePhoto
                     src={heroPhoto}
+                    variant="card"
                     alt={profile.username}
                     className="h-full w-full object-cover transition-opacity duration-200"
                   />
@@ -681,8 +683,10 @@ export default function ModernPublicProfile({
             className="max-h-[88vh] max-w-[92vw]"
             overlayLabel={t("profile_photo_moderated")}
           >
-            <img
+            <FastProfilePhoto
               src={gallery[viewerIndex]}
+              variant="profile"
+              sizes="92vw"
               alt={profile.username}
               className="max-h-[88vh] max-w-[92vw] rounded-3xl object-contain pointer-events-none select-none"
               draggable={false}

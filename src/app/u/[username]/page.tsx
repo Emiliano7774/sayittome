@@ -18,6 +18,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { resolveStoryViewerIdReady } from "@/lib/stories/storyAuthor";
 import ModernPublicProfile from "@/components/modern/ModernPublicProfile";
+import FastProfilePhoto from "@/components/media/FastProfilePhoto";
 import FollowButton from "@/components/FollowButton";
 import VerifiedLinkBubble from "@/components/profile/VerifiedLinkBubble";
 import UsernameChangedNotice from "@/components/profile/UsernameChangedNotice";
@@ -866,8 +867,10 @@ export default function PublicProfilePage() {
             className="max-w-[92vw] max-h-[88vh]"
             overlayLabel="Foto moderada"
           >
-            <img
+            <FastProfilePhoto
               src={gallery[viewerIndex]}
+              variant="profile"
+              sizes="92vw"
               alt={profile.username}
               className="max-w-[92vw] max-h-[88vh] object-contain rounded-3xl select-none pointer-events-none"
               draggable={false}

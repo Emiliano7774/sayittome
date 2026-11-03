@@ -1,5 +1,7 @@
 "use client";
 
+import FastProfilePhoto from "@/components/media/FastProfilePhoto";
+
 type Props = {
   src: string;
   alt: string;
@@ -24,8 +26,9 @@ export default function AppImage({
   if (fill) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img
+      <FastProfilePhoto
         src={src}
+        variant="card"
         alt={alt}
         className={["absolute inset-0 h-full w-full", className || ""].join(" ")}
         loading={priority ? "eager" : "lazy"}
@@ -36,8 +39,9 @@ export default function AppImage({
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <FastProfilePhoto
       src={src}
+      variant="avatar"
       alt={alt}
       className={className}
       width={width}

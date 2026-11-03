@@ -3,6 +3,7 @@
 import { memo, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { UserRound } from "lucide-react";
+import FastProfilePhoto from "@/components/media/FastProfilePhoto";
 
 import StoryRing from "@/components/stories/StoryRing";
 import { useStoryStatus } from "@/hooks/useStoryStatus";
@@ -149,8 +150,10 @@ function StoryAvatarButton({
       ].join(" ")}
     >
       {photo ? (
-        <img
+        <FastProfilePhoto
           src={photo}
+          variant="avatar"
+          sizes={`${AVATAR_PX[size]}px`}
           alt={username}
           loading={photoLoading}
           decoding="async"
