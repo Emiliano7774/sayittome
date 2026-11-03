@@ -2,7 +2,8 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 const cp=require('node:child_process');
 const current=fs.readFileSync('src/lib/chat/whipSound.ts','utf8');
-const original=cp.execFileSync('git',['show','HEAD:src/lib/chat/whipSound.ts'],{encoding:'utf8'});
+// Compare against the old multi-listener baseline, not today's HEAD.
+const original=cp.execFileSync('git',['show','e34ab8a^:src/lib/chat/whipSound.ts'],{encoding:'utf8'});
 function run(source,settles=false,fakeClock=null){
  const listeners=new Map(),docListeners=new Map();let plays=0,created=0;
  const add=(m,t,h)=>{if(!m.has(t))m.set(t,new Set());m.get(t).add(h)};
@@ -15,6 +16,7 @@ function run(source,settles=false,fakeClock=null){
  const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const exports={};
  vm.runInNewContext(js,{exports,window,document,Audio,console,Date:fakeClock?{now:()=>fakeClock.value}:Date,setTimeout,clearTimeout,require:(name)=>{
+ if(name==='@/lib/app/nativeShell')return {isCapacitorNative:()=>false};
  if(name==='@/lib/chat/chatNotificationPrefs')return {areChatNotificationsEnabled:()=>false};
  throw Error('Unexpected module '+name);
  }});

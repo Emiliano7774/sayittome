@@ -1,3 +1,5 @@
+import { isCapacitorNative } from "@/lib/app/nativeShell";
+
 const WHIP_SRC = "/sounds/whip.mp3";
 const COOLDOWN_MS = 900;
 
@@ -34,6 +36,12 @@ function getPooledAudio() {
 }
 
 function requestNotificationPermission() {
+  // A passive sound-unlock gesture is not consent to ask Android for its OS
+  // notification permission. When denied, this gesture path used to re-open
+  // PermissionController during normal taps and foreground restores.
+  // Explicit opt-in remains available in the notification settings; the web
+  // first-touch request is intentionally unchanged.
+  if (isCapacitorNative()) return;
   if (notificationPermissionRequested || typeof window === "undefined") return;
   notificationPermissionRequested = true;
   void import("@/lib/chat/chatNotificationPrefs")
