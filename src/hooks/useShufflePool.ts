@@ -634,7 +634,8 @@ export function useShufflePool() {
         unprovenNameCollisions: collisions,
         identityMigration: collisions.length > 0 ? "PENDING" : "ok",
       });
-      warmShuffleImages(shownProfiles, 12, { urgent: forceReplace });
+      // Warm only selected viewport/adjacent avatar thumbnails, not full originals.
+      warmShuffleImages(shownProfiles, 6, { urgent: forceReplace });
       const idleSeed = () => {
         seedFullProfilesFromShuffleCards(shownProfiles.slice(0, 12));
       };
@@ -686,7 +687,8 @@ export function useShufflePool() {
       setTotalLive(total > 0 ? total : profiles.length);
       setLoading(false);
       setErrorText("");
-      warmShuffleImages(profiles, 8, { urgent: true });
+      // Do not speculate on arbitrary full-pool photos before picking 35 cards.
+      // applyWindowFromPool warms the small selected avatar thumbnails instead.
     },
     [],
   );
