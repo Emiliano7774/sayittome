@@ -3,7 +3,7 @@ import { normalizeUsername } from "@/lib/profile/username";
 import { dedupeShuffleProfiles, resolveUsernameLower } from "@/lib/shuffle/dedupeProfiles";
 import {
   applyShuffleAdminTagOverlays,
-  reconcileShuffleAdminTagOverlayFromServer,
+  reconcileShuffleAdminTagOverlaysFromServer,
 } from "@/lib/shuffle/shuffleAdminTagOverlay";
 import { resolveShuffleProfileBlurPhoto } from "@/lib/shuffle/resolveShuffleBlur";
 import { forceShuffleVisitorOnline } from "@/lib/shuffle/shuffleVisitorId";
@@ -126,6 +126,6 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
     .filter((p) => p.username && p.username !== "undefined");
 
   const deduped = dedupeShuffleProfiles(mapped);
-  for (const profile of deduped) reconcileShuffleAdminTagOverlayFromServer(profile);
+  reconcileShuffleAdminTagOverlaysFromServer(deduped);
   return applyShuffleAdminTagOverlays(deduped);
 }

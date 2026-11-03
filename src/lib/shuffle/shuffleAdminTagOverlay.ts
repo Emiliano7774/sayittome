@@ -11,6 +11,8 @@ export type ShuffleAdminTagOverlay = {
 };
 
 const ram = new Map<string, ShuffleAdminTagOverlay>();
+let reconcileBatchDepth = 0;
+let pendingBatchPersist = false;
 
 function hydrateRamFromStorage() {
   if (typeof window === "undefined") return;
@@ -33,7 +35,8 @@ export function setShuffleAdminTagOverlay(uid: string, patch: Partial<ShuffleAdm
   if (!key) return;
   if (ram.size === 0) hydrateRamFromStorage();
   ram.set(key, { ...(ram.get(key) || {}), ...patch });
-  persistRamToStorage();
+  if (reconcileBatchDepth > 0) pendingBatchPersist = true;
+  else persistRamToStorage();
 }
 
 /** Server-confirmed tags only — never clears overlay on a stale miss. */
@@ -53,6 +56,24 @@ export function reconcileShuffleAdminTagOverlayFromServer(profile: {
   if (profile.potentialPedophileTag === true) patch.potentialPedophileTag = true;
   if (Object.keys(patch).length === 0) return;
   setShuffleAdminTagOverlay(uid, patch);
+}
+
+/** Persist a normalized server pool's admin safety labels once per batch,
+ * retaining the same synchronous, sticky label semantics for every profile.
+ * Direct moderation actions still persist immediately via the setter. */
+export function reconcileShuffleAdminTagOverlaysFromServer(
+  profiles: readonly Parameters<typeof reconcileShuffleAdminTagOverlayFromServer>[0][],
+) {
+  reconcileBatchDepth++;
+  try {
+    for (const profile of profiles) reconcileShuffleAdminTagOverlayFromServer(profile);
+  } finally {
+    reconcileBatchDepth--;
+    if (reconcileBatchDepth === 0 && pendingBatchPersist) {
+      pendingBatchPersist = false;
+      persistRamToStorage();
+    }
+  }
 }
 
 export function applyShuffleAdminTagOverlay<
