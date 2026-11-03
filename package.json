@@ -190,12 +190,12 @@
     "lucide-react": "^1.16.0",
     "next": "16.4.1",
     "nsfwjs": "^4.3.0",
+    "profile-image-codec": "npm:sharp@0.35.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-intersection-observer": "^10.0.3",
     "react-use": "^17.6.0",
     "server-only": "^0.0.1",
-    "sharp": "0.35.5",
     "storage": "^0.2.0",
     "wavesurfer.js": "^7.12.7",
     "zustand": "^5.0.13"
@@ -212,6 +212,7 @@
     "firebase-admin": "^14.1.0",
     "playwright": "^1.61.1",
     "postcss": "^8.5.15",
+    "sharp": "0.35.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   },

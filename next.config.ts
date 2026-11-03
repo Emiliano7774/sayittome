@@ -23,6 +23,9 @@ const nextConfig: NextConfig = {
   // Load Admin only via src/lib/admin/firebaseAdminNative (opaque require).
   // Deploy gates FAIL if any firebase-admin-<hash> remains in .next/server.
   serverExternalPackages: [
+    // Npm alias of Sharp 0.35.5 avoids firebase-frameworks 0.11.x's obsolete
+    // peerOptional sharp ^0.32/^0.33 while keeping native WebP decoding secure.
+    "profile-image-codec",
     "firebase-admin",
     "firebase-admin/app",
     "firebase-admin/auth",

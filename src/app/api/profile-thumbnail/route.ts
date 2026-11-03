@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp from "profile-image-codec";
 import {
   canonicalPublicProfilePhoto,
   PROFILE_THUMB_WIDTHS,
