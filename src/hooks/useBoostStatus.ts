@@ -25,13 +25,17 @@ export function useBoostStatus(enabled = true) {
   const [status, setStatus] = useState<BoostStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
+  const refreshEpochRef = useRef(0);
 
   const refresh = useCallback(async (force = false) => {
     const uid = firebaseUser?.uid;
-    if (!uid || !enabled || !canUseBoost) {
+    if (!uid || !canUseBoost) {
       setStatus(null);
       return null;
     }
+    // Hidden keep-alive tabs must not issue requests or discard a valid
+    // previously displayed status. Resume its TTL-aware refresh on entry.
+    if (!enabled) return null;
 
     const cacheKey = boostCacheKey(uid);
 
@@ -43,11 +47,12 @@ export function useBoostStatus(enabled = true) {
       }
     }
 
+    const requestEpoch = refreshEpochRef.current;
     setLoading(true);
     try {
       const res = await fetch(`/api/boost?uid=${encodeURIComponent(uid)}`);
       const json = (await res.json()) as BoostStatus & { ok: boolean };
-      if (!mountedRef.current) return null;
+      if (!mountedRef.current || requestEpoch !== refreshEpochRef.current) return null;
       if (json.ok) {
         setStatus(json);
         writeClientCache(cacheKey, json);
@@ -56,10 +61,14 @@ export function useBoostStatus(enabled = true) {
       setStatus(null);
       return null;
     } catch {
-      setStatus(null);
+      if (mountedRef.current && requestEpoch === refreshEpochRef.current) {
+        setStatus(null);
+      }
       return null;
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && requestEpoch === refreshEpochRef.current) {
+        setLoading(false);
+      }
     }
   }, [canUseBoost, enabled, firebaseUser?.uid]);
 
@@ -67,15 +76,16 @@ export function useBoostStatus(enabled = true) {
     mountedRef.current = true;
     if (!canUseBoost) {
       setStatus(null);
-      return () => {
-        mountedRef.current = false;
-      };
+    } else if (enabled) {
+      void refresh();
+    } else {
+      setLoading(false);
     }
-    void refresh();
     return () => {
       mountedRef.current = false;
+      refreshEpochRef.current += 1;
     };
-  }, [canUseBoost, refresh]);
+  }, [canUseBoost, enabled, refresh]);
 
   const activate = useCallback(async (minutes: number) => {
     const uid = firebaseUser?.uid;

@@ -34,7 +34,7 @@ export default function ModernBoostPage() {
     setSelectedMinutes,
     handleActivate,
     handleCopy,
-  } = useBoostActions(true);
+  } = useBoostActions(boostActive);
 
   useNavUsefulPaint(!loading, "/boost");
 

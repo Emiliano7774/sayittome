@@ -42,7 +42,7 @@ export default function ClassicBoostPage() {
     setSelectedMinutes,
     handleActivate,
     handleCopy,
-  } = useBoostActions(true);
+  } = useBoostActions(boostActive);
 
   const canActivate =
     credits >= BOOST_MIN_MINUTES &&
