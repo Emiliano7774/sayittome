@@ -2,7 +2,7 @@
 
 import { Circle, MessageSquare, Rocket, Shuffle, User } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 
 import BottomNavLink from "@/components/navigation/BottomNavLink";
 import { useT } from "@/contexts/LocaleContext";
@@ -26,6 +26,10 @@ import {
 import { presentNativeBarSectionNow } from "@/lib/navigation/stuckTabSurfaceReconcile";
 import { abortMainTabToShuffleTransition, blockMainTabNavigationDuringSlide, getMainTabToShufflePhase } from "@/lib/navigation/mainTabToShuffleTransition";
 import { triggerShuffleClick } from "@/lib/shuffle/shuffleClickBridge";
+import {
+  ensureShufflePoolWarmForMicroSlide,
+  isShufflePoolWarmForNav,
+} from "@/lib/shuffle/shufflePoolWarmup";
 import ChatPendingIndicator from "@/components/chat/ChatPendingIndicator";
 
 type NavItem =
@@ -49,6 +53,9 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
   const effectiveTab = navSelectable ? resolveEffectiveMainTab(pathname) : "";
   const router = useRouter();
   const t = useT();
+  // The real finger gesture needs first paint before an expensive pool warmup.
+  // A ref avoids introducing React state updates into the touch hot path.
+  const pendingTouchShuffleWarmRef = useRef(false);
 
   const items: NavItem[] = [
     { id: "stories", kind: "link", href: "/stories", icon: Circle },
@@ -64,6 +71,8 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
 
   function openShuffleTab(event?: { preventDefault: () => void }) {
     event?.preventDefault();
+    const needsTouchWarmup = pendingTouchShuffleWarmRef.current;
+    pendingTouchShuffleWarmRef.current = false;
     const livePath =
       typeof window !== "undefined"
         ? window.location.pathname.split("?")[0].split("#")[0] || "/"
@@ -85,15 +94,34 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
     const alreadyPainted = document.getElementById("sayittome-shuffle-keepalive-host")?.classList.contains("sayittome-shuffle-keepalive-visible") === true;
     if (!alreadyPainted && getMainTabToShufflePhase() !== "preparing") {
       beginWarmShuffleTabNavigation(pathname, { triggerType: "user-main-tab-click" });
+    } else if (alreadyPainted && !needsTouchWarmup && !isShufflePoolWarmForNav()) {
+      // Mouse click without hover can also arrive after pointerdown painted
+      // the host. Do not accidentally skip the first cold pool fetch.
+      void ensureShufflePoolWarmForMicroSlide();
     }
     completeWarmShuffleTabNavigation(router, fastRouterPush, pathname);
     if (!alreadyPainted) {
       armIncomingBarTab("/shuffle");
       presentNativeBarSectionNow("/shuffle");
     }
+    if (needsTouchWarmup && typeof window !== "undefined") {
+      // A finger's pointerenter must not synchronously run the expensive
+      // cache/pool reconciliation. Paint the target first; start the same
+      // deduped, fresh Shuffle warmup after the next visual frame instead.
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+          const live = window.location.pathname;
+          const target = document.documentElement.getAttribute("data-sayittome-bar-target");
+          if (live === "/shuffle" || target === "shuffle") {
+            void ensureShufflePoolWarmForMicroSlide();
+          }
+        }, 0);
+      });
+    }
   }
 
-  function warmShuffleTabPointerDown() {
+  function warmShuffleTabPointerDown(event: { pointerType?: string }) {
+    pendingTouchShuffleWarmRef.current = event.pointerType === "touch";
     if (pathname === "/shuffle") return;
     if (blockMainTabNavigationDuringSlide()) {
       abortMainTabToShuffleTransition("bar-instant-shuffle");
@@ -174,7 +202,13 @@ export default function ModernBottomNav({ unreadCount = 0 }: Props) {
                 data-nav-tab="shuffle"
                 data-sayittome-main-tab-shuffle-href="1"
                 onPointerDown={warmShuffleTabPointerDown}
-                onPointerEnter={warmShuffleTabPointerEnter}
+                onPointerEnter={(event) => {
+                  // Touch generates pointerenter immediately before pointerdown.
+                  // Keep mouse/pen hover prefetch, but never synchronously block
+                  // the first finger tap on expensive Shuffle warmup work.
+                  if (event.pointerType === "touch") return;
+                  warmShuffleTabPointerEnter();
+                }}
                 onClick={openShuffleTab}
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" && event.key !== " ") return;
