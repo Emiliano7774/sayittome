@@ -243,11 +243,9 @@ export function SettingsRouteContent() {
 
       const next = await resolvePostAuthPath(user!.uid, true);
       // Re-check active route after await — user may have left Settings.
-      const stillActive =
-        getCurrentMainTabPathname(pathname) === "/settings" ||
-        (typeof window !== "undefined" &&
-          String(window.location.pathname || "").split("?")[0].split("#")[0] ===
-            "/settings");
+      // Read the live pathname instead of capturing Next's lagging pathname.
+      // Avoid resetting Firebase Auth listeners on unrelated tab transitions.
+      const stillActive = getCurrentMainTabPathname() === "/settings";
       if (!stillActive) {
         setLoading(false);
         return;
@@ -270,11 +268,7 @@ export function SettingsRouteContent() {
       if (
         !shouldLoadSettingsProfileOnFocus({
           authUser: user,
-          settingsRouteActive:
-            getCurrentMainTabPathname(pathname) === "/settings" ||
-            (typeof window !== "undefined" &&
-              String(window.location.pathname || "").split("?")[0].split("#")[0] ===
-                "/settings"),
+          settingsRouteActive: getCurrentMainTabPathname() === "/settings",
         })
       ) {
         return;
@@ -291,7 +285,7 @@ export function SettingsRouteContent() {
       window.removeEventListener("focus", refreshProfileOnFocus);
       document.removeEventListener("visibilitychange", refreshProfileOnFocus);
     };
-  }, [loadProfile, pathname, router, settingsRouteActive]);
+  }, [loadProfile, router, settingsRouteActive]);
 
   const localeTag =
     locale === "es"
