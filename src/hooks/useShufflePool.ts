@@ -100,7 +100,13 @@ import { scrollShuffleFeedToTop } from "@/lib/shuffle/scrollShuffleFeed";
 import { fastRouterPush } from "@/lib/navigation/fastNavigate";
 import { stashProfileReturnTo } from "@/lib/navigation/profileReturnNav";
 import { stashStoryReturnTo } from "@/lib/navigation/storyReturnNav";
-import { isShufflePoolWarmForNav } from "@/lib/shuffle/shufflePoolWarmup";
+import {
+  ensureShufflePoolWarmForMicroSlide,
+  fetchShufflePoolFullSingleFlight,
+  isShufflePoolWarmForNav,
+  isShufflePoolWarmupInFlight,
+  peekShufflePoolFullJsonFresh,
+} from "@/lib/shuffle/shufflePoolWarmup";
 import {
   isCachedShufflePoolFresh,
   readCachedShufflePool,
@@ -865,21 +871,35 @@ export function useShufflePool() {
           return;
         }
 
-        const params = new URLSearchParams({
-          pool: "full",
-          // Shuffle pool order on the server so cold restores never share a fixed prefix.
-          shuffle: q ? "0" : "1",
-        });
-        if (q) params.set("q", q);
-        // "force" here only means bypass the client-side request lock. Do not
-        // translate it into a server cache bypass on cold start; that forced a
-        // full Firestore pool rebuild even when the server cache was fresh.
+        const trimmedQ = q.trim();
+        let joinedNavWarmup = false;
+        if (!trimmedQ && isShufflePoolWarmupInFlight()) {
+          await ensureShufflePoolWarmForMicroSlide();
+          joinedNavWarmup = true;
+          if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
+        }
 
-        const res = await fetchShuffleApi(`/api/shuffle?${params.toString()}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const json = await res.json();
+        let json: Record<string, unknown>;
+        if (!trimmedQ) {
+          const recentJson = peekShufflePoolFullJsonFresh();
+          if (recentJson && (!force || joinedNavWarmup)) {
+            json = recentJson;
+          } else {
+            json = await fetchShufflePoolFullSingleFlight();
+          }
+        } else {
+          const params = new URLSearchParams({
+            pool: "full",
+            // Legacy server-side search uses shuffle=0 and q=.
+            shuffle: "0",
+          });
+          params.set("q", trimmedQ);
+          const res = await fetchShuffleApi(`/api/shuffle?${params.toString()}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          json = (await res.json()) as Record<string, unknown>;
+        }
 
         if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
 
@@ -1505,7 +1525,9 @@ export function useShufflePool() {
 
     // Durable cache may paint for 30m, but network freshness remains 8m.
     // A stale painted pool refreshes in background without showing a loading shell.
-    if (!isShufflePoolWarmForNav() || !isCachedShufflePoolFresh()) {
+    if (!isShufflePoolWarmForNav()) {
+      void loadProfiles({ q: "", force: true });
+    } else if (!isCachedShufflePoolFresh()) {
       void loadProfiles({ q: "", force: true });
     }
 
@@ -1602,7 +1624,7 @@ export function useShufflePool() {
     window.addEventListener("sayittome:shuffle-profile-safety", onProfileSafety);
     window.addEventListener("sayittome:shuffle-profile-blur", onProfileBlur);
 
-    function onPoolWarmed() {
+    function applyFromWarmedPoolCache() {
       if (!mountedRef.current) return;
       const warmed = readCachedShufflePool();
       const warmedStats = readCachedShuffleStats();
@@ -1633,6 +1655,15 @@ export function useShufflePool() {
       setLoading(false);
       setListReady(true);
       setErrorText("");
+    }
+
+    // Nav warmup can finish (and dispatch) before this listener is registered.
+    if (peekShufflePoolFullJsonFresh()) {
+      applyFromWarmedPoolCache();
+    }
+
+    function onPoolWarmed() {
+      applyFromWarmedPoolCache();
     }
     window.addEventListener("sayittome:shuffle-pool-warmed", onPoolWarmed);
 
@@ -1751,7 +1782,8 @@ export function useShufflePool() {
     // Paint cache can outlive network freshness. Keep moderation/discovery
     // refresh at the original 8m cadence while preserving instant durable paint.
     const poolSyncTimer = window.setInterval(() => {
-      if (isCachedShufflePoolFresh()) return;
+      const stillWarm = isShufflePoolWarmForNav() && isCachedShufflePoolFresh();
+      if (stillWarm) return;
       void loadProfiles({ q: searchRef.current.trim(), force: true });
     }, 8 * 60_000);
 

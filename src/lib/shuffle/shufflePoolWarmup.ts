@@ -26,6 +26,50 @@ const MIN_READY_PROFILES = 3;
 let inflight: Promise<ShufflePoolWarmState> | null = null;
 let lastState: ShufflePoolWarmState = "unknown";
 
+export type ShufflePoolFullApiJson = Record<string, unknown>;
+
+let poolFullFetchInflight: Promise<ShufflePoolFullApiJson> | null = null;
+let lastPoolFullResponse: { json: ShufflePoolFullApiJson; at: number } | null = null;
+
+/** Recent pool=full JSON so hook mount can join nav warmup without a second GET. */
+export function peekShufflePoolFullJsonFresh(maxAgeMs = 60_000) {
+  if (!lastPoolFullResponse) return null;
+  if (Date.now() - lastPoolFullResponse.at > maxAgeMs) return null;
+  return lastPoolFullResponse.json;
+}
+
+/** Single-flight `/api/shuffle?pool=full&shuffle=1` for nav warmup + useShufflePool. */
+export function fetchShufflePoolFullSingleFlight(): Promise<ShufflePoolFullApiJson> {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("fetchShufflePoolFullSingleFlight: SSR"));
+  }
+  if (poolFullFetchInflight) {
+    return poolFullFetchInflight;
+  }
+  poolFullFetchInflight = (async () => {
+    if (shouldSuppressShuffleNetworkAtFireTime()) {
+      throw new Error("shuffle-network-suppressed");
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    try {
+      const params = new URLSearchParams({ pool: "full", shuffle: "1" });
+      const res = await fetchShuffleApi(`/api/shuffle?${params.toString()}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const json = (await res.json()) as ShufflePoolFullApiJson;
+      lastPoolFullResponse = { json, at: Date.now() };
+      return json;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  })().finally(() => {
+    poolFullFetchInflight = null;
+  });
+  return poolFullFetchInflight;
+}
+
 function emitWarmDiag(kind: string, detail?: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   try {
@@ -131,20 +175,13 @@ export function ensureShufflePoolWarmForMicroSlide(): Promise<ShufflePoolWarmSta
   });
 
   inflight = (async () => {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 10_000);
     try {
       // Typing/focus fire-time gate — warmup must not land inside F6 windows.
       if (shouldSuppressShuffleNetworkAtFireTime()) {
         lastState = isShufflePoolWarmForNav() ? "ready" : "empty";
         return lastState;
       }
-      const params = new URLSearchParams({ pool: "full", shuffle: "1" });
-      const res = await fetchShuffleApi(`/api/shuffle?${params.toString()}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      const json = await res.json();
+      const json = await fetchShufflePoolFullSingleFlight();
       const nextProfiles = normalizeShuffleProfiles(json?.profiles);
       if (nextProfiles.length > 0) {
         writeCachedShufflePool(nextProfiles);
@@ -190,7 +227,6 @@ export function ensureShufflePoolWarmForMicroSlide(): Promise<ShufflePoolWarmSta
       });
       return "empty";
     } finally {
-      window.clearTimeout(timeout);
       inflight = null;
     }
   })();

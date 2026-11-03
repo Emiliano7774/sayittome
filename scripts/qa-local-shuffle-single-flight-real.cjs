@@ -1,0 +1,7 @@
+const {chromium}=require('playwright');
+(async()=>{const browser=await chromium.launch({headless:true});try{const page=await browser.newPage({viewport:{width:412,height:915},isMobile:true,hasTouch:true});const events=[];page.on('request',r=>{if(r.url().includes('/api/shuffle?') && r.url().includes('pool=full'))events.push({time:Date.now(),url:r.url(),method:r.method()})});
+const errors=[];page.on('pageerror',e=>errors.push(String(e.message||e).slice(0,120)));
+await page.goto('http://127.0.0.1:3049/chats',{waitUntil:'domcontentloaded',timeout:30000});await page.waitForTimeout(1800);
+const nav=page.locator('[data-nav-tab="shuffle"]').first();const initial={route:await page.evaluate(()=>location.pathname),navCount:await nav.count(),cardCount:await page.locator('[data-shuffle-card]').count()};
+if(await nav.count()){await nav.dispatchEvent('pointerdown',{pointerType:'touch',isPrimary:true});await nav.click({force:true,timeout:12000});}
+await page.waitForTimeout(4500);console.log('LOCAL_REAL_REQUESTS',JSON.stringify({initial,after:{route:await page.evaluate(()=>location.pathname),cards:await page.locator('[data-shuffle-card]').count()},poolFullGetCount:events.length,requests:events,errors}));}finally{await browser.close()}})().catch(e=>{console.error('FAIL_LOCAL_REAL_REQUESTS',String(e.stack||e).slice(0,1500));process.exitCode=1});
