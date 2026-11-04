@@ -13,6 +13,7 @@ import { useChatsTabPaint } from "@/hooks/useChatsTabPaint";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
 import { isAnonDirectInboxChat } from "@/lib/anonMatch/anonDirectInboxBridge";
 import { useT } from "@/contexts/LocaleContext";
+import { useHydrationReady } from "@/hooks/useHydrationReady";
 
 function ChatsPageSkeleton() {
   const t = useT();
@@ -28,6 +29,10 @@ function ChatsPageSkeleton() {
 }
 
 export default function ChatsInboxPage() {
+  // SSR cannot read persisted inbox rows. Hydrate against the same skeleton
+  // and reveal cached conversations immediately after hydration, without a
+  // second Firestore request.
+  const hydrationReady = useHydrationReady();
   const { uxMode } = useUxMode();
   const inbox = useChatAlerts();
   // Global alerts already merges the live inbox with its persisted snapshot.
@@ -68,7 +73,7 @@ export default function ChatsInboxPage() {
     };
   }, [warmIds]);
 
-  if (shouldShowChatsInboxSkeleton({ loading: inbox.loading, sortedChats: visibleChats })) {
+  if (!hydrationReady || shouldShowChatsInboxSkeleton({ loading: inbox.loading, sortedChats: visibleChats })) {
     return <ChatsPageSkeleton />;
   }
 
