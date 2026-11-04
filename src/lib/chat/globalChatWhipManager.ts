@@ -24,6 +24,7 @@ import {
   tryAlertIncomingMessage,
 } from "@/lib/chat/whipAlertDedupe";
 import { showChatNotification } from "@/lib/chat/chatNotifications";
+import { publishLiveTailHint } from "@/lib/chat/realtimeIncomingHints";
 import { markLocalPendingChat } from "@/lib/chat/localPendingChats";
 import { playIncomingWhipSound } from "@/lib/chat/whipSound";
 import { db } from "@/lib/firebase";
@@ -279,6 +280,14 @@ class GlobalChatWhipManager {
           return;
         }
 
+        // Reuse the already-open 1-message listener as a low-latency fanout
+        // to the visible thread. The authoritative 50-message listener still
+        // reconciles delivery, deletion and authorship; no new Firestore reads.
+        // Own echoes/unknown senders were excluded above. Never show a
+        // speculative pending write as an inbound message.
+        if (incoming && viewingActiveChat && isNewMessage && !snapshot.metadata.hasPendingWrites) {
+          publishLiveTailHint({ chatId, messageId, data });
+        }
         tryAlertIncomingMessage({
           chatId,
           messageId,

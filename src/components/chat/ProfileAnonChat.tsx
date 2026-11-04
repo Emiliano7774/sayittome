@@ -2722,7 +2722,8 @@ export default function ProfileAnonChat({
         ),
       );
       messagePersistedRef.current = true;
-      setMessageListenerEpoch((value) => value + 1);
+      // The active 50-message Firestore listener already receives this write.
+      // Preserve it across successful sends; the error retry keeps its epoch.
       setUploadProgress(null);
     } catch (e) {
       console.error(e);
@@ -2851,7 +2852,8 @@ export default function ProfileAnonChat({
           );
         }
         messagePersistedRef.current = true;
-      setMessageListenerEpoch((value) => value + 1);
+        // The active 50-message Firestore listener already receives this write.
+        // Preserve it across successful sends; the error retry keeps its epoch.
         keepComposerFocusRef.current = true;
         refocusComposer();
       } catch (error) {
