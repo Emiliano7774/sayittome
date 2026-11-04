@@ -182,6 +182,12 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
     presentNativeBarSectionNow(hrefTo);
   }
 
+  function onHoverWarm(event: React.PointerEvent<HTMLAnchorElement>) {
+    // A finger triggers pointerenter before pointerdown. Warm only on the intent.
+    if (event.pointerType === "touch") return;
+    warmTab();
+  }
+
   function onPointerDown() {
     if (!forceSoftMainTabNav || !isConcreteMainTabHref(href)) {
       warmTab({ allowSupersede: true });
@@ -266,7 +272,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
         data-nav-tab={href}
         className={className}
         onPointerDown={onPointerDown}
-        onPointerEnter={() => warmTab()}
+        onPointerEnter={onHoverWarm}
         onClick={onMainTabClick}
         onKeyDown={(event) => {
           if (event.key !== "Enter" && event.key !== " ") return;
@@ -286,7 +292,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
         href={href}
         className={className}
         onPointerDown={onPointerDown}
-        onPointerEnter={() => warmTab()}
+        onPointerEnter={onHoverWarm}
         {...rest}
       >
         {children}
@@ -300,7 +306,7 @@ export default function BottomNavLink({ href, className, children, ...rest }: Pr
       className={className}
       prefetch
       onPointerDown={onPointerDown}
-      onPointerEnter={() => warmTab()}
+      onPointerEnter={onHoverWarm}
       {...rest}
     >
       {children}
