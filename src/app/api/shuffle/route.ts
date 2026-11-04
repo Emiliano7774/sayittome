@@ -795,8 +795,9 @@ async function getProfilesCached(force = false): Promise<ApiProfile[]> {
     // Cross-instance cache: one authoritative pool scan supplies every cold
     // Cloud Run instance. Keep the source fetch age so a cache hit cannot
     // extend the existing 10-minute staleness window.
-    const shared = await readOrBuildSharedPublicPool<ApiProfile>(() =>
-      fetchProfilesUncached(false),
+    const shared = await readOrBuildSharedPublicPool<ApiProfile>(
+      () => fetchProfilesUncached(false),
+      { preferDirectRead: true },
     );
     cachedProfiles = shared.items;
     cachedProfilesAt = shared.refreshedAtMs;

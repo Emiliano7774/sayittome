@@ -18,6 +18,8 @@ type SharedPoolSettings = {
   maxExistingAgeMs?: number;
   leaseMs?: number;
   allowEmpty?: boolean;
+  /** Use one read-only get for a valid shared TTL hit before trying a lease. */
+  preferDirectRead?: boolean;
 };
 type CacheDecision =
   | { kind: "hit"; payload: string; refreshedAtMs: number }
@@ -77,6 +79,7 @@ export async function readOrBuildSharedPublicPool<T>(
   const maxExistingAgeMs = settings.maxExistingAgeMs ?? MAX_EXISTING_AGE_MS;
   const leaseMs = settings.leaseMs ?? LEASE_MS;
   const allowEmpty = settings.allowEmpty ?? false;
+  const preferDirectRead = settings.preferDirectRead ?? false;
   let ref: any;
   try {
     const { getRepairAdminDb } = await import("@/lib/chat/historicalAuthorshipRepairAdmin");
@@ -88,6 +91,26 @@ export async function readOrBuildSharedPublicPool<T>(
 
   let scanFailure: unknown = null;
   try {
+    // A fresh catalogue document is immutable for the whole shared TTL. The
+    // old read-only transaction still paid a Begin/Commit RPC even on a hit.
+    // Restrict this shortcut to callers with a long cache TTL: the 15-second
+    // visitor slice refreshes frequently, so avoid an extra read on misses.
+    if (preferDirectRead) {
+      try {
+        const snapshot = await ref.get();
+        const data = (snapshot.data() || {}) as Record<string, unknown>;
+        const fast = decodeIfUsable<T>(
+          String(data.payload || ""),
+          Number(data.refreshedAtMs || 0),
+          ttlMs,
+          allowEmpty,
+        );
+        if (fast) return fast;
+      } catch {
+        // Direct-read infrastructure failure: retain the original transaction
+        // and direct-scan recovery rather than breaking Shuffle.
+      }
+    }
     for (const delayMs of [0, 450, 750, 1000]) {
       if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
       const decision: CacheDecision = await ref.firestore.runTransaction(
