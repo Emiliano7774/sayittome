@@ -1,0 +1,44 @@
+const assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url'),fs=require('node:fs');
+(async()=>{
+ const root=path.resolve(__dirname,'..'),helper=await import(pathToFileURL(path.join(root,'src/lib/chat/receiptOnlySnapshot.ts')).href);
+ const{captureReceiptSnapshotSignatures:remember,isConfirmedReceiptOnlySnapshot:skip,advanceReceiptSnapshotSignatures:advance}=helper;
+ const base={texto:'hello',fromUid:'anon_sender',mediaUrl:'',createdAt:1712345678,readBy:{userA:true},deletedForEveryone:false,status:'sent',moderationTag:'',adminBlur:false};
+ const row={id:'m0',data:base};
+ const server={fromCache:false,hasPendingWrites:false},cached={fromCache:true,hasPendingWrites:false},pending={fromCache:false,hasPendingWrites:true};
+ const state=remember([row],server);
+ const change=(data,type='modified',id='m0')=>[{id,type,data}];
+ let passed=0;
+ const test=(name,value,expected)=>{assert.equal(value,expected,name);passed++};
+ test('receipt-only server modification',skip(change({...base,readBy:{userA:true,userB:true}}),state,server),true);
+ test('ignore pending ACK',skip(change({...base,readBy:{userB:true}}),state,pending),false);
+ test('ignore cache',skip(change({...base,readBy:{userB:true}}),state,cached),false);
+ test('no previous authoritative state',skip(change({...base,readBy:{userB:true}}),{...state,serverReady:false},server),false);
+ test('no empty changes',skip([],state,server),false);
+ test('do not suppress added message',skip(change({...base},'added'),state,server),false);
+ test('do not suppress removed message',skip(change({...base},'removed'),state,server),false);
+ test('do not suppress unknown ID',skip(change({...base,readBy:{userC:true}},'modified','m1'),state,server),false);
+ for(const k of ['texto','fromUid','mediaUrl','createdAt','deletedForEveryone','status','moderationTag','adminBlur']){
+  const changed={...base,[k]:typeof base[k]==='boolean'?!base[k]:String(base[k])+'-changed',readBy:{userB:true}};
+  test('never suppress '+k,skip(change(changed),state,server),false);
+ }
+ const rows=Array.from({length:50},(_,i)=>({id:'msg'+i,data:{...base,texto:'msg'+i}}));
+ const snapshot=remember(rows,server);
+ test('50-doc receipt-only',skip(change({...rows[19].data,readBy:{userB:true}},'modified','msg19'),snapshot,server),true);
+ let fullScans=0;
+ const oldRows=rows.slice(1),newEntry={id:'msg50',data:{...base,texto:'msg50'}};
+ const shifted=advance(snapshot,[{id:'msg0',type:'removed',data:rows[0].data},{id:'msg50',type:'added',data:newEntry.data}],50,()=>{fullScans++;return[...oldRows,newEntry]},server);
+ test('normal tail slide retains 50 signatures',shifted.signatures.size,50);
+ test('normal tail slide avoids 50-row reserialization',fullScans,0);
+ test('new message signature tracked',shifted.signatures.has('msg50'),true);
+ test('removed old message forgotten',shifted.signatures.has('msg0'),false);
+ test('one content edit among 50',skip(change({...rows[19].data,texto:'new'},'modified','msg19'),snapshot,server),false);
+ const ts=(seconds)=>({toJSON:()=>({seconds,nanoseconds:0})});
+ const tsState=remember([{id:'timestamp',data:{...base,createdAt:ts(11)}}],server);
+ test('same Timestamp serialization + new read receipt',skip(change({...base,createdAt:ts(11),readBy:{userA:true,userC:true}},'modified','timestamp'),tsState,server),true);
+ test('changed Timestamp must reprocess',skip(change({...base,createdAt:ts(12),readBy:{userB:true}},'modified','timestamp'),tsState,server),false);
+ test('reorder readBy keys is still read-only',skip(change({...base,readBy:{userB:true,userA:true}}),state,server),true);
+ const src=fs.readFileSync(path.join(root,'src/components/chat/ProfileAnonChat.tsx'),'utf8');
+ test('source listener integrated',src.includes('CHAT_READ_RECEIPT_FAST_SKIP'),true);
+ test('source onSnapshot remains',src.includes('const unsub = onSnapshot('),true);
+ console.log('PASS_RECEIPT_ONLY_SNAPSHOT',JSON.stringify({passed,noExtraReads:true,noNewListeners:true,receiptOnlySkipped:true,conservativeOnAnyContentChange:true}));
+})().catch(e=>{console.error('FAIL_RECEIPT_ONLY_SNAPSHOT',e.stack);process.exitCode=1});

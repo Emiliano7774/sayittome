@@ -188,6 +188,11 @@ import {
 } from "@/lib/chat/chatMessageCache";
 import { chatMessagesVisuallyEqual } from "@/lib/chat/chatMessagesVisualEqual";
 import {
+  advanceReceiptSnapshotSignatures,
+  isConfirmedReceiptOnlySnapshot,
+  type ReceiptSnapshotState,
+} from "@/lib/chat/receiptOnlySnapshot";
+import {
   realtimePerfAfterSetState,
   realtimePerfListenerBegin,
   realtimePerfSchedulePaint,
@@ -1766,12 +1771,51 @@ export default function ProfileAnonChat({
     );
 
     let retryTimer:ReturnType<typeof setTimeout>|null=null;
+    // Reuse the last server-confirmed raw signatures for receipt-only deltas.
+    // This state belongs to the active listener and resets on thread change.
+    let previousReceiptSnapshot: ReceiptSnapshotState = {
+      serverReady: false,
+      signatures: new Map(),
+    };
     const unsub = onSnapshot(
       q,
       (snapshot) => {
         const rtHandle = realtimePerfListenerBegin("profile-anon", {
           docCount: snapshot.size,
         });
+        const changes = snapshot.docChanges();
+        if (isConfirmedReceiptOnlySnapshot(
+          changes.map((change) => ({
+            id: change.doc.id,
+            type: change.type,
+            data: change.doc.data() as Record<string, unknown>,
+          })),
+          previousReceiptSnapshot,
+          snapshot.metadata,
+        )) {
+          recordQaCriticalEvent("chat", "CHAT_READ_RECEIPT_FAST_SKIP", {
+            threadId: chatId,
+            documentCount: snapshot.size,
+            changeCount: changes.length,
+          });
+          // No React state update occurred, so do not report a fake paint
+          // or contaminate the delivery-latency telemetry.
+          return;
+        }
+        previousReceiptSnapshot = advanceReceiptSnapshotSignatures(
+          previousReceiptSnapshot,
+          changes.map((change) => ({
+            id: change.doc.id,
+            type: change.type,
+            data: change.doc.data() as Record<string, unknown>,
+          })),
+          snapshot.size,
+          () => snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            data: docSnap.data() as Record<string, unknown>,
+          })),
+          snapshot.metadata,
+        );
         const baseCtx = buildProfileAnonViewerContext({
           chatId: threadContextRef.current.chatId,
           chatAnonSessionId: threadContextRef.current.chatAnonSessionId,
