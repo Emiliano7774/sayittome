@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 import ShuffleRouteContent from "@/app/shuffle/ShuffleRouteContent";
+import { useHydrationReady } from "@/hooks/useHydrationReady";
 import {
   ShuffleEmergencyShell,
   ShuffleSurfaceErrorBoundary,
@@ -371,6 +372,9 @@ function isMainTabPath(path: string): path is Exclude<MainTabHref, "/shuffle"> {
 
 export default function ShuffleKeepAliveHost() {
   const nextPathname = usePathname();
+  // The server cannot read the pinned Shuffle session flag. Keep SSR and
+  // hydration markup identical, then mount the retained host after hydration.
+  const hydrated = useHydrationReady();
   useSyncExternalStore(
     subscribeMainTabPathname,
     getMainTabInternalPathnameVersion,
@@ -779,7 +783,15 @@ export default function ShuffleKeepAliveHost() {
     }
   }, [pathname]);
 
-  if (!shouldRenderShuffleKeepAliveHost(pathname)) {
+  // A returning visitor may have a pinned Shuffle host in sessionStorage,
+  // while the server correctly rendered no host on /u/* and /chats.
+  // Avoid React #418 and preserve the fast pinned return immediately after
+  // hydration. The /shuffle route still renders on the server.
+  const initialPath = String(nextPathname || "/").replace(/\/$/, "") || "/";
+  if (
+    (!hydrated && initialPath !== "/shuffle") ||
+    !shouldRenderShuffleKeepAliveHost(pathname)
+  ) {
     return null;
   }
 
