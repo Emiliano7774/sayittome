@@ -32,6 +32,23 @@ import { ANON_SHUFFLE_VISIBILITY_MS, anonShuffleVisible } from "@/lib/anonMatch/
 import { readOrBuildSharedPublicPool } from "@/lib/shuffle/sharedPublicPoolCache";
 import { mergeRecentOnlineProfiles } from "@/lib/shuffle/recentOnlineProfiles";
 
+type ShuffleServerTiming = {
+  startedAt: number;
+  stages: Record<string, number>;
+};
+
+/** Aggregate-only diagnostics; no profile identifiers, location or user data. */
+function attachShuffleServerTiming(headers: Headers, timing?: ShuffleServerTiming) {
+  if (!timing) return;
+  timing.stages.total = performance.now() - timing.startedAt;
+  headers.set(
+    "Server-Timing",
+    Object.entries(timing.stages)
+      .map(([stage, duration]) => `${stage};dur=${Math.max(0, duration).toFixed(2)}`)
+      .join(", "),
+  );
+}
+
 const SHUFFLE_JSON_HEADERS = {
   "Cache-Control": "private, no-store, no-cache, must-revalidate",
   Pragma: "no-cache",
@@ -41,7 +58,7 @@ const SHUFFLE_JSON_HEADERS = {
 function shuffleJson(
   req: Request,
   body: Record<string, unknown>,
-  init?: { status?: number; publicVisitorSlice?: boolean },
+  init?: { status?: number; publicVisitorSlice?: boolean; timing?: ShuffleServerTiming },
 ) {
   // The Shuffle API is public. Keep email available to server-side identity
   // deduplication, but never serialize it to browsers, including the shared
@@ -54,12 +71,14 @@ function shuffleJson(
         return publicRow;
       })
     : value;
+  const encodeStartedAt = performance.now();
   const json = JSON.stringify({
     ...body,
     profiles: publicRows(body.profiles),
     featuredProfiles: publicRows(body.featuredProfiles),
     onlineProfiles: publicRows(body.onlineProfiles),
   });
+  if (init?.timing) init.timing.stages.encode = performance.now() - encodeStartedAt;
   const acceptEncoding = String(req.headers.get("accept-encoding") || "").toLowerCase();
   const headers = new Headers(SHUFFLE_JSON_HEADERS);
   headers.set("Content-Type", "application/json; charset=utf-8");
@@ -76,6 +95,7 @@ function shuffleJson(
   // cold-start transfer while leaving the response semantics untouched.
   if (json.length >= 32_768) {
     headers.set("Vary", "Accept-Encoding");
+    const compressionStartedAt = performance.now();
     if (acceptEncoding.includes("br")) {
       const compressed = brotliCompressSync(Buffer.from(json), {
         params: {
@@ -83,15 +103,20 @@ function shuffleJson(
         },
       });
       headers.set("Content-Encoding", "br");
+      if (init?.timing) init.timing.stages.compress = performance.now() - compressionStartedAt;
+      attachShuffleServerTiming(headers, init?.timing);
       return new Response(compressed, { status: init?.status, headers });
     }
     if (acceptEncoding.includes("gzip")) {
       const compressed = gzipSync(Buffer.from(json), { level: 6 });
       headers.set("Content-Encoding", "gzip");
+      if (init?.timing) init.timing.stages.compress = performance.now() - compressionStartedAt;
+      attachShuffleServerTiming(headers, init?.timing);
       return new Response(compressed, { status: init?.status, headers });
     }
   }
 
+  attachShuffleServerTiming(headers, init?.timing);
   return new Response(json, { status: init?.status, headers });
 }
 
@@ -908,6 +933,15 @@ async function resolveLiveCounts(countOnly: boolean) {
 }
 
 export async function GET(req: Request) {
+  const timing: ShuffleServerTiming = { startedAt: performance.now(), stages: {} };
+  const measure = async <T>(stage: string, action: () => Promise<T>): Promise<T> => {
+    const startedAt = performance.now();
+    try {
+      return await action();
+    } finally {
+      timing.stages[stage] = performance.now() - startedAt;
+    }
+  };
   try {
     const { searchParams } = new URL(req.url);
 
@@ -961,17 +995,17 @@ export async function GET(req: Request) {
     // waited for each other serially even on a warm SSR instance.
     // The existing in-flight coalescers still prevent duplicate scans.
     const [counts, allProfiles, visitors, activeBoosts] = await Promise.all([
-      resolveLiveCounts(countOnly),
-      countOnly
+      measure("counts", () => resolveLiveCounts(countOnly)),
+      measure("profiles", () => countOnly
         ? Promise.resolve([] as ApiProfile[])
         : q
           ? searchProfilesByQuery(q, SHUFFLE_SEARCH_LIMIT, force)
           : Promise.all([getProfilesCached(force), getRecentRegisteredProfiles()])
-              .then(([profiles, recent]) => mergeRecentOnlineProfiles(profiles, recent)),
-      countOnly || q
+              .then(([profiles, recent]) => mergeRecentOnlineProfiles(profiles, recent))),
+      measure("visitors", () => countOnly || q
         ? Promise.resolve([] as ApiProfile[])
-        : getLiveShuffleVisitors(false),
-      countOnly ? Promise.resolve([]) : getActiveBoostProfiles(),
+        : getLiveShuffleVisitors(false)),
+      measure("boosts", () => countOnly ? Promise.resolve([]) : getActiveBoostProfiles()),
     ]);
     const { profilesCreated, anonymousOnline, totalLive } = counts;
 
@@ -987,9 +1021,10 @@ export async function GET(req: Request) {
         returned: 0,
         dedupeVersion: SHUFFLE_DEDUPE_VERSION,
         ts: Date.now(),
-      });
+      }, { timing });
     }
 
+    const transformStartedAt = performance.now();
     const filteredByDiscovery = allProfiles.filter(
       (profile) =>
         profileIsVisibleToViewer(profile, viewer) &&
@@ -1048,6 +1083,7 @@ export async function GET(req: Request) {
     const uniqueAll = uniqueShuffleWindow([...featuredProfiles, ...selected]);
     const uniqueFeatured = uniqueAll.filter((profile) => profile.shuffleFeatured);
     const uniqueSelected = uniqueAll.filter((profile) => !profile.shuffleFeatured);
+    timing.stages.transform = performance.now() - transformStartedAt;
 
     return shuffleJson(req, {
       ok: true,
@@ -1060,7 +1096,7 @@ export async function GET(req: Request) {
       returned: uniqueSelected.length,
       dedupeVersion: SHUFFLE_DEDUPE_VERSION,
       ts: Date.now(),
-    });
+    }, { timing });
   } catch (e: any) {
     const profilesCreated = cachedRegisteredCount || cachedProfiles.length;
     const totalLive = profilesCreated + cachedAnonymousOnline;
@@ -1079,7 +1115,7 @@ export async function GET(req: Request) {
         dedupeVersion: SHUFFLE_DEDUPE_VERSION,
         ts: Date.now(),
       },
-      { status: 200 },
+      { status: 200, timing },
     );
   }
 }
