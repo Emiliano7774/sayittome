@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { createAnonMatchAdminDoc, getAnonMatchAdminDoc } from "@/lib/anonMatch/anonMatchAdminStore";
+import { getRepairAdminDb } from "@/lib/chat/historicalAuthorshipRepairAdmin";
 import { lookupAnonMatchAliasBinding } from "@/lib/anonMatch/anonMatchAliasAdmin";
 import { buildShuffleAnonDirectChatId } from "@/lib/anonMatch/chatId";
 import { pickAvailableMatchTarget } from "@/lib/anonMatch/matchPool";
 import { assertAnonMatchAliasForCaller, verifyAnonMatchCaller } from "@/lib/anonMatch/verifyAnonMatchCaller";
 
 export const dynamic = "force-dynamic";
+
+type DirectChatTransaction = {
+  get: (ref: unknown) => Promise<{ data: () => Record<string, unknown> | undefined }>;
+  update: (ref: unknown, fields: Record<string, unknown>) => void;
+};
 
 /** Profile-style anonymous DM from an actual Shuffle card; NOT random matching. */
 export async function POST(req: Request) {
@@ -19,12 +25,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ok:false,error:"invalid_target_anon"},{status:400});
     }
 
+    // Direct card clicks need the same viewer geography as discovery.
+    // Anonymous clients normally send only their discovery filters, not pais;
+    // use the authenticated caller's own presence instead of an empty country.
+    const ownPresence = await getAnonMatchAdminDoc("anonimos_activos", ownAlias);
+    const verifiedOwnPresence = String(ownPresence?.authUid || "") === caller.uid ? ownPresence : null;
+    const viewerPais = String(verifiedOwnPresence?.pais ||
+      req.headers.get("cf-ipcountry") || req.headers.get("x-country-code") || body.pais || "").slice(0,100);
+    const viewerProvincia = String(verifiedOwnPresence?.provincia || body.provincia || "").slice(0,100);
+
     const picked = await pickAvailableMatchTarget({
       preferredAnonId: targetAlias,
       allowExistingChatsForDirectOpen: true,
       excludeAnonIds: [ownAlias],
-      viewerPais: String(body.pais || "").slice(0,100),
-      viewerProvincia: String(body.provincia || "").slice(0,100),
+      viewerPais,
+      viewerProvincia,
       verPaises: Array.isArray(body.verPaises) ? body.verPaises.slice(0,100) : [],
       verProvincias: Array.isArray(body.verProvincias) ? body.verProvincias.slice(0,100) : [],
     });
@@ -42,12 +57,23 @@ export async function POST(req: Request) {
       estado:"activo",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),ultimoMensaje:"",
     });
     if (!created.created) {
-      const existing = await getAnonMatchAdminDoc("chats_anonimos",chatId);
-      const actual = [caller.uid,targetUid].sort().join("|");
-      const stored = [String(existing?.solicitanteAuthUid || ""),String(existing?.destinatarioAuthUid || "")].sort().join("|");
-      if (!existing || existing.estado !== "activo" || existing.source !== "shuffle_direct" || actual !== stored) {
-        return NextResponse.json({ok:false,error:"chat_closed_or_forbidden"},{status:409});
-      }
+      const db = getRepairAdminDb();
+      const ref = db.collection("chats_anonimos").doc(chatId);
+      const canOpen = await db.runTransaction(async (tx: DirectChatTransaction) => {
+        const snap = await tx.get(ref);
+        const existing = snap.data();
+        const actual = [caller.uid,targetUid].sort().join("|");
+        const stored = [String(existing?.solicitanteAuthUid || ""),String(existing?.destinatarioAuthUid || "")].sort().join("|");
+        if (!existing || existing.source !== "shuffle_direct" || actual !== stored || existing.denunciadoAt) return false;
+        if (existing.estado === "activo") return true;
+        // A manually closed direct conversation may be reopened only by an
+        // authenticated participant clicking a still-visible Shuffle card.
+        // Reported chats are never reopened through this route.
+        if (existing.estado !== "cerrado") return false;
+        tx.update(ref, { estado: "activo", cerradoPor: "", cerradoAt: "", updatedAt: new Date().toISOString() });
+        return true;
+      });
+      if (!canOpen) return NextResponse.json({ok:false,error:"chat_closed_or_forbidden"},{status:409});
     }
     return NextResponse.json({ok:true,chatId,existing:!created.created});
   } catch (e: unknown) {

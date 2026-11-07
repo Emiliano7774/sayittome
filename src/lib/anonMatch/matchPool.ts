@@ -1,7 +1,7 @@
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
 import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
 import { getAnonMatchAdminDoc, listAnonMatchAdminDocs } from "@/lib/anonMatch/anonMatchAdminStore";
-import { isVerifiedAnonMatchPresence } from "@/lib/anonMatch/anonymousPresenceIdentity";
+import { isVerifiedAnonMatchPresence, anonShuffleVisible } from "@/lib/anonMatch/anonymousPresenceIdentity";
 import { isAnonMatchDoNotDisturbActive } from "@/lib/anonMatch/doNotDisturb";
 import { ANON_MATCH_PRESENCE_FRESH_MS } from "@/lib/anonMatch/types";
 import {
@@ -347,13 +347,18 @@ export async function pickAvailableMatchTarget(input: {
     const target = (await getAnonMatchAdminDoc("anonimos_activos", targetId)) as AnonPresenceRow | null;
     if (!target) return null;
     const directOpen = input.allowExistingChatsForDirectOpen === true;
-    // A profile-like conversation from a visible card must be allowed even if
-    // the peer is already chatting with someone else. Never override DND,
-    // identity validation, expired sessions or manually disabled availability.
+    // A visible Shuffle card may receive a new persistent DM for its entire
+    // three-hour display lifetime, even after the visitor closes the tab.
+    // sessionClosed and disponibleParaChat only govern LIVE random matching:
+    // closing a tab must not make a still-visible card uncontactable.
+    // Keep explicit DND, geographic visibility and verified identity rules.
     if (directOpen) {
-      if (!isVerifiedAnonMatchPresence(target) || !isAnonOnline(target, now)) return null;
+      const lastSeen = parseDate(target.lastSeenAt || target.updatedAt);
+      const expiresAt = parseDate(target.expiresAt);
+      if (!isVerifiedAnonMatchPresence(target) ||
+          !anonShuffleVisible(lastSeen?.getTime() || 0, now) ||
+          (expiresAt && expiresAt.getTime() <= now)) return null;
       if (isAnonMatchDoNotDisturbActive(target.doNotDisturbUntil, now)) return null;
-      if (target.disponibleParaChat === false && !target.enChat && !target.chatActualId) return null;
     } else if (!isAnonAvailable(target, now)) return null;
     if (!rowAcceptsViewer(target, viewer) || !geoAudienceIncludes(discovery, target)) return null;
     if (!directOpen) {
