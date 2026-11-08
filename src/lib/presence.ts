@@ -1,6 +1,8 @@
 /** Green dot, active filters and displayed "En línea" share one three-hour window. */
 export const ONLINE_WINDOW_MS = 3 * 60 * 60 * 1000;
 export const ONLINE_LABEL_MS = ONLINE_WINDOW_MS;
+/** Registered profiles stay in Shuffle's connected discovery window for 100 hours. Anonymous visibility remains 3 hours. */
+export const SHUFFLE_REGISTERED_ONLINE_WINDOW_MS = 100 * 60 * 60 * 1000;
 
 export function parsePresenceDate(value?: string | null) {
   if (!value) return null;

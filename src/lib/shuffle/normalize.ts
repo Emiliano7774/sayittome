@@ -1,4 +1,4 @@
-import { isActiveWithinWindow, isShuffleProfileOnline } from "@/lib/presence";
+import { isActiveWithinWindow, isShuffleProfileOnline, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import { normalizeUsername } from "@/lib/profile/username";
 import { dedupeShuffleProfiles, resolveUsernameLower } from "@/lib/shuffle/dedupeProfiles";
 import {
@@ -96,10 +96,10 @@ export function normalizeShuffleProfiles(raw: unknown): ShuffleProfile[] {
           item?.hasActiveStories === true || item?.tieneHistoriasActivas === true,
         mostrarUltimaVez,
         showOnline: onlineUntilAt
-          ? isShuffleProfileOnline({onlineUntilAt})
+          ? isShuffleProfileOnline({onlineUntilAt}, Date.now(), SHUFFLE_REGISTERED_ONLINE_WINDOW_MS)
           : typeof item?.showOnline === "boolean"
             ? item.showOnline
-            : isActiveWithinWindow(presenceAt, lastActive),
+            : isActiveWithinWindow(presenceAt, lastActive, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS),
         blurPhoto: resolveShuffleProfileBlurPhoto({
           photo: mainPhoto,
           adminBlurProfilePhoto,

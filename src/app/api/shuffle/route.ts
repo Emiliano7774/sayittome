@@ -3,7 +3,7 @@ import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:z
 import { getActiveBoostProfiles } from "@/lib/boost/service";
 import { BOOST_TOP_SLOTS } from "@/lib/boost/constants";
 import { readPublicStats, writePublicStats } from "@/lib/firestore/publicStats";
-import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
+import { isShuffleProfileOnline, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import { parseFirestoreDoc, runCollectionQueryAll } from "@/lib/firestore/rest";
 import { isLastSeenPublic, stripPublicPresence } from "@/lib/profile/lastSeenVisibility";
 import { isPublicProfile } from "@/lib/profile/isPublicProfile";
@@ -252,7 +252,7 @@ function shuffleArray<T>(arr: T[]) {
 }
 
 function isProfileOnlineForBadge(profile: ApiProfile, now = Date.now()) {
-  return isShuffleProfileOnline(profile, now, ONLINE_WINDOW_MS);
+  return isShuffleProfileOnline(profile, now, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS);
 }
 
 function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
@@ -260,13 +260,13 @@ function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
   const showOnline = isProfileOnlineForBadge(profile, now);
   if (visible) return { ...profile, mostrarUltimaVez:true, showOnline };
   // Keep last-seen timestamps private but expose the green-dot expiry for
-  // three-hour membership so the client can expire it without extra reads.
+  // 100-hour registered membership so the client can expire it without extra reads.
   const rawMs = Date.parse(String(profile.presenceAt || profile.lastActive || ""));
-  // Exposing lastHeartbeat + 3h as a public expiry would reveal the hidden
+  // Exposing lastHeartbeat + 100h as a public expiry would reveal the hidden
   // last-seen timestamp by subtraction. Issue a short public display lease
   // instead. The existing 20s visitors refresh / 60s recent-presence cache
   // renews it without introducing extra polling or exposing the exact time.
-  const remaining = Number.isFinite(rawMs) ? rawMs + ONLINE_WINDOW_MS - now : 0;
+  const remaining = Number.isFinite(rawMs) ? rawMs + SHUFFLE_REGISTERED_ONLINE_WINDOW_MS - now : 0;
   const expiry = showOnline && remaining > 0
     ? new Date(now + Math.min(90_000,remaining)).toISOString() : undefined;
   return {
@@ -558,7 +558,7 @@ function docToProfile(doc: any): ApiProfile {
 async function getRecentRegisteredProfiles(): Promise<ApiProfile[]> {
   const now = Date.now();
   const alive = (rows: ApiProfile[]) => rows.filter((row) =>
-    isShuffleProfileOnline(row, Date.now(), ONLINE_WINDOW_MS),
+    isShuffleProfileOnline(row, Date.now(), SHUFFLE_REGISTERED_ONLINE_WINDOW_MS),
   );
   if (cachedRecentRegisteredAt && now - cachedRecentRegisteredAt < RECENT_PROFILE_CACHE_MS) {
     return alive(cachedRecentRegistered);
@@ -572,7 +572,7 @@ async function getRecentRegisteredProfiles(): Promise<ApiProfile[]> {
           fieldFilter: {
             field: { fieldPath: "lastActiveAt" },
             op: "GREATER_THAN_OR_EQUAL",
-            value: { timestampValue: new Date(now - ONLINE_WINDOW_MS).toISOString() },
+            value: { timestampValue: new Date(now - SHUFFLE_REGISTERED_ONLINE_WINDOW_MS).toISOString() },
           },
         },
         orderBy: [{ field: { fieldPath: "lastActiveAt" }, direction: "DESCENDING" }],

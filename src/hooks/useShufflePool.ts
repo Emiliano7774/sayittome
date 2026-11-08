@@ -29,7 +29,7 @@ import {
   registerClearShuffleSoloOnline,
   setShuffleSoloOnlineFilter,
 } from "@/lib/shuffle/shuffleOnlineFilterNotice";
-import { isShuffleProfileOnline } from "@/lib/presence";
+import { isShuffleProfileOnline, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import { buildProfileAnonChatId } from "@/lib/chat/anonChatId";
 import { getChatAnonSenderId } from "@/lib/chat/anonSender";
 import { prefetchChatThread } from "@/lib/chat/prefetchChatThread";
@@ -734,7 +734,7 @@ export function useShufflePool() {
         activePoolRef.current.filter(
           (profile) =>
             profile.shuffleVisitor === true ||
-            isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
+            isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS)),
         ).length,
       );
 
@@ -1773,7 +1773,7 @@ export function useShufflePool() {
         activePoolRef.current.filter(
           (profile) =>
             profile.shuffleVisitor === true ||
-            isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now)),
+            isPublicShuffleOnline(profile, (p) => isShuffleProfileOnline(p, now, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS)),
         ).length,
       );
       patchShuffleSlotPresence(activePoolRef.current);

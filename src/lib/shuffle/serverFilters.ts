@@ -1,5 +1,5 @@
 import { isPublicShuffleOnline } from "@/lib/profile/lastSeenVisibility";
-import { isShuffleProfileOnline, ONLINE_WINDOW_MS } from "@/lib/presence";
+import { isShuffleProfileOnline, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import { inferCountryCodeFromSubdivision, normalizeGeoValue, resolveProfileCountryCode } from "@/lib/geo/countries";
 import {
   geoAudienceIncludes,
@@ -102,7 +102,7 @@ function interestKeys(values: string[] | undefined) {
 function isProfileOnline(profile: ShuffleFilterProfile, now = Date.now()) {
   if (profile.shuffleVisitor === true) return true;
   return isPublicShuffleOnline(profile, (p) =>
-    isShuffleProfileOnline(p, now, ONLINE_WINDOW_MS),
+    isShuffleProfileOnline(p, now, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS),
   );
 }
 
