@@ -143,7 +143,7 @@ const es = {
   province_hidden: "Oculta",
   last_seen_privacy_label: "Última conexión",
   last_seen_privacy_hint:
-    "Si ocultás la última conexión, no se muestra tu horario. Tu perfil puede aparecer con punto verde durante 15 minutos en Shuffle general, pero no en el filtro Solo online. La entrada puede generar avisos de conexión.",
+    "Si ocultás la última conexión, no se muestra tu horario. Tu perfil puede aparecer con punto verde durante 3 horas en Shuffle general, pero no en el filtro Solo online. La entrada puede generar avisos de conexión.",
   last_seen_visible: "Visible",
   last_seen_hidden: "Oculta",
 
@@ -231,10 +231,10 @@ const es = {
   anon_match_searching: "Buscando...",
   anon_match_disclaimer_title: "Personas conectadas",
   anon_match_disclaimer_body:
-    "Esta opción conecta con perfiles y visitantes anónimos que estuvieron activos en los últimos 15 minutos.",
+    "Esta opción conecta con perfiles y visitantes anónimos que estuvieron activos en los últimos 3 horas.",
   anon_match_disclaimer_title_anon: "Personas conectadas",
   anon_match_disclaimer_body_anon:
-    "Esta opción conecta con perfiles y visitantes anónimos que estuvieron activos en los últimos 15 minutos.",
+    "Esta opción conecta con perfiles y visitantes anónimos que estuvieron activos en los últimos 3 horas.",
   anon_match_disclaimer_confirm: "Entendido, buscar",
   anon_match_disclaimer_cancel: "Cancelar",
   anon_match_incognito_title: "Modo incógnito",
@@ -297,7 +297,7 @@ const es = {
   shuffle_filters_city: "Ciudad",
   shuffle_filters_city_hint: "Ej: Córdoba Capital",
   shuffle_filters_solo_online: "Solo online / activos",
-  shuffle_filters_solo_online_desc: "Solo perfiles en línea ahora (activos en los últimos 15 min).",
+  shuffle_filters_solo_online_desc: "Solo perfiles en línea ahora (activos en los últimos 3 h).",
   shuffle_filters_solo_photo: "Solo con foto",
   shuffle_filters_solo_photo_desc: "Oculta perfiles sin foto principal o galería.",
   shuffle_filters_solo_stories: "Solo con historias",
@@ -1032,7 +1032,7 @@ const en: Record<keyof typeof es, string> = {
   province_hidden: "Hidden",
   last_seen_privacy_label: "Last seen",
   last_seen_privacy_hint:
-    "When you hide your last seen, the time stays private. Your profile may show a green dot for 15 minutes in general Shuffle, but is excluded from the Online-only filter. Opening the app may trigger arrival alerts.",
+    "When you hide your last seen, the time stays private. Your profile may show a green dot for 3 hours in general Shuffle, but is excluded from the Online-only filter. Opening the app may trigger arrival alerts.",
   last_seen_visible: "Visible",
   last_seen_hidden: "Hidden",
 
@@ -1120,10 +1120,10 @@ const en: Record<keyof typeof es, string> = {
   anon_match_searching: "Searching...",
   anon_match_disclaimer_title: "Connected people",
   anon_match_disclaimer_body:
-    "This option connects you with profiles and anonymous visitors who were active in the last 15 minutes.",
+    "This option connects you with profiles and anonymous visitors who were active in the last 3 hours.",
   anon_match_disclaimer_title_anon: "Connected people",
   anon_match_disclaimer_body_anon:
-    "This option connects you with profiles and anonymous visitors who were active in the last 15 minutes.",
+    "This option connects you with profiles and anonymous visitors who were active in the last 3 hours.",
   anon_match_disclaimer_confirm: "Got it, search",
   anon_match_disclaimer_cancel: "Cancel",
   anon_match_incognito_title: "Incognito mode",
@@ -1186,7 +1186,7 @@ const en: Record<keyof typeof es, string> = {
   shuffle_filters_city: "City",
   shuffle_filters_city_hint: "E.g. Cordoba City",
   shuffle_filters_solo_online: "Online / active only",
-  shuffle_filters_solo_online_desc: "Only profiles online now (active in the last 15 minutes).",
+  shuffle_filters_solo_online_desc: "Only profiles online now (active in the last 3 hours).",
   shuffle_filters_solo_photo: "With photo only",
   shuffle_filters_solo_photo_desc: "Hide profiles without a main photo or gallery.",
   shuffle_filters_solo_stories: "With stories only",
@@ -1911,7 +1911,7 @@ const it: Record<keyof typeof es, string> = {
   province_hidden: "Nascosta",
   last_seen_privacy_label: "Ultima connessione",
   last_seen_privacy_hint:
-    "Quando nascondi l'ultimo accesso, l'orario resta privato. Il profilo può avere il pallino verde per 15 minuti nello Shuffle generale, ma non appare nel filtro Solo online. L'ingresso può inviare notifiche.",
+    "Quando nascondi l'ultimo accesso, l'orario resta privato. Il profilo può avere il pallino verde per 3 ore nello Shuffle generale, ma non appare nel filtro Solo online. L'ingresso può inviare notifiche.",
   last_seen_visible: "Visibile",
   last_seen_hidden: "Nascosta",
 
@@ -2137,7 +2137,7 @@ const de: Record<keyof typeof es, string> = {
   province_hidden: "Versteckt",
   last_seen_privacy_label: "Zuletzt online",
   last_seen_privacy_hint:
-    "Wenn du die letzte Aktivität verbirgst, bleibt die Uhrzeit privat. Dein Profil kann 15 Minuten lang einen grünen Punkt im normalen Shuffle zeigen, erscheint jedoch nicht im Nur-online-Filter. Das Öffnen der App kann Benachrichtigungen auslösen.",
+    "Wenn du die letzte Aktivität verbirgst, bleibt die Uhrzeit privat. Dein Profil kann 3 Stunden lang einen grünen Punkt im normalen Shuffle zeigen, erscheint jedoch nicht im Nur-online-Filter. Das Öffnen der App kann Benachrichtigungen auslösen.",
   last_seen_visible: "Sichtbar",
   last_seen_hidden: "Versteckt",
 

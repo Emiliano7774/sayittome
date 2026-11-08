@@ -5,10 +5,11 @@ vm.runInNewContext(ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind
 const now=Date.parse("2026-10-18T14:00:00Z");
 const hidden={onlineUntilAt:new Date(now+60000).toISOString(),lastActive:undefined,presenceAt:undefined};
 assert.equal(exported.isShuffleProfileOnline(hidden,now),true,"hidden lastseen shows green while active");
-assert.equal(exported.isShuffleProfileOnline(hidden,now+60001),false,"hidden lastseen expires after 15m");
+assert.equal(exported.isShuffleProfileOnline(hidden,now+60001),false,"hidden lastseen lease expires at published limit");
 const regular={presenceAt:new Date(now-14*60000).toISOString()};
 assert.equal(exported.isShuffleProfileOnline(regular,now),true);
-assert.equal(exported.isShuffleProfileOnline(regular,now+61000),false);
+assert.equal(exported.isShuffleProfileOnline(regular,now+61000),true);
+assert.equal(exported.isShuffleProfileOnline(regular,now+181*60000),false);
 const recent=fs.readFileSync("src/lib/shuffle/recentOnlineProfiles.ts","utf8");
 const api=fs.readFileSync("src/app/api/shuffle/route.ts","utf8");
 const filter=fs.readFileSync("src/lib/profile/lastSeenVisibility.ts","utf8");
@@ -18,7 +19,7 @@ const server=fs.readFileSync("src/lib/shuffle/serverFilters.ts","utf8");
 assert(api.includes("onlineUntilAt:expiry"),"private green-dot expiry issued");
 assert(api.includes("Math.min(90_000,remaining)"),"privacy-friendly short online lease");
 assert(!api.includes("new Date(rawMs + ONLINE_WINDOW_MS)"),"no exact last-seen timestamp leak via expiry");
-assert(api.includes("showOnline,\n    onlineUntilAt:expiry"),"green dot remains on");
+assert(/showOnline,\s+onlineUntilAt:expiry/.test(api),"green dot remains on");
 assert(!api.includes("&& isLastSeenPublic(profile)"),"recent hidden profiles included");
 assert(!recent.includes("|| old.mostrarUltimaVez === false"),"hidden cache overlay works");
 assert(filter.includes("!profile || !isLastSeenPublic(profile)"),"solo online respects hidden lastseen");
@@ -26,4 +27,4 @@ assert(!refresh.includes("stripPublicPresence"),"foreground polling does not bla
 assert(norm.includes("onlineUntilAt"),"expiry survives normalization");
 assert(server.includes("onlineUntilAt"),"expiry used in filters");
 assert(api.includes("ANON_SHUFFLE_VISIBILITY_MS")&&api.includes("anonShuffleVisible"),"anon 3h unchanged");
-console.log("PASS: private timestamp, 15m green dot general, hidden excluded Solo online, 3h anon preserved");
+console.log("PASS: private timestamp, 3h green dot general, hidden excluded Solo online, 3h anon preserved");

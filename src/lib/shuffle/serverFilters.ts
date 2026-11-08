@@ -119,7 +119,7 @@ export function profileMatchesShuffleServerFilters(
   if (profile.shuffleVisitor === true) {
     if (filters.soloConFoto || filters.soloConHistorias) return false;
     // Anonymous cards remain online (green dot + Solo online) for the entire
-    // three-hour visibility window; registered profiles use a 15-minute heartbeat.
+    // three-hour visibility window; registered profiles now use the same three-hour window.
     if (filters.soloOnline) return isProfileOnline(profile, now);
     return true;
   }

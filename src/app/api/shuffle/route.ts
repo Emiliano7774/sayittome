@@ -260,9 +260,9 @@ function withPresenceBadge(profile: ApiProfile, now = Date.now()): ApiProfile {
   const showOnline = isProfileOnlineForBadge(profile, now);
   if (visible) return { ...profile, mostrarUltimaVez:true, showOnline };
   // Keep last-seen timestamps private but expose the green-dot expiry for
-  // 15-minute membership so the client can expire it without extra reads.
+  // three-hour membership so the client can expire it without extra reads.
   const rawMs = Date.parse(String(profile.presenceAt || profile.lastActive || ""));
-  // Exposing lastHeartbeat + 15m as a public expiry would reveal the hidden
+  // Exposing lastHeartbeat + 3h as a public expiry would reveal the hidden
   // last-seen timestamp by subtraction. Issue a short public display lease
   // instead. The existing 20s visitors refresh / 60s recent-presence cache
   // renews it without introducing extra polling or exposing the exact time.

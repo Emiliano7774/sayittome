@@ -76,7 +76,7 @@ export default function AdminSystemPanel() {
       <section className="max-w-2xl space-y-4 rounded-3xl border border-white/10 bg-white/[0.03] p-6">
         <p className="text-xl font-black">Referencia rápida</p>
         <p className="font-bold text-white/55">Email autorizado: {ADMIN_EMAIL}</p>
-        <p className="font-bold text-white/55">Presencia online: ventana de 15 minutos.</p>
+        <p className="font-bold text-white/55">Presencia online: ventana de 3 horas.</p>
         <p className="font-bold text-white/55">Antiacoso default: 30 minutos por fingerprint.</p>
         <p className="font-bold text-white/55">Link verificado: /u/username?verified=1</p>
         <p className="font-bold text-white/55">

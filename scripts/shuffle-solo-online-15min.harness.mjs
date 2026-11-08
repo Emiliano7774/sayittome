@@ -28,7 +28,10 @@ assert.equal(matches({...anon,presenceAt:new Date(now-120*60000).toISOString()},
 const registered={shuffleVisitor:false,mostrarUltimaVez:true,presenceAt:new Date(now-14*60000).toISOString()};
 assert.equal(matches(registered,online,now),true,"registered 14m online");
 assert.equal(matches({...registered,presenceAt:new Date(now-15*60000).toISOString()},online,now),true,"registered 15m boundary");
-assert.equal(matches({...registered,presenceAt:new Date(now-15*60000-1).toISOString()},online,now),false,"registered 15m expiry");
+assert.equal(matches({...registered,presenceAt:new Date(now-15*60000-1).toISOString()},online,now),true,"registered still online after 15m");
+assert.equal(matches({...registered,presenceAt:new Date(now-179*60000).toISOString()},online,now),true,"registered online at 179m");
+assert.equal(matches({...registered,presenceAt:new Date(now-180*60000).toISOString()},online,now),true,"registered online at 180m boundary");
+assert.equal(matches({...registered,presenceAt:new Date(now-180*60000-1).toISOString()},online,now),false,"registered offline past 180m");
 assert.equal(matches({...registered,mostrarUltimaVez:false},online,now),false,"registered last seen privacy respected");
 assert.match(source,/if \(filters\.soloOnline\) return isProfileOnline\(profile, now\)/);
 const route=fs.readFileSync("src/app/api/shuffle/route.ts","utf8");
@@ -39,4 +42,4 @@ assert.match(route,/RECENT_PROFILE_CACHE_MS = 60_000/);
 const client=fs.readFileSync("src/hooks/useShufflePool.ts","utf8");
 assert.match(client,/mergeRecentOnlineProfiles\(/);
 assert.match(client,/patchShuffleSlotPresence\(activePoolRef\.current\)/);
-console.log("PASS SHUFFLE MIXED ONLINE: anon 3h, registered 15m, green dot refresh, privacy, general pool, indexed cached presence");
+console.log("PASS SHUFFLE MIXED ONLINE: anon 3h, registered 3h, green dot refresh, privacy, general pool, indexed cached presence");

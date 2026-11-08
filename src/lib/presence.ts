@@ -1,5 +1,5 @@
-/** Green dot, active filters and displayed "En línea" share one 15-minute window. */
-export const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+/** Green dot, active filters and displayed "En línea" share one three-hour window. */
+export const ONLINE_WINDOW_MS = 3 * 60 * 60 * 1000;
 export const ONLINE_LABEL_MS = ONLINE_WINDOW_MS;
 
 export function parsePresenceDate(value?: string | null) {
@@ -11,7 +11,7 @@ export function parsePresenceDate(value?: string | null) {
   return date;
 }
 
-/** Badge verde / filtro activos: heartbeat dentro de 15 min. */
+/** Badge verde / filtro activos: heartbeat dentro de tres horas. */
 export function isLiveByConnection(
   heartbeatAt?: string | null,
   windowMs = ONLINE_WINDOW_MS,
@@ -40,7 +40,7 @@ export function isActiveWithinWindow(
   return isLiveByConnection(presenceAt || lastActive, windowMs, now);
 }
 
-/** Perfil "online" para filtros shuffle: heartbeat real dentro de la ventana (15 min). */
+/** Perfil "online" para filtros Shuffle: heartbeat dentro de tres horas. */
 export function isShuffleProfileOnline(
   profile: { presenceAt?: string | null; lastActive?: string | null; onlineUntilAt?: string | null },
   now = Date.now(),
@@ -54,7 +54,7 @@ export function isShuffleProfileOnline(
 }
 
 /**
- * Label copy: up to 15 min → "en línea"; after 15 min → last-seen phrasing.
+ * Label copy: up to 3 hours → "en línea"; then → last-seen phrasing.
  */
 export function formatLastSeen(
   lastActive?: string | null,
