@@ -51,9 +51,10 @@ import { isVideoMediaUrl } from "@/lib/media/mediaUrl";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useLocale, useT } from "@/contexts/LocaleContext";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
-import { isActiveWithinWindow } from "@/lib/presence";
+import { isActiveWithinWindow, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
+import { resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
 import { resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
 } from "@/lib/profile/resolveProfileCover";
@@ -306,7 +307,7 @@ export function SettingsRouteContent() {
     profile,
     true,
     formatLastSeen,
-    profile ? isActiveWithinWindow(profile.presenceAt, profile.lastActiveAt || profile.lastActive) : false,
+    profile ? isActiveWithinWindow(resolveProfileHeartbeat(profile), undefined, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS) : false,
   );
   const createdAtLabel = resolvePublicProfileCreatedLabel(profile, localeTag);
 

@@ -18,8 +18,12 @@ function parseDateValue(value: unknown) {
 export function useFormatLastSeen() {
   const { locale } = useLocale();
 
-  return (lastActive?: string | null, online?: boolean) =>
-    formatLastSeenLocalized(locale, lastActive, online);
+  return (
+    lastActive?: string | null,
+    online?: boolean,
+    windowMs?: number,
+    labelMs?: number,
+  ) => formatLastSeenLocalized(locale, lastActive, online, windowMs, labelMs);
 }
 
 export function useLocaleDateFormatter() {

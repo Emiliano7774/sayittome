@@ -1,3 +1,4 @@
+import { SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import {
   canShowLastSeenToViewer,
   isLastSeenPublic,
@@ -15,7 +16,7 @@ type ProfileLike = {
 export function resolveProfileLastSeenLabel(
   profile: ProfileLike | null | undefined,
   isOwner: boolean,
-  formatLastSeen: (lastActive?: string | null, online?: boolean) => string,
+  formatLastSeen: (lastActive?: string | null, online?: boolean, windowMs?: number, labelMs?: number) => string,
   isOnline: boolean,
 ) {
   if (!profile || !isLastSeenPublic(profile) || !canShowLastSeenToViewer(profile, isOwner)) {
@@ -24,7 +25,12 @@ export function resolveProfileLastSeenLabel(
 
   const heartbeat = resolveProfileHeartbeat(profile);
   if (heartbeat) {
-    return formatLastSeen(heartbeat, isOnline);
+    return formatLastSeen(
+      heartbeat,
+      isOnline,
+      SHUFFLE_REGISTERED_ONLINE_WINDOW_MS,
+      SHUFFLE_REGISTERED_ONLINE_WINDOW_MS,
+    );
   }
 
   if (isOwner) {

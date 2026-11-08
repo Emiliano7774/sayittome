@@ -16,14 +16,25 @@ export function resolveProfileHeartbeat(
     lastSeenAt?: string | null;
   } | null,
 ) {
-  const stamp = String(
-    profile?.presenceAt ||
-      profile?.lastActive ||
-      profile?.lastActiveAt ||
-      profile?.lastSeenAt ||
-      "",
-  ).trim();
-  return stamp || undefined;
+  // A cached profile can carry an older presenceAt alongside a newer
+  // lastActiveAt. Use the freshest actual heartbeat, never profile edits
+  // or registration dates, so public cards and their detail agree.
+  const now = Date.now();
+  let latestMs = 0;
+  let latestStamp: string | undefined;
+  for (const raw of [
+    profile?.presenceAt,
+    profile?.lastActive,
+    profile?.lastActiveAt,
+    profile?.lastSeenAt,
+  ]) {
+    const stamp = String(raw || "").trim();
+    const ms = Date.parse(stamp);
+    if (!Number.isFinite(ms) || ms > now + 30_000 || ms <= latestMs) continue;
+    latestMs = ms;
+    latestStamp = stamp;
+  }
+  return latestStamp;
 }
 
 /** Visitors need public opt-in and a heartbeat; owners only when visibility is on. */

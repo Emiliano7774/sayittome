@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { canShowLastSeenToViewer, resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
-import { formatLastSeen } from "@/lib/presence";
+import { formatLastSeen, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import {
   Heart,
   MessageSquare,
@@ -77,7 +77,12 @@ export default function ClassicProfileLayout({
   const heartbeat = resolveProfileHeartbeat(profile);
   const lastSeenLabel = canShowLastSeenToViewer(profile, ownProfile)
     ? heartbeat
-      ? formatLastSeen(heartbeat, profile.online)
+      ? formatLastSeen(
+          heartbeat,
+          profile.online,
+          SHUFFLE_REGISTERED_ONLINE_WINDOW_MS,
+          SHUFFLE_REGISTERED_ONLINE_WINDOW_MS,
+        )
       : ownProfile
         ? formatLastSeen(undefined, profile.online)
         : ""

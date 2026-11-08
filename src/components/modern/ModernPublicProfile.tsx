@@ -29,9 +29,11 @@ import { useHorizontalSwipe } from "@/hooks/useHorizontalSwipe";
 import { useOverlayBackClose } from "@/hooks/useOverlayBackClose";
 import { isAdminEmail } from "@/lib/admin/isAdmin";
 import { isPresenceOnline } from "@/lib/i18n/formatLastSeen";
+import { SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import { resolveProfileMediaSourceForUrl } from "@/lib/profile/mediaSource";
 import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
+import { resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -146,7 +148,11 @@ export default function ModernPublicProfile({
   const createdSignature = resolvePublicProfileCreatedLabel(profile, localeTag);
   const story = useStoryStatus(profile.uid, profile.username);
   const blurPhoto = profilePhotoRequiresBlur(profile);
-  const isOnline = isPresenceOnline(profile.presenceAt || profile.lastActive, profile.online);
+  const isOnline = isPresenceOnline(
+    resolveProfileHeartbeat(profile),
+    profile.online,
+    SHUFFLE_REGISTERED_ONLINE_WINDOW_MS,
+  );
   const lastSeen = resolveProfileLastSeenLabel(
     profile,
     isOwner,

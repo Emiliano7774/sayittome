@@ -42,7 +42,7 @@ import { useProfileOwner } from "@/hooks/useProfileOwner";
 import { useUxMode } from "@/contexts/UxModeContext";
 import { useLocale, useT } from "@/contexts/LocaleContext";
 import { useFormatLastSeen } from "@/hooks/useLocaleFormatters";
-import { isActiveWithinWindow } from "@/lib/presence";
+import { isActiveWithinWindow, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS } from "@/lib/presence";
 import { isVerifiedProfileLink } from "@/lib/profile/verifiedLink";
 import SensitiveMediaShell from "@/components/moderation/SensitiveMediaShell";
 import { profilePhotoRequiresBlur } from "@/lib/moderation/blur";
@@ -79,6 +79,7 @@ import { useNavUsefulPaint } from "@/hooks/useNavUsefulPaint";
 import { resolvePublicProfileCreatedLabel } from "@/lib/profile/profileCreatedLabel";
 import { resolveProfileMediaSourceForUrl } from "@/lib/profile/mediaSource";
 import { resolveProfileLastSeenLabel } from "@/lib/profile/resolveProfileLastSeenLabel";
+import { resolveProfileHeartbeat } from "@/lib/profile/lastSeenVisibility";
 import {
   resolveProfileCoverPhoto,
   resolveProfileCoverVideo,
@@ -362,7 +363,7 @@ export default function PublicProfilePage() {
   }, [profile?.uid, profile?.username, currentUid]);
 
   const isOnline = profile
-    ? isActiveWithinWindow(profile.presenceAt, profile.lastActive)
+    ? isActiveWithinWindow(resolveProfileHeartbeat(profile), undefined, SHUFFLE_REGISTERED_ONLINE_WINDOW_MS)
     : false;
   const lastSeenLabel = resolveProfileLastSeenLabel(
     profile,
